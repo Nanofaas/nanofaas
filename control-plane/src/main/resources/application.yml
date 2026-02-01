@@ -36,3 +36,13 @@ mcfaas:
   k8s:
     namespace: ""
     callbackUrl: "http://control-plane.default.svc.cluster.local:8080/v1/internal/executions"
+
+sync-queue:
+  enabled: true
+  admission-enabled: true
+  max-depth: 200
+  max-estimated-wait: 2s
+  max-queue-wait: 2s
+  retry-after-seconds: 2
+  throughput-window: 30s
+  per-function-min-samples: 50
