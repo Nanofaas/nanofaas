@@ -427,3 +427,70 @@ test_async_invocation() {
     error "Async execution did not complete within timeout"
     exit 1
 }
+
+print_summary() {
+    log ""
+    log "=========================================="
+    log "        E2E TEST COMPLETED SUCCESSFULLY"
+    log "=========================================="
+    log ""
+    log "Summary:"
+    log "  - VM: ${VM_NAME}"
+    log "  - Namespace: ${NAMESPACE}"
+    log "  - Control-plane image: ${CONTROL_IMAGE}"
+    log "  - Function-runtime image: ${RUNTIME_IMAGE}"
+    log ""
+    log "Tests passed:"
+    log "  [✓] VM creation and k3s installation"
+    log "  [✓] Docker image build and import"
+    log "  [✓] Kubernetes deployment with health probes"
+    log "  [✓] Health endpoint verification (liveness/readiness)"
+    log "  [✓] Function registration"
+    log "  [✓] Sync function invocation with curl"
+    log "  [✓] Async function invocation and polling"
+    log ""
+}
+
+main() {
+    log "Starting k3s E2E test..."
+    log "Configuration:"
+    log "  VM_NAME=${VM_NAME}"
+    log "  CPUS=${CPUS}, MEMORY=${MEMORY}, DISK=${DISK}"
+    log "  NAMESPACE=${NAMESPACE}"
+    log "  KEEP_VM=${KEEP_VM}"
+    log ""
+
+    # Phase 1: Setup
+    check_prerequisites
+    create_vm
+    install_dependencies
+    install_k3s
+
+    # Phase 2: Build
+    sync_project
+    build_jars
+    build_images
+    import_images_to_k3s
+
+    # Phase 3: Deploy
+    create_namespace
+    deploy_control_plane
+    deploy_function_runtime
+
+    # Phase 4: Verify deployment
+    wait_for_deployment "control-plane" 180
+    wait_for_deployment "function-runtime" 120
+    verify_pods_running
+    verify_health_endpoints
+
+    # Phase 5: Test functions
+    register_function
+    invoke_function_with_curl
+    test_async_invocation
+
+    # Done
+    print_summary
+}
+
+# Run main
+main "$@"
