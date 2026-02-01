@@ -315,3 +315,115 @@ verify_pods_running() {
 
     log "All pods running"
 }
+
+register_function() {
+    log "Registering test function..."
+
+    # Register function via control-plane service
+    vm_exec "kubectl run curl-register --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
+        curl -sf -X POST http://control-plane:8080/v1/functions \
+        -H 'Content-Type: application/json' \
+        -d '{
+            \"name\": \"echo-test\",
+            \"image\": \"${RUNTIME_IMAGE}\",
+            \"timeoutMs\": 5000,
+            \"concurrency\": 2,
+            \"queueSize\": 20,
+            \"maxRetries\": 3,
+            \"executionMode\": \"POOL\",
+            \"endpointUrl\": \"http://function-runtime:8080/invoke\"
+        }'"
+
+    log "Function registered"
+}
+
+invoke_function_with_curl() {
+    log "Invoking function with curl container..."
+
+    # Create a Job that invokes the function and checks the response
+    vm_exec "cat <<'EOF' | kubectl apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: curl-invoke-test
+  namespace: ${NAMESPACE}
+spec:
+  ttlSecondsAfterFinished: 60
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: curl
+        image: curlimages/curl:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo 'Invoking function...'
+          RESPONSE=\$(curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:invoke \
+            -H 'Content-Type: application/json' \
+            -d '{\"input\": {\"message\": \"hello-k3s-test\"}}')
+          echo \"Response: \${RESPONSE}\"
+
+          # Verify response contains expected values
+          if echo \"\${RESPONSE}\" | grep -q '\"status\":\"success\"'; then
+            echo 'SUCCESS: status is success'
+          else
+            echo 'FAIL: status is not success'
+            exit 1
+          fi
+
+          if echo \"\${RESPONSE}\" | grep -q '\"message\":\"hello-k3s-test\"'; then
+            echo 'SUCCESS: message echoed correctly'
+          else
+            echo 'FAIL: message not echoed correctly'
+            exit 1
+          fi
+
+          echo 'All verifications passed!'
+EOF"
+
+    log "Waiting for curl job to complete..."
+    vm_exec "kubectl wait --for=condition=complete job/curl-invoke-test -n ${NAMESPACE} --timeout=60s"
+
+    # Get job logs
+    log "Job logs:"
+    vm_exec "kubectl logs job/curl-invoke-test -n ${NAMESPACE}"
+
+    log "Function invocation verified successfully"
+}
+
+test_async_invocation() {
+    log "Testing async function invocation..."
+
+    # Enqueue async invocation
+    local exec_id
+    exec_id=$(vm_exec "kubectl run curl-enqueue --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
+        curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:enqueue \
+        -H 'Content-Type: application/json' \
+        -d '{\"input\": {\"message\": \"async-test\"}}'" | grep -oP '"executionId":"\K[^"]+')
+
+    log "Async execution ID: ${exec_id}"
+
+    # Poll for completion
+    log "Polling for execution completion..."
+    for i in $(seq 1 20); do
+        local status
+        status=$(vm_exec "kubectl run curl-poll-${i} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
+            curl -sf http://control-plane:8080/v1/executions/${exec_id}" 2>/dev/null | grep -oP '"status":"\K[^"]+' || echo "pending")
+
+        if [[ "${status}" == "success" ]]; then
+            log "Async execution completed successfully"
+            return 0
+        elif [[ "${status}" == "failed" ]]; then
+            error "Async execution failed"
+            exit 1
+        fi
+        sleep 1
+    done
+
+    error "Async execution did not complete within timeout"
+    exit 1
+}
