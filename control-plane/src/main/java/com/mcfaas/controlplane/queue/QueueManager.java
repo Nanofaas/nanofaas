@@ -30,6 +30,9 @@ public class QueueManager {
                 Gauge.builder("function_queue_depth", state::queued)
                         .tag("function", name)
                         .register(meterRegistry);
+                Gauge.builder("function_inFlight", state::inFlight)
+                        .tag("function", name)
+                        .register(meterRegistry);
                 return state;
             }
             existing.concurrency(spec.concurrency());
