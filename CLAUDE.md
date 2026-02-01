@@ -22,6 +22,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./scripts/e2e.sh                    # Local containers
 ./scripts/e2e-buildpack.sh          # Buildpack images
 
+# K3s E2E with Curl (self-contained Multipass VM)
+./scripts/e2e-k3s-curl.sh              # Full test with VM cleanup
+KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
+
 # Kubernetes E2E (requires kind cluster)
 ./scripts/setup-multipass-kind.sh
 export KUBECONFIG=~/.kube/mcfaas-kind.yaml
@@ -90,4 +94,4 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - In-memory queues (no durability)
 - No authentication/authorization
 - Performance and latency prioritized over features
-- Java 17 toolchain, 4-space indentation, `com.mcfaas` package root
+- Java 21 toolchain, 4-space indentation, `com.mcfaas` package root
