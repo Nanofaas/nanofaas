@@ -403,7 +403,7 @@ test_async_invocation() {
     exec_id=$(vm_exec "kubectl run curl-enqueue --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
         curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:enqueue \
         -H 'Content-Type: application/json' \
-        -d '{\"input\": {\"message\": \"async-test\"}}'" | grep -oP '"executionId":"\K[^"]+')
+        -d '{\"input\": {\"message\": \"async-test\"}}'" | sed -n 's/.*"executionId":"\([^"]*\)".*/\1/p')
 
     log "Async execution ID: ${exec_id}"
 
@@ -412,7 +412,7 @@ test_async_invocation() {
     for i in $(seq 1 20); do
         local status
         status=$(vm_exec "kubectl run curl-poll-${i} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-            curl -sf http://control-plane:8080/v1/executions/${exec_id}" 2>/dev/null | grep -oP '"status":"\K[^"]+' || echo "pending")
+            curl -sf http://control-plane:8080/v1/executions/${exec_id}" 2>/dev/null | sed -n 's/.*"status":"\([^"]*\)".*/\1/p' || echo "pending")
 
         if [[ "${status}" == "success" ]]; then
             log "Async execution completed successfully"
