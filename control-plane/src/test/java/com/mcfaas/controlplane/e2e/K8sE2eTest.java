@@ -19,7 +19,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
@@ -184,6 +189,59 @@ class K8sE2eTest {
         }
     }
 
+    @Test
+    void k8sSyncQueueBackpressure() throws Exception {
+        try (LocalPortForward apiForward = client.services().inNamespace(NS).withName("control-plane").portForward(8080);
+             LocalPortForward mgmtForward = client.services().inNamespace(NS).withName("control-plane").portForward(8081)) {
+
+            RestAssured.baseURI = "http://localhost";
+            RestAssured.port = apiForward.getLocalPort();
+            int mgmtPort = mgmtForward.getLocalPort();
+
+            String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
+            String fn = "k8s-echo-sync-queue";
+            Map<String, Object> spec = Map.of(
+                    "name", fn,
+                    "image", RUNTIME_IMAGE,
+                    "timeoutMs", 5000,
+                    "concurrency", 1,
+                    "queueSize", 20,
+                    "maxRetries", 3,
+                    "executionMode", "POOL",
+                    "endpointUrl", endpointUrl
+            );
+
+            RestAssured.given()
+                    .contentType(ContentType.JSON)
+                    .body(spec)
+                .post("/v1/functions")
+                .then()
+                .statusCode(201);
+
+            Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
+                List<io.restassured.response.Response> responses = invokeSyncBurst(fn, 12);
+                long ok = responses.stream().filter(r -> r.statusCode() == 200).count();
+                java.util.Optional<io.restassured.response.Response> rejected = responses.stream()
+                        .filter(r -> r.statusCode() == 429)
+                        .findFirst();
+
+                org.junit.jupiter.api.Assertions.assertTrue(ok >= 1, "expected at least one 200 response");
+                org.junit.jupiter.api.Assertions.assertTrue(rejected.isPresent(), "expected at least one 429 response");
+                org.junit.jupiter.api.Assertions.assertEquals("2", rejected.get().getHeader("Retry-After"));
+                org.junit.jupiter.api.Assertions.assertEquals("depth", rejected.get().getHeader("X-Queue-Reject-Reason"));
+            });
+
+            String metrics = RestAssured.get("http://localhost:" + mgmtPort + "/actuator/prometheus")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .asString();
+
+            org.junit.jupiter.api.Assertions.assertTrue(metrics.contains("sync_queue_rejected_total"));
+            org.junit.jupiter.api.Assertions.assertTrue(metrics.contains("sync_queue_depth"));
+        }
+    }
+
     private static boolean hasReadyEndpoint(Endpoints endpoints) {
         if (endpoints == null || endpoints.getSubsets() == null) {
             return false;
@@ -210,6 +268,14 @@ class K8sE2eTest {
                 .addNewPort().withContainerPort(8080).endPort()
                 .addNewPort().withContainerPort(8081).endPort()
                 .addNewEnv().withName("POD_NAMESPACE").withValue(NS).endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_ENABLED").withValue("true").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_ADMISSION_ENABLED").withValue("false").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_MAX_DEPTH").withValue("1").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_MAX_ESTIMATED_WAIT").withValue("2s").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_MAX_QUEUE_WAIT").withValue("5s").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_RETRY_AFTER_SECONDS").withValue("2").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_THROUGHPUT_WINDOW").withValue("10s").endEnv()
+                .addNewEnv().withName("SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES").withValue("1").endEnv()
                 .endContainer()
                 .endSpec()
                 .endTemplate()
@@ -271,5 +337,21 @@ class K8sE2eTest {
                         .then()
                         .statusCode(200)
                         .body("status", equalTo("UP")));
+    }
+
+    private static List<io.restassured.response.Response> invokeSyncBurst(String functionName, int count) {
+        ExecutorService executor = Executors.newFixedThreadPool(count);
+        try {
+            List<CompletableFuture<io.restassured.response.Response>> futures = IntStream.range(0, count)
+                    .mapToObj(i -> CompletableFuture.supplyAsync(() ->
+                            RestAssured.given()
+                                    .contentType(ContentType.JSON)
+                                    .body(Map.of("input", Map.of("message", "sync-" + i)))
+                                    .post("/v1/functions/" + functionName + ":invoke"), executor))
+                    .toList();
+            return futures.stream().map(CompletableFuture::join).toList();
+        } finally {
+            executor.shutdown();
+        }
     }
 }
