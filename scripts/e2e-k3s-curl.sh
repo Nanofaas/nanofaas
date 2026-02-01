@@ -38,3 +38,61 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+check_prerequisites() {
+    if ! command -v multipass >/dev/null 2>&1; then
+        error "multipass not found. Install: brew install multipass"
+        exit 1
+    fi
+    log "Prerequisites check passed"
+}
+
+create_vm() {
+    log "Creating VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})..."
+    multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
+    log "VM created successfully"
+}
+
+vm_exec() {
+    multipass exec "${VM_NAME}" -- bash -lc "$*"
+}
+
+install_dependencies() {
+    log "Installing dependencies in VM..."
+
+    vm_exec "sudo apt-get update -y"
+    vm_exec "sudo apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk"
+
+    # Install Docker
+    vm_exec "if ! command -v docker >/dev/null 2>&1; then
+        curl -fsSL https://get.docker.com | sudo sh
+        sudo usermod -aG docker ubuntu
+    fi"
+
+    log "Dependencies installed"
+}
+
+install_k3s() {
+    log "Installing k3s..."
+
+    vm_exec "curl -sfL https://get.k3s.io | sudo sh -s - --disable traefik"
+
+    # Wait for k3s to be ready
+    vm_exec "for i in \$(seq 1 60); do
+        if sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready'; then
+            echo 'k3s node ready'
+            exit 0
+        fi
+        sleep 2
+    done
+    echo 'k3s node not ready after 120s' >&2
+    exit 1"
+
+    # Setup kubeconfig for ubuntu user
+    vm_exec "mkdir -p /home/ubuntu/.kube"
+    vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config"
+    vm_exec "sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config"
+    vm_exec "chmod 600 /home/ubuntu/.kube/config"
+
+    log "k3s installed and ready"
+}
