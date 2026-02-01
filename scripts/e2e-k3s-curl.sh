@@ -54,7 +54,7 @@ create_vm() {
 }
 
 vm_exec() {
-    multipass exec "${VM_NAME}" -- bash -lc "$*"
+    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
 }
 
 install_dependencies() {
