@@ -96,3 +96,33 @@ install_k3s() {
 
     log "k3s installed and ready"
 }
+
+sync_project() {
+    log "Syncing project to VM..."
+    vm_exec "rm -rf /home/ubuntu/mcfaas"
+    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/mcfaas"
+    log "Project synced"
+}
+
+build_jars() {
+    log "Building JARs in VM..."
+    vm_exec "cd /home/ubuntu/mcfaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
+    log "JARs built"
+}
+
+build_images() {
+    log "Building Docker images in VM..."
+    vm_exec "cd /home/ubuntu/mcfaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
+    vm_exec "cd /home/ubuntu/mcfaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    log "Docker images built"
+}
+
+import_images_to_k3s() {
+    log "Importing images to k3s..."
+    vm_exec "sudo docker save ${CONTROL_IMAGE} -o /tmp/control-plane.tar"
+    vm_exec "sudo docker save ${RUNTIME_IMAGE} -o /tmp/function-runtime.tar"
+    vm_exec "sudo k3s ctr images import /tmp/control-plane.tar"
+    vm_exec "sudo k3s ctr images import /tmp/function-runtime.tar"
+    vm_exec "sudo rm -f /tmp/control-plane.tar /tmp/function-runtime.tar"
+    log "Images imported to k3s"
+}
