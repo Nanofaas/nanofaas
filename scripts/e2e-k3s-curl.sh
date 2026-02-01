@@ -428,6 +428,49 @@ test_async_invocation() {
     exit 1
 }
 
+verify_prometheus_metrics() {
+    log "Verifying Prometheus metrics..."
+
+    # Get control-plane pod name
+    local pod_name
+    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
+
+    # Fetch metrics from Prometheus endpoint
+    local metrics
+    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+
+    # Verify core metrics exist
+    if echo "${metrics}" | grep -q 'function_enqueue_total'; then
+        log "  function_enqueue_total: present"
+    else
+        error "function_enqueue_total metric not found"
+        exit 1
+    fi
+
+    if echo "${metrics}" | grep -q 'function_success_total'; then
+        log "  function_success_total: present"
+    else
+        error "function_success_total metric not found"
+        exit 1
+    fi
+
+    if echo "${metrics}" | grep -q 'function_queue_depth'; then
+        log "  function_queue_depth: present"
+    else
+        error "function_queue_depth metric not found"
+        exit 1
+    fi
+
+    if echo "${metrics}" | grep -q 'function_inFlight'; then
+        log "  function_inFlight: present"
+    else
+        error "function_inFlight metric not found"
+        exit 1
+    fi
+
+    log "All Prometheus metrics verified"
+}
+
 print_summary() {
     log ""
     log "=========================================="
