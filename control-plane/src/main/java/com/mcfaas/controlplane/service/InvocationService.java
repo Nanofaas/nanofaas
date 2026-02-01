@@ -15,6 +15,9 @@ import com.mcfaas.controlplane.queue.QueueManager;
 import com.mcfaas.controlplane.registry.FunctionNotFoundException;
 import com.mcfaas.controlplane.registry.FunctionService;
 import com.mcfaas.controlplane.scheduler.InvocationTask;
+import com.mcfaas.controlplane.sync.SyncQueueRejectReason;
+import com.mcfaas.controlplane.sync.SyncQueueRejectedException;
+import com.mcfaas.controlplane.sync.SyncQueueService;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -31,6 +34,7 @@ public class InvocationService {
     private final DispatcherRouter dispatcherRouter;
     private final RateLimiter rateLimiter;
     private final Metrics metrics;
+    private final SyncQueueService syncQueueService;
 
     public InvocationService(FunctionService functionService,
                              QueueManager queueManager,
@@ -38,7 +42,8 @@ public class InvocationService {
                              IdempotencyStore idempotencyStore,
                              DispatcherRouter dispatcherRouter,
                              RateLimiter rateLimiter,
-                             Metrics metrics) {
+                             Metrics metrics,
+                             SyncQueueService syncQueueService) {
         this.functionService = functionService;
         this.queueManager = queueManager;
         this.executionStore = executionStore;
@@ -46,6 +51,7 @@ public class InvocationService {
         this.dispatcherRouter = dispatcherRouter;
         this.rateLimiter = rateLimiter;
         this.metrics = metrics;
+        this.syncQueueService = syncQueueService;
     }
 
     public InvocationResponse invokeSync(String functionName,
@@ -67,13 +73,22 @@ public class InvocationService {
         }
 
         if (lookup.isNew()) {
-            enqueueOrThrow(record);
+            if (syncQueueService.enabled()) {
+                syncQueueService.enqueueOrThrow(record.task());
+            } else {
+                enqueueOrThrow(record);
+            }
         }
 
         int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
         try {
             InvocationResult result = record.completion().get(timeoutMs, TimeUnit.MILLISECONDS);
+            if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
+                throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueService.retryAfterSeconds());
+            }
             return toResponse(record, result);
+        } catch (SyncQueueRejectedException ex) {
+            throw ex;
         } catch (Exception ex) {
             record.markTimeout();
             metrics.timeout(functionName);

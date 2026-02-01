@@ -14,6 +14,7 @@ import com.mcfaas.controlplane.queue.QueueManager;
 import com.mcfaas.controlplane.registry.FunctionService;
 import com.mcfaas.controlplane.scheduler.InvocationTask;
 import com.mcfaas.controlplane.dispatch.DispatcherRouter;
+import com.mcfaas.controlplane.sync.SyncQueueService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +47,9 @@ class InvocationServiceRetryTest {
     @Mock
     private DispatcherRouter dispatcherRouter;
 
+    @Mock
+    private SyncQueueService syncQueueService;
+
     private ExecutionStore executionStore;
     private IdempotencyStore idempotencyStore;
     private RateLimiter rateLimiter;
@@ -67,7 +71,8 @@ class InvocationServiceRetryTest {
                 idempotencyStore,
                 dispatcherRouter,
                 rateLimiter,
-                metrics
+                metrics,
+                syncQueueService
         );
 
         testSpec = new FunctionSpec(
@@ -88,6 +93,7 @@ class InvocationServiceRetryTest {
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
         when(queueManager.enqueue(any())).thenReturn(true);
+        when(syncQueueService.enabled()).thenReturn(false);
         when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test").register(new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
     }
 

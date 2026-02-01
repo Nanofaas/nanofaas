@@ -5,6 +5,7 @@ import com.mcfaas.controlplane.config.SyncQueueProperties;
 import com.mcfaas.controlplane.execution.ExecutionRecord;
 import com.mcfaas.controlplane.execution.ExecutionStore;
 import com.mcfaas.controlplane.scheduler.InvocationTask;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -23,6 +24,7 @@ public class SyncQueueService {
     private final BlockingQueue<SyncQueueItem> queue;
     private final SyncQueueAdmissionController admissionController;
 
+    @Autowired
     public SyncQueueService(SyncQueueProperties props,
                             ExecutionStore executionStore,
                             SyncQueueMetrics metrics) {
@@ -109,6 +111,7 @@ public class SyncQueueService {
             record.markTimeout();
             record.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
         }
+        metrics.dequeued(item.task().functionName());
         metrics.timedOut(item.task().functionName());
     }
 }

@@ -3,6 +3,7 @@ package com.mcfaas.controlplane.scheduler;
 import com.mcfaas.controlplane.queue.QueueManager;
 import com.mcfaas.controlplane.sync.SyncQueueItem;
 import com.mcfaas.controlplane.sync.SyncQueueService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,7 @@ public class SyncScheduler implements SmartLifecycle {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long tickMs = 2;
 
+    @Autowired
     public SyncScheduler(QueueManager queueManager,
                          SyncQueueService queue,
                          com.mcfaas.controlplane.service.InvocationService invocationService) {
