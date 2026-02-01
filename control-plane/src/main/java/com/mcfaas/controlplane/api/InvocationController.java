@@ -8,6 +8,7 @@ import com.mcfaas.controlplane.registry.FunctionNotFoundException;
 import com.mcfaas.controlplane.service.InvocationService;
 import com.mcfaas.controlplane.queue.QueueFullException;
 import com.mcfaas.controlplane.service.RateLimitException;
+import com.mcfaas.controlplane.sync.SyncQueueRejectedException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,11 @@ public class InvocationController {
                     .body(response);
         } catch (FunctionNotFoundException ex) {
             return ResponseEntity.notFound().build();
+        } catch (SyncQueueRejectedException ex) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
+                    .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
+                    .build();
         } catch (RateLimitException | QueueFullException ex) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }

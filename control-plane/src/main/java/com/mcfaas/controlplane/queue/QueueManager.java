@@ -40,6 +40,10 @@ public class QueueManager {
         });
     }
 
+    public FunctionQueueState get(String functionName) {
+        return queues.get(functionName);
+    }
+
     public void remove(String name) {
         queues.remove(name);
     }
@@ -67,6 +71,18 @@ public class QueueManager {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {
             state.decrementInFlight();
+        }
+    }
+
+    public boolean tryAcquireSlot(String functionName) {
+        FunctionQueueState state = queues.get(functionName);
+        return state != null && state.tryAcquireSlot();
+    }
+
+    public void releaseSlot(String functionName) {
+        FunctionQueueState state = queues.get(functionName);
+        if (state != null) {
+            state.releaseSlot();
         }
     }
 }

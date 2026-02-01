@@ -23,6 +23,7 @@
   - Export kubeconfig and run:
     - `export KUBECONFIG=$HOME/.kube/mcfaas-kind.yaml`
     - `./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.K8sE2eTest`
+  - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
   - The k8s E2E test will fail if `KUBECONFIG` is missing or invalid.
   - Automated (provisions kind in Multipass, loads images, runs K8sE2eTest):
     - `./gradlew k8sE2e`
