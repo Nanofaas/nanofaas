@@ -1,0 +1,47 @@
+package com.mcfaas.controlplane.scheduler;
+
+import com.mcfaas.common.model.ExecutionMode;
+import com.mcfaas.common.model.FunctionSpec;
+import com.mcfaas.common.model.InvocationRequest;
+import com.mcfaas.controlplane.config.SyncQueueProperties;
+import com.mcfaas.controlplane.execution.ExecutionRecord;
+import com.mcfaas.controlplane.execution.ExecutionStore;
+import com.mcfaas.controlplane.queue.QueueManager;
+import com.mcfaas.controlplane.sync.SyncQueueMetrics;
+import com.mcfaas.controlplane.sync.SyncQueueService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class SyncSchedulerTest {
+    @Test
+    void dispatchesWhenSlotAvailable() {
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null);
+        queueManager.getOrCreate(spec);
+
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        SyncQueueService queue = new SyncQueueService(props, store, metrics);
+
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        store.put(new ExecutionRecord("e1", task));
+        queue.enqueueOrThrow(task);
+
+        AtomicInteger dispatchCount = new AtomicInteger();
+        SyncScheduler scheduler = new SyncScheduler(queueManager, queue, (t) -> dispatchCount.incrementAndGet());
+
+        scheduler.tickOnce();
+
+        assertEquals(1, dispatchCount.get());
+    }
+}
