@@ -126,3 +126,130 @@ import_images_to_k3s() {
     vm_exec "sudo rm -f /tmp/control-plane.tar /tmp/function-runtime.tar"
     log "Images imported to k3s"
 }
+
+create_namespace() {
+    log "Creating namespace ${NAMESPACE}..."
+    vm_exec "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
+    log "Namespace created"
+}
+
+deploy_control_plane() {
+    log "Deploying control-plane..."
+
+    vm_exec "cat <<'EOF' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: ${NAMESPACE}
+  labels:
+    app: control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+    spec:
+      containers:
+      - name: control-plane
+        image: ${CONTROL_IMAGE}
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: api
+        - containerPort: 8081
+          name: management
+        env:
+        - name: POD_NAMESPACE
+          value: \"${NAMESPACE}\"
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: control-plane
+  ports:
+  - name: api
+    port: 8080
+    targetPort: 8080
+  - name: management
+    port: 8081
+    targetPort: 8081
+EOF"
+
+    log "Control-plane deployment created"
+}
+
+deploy_function_runtime() {
+    log "Deploying function-runtime..."
+
+    vm_exec "cat <<'EOF' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: function-runtime
+  namespace: ${NAMESPACE}
+  labels:
+    app: function-runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: function-runtime
+  template:
+    metadata:
+      labels:
+        app: function-runtime
+    spec:
+      containers:
+      - name: function-runtime
+        image: ${RUNTIME_IMAGE}
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: function-runtime
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: function-runtime
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+EOF"
+
+    log "Function-runtime deployment created"
+}
