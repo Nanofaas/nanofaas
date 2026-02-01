@@ -253,3 +253,65 @@ EOF"
 
     log "Function-runtime deployment created"
 }
+
+wait_for_deployment() {
+    local name=$1
+    local timeout=${2:-180}
+
+    log "Waiting for deployment ${name} to be ready (timeout: ${timeout}s)..."
+
+    vm_exec "kubectl rollout status deployment/${name} -n ${NAMESPACE} --timeout=${timeout}s"
+
+    log "Deployment ${name} is ready"
+}
+
+verify_health_endpoints() {
+    log "Verifying health endpoints..."
+
+    # Get control-plane pod name
+    local pod_name
+    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
+
+    # Check /actuator/health
+    log "Checking /actuator/health..."
+    vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/health" | grep -q '"status":"UP"'
+    log "  /actuator/health: UP"
+
+    # Check /actuator/health/liveness
+    log "Checking /actuator/health/liveness..."
+    vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/health/liveness" | grep -q '"status":"UP"'
+    log "  /actuator/health/liveness: UP"
+
+    # Check /actuator/health/readiness
+    log "Checking /actuator/health/readiness..."
+    vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/health/readiness" | grep -q '"status":"UP"'
+    log "  /actuator/health/readiness: UP"
+
+    log "All health endpoints verified"
+}
+
+verify_pods_running() {
+    log "Verifying all pods are running..."
+
+    # Check control-plane pod
+    local cp_status
+    cp_status=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].status.phase}'")
+    if [[ "${cp_status}" != "Running" ]]; then
+        error "control-plane pod is not Running (status: ${cp_status})"
+        vm_exec "kubectl describe pod -n ${NAMESPACE} -l app=control-plane"
+        exit 1
+    fi
+    log "  control-plane: Running"
+
+    # Check function-runtime pod
+    local fr_status
+    fr_status=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=function-runtime -o jsonpath='{.items[0].status.phase}'")
+    if [[ "${fr_status}" != "Running" ]]; then
+        error "function-runtime pod is not Running (status: ${fr_status})"
+        vm_exec "kubectl describe pod -n ${NAMESPACE} -l app=function-runtime"
+        exit 1
+    fi
+    log "  function-runtime: Running"
+
+    log "All pods running"
+}
