@@ -23,7 +23,7 @@ class KubernetesJobBuilderTest {
 
         FunctionSpec spec = new FunctionSpec(
                 "echo",
-                "mcfaas/function-runtime:0.1.0",
+                "mcfaas/function-runtime:0.5.0",
                 List.of("java", "-jar", "app.jar"),
                 Map.of("FOO", "bar"),
                 null,
@@ -49,7 +49,7 @@ class KubernetesJobBuilderTest {
         );
 
         Job job = builder.build(task);
-        assertEquals("mcfaas/function-runtime:0.1.0", job.getSpec().getTemplate().getSpec().getContainers().get(0).getImage());
+        assertEquals("mcfaas/function-runtime:0.5.0", job.getSpec().getTemplate().getSpec().getContainers().get(0).getImage());
         assertNotNull(job.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv());
     }
 }

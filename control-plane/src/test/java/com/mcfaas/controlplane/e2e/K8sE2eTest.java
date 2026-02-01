@@ -30,8 +30,8 @@ import java.nio.file.Path;
 
 class K8sE2eTest {
     private static final String NS = System.getenv().getOrDefault("MCFAAS_E2E_NAMESPACE", "mcfaas-e2e");
-    private static final String CONTROL_IMAGE = System.getenv().getOrDefault("CONTROL_PLANE_IMAGE", "mcfaas/control-plane:0.1.0");
-    private static final String RUNTIME_IMAGE = System.getenv().getOrDefault("FUNCTION_RUNTIME_IMAGE", "mcfaas/function-runtime:0.1.0");
+    private static final String CONTROL_IMAGE = System.getenv().getOrDefault("CONTROL_PLANE_IMAGE", "mcfaas/control-plane:0.5.0");
+    private static final String RUNTIME_IMAGE = System.getenv().getOrDefault("FUNCTION_RUNTIME_IMAGE", "mcfaas/function-runtime:0.5.0");
     private static KubernetesClient client;
 
     @BeforeAll

@@ -29,8 +29,8 @@ class E2eFlowTest {
     private static final GenericContainer<?> functionRuntime = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile", PROJECT_ROOT.resolve("function-runtime/Dockerfile"))
-                    .withFileFromPath("build/libs/function-runtime-0.1.0.jar",
-                            PROJECT_ROOT.resolve("function-runtime/build/libs/function-runtime-0.1.0.jar"))
+                    .withFileFromPath("build/libs/function-runtime-0.5.0.jar",
+                            PROJECT_ROOT.resolve("function-runtime/build/libs/function-runtime-0.5.0.jar"))
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -40,8 +40,8 @@ class E2eFlowTest {
     private static final GenericContainer<?> controlPlane = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile", PROJECT_ROOT.resolve("control-plane/Dockerfile"))
-                    .withFileFromPath("build/libs/control-plane-0.1.0.jar",
-                            PROJECT_ROOT.resolve("control-plane/build/libs/control-plane-0.1.0.jar"))
+                    .withFileFromPath("build/libs/control-plane-0.5.0.jar",
+                            PROJECT_ROOT.resolve("control-plane/build/libs/control-plane-0.5.0.jar"))
     )
             .withExposedPorts(8080, 8081)
             .withNetwork(network)
@@ -62,7 +62,7 @@ class E2eFlowTest {
         String endpointUrl = "http://function-runtime:8080/invoke";
         Map<String, Object> spec = Map.of(
                 "name", "e2e-echo",
-                "image", "mcfaas/function-runtime:0.1.0",
+                "image", "mcfaas/function-runtime:0.5.0",
                 "timeoutMs", 5000,
                 "concurrency", 2,
                 "queueSize", 20,

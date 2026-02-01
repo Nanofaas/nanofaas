@@ -28,7 +28,7 @@ class KubernetesDispatcherTest {
 
         FunctionSpec spec = new FunctionSpec(
                 "echo",
-                "mcfaas/function-runtime:0.1.0",
+                "mcfaas/function-runtime:0.5.0",
                 List.of(),
                 Map.of(),
                 null,

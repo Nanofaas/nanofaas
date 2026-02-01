@@ -52,8 +52,8 @@
   - `kubectl apply -f k8s/control-plane-service.yaml`
 
 - Build and push images:
-  - `docker build -t mcfaas/control-plane:0.1.0 control-plane/`
-  - `docker build -t mcfaas/function-runtime:0.1.0 function-runtime/`
+  - `docker build -t mcfaas/control-plane:0.5.0 control-plane/`
+  - `docker build -t mcfaas/function-runtime:0.5.0 function-runtime/`
 
 ## Register and invoke
 

@@ -5,7 +5,7 @@
 ```json
 {
   "name": "echo",
-  "image": "mcfaas/function-runtime:0.1.0",
+  "image": "mcfaas/function-runtime:0.5.0",
   "timeoutMs": 10000,
   "concurrency": 2,
   "queueSize": 50,

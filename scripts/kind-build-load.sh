@@ -29,12 +29,12 @@ multipass exec "$VM_NAME" -- bash -lc "BUILD_CMD='docker build';
 if docker buildx version >/dev/null 2>&1; then
   BUILD_CMD='docker buildx build --load';
 fi
-cd ${REMOTE_DIR} && \$BUILD_CMD -t mcfaas/control-plane:0.1.0 control-plane/"
+cd ${REMOTE_DIR} && \$BUILD_CMD -t mcfaas/control-plane:0.5.0 control-plane/"
 multipass exec "$VM_NAME" -- bash -lc "BUILD_CMD='docker build';
 if docker buildx version >/dev/null 2>&1; then
   BUILD_CMD='docker buildx build --load';
 fi
-cd ${REMOTE_DIR} && \$BUILD_CMD -t mcfaas/function-runtime:0.1.0 function-runtime/"
+cd ${REMOTE_DIR} && \$BUILD_CMD -t mcfaas/function-runtime:0.5.0 function-runtime/"
 
-multipass exec "$VM_NAME" -- bash -lc "kind load docker-image mcfaas/control-plane:0.1.0 --name ${KIND_CLUSTER}"
-multipass exec "$VM_NAME" -- bash -lc "kind load docker-image mcfaas/function-runtime:0.1.0 --name ${KIND_CLUSTER}"
+multipass exec "$VM_NAME" -- bash -lc "kind load docker-image mcfaas/control-plane:0.5.0 --name ${KIND_CLUSTER}"
+multipass exec "$VM_NAME" -- bash -lc "kind load docker-image mcfaas/function-runtime:0.5.0 --name ${KIND_CLUSTER}"

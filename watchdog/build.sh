@@ -260,7 +260,7 @@ Examples:
     $0                              # Build for current platform
     $0 --multi --push               # Build multi-arch and push
     $0 --local                      # Build locally with Cargo
-    $0 --tag v0.1.0 --push          # Build and push with specific tag
+    $0 --tag v0.5.0 --push          # Build and push with specific tag
     $0 --registry ghcr.io/myorg     # Build with registry prefix
 EOF
 }

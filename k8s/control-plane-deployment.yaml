@@ -16,7 +16,7 @@ spec:
       serviceAccountName: mcfaas-control-plane
       containers:
         - name: control-plane
-          image: mcfaas/control-plane:0.1.0
+          image: mcfaas/control-plane:0.5.0
           ports:
             - containerPort: 8080
             - containerPort: 8081
