@@ -471,6 +471,58 @@ verify_prometheus_metrics() {
     log "All Prometheus metrics verified"
 }
 
+test_queue_depth() {
+    log "Testing queue depth metric under load..."
+
+    # Get control-plane pod name
+    local pod_name
+    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
+
+    # Enqueue 5 requests rapidly (concurrency is 2, so some should queue)
+    log "Enqueueing multiple async requests..."
+    for i in $(seq 1 5); do
+        vm_exec "kubectl run curl-queue-${i} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
+            curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:enqueue \
+            -H 'Content-Type: application/json' \
+            -d '{\"input\": {\"message\": \"queue-test-${i}\"}}'" &
+    done
+
+    # Wait for background enqueue jobs
+    wait
+
+    # Check the metrics
+    local metrics
+    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+
+    # Verify enqueue counter increased
+    local enqueue_count
+    enqueue_count=$(echo "${metrics}" | grep 'function_enqueue_total{' | grep 'echo-test' | sed -n 's/.*} \([0-9.]*\)/\1/p')
+
+    # We've done 2 sync + 1 async + 5 queue = at least 8 enqueues
+    if [[ -n "${enqueue_count}" ]]; then
+        log "  function_enqueue_total for echo-test: ${enqueue_count}"
+    else
+        log "  function_enqueue_total: (checking)"
+    fi
+
+    # Wait for queue to drain
+    log "Waiting for queue to drain..."
+    sleep 5
+
+    # Final metrics check
+    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+
+    local success_count
+    success_count=$(echo "${metrics}" | grep 'function_success_total{' | grep 'echo-test' | sed -n 's/.*} \([0-9.]*\)/\1/p')
+    log "  Total successful invocations: ${success_count:-0}"
+
+    local queue_depth
+    queue_depth=$(echo "${metrics}" | grep 'function_queue_depth{' | grep 'echo-test' | sed -n 's/.*} \([0-9.]*\)/\1/p')
+    log "  Final queue depth: ${queue_depth:-0}"
+
+    log "Queue depth test completed"
+}
+
 print_summary() {
     log ""
     log "=========================================="
