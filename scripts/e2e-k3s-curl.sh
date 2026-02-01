@@ -543,6 +543,8 @@ print_summary() {
     log "  [✓] Function registration"
     log "  [✓] Sync function invocation with curl"
     log "  [✓] Async function invocation and polling"
+    log "  [✓] Prometheus metrics verification"
+    log "  [✓] Queue depth metric under load"
     log ""
 }
 
@@ -582,6 +584,10 @@ main() {
     register_function
     invoke_function_with_curl
     test_async_invocation
+
+    # Phase 6: Verify metrics
+    verify_prometheus_metrics
+    test_queue_depth
 
     # Done
     print_summary
