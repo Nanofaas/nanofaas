@@ -5,7 +5,8 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 ## Modules
 
 - `control-plane/` API gateway, in-memory queueing, scheduler thread, and Kubernetes dispatch
-- `function-runtime/` HTTP runtime for function handlers
+- `function-runtime/` HTTP runtime for Java function handlers
+- `python-runtime/` HTTP runtime for Python function handlers
 - `common/` shared DTOs and runtime contracts
 - `k8s/` Kubernetes manifests and templates
 - `docs/` architecture and operational docs
@@ -13,7 +14,7 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 
 ## Requirements
 
-- Java 17 (SDKMAN recommended)
+- Java 21 (SDKMAN recommended)
 - Docker-compatible container runtime (Docker Desktop or equivalent)
 - For Kubernetes E2E: `kubectl`, `kind`, and a reachable cluster
 
