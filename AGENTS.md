@@ -3,8 +3,9 @@
 ## Project Structure & Module Organization
 
 - `common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
-- `control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic.
-- `function-runtime/` hosts the function invocation HTTP server and handler registry.
+- `control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic (supports JOB and WARM execution modes).
+- `function-runtime/` hosts the Java function invocation HTTP server and handler registry.
+- `python-runtime/` provides Python function runtime with watchdog for WARM execution mode (OpenWhisk-style).
 - `docs/` holds architecture and operational documentation; `openapi.yaml` is the API spec.
 - `k8s/` contains Kubernetes manifests; `scripts/` provides helper workflows.
 - Tests live in `*/src/test/java` with E2E tests under `control-plane/src/test/java/.../e2e`.
@@ -16,13 +17,14 @@
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
 - `./gradlew :function-runtime:bootRun` — run the function runtime locally.
 - `./gradlew :control-plane:bootBuildImage` and `:function-runtime:bootBuildImage` — create buildpack images.
+- `python-runtime/build.sh` or `docker build -t mcfaas/python-runtime python-runtime/` — build Python runtime image.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `scripts/e2e.sh` and `scripts/e2e-buildpack.sh` — run local E2E suites.
 - `scripts/setup-multipass-kind.sh` + `scripts/kind-build-load.sh` — provision a kind cluster in Multipass and load images.
 
 ## Coding Style & Naming Conventions
 
-- Java 17 toolchain; 4-space indentation; `com.mcfaas` package root.
+- Java 21 toolchain; 4-space indentation; `com.mcfaas` package root.
 - Class names `PascalCase`, methods/fields `camelCase`, constants `SCREAMING_SNAKE_CASE`.
 - Configuration lives in `control-plane/src/main/resources/application.yml` and `function-runtime/src/main/resources/application.yml`.
 
@@ -36,7 +38,7 @@
 
 - Language: Java with Spring Boot; native image support via GraalVM build tools.
 - Single control-plane pod: API gateway, in-memory queueing, and a dedicated scheduler thread.
-- Function execution runs in separate Kubernetes pods (Jobs/POOL runtime).
+- Function execution runs in separate Kubernetes pods (JOB mode for cold starts, WARM mode for OpenWhisk-style warm containers).
 - No authentication/authorization in scope.
 - Prometheus metrics exposed via Micrometer/Actuator.
 - Retry default is 3 and must be user-configurable; clients handle idempotency.

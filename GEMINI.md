@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**mcFaaS** is a minimal, high-performance FaaS (Function-as-a-Service) platform designed for Kubernetes. It focuses on low latency and fast startup times, leveraging Java 17, Spring Boot, and GraalVM native images.
+**mcFaaS** is a minimal, high-performance FaaS (Function-as-a-Service) platform designed for Kubernetes. It focuses on low latency and fast startup times, leveraging Java 21, Spring Boot, and GraalVM native images.
 
 ### Key Goals
 - **Performance First:** Minimized latency and cold-start overhead.
@@ -12,33 +12,40 @@
 
 ### Constraints
 - **MVP Scope:** No multi-region/HA, no durable queues (in-memory only), no AuthN/AuthZ.
-- **Runtime:** Java 17 toolchain.
+- **Runtime:** Java 21 toolchain.
 
 ## Architecture
 
-The system consists of three main modules:
+The system consists of four main modules:
 
 1.  **`control-plane/`**: The core service containing:
     -   **API Gateway:** Spring WebFlux (Netty) handling synchronous (`:invoke`) and asynchronous (`:enqueue`) requests.
     -   **Function Registry:** In-memory storage of function definitions.
     -   **Queue Manager:** Per-function bounded in-memory queues with backpressure.
     -   **Scheduler:** A single dedicated thread that dispatches work from queues to the K8s Dispatcher.
-    -   **Kubernetes Dispatcher:** Creates K8s Jobs based on templates.
+    -   **Kubernetes Dispatcher:** Creates K8s Jobs based on templates (JOB mode).
+    -   **Pool Dispatcher:** Routes to warm containers for OpenWhisk-style execution (WARM mode).
     -   **Execution Store:** Tracks state of executions (Pending, Running, Succeeded, Failed).
 
-2.  **`function-runtime/`**: A minimal HTTP server wrapper for user functions.
+2.  **`function-runtime/`**: A minimal HTTP server wrapper for Java user functions.
     -   Exposes a `POST /invoke` endpoint.
     -   Executes the registered `FunctionHandler`.
-    -   Propagates tracing headers.
+    -   Propagates `X-Trace-Id` and `X-Execution-Id` headers.
+    -   Supports WARM execution mode for OpenWhisk-style warm containers.
 
-3.  **`common/`**: Shared library containing:
+3.  **`python-runtime/`**: Python function runtime with watchdog.
+    -   Supports WARM execution mode (OpenWhisk-style).
+    -   Accepts `X-Execution-Id` and `X-Trace-Id` headers.
+    -   Build: `python-runtime/build.sh` or `docker build`.
+
+4.  **`common/`**: Shared library containing:
     -   Data Transfer Objects (DTOs) like `FunctionSpec`, `InvocationRequest`.
     -   Service interfaces and contracts.
 
 ## Development Workflow
 
 ### Prerequisites
-- Java 17 (SDKMAN recommended)
+- Java 21 (SDKMAN recommended)
 - Docker / Container Runtime
 - `kubectl` and `kind` (for K8s E2E tests)
 
@@ -74,6 +81,12 @@ To build container images using Spring Boot Buildpacks:
 ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
 ```
 
+To build the Python runtime image:
+```bash
+cd python-runtime && ./build.sh
+# or: docker build -t mcfaas/python-runtime python-runtime/
+```
+
 ## Project Structure
 
 ```text
@@ -82,7 +95,8 @@ To build container images using Spring Boot Buildpacks:
 ├── control-plane/      # Main service (Gateway, Scheduler, K8s Dispatch)
 │   ├── src/main/resources/application.yml  # Main config
 │   └── src/test/java/  # Unit & E2E tests
-├── function-runtime/   # User function HTTP wrapper
+├── function-runtime/   # Java function HTTP wrapper
+├── python-runtime/     # Python function runtime with watchdog (WARM mode)
 ├── docs/               # Architecture and operational docs
 ├── k8s/                # Kubernetes manifests & templates
 ├── scripts/            # Helper scripts for E2E and setup
@@ -92,7 +106,7 @@ To build container images using Spring Boot Buildpacks:
 
 ## Conventions
 
-- **Code Style:** Java 17, 4-space indentation, `com.mcfaas` package root.
+- **Code Style:** Java 21, 4-space indentation, `com.mcfaas` package root.
 - **Naming:** `PascalCase` classes, `camelCase` methods/fields, `SCREAMING_SNAKE_CASE` constants.
 - **Testing:**
     -   Use JUnit 5.
