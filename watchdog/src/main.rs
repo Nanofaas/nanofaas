@@ -6,16 +6,24 @@
 //! - STDIO: Function reads from stdin, writes to stdout (Python scripts, Node)
 //! - FILE: Function reads /tmp/input.json, writes /tmp/output.json (Bash, legacy)
 
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
+use tokio::sync::Mutex;
 use tokio::time::{timeout, Instant};
 use tracing::{debug, error, info, warn};
 
@@ -25,9 +33,10 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ExecutionMode {
-    Http,  // POST to HTTP endpoint
-    Stdio, // stdin/stdout
-    File,  // /tmp/input.json -> /tmp/output.json
+    Http,  // POST to HTTP endpoint (one-shot)
+    Stdio, // stdin/stdout (one-shot)
+    File,  // /tmp/input.json -> /tmp/output.json (one-shot)
+    Warm,  // HTTP server receiving multiple invocations (persistent)
 }
 
 impl ExecutionMode {
@@ -36,12 +45,13 @@ impl ExecutionMode {
             "HTTP" => Self::Http,
             "STDIO" => Self::Stdio,
             "FILE" => Self::File,
+            "WARM" => Self::Warm,
             _ => Self::Http, // default
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Config {
     /// URL for callback to control plane
     callback_url: String,
@@ -65,6 +75,12 @@ struct Config {
     input_file: String,
     /// Output file path (for FILE mode)
     output_file: String,
+    /// Port for warm mode HTTP server
+    warm_port: u16,
+    /// Idle timeout before shutdown (ms) - 0 means no timeout
+    warm_idle_timeout_ms: u64,
+    /// Max invocations before restart - 0 means unlimited
+    warm_max_invocations: u64,
 }
 
 impl Config {
@@ -108,6 +124,21 @@ impl Config {
         let output_file = env::var("OUTPUT_FILE")
             .unwrap_or_else(|_| "/tmp/output.json".to_string());
 
+        let warm_port: u16 = env::var("WARM_PORT")
+            .unwrap_or_else(|_| "8080".to_string())
+            .parse()
+            .unwrap_or(8080);
+
+        let warm_idle_timeout_ms: u64 = env::var("WARM_IDLE_TIMEOUT_MS")
+            .unwrap_or_else(|_| "300000".to_string()) // 5 minutes default
+            .parse()
+            .unwrap_or(300000);
+
+        let warm_max_invocations: u64 = env::var("WARM_MAX_INVOCATIONS")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse()
+            .unwrap_or(0);
+
         Ok(Config {
             callback_url,
             execution_id,
@@ -120,6 +151,9 @@ impl Config {
             ready_timeout_ms,
             input_file,
             output_file,
+            warm_port,
+            warm_idle_timeout_ms,
+            warm_max_invocations,
         })
     }
 }
@@ -160,6 +194,41 @@ impl InvocationResult {
             }),
         }
     }
+}
+
+// ============================================================================
+// Warm Mode State
+// ============================================================================
+
+struct WarmState {
+    config: Config,
+    invocation_count: u64,
+    last_invocation: Instant,
+}
+
+impl WarmState {
+    fn new(config: Config) -> Self {
+        Self {
+            config,
+            invocation_count: 0,
+            last_invocation: Instant::now(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct WarmInvokeRequest {
+    execution_id: String,
+    callback_url: String,
+    #[serde(default)]
+    trace_id: Option<String>,
+    payload: serde_json::Value,
+    #[serde(default = "default_timeout")]
+    timeout_ms: u64,
+}
+
+fn default_timeout() -> u64 {
+    30000
 }
 
 // ============================================================================
@@ -431,6 +500,143 @@ async fn send_callback(config: &Config, result: InvocationResult) -> Result<(), 
 }
 
 // ============================================================================
+// Warm Mode
+// ============================================================================
+
+async fn warm_health() -> StatusCode {
+    StatusCode::OK
+}
+
+async fn warm_invoke(
+    State(state): State<Arc<Mutex<WarmState>>>,
+    Json(req): Json<WarmInvokeRequest>,
+) -> (StatusCode, Json<InvocationResult>) {
+    let (config, invocation_count) = {
+        let mut state_guard = state.lock().await;
+        state_guard.invocation_count += 1;
+        state_guard.last_invocation = Instant::now();
+        (state_guard.config.clone(), state_guard.invocation_count)
+    }; // Lock is released here
+
+    info!(
+        execution_id = %req.execution_id,
+        invocation = invocation_count,
+        "Processing warm invocation"
+    );
+
+    // Forward to runtime
+    let client = reqwest::Client::new();
+    let invoke_result = client
+        .post(&config.runtime_url)
+        .header("X-Execution-Id", &req.execution_id)
+        .header("X-Trace-Id", req.trace_id.as_deref().unwrap_or(""))
+        .json(&req.payload)
+        .timeout(Duration::from_millis(req.timeout_ms))
+        .send()
+        .await;
+
+    let result = match invoke_result {
+        Ok(response) if response.status().is_success() => {
+            match response.json::<serde_json::Value>().await {
+                Ok(output) => InvocationResult::success(output),
+                Err(e) => InvocationResult::error("PARSE_ERROR", &e.to_string()),
+            }
+        }
+        Ok(response) => {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            InvocationResult::error("RUNTIME_ERROR", &format!("{}: {}", status, body))
+        }
+        Err(e) if e.is_timeout() => {
+            InvocationResult::error("TIMEOUT", &format!("Timeout after {}ms", req.timeout_ms))
+        }
+        Err(e) => InvocationResult::error("INVOKE_ERROR", &e.to_string()),
+    };
+
+    // Send callback (best effort)
+    let callback_url = format!("{}/{}:complete", req.callback_url, req.execution_id);
+    let _ = client
+        .post(&callback_url)
+        .header("X-Trace-Id", req.trace_id.as_deref().unwrap_or(""))
+        .json(&result)
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await;
+
+    let status = if result.success {
+        StatusCode::OK
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    };
+
+    (status, Json(result))
+}
+
+async fn execute_warm_mode(config: Config) -> ExitCode {
+    info!(port = config.warm_port, "Starting warm mode");
+
+    // Spawn runtime
+    let mut child = match spawn_http_runtime(&config).await {
+        Ok(c) => c,
+        Err(e) => {
+            error!(error = %e, "Failed to spawn runtime");
+            return ExitCode::from(1);
+        }
+    };
+
+    // Wait for runtime ready
+    if let Err(e) = wait_for_http_ready(&config).await {
+        error!(error = %e, "Runtime failed to start");
+        kill_process(&child);
+        let _ = child.wait().await;
+        return ExitCode::from(1);
+    }
+
+    info!("Runtime ready, starting warm HTTP server");
+
+    let state = Arc::new(Mutex::new(WarmState::new(config.clone())));
+
+    let app = Router::new()
+        .route("/health", get(warm_health))
+        .route("/invoke", post(warm_invoke))
+        .with_state(state);
+
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.warm_port));
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            error!(error = %e, "Failed to bind to port");
+            kill_process(&child);
+            let _ = child.wait().await;
+            return ExitCode::from(1);
+        }
+    };
+
+    info!(addr = %addr, "Warm mode server listening");
+
+    // Handle shutdown signal
+    let shutdown = async {
+        tokio::signal::ctrl_c().await.ok();
+        info!("Shutdown signal received");
+    };
+
+    if let Err(e) = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await
+    {
+        error!(error = %e, "Server error");
+    }
+
+    // Cleanup
+    info!("Shutting down runtime");
+    kill_process(&child);
+    let _ = child.wait().await;
+
+    info!("Warm mode shutdown complete");
+    ExitCode::SUCCESS
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -479,6 +685,9 @@ async fn main() -> ExitCode {
         }
         ExecutionMode::File => {
             execute_file_mode(&config, &payload).await
+        }
+        ExecutionMode::Warm => {
+            return execute_warm_mode(config).await;
         }
     };
 

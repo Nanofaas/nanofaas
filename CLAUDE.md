@@ -35,13 +35,16 @@ export KUBECONFIG=~/.kube/mcfaas-kind.yaml
 # Build OCI images
 ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
 
+# Build Python runtime image
+cd python-runtime && ./build.sh  # or: docker build -t mcfaas/python-runtime python-runtime/
+
 # Native build (GraalVM via SDKMAN)
 ./scripts/native-build.sh
 ```
 
 ## Architecture Overview
 
-mcFaas is a minimal FaaS platform for Kubernetes with three modules:
+mcFaas is a minimal FaaS platform for Kubernetes with four modules:
 
 ### control-plane/
 API gateway + scheduler + dispatcher in a single pod. Key components:
@@ -49,18 +52,32 @@ API gateway + scheduler + dispatcher in a single pod. Key components:
 - **QueueManager** - Per-function bounded queues with backpressure (default 100 items)
 - **Scheduler** - Single dedicated thread dispatching from all queues
 - **KubernetesDispatcher** - Creates K8s Jobs for function execution
-- **PoolDispatcher** - Optional warm pool mode for faster invocation
+- **PoolDispatcher** - Optional warm pool mode for faster invocation (supports WARM execution mode)
 - **ExecutionState** - Tracks execution lifecycle with TTL eviction
+
+Execution Modes:
+- **JOB** - Default mode; creates a new K8s Job per invocation
+- **WARM** - OpenWhisk-style warm containers; reuses running pods for lower latency
 
 Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
 
 ### function-runtime/
-Minimal HTTP server for function handlers:
+Minimal HTTP server for Java function handlers:
 - **InvokeController** - POST `/invoke` endpoint
 - **HandlerRegistry** - SPI-based handler loading
-- **TraceLoggingFilter** - Propagates X-Trace-Id headers
+- **TraceLoggingFilter** - Propagates X-Trace-Id and X-Execution-Id headers
+
+Supports WARM mode via `X-Execution-Id` header for OpenWhisk-style execution.
 
 Spring Web (servlet). Port: 8080.
+
+### python-runtime/
+Python function runtime with watchdog for WARM execution mode:
+- Loads user functions dynamically
+- Supports OpenWhisk-style warm containers
+- Accepts `X-Execution-Id` and `X-Trace-Id` headers
+
+Build: `python-runtime/build.sh` or `docker build -t mcfaas/python-runtime python-runtime/`
 
 ### common/
 Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `ExecutionStatus`, `FunctionHandler` interface.

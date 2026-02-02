@@ -10,3 +10,4 @@
 *.class
 
 .worktrees/
+__pycache__/

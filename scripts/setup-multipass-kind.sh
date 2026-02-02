@@ -59,12 +59,12 @@ multipass exec "$VM_NAME" -- bash -lc "if [ ! -d \"\$HOME/.sdkman\" ]; then
 fi
 source \"\$HOME/.sdkman/bin/sdkman-init.sh\"
 if [ ! -d \"\$HOME/.sdkman/candidates/java/current\" ]; then
-  CANDIDATE=\$(sdk list java | awk '/17\\./ && /tem/ {print \$NF; exit}');
+  CANDIDATE=\$(sdk list java | awk '/21\\./ && /tem/ {print \$NF; exit}');
   if [ -z \"\$CANDIDATE\" ]; then
-    CANDIDATE=\$(sdk list java | awk '/17\\./ {print \$NF; exit}');
+    CANDIDATE=\$(sdk list java | awk '/21\\./ {print \$NF; exit}');
   fi
   if [ -z \"\$CANDIDATE\" ]; then
-    echo \"No Java 17 candidate found via SDKMAN\" >&2;
+    echo \"No Java 21 candidate found via SDKMAN\" >&2;
     exit 1;
   fi
   sdk install java \"\$CANDIDATE\";
