@@ -6,7 +6,7 @@ description = "Lightweight watchdog for mcFaas function containers"
 authors = ["mcFaas"]
 
 [dependencies]
-tokio = { version = "1", features = ["rt", "process", "time", "signal", "macros", "fs", "io-util", "sync"] }
+tokio = { version = "1", features = ["rt", "process", "time", "signal", "macros", "fs", "io-util", "sync", "net"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
