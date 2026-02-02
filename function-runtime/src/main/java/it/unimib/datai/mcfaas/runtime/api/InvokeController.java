@@ -1,10 +1,10 @@
-package com.mcfaas.runtime.api;
+package it.unimib.datai.mcfaas.runtime.api;
 
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.common.model.InvocationResult;
-import com.mcfaas.common.runtime.FunctionHandler;
-import com.mcfaas.runtime.core.CallbackClient;
-import com.mcfaas.runtime.core.HandlerRegistry;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.common.model.InvocationResult;
+import it.unimib.datai.mcfaas.common.runtime.FunctionHandler;
+import it.unimib.datai.mcfaas.runtime.core.CallbackClient;
+import it.unimib.datai.mcfaas.runtime.core.HandlerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,11 +29,19 @@ public class InvokeController {
     }
 
     @PostMapping("/invoke")
-    public ResponseEntity<Object> invoke(@RequestBody InvocationRequest request) {
-        if (executionId == null || executionId.isBlank()) {
-            log.error("EXECUTION_ID environment variable not set");
+    public ResponseEntity<Object> invoke(
+            @RequestBody InvocationRequest request,
+            @RequestHeader(value = "X-Execution-Id", required = false) String headerExecutionId) {
+
+        // Prefer header over ENV (for warm mode)
+        String effectiveExecutionId = (headerExecutionId != null && !headerExecutionId.isBlank())
+                ? headerExecutionId
+                : this.executionId;
+
+        if (effectiveExecutionId == null || effectiveExecutionId.isBlank()) {
+            log.error("No execution ID provided (header or ENV)");
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "EXECUTION_ID not configured"));
+                    .body(Map.of("error", "Execution ID not configured"));
         }
 
         try {
@@ -41,17 +49,17 @@ public class InvokeController {
             Object output = handler.handle(request);
 
             // Callback is best-effort - don't fail the response if callback fails
-            boolean callbackSent = callbackClient.sendResult(executionId, InvocationResult.success(output));
+            boolean callbackSent = callbackClient.sendResult(effectiveExecutionId, InvocationResult.success(output));
             if (!callbackSent) {
-                log.warn("Callback failed for execution {} but function succeeded, returning result anyway", executionId);
+                log.warn("Callback failed for execution {} but function succeeded, returning result anyway", effectiveExecutionId);
             }
 
             return ResponseEntity.ok(output);
         } catch (Exception ex) {
-            log.error("Handler error for execution {}: {}", executionId, ex.getMessage(), ex);
+            log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
 
             // Try to send error to control-plane (best effort)
-            callbackClient.sendResult(executionId, InvocationResult.error("HANDLER_ERROR", ex.getMessage()));
+            callbackClient.sendResult(effectiveExecutionId, InvocationResult.error("HANDLER_ERROR", ex.getMessage()));
 
             return ResponseEntity.status(500)
                     .body(Map.of("error", ex.getMessage()));
