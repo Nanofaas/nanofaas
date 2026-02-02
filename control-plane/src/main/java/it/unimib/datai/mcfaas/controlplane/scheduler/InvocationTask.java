@@ -1,7 +1,7 @@
-package com.mcfaas.controlplane.scheduler;
+package it.unimib.datai.mcfaas.controlplane.scheduler;
 
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
 
 import java.time.Instant;
 

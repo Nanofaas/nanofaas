@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.registry;
+package it.unimib.datai.mcfaas.controlplane.registry;
 
 public class FunctionNotFoundException extends RuntimeException {
     public FunctionNotFoundException() {

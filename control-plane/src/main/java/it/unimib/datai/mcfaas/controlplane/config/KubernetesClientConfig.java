@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.config;
+package it.unimib.datai.mcfaas.controlplane.config;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;

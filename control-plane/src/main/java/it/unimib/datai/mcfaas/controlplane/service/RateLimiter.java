@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.service;
+package it.unimib.datai.mcfaas.controlplane.service;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;

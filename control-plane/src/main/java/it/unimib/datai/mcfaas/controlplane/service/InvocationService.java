@@ -1,23 +1,24 @@
-package com.mcfaas.controlplane.service;
+package it.unimib.datai.mcfaas.controlplane.service;
 
-import com.mcfaas.common.model.ExecutionStatus;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.common.model.InvocationResponse;
-import com.mcfaas.common.model.InvocationResult;
-import com.mcfaas.controlplane.dispatch.DispatcherRouter;
-import com.mcfaas.controlplane.execution.ExecutionRecord;
-import com.mcfaas.controlplane.execution.ExecutionState;
-import com.mcfaas.controlplane.execution.ExecutionStore;
-import com.mcfaas.controlplane.execution.IdempotencyStore;
-import com.mcfaas.controlplane.queue.QueueFullException;
-import com.mcfaas.controlplane.queue.QueueManager;
-import com.mcfaas.controlplane.registry.FunctionNotFoundException;
-import com.mcfaas.controlplane.registry.FunctionService;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
-import com.mcfaas.controlplane.sync.SyncQueueRejectReason;
-import com.mcfaas.controlplane.sync.SyncQueueRejectedException;
-import com.mcfaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.mcfaas.common.model.ExecutionMode;
+import it.unimib.datai.mcfaas.common.model.ExecutionStatus;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.common.model.InvocationResponse;
+import it.unimib.datai.mcfaas.common.model.InvocationResult;
+import it.unimib.datai.mcfaas.controlplane.dispatch.DispatcherRouter;
+import it.unimib.datai.mcfaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.mcfaas.controlplane.execution.ExecutionState;
+import it.unimib.datai.mcfaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.mcfaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.mcfaas.controlplane.queue.QueueFullException;
+import it.unimib.datai.mcfaas.controlplane.queue.QueueManager;
+import it.unimib.datai.mcfaas.controlplane.registry.FunctionNotFoundException;
+import it.unimib.datai.mcfaas.controlplane.registry.FunctionService;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.controlplane.sync.SyncQueueRejectReason;
+import it.unimib.datai.mcfaas.controlplane.sync.SyncQueueRejectedException;
+import it.unimib.datai.mcfaas.controlplane.sync.SyncQueueService;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -126,9 +127,9 @@ public class InvocationService {
         record.markRunning();
         metrics.dispatch(task.functionName());
 
-        com.mcfaas.common.model.ExecutionMode mode = task.functionSpec().executionMode();
-        if (mode == com.mcfaas.common.model.ExecutionMode.LOCAL || mode == com.mcfaas.common.model.ExecutionMode.POOL) {
-            java.util.concurrent.CompletableFuture<InvocationResult> future = (mode == com.mcfaas.common.model.ExecutionMode.LOCAL)
+        ExecutionMode mode = task.functionSpec().executionMode();
+        if (mode == ExecutionMode.LOCAL || mode == ExecutionMode.POOL) {
+            java.util.concurrent.CompletableFuture<InvocationResult> future = (mode == ExecutionMode.LOCAL)
                     ? dispatcherRouter.dispatchLocal(task)
                     : dispatcherRouter.dispatchPool(task);
 

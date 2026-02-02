@@ -1,7 +1,7 @@
-package com.mcfaas.controlplane.api;
+package it.unimib.datai.mcfaas.controlplane.api;
 
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.controlplane.registry.FunctionService;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.controlplane.registry.FunctionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;

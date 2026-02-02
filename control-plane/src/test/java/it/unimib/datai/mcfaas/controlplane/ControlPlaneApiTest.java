@@ -1,11 +1,11 @@
-package com.mcfaas.controlplane;
+package it.unimib.datai.mcfaas.controlplane;
 
-import com.mcfaas.common.model.ExecutionMode;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.controlplane.registry.FunctionService;
-import com.mcfaas.controlplane.service.RateLimiter;
-import com.mcfaas.controlplane.scheduler.Scheduler;
+import it.unimib.datai.mcfaas.common.model.ExecutionMode;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.controlplane.registry.FunctionService;
+import it.unimib.datai.mcfaas.controlplane.service.RateLimiter;
+import it.unimib.datai.mcfaas.controlplane.scheduler.Scheduler;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

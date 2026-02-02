@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -29,7 +30,7 @@ class InvokeControllerTest {
 
     @Test
     void issue014_invokeContractReturnsInput() throws Exception {
-        when(callbackClient.sendResult(any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -40,7 +41,7 @@ class InvokeControllerTest {
 
     @Test
     void invokeUsesExecutionIdFromHeader() throws Exception {
-        when(callbackClient.sendResult(any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "header-exec-123")
@@ -49,12 +50,12 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         // Verify callback was called with header execution ID
-        verify(callbackClient).sendResult(eq("header-exec-123"), any(InvocationResult.class));
+        verify(callbackClient).sendResult(eq("header-exec-123"), any(InvocationResult.class), any());
     }
 
     @Test
     void invokeUsesEnvExecutionIdWhenHeaderNotProvided() throws Exception {
-        when(callbackClient.sendResult(any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -62,13 +63,13 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         // Verify callback was called with default/env execution ID (test-execution is the default)
-        verify(callbackClient).sendResult(eq("test-execution"), any(InvocationResult.class));
+        verify(callbackClient).sendResult(eq("test-execution"), any(InvocationResult.class), any());
     }
 
     @Test
     void invokeHeaderTakesPrecedenceOverEnv() throws Exception {
         // This test verifies that when both header and env are set, header wins
-        when(callbackClient.sendResult(any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "header-takes-precedence")
@@ -77,6 +78,33 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         // Verify header execution ID was used, not the env one
-        verify(callbackClient).sendResult(eq("header-takes-precedence"), any(InvocationResult.class));
+        verify(callbackClient).sendResult(eq("header-takes-precedence"), any(InvocationResult.class), any());
+    }
+
+    @Test
+    void invokePropagatesTraceIdToCallback() throws Exception {
+        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+
+        mockMvc.perform(post("/invoke")
+                        .header("X-Execution-Id", "exec-123")
+                        .header("X-Trace-Id", "trace-456")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\": \"test\", \"metadata\": {}}"))
+                .andExpect(status().isOk());
+
+        verify(callbackClient).sendResult(eq("exec-123"), any(InvocationResult.class), eq("trace-456"));
+    }
+
+    @Test
+    void invokePropagatesNullTraceIdWhenHeaderNotProvided() throws Exception {
+        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+
+        mockMvc.perform(post("/invoke")
+                        .header("X-Execution-Id", "exec-789")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\": \"test\", \"metadata\": {}}"))
+                .andExpect(status().isOk());
+
+        verify(callbackClient).sendResult(eq("exec-789"), any(InvocationResult.class), (String) isNull());
     }
 }

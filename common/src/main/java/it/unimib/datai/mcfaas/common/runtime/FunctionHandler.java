@@ -1,6 +1,6 @@
-package com.mcfaas.common.runtime;
+package it.unimib.datai.mcfaas.common.runtime;
 
-import com.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
 
 public interface FunctionHandler {
     Object handle(InvocationRequest request);

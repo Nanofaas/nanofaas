@@ -1,10 +1,10 @@
-package com.mcfaas.controlplane.dispatch;
+package it.unimib.datai.mcfaas.controlplane.dispatch;
 
-import com.mcfaas.common.model.ExecutionMode;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.controlplane.config.KubernetesProperties;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.common.model.ExecutionMode;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.controlplane.config.KubernetesProperties;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;

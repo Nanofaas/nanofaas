@@ -1,4 +1,4 @@
-package com.mcfaas.runtime;
+package it.unimib.datai.mcfaas.runtime;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

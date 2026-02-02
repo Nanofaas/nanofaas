@@ -1,6 +1,6 @@
-package com.mcfaas.controlplane.queue;
+package it.unimib.datai.mcfaas.controlplane.queue;
 
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;

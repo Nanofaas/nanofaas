@@ -1,6 +1,6 @@
-package com.mcfaas.runtime.core;
+package it.unimib.datai.mcfaas.runtime.core;
 
-import com.mcfaas.common.model.InvocationResult;
+import it.unimib.datai.mcfaas.common.model.InvocationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,12 +32,25 @@ public class CallbackClient {
 
     /**
      * Sends the execution result to the control plane with retry.
+     * Uses TRACE_ID from environment variable if available.
      *
      * @param executionId the execution ID
      * @param result the invocation result
      * @return true if callback was sent successfully, false otherwise
      */
     public boolean sendResult(String executionId, InvocationResult result) {
+        return sendResult(executionId, result, null);
+    }
+
+    /**
+     * Sends the execution result to the control plane with retry.
+     *
+     * @param executionId the execution ID
+     * @param result the invocation result
+     * @param traceId the trace ID to propagate (optional, falls back to TRACE_ID env var if null)
+     * @return true if callback was sent successfully, false otherwise
+     */
+    public boolean sendResult(String executionId, InvocationResult result, String traceId) {
         if (baseUrl == null || baseUrl.isBlank()) {
             log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);
             return false;
@@ -49,7 +62,7 @@ public class CallbackClient {
 
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
-                doSendResult(executionId, result);
+                doSendResult(executionId, result, traceId);
                 log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
                 return true;
             } catch (RestClientException ex) {
@@ -72,8 +85,12 @@ public class CallbackClient {
         return false;
     }
 
-    private void doSendResult(String executionId, InvocationResult result) {
-        String traceId = System.getenv("TRACE_ID");
+    private void doSendResult(String executionId, InvocationResult result, String traceId) {
+        // Use provided traceId, fall back to environment variable
+        String effectiveTraceId = (traceId != null && !traceId.isBlank())
+                ? traceId
+                : System.getenv("TRACE_ID");
+
         String url = baseUrl.endsWith(":complete")
                 ? baseUrl
                 : baseUrl + "/" + executionId + ":complete";
@@ -82,8 +99,8 @@ public class CallbackClient {
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON);
 
-        if (traceId != null && !traceId.isBlank()) {
-            request.header("X-Trace-Id", traceId);
+        if (effectiveTraceId != null && !effectiveTraceId.isBlank()) {
+            request.header("X-Trace-Id", effectiveTraceId);
         }
 
         request.body(result)

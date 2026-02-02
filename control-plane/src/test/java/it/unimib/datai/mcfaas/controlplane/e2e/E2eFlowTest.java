@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.e2e;
+package it.unimib.datai.mcfaas.controlplane.e2e;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;

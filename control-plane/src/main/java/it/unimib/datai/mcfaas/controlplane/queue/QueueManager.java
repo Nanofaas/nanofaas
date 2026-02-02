@@ -1,12 +1,11 @@
-package com.mcfaas.controlplane.queue;
+package it.unimib.datai.mcfaas.controlplane.queue;
 
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
-import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 

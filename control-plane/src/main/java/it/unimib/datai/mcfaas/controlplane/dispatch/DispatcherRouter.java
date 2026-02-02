@@ -1,7 +1,7 @@
-package com.mcfaas.controlplane.dispatch;
+package it.unimib.datai.mcfaas.controlplane.dispatch;
 
-import com.mcfaas.common.model.InvocationResult;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.common.model.InvocationResult;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;

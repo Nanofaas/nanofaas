@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.registry;
+package it.unimib.datai.mcfaas.controlplane.registry;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

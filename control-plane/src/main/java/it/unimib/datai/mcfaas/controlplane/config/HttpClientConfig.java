@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.config;
+package it.unimib.datai.mcfaas.controlplane.config;
 
 import io.netty.channel.ChannelOption;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;

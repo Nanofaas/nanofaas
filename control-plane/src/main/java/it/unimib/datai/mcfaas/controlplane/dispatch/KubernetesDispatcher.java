@@ -1,8 +1,8 @@
-package com.mcfaas.controlplane.dispatch;
+package it.unimib.datai.mcfaas.controlplane.dispatch;
 
-import com.mcfaas.common.model.InvocationResult;
-import com.mcfaas.controlplane.config.KubernetesProperties;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.common.model.InvocationResult;
+import it.unimib.datai.mcfaas.controlplane.config.KubernetesProperties;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;

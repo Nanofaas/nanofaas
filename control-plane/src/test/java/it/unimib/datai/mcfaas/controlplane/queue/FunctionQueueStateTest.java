@@ -1,6 +1,6 @@
-package com.mcfaas.controlplane.queue;
+package it.unimib.datai.mcfaas.controlplane.queue;
 
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

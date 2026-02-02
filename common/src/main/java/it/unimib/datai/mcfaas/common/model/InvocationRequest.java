@@ -1,4 +1,4 @@
-package com.mcfaas.common.model;
+package it.unimib.datai.mcfaas.common.model;
 
 import jakarta.validation.constraints.NotNull;
 import java.util.Map;

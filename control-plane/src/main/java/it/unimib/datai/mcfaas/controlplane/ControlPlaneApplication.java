@@ -1,10 +1,10 @@
-package com.mcfaas.controlplane;
+package it.unimib.datai.mcfaas.controlplane;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import com.mcfaas.controlplane.registry.FunctionDefaults;
+import it.unimib.datai.mcfaas.controlplane.registry.FunctionDefaults;
 
 @SpringBootApplication
 @ConfigurationPropertiesScan

@@ -1,4 +1,4 @@
-package com.mcfaas.runtime;
+package it.unimib.datai.mcfaas.runtime;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

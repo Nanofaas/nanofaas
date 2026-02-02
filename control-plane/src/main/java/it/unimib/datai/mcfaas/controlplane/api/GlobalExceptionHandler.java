@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.api;
+package it.unimib.datai.mcfaas.controlplane.api;
 
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;

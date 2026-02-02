@@ -31,7 +31,8 @@ public class InvokeController {
     @PostMapping("/invoke")
     public ResponseEntity<Object> invoke(
             @RequestBody InvocationRequest request,
-            @RequestHeader(value = "X-Execution-Id", required = false) String headerExecutionId) {
+            @RequestHeader(value = "X-Execution-Id", required = false) String headerExecutionId,
+            @RequestHeader(value = "X-Trace-Id", required = false) String traceId) {
 
         // Prefer header over ENV (for warm mode)
         String effectiveExecutionId = (headerExecutionId != null && !headerExecutionId.isBlank())
@@ -49,7 +50,7 @@ public class InvokeController {
             Object output = handler.handle(request);
 
             // Callback is best-effort - don't fail the response if callback fails
-            boolean callbackSent = callbackClient.sendResult(effectiveExecutionId, InvocationResult.success(output));
+            boolean callbackSent = callbackClient.sendResult(effectiveExecutionId, InvocationResult.success(output), traceId);
             if (!callbackSent) {
                 log.warn("Callback failed for execution {} but function succeeded, returning result anyway", effectiveExecutionId);
             }
@@ -59,7 +60,7 @@ public class InvokeController {
             log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
 
             // Try to send error to control-plane (best effort)
-            callbackClient.sendResult(effectiveExecutionId, InvocationResult.error("HANDLER_ERROR", ex.getMessage()));
+            callbackClient.sendResult(effectiveExecutionId, InvocationResult.error("HANDLER_ERROR", ex.getMessage()), traceId);
 
             return ResponseEntity.status(500)
                     .body(Map.of("error", ex.getMessage()));

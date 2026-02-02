@@ -1,4 +1,4 @@
-package com.mcfaas.common.model;
+package it.unimib.datai.mcfaas.common.model;
 
 /**
  * Specifies how the watchdog should interact with the function process.

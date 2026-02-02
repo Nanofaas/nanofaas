@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.e2e;
+package it.unimib.datai.mcfaas.controlplane.e2e;
 
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.Namespace;

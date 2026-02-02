@@ -1,8 +1,7 @@
-package com.mcfaas.controlplane.scheduler;
+package it.unimib.datai.mcfaas.controlplane.scheduler;
 
-import com.mcfaas.controlplane.queue.FunctionQueueState;
-import com.mcfaas.controlplane.queue.QueueManager;
-import com.mcfaas.controlplane.service.InvocationService;
+import it.unimib.datai.mcfaas.controlplane.queue.QueueManager;
+import it.unimib.datai.mcfaas.controlplane.service.InvocationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;

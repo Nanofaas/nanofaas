@@ -1,4 +1,4 @@
-package com.mcfaas.common.model;
+package it.unimib.datai.mcfaas.common.model;
 
 import java.time.Instant;
 

@@ -1,7 +1,7 @@
-package com.mcfaas.runtime.core;
+package it.unimib.datai.mcfaas.runtime.core;
 
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.common.runtime.FunctionHandler;
+import it.unimib.datai.mcfaas.common.model.InvocationRequest;
+import it.unimib.datai.mcfaas.common.runtime.FunctionHandler;
 import org.springframework.stereotype.Component;
 
 @Component

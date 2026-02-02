@@ -1,8 +1,8 @@
-package com.mcfaas.controlplane.registry;
+package it.unimib.datai.mcfaas.controlplane.registry;
 
-import com.mcfaas.common.model.ExecutionMode;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.RuntimeMode;
+import it.unimib.datai.mcfaas.common.model.ExecutionMode;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.common.model.RuntimeMode;
 
 import java.util.List;
 import java.util.Map;

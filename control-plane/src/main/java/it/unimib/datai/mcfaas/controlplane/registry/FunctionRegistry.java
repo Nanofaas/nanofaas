@@ -1,6 +1,6 @@
-package com.mcfaas.controlplane.registry;
+package it.unimib.datai.mcfaas.controlplane.registry;
 
-import com.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
 
 import java.util.Collection;
 import java.util.Map;

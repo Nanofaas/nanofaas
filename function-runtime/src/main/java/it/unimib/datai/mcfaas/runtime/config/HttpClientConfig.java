@@ -1,4 +1,4 @@
-package com.mcfaas.runtime.config;
+package it.unimib.datai.mcfaas.runtime.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

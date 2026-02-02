@@ -1,10 +1,10 @@
-package com.mcfaas.controlplane.dispatch;
+package it.unimib.datai.mcfaas.controlplane.dispatch;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.controlplane.config.KubernetesProperties;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.controlplane.config.KubernetesProperties;
+import it.unimib.datai.mcfaas.controlplane.scheduler.InvocationTask;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.PodSpecBuilder;
 import io.fabric8.kubernetes.api.model.PodTemplateSpecBuilder;

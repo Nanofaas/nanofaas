@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane.queue;
+package it.unimib.datai.mcfaas.controlplane.queue;
 
 public class QueueFullException extends RuntimeException {
 }

@@ -1,7 +1,7 @@
-package com.mcfaas.controlplane.registry;
+package it.unimib.datai.mcfaas.controlplane.registry;
 
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.controlplane.queue.QueueManager;
+import it.unimib.datai.mcfaas.common.model.FunctionSpec;
+import it.unimib.datai.mcfaas.controlplane.queue.QueueManager;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;

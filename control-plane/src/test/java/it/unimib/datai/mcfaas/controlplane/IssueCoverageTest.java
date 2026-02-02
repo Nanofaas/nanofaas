@@ -1,4 +1,4 @@
-package com.mcfaas.controlplane;
+package it.unimib.datai.mcfaas.controlplane;
 
 import org.junit.jupiter.api.Test;
 
