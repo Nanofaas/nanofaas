@@ -11,7 +11,7 @@
 
 ## Runtime Model
 
-- JVM: Java 17 (target) with Spring Boot AOT/GraalVM.
+- JVM: Java 21 (target) with Spring Boot AOT/GraalVM.
 - HTTP: Spring WebFlux for non-blocking I/O.
 - Threading:
   - WebFlux event loop for request handling.

@@ -30,18 +30,18 @@ set -u
 set +u
 JDK_VERSION=${JDK_VERSION:-}
 if [ -z "$JDK_VERSION" ]; then
-  JDK_VERSION=$(sdk list java | awk '/17.*-tem/ {print $NF; exit}')
+  JDK_VERSION=$(sdk list java | awk '/21.*-tem/ {print $NF; exit}')
 fi
 if [ -z "$JDK_VERSION" ]; then
-  JDK_VERSION=$(sdk list java | awk '/17.*-amzn/ {print $NF; exit}')
+  JDK_VERSION=$(sdk list java | awk '/21.*-amzn/ {print $NF; exit}')
 fi
 if [ -z "$JDK_VERSION" ]; then
-  JDK_VERSION=$(sdk list java | awk '/17.*-/ {print $NF; exit}')
+  JDK_VERSION=$(sdk list java | awk '/21.*-/ {print $NF; exit}')
 fi
 
 if [ -z "$JDK_VERSION" ]; then
-  echo "Unable to determine a Java 17 JDK version from SDKMAN." >&2
-  echo "Set JDK_VERSION (e.g., 17.0.11-tem) and re-run." >&2
+  echo "Unable to determine a Java 21 JDK version from SDKMAN." >&2
+  echo "Set JDK_VERSION (e.g., 21.0.2-tem) and re-run." >&2
   exit 1
 fi
 

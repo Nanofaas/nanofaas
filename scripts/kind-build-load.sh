@@ -20,7 +20,7 @@ multipass exec "$VM_NAME" -- bash -lc "rm -rf ${REMOTE_DIR}"
 multipass transfer --recursive . "$VM_NAME":"$REMOTE_DIR"
 
 multipass exec "$VM_NAME" -- bash -lc "if ! command -v java >/dev/null 2>&1; then
-  echo \"Java not found in VM. Re-run scripts/setup-multipass-kind.sh to install SDKMAN + Java 17.\" >&2;
+  echo \"Java not found in VM. Re-run scripts/setup-multipass-kind.sh to install SDKMAN + Java 21.\" >&2;
   exit 1;
 fi
 cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar :function-runtime:bootJar"

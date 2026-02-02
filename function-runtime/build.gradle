@@ -28,13 +28,15 @@ tasks.named('aotTestClasses') { enabled = false }
 
 bootBuildImage {
     imageName = project.findProperty('functionRuntimeImage') ?: (System.getenv('FUNCTION_RUNTIME_IMAGE') ?: 'mcfaas/function-runtime:buildpack')
-    // Pin to versions that work on ARM64, force JVM mode (not native)
-    builder = 'paketobuildpacks/builder-jammy-base:0.4.375'
-    runImage = 'paketobuildpacks/run-jammy-base:0.1.138'
+    // Use tiny builder optimized for native images
+    builder = 'paketobuildpacks/builder-jammy-tiny:latest'
+    runImage = 'paketobuildpacks/run-jammy-tiny:latest'
+    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64)
+    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM')
+    if (targetPlatform) {
+        imagePlatform = targetPlatform
+    }
     environment = [
-            'BP_JVM_VERSION': '21',
-            'BP_JVM_TYPE': 'JRE',
-            'BPL_JVM_HEAD_ROOM': '0',
-            'BP_NATIVE_IMAGE': 'false'
+            'BP_NATIVE_IMAGE': 'true'
     ]
 }
