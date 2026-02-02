@@ -25,9 +25,10 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ExecutionMode {
-    Http,  // POST to HTTP endpoint
-    Stdio, // stdin/stdout
-    File,  // /tmp/input.json -> /tmp/output.json
+    Http,  // POST to HTTP endpoint (one-shot)
+    Stdio, // stdin/stdout (one-shot)
+    File,  // /tmp/input.json -> /tmp/output.json (one-shot)
+    Warm,  // HTTP server receiving multiple invocations (persistent)
 }
 
 impl ExecutionMode {
@@ -36,6 +37,7 @@ impl ExecutionMode {
             "HTTP" => Self::Http,
             "STDIO" => Self::Stdio,
             "FILE" => Self::File,
+            "WARM" => Self::Warm,
             _ => Self::Http, // default
         }
     }
@@ -479,6 +481,11 @@ async fn main() -> ExitCode {
         }
         ExecutionMode::File => {
             execute_file_mode(&config, &payload).await
+        }
+        ExecutionMode::Warm => {
+            // TODO: Implement warm mode (Task 4)
+            error!("Warm mode not yet implemented");
+            InvocationResult::error("NOT_IMPLEMENTED", "Warm execution mode is not yet implemented")
         }
     };
 
