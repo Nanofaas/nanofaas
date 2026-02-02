@@ -27,7 +27,7 @@ tasks.named('processAotTestResources') { enabled = false }
 tasks.named('aotTestClasses') { enabled = false }
 
 bootBuildImage {
-    imageName = project.findProperty('functionRuntimeImage') ?: (System.getenv('FUNCTION_RUNTIME_IMAGE') ?: 'mcfaas/function-runtime:buildpack')
+    imageName = project.findProperty('functionRuntimeImage') ?: (System.getenv('FUNCTION_RUNTIME_IMAGE') ?: 'nanofaas/function-runtime:buildpack')
     // Use tiny builder optimized for native images
     builder = 'paketobuildpacks/builder-jammy-tiny:latest'
     runImage = 'paketobuildpacks/run-jammy-tiny:latest'

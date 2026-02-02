@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew test
 
 # Run a single test class
-./gradlew :control-plane:test --tests com.mcfaas.controlplane.core.QueueManagerTest
+./gradlew :control-plane:test --tests com.nanofaas.controlplane.core.QueueManagerTest
 
 # E2E tests (requires Docker)
 ./scripts/e2e.sh                    # Local containers
@@ -28,15 +28,15 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
 
 # Kubernetes E2E (requires kind cluster)
 ./scripts/setup-multipass-kind.sh
-export KUBECONFIG=~/.kube/mcfaas-kind.yaml
+export KUBECONFIG=~/.kube/nanofaas-kind.yaml
 ./scripts/kind-build-load.sh
-./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.K8sE2eTest
+./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest
 
 # Build OCI images
 ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
 
 # Build Python runtime image
-cd python-runtime && ./build.sh  # or: docker build -t mcfaas/python-runtime python-runtime/
+cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime python-runtime/
 
 # Native build (GraalVM via SDKMAN)
 ./scripts/native-build.sh
@@ -44,7 +44,7 @@ cd python-runtime && ./build.sh  # or: docker build -t mcfaas/python-runtime pyt
 
 ## Architecture Overview
 
-mcFaas is a minimal FaaS platform for Kubernetes with four modules:
+nanofaas is a minimal FaaS platform for Kubernetes with four modules:
 
 ### control-plane/
 API gateway + scheduler + dispatcher in a single pod. Key components:
@@ -77,7 +77,7 @@ Python function runtime with watchdog for WARM execution mode:
 - Supports OpenWhisk-style warm containers
 - Accepts `X-Execution-Id` and `X-Trace-Id` headers
 
-Build: `python-runtime/build.sh` or `docker build -t mcfaas/python-runtime python-runtime/`
+Build: `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/`
 
 ### common/
 Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `ExecutionStatus`, `FunctionHandler` interface.
@@ -94,9 +94,9 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 ## Key Configuration
 
 `control-plane/src/main/resources/application.yml`:
-- `mcfaas.defaults.timeoutMs` (30000), `concurrency` (4), `queueSize` (100), `maxRetries` (3)
-- `mcfaas.rate.maxPerSecond` (1000)
-- `mcfaas.k8s.namespace`, `callbackUrl`
+- `nanofaas.defaults.timeoutMs` (30000), `concurrency` (4), `queueSize` (100), `maxRetries` (3)
+- `nanofaas.rate.maxPerSecond` (1000)
+- `nanofaas.k8s.namespace`, `callbackUrl`
 
 ## Testing
 
@@ -111,4 +111,4 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - In-memory queues (no durability)
 - No authentication/authorization
 - Performance and latency prioritized over features
-- Java 21 toolchain, 4-space indentation, `com.mcfaas` package root
+- Java 21 toolchain, 4-space indentation, `com.nanofaas` package root

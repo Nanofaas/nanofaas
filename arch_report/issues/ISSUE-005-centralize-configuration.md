@@ -9,10 +9,10 @@
 - `HttpClientConfig.java` is in `config`.
 
 ## Proposed Solution
-Move all configuration and property classes to `com.mcfaas.controlplane.config`.
+Move all configuration and property classes to `com.nanofaas.controlplane.config`.
 
 ## Status: COMPLETED
-This issue was resolved during the refactoring of ISSUE-002. `KubernetesProperties.java` and `KubernetesClientConfig.java` were moved to the `com.mcfaas.controlplane.config` package.
+This issue was resolved during the refactoring of ISSUE-002. `KubernetesProperties.java` and `KubernetesClientConfig.java` were moved to the `com.nanofaas.controlplane.config` package.
 
 ## Plan (Original)
 - [x] Move `KubernetesClientConfig` and `KubernetesProperties` to `config` package.

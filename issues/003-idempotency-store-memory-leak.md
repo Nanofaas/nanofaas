@@ -148,13 +148,13 @@ public class IdempotencyStore {
 
 ```yaml
 # application.yml
-mcfaas:
+nanofaas:
   idempotency:
     ttlMinutes: 15
 ```
 
 ```java
-@ConfigurationProperties(prefix = "mcfaas.idempotency")
+@ConfigurationProperties(prefix = "nanofaas.idempotency")
 public record IdempotencyProperties(int ttlMinutes) {
     public IdempotencyProperties {
         if (ttlMinutes <= 0) {
@@ -169,7 +169,7 @@ public record IdempotencyProperties(int ttlMinutes) {
 ```java
 // In Metrics.java
 public void registerIdempotencyStoreGauge(IdempotencyStore store) {
-    Gauge.builder("mcfaas_idempotency_store_size", store::size)
+    Gauge.builder("nanofaas_idempotency_store_size", store::size)
         .description("Number of entries in idempotency store")
         .register(registry);
 }
@@ -280,17 +280,17 @@ void store_withManyEntries_evictsCorrectly() {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/IdempotencyStore.java`
-2. `control-plane/src/main/java/com/mcfaas/controlplane/core/Metrics.java` (aggiungere gauge)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/IdempotencyStore.java`
+2. `control-plane/src/main/java/com/nanofaas/controlplane/core/Metrics.java` (aggiungere gauge)
 3. `control-plane/src/main/resources/application.yml` (aggiungere config)
-4. `control-plane/src/test/java/com/mcfaas/controlplane/core/IdempotencyStoreTest.java` (nuovo)
+4. `control-plane/src/test/java/com/nanofaas/controlplane/core/IdempotencyStoreTest.java` (nuovo)
 
 ## Criteri di Accettazione
 
 - [ ] IdempotencyStore ha TTL configurabile (default 15 minuti)
 - [ ] Janitor thread rimuove entry scadute ogni minuto
 - [ ] Lookup restituisce empty per entry scadute
-- [ ] Metrica `mcfaas_idempotency_store_size` esposta
+- [ ] Metrica `nanofaas_idempotency_store_size` esposta
 - [ ] Shutdown pulito con @PreDestroy
 - [ ] Tutti i test passano
 - [ ] Nessun memory leak in test di stress

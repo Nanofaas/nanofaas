@@ -264,8 +264,8 @@ void allow_underHeavyLoad_maintainsCorrectness() throws Exception {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/RateLimiter.java`
-2. `control-plane/src/test/java/com/mcfaas/controlplane/core/RateLimiterTest.java` (nuovo)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/RateLimiter.java`
+2. `control-plane/src/test/java/com/nanofaas/controlplane/core/RateLimiterTest.java` (nuovo)
 
 ## Criteri di Accettazione
 

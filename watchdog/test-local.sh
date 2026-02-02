@@ -83,19 +83,19 @@ check_prerequisites() {
 build_watchdog() {
     log_info "Building watchdog..."
     cargo build --release
-    log_info "Build complete: target/release/mcfaas-watchdog"
+    log_info "Build complete: target/release/nanofaas-watchdog"
 }
 
 # Setup test environment
 setup_test_env() {
     # Export watchdog path
     export PATH="$SCRIPT_DIR/target/release:$PATH"
-    export WATCHDOG_BIN="$SCRIPT_DIR/target/release/mcfaas-watchdog"
+    export WATCHDOG_BIN="$SCRIPT_DIR/target/release/nanofaas-watchdog"
     export TESTS_ROOT="$SCRIPT_DIR/tests"
 
     # Create a convenience symlink for local runs
     mkdir -p "$SCRIPT_DIR/tests/.bin"
-    ln -sf "$SCRIPT_DIR/target/release/mcfaas-watchdog" "$SCRIPT_DIR/tests/.bin/watchdog"
+    ln -sf "$SCRIPT_DIR/target/release/nanofaas-watchdog" "$SCRIPT_DIR/tests/.bin/watchdog"
 
     # Update PATH for tests
     export PATH="$SCRIPT_DIR/tests/.bin:$PATH"
@@ -218,7 +218,7 @@ main() {
     done
 
     echo "========================================"
-    echo "mcFaas Watchdog Local Tests"
+    echo "nanofaas Watchdog Local Tests"
     echo "========================================"
     echo ""
 
@@ -229,7 +229,7 @@ main() {
     if [ "$skip_build" = "false" ]; then
         build_watchdog
     else
-        if [ ! -f "$SCRIPT_DIR/target/release/mcfaas-watchdog" ]; then
+        if [ ! -f "$SCRIPT_DIR/target/release/nanofaas-watchdog" ]; then
             log_error "Watchdog binary not found. Run without --no-build first."
             exit 1
         fi

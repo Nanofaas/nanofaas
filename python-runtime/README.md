@@ -1,6 +1,6 @@
-# mcFaas Python Runtime
+# nanofaas Python Runtime
 
-Lightweight Python function runtime for mcFaas. Supports both one-shot (cold) and warm (OpenWhisk-style) execution modes.
+Lightweight Python function runtime for nanofaas. Supports both one-shot (cold) and warm (OpenWhisk-style) execution modes.
 
 ## Handler Interface
 
@@ -44,7 +44,7 @@ def handle(request: dict) -> dict:
 ### Basic Dockerfile
 
 ```dockerfile
-FROM mcfaas/python-runtime:0.5.0
+FROM nanofaas/python-runtime:0.5.0
 
 COPY handler.py /app/handler.py
 
@@ -55,7 +55,7 @@ ENV HANDLER_FUNCTION=handle
 ### With Dependencies
 
 ```dockerfile
-FROM mcfaas/python-runtime:0.5.0
+FROM nanofaas/python-runtime:0.5.0
 
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r /app/requirements.txt
@@ -77,7 +77,7 @@ docker run -e EXECUTION_ID=exec-123 \
            -e CALLBACK_URL=http://control-plane:8080/v1/internal/executions \
            -e HANDLER_MODULE=handler \
            -v $(pwd)/handler.py:/app/handler.py \
-           mcfaas/python-runtime:0.5.0
+           nanofaas/python-runtime:0.5.0
 ```
 
 ### Warm Mode (OpenWhisk-style)
@@ -116,7 +116,7 @@ pip install -r requirements.txt
 HANDLER_MODULE=tests.fixtures.handler \
 EXECUTION_ID=test-exec \
 PYTHONPATH=src:tests \
-python -m mcfaas_runtime.app
+python -m nanofaas_runtime.app
 ```
 
 ### Build Docker Image

@@ -1,4 +1,4 @@
-# mcfaas
+# nanofaas
 
 Minimal, high-performance FaaS control plane and Java function runtime designed for Kubernetes, with a focus on low latency and fast startup (GraalVM-ready).
 
@@ -56,9 +56,9 @@ E2E (buildpacks):
 E2E (Kubernetes via Multipass + kind):
 ```bash
 ./scripts/setup-multipass-kind.sh
-export KUBECONFIG=~/.kube/mcfaas-kind.yaml
+export KUBECONFIG=~/.kube/nanofaas-kind.yaml
 ./scripts/kind-build-load.sh
-./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.K8sE2eTest
+./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest
 ```
 
 ## Observability

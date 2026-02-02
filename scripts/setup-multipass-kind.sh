@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VM_NAME=${VM_NAME:-mcfaas-kind}
+VM_NAME=${VM_NAME:-nanofaas-kind}
 CPUS=${CPUS:-4}
 MEMORY=${MEMORY:-8G}
 DISK=${DISK:-40G}
-KIND_CLUSTER=${KIND_CLUSTER:-mcfaas}
+KIND_CLUSTER=${KIND_CLUSTER:-nanofaas}
 KIND_VERSION=${KIND_VERSION:-v0.22.0}
 KUBECTL_VERSION=${KUBECTL_VERSION:-v1.29.3}
 

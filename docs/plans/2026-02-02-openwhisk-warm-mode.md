@@ -367,7 +367,7 @@ run_test() {
     WARM_PORT=8081 \
     WATCHDOG_CMD="sleep infinity" \
     RUNTIME_URL=http://127.0.0.1:8080/invoke \
-    ../target/debug/mcfaas-watchdog &
+    ../target/debug/nanofaas-watchdog &
     WATCHDOG_PID=$!
 
     sleep 2
@@ -429,8 +429,8 @@ git commit -m "test(watchdog): add warm mode integration test"
 ### Task 6: Accept execution ID from header
 
 **Files:**
-- Modify: `function-runtime/src/main/java/it/unimib/datai/mcfaas/runtime/api/InvokeController.java`
-- Test: `function-runtime/src/test/java/it/unimib/datai/mcfaas/runtime/InvokeControllerTest.java`
+- Modify: `function-runtime/src/main/java/it/unimib/datai/nanofaas/runtime/api/InvokeController.java`
+- Test: `function-runtime/src/test/java/it/unimib/datai/nanofaas/runtime/InvokeControllerTest.java`
 
 **Step 1: Write the failing test**
 
@@ -501,8 +501,8 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add function-runtime/src/main/java/it/unimib/datai/mcfaas/runtime/api/InvokeController.java \
-  function-runtime/src/test/java/it/unimib/datai/mcfaas/runtime/InvokeControllerTest.java
+git add function-runtime/src/main/java/it/unimib/datai/nanofaas/runtime/api/InvokeController.java \
+  function-runtime/src/test/java/it/unimib/datai/nanofaas/runtime/InvokeControllerTest.java
 git commit -m "feat(runtime): accept X-Execution-Id header for warm mode"
 ```
 
@@ -511,8 +511,8 @@ git commit -m "feat(runtime): accept X-Execution-Id header for warm mode"
 ### Task 7: Propagate trace ID from header
 
 **Files:**
-- Modify: `function-runtime/src/main/java/it/unimib/datai/mcfaas/runtime/api/InvokeController.java`
-- Modify: `function-runtime/src/main/java/it/unimib/datai/mcfaas/runtime/core/CallbackClient.java`
+- Modify: `function-runtime/src/main/java/it/unimib/datai/nanofaas/runtime/api/InvokeController.java`
+- Modify: `function-runtime/src/main/java/it/unimib/datai/nanofaas/runtime/core/CallbackClient.java`
 
 **Step 1: Write the failing test**
 
@@ -566,9 +566,9 @@ Expected: PASS
 **Step 6: Commit**
 
 ```bash
-git add function-runtime/src/main/java/it/unimib/datai/mcfaas/runtime/api/InvokeController.java \
-  function-runtime/src/main/java/it/unimib/datai/mcfaas/runtime/core/CallbackClient.java \
-  function-runtime/src/test/java/it/unimib/datai/mcfaas/runtime/InvokeControllerTest.java
+git add function-runtime/src/main/java/it/unimib/datai/nanofaas/runtime/api/InvokeController.java \
+  function-runtime/src/main/java/it/unimib/datai/nanofaas/runtime/core/CallbackClient.java \
+  function-runtime/src/test/java/it/unimib/datai/nanofaas/runtime/InvokeControllerTest.java
 git commit -m "feat(runtime): propagate X-Trace-Id header to callback"
 ```
 
@@ -580,8 +580,8 @@ git commit -m "feat(runtime): propagate X-Trace-Id header to callback"
 
 **Files:**
 - Create: `python-runtime/requirements.txt`
-- Create: `python-runtime/src/mcfaas_runtime/__init__.py`
-- Create: `python-runtime/src/mcfaas_runtime/app.py`
+- Create: `python-runtime/src/nanofaas_runtime/__init__.py`
+- Create: `python-runtime/src/nanofaas_runtime/app.py`
 - Create: `python-runtime/Dockerfile`
 
 **Step 1: Create requirements.txt**
@@ -595,7 +595,7 @@ gunicorn==21.2.0
 **Step 2: Create app.py**
 
 ```python
-"""mcFaas Python Function Runtime"""
+"""nanofaas Python Function Runtime"""
 import importlib
 import logging
 import os
@@ -713,19 +713,19 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "-w", "1", "mcfaas_runtime.app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "-w", "1", "nanofaas_runtime.app:app"]
 ```
 
 **Step 4: Create __init__.py**
 
 ```python
-"""mcFaas Python Runtime"""
+"""nanofaas Python Runtime"""
 __version__ = "0.5.0"
 ```
 
 **Step 5: Verify Docker build**
 
-Run: `docker build -t mcfaas/python-runtime:test python-runtime/`
+Run: `docker build -t nanofaas/python-runtime:test python-runtime/`
 Expected: BUILD SUCCESS
 
 **Step 6: Commit**
@@ -752,7 +752,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import pytest
-from mcfaas_runtime.app import app
+from nanofaas_runtime.app import app
 
 @pytest.fixture
 def client():
@@ -845,7 +845,7 @@ git commit -m "test(python-runtime): add unit tests"
 set -euo pipefail
 
 VERSION=${VERSION:-0.5.0}
-IMAGE=${IMAGE:-mcfaas/python-runtime:$VERSION}
+IMAGE=${IMAGE:-nanofaas/python-runtime:$VERSION}
 
 docker build -t "$IMAGE" .
 
@@ -940,9 +940,9 @@ git commit -m "docs(watchdog): add WARM mode documentation"
 **Step 1: Write README**
 
 ```markdown
-# mcFaas Python Runtime
+# nanofaas Python Runtime
 
-Lightweight Python function runtime for mcFaas. Supports both one-shot and warm (OpenWhisk-style) execution modes.
+Lightweight Python function runtime for nanofaas. Supports both one-shot and warm (OpenWhisk-style) execution modes.
 
 ## Handler Interface
 
@@ -976,7 +976,7 @@ def handle(request: dict) -> dict:
 ## Docker Usage
 
 ```dockerfile
-FROM mcfaas/python-runtime:0.5.0
+FROM nanofaas/python-runtime:0.5.0
 
 COPY handler.py /app/handler.py
 
@@ -1005,7 +1005,7 @@ pip install -r requirements.txt
 PYTHONPATH=src:tests pytest tests/ -v
 
 # Run locally
-HANDLER_MODULE=tests.fixtures.handler python -m mcfaas_runtime.app
+HANDLER_MODULE=tests.fixtures.handler python -m nanofaas_runtime.app
 ```
 ```
 

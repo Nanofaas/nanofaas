@@ -51,4 +51,4 @@ fi
 sdk use java "$JDK_VERSION"
 set -u
 
-./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.E2eFlowTest
+./gradlew :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.e2e.E2eFlowTest

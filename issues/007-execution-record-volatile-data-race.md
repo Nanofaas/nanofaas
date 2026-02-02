@@ -284,11 +284,11 @@ void stateTransitions_areValid() {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/ExecutionRecord.java`
-2. `control-plane/src/main/java/com/mcfaas/controlplane/core/InvocationService.java` (adattare chiamate)
-3. `control-plane/src/main/java/com/mcfaas/controlplane/core/Scheduler.java` (adattare chiamate)
-4. `control-plane/src/main/java/com/mcfaas/controlplane/api/InvocationController.java` (adattare letture)
-5. `control-plane/src/test/java/com/mcfaas/controlplane/core/ExecutionRecordTest.java` (nuovo)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/ExecutionRecord.java`
+2. `control-plane/src/main/java/com/nanofaas/controlplane/core/InvocationService.java` (adattare chiamate)
+3. `control-plane/src/main/java/com/nanofaas/controlplane/core/Scheduler.java` (adattare chiamate)
+4. `control-plane/src/main/java/com/nanofaas/controlplane/api/InvocationController.java` (adattare letture)
+5. `control-plane/src/test/java/com/nanofaas/controlplane/core/ExecutionRecordTest.java` (nuovo)
 
 ## Criteri di Accettazione
 

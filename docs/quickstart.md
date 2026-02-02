@@ -21,8 +21,8 @@
   - Build images in VM and load into kind:
     - `./scripts/kind-build-load.sh`
   - Export kubeconfig and run:
-    - `export KUBECONFIG=$HOME/.kube/mcfaas-kind.yaml`
-    - `./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.K8sE2eTest`
+    - `export KUBECONFIG=$HOME/.kube/nanofaas-kind.yaml`
+    - `./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest`
   - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
   - The k8s E2E test will fail if `KUBECONFIG` is missing or invalid.
   - Automated (provisions kind in Multipass, loads images, runs K8sE2eTest):
@@ -30,7 +30,7 @@
     - VM and kubeconfig are deleted after the test by default (set `-Pk8sDeleteVm=false` or `-Pk8sDeleteKubeconfig=false` to keep them).
   - Fully isolated VM (k3s in Multipass, builds images in-VM, runs K8sE2eTest, cleans up):
     - `./gradlew k8sE2eVm`
-    - Optional env: `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `MCFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
+    - Optional env: `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
 
 ## Run control plane locally
 
@@ -53,8 +53,8 @@
   - `kubectl apply -f k8s/control-plane-service.yaml`
 
 - Build and push images:
-  - `docker build -t mcfaas/control-plane:0.5.0 control-plane/`
-  - `docker build -t mcfaas/function-runtime:0.5.0 function-runtime/`
+  - `docker build -t nanofaas/control-plane:0.5.0 control-plane/`
+  - `docker build -t nanofaas/function-runtime:0.5.0 function-runtime/`
 
 ## Register and invoke
 

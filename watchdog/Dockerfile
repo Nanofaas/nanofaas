@@ -29,7 +29,7 @@ COPY src ./src
 # Build release binary with static linking
 RUN RUST_TARGET=$(cat /rust_target) && \
     RUSTFLAGS='-C target-feature=+crt-static' cargo build --release --target "$RUST_TARGET" && \
-    cp "target/${RUST_TARGET}/release/mcfaas-watchdog" /watchdog && \
+    cp "target/${RUST_TARGET}/release/nanofaas-watchdog" /watchdog && \
     strip /watchdog || true
 
 # Runtime stage - scratch image for minimal size (~2MB)
@@ -37,7 +37,7 @@ FROM scratch
 
 LABEL org.opencontainers.image.title="mcFaas Watchdog"
 LABEL org.opencontainers.image.description="Lightweight Rust process supervisor for function containers"
-LABEL org.opencontainers.image.source="https://github.com/mcfaas/mcfaas"
+LABEL org.opencontainers.image.source="https://github.com/nanofaas/nanofaas"
 
 COPY --from=builder /watchdog /watchdog
 

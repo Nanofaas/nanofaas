@@ -12,7 +12,7 @@ os.environ['HANDLER_FUNCTION'] = 'handle'
 os.environ['CALLBACK_URL'] = ''  # Disable callbacks in tests
 
 import pytest
-from mcfaas_runtime.app import app
+from nanofaas_runtime.app import app
 
 
 @pytest.fixture

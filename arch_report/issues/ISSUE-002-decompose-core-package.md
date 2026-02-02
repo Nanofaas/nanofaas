@@ -5,15 +5,15 @@
 **Impacted Modules:** `control-plane`
 
 ## Evidence
-- `control-plane/src/main/java/com/mcfaas/controlplane/core/` contains 27 files.
+- `control-plane/src/main/java/com/nanofaas/controlplane/core/` contains 27 files.
 - Mixes Queue logic, Scheduling, Dispatching, K8s configs, and Domain services.
 
 ## Proposed Solution
 Move classes into semantic packages:
-- `com.mcfaas.controlplane.registry`: `FunctionRegistry`, `FunctionService`, `FunctionSpecResolver`.
-- `com.mcfaas.controlplane.queue`: `QueueManager`, `FunctionQueueState`, `QueueFullException`.
-- `com.mcfaas.controlplane.scheduler`: `Scheduler`, `InvocationTask`.
-- `com.mcfaas.controlplane.dispatch`: `Dispatcher`, `DispatcherRouter`, `KubernetesDispatcher`, `LocalDispatcher`, `PoolDispatcher`, `KubernetesJobBuilder`.
+- `com.nanofaas.controlplane.registry`: `FunctionRegistry`, `FunctionService`, `FunctionSpecResolver`.
+- `com.nanofaas.controlplane.queue`: `QueueManager`, `FunctionQueueState`, `QueueFullException`.
+- `com.nanofaas.controlplane.scheduler`: `Scheduler`, `InvocationTask`.
+- `com.nanofaas.controlplane.dispatch`: `Dispatcher`, `DispatcherRouter`, `KubernetesDispatcher`, `LocalDispatcher`, `PoolDispatcher`, `KubernetesJobBuilder`.
 
 ## Status: COMPLETED
 - Core package decomposed into semantic sub-packages.

@@ -302,9 +302,9 @@ void retry_incrementsRetryMetric() {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/InvocationService.java`
-2. `control-plane/src/main/java/com/mcfaas/controlplane/core/ExecutionRecord.java` (se serve setter)
-3. `control-plane/src/test/java/com/mcfaas/controlplane/core/InvocationServiceRetryTest.java` (nuovo)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/InvocationService.java`
+2. `control-plane/src/main/java/com/nanofaas/controlplane/core/ExecutionRecord.java` (se serve setter)
+3. `control-plane/src/test/java/com/nanofaas/controlplane/core/InvocationServiceRetryTest.java` (nuovo)
 
 ## Criteri di Accettazione
 

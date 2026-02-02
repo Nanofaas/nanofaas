@@ -2,10 +2,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: control-plane
-  namespace: mcfaas
+  namespace: nanofaas
 spec:
   selector:
-    app: mcfaas-control-plane
+    app: nanofaas-control-plane
   ports:
     - name: http
       port: 8080

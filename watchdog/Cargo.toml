@@ -1,9 +1,9 @@
 [package]
-name = "mcfaas-watchdog"
+name = "nanofaas-watchdog"
 version = "0.5.0"
 edition = "2021"
-description = "Lightweight watchdog for mcFaas function containers"
-authors = ["mcFaas"]
+description = "Lightweight watchdog for nanofaas function containers"
+authors = ["nanofaas"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt", "process", "time", "signal", "macros", "fs", "io-util", "sync", "net"] }

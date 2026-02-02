@@ -1,7 +1,7 @@
-"""Tests for mcFaas Python runtime"""
+"""Tests for nanofaas Python runtime"""
 import os
 
-import mcfaas_runtime.app as app_module
+import nanofaas_runtime.app as app_module
 
 
 def test_health(client):

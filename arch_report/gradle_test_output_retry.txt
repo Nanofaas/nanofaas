@@ -26,7 +26,7 @@ Daemon will be stopped at the end of the build
 > Task :common:test NO-SOURCE
 
 > Task :control-plane:compileJava
-Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/main/java/com/mcfaas/controlplane/core/QueueManager.java uses or overrides a deprecated API.
+Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/main/java/com/nanofaas/controlplane/core/QueueManager.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 
 > Task :control-plane:processResources
@@ -39,9 +39,9 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :control-plane:bootJar
 
 > Task :control-plane:compileTestJava
-Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/mcfaas/controlplane/e2e/K8sE2eTest.java uses or overrides a deprecated API.
+Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/nanofaas/controlplane/e2e/K8sE2eTest.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
-Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/mcfaas/controlplane/ControlPlaneApiTest.java uses unchecked or unsafe operations.
+Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/nanofaas/controlplane/ControlPlaneApiTest.java uses unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
 
 > Task :control-plane:processTestResources NO-SOURCE
@@ -59,8 +59,8 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :function-runtime:resolveMainClassName
 > Task :function-runtime:bootJar
 OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
-2026-01-25T20:12:08.301+01:00  INFO 12785 --- [ionShutdownHook] com.mcfaas.controlplane.core.Scheduler   : Scheduler stopping...
-2026-01-25T20:12:08.301+01:00  INFO 12785 --- [ionShutdownHook] com.mcfaas.controlplane.core.Scheduler   : Scheduler stopped
+2026-01-25T20:12:08.301+01:00  INFO 12785 --- [ionShutdownHook] com.nanofaas.controlplane.core.Scheduler   : Scheduler stopping...
+2026-01-25T20:12:08.301+01:00  INFO 12785 --- [ionShutdownHook] com.nanofaas.controlplane.core.Scheduler   : Scheduler stopped
 
 > Task :control-plane:test
 

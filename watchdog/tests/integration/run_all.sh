@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"
 
 echo "========================================"
-echo "mcFaas Watchdog Integration Tests"
+echo "nanofaas Watchdog Integration Tests"
 echo "========================================"
 echo ""
 echo "Watchdog version: $($WATCHDOG_BIN --version 2>&1 || echo 'unknown')"

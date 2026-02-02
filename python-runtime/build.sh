@@ -2,7 +2,7 @@
 set -euo pipefail
 
 VERSION=${VERSION:-0.5.0}
-IMAGE=${IMAGE:-mcfaas/python-runtime:$VERSION}
+IMAGE=${IMAGE:-nanofaas/python-runtime:$VERSION}
 
 cd "$(dirname "$0")"
 

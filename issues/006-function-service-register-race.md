@@ -260,9 +260,9 @@ void register_alwaysCreatesQueueForRegisteredFunction() throws Exception {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/FunctionRegistry.java` (aggiungere putIfAbsent)
-2. `control-plane/src/main/java/com/mcfaas/controlplane/core/FunctionService.java`
-3. `control-plane/src/test/java/com/mcfaas/controlplane/core/FunctionServiceConcurrencyTest.java` (nuovo)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/FunctionRegistry.java` (aggiungere putIfAbsent)
+2. `control-plane/src/main/java/com/nanofaas/controlplane/core/FunctionService.java`
+3. `control-plane/src/test/java/com/nanofaas/controlplane/core/FunctionServiceConcurrencyTest.java` (nuovo)
 
 ## Criteri di Accettazione
 

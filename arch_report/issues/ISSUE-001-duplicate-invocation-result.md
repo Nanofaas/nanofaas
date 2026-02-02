@@ -5,13 +5,13 @@
 **Impacted Modules:** `control-plane`, `common`
 
 ## Evidence
-- `control-plane/src/main/java/com/mcfaas/controlplane/core/InvocationResult.java`
-- `common/src/main/java/com/mcfaas/common/model/InvocationResult.java`
+- `control-plane/src/main/java/com/nanofaas/controlplane/core/InvocationResult.java`
+- `common/src/main/java/com/nanofaas/common/model/InvocationResult.java`
 - Both classes are identical records. `control-plane` depends on `common` so the `control-plane` version is redundant and dangerous (shadowing).
 
 ## Proposed Solution
-1. Delete `control-plane/src/main/java/com/mcfaas/controlplane/core/InvocationResult.java`.
-2. Update all references in `control-plane` to import `com.mcfaas.common.model.InvocationResult`.
+1. Delete `control-plane/src/main/java/com/nanofaas/controlplane/core/InvocationResult.java`.
+2. Update all references in `control-plane` to import `com.nanofaas.common.model.InvocationResult`.
 
 ## Status: COMPLETED
 - Duplicate file removed.

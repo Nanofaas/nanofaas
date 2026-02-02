@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VM_NAME=${VM_NAME:-mcfaas-e2e-$(date +%s)}
+VM_NAME=${VM_NAME:-nanofaas-e2e-$(date +%s)}
 CPUS=${CPUS:-4}
 MEMORY=${MEMORY:-8G}
 DISK=${DISK:-30G}
-REMOTE_DIR=${REMOTE_DIR:-/home/ubuntu/mcFaas}
-NAMESPACE=${MCFAAS_E2E_NAMESPACE:-mcfaas-e2e}
+REMOTE_DIR=${REMOTE_DIR:-/home/ubuntu/nanofaas}
+NAMESPACE=${NANOFAAS_E2E_NAMESPACE:-nanofaas-e2e}
 KEEP_VM=${KEEP_VM:-false}
 
 log() {
@@ -57,8 +57,8 @@ log "Building JARs in VM"
 vm_exec "cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon"
 
 log "Building container images in VM"
-vm_exec "cd ${REMOTE_DIR} && sudo docker build -t mcfaas/control-plane:0.5.0 control-plane/"
-vm_exec "cd ${REMOTE_DIR} && sudo docker build -t mcfaas/function-runtime:0.5.0 function-runtime/"
+vm_exec "cd ${REMOTE_DIR} && sudo docker build -t nanofaas/control-plane:0.5.0 control-plane/"
+vm_exec "cd ${REMOTE_DIR} && sudo docker build -t nanofaas/function-runtime:0.5.0 function-runtime/"
 
 log "Installing k3s"
 vm_exec "curl -sfL https://get.k3s.io | sudo sh -s - --disable traefik"
@@ -68,11 +68,11 @@ vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config"
 vm_exec "sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config"
 
 log "Importing images into k3s"
-vm_exec "sudo docker save mcfaas/control-plane:0.5.0 -o /tmp/control-plane.tar"
-vm_exec "sudo docker save mcfaas/function-runtime:0.5.0 -o /tmp/function-runtime.tar"
+vm_exec "sudo docker save nanofaas/control-plane:0.5.0 -o /tmp/control-plane.tar"
+vm_exec "sudo docker save nanofaas/function-runtime:0.5.0 -o /tmp/function-runtime.tar"
 vm_exec "sudo k3s ctr images import /tmp/control-plane.tar"
 vm_exec "sudo k3s ctr images import /tmp/function-runtime.tar"
 vm_exec "sudo rm -f /tmp/control-plane.tar /tmp/function-runtime.tar"
 
 log "Running K8sE2eTest in VM"
-vm_exec "cd ${REMOTE_DIR} && KUBECONFIG=/home/ubuntu/.kube/config MCFAAS_E2E_NAMESPACE=${NAMESPACE} ./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.K8sE2eTest --no-daemon"
+vm_exec "cd ${REMOTE_DIR} && KUBECONFIG=/home/ubuntu/.kube/config NANOFAAS_E2E_NAMESPACE=${NAMESPACE} ./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest --no-daemon"

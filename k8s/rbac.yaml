@@ -1,8 +1,8 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: mcfaas-control-plane
-  namespace: mcfaas
+  name: nanofaas-control-plane
+  namespace: nanofaas
 rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
@@ -14,13 +14,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: mcfaas-control-plane
-  namespace: mcfaas
+  name: nanofaas-control-plane
+  namespace: nanofaas
 subjects:
   - kind: ServiceAccount
-    name: mcfaas-control-plane
-    namespace: mcfaas
+    name: nanofaas-control-plane
+    namespace: nanofaas
 roleRef:
   kind: Role
-  name: mcfaas-control-plane
+  name: nanofaas-control-plane
   apiGroup: rbac.authorization.k8s.io

@@ -26,7 +26,7 @@ Daemon will be stopped at the end of the build
 > Task :common:test NO-SOURCE
 
 > Task :control-plane:compileJava
-Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/main/java/com/mcfaas/controlplane/core/QueueManager.java uses or overrides a deprecated API.
+Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/main/java/com/nanofaas/controlplane/core/QueueManager.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 
 > Task :control-plane:processResources
@@ -54,9 +54,9 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :control-plane:bootJar
 
 > Task :control-plane:compileTestJava
-Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/mcfaas/controlplane/e2e/K8sE2eTest.java uses or overrides a deprecated API.
+Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/nanofaas/controlplane/e2e/K8sE2eTest.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
-Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/mcfaas/controlplane/ControlPlaneApiTest.java uses unchecked or unsafe operations.
+Note: /Users/micheleciavotta/Downloads/mcFaas/control-plane/src/test/java/com/nanofaas/controlplane/ControlPlaneApiTest.java uses unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
 
 > Task :control-plane:processTestResources NO-SOURCE
@@ -64,10 +64,10 @@ Note: Recompile with -Xlint:unchecked for details.
 
 > Task :control-plane:processTestAot
 20:10:54.275 [main] INFO org.springframework.test.context.aot.TestClassScanner -- Scanning for Spring test classes in all packages in classpath roots [/Users/micheleciavotta/Downloads/mcFaas/control-plane/build/classes/java/test]
-20:10:54.464 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.mcfaas.controlplane.ControlPlaneApiTest]: ControlPlaneApiTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
-20:10:54.512 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.mcfaas.controlplane.ControlPlaneApplication for test class com.mcfaas.controlplane.ControlPlaneApiTest
-20:10:54.548 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.mcfaas.controlplane.api.ValidationTest]: ValidationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
-20:10:54.574 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.mcfaas.controlplane.ControlPlaneApplication for test class com.mcfaas.controlplane.api.ValidationTest
+20:10:54.464 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.nanofaas.controlplane.ControlPlaneApiTest]: ControlPlaneApiTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+20:10:54.512 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.nanofaas.controlplane.ControlPlaneApplication for test class com.nanofaas.controlplane.ControlPlaneApiTest
+20:10:54.548 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.nanofaas.controlplane.api.ValidationTest]: ValidationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+20:10:54.574 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.nanofaas.controlplane.ControlPlaneApplication for test class com.nanofaas.controlplane.api.ValidationTest
 
   .   ____          _            __ _ _
  /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
@@ -93,7 +93,7 @@ Note: Recompile with -Xlint:unchecked for details.
 2026-01-25T20:10:55.867+01:00  INFO 12534 --- [           main] c.m.controlplane.api.ValidationTest      : Starting ValidationTest using Java 17.0.17 with PID 12534 (/Users/micheleciavotta/Downloads/mcFaas/control-plane/build/classes/java/test started by micheleciavotta in /Users/micheleciavotta/Downloads/mcFaas/control-plane)
 2026-01-25T20:10:55.867+01:00  INFO 12534 --- [           main] c.m.controlplane.api.ValidationTest      : No active profile set, falling back to 1 default profile: "default"
 OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
-Exception in thread "main" org.springframework.test.context.aot.TestContextAotException: Failed to generate AOT artifacts for test classes [com.mcfaas.controlplane.api.ValidationTest]
+Exception in thread "main" org.springframework.test.context.aot.TestContextAotException: Failed to generate AOT artifacts for test classes [com.nanofaas.controlplane.api.ValidationTest]
 	at org.springframework.test.context.aot.TestContextAotGenerator.lambda$processAheadOfTime$5(TestContextAotGenerator.java:286)
 	at java.base/java.util.LinkedHashMap.forEach(LinkedHashMap.java:721)
 	at org.springframework.util.MultiValueMapAdapter.forEach(MultiValueMapAdapter.java:179)
@@ -104,11 +104,11 @@ Exception in thread "main" org.springframework.test.context.aot.TestContextAotEx
 	at org.springframework.test.context.aot.TestAotProcessor.doProcess(TestAotProcessor.java:39)
 	at org.springframework.context.aot.AbstractAotProcessor.process(AbstractAotProcessor.java:82)
 	at org.springframework.boot.test.context.SpringBootTestAotProcessor.main(SpringBootTestAotProcessor.java:63)
-Caused by: org.springframework.test.context.aot.TestContextAotException: Failed to process test class [com.mcfaas.controlplane.api.ValidationTest] for AOT
+Caused by: org.springframework.test.context.aot.TestContextAotException: Failed to process test class [com.nanofaas.controlplane.api.ValidationTest] for AOT
 	at org.springframework.test.context.aot.TestContextAotGenerator.processAheadOfTime(TestContextAotGenerator.java:323)
 	at org.springframework.test.context.aot.TestContextAotGenerator.lambda$processAheadOfTime$5(TestContextAotGenerator.java:277)
 	... 9 more
-Caused by: org.springframework.aot.generate.ValueCodeGenerationException: Failed to generate code for '[[MockDefinition@5f8df69 name = '', typeToMock = com.mcfaas.controlplane.core.FunctionService, extraInterfaces = set[[empty]], answer = RETURNS_DEFAULTS, serializable = false, reset = AFTER], [MockDefinition@1ce6a9bd name = '', typeToMock = com.mcfaas.controlplane.core.InvocationService, extraInterfaces = set[[empty]], answer = RETURNS_DEFAULTS, serializable = false, reset = AFTER]]' with type class java.util.LinkedHashSet
+Caused by: org.springframework.aot.generate.ValueCodeGenerationException: Failed to generate code for '[[MockDefinition@5f8df69 name = '', typeToMock = com.nanofaas.controlplane.core.FunctionService, extraInterfaces = set[[empty]], answer = RETURNS_DEFAULTS, serializable = false, reset = AFTER], [MockDefinition@1ce6a9bd name = '', typeToMock = com.nanofaas.controlplane.core.InvocationService, extraInterfaces = set[[empty]], answer = RETURNS_DEFAULTS, serializable = false, reset = AFTER]]' with type class java.util.LinkedHashSet
 	at org.springframework.aot.generate.ValueCodeGenerator.generateCode(ValueCodeGenerator.java:116)
 	at org.springframework.beans.factory.aot.BeanDefinitionPropertiesCodeGenerator.generateValue(BeanDefinitionPropertiesCodeGenerator.java:269)
 	at org.springframework.beans.factory.aot.BeanDefinitionPropertiesCodeGenerator.lambda$addConstructorArgumentValues$3(BeanDefinitionPropertiesCodeGenerator.java:191)
@@ -138,7 +138,7 @@ Caused by: org.springframework.aot.generate.ValueCodeGenerationException: Failed
 	at org.springframework.context.aot.ApplicationContextAotGenerator.processAheadOfTime(ApplicationContextAotGenerator.java:53)
 	at org.springframework.test.context.aot.TestContextAotGenerator.processAheadOfTime(TestContextAotGenerator.java:319)
 	... 10 more
-Caused by: org.springframework.aot.generate.ValueCodeGenerationException: Failed to generate code for '[MockDefinition@5f8df69 name = '', typeToMock = com.mcfaas.controlplane.core.FunctionService, extraInterfaces = set[[empty]], answer = RETURNS_DEFAULTS, serializable = false, reset = AFTER]' with type class org.springframework.boot.test.mock.mockito.MockDefinition
+Caused by: org.springframework.aot.generate.ValueCodeGenerationException: Failed to generate code for '[MockDefinition@5f8df69 name = '', typeToMock = com.nanofaas.controlplane.core.FunctionService, extraInterfaces = set[[empty]], answer = RETURNS_DEFAULTS, serializable = false, reset = AFTER]' with type class org.springframework.boot.test.mock.mockito.MockDefinition
 	at org.springframework.aot.generate.ValueCodeGenerator.generateCode(ValueCodeGenerator.java:116)
 	at org.springframework.aot.generate.ValueCodeGeneratorDelegates$CollectionDelegate.generateCollectionOf(ValueCodeGeneratorDelegates.java:120)
 	at org.springframework.aot.generate.ValueCodeGeneratorDelegates$SetDelegate.generateCollectionCode(ValueCodeGeneratorDelegates.java:403)

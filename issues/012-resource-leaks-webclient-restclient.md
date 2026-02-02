@@ -126,7 +126,7 @@ public class CallbackClient {
 
 ```yaml
 # application.yml (control-plane)
-mcfaas:
+nanofaas:
   http-client:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
@@ -134,7 +134,7 @@ mcfaas:
     max-in-memory-size-mb: 1
 
 # application.yml (function-runtime)
-mcfaas:
+nanofaas:
   callback:
     connect-timeout-ms: 5000
     read-timeout-ms: 10000
@@ -142,7 +142,7 @@ mcfaas:
 
 ```java
 // HttpClientProperties.java
-@ConfigurationProperties(prefix = "mcfaas.http-client")
+@ConfigurationProperties(prefix = "nanofaas.http-client")
 public record HttpClientProperties(
     int connectTimeoutMs,
     int readTimeoutMs,
@@ -224,8 +224,8 @@ class CallbackClientTest {
 ### Test 4: TimeoutConfigurationTest
 ```java
 @SpringBootTest(properties = {
-    "mcfaas.http-client.connect-timeout-ms=1000",
-    "mcfaas.http-client.read-timeout-ms=5000"
+    "nanofaas.http-client.connect-timeout-ms=1000",
+    "nanofaas.http-client.read-timeout-ms=5000"
 })
 class HttpClientTimeoutTest {
 
@@ -243,17 +243,17 @@ class HttpClientTimeoutTest {
 ## File da Modificare
 
 ### control-plane
-1. `control-plane/src/main/java/com/mcfaas/controlplane/config/HttpClientConfig.java` (nuovo)
-2. `control-plane/src/main/java/com/mcfaas/controlplane/config/HttpClientProperties.java` (nuovo)
-3. `control-plane/src/main/java/com/mcfaas/controlplane/core/PoolDispatcher.java`
+1. `control-plane/src/main/java/com/nanofaas/controlplane/config/HttpClientConfig.java` (nuovo)
+2. `control-plane/src/main/java/com/nanofaas/controlplane/config/HttpClientProperties.java` (nuovo)
+3. `control-plane/src/main/java/com/nanofaas/controlplane/core/PoolDispatcher.java`
 4. `control-plane/src/main/resources/application.yml`
-5. `control-plane/src/test/java/com/mcfaas/controlplane/config/HttpClientConfigTest.java` (nuovo)
+5. `control-plane/src/test/java/com/nanofaas/controlplane/config/HttpClientConfigTest.java` (nuovo)
 
 ### function-runtime
-1. `function-runtime/src/main/java/com/mcfaas/runtime/config/HttpClientConfig.java` (nuovo)
-2. `function-runtime/src/main/java/com/mcfaas/runtime/core/CallbackClient.java`
+1. `function-runtime/src/main/java/com/nanofaas/runtime/config/HttpClientConfig.java` (nuovo)
+2. `function-runtime/src/main/java/com/nanofaas/runtime/core/CallbackClient.java`
 3. `function-runtime/src/main/resources/application.yml`
-4. `function-runtime/src/test/java/com/mcfaas/runtime/config/HttpClientConfigTest.java` (nuovo)
+4. `function-runtime/src/test/java/com/nanofaas/runtime/config/HttpClientConfigTest.java` (nuovo)
 
 ## Criteri di Accettazione
 
