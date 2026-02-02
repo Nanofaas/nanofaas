@@ -67,6 +67,12 @@ struct Config {
     input_file: String,
     /// Output file path (for FILE mode)
     output_file: String,
+    /// Port for warm mode HTTP server
+    warm_port: u16,
+    /// Idle timeout before shutdown (ms) - 0 means no timeout
+    warm_idle_timeout_ms: u64,
+    /// Max invocations before restart - 0 means unlimited
+    warm_max_invocations: u64,
 }
 
 impl Config {
@@ -110,6 +116,21 @@ impl Config {
         let output_file = env::var("OUTPUT_FILE")
             .unwrap_or_else(|_| "/tmp/output.json".to_string());
 
+        let warm_port: u16 = env::var("WARM_PORT")
+            .unwrap_or_else(|_| "8080".to_string())
+            .parse()
+            .unwrap_or(8080);
+
+        let warm_idle_timeout_ms: u64 = env::var("WARM_IDLE_TIMEOUT_MS")
+            .unwrap_or_else(|_| "300000".to_string()) // 5 minutes default
+            .parse()
+            .unwrap_or(300000);
+
+        let warm_max_invocations: u64 = env::var("WARM_MAX_INVOCATIONS")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse()
+            .unwrap_or(0);
+
         Ok(Config {
             callback_url,
             execution_id,
@@ -122,6 +143,9 @@ impl Config {
             ready_timeout_ms,
             input_file,
             output_file,
+            warm_port,
+            warm_idle_timeout_ms,
+            warm_max_invocations,
         })
     }
 }
