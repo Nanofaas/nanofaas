@@ -175,7 +175,7 @@ public class GlobalExceptionHandler {
 
 ```java
 // FunctionDefaults.java
-@ConfigurationProperties(prefix = "mcfaas.defaults")
+@ConfigurationProperties(prefix = "nanofaas.defaults")
 @Validated
 public record FunctionDefaults(
     @Min(1) @Max(300000) int timeoutMs,
@@ -302,14 +302,14 @@ void validationError_hasCorrectFormat() {
 
 ## File da Modificare
 
-1. `common/src/main/java/com/mcfaas/common/FunctionSpec.java` (aggiungere annotazioni)
-2. `common/src/main/java/com/mcfaas/common/InvocationRequest.java` (aggiungere annotazioni)
-3. `control-plane/src/main/java/com/mcfaas/controlplane/api/FunctionController.java` (aggiungere @Valid)
-4. `control-plane/src/main/java/com/mcfaas/controlplane/api/InvocationController.java` (aggiungere @Valid)
-5. `control-plane/src/main/java/com/mcfaas/controlplane/api/GlobalExceptionHandler.java` (nuovo)
-6. `control-plane/src/main/java/com/mcfaas/controlplane/core/FunctionDefaults.java` (aggiungere @Validated)
+1. `common/src/main/java/com/nanofaas/common/FunctionSpec.java` (aggiungere annotazioni)
+2. `common/src/main/java/com/nanofaas/common/InvocationRequest.java` (aggiungere annotazioni)
+3. `control-plane/src/main/java/com/nanofaas/controlplane/api/FunctionController.java` (aggiungere @Valid)
+4. `control-plane/src/main/java/com/nanofaas/controlplane/api/InvocationController.java` (aggiungere @Valid)
+5. `control-plane/src/main/java/com/nanofaas/controlplane/api/GlobalExceptionHandler.java` (nuovo)
+6. `control-plane/src/main/java/com/nanofaas/controlplane/core/FunctionDefaults.java` (aggiungere @Validated)
 7. `common/build.gradle` (aggiungere jakarta.validation-api se non presente)
-8. `control-plane/src/test/java/com/mcfaas/controlplane/api/ValidationTest.java` (nuovo)
+8. `control-plane/src/test/java/com/nanofaas/controlplane/api/ValidationTest.java` (nuovo)
 
 ## Criteri di Accettazione
 

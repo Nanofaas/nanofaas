@@ -14,7 +14,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock* ./
 COPY src ./src
 
-RUN cargo build --release && strip target/release/mcfaas-watchdog
+RUN cargo build --release && strip target/release/nanofaas-watchdog
 
 # Test runtime image
 FROM python:3.11-alpine
@@ -29,7 +29,7 @@ RUN apk add --no-cache \
     procps
 
 # Copy watchdog binary
-COPY --from=builder /build/target/release/mcfaas-watchdog /usr/local/bin/watchdog
+COPY --from=builder /build/target/release/nanofaas-watchdog /usr/local/bin/watchdog
 
 # Copy test fixtures
 COPY tests/fixtures /tests/fixtures

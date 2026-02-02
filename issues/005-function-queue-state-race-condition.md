@@ -276,10 +276,10 @@ void scheduler_neverDispatchesMoreThanConcurrencyLimit() throws Exception {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/FunctionQueueState.java`
-2. `control-plane/src/main/java/com/mcfaas/controlplane/core/Scheduler.java`
-3. `control-plane/src/main/java/com/mcfaas/controlplane/core/QueueManager.java` (se decrementa inFlight)
-4. `control-plane/src/test/java/com/mcfaas/controlplane/core/FunctionQueueStateTest.java` (nuovo o estendere)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/FunctionQueueState.java`
+2. `control-plane/src/main/java/com/nanofaas/controlplane/core/Scheduler.java`
+3. `control-plane/src/main/java/com/nanofaas/controlplane/core/QueueManager.java` (se decrementa inFlight)
+4. `control-plane/src/test/java/com/nanofaas/controlplane/core/FunctionQueueStateTest.java` (nuovo o estendere)
 
 ## Criteri di Accettazione
 

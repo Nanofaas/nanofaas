@@ -1,8 +1,8 @@
-# mcFaaS - Gemini Context
+# nanofaas - Gemini Context
 
 ## Project Overview
 
-**mcFaaS** is a minimal, high-performance FaaS (Function-as-a-Service) platform designed for Kubernetes. It focuses on low latency and fast startup times, leveraging Java 21, Spring Boot, and GraalVM native images.
+**nanoFaaS** is a minimal, high-performance FaaS (Function-as-a-Service) platform designed for Kubernetes. It focuses on low latency and fast startup times, leveraging Java 21, Spring Boot, and GraalVM native images.
 
 ### Key Goals
 - **Performance First:** Minimized latency and cold-start overhead.
@@ -55,10 +55,10 @@ The system consists of four main modules:
 | :--- | :--- |
 | **Build All** | `./gradlew build` |
 | **Run Tests** | `./gradlew test` |
-| **Run Specific Test** | `./gradlew :control-plane:test --tests com.mcfaas.controlplane.core.QueueManagerTest` |
+| **Run Specific Test** | `./gradlew :control-plane:test --tests com.nanofaas.controlplane.core.QueueManagerTest` |
 | **Local E2E** | `./scripts/e2e.sh` (Uses Testcontainers) |
 | **Buildpack E2E** | `./scripts/e2e-buildpack.sh` |
-| **K8s E2E** | `./scripts/setup-multipass-kind.sh` && `export KUBECONFIG=~/.kube/mcfaas-kind.yaml` && `./scripts/kind-build-load.sh` && `./gradlew :control-plane:test --tests com.mcfaas.controlplane.e2e.K8sE2eTest` |
+| **K8s E2E** | `./scripts/setup-multipass-kind.sh` && `export KUBECONFIG=~/.kube/nanofaas-kind.yaml` && `./scripts/kind-build-load.sh` && `./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest` |
 
 ### Running Locally
 
@@ -84,7 +84,7 @@ To build container images using Spring Boot Buildpacks:
 To build the Python runtime image:
 ```bash
 cd python-runtime && ./build.sh
-# or: docker build -t mcfaas/python-runtime python-runtime/
+# or: docker build -t nanofaas/python-runtime python-runtime/
 ```
 
 ## Project Structure
@@ -106,7 +106,7 @@ cd python-runtime && ./build.sh
 
 ## Conventions
 
-- **Code Style:** Java 21, 4-space indentation, `com.mcfaas` package root.
+- **Code Style:** Java 21, 4-space indentation, `com.nanofaas` package root.
 - **Naming:** `PascalCase` classes, `camelCase` methods/fields, `SCREAMING_SNAKE_CASE` constants.
 - **Testing:**
     -   Use JUnit 5.
@@ -118,7 +118,7 @@ cd python-runtime && ./build.sh
 
 Configuration is primarily handled in `application.yml` files:
 - **Control Plane:** `control-plane/src/main/resources/application.yml`
-    -   `mcfaas.defaults.timeoutMs`
-    -   `mcfaas.rate.maxPerSecond`
-    -   `mcfaas.k8s.namespace`
+    -   `nanofaas.defaults.timeoutMs`
+    -   `nanofaas.rate.maxPerSecond`
+    -   `nanofaas.k8s.namespace`
 - **Function Runtime:** `function-runtime/src/main/resources/application.yml`

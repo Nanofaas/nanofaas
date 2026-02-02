@@ -1,4 +1,4 @@
-# mcFaas Watchdog
+# nanofaas Watchdog
 
 Lightweight Rust process supervisor for function containers. Supports multiple programming languages and execution modes.
 
@@ -147,7 +147,7 @@ WARM_MAX_INVOCATIONS=0       # unlimited (not yet implemented)
 ### Java (Spring Boot)
 
 ```dockerfile
-FROM mcfaas/watchdog:latest AS watchdog
+FROM nanofaas/watchdog:latest AS watchdog
 FROM eclipse-temurin:17-jre-alpine
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
@@ -163,7 +163,7 @@ ENTRYPOINT ["/usr/local/bin/watchdog"]
 ### Python (FastAPI)
 
 ```dockerfile
-FROM mcfaas/watchdog:latest AS watchdog
+FROM nanofaas/watchdog:latest AS watchdog
 FROM python:3.11-slim
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
@@ -197,7 +197,7 @@ def invoke(payload: dict):
 ### Python (STDIO script)
 
 ```dockerfile
-FROM mcfaas/watchdog:latest AS watchdog
+FROM nanofaas/watchdog:latest AS watchdog
 FROM python:3.11-slim
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
@@ -228,7 +228,7 @@ json.dump(result, sys.stdout)
 ### Bash Script (FILE mode)
 
 ```dockerfile
-FROM mcfaas/watchdog:latest AS watchdog
+FROM nanofaas/watchdog:latest AS watchdog
 FROM alpine:3.19
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
@@ -259,7 +259,7 @@ echo "$RESULT" > "$OUTPUT_FILE"
 ### Node.js (STDIO)
 
 ```dockerfile
-FROM mcfaas/watchdog:latest AS watchdog
+FROM nanofaas/watchdog:latest AS watchdog
 FROM node:20-alpine
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
@@ -344,7 +344,7 @@ cargo build
 cargo build --release
 
 # Docker
-docker build -t mcfaas/watchdog:latest .
+docker build -t nanofaas/watchdog:latest .
 ```
 
 ## Binary Size

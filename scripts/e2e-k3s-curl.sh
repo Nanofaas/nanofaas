@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # Configuration with defaults
-VM_NAME=${VM_NAME:-mcfaas-k3s-e2e-$(date +%s)}
+VM_NAME=${VM_NAME:-nanofaas-k3s-e2e-$(date +%s)}
 CPUS=${CPUS:-4}
 MEMORY=${MEMORY:-8G}
 DISK=${DISK:-30G}
-NAMESPACE=${NAMESPACE:-mcfaas-e2e}
-CONTROL_IMAGE="mcfaas/control-plane:e2e"
-RUNTIME_IMAGE="mcfaas/function-runtime:e2e"
+NAMESPACE=${NAMESPACE:-nanofaas-e2e}
+CONTROL_IMAGE="nanofaas/control-plane:e2e"
+RUNTIME_IMAGE="nanofaas/function-runtime:e2e"
 KEEP_VM=${KEEP_VM:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -99,21 +99,21 @@ install_k3s() {
 
 sync_project() {
     log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/mcfaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/mcfaas"
+    vm_exec "rm -rf /home/ubuntu/nanofaas"
+    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
     log "Project synced"
 }
 
 build_jars() {
     log "Building JARs in VM..."
-    vm_exec "cd /home/ubuntu/mcfaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
+    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
     log "JARs built"
 }
 
 build_images() {
     log "Building Docker images in VM..."
-    vm_exec "cd /home/ubuntu/mcfaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd /home/ubuntu/mcfaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
+    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
     log "Docker images built"
 }
 

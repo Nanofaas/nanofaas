@@ -29,11 +29,11 @@ tasks.named('test') {
     dependsOn ':function-runtime:bootJar'
 }
 
-def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'mcfaas-kind').toString()
-def k8sKindCluster = (project.findProperty('k8sKindCluster') ?: System.getenv('KIND_CLUSTER') ?: 'mcfaas').toString()
+def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-kind').toString()
+def k8sKindCluster = (project.findProperty('k8sKindCluster') ?: System.getenv('KIND_CLUSTER') ?: 'nanofaas').toString()
 def k8sKubeconfig = (project.findProperty('k8sKubeconfig') ?: System.getenv('KUBECONFIG')
         ?: "${System.getProperty('user.home')}/.kube/${k8sKindCluster}-kind.yaml").toString()
-def k8sNamespace = (project.findProperty('k8sNamespace') ?: System.getenv('MCFAAS_E2E_NAMESPACE') ?: 'mcfaas-e2e').toString()
+def k8sNamespace = (project.findProperty('k8sNamespace') ?: System.getenv('NANOFAAS_E2E_NAMESPACE') ?: 'nanofaas-e2e').toString()
 def k8sDeleteVm = (project.findProperty('k8sDeleteVm') ?: System.getenv('K8S_DELETE_VM') ?: 'true').toString()
 def k8sDeleteKubeconfig = (project.findProperty('k8sDeleteKubeconfig') ?: System.getenv('K8S_DELETE_KUBECONFIG') ?: 'true').toString()
 def k8sCpus = project.findProperty('k8sCpus') ?: System.getenv('CPUS')
@@ -44,7 +44,7 @@ def k8sRemoteDir = project.findProperty('k8sRemoteDir') ?: System.getenv('REMOTE
 def k8sEnv = [
         VM_NAME: k8sVmName,
         KIND_CLUSTER: k8sKindCluster,
-        MCFAAS_E2E_NAMESPACE: k8sNamespace
+        NANOFAAS_E2E_NAMESPACE: k8sNamespace
 ]
 if (k8sCpus) {
     k8sEnv.CPUS = k8sCpus.toString()
@@ -84,9 +84,9 @@ tasks.register('k8sE2eTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     dependsOn 'bootJar', ':function-runtime:bootJar', 'k8sBuildLoadImages'
     environment 'KUBECONFIG', k8sKubeconfig
-    environment 'MCFAAS_E2E_NAMESPACE', k8sNamespace
+    environment 'NANOFAAS_E2E_NAMESPACE', k8sNamespace
     filter {
-        includeTestsMatching 'com.mcfaas.controlplane.e2e.K8sE2eTest'
+        includeTestsMatching 'com.nanofaas.controlplane.e2e.K8sE2eTest'
     }
 }
 
@@ -121,7 +121,7 @@ tasks.named('processAotTestResources') { enabled = false }
 tasks.named('aotTestClasses') { enabled = false }
 
 bootBuildImage {
-    imageName = project.findProperty('controlPlaneImage') ?: (System.getenv('CONTROL_PLANE_IMAGE') ?: 'mcfaas/control-plane:buildpack')
+    imageName = project.findProperty('controlPlaneImage') ?: (System.getenv('CONTROL_PLANE_IMAGE') ?: 'nanofaas/control-plane:buildpack')
     // Use tiny builder optimized for native images
     builder = 'paketobuildpacks/builder-jammy-tiny:latest'
     runImage = 'paketobuildpacks/run-jammy-tiny:latest'

@@ -25,7 +25,7 @@
 ## Labels & Annotations
 
 - Labels:
-  - app=mcfaas
+  - app=nanofaas
   - function=<name>
   - executionId=<id>
 - Annotations:

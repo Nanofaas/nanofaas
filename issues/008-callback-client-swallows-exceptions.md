@@ -270,10 +270,10 @@ void invoke_whenCallbackFails_stillReturnsSuccess() {
 
 ## File da Modificare
 
-1. `function-runtime/src/main/java/com/mcfaas/runtime/core/CallbackClient.java`
-2. `function-runtime/src/main/java/com/mcfaas/runtime/api/InvokeController.java`
-3. `function-runtime/src/test/java/com/mcfaas/runtime/core/CallbackClientTest.java` (nuovo)
-4. `function-runtime/src/test/java/com/mcfaas/runtime/api/InvokeControllerTest.java` (estendere)
+1. `function-runtime/src/main/java/com/nanofaas/runtime/core/CallbackClient.java`
+2. `function-runtime/src/main/java/com/nanofaas/runtime/api/InvokeController.java`
+3. `function-runtime/src/test/java/com/nanofaas/runtime/core/CallbackClientTest.java` (nuovo)
+4. `function-runtime/src/test/java/com/nanofaas/runtime/api/InvokeControllerTest.java` (estendere)
 
 ## Criteri di Accettazione
 

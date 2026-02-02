@@ -1,4 +1,4 @@
-# Issue Tracker - mcFaas
+# Issue Tracker - nanofaas
 
 Questo documento elenca tutte le issue identificate durante l'analisi del codebase, ordinate per priorità di risoluzione.
 
@@ -88,4 +88,4 @@ Ogni file issue contiene:
 
 ---
 
-_Documento generato il 2026-01-25 durante analisi del codebase mcFaas_
+_Documento generato il 2026-01-25 durante analisi del codebase nanofaas_

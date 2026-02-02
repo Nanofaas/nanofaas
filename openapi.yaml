@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: mcFaas Control Plane API
+  title: nanofaas Control Plane API
   version: 0.5.0
   description: |
     Minimal FaaS control plane API for function registration and invocation.

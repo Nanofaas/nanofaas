@@ -127,14 +127,14 @@ void remoteDispatch_whenCallbackFails_retriesCallback() {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/Scheduler.java`
-2. `control-plane/src/main/java/com/mcfaas/controlplane/core/Metrics.java` (nuova metrica)
-3. `control-plane/src/test/java/com/mcfaas/controlplane/core/SchedulerRemoteDispatchTest.java` (nuovo)
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/Scheduler.java`
+2. `control-plane/src/main/java/com/nanofaas/controlplane/core/Metrics.java` (nuova metrica)
+3. `control-plane/src/test/java/com/nanofaas/controlplane/core/SchedulerRemoteDispatchTest.java` (nuovo)
 
 ## Criteri di Accettazione
 
 - [ ] Il dispatch REMOTE logga quando il Job viene creato
-- [ ] Metrica `mcfaas_job_created_total` emessa
+- [ ] Metrica `nanofaas_job_created_total` emessa
 - [ ] Test per callback success passa
 - [ ] Test per callback timeout passa
 - [ ] Test per job creation failure passa

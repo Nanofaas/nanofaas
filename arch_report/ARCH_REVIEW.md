@@ -1,4 +1,4 @@
-# Architectural Review: mcFaas
+# Architectural Review: nanofaas
 
 **Date:** 2026-01-25
 **Reviewer:** Principal Software Architect (Gemini)
@@ -7,7 +7,7 @@
 ## 1. Executive Summary
 
 1.  **Architecture Violation:** Critical duplication of `InvocationResult` between `control-plane` and `common`.
-2.  **Organization:** The `control-plane` module suffers from a "Dumping Ground" anti-pattern in the `com.mcfaas.controlplane.core` package (27 mixed-concern files).
+2.  **Organization:** The `control-plane` module suffers from a "Dumping Ground" anti-pattern in the `com.nanofaas.controlplane.core` package (27 mixed-concern files).
 3.  **Encapsulation:** `QueueManager` leaks internal state (`FunctionQueueState` collections) to the `Scheduler`, creating tight coupling.
 4.  **Complexity:** `Scheduler` manages thread lifecycle, looping logic, and business dispatch logic simultaneously.
 5.  **Configuration:** Inconsistent placement of configuration classes (some in `config`, some in `core`).
@@ -23,7 +23,7 @@
 *   **`common`**: Shared DTOs (`InvocationRequest`, `FunctionSpec`) and interfaces.
 *   **`control-plane`**:
     *   **Entry Point**: `ControlPlaneApplication` (WebFlux).
-    *   **Core**: `com.mcfaas.controlplane.core` (The "Bucket"). Contains Registry, Queue, Scheduler, Dispatchers, Services.
+    *   **Core**: `com.nanofaas.controlplane.core` (The "Bucket"). Contains Registry, Queue, Scheduler, Dispatchers, Services.
     *   **API**: `FunctionController` (Management), `InvocationController` (Traffic).
 *   **`function-runtime`**:
     *   **Entry Point**: `FunctionRuntimeApplication` (WebMvc).
@@ -59,12 +59,12 @@ We will adopt a **Package-by-Feature** (or Component) structure within the `cont
 ### Boundaries & Rules
 1.  **`common`**: Pure DTOs. No Spring dependencies (keep it lightweight).
 2.  **`control-plane`**:
-    *   `com.mcfaas.controlplane.registry`: `FunctionRegistry`, `FunctionService`.
-    *   `com.mcfaas.controlplane.queue`: `QueueManager`, `FunctionQueueState`.
-    *   `com.mcfaas.controlplane.scheduler`: `Scheduler`, `InvocationTask`.
-    *   `com.mcfaas.controlplane.dispatch`: `Dispatcher`, `KubernetesDispatcher`, `LocalDispatcher`, `PoolDispatcher`.
-    *   `com.mcfaas.controlplane.web`: Controllers.
-    *   `com.mcfaas.controlplane.config`: All `@Configuration` and `@ConfigurationProperties`.
+    *   `com.nanofaas.controlplane.registry`: `FunctionRegistry`, `FunctionService`.
+    *   `com.nanofaas.controlplane.queue`: `QueueManager`, `FunctionQueueState`.
+    *   `com.nanofaas.controlplane.scheduler`: `Scheduler`, `InvocationTask`.
+    *   `com.nanofaas.controlplane.dispatch`: `Dispatcher`, `KubernetesDispatcher`, `LocalDispatcher`, `PoolDispatcher`.
+    *   `com.nanofaas.controlplane.web`: Controllers.
+    *   `com.nanofaas.controlplane.config`: All `@Configuration` and `@ConfigurationProperties`.
 
 ## 5. Refactoring Roadmap
 

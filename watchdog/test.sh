@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# mcFaas Watchdog Test Runner
+# nanofaas Watchdog Test Runner
 #
 # Builds the test image and runs all integration tests using Apple container.
 #
@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Configuration
-IMAGE_NAME="mcfaas/watchdog-test"
+IMAGE_NAME="nanofaas/watchdog-test"
 IMAGE_TAG="latest"
 
 # Colors
@@ -119,7 +119,7 @@ usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
 
-Run integration tests for the mcFaas watchdog.
+Run integration tests for the nanofaas watchdog.
 
 Options:
     --build         Force rebuild test image

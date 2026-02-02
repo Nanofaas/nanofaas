@@ -100,7 +100,7 @@ public class KubernetesDispatcher implements Dispatcher {
 
 ```yaml
 # application.yml
-mcfaas:
+nanofaas:
   k8s:
     namespace: ""
     callbackUrl: "http://control-plane.default.svc.cluster.local:8080/v1/internal/executions"
@@ -109,7 +109,7 @@ mcfaas:
 
 ```java
 // KubernetesProperties.java
-@ConfigurationProperties(prefix = "mcfaas.k8s")
+@ConfigurationProperties(prefix = "nanofaas.k8s")
 public record KubernetesProperties(
     String namespace,
     String callbackUrl,
@@ -144,14 +144,14 @@ public class KubernetesClientConfig {
 ```java
 // Metrics.java
 public void k8sJobCreationLatency(String functionName, long latencyMs) {
-    Timer.builder("mcfaas_k8s_job_creation_latency_ms")
+    Timer.builder("nanofaas_k8s_job_creation_latency_ms")
         .tag("function", functionName)
         .register(registry)
         .record(latencyMs, TimeUnit.MILLISECONDS);
 }
 
 public void k8sJobCreationError(String functionName, String errorType) {
-    Counter.builder("mcfaas_k8s_job_creation_errors")
+    Counter.builder("nanofaas_k8s_job_creation_errors")
         .tag("function", functionName)
         .tag("error_type", errorType)  // TIMEOUT, API_ERROR, etc.
         .register(registry)
@@ -263,12 +263,12 @@ void dispatch_onTimeout_recordsErrorMetric() {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/KubernetesDispatcher.java`
-2. `control-plane/src/main/java/com/mcfaas/controlplane/config/KubernetesProperties.java`
-3. `control-plane/src/main/java/com/mcfaas/controlplane/config/KubernetesClientConfig.java` (nuovo o esistente)
-4. `control-plane/src/main/java/com/mcfaas/controlplane/core/Metrics.java`
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/KubernetesDispatcher.java`
+2. `control-plane/src/main/java/com/nanofaas/controlplane/config/KubernetesProperties.java`
+3. `control-plane/src/main/java/com/nanofaas/controlplane/config/KubernetesClientConfig.java` (nuovo o esistente)
+4. `control-plane/src/main/java/com/nanofaas/controlplane/core/Metrics.java`
 5. `control-plane/src/main/resources/application.yml`
-6. `control-plane/src/test/java/com/mcfaas/controlplane/core/KubernetesDispatcherTest.java` (estendere)
+6. `control-plane/src/test/java/com/nanofaas/controlplane/core/KubernetesDispatcherTest.java` (estendere)
 
 ## Criteri di Accettazione
 

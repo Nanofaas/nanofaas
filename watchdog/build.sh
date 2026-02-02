@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build script for mcFaas watchdog using Apple container/buildx
+# Build script for nanofaas watchdog using Apple container/buildx
 #
 # Prerequisites:
 #   - container (brew install container) OR docker with buildx
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Configuration
-IMAGE_NAME="${IMAGE_NAME:-mcfaas/watchdog}"
+IMAGE_NAME="${IMAGE_NAME:-nanofaas/watchdog}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 REGISTRY="${REGISTRY:-}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
@@ -106,11 +106,11 @@ build_with_docker() {
     fi
 
     # Ensure buildx builder exists
-    if ! docker buildx inspect mcfaas-builder &> /dev/null; then
+    if ! docker buildx inspect nanofaas-builder &> /dev/null; then
         log_info "Creating buildx builder..."
-        docker buildx create --name mcfaas-builder --use --bootstrap
+        docker buildx create --name nanofaas-builder --use --bootstrap
     else
-        docker buildx use mcfaas-builder
+        docker buildx use nanofaas-builder
     fi
 
     # Use simple Dockerfile for multi-arch (QEMU emulation, more reliable)
@@ -159,7 +159,7 @@ build_local() {
     # Build release
     cargo build --release
 
-    local binary="target/release/mcfaas-watchdog"
+    local binary="target/release/nanofaas-watchdog"
     local size=$(du -h "$binary" | cut -f1)
 
     log_info "Built: $binary ($size)"
@@ -195,7 +195,7 @@ build_local_musl() {
     # Build with musl
     cargo build --release --target "$target"
 
-    local binary="target/${target}/release/mcfaas-watchdog"
+    local binary="target/${target}/release/nanofaas-watchdog"
     local size=$(du -h "$binary" | cut -f1)
 
     log_info "Built: $binary ($size)"
@@ -238,7 +238,7 @@ usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
 
-Build the mcFaas watchdog container image.
+Build the nanofaas watchdog container image.
 
 Options:
     --local         Build locally with Cargo (requires Rust)
@@ -251,7 +251,7 @@ Options:
     --help          Show this help message
 
 Environment Variables:
-    IMAGE_NAME      Image name (default: mcfaas/watchdog)
+    IMAGE_NAME      Image name (default: nanofaas/watchdog)
     IMAGE_TAG       Image tag (default: latest)
     REGISTRY        Registry prefix (default: none)
     PLATFORMS       Target platforms (default: linux/amd64,linux/arm64)

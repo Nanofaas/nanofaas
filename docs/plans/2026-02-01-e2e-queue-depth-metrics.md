@@ -13,13 +13,13 @@
 ## Task 1: Add function_inFlight Gauge to QueueManager
 
 **Files:**
-- Modify: `control-plane/src/main/java/com/mcfaas/controlplane/queue/QueueManager.java`
+- Modify: `control-plane/src/main/java/com/nanofaas/controlplane/queue/QueueManager.java`
 
 **Step 1: Read the current QueueManager implementation**
 
 Run:
 ```bash
-cat control-plane/src/main/java/com/mcfaas/controlplane/queue/QueueManager.java
+cat control-plane/src/main/java/com/nanofaas/controlplane/queue/QueueManager.java
 ```
 
 **Step 2: Add inFlight gauge registration after the queue_depth gauge**
@@ -44,7 +44,7 @@ Expected: BUILD SUCCESSFUL
 **Step 4: Commit**
 
 ```bash
-git add control-plane/src/main/java/com/mcfaas/controlplane/queue/QueueManager.java
+git add control-plane/src/main/java/com/nanofaas/controlplane/queue/QueueManager.java
 git commit -m "feat(metrics): add function_inFlight gauge for concurrent execution tracking"
 ```
 
@@ -266,9 +266,9 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh
 
 Debug commands:
 ```bash
-multipass shell mcfaas-k3s-e2e-<timestamp>
-kubectl get pods -n mcfaas-e2e
-kubectl exec -n mcfaas-e2e <control-plane-pod> -- curl -s http://localhost:8081/actuator/prometheus | grep function_
+multipass shell nanofaas-k3s-e2e-<timestamp>
+kubectl get pods -n nanofaas-e2e
+kubectl exec -n nanofaas-e2e <control-plane-pod> -- curl -s http://localhost:8081/actuator/prometheus | grep function_
 ```
 
 **Step 3: Commit after successful test**

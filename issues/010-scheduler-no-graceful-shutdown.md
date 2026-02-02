@@ -43,7 +43,7 @@ public class Scheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "mcfaas-scheduler");
+        Thread t = new Thread(r, "nanofaas-scheduler");
         t.setDaemon(false);  // Non daemon per permettere graceful shutdown
         return t;
     });
@@ -177,7 +177,7 @@ private boolean hasInFlightTasks() {
 
 ```yaml
 # application.yml
-mcfaas:
+nanofaas:
   scheduler:
     shutdownTimeoutSeconds: 30
 ```
@@ -264,7 +264,7 @@ void scheduler_usesNamedThread() throws Exception {
 
     // Trova il thread
     Thread schedulerThread = Thread.getAllStackTraces().keySet().stream()
-        .filter(t -> t.getName().equals("mcfaas-scheduler"))
+        .filter(t -> t.getName().equals("nanofaas-scheduler"))
         .findFirst()
         .orElse(null);
 
@@ -276,13 +276,13 @@ void scheduler_usesNamedThread() throws Exception {
 
 ## File da Modificare
 
-1. `control-plane/src/main/java/com/mcfaas/controlplane/core/Scheduler.java`
+1. `control-plane/src/main/java/com/nanofaas/controlplane/core/Scheduler.java`
 2. `control-plane/src/main/resources/application.yml` (opzionale)
-3. `control-plane/src/test/java/com/mcfaas/controlplane/core/SchedulerShutdownTest.java` (nuovo)
+3. `control-plane/src/test/java/com/nanofaas/controlplane/core/SchedulerShutdownTest.java` (nuovo)
 
 ## Criteri di Accettazione
 
-- [ ] Thread ha nome "mcfaas-scheduler"
+- [ ] Thread ha nome "nanofaas-scheduler"
 - [ ] `stop()` aspetta che il loop termini (con timeout)
 - [ ] In-flight tasks vengono completati durante shutdown (best effort)
 - [ ] Timeout configurabile (default 30s)

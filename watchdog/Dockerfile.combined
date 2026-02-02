@@ -1,7 +1,7 @@
 # Combined image: Rust watchdog + Java function runtime
 #
 # Usage:
-#   docker build -f Dockerfile.combined -t mcfaas/function-runtime:watchdog ..
+#   docker build -f Dockerfile.combined -t nanofaas/function-runtime:watchdog ..
 
 # Stage 1: Build Rust watchdog
 FROM rust:1.83-alpine AS watchdog-builder
@@ -34,7 +34,7 @@ RUN apk add --no-cache tini
 WORKDIR /app
 
 # Copy watchdog binary
-COPY --from=watchdog-builder /build/target/release/mcfaas-watchdog /usr/local/bin/watchdog
+COPY --from=watchdog-builder /build/target/release/nanofaas-watchdog /usr/local/bin/watchdog
 
 # Copy Java runtime
 COPY --from=java-builder /build/function-runtime/build/libs/*.jar /app/app.jar

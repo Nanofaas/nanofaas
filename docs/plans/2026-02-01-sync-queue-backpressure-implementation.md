@@ -15,14 +15,14 @@
 ### Task 1: Sync queue configuration properties and defaults
 
 **Files:**
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/config/SyncQueueProperties.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/config/SyncQueueProperties.java`
 - Modify: `control-plane/src/main/resources/application.yml`
-- Test: `control-plane/src/test/java/com/mcfaas/controlplane/config/SyncQueuePropertiesTest.java`
+- Test: `control-plane/src/test/java/com/nanofaas/controlplane/config/SyncQueuePropertiesTest.java`
 
 **Step 1: Write the failing test**
 
 ```java
-package com.mcfaas.controlplane.config;
+package com.nanofaas.controlplane.config;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
@@ -65,13 +65,13 @@ class SyncQueuePropertiesTest {
 
 **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.config.SyncQueuePropertiesTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.config.SyncQueuePropertiesTest`  
 Expected: FAIL with "cannot find symbol: class SyncQueueProperties".
 
 **Step 3: Write minimal implementation**
 
 ```java
-package com.mcfaas.controlplane.config;
+package com.nanofaas.controlplane.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -109,15 +109,15 @@ syncQueue:
 
 **Step 5: Run test to verify it passes**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.config.SyncQueuePropertiesTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.config.SyncQueuePropertiesTest`  
 Expected: PASS.
 
 **Step 6: Commit**
 
 ```bash
-git add control-plane/src/main/java/com/mcfaas/controlplane/config/SyncQueueProperties.java \
+git add control-plane/src/main/java/com/nanofaas/controlplane/config/SyncQueueProperties.java \
   control-plane/src/main/resources/application.yml \
-  control-plane/src/test/java/com/mcfaas/controlplane/config/SyncQueuePropertiesTest.java
+  control-plane/src/test/java/com/nanofaas/controlplane/config/SyncQueuePropertiesTest.java
 git commit -m "feat: add sync queue config properties"
 ```
 
@@ -126,17 +126,17 @@ git commit -m "feat: add sync queue config properties"
 ### Task 2: Wait estimator + admission controller
 
 **Files:**
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/WaitEstimator.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueAdmissionController.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueAdmissionResult.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueRejectReason.java`
-- Test: `control-plane/src/test/java/com/mcfaas/controlplane/sync/WaitEstimatorTest.java`
-- Test: `control-plane/src/test/java/com/mcfaas/controlplane/sync/SyncQueueAdmissionControllerTest.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/WaitEstimator.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueAdmissionController.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueAdmissionResult.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueRejectReason.java`
+- Test: `control-plane/src/test/java/com/nanofaas/controlplane/sync/WaitEstimatorTest.java`
+- Test: `control-plane/src/test/java/com/nanofaas/controlplane/sync/SyncQueueAdmissionControllerTest.java`
 
 **Step 1: Write the failing tests (wait estimator)**
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
 import org.junit.jupiter.api.Test;
 
@@ -177,13 +177,13 @@ class WaitEstimatorTest {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.sync.WaitEstimatorTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.sync.WaitEstimatorTest`  
 Expected: FAIL with "cannot find symbol: class WaitEstimator".
 
 **Step 3: Write minimal implementation**
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -261,9 +261,9 @@ public class WaitEstimator {
 **Step 4: Write the failing tests (admission controller)**
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
-import com.mcfaas.controlplane.config.SyncQueueProperties;
+import com.nanofaas.controlplane.config.SyncQueueProperties;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -327,15 +327,15 @@ class SyncQueueAdmissionControllerTest {
 
 **Step 5: Run tests to verify they fail**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.sync.SyncQueueAdmissionControllerTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.sync.SyncQueueAdmissionControllerTest`  
 Expected: FAIL with "cannot find symbol: class SyncQueueAdmissionController".
 
 **Step 6: Write minimal implementation**
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
-import com.mcfaas.controlplane.config.SyncQueueProperties;
+import com.nanofaas.controlplane.config.SyncQueueProperties;
 
 import java.time.Instant;
 
@@ -362,7 +362,7 @@ public class SyncQueueAdmissionController {
 ```
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
 public record SyncQueueAdmissionResult(
         boolean accepted,
@@ -380,7 +380,7 @@ public record SyncQueueAdmissionResult(
 ```
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
 public enum SyncQueueRejectReason {
     DEPTH,
@@ -391,15 +391,15 @@ public enum SyncQueueRejectReason {
 
 **Step 7: Run tests to verify they pass**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.sync.WaitEstimatorTest \
-  --tests com.mcfaas.controlplane.sync.SyncQueueAdmissionControllerTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.sync.WaitEstimatorTest \
+  --tests com.nanofaas.controlplane.sync.SyncQueueAdmissionControllerTest`  
 Expected: PASS.
 
 **Step 8: Commit**
 
 ```bash
-git add control-plane/src/main/java/com/mcfaas/controlplane/sync \
-  control-plane/src/test/java/com/mcfaas/controlplane/sync
+git add control-plane/src/main/java/com/nanofaas/controlplane/sync \
+  control-plane/src/test/java/com/nanofaas/controlplane/sync
 git commit -m "feat: add sync queue admission and wait estimator"
 ```
 
@@ -408,24 +408,24 @@ git commit -m "feat: add sync queue admission and wait estimator"
 ### Task 3: Sync queue service, metrics, and exceptions
 
 **Files:**
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueItem.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueMetrics.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueRejectedException.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/sync/SyncQueueService.java`
-- Test: `control-plane/src/test/java/com/mcfaas/controlplane/sync/SyncQueueServiceTest.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueItem.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueMetrics.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueRejectedException.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/sync/SyncQueueService.java`
+- Test: `control-plane/src/test/java/com/nanofaas/controlplane/sync/SyncQueueServiceTest.java`
 
 **Step 1: Write the failing tests**
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
-import com.mcfaas.common.model.ExecutionMode;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.controlplane.config.SyncQueueProperties;
-import com.mcfaas.controlplane.execution.ExecutionRecord;
-import com.mcfaas.controlplane.execution.ExecutionStore;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import com.nanofaas.common.model.ExecutionMode;
+import com.nanofaas.common.model.FunctionSpec;
+import com.nanofaas.common.model.InvocationRequest;
+import com.nanofaas.controlplane.config.SyncQueueProperties;
+import com.nanofaas.controlplane.execution.ExecutionRecord;
+import com.nanofaas.controlplane.execution.ExecutionStore;
+import com.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -491,15 +491,15 @@ class SyncQueueServiceTest {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.sync.SyncQueueServiceTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.sync.SyncQueueServiceTest`  
 Expected: FAIL with "cannot find symbol: class SyncQueueService".
 
 **Step 3: Write minimal implementation**
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import com.nanofaas.controlplane.scheduler.InvocationTask;
 
 import java.time.Instant;
 
@@ -511,7 +511,7 @@ public record SyncQueueItem(
 ```
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
 public class SyncQueueRejectedException extends RuntimeException {
     private final SyncQueueRejectReason reason;
@@ -533,7 +533,7 @@ public class SyncQueueRejectedException extends RuntimeException {
 ```
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
@@ -615,13 +615,13 @@ public class SyncQueueMetrics {
 ```
 
 ```java
-package com.mcfaas.controlplane.sync;
+package com.nanofaas.controlplane.sync;
 
-import com.mcfaas.common.model.InvocationResult;
-import com.mcfaas.controlplane.config.SyncQueueProperties;
-import com.mcfaas.controlplane.execution.ExecutionRecord;
-import com.mcfaas.controlplane.execution.ExecutionStore;
-import com.mcfaas.controlplane.scheduler.InvocationTask;
+import com.nanofaas.common.model.InvocationResult;
+import com.nanofaas.controlplane.config.SyncQueueProperties;
+import com.nanofaas.controlplane.execution.ExecutionRecord;
+import com.nanofaas.controlplane.execution.ExecutionStore;
+import com.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -733,14 +733,14 @@ public class SyncQueueService {
 
 **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.sync.SyncQueueServiceTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.sync.SyncQueueServiceTest`  
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add control-plane/src/main/java/com/mcfaas/controlplane/sync \
-  control-plane/src/test/java/com/mcfaas/controlplane/sync/SyncQueueServiceTest.java
+git add control-plane/src/main/java/com/nanofaas/controlplane/sync \
+  control-plane/src/test/java/com/nanofaas/controlplane/sync/SyncQueueServiceTest.java
 git commit -m "feat: add sync queue service and metrics"
 ```
 
@@ -749,25 +749,25 @@ git commit -m "feat: add sync queue service and metrics"
 ### Task 4: Sync scheduler and shared concurrency slots
 
 **Files:**
-- Modify: `control-plane/src/main/java/com/mcfaas/controlplane/queue/QueueManager.java`
-- Create: `control-plane/src/main/java/com/mcfaas/controlplane/scheduler/SyncScheduler.java`
-- Test: `control-plane/src/test/java/com/mcfaas/controlplane/scheduler/SyncSchedulerTest.java`
+- Modify: `control-plane/src/main/java/com/nanofaas/controlplane/queue/QueueManager.java`
+- Create: `control-plane/src/main/java/com/nanofaas/controlplane/scheduler/SyncScheduler.java`
+- Test: `control-plane/src/test/java/com/nanofaas/controlplane/scheduler/SyncSchedulerTest.java`
 
 **Step 1: Write the failing test**
 
 ```java
-package com.mcfaas.controlplane.scheduler;
+package com.nanofaas.controlplane.scheduler;
 
-import com.mcfaas.common.model.ExecutionMode;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.controlplane.config.SyncQueueProperties;
-import com.mcfaas.controlplane.execution.ExecutionRecord;
-import com.mcfaas.controlplane.execution.ExecutionStore;
-import com.mcfaas.controlplane.queue.QueueManager;
-import com.mcfaas.controlplane.sync.SyncQueueMetrics;
-import com.mcfaas.controlplane.sync.SyncQueueService;
-import com.mcfaas.controlplane.sync.WaitEstimator;
+import com.nanofaas.common.model.ExecutionMode;
+import com.nanofaas.common.model.FunctionSpec;
+import com.nanofaas.common.model.InvocationRequest;
+import com.nanofaas.controlplane.config.SyncQueueProperties;
+import com.nanofaas.controlplane.execution.ExecutionRecord;
+import com.nanofaas.controlplane.execution.ExecutionStore;
+import com.nanofaas.controlplane.queue.QueueManager;
+import com.nanofaas.controlplane.sync.SyncQueueMetrics;
+import com.nanofaas.controlplane.sync.SyncQueueService;
+import com.nanofaas.controlplane.sync.WaitEstimator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -810,13 +810,13 @@ class SyncSchedulerTest {
 
 **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.scheduler.SyncSchedulerTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.scheduler.SyncSchedulerTest`  
 Expected: FAIL with "cannot find symbol: class SyncScheduler".
 
 **Step 3: Write minimal implementation**
 
 ```java
-package com.mcfaas.controlplane.queue;
+package com.nanofaas.controlplane.queue;
 
 public FunctionQueueState get(String functionName) {
     return queues.get(functionName);
@@ -836,11 +836,11 @@ public void releaseSlot(String functionName) {
 ```
 
 ```java
-package com.mcfaas.controlplane.scheduler;
+package com.nanofaas.controlplane.scheduler;
 
-import com.mcfaas.controlplane.queue.QueueManager;
-import com.mcfaas.controlplane.sync.SyncQueueItem;
-import com.mcfaas.controlplane.sync.SyncQueueService;
+import com.nanofaas.controlplane.queue.QueueManager;
+import com.nanofaas.controlplane.sync.SyncQueueItem;
+import com.nanofaas.controlplane.sync.SyncQueueService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -858,7 +858,7 @@ public class SyncScheduler implements org.springframework.context.SmartLifecycle
     private final SyncQueueService queue;
     private final Consumer<InvocationTask> dispatch;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "mcfaas-sync-scheduler");
+        Thread t = new Thread(r, "nanofaas-sync-scheduler");
         t.setDaemon(false);
         return t;
     });
@@ -867,7 +867,7 @@ public class SyncScheduler implements org.springframework.context.SmartLifecycle
 
     public SyncScheduler(QueueManager queueManager,
                          SyncQueueService queue,
-                         com.mcfaas.controlplane.service.InvocationService invocationService) {
+                         com.nanofaas.controlplane.service.InvocationService invocationService) {
         this(queueManager, queue, invocationService::dispatch);
     }
 
@@ -951,15 +951,15 @@ public class SyncScheduler implements org.springframework.context.SmartLifecycle
 
 **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.scheduler.SyncSchedulerTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.scheduler.SyncSchedulerTest`  
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add control-plane/src/main/java/com/mcfaas/controlplane/queue/QueueManager.java \
-  control-plane/src/main/java/com/mcfaas/controlplane/scheduler/SyncScheduler.java \
-  control-plane/src/test/java/com/mcfaas/controlplane/scheduler/SyncSchedulerTest.java
+git add control-plane/src/main/java/com/nanofaas/controlplane/queue/QueueManager.java \
+  control-plane/src/main/java/com/nanofaas/controlplane/scheduler/SyncScheduler.java \
+  control-plane/src/test/java/com/nanofaas/controlplane/scheduler/SyncSchedulerTest.java
 git commit -m "feat: add sync scheduler"
 ```
 
@@ -968,20 +968,20 @@ git commit -m "feat: add sync scheduler"
 ### Task 5: Wire sync queue into invocation flow + HTTP 429 headers
 
 **Files:**
-- Modify: `control-plane/src/main/java/com/mcfaas/controlplane/service/InvocationService.java`
-- Modify: `control-plane/src/main/java/com/mcfaas/controlplane/api/InvocationController.java`
-- Test: `control-plane/src/test/java/com/mcfaas/controlplane/SyncQueueBackpressureApiTest.java`
-- Modify: `control-plane/src/test/java/com/mcfaas/controlplane/service/InvocationServiceRetryTest.java`
+- Modify: `control-plane/src/main/java/com/nanofaas/controlplane/service/InvocationService.java`
+- Modify: `control-plane/src/main/java/com/nanofaas/controlplane/api/InvocationController.java`
+- Test: `control-plane/src/test/java/com/nanofaas/controlplane/SyncQueueBackpressureApiTest.java`
+- Modify: `control-plane/src/test/java/com/nanofaas/controlplane/service/InvocationServiceRetryTest.java`
 
 **Step 1: Write the failing test**
 
 ```java
-package com.mcfaas.controlplane;
+package com.nanofaas.controlplane;
 
-import com.mcfaas.common.model.ExecutionMode;
-import com.mcfaas.common.model.FunctionSpec;
-import com.mcfaas.common.model.InvocationRequest;
-import com.mcfaas.controlplane.registry.FunctionService;
+import com.nanofaas.common.model.ExecutionMode;
+import com.nanofaas.common.model.FunctionSpec;
+import com.nanofaas.common.model.InvocationRequest;
+import com.nanofaas.controlplane.registry.FunctionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -992,11 +992,11 @@ import java.util.Map;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "mcfaas.rate.maxPerSecond=1000",
-                "mcfaas.defaults.timeoutMs=2000",
-                "mcfaas.defaults.concurrency=2",
-                "mcfaas.defaults.queueSize=10",
-                "mcfaas.defaults.maxRetries=3",
+                "nanofaas.rate.maxPerSecond=1000",
+                "nanofaas.defaults.timeoutMs=2000",
+                "nanofaas.defaults.concurrency=2",
+                "nanofaas.defaults.queueSize=10",
+                "nanofaas.defaults.maxRetries=3",
                 "syncQueue.enabled=true",
                 "syncQueue.admissionEnabled=true",
                 "syncQueue.maxEstimatedWait=0s",
@@ -1045,7 +1045,7 @@ class SyncQueueBackpressureApiTest {
 
 **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.service.InvocationServiceRetryTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.service.InvocationServiceRetryTest`  
 Expected: FAIL with constructor mismatch or missing sync queue wiring.
 
 **Step 3: Write minimal implementation**
@@ -1113,16 +1113,16 @@ invocationService = new InvocationService(
 
 **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :control-plane:test --tests com.mcfaas.controlplane.SyncQueueBackpressureApiTest`  
+Run: `./gradlew :control-plane:test --tests com.nanofaas.controlplane.SyncQueueBackpressureApiTest`  
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add control-plane/src/main/java/com/mcfaas/controlplane/service/InvocationService.java \
-  control-plane/src/main/java/com/mcfaas/controlplane/api/InvocationController.java \
-  control-plane/src/test/java/com/mcfaas/controlplane/SyncQueueBackpressureApiTest.java \
-  control-plane/src/test/java/com/mcfaas/controlplane/service/InvocationServiceRetryTest.java
+git add control-plane/src/main/java/com/nanofaas/controlplane/service/InvocationService.java \
+  control-plane/src/main/java/com/nanofaas/controlplane/api/InvocationController.java \
+  control-plane/src/test/java/com/nanofaas/controlplane/SyncQueueBackpressureApiTest.java \
+  control-plane/src/test/java/com/nanofaas/controlplane/service/InvocationServiceRetryTest.java
 git commit -m "feat: route sync invoke through sync queue"
 ```
 

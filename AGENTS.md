@@ -17,14 +17,14 @@
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
 - `./gradlew :function-runtime:bootRun` — run the function runtime locally.
 - `./gradlew :control-plane:bootBuildImage` and `:function-runtime:bootBuildImage` — create buildpack images.
-- `python-runtime/build.sh` or `docker build -t mcfaas/python-runtime python-runtime/` — build Python runtime image.
+- `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/` — build Python runtime image.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `scripts/e2e.sh` and `scripts/e2e-buildpack.sh` — run local E2E suites.
 - `scripts/setup-multipass-kind.sh` + `scripts/kind-build-load.sh` — provision a kind cluster in Multipass and load images.
 
 ## Coding Style & Naming Conventions
 
-- Java 21 toolchain; 4-space indentation; `com.mcfaas` package root.
+- Java 21 toolchain; 4-space indentation; `com.nanofaas` package root.
 - Class names `PascalCase`, methods/fields `camelCase`, constants `SCREAMING_SNAKE_CASE`.
 - Configuration lives in `control-plane/src/main/resources/application.yml` and `function-runtime/src/main/resources/application.yml`.
 

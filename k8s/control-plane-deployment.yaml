@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mcfaas-control-plane
-  namespace: mcfaas
+  name: nanofaas-control-plane
+  namespace: nanofaas
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mcfaas-control-plane
+      app: nanofaas-control-plane
   template:
     metadata:
       labels:
-        app: mcfaas-control-plane
+        app: nanofaas-control-plane
     spec:
-      serviceAccountName: mcfaas-control-plane
+      serviceAccountName: nanofaas-control-plane
       containers:
         - name: control-plane
-          image: mcfaas/control-plane:0.5.0
+          image: nanofaas/control-plane:0.5.0
           ports:
             - containerPort: 8080
             - containerPort: 8081

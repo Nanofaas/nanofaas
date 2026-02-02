@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Create a comprehensive E2E test that deploys mcFaas to k3s, verifies health/readiness, deploys a function, and uses a curl container to verify function invocation - all in an ephemeral Multipass VM.
+**Goal:** Create a comprehensive E2E test that deploys nanofaas to k3s, verifies health/readiness, deploys a function, and uses a curl container to verify function invocation - all in an ephemeral Multipass VM.
 
 **Architecture:** The test uses a self-contained Multipass VM with k3s. The test script builds images locally in the VM, imports them to k3s, deploys control-plane and function-runtime as Kubernetes Deployments with proper health probes, then uses a Kubernetes Job with curl to invoke the function from within the cluster. The VM is deleted on exit.
 
@@ -22,13 +22,13 @@
 set -euo pipefail
 
 # Configuration with defaults
-VM_NAME=${VM_NAME:-mcfaas-k3s-e2e-$(date +%s)}
+VM_NAME=${VM_NAME:-nanofaas-k3s-e2e-$(date +%s)}
 CPUS=${CPUS:-4}
 MEMORY=${MEMORY:-8G}
 DISK=${DISK:-30G}
-NAMESPACE=${NAMESPACE:-mcfaas-e2e}
-CONTROL_IMAGE="mcfaas/control-plane:e2e"
-RUNTIME_IMAGE="mcfaas/function-runtime:e2e"
+NAMESPACE=${NAMESPACE:-nanofaas-e2e}
+CONTROL_IMAGE="nanofaas/control-plane:e2e"
+RUNTIME_IMAGE="nanofaas/function-runtime:e2e"
 KEEP_VM=${KEEP_VM:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -178,21 +178,21 @@ Append to the script:
 ```bash
 sync_project() {
     log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/mcfaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/mcfaas"
+    vm_exec "rm -rf /home/ubuntu/nanofaas"
+    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
     log "Project synced"
 }
 
 build_jars() {
     log "Building JARs in VM..."
-    vm_exec "cd /home/ubuntu/mcfaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
+    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
     log "JARs built"
 }
 
 build_images() {
     log "Building Docker images in VM..."
-    vm_exec "cd /home/ubuntu/mcfaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd /home/ubuntu/mcfaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
+    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
     log "Docker images built"
 }
 
@@ -832,9 +832,9 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh
 
 Then SSH into VM:
 ```bash
-multipass shell mcfaas-k3s-e2e-<timestamp>
-kubectl get pods -n mcfaas-e2e
-kubectl logs -n mcfaas-e2e deployment/control-plane
+multipass shell nanofaas-k3s-e2e-<timestamp>
+kubectl get pods -n nanofaas-e2e
+kubectl logs -n nanofaas-e2e deployment/control-plane
 ```
 
 **Step 3: Final commit after successful test**
@@ -852,7 +852,7 @@ This plan creates a comprehensive E2E test that:
 
 1. **Creates an ephemeral Multipass VM** with k3s
 2. **Builds and imports Docker images** into k3s containerd
-3. **Deploys mcFaas components** with proper readiness/liveness probes
+3. **Deploys nanofaas components** with proper readiness/liveness probes
 4. **Verifies health endpoints** (/actuator/health, /liveness, /readiness)
 5. **Registers a test function** via the control-plane API
 6. **Invokes the function using a curl container** inside the cluster
