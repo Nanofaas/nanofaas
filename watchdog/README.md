@@ -90,6 +90,58 @@ INPUT_FILE=/tmp/input.json
 OUTPUT_FILE=/tmp/output.json
 ```
 
+### WARM Mode (OpenWhisk-style)
+For long-running runtimes that handle multiple sequential invocations. The container stays alive and processes requests one at a time.
+
+```
+Control Plane                    Watchdog                    Runtime
+    │                               │                           │
+    │── POST /invoke ──────────────►│                           │
+    │   {execution_id, payload}     ├── POST /invoke ──────────►│
+    │                               │◄─────────── {response} ───┤
+    │◄───────── {response} ─────────┤                           │
+    │                               │                           │
+    │── POST /invoke ──────────────►│  (same container!)        │
+    │   {execution_id, payload}     ├── POST /invoke ──────────►│
+    │                               │◄─────────── {response} ───┤
+    │◄───────── {response} ─────────┤                           │
+```
+
+**Environment:**
+```bash
+EXECUTION_MODE=WARM
+WATCHDOG_CMD="java -jar /app/app.jar"
+RUNTIME_URL=http://127.0.0.1:8080/invoke
+HEALTH_URL=http://127.0.0.1:8080/health
+WARM_PORT=8080
+WARM_IDLE_TIMEOUT_MS=300000  # 5 min idle timeout (not yet implemented)
+WARM_MAX_INVOCATIONS=0       # unlimited (not yet implemented)
+```
+
+**Watchdog API (warm mode):**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check, returns 200 OK |
+| `/invoke` | POST | Invoke function with JSON payload |
+
+**Invoke Request Format:**
+```json
+{
+  "execution_id": "exec-123",
+  "callback_url": "http://control-plane:8080/v1/internal/executions",
+  "trace_id": "trace-456",
+  "payload": {"input": "..."},
+  "timeout_ms": 30000
+}
+```
+
+**Key Differences from HTTP Mode:**
+- Watchdog exposes HTTP server instead of consuming ENV payload
+- Runtime stays alive between invocations (warm start)
+- Each invocation gets its own `execution_id` via request body
+- Suitable for latency-sensitive workloads
+
 ## Examples
 
 ### Java (Spring Boot)
@@ -236,7 +288,7 @@ process.stdin.on('end', () => {
 |----------|----------|---------|-------------|
 | `EXECUTION_ID` | Yes | - | Unique execution identifier |
 | `CALLBACK_URL` | Yes | - | Control plane callback URL |
-| `EXECUTION_MODE` | No | HTTP | `HTTP`, `STDIO`, or `FILE` |
+| `EXECUTION_MODE` | No | HTTP | `HTTP`, `STDIO`, `FILE`, or `WARM` |
 | `TIMEOUT_MS` | No | 30000 | Function timeout in milliseconds |
 | `TRACE_ID` | No | - | Distributed tracing ID |
 | `WATCHDOG_CMD` | No | `java -jar /app/app.jar` | Command to run |
@@ -246,6 +298,9 @@ process.stdin.on('end', () => {
 | `INPUT_FILE` | No | `/tmp/input.json` | Input file (FILE mode) |
 | `OUTPUT_FILE` | No | `/tmp/output.json` | Output file (FILE mode) |
 | `INVOCATION_PAYLOAD` | No | `null` | JSON payload |
+| `WARM_PORT` | No | 8080 | HTTP port for warm mode server |
+| `WARM_IDLE_TIMEOUT_MS` | No | 300000 | Idle timeout before shutdown (not implemented) |
+| `WARM_MAX_INVOCATIONS` | No | 0 | Max invocations before restart (not implemented) |
 
 ## Callback Format
 
