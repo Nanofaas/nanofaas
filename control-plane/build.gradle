@@ -27,6 +27,8 @@ tasks.named('test') {
     useJUnitPlatform()
     dependsOn 'bootJar'
     dependsOn ':function-runtime:bootJar'
+    dependsOn ':examples:java:word-stats:bootJar'
+    dependsOn ':examples:java:json-transform:bootJar'
 }
 
 def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-kind').toString()

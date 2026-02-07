@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.runtime.core;
+package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
 import org.springframework.context.ApplicationContext;

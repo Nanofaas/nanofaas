@@ -46,6 +46,7 @@ class E2eFlowTest {
             .withExposedPorts(8080, 8081)
             .withNetwork(network)
             .withNetworkAliases("control-plane")
+            .withEnv("SYNC_QUEUE_ENABLED", "false")
             .waitingFor(Wait.forHttp("/actuator/health").forPort(8081).withStartupTimeout(Duration.ofSeconds(60)));
 
     @BeforeAll

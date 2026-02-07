@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.runtime.core;
 
+import it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;

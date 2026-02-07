@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.runtime.core;
+package it.unimib.datai.nanofaas.sdk.runtime;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
