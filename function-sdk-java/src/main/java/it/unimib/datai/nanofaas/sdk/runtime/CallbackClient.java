@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.runtime.core;
+package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import org.slf4j.Logger;
@@ -30,26 +30,10 @@ public class CallbackClient {
         this.baseUrl = baseUrl;
     }
 
-    /**
-     * Sends the execution result to the control plane with retry.
-     * Uses TRACE_ID from environment variable if available.
-     *
-     * @param executionId the execution ID
-     * @param result the invocation result
-     * @return true if callback was sent successfully, false otherwise
-     */
     public boolean sendResult(String executionId, InvocationResult result) {
         return sendResult(executionId, result, null);
     }
 
-    /**
-     * Sends the execution result to the control plane with retry.
-     *
-     * @param executionId the execution ID
-     * @param result the invocation result
-     * @param traceId the trace ID to propagate (optional, falls back to TRACE_ID env var if null)
-     * @return true if callback was sent successfully, false otherwise
-     */
     public boolean sendResult(String executionId, InvocationResult result, String traceId) {
         if (baseUrl == null || baseUrl.isBlank()) {
             log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);

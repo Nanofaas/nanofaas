@@ -1,10 +1,8 @@
-package it.unimib.datai.nanofaas.runtime.api;
+package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
-import it.unimib.datai.nanofaas.runtime.core.CallbackClient;
-import it.unimib.datai.nanofaas.runtime.core.HandlerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;

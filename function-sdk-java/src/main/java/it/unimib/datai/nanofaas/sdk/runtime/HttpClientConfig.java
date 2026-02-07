@@ -1,14 +1,10 @@
-package it.unimib.datai.nanofaas.runtime.config;
+package it.unimib.datai.nanofaas.sdk.runtime;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-/**
- * Configuration for HTTP clients used by the function runtime.
- * Provides properly configured RestClient bean with timeouts.
- */
 @Configuration
 public class HttpClientConfig {
 

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.runtime.core;
 
+import it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;
@@ -16,8 +17,6 @@ class TraceLoggingFilterHeaderPriorityTest {
 
     @Test
     void executionId_fromHeader_takesPriorityOverEnv() throws ServletException, IOException {
-        // The env var EXECUTION_ID is cached at construction time.
-        // When the header X-Execution-Id is provided, it should override the env value.
         TraceLoggingFilter filter = new TraceLoggingFilter();
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Execution-Id", "header-exec-123");
@@ -29,13 +28,11 @@ class TraceLoggingFilterHeaderPriorityTest {
         filter.doFilter(request, response, chain);
 
         assertThat(seen.get()).isEqualTo("header-exec-123");
-        // MDC is cleaned up after filter
         assertThat(MDC.get("executionId")).isNull();
     }
 
     @Test
     void executionId_noHeader_fallsBackToEnv() throws ServletException, IOException {
-        // Without the header, the filter should use the env var (which is null in test).
         TraceLoggingFilter filter = new TraceLoggingFilter();
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -45,7 +42,6 @@ class TraceLoggingFilterHeaderPriorityTest {
 
         filter.doFilter(request, response, chain);
 
-        // In test env, EXECUTION_ID env var is null, so executionId should be null
         assertThat(seen.get()).isNull();
     }
 
@@ -68,7 +64,6 @@ class TraceLoggingFilterHeaderPriorityTest {
 
         assertThat(seenTrace.get()).isEqualTo("trace-abc");
         assertThat(seenExec.get()).isEqualTo("exec-xyz");
-        // Both cleaned up
         assertThat(MDC.get("traceId")).isNull();
         assertThat(MDC.get("executionId")).isNull();
     }

@@ -12,5 +12,8 @@ plugins {
 rootProject.name = 'nanofaas'
 
 include('common')
+include('function-sdk-java')
 include('control-plane')
 include('function-runtime')
+include('examples:java:word-stats')
+include('examples:java:json-transform')

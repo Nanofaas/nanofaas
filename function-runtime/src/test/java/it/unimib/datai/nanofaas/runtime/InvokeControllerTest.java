@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.runtime;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.runtime.core.CallbackClient;
+import it.unimib.datai.nanofaas.sdk.runtime.CallbackClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
