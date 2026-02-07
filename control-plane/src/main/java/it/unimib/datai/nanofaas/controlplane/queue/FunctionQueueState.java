@@ -66,7 +66,7 @@ public class FunctionQueueState {
      * Releases a dispatch slot. Must be called after dispatch completes.
      */
     public void releaseSlot() {
-        inFlight.decrementAndGet();
+        inFlight.getAndUpdate(v -> Math.max(0, v - 1));
     }
 
     /**
@@ -90,7 +90,7 @@ public class FunctionQueueState {
      */
     @Deprecated
     public void decrementInFlight() {
-        inFlight.decrementAndGet();
+        inFlight.getAndUpdate(v -> Math.max(0, v - 1));
     }
 
     public void concurrency(int concurrency) {

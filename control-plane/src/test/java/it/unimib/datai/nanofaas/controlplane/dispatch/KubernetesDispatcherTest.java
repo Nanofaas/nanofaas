@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -23,8 +24,8 @@ class KubernetesDispatcherTest {
 
     @Test
     void issue011_dispatchCreatesJob() {
-        KubernetesProperties properties = new KubernetesProperties("default", "http://control-plane/v1/internal/executions", 10);
-        KubernetesDispatcher dispatcher = new KubernetesDispatcher(client, properties);
+        KubernetesProperties properties = new KubernetesProperties("default", "http://control-plane/v1/internal/executions", 10, null);
+        KubernetesDispatcher dispatcher = new KubernetesDispatcher(client, properties, Executors.newSingleThreadExecutor());
 
         FunctionSpec spec = new FunctionSpec(
                 "echo",

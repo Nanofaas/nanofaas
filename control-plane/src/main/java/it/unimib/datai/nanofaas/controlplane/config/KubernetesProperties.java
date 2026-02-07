@@ -6,9 +6,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record KubernetesProperties(
         String namespace,
         String callbackUrl,
-        Integer apiTimeoutSeconds
+        Integer apiTimeoutSeconds,
+        Integer apiThreads
 ) {
     public int apiTimeoutSecondsOrDefault() {
         return apiTimeoutSeconds != null && apiTimeoutSeconds > 0 ? apiTimeoutSeconds : 10;
+    }
+
+    public int apiThreadsOrDefault() {
+        return apiThreads != null && apiThreads > 0 ? apiThreads : 16;
     }
 }

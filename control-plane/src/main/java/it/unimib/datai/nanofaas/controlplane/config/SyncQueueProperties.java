@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -10,11 +12,11 @@ import java.time.Duration;
 public record SyncQueueProperties(
         boolean enabled,
         boolean admissionEnabled,
-        int maxDepth,
-        Duration maxEstimatedWait,
-        Duration maxQueueWait,
-        int retryAfterSeconds,
-        Duration throughputWindow,
-        int perFunctionMinSamples
+        @Positive int maxDepth,
+        @NotNull Duration maxEstimatedWait,
+        @NotNull Duration maxQueueWait,
+        @Positive int retryAfterSeconds,
+        @NotNull Duration throughputWindow,
+        @Positive int perFunctionMinSamples
 ) {
 }

@@ -3,6 +3,8 @@ package it.unimib.datai.nanofaas.controlplane.scheduler;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
@@ -18,6 +20,8 @@ import java.util.function.Consumer;
 @Component
 @ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
 public class SyncScheduler implements SmartLifecycle {
+    private static final Logger log = LoggerFactory.getLogger(SyncScheduler.class);
+
     private final QueueManager queueManager;
     private final SyncQueueService queue;
     private final Consumer<InvocationTask> dispatch;
@@ -95,7 +99,13 @@ public class SyncScheduler implements SmartLifecycle {
             return;
         }
         queue.recordDispatched(polled.task().functionName(), now);
-        dispatch.accept(polled.task());
+        try {
+            dispatch.accept(polled.task());
+        } catch (Exception ex) {
+            queueManager.releaseSlot(polled.task().functionName());
+            log.error("Dispatch failed for execution {}: {}",
+                    polled.task().executionId(), ex.getMessage(), ex);
+        }
     }
 
     private void loop() {

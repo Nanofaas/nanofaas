@@ -27,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "nanofaas.defaults.timeoutMs=2000",
                 "nanofaas.defaults.concurrency=2",
                 "nanofaas.defaults.queueSize=10",
-                "nanofaas.defaults.maxRetries=3"
+                "nanofaas.defaults.maxRetries=3",
+                "sync-queue.enabled=false"
         })
 @AutoConfigureWebTestClient
 class ControlPlaneApiTest {

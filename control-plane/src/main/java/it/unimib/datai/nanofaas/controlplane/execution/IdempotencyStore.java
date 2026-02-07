@@ -49,6 +49,25 @@ public class IdempotencyStore {
         keys.put(compose(functionName, key), new StoredKey(executionId, Instant.now()));
     }
 
+    /**
+     * Atomically stores the execution ID only if no valid (non-expired) mapping exists.
+     * @return the existing execution ID if present and not expired, or null if the new value was stored
+     */
+    public String putIfAbsent(String functionName, String key, String executionId) {
+        String composed = compose(functionName, key);
+        StoredKey newKey = new StoredKey(executionId, Instant.now());
+        StoredKey existing = keys.putIfAbsent(composed, newKey);
+        if (existing == null) {
+            return null; // Successfully stored
+        }
+        // Check if expired
+        if (existing.storedAt().plus(ttl).isBefore(Instant.now())) {
+            keys.replace(composed, existing, newKey);
+            return null;
+        }
+        return existing.executionId();
+    }
+
     public int size() {
         return keys.size();
     }
