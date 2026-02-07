@@ -34,9 +34,21 @@ public class ExecutionStore {
         return Optional.of(stored.record());
     }
 
+    public void remove(String executionId) {
+        executions.remove(executionId);
+    }
+
     private void evictExpired() {
         Instant cutoff = Instant.now().minus(ttl);
-        executions.entrySet().removeIf(entry -> entry.getValue().createdAt().isBefore(cutoff));
+        executions.entrySet().removeIf(entry -> {
+            StoredExecution stored = entry.getValue();
+            if (stored.createdAt().isBefore(cutoff)) {
+                ExecutionState state = stored.record().state();
+                // Don't evict active executions
+                return state != ExecutionState.RUNNING && state != ExecutionState.QUEUED;
+            }
+            return false;
+        });
     }
 
     @PreDestroy

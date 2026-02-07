@@ -29,19 +29,23 @@ public class SyncQueueMetrics {
     }
 
     public void registerFunction(String functionName) {
-        perFunctionDepth.computeIfAbsent(functionName, name -> {
+        getOrCreateDepth(functionName);
+    }
+
+    public void admitted(String functionName) {
+        counter(admittedCounters, "sync_queue_admitted_total", functionName).increment();
+        globalDepth.incrementAndGet();
+        getOrCreateDepth(functionName).incrementAndGet();
+    }
+
+    private AtomicInteger getOrCreateDepth(String functionName) {
+        return perFunctionDepth.computeIfAbsent(functionName, name -> {
             AtomicInteger depth = new AtomicInteger();
             Gauge.builder("sync_queue_depth", depth, AtomicInteger::get)
                     .tag("function", name)
                     .register(registry);
             return depth;
         });
-    }
-
-    public void admitted(String functionName) {
-        counter(admittedCounters, "sync_queue_admitted_total", functionName).increment();
-        globalDepth.incrementAndGet();
-        perFunctionDepth.computeIfAbsent(functionName, ignored -> new AtomicInteger()).incrementAndGet();
     }
 
     public void dequeued(String functionName) {

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class KubernetesJobBuilderTest {
     @Test
     void issue012_jobTemplateIncludesImageAndEnv() {
-        KubernetesProperties properties = new KubernetesProperties("nanofaas", "http://control-plane/v1/internal/executions", 10);
+        KubernetesProperties properties = new KubernetesProperties("nanofaas", "http://control-plane/v1/internal/executions", 10, null);
         KubernetesJobBuilder builder = new KubernetesJobBuilder(properties);
 
         FunctionSpec spec = new FunctionSpec(

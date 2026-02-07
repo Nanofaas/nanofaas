@@ -15,10 +15,17 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class KubernetesJobBuilder {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Set<String> RESERVED_ENV = Set.of(
+            "FUNCTION_NAME", "EXECUTION_ID", "TRACE_ID", "TIMEOUT_MS",
+            "INVOCATION_TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD",
+            "CALLBACK_URL", "INVOCATION_PAYLOAD"
+    );
+
     private final KubernetesProperties properties;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public KubernetesJobBuilder(KubernetesProperties properties) {
         this.properties = properties;
@@ -66,7 +73,7 @@ public class KubernetesJobBuilder {
 
         // Serialize invocation payload for watchdog
         try {
-            String payload = objectMapper.writeValueAsString(task.request());
+            String payload = OBJECT_MAPPER.writeValueAsString(task.request());
             envVars.add(new EnvVarBuilder().withName("INVOCATION_PAYLOAD")
                     .withValue(payload)
                     .build());
@@ -78,7 +85,11 @@ public class KubernetesJobBuilder {
         }
 
         if (env != null) {
-            env.forEach((key, value) -> envVars.add(new EnvVarBuilder().withName(key).withValue(value).build()));
+            env.forEach((key, value) -> {
+                if (!RESERVED_ENV.contains(key)) {
+                    envVars.add(new EnvVarBuilder().withName(key).withValue(value).build());
+                }
+            });
         }
 
         ResourceRequirementsBuilder resources = new ResourceRequirementsBuilder();

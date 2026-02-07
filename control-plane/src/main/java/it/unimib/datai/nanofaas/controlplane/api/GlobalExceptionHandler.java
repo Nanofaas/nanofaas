@@ -9,6 +9,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.server.ServerWebInputException;
 
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,28 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(ServerWebInputException.class)
+    public ResponseEntity<Map<String, Object>> handleServerWebInputException(
+            ServerWebInputException ex) {
+        log.debug("Bad request: {}", ex.getMessage());
+        Map<String, Object> body = Map.of(
+                "error", "BAD_REQUEST",
+                "message", ex.getReason() != null ? ex.getReason() : "Invalid request"
+        );
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatusException(
+            ResponseStatusException ex) {
+        log.debug("Response status exception: {} {}", ex.getStatusCode(), ex.getReason());
+        Map<String, Object> body = Map.of(
+                "error", ex.getStatusCode().toString(),
+                "message", ex.getReason() != null ? ex.getReason() : "Request error"
+        );
+        return ResponseEntity.status(ex.getStatusCode()).body(body);
     }
 
     /**

@@ -2,6 +2,7 @@
 import importlib
 import logging
 import os
+import time
 
 from flask import Flask, request, jsonify
 import requests as http_requests
@@ -53,7 +54,7 @@ def invoke():
         return jsonify({"error": "No execution ID provided"}), 400
 
     try:
-        payload = request.get_json()
+        payload = request.get_json(silent=True)
         handler = get_handler()
         result = handler(payload)
 
@@ -81,17 +82,22 @@ def invoke():
 
 
 def _send_callback(callback_url: str, execution_id: str, trace_id: str, result: dict):
-    try:
-        url = f"{callback_url}/{execution_id}:complete"
-        headers = {"Content-Type": "application/json"}
-        if trace_id:
-            headers["X-Trace-Id"] = trace_id
+    url = f"{callback_url}/{execution_id}:complete"
+    headers = {"Content-Type": "application/json"}
+    if trace_id:
+        headers["X-Trace-Id"] = trace_id
 
-        resp = http_requests.post(url, json=result, headers=headers, timeout=10)
-        if not resp.ok:
-            logger.warning(f"Callback failed: {resp.status_code}")
-    except Exception as e:
-        logger.warning(f"Callback error: {e}")
+    delays = [0.1, 0.5, 2.0]
+    for attempt in range(3):
+        try:
+            resp = http_requests.post(url, json=result, headers=headers, timeout=10)
+            if resp.ok:
+                return
+            logger.warning(f"Callback failed (attempt {attempt + 1}): {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Callback error (attempt {attempt + 1}): {e}")
+        if attempt < 2:
+            time.sleep(delays[attempt])
 
 
 if __name__ == '__main__':

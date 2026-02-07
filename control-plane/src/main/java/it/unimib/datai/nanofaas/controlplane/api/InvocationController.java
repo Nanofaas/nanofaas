@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
 @RestController
 @RequestMapping("/v1")
@@ -27,26 +28,31 @@ public class InvocationController {
     }
 
     @PostMapping("/functions/{name}:invoke")
-    public ResponseEntity<InvocationResponse> invokeSync(
+    public Mono<ResponseEntity<InvocationResponse>> invokeSync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @RequestBody @Valid InvocationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
-            @RequestHeader(value = "X-Timeout-Ms", required = false) Integer timeoutMs) throws InterruptedException {
+            @RequestHeader(value = "X-Timeout-Ms", required = false) Integer timeoutMs) {
         try {
-            InvocationResponse response = invocationService.invokeSync(name, request, idempotencyKey, traceId, timeoutMs);
-            return ResponseEntity.ok()
-                    .header("X-Execution-Id", response.executionId())
-                    .body(response);
+            return invocationService.invokeSyncReactive(name, request, idempotencyKey, traceId, timeoutMs)
+                    .map(response -> ResponseEntity.ok()
+                            .header("X-Execution-Id", response.executionId())
+                            .body(response))
+                    .onErrorResume(SyncQueueRejectedException.class, ex ->
+                            Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                                    .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
+                                    .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
+                                    .build()));
         } catch (FunctionNotFoundException ex) {
-            return ResponseEntity.notFound().build();
+            return Mono.just(ResponseEntity.notFound().build());
         } catch (SyncQueueRejectedException ex) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            return Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
                     .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
-                    .build();
+                    .build());
         } catch (RateLimitException | QueueFullException ex) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+            return Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build());
         }
     }
 

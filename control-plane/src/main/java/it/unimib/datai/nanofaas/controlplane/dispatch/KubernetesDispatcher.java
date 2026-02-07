@@ -8,9 +8,11 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -20,17 +22,23 @@ public class KubernetesDispatcher implements Dispatcher {
 
     private final KubernetesClient client;
     private final KubernetesProperties properties;
+    private final ExecutorService executor;
+    private final String resolvedNamespace;
 
-    public KubernetesDispatcher(KubernetesClient client, KubernetesProperties properties) {
+    public KubernetesDispatcher(KubernetesClient client,
+                                KubernetesProperties properties,
+                                @Qualifier("k8sDispatcherExecutor") ExecutorService executor) {
         this.client = client;
         this.properties = properties;
+        this.executor = executor;
+        this.resolvedNamespace = resolveNamespace(properties);
     }
 
     @Override
     public CompletableFuture<InvocationResult> dispatch(InvocationTask task) {
         int timeoutSeconds = properties.apiTimeoutSecondsOrDefault();
 
-        return CompletableFuture.supplyAsync(() -> createJob(task))
+        return CompletableFuture.supplyAsync(() -> createJob(task), executor)
                 .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .exceptionally(ex -> handleError(ex, task, timeoutSeconds));
     }
@@ -41,7 +49,7 @@ public class KubernetesDispatcher implements Dispatcher {
             Job job = builder.build(task);
 
             Job created = client.batch().v1().jobs()
-                    .inNamespace(namespace())
+                    .inNamespace(resolvedNamespace)
                     .resource(job)
                     .create();
 
@@ -75,7 +83,7 @@ public class KubernetesDispatcher implements Dispatcher {
         return InvocationResult.error("DISPATCH_ERROR", cause.getMessage());
     }
 
-    private String namespace() {
+    private static String resolveNamespace(KubernetesProperties properties) {
         if (properties.namespace() != null && !properties.namespace().isBlank()) {
             return properties.namespace();
         }

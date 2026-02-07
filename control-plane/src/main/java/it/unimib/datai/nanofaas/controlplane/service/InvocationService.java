@@ -19,8 +19,12 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +32,8 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class InvocationService {
+    private static final Logger log = LoggerFactory.getLogger(InvocationService.class);
+
     private final FunctionService functionService;
     private final QueueManager queueManager;
     private final ExecutionStore executionStore;
@@ -95,6 +101,48 @@ public class InvocationService {
             metrics.timeout(functionName);
             return new InvocationResponse(record.executionId(), "timeout", null, null);
         }
+    }
+
+    public Mono<InvocationResponse> invokeSyncReactive(String functionName,
+                                                        InvocationRequest request,
+                                                        String idempotencyKey,
+                                                        String traceId,
+                                                        Integer timeoutOverrideMs) {
+        enforceRateLimit();
+
+        FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
+        ExecutionLookup lookup = createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
+        ExecutionRecord record = lookup.record();
+
+        if (record.state() == ExecutionState.SUCCESS || record.state() == ExecutionState.ERROR) {
+            InvocationResult result = record.lastError() == null
+                    ? InvocationResult.success(record.output())
+                    : new InvocationResult(false, null, record.lastError());
+            return Mono.just(toResponse(record, result));
+        }
+
+        if (lookup.isNew()) {
+            if (syncQueueService.enabled()) {
+                syncQueueService.enqueueOrThrow(record.task());
+            } else {
+                enqueueOrThrow(record);
+            }
+        }
+
+        int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
+        return Mono.fromFuture(record.completion())
+                .timeout(Duration.ofMillis(timeoutMs))
+                .map(result -> {
+                    if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
+                        throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueService.retryAfterSeconds());
+                    }
+                    return toResponse(record, result);
+                })
+                .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
+                    record.markTimeout();
+                    metrics.timeout(functionName);
+                    return Mono.just(new InvocationResponse(record.executionId(), "timeout", null, null));
+                });
     }
 
     public InvocationResponse invokeAsync(String functionName,
@@ -177,7 +225,14 @@ public class InvocationService {
             );
             // Reset record atomically for retry, preserving CompletableFuture
             record.resetForRetry(retryTask);
-            enqueueOrThrow(record);
+            try {
+                enqueueOrThrow(record);
+            } catch (QueueFullException ex) {
+                log.warn("Retry queue full for execution {}, completing with error", executionId);
+                record.markError(result.error());
+                metrics.error(record.task().functionName());
+                record.completion().complete(result);
+            }
             return;
         }
 

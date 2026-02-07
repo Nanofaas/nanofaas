@@ -6,7 +6,9 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 
 @Component
 public class PoolDispatcher implements Dispatcher {
@@ -35,6 +37,7 @@ public class PoolDispatcher implements Dispatcher {
             request.header("Idempotency-Key", task.idempotencyKey());
         }
 
+        long timeoutMs = task.functionSpec().timeoutMs();
         return request.bodyValue(task.request())
                 .exchangeToMono(response -> {
                     if (response.statusCode().is2xxSuccessful()) {
@@ -49,6 +52,9 @@ public class PoolDispatcher implements Dispatcher {
                             .defaultIfEmpty(response.statusCode().toString())
                             .map(msg -> InvocationResult.error("POOL_ERROR", msg));
                 })
+                .timeout(Duration.ofMillis(timeoutMs))
+                .onErrorResume(TimeoutException.class, ex -> reactor.core.publisher.Mono.just(
+                        InvocationResult.error("POOL_TIMEOUT", "Pool request timed out after " + timeoutMs + "ms")))
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
                         InvocationResult.error("POOL_ERROR", ex.getMessage())))
                 .toFuture();
