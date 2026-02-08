@@ -65,15 +65,12 @@ def get_commits_since(tag=None):
         cmd = "git log --oneline --no-merges"
     try:
         output = run_command(cmd)
-        return output.split("
-") if output else []
+        return output.split("\n") if output else []
     except SystemExit:
         return []
 
 def generate_release_notes(new_v, commits):
-    notes = f"# Release v{new_v}
-
-"
+    notes = f"# Release v{new_v}\n\n"
     
     categories = {
         "feat": [],
@@ -96,26 +93,13 @@ def generate_release_notes(new_v, commits):
             categories["other"].append(msg)
             
     if categories["feat"]:
-        notes += "## Features
-" + "
-".join(f"- {m}" for m in categories["feat"]) + "
-
-"
+        notes += "## Features\n" + "\n".join(f"- {m}" for m in categories["feat"]) + "\n\n"
     if categories["fix"]:
-        notes += "## Bug Fixes
-" + "
-".join(f"- {m}" for m in categories["fix"]) + "
-
-"
+        notes += "## Bug Fixes\n" + "\n".join(f"- {m}" for m in categories["fix"]) + "\n\n"
     if categories["other"] or categories["chore"]:
-        notes += "## Other Changes
-"
-        notes += "
-".join(f"- {m}" for m in categories["chore"]) + "
-"
-        notes += "
-".join(f"- {m}" for m in categories["other"]) + "
-"
+        notes += "## Other Changes\n"
+        notes += "\n".join(f"- {m}" for m in categories["chore"]) + "\n"
+        notes += "\n".join(f"- {m}" for m in categories["other"]) + "\n"
         
     return notes.strip()
 
@@ -157,115 +141,125 @@ def main():
         console.print("[bold yellow]Running in DRY-RUN mode. No changes will be persisted.[/bold yellow]")
 
     console.print(Panel.fit(
-        "[bold blue]nanoFaaS Release Manager[/bold blue]
-"
+        "[bold blue]nanoFaaS Release Manager[/bold blue]\n"
         "[dim]Automated version bumping and deployment[/dim]",
         border_style="blue"
     ))
     
     check_git_available()
     
-    # Check git state
-    branch, dirty = get_git_status()
-    if branch != "main" and not args.dry_run:
-        if not questionary.confirm(f"You are on branch '{branch}' instead of 'main'. Proceed anyway?").ask():
-            sys.exit(0)
+    original_branch, dirty = get_git_status()
     
     if dirty and not args.dry_run:
         console.print("[yellow]Warning: Your working tree is dirty.[/yellow]")
         if not questionary.confirm("Do you want to proceed despite uncommitted changes?").ask():
             sys.exit(0)
 
-    current_v_str = get_current_version()
-    console.print(f"Current version: [bold cyan]{current_v_str}[/bold cyan]")
-    
-    v = semver.VersionInfo.parse(current_v_str)
-    
-    choices = [
-        f"Patch ({v.bump_patch()})",
-        f"Minor ({v.bump_minor()})",
-        f"Major ({v.bump_major()})",
-        "Custom"
-    ]
-    
-    choice = questionary.select(
-        "What type of release is this?",
-        choices=choices
-    ).ask()
-    
-    if not choice:
-        sys.exit(0)
+    try:
+        # Switch to main if not already there
+        if original_branch != "main" and not args.dry_run:
+            if questionary.confirm(f"Currently on branch '{original_branch}'. Switch to 'main' for release?").ask():
+                run_command("git checkout main")
+                console.print("[green]Switched to branch 'main'[/green]")
+            else:
+                if not questionary.confirm(f"Proceed release on current branch '{original_branch}'?").ask():
+                    return
+
+        current_v_str = get_current_version()
+        console.print(f"Current version: [bold cyan]{current_v_str}[/bold cyan]")
         
-    if "Patch" in choice:
-        new_v = str(v.bump_patch())
-    elif "Minor" in choice:
-        new_v = str(v.bump_minor())
-    elif "Major" in choice:
-        new_v = str(v.bump_major())
-    else:
-        new_v_str = questionary.text("Enter custom version:").ask()
-        new_v = str(semver.VersionInfo.parse(new_v_str))
-
-    console.print(f"Bumping to: [bold green]{new_v}[/bold green]")
-    
-    if not args.dry_run and not questionary.confirm(f"Confirm bump from {current_v_str} to {new_v}?").ask():
-        sys.exit(0)
+        v = semver.VersionInfo.parse(current_v_str)
         
-    latest_tag = get_latest_tag()
-    commits = get_commits_since(latest_tag)
-    notes = generate_release_notes(new_v, commits)
-    
-    console.print("
-[bold]Generated Release Notes:[/bold]")
-    console.print(Panel(notes, title="Preview"))
-    
-    if not args.dry_run and not questionary.confirm("Do you want to use these release notes?").ask():
-        notes = questionary.text("Enter your custom release notes:", multiline=True, default=notes).ask()
-        if not notes:
-            sys.exit(0)
+        choices = [
+            f"Patch ({v.bump_patch()})",
+            f"Minor ({v.bump_minor()})",
+            f"Major ({v.bump_major()})",
+            "Custom"
+        ]
+        
+        choice = questionary.select(
+            "What type of release is this?",
+            choices=choices
+        ).ask()
+        
+        if not choice:
+            return
+            
+        if "Patch" in choice:
+            new_v = str(v.bump_patch())
+        elif "Minor" in choice:
+            new_v = str(v.bump_minor())
+        elif "Major" in choice:
+            new_v = str(v.bump_major())
+        else:
+            new_v_str = questionary.text("Enter custom version:").ask()
+            new_v = str(semver.VersionInfo.parse(new_v_str))
 
-    updated_files = update_files(new_v, args.dry_run)
-    
-    if args.dry_run:
-        console.print("[yellow]Dry-run complete. No Git commands executed.[/yellow]")
-        return
+        console.print(f"Bumping to: [bold green]{new_v}[/bold green]")
+        
+        if not args.dry_run and not questionary.confirm(f"Confirm bump from {current_v_str} to {new_v}?").ask():
+            return
+            
+        latest_tag = get_latest_tag()
+        commits = get_commits_since(latest_tag)
+        notes = generate_release_notes(new_v, commits)
+        
+        console.print("\n[bold]Generated Release Notes:[/bold]")
+        console.print(Panel(notes, title="Preview"))
+        
+        if not args.dry_run and not questionary.confirm("Do you want to use these release notes?").ask():
+            notes = questionary.text("Enter your custom release notes:", multiline=True, default=notes).ask()
+            if not notes:
+                return
 
-    if not updated_files:
-        console.print("[red]No files were updated. Aborting Git operations.[/red]")
-        sys.exit(1)
+        updated_files = update_files(new_v, args.dry_run)
+        
+        if args.dry_run:
+            console.print("[yellow]Dry-run complete. No Git commands executed.[/yellow]")
+            return
 
-    console.print("
-[bold]Executing Git operations...[/bold]")
-    
-    for f in updated_files:
-        run_command(f"git add {f}")
-    run_command(f'git commit -m "chore: bump version to {new_v}"')
-    console.print("[green]✓ Committed version bump[/green]")
-    
-    if questionary.confirm("Push changes to main?").ask():
-        run_command("git push origin main")
-        console.print("[green]✓ Pushed to main[/green]")
-    
-    tag_name = f"v{new_v}"
-    tag_file = ROOT / "RELEASE_NOTES.tmp.md"
-    tag_file.write_text(notes)
-    run_command(f'git tag -a {tag_name} -F RELEASE_NOTES.tmp.md')
-    os.remove(tag_file)
-    console.print(f"[green]✓ Created tag {tag_name}[/green]")
-    
-    if questionary.confirm(f"Push tag {tag_name}?").ask():
-        run_command(f"git push origin {tag_name}")
-        console.print("[green]✓ Pushed tag to origin[/green]")
+        if not updated_files:
+            console.print("[red]No files were updated. Aborting Git operations.[/red]")
+            return
 
-    console.print(Panel.fit(
-        f"[bold green]Release v{new_v} successful![/bold green]",
-        border_style="green"
-    ))
+        console.print("\n[bold]Executing Git operations...[/bold]")
+        
+        for f in updated_files:
+            run_command(f"git add {f}")
+        run_command(f'git commit -m "chore: bump version to {new_v}"')
+        console.print("[green]✓ Committed version bump[/green]")
+        
+        if questionary.confirm("Push changes?").ask():
+            curr_branch, _ = get_git_status()
+            run_command(f"git push origin {curr_branch}")
+            console.print(f"[green]✓ Pushed to {curr_branch}[/green]")
+        
+        tag_name = f"v{new_v}"
+        tag_file = ROOT / "RELEASE_NOTES.tmp.md"
+        tag_file.write_text(notes)
+        run_command(f'git tag -a {tag_name} -F RELEASE_NOTES.tmp.md')
+        os.remove(tag_file)
+        console.print(f"[green]✓ Created tag {tag_name}[/green]")
+        
+        if questionary.confirm(f"Push tag {tag_name}?").ask():
+            run_command(f"git push origin {tag_name}")
+            console.print("[green]✓ Pushed tag to origin[/green]")
+
+        console.print(Panel.fit(
+            f"[bold green]Release v{new_v} successful![/bold green]",
+            border_style="green"
+        ))
+
+    finally:
+        # Restore original branch if we switched
+        current_branch, _ = get_git_status()
+        if current_branch != original_branch and not args.dry_run:
+            console.print(f"\n[yellow]Returning to original branch '{original_branch}'...[/yellow]")
+            run_command(f"git checkout {original_branch}")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("
-[yellow]Release cancelled by user.[/yellow]")
+        console.print("\n[yellow]Release cancelled by user.[/yellow]")
         sys.exit(0)
