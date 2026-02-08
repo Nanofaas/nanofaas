@@ -19,6 +19,14 @@ subprojects {
             languageVersion = JavaLanguageVersion.of(Integer.parseInt(project.findProperty('javaVersion') ?: '21'))
         }
     }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform {
+            if (!project.hasProperty('runE2e')) {
+                excludeTags 'inter_e2e'
+            }
+        }
+    }
 }
 
 tasks.register('k8sE2e') {

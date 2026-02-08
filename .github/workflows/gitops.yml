@@ -21,10 +21,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
           cache: 'gradle'
-      - name: Run Unit Tests
-        run: ./gradlew test -x :control-plane:test --continue || true
-      - name: Run Control Plane Unit Tests
-        run: ./gradlew :control-plane:test --tests "it.unimib.datai.nanofaas.controlplane.*" --tests "!it.unimib.datai.nanofaas.controlplane.e2e.*"
+      - name: Run Tests
+        run: ./gradlew test
 
   test-python:
     runs-on: ubuntu-latest

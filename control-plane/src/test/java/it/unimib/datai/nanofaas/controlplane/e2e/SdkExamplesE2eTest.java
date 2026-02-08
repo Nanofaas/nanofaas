@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.e2e;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * running as real containers through the control plane.
  */
 @Testcontainers
+@Tag("inter_e2e")
 class SdkExamplesE2eTest {
 
     private static final Path PROJECT_ROOT = Path.of("..").toAbsolutePath().normalize();
