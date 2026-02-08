@@ -1,0 +1,17 @@
+[project]
+name = "nanofaas-release-manager"
+version = "0.1.0"
+description = "CLI tool to manage nanoFaaS releases"
+requires-python = ">=3.11"
+dependencies = [
+    "questionary>=2.0.1",
+    "rich>=13.7.0",
+    "semver>=3.0.2",
+]
+
+[project.scripts]
+release-manager = "release:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
