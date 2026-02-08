@@ -93,7 +93,8 @@ public class InternalScaler implements SmartLifecycle {
         return true;
     }
 
-    private void scalingLoop() {
+    // Package-private for testing
+    void scalingLoop() {
         try {
             for (FunctionSpec spec : registry.list()) {
                 if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {

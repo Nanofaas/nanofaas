@@ -77,6 +77,28 @@ public class FunctionService {
         return Optional.of(resolved);
     }
 
+    /**
+     * Sets the replica count for a DEPLOYMENT-mode function.
+     * Returns the new replica count, or empty if function not found.
+     * Throws IllegalArgumentException if function is not in DEPLOYMENT mode.
+     * Throws IllegalStateException if KubernetesResourceManager is not available.
+     */
+    public Optional<Integer> setReplicas(String name, int replicas) {
+        FunctionSpec spec = registry.get(name).orElse(null);
+        if (spec == null) {
+            return Optional.empty();
+        }
+        if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
+            throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
+        }
+        if (resourceManager == null) {
+            throw new IllegalStateException("KubernetesResourceManager not available");
+        }
+        resourceManager.setReplicas(name, replicas);
+        log.info("Set replicas for function {} to {}", name, replicas);
+        return Optional.of(replicas);
+    }
+
     public Optional<FunctionSpec> remove(String name) {
         FunctionSpec removed = registry.remove(name);
         if (removed != null) {

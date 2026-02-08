@@ -110,13 +110,16 @@ tasks.named('k8sE2eTest') {
     finalizedBy 'k8sDeleteVm', 'k8sDeleteKubeconfig'
 }
 
-// Disable all AOT processing - not needed for regular test runs, only for native builds
-// Main AOT
-tasks.named('processAot') { enabled = false }
-tasks.named('compileAotJava') { enabled = false }
-tasks.named('processAotResources') { enabled = false }
-tasks.named('aotClasses') { enabled = false }
-// Test AOT - @MockBean is incompatible with AOT
+// Disable AOT processing unless a native build task is requested
+def nativeBuildRequested = gradle.startParameter.taskNames.any { it.contains('nativeCompile') || it.contains('nativeTest') }
+if (!nativeBuildRequested) {
+    // Main AOT - not needed for regular builds
+    tasks.named('processAot') { enabled = false }
+    tasks.named('compileAotJava') { enabled = false }
+    tasks.named('processAotResources') { enabled = false }
+    tasks.named('aotClasses') { enabled = false }
+}
+// Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }
 tasks.named('compileAotTestJava') { enabled = false }
 tasks.named('processAotTestResources') { enabled = false }
