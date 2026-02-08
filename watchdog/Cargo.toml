@@ -1,6 +1,6 @@
 [package]
 name = "nanofaas-watchdog"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Lightweight watchdog for nanofaas function containers"
 authors = ["nanofaas"]
