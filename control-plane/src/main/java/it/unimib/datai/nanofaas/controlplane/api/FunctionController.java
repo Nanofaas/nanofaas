@@ -41,6 +41,21 @@ public class FunctionController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PutMapping("/{name}/replicas")
+    public ResponseEntity<?> setReplicas(
+            @PathVariable @NotBlank(message = "Function name is required") String name,
+            @Valid @RequestBody ReplicaRequest request) {
+        try {
+            return functionService.setReplicas(name, request.replicas())
+                    .map(r -> ResponseEntity.ok(new ReplicaResponse(name, r)))
+                    .orElse(ResponseEntity.notFound().build());
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+        }
+    }
+
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
             @PathVariable @NotBlank(message = "Function name is required") String name) {

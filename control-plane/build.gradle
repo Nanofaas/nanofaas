@@ -11,6 +11,8 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'io.fabric8:kubernetes-client:7.5.2'
+    // Needed at compile time to instantiate a concrete HttpClient.Factory (avoids reflection in native image).
+    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
@@ -29,6 +31,15 @@ tasks.named('test') {
     dependsOn ':function-runtime:bootJar'
     dependsOn ':examples:java:word-stats:bootJar'
     dependsOn ':examples:java:json-transform:bootJar'
+}
+
+graalvmNative {
+    binaries {
+        main {
+            // Fabric8's kubeconfig parsing (SnakeYAML engine) may probe UTF-32* charsets.
+            buildArgs.add('-H:+AddAllCharsets')
+        }
+    }
 }
 
 def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-kind').toString()
@@ -110,13 +121,16 @@ tasks.named('k8sE2eTest') {
     finalizedBy 'k8sDeleteVm', 'k8sDeleteKubeconfig'
 }
 
-// Disable all AOT processing - not needed for regular test runs, only for native builds
-// Main AOT
-tasks.named('processAot') { enabled = false }
-tasks.named('compileAotJava') { enabled = false }
-tasks.named('processAotResources') { enabled = false }
-tasks.named('aotClasses') { enabled = false }
-// Test AOT - @MockBean is incompatible with AOT
+// Disable AOT processing unless a native build task is requested
+def nativeBuildRequested = gradle.startParameter.taskNames.any { it.contains('nativeCompile') || it.contains('nativeTest') }
+if (!nativeBuildRequested) {
+    // Main AOT - not needed for regular builds
+    tasks.named('processAot') { enabled = false }
+    tasks.named('compileAotJava') { enabled = false }
+    tasks.named('processAotResources') { enabled = false }
+    tasks.named('aotClasses') { enabled = false }
+}
+// Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }
 tasks.named('compileAotTestJava') { enabled = false }
 tasks.named('processAotTestResources') { enabled = false }

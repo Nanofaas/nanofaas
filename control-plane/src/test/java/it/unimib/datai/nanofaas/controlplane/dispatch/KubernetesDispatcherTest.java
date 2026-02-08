@@ -15,7 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
+import org.springframework.beans.factory.ObjectProvider;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @EnableKubernetesMockClient(crud = true)
 class KubernetesDispatcherTest {
@@ -25,7 +29,10 @@ class KubernetesDispatcherTest {
     @Test
     void issue011_dispatchCreatesJob() {
         KubernetesProperties properties = new KubernetesProperties("default", "http://control-plane/v1/internal/executions", 10, null);
-        KubernetesDispatcher dispatcher = new KubernetesDispatcher(client, properties, Executors.newSingleThreadExecutor());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<KubernetesClient> clientProvider = mock(ObjectProvider.class);
+        when(clientProvider.getObject()).thenReturn(client);
+        KubernetesDispatcher dispatcher = new KubernetesDispatcher(clientProvider, properties, Executors.newSingleThreadExecutor());
 
         FunctionSpec spec = new FunctionSpec(
                 "echo",
@@ -39,6 +46,7 @@ class KubernetesDispatcherTest {
                 3,
                 null,
                 ExecutionMode.REMOTE,
+                null,
                 null,
                 null
         );

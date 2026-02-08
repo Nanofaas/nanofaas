@@ -36,6 +36,10 @@ nanofaas:
   k8s:
     namespace: ""
     callbackUrl: "http://control-plane.default.svc.cluster.local:8080/v1/internal/executions"
+  scaling:
+    poll-interval-ms: 5000
+    default-min-replicas: 1
+    default-max-replicas: 10
 
 sync-queue:
   enabled: true

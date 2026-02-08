@@ -176,10 +176,12 @@ public class InvocationService {
         metrics.dispatch(task.functionName());
 
         ExecutionMode mode = task.functionSpec().executionMode();
-        if (mode == ExecutionMode.LOCAL || mode == ExecutionMode.POOL) {
-            java.util.concurrent.CompletableFuture<InvocationResult> future = (mode == ExecutionMode.LOCAL)
-                    ? dispatcherRouter.dispatchLocal(task)
-                    : dispatcherRouter.dispatchPool(task);
+        if (mode == ExecutionMode.LOCAL || mode == ExecutionMode.POOL || mode == ExecutionMode.DEPLOYMENT) {
+            java.util.concurrent.CompletableFuture<InvocationResult> future = switch (mode) {
+                case LOCAL -> dispatcherRouter.dispatchLocal(task);
+                case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
+                default -> throw new IllegalStateException("Unexpected mode: " + mode);
+            };
 
             future.whenComplete((result, error) -> {
                 if (error != null) {
@@ -189,7 +191,7 @@ public class InvocationService {
                 }
             });
         } else {
-            // REMOTE dispatch
+            // REMOTE dispatch (legacy Job-per-invocation)
             dispatcherRouter.dispatchRemote(task).whenComplete((result, error) -> {
                 if (error != null) {
                     completeExecution(task.executionId(), InvocationResult.error("DISPATCH_ERROR", error.getMessage()));

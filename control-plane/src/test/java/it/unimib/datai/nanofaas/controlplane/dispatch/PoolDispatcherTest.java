@@ -41,6 +41,7 @@ class PoolDispatcherTest {
                 endpoint,
                 ExecutionMode.POOL,
                 null,
+                null,
                 null
         );
 
@@ -86,6 +87,7 @@ class PoolDispatcherTest {
                 3,
                 endpoint,
                 ExecutionMode.POOL,
+                null,
                 null,
                 null
         );

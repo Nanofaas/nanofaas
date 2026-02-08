@@ -33,7 +33,7 @@ class PoolDispatcherTimeoutTest {
         // Function with 200ms timeout
         FunctionSpec spec = new FunctionSpec(
                 "pool-fn", "image", null, Map.of(), null,
-                200, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null
+                200, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null, null
         );
 
         InvocationTask task = new InvocationTask(
@@ -56,7 +56,7 @@ class PoolDispatcherTimeoutTest {
     void dispatch_missingEndpoint_returnsPoolEndpointMissing() throws Exception {
         FunctionSpec spec = new FunctionSpec(
                 "pool-fn", "image", null, Map.of(), null,
-                1000, 1, 10, 3, null, ExecutionMode.POOL, null, null
+                1000, 1, 10, 3, null, ExecutionMode.POOL, null, null, null
         );
 
         InvocationTask task = new InvocationTask(
@@ -82,7 +82,7 @@ class PoolDispatcherTimeoutTest {
 
         FunctionSpec spec = new FunctionSpec(
                 "pool-fn", "image", null, Map.of(), null,
-                1000, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null
+                1000, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null, null
         );
 
         InvocationTask task = new InvocationTask(

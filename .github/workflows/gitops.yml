@@ -1,0 +1,109 @@
+name: GitOps Pipeline
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test-java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+      - name: Run Tests
+        run: ./gradlew test
+
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Run SDK and Example Tests
+        run: |
+          cd function-sdk-python
+          uv run --extra test --with-editable . python -m pytest tests/
+
+  publish:
+    needs: [test-java, test-python]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Build Java artifacts
+        run: ./gradlew build -x test
+
+      - name: Build Control Plane Native Image
+        run: |
+          ./gradlew :control-plane:bootBuildImage \
+            -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:latest
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Control Plane images
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane --all-tags
+
+      - name: Build Java Word Stats Native Image
+        run: |
+          ./gradlew :examples:java:word-stats:bootBuildImage \
+            -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:latest
+
+      - name: Build Java JSON Transform Native Image
+        run: |
+          ./gradlew :examples:java:json-transform:bootBuildImage \
+            -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:latest
+
+      - name: Push Java functions images
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats --all-tags
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform --all-tags
+
+      - name: Build and push Python Word Stats
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: examples/python/word-stats/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-word-stats:latest
+
+      - name: Build and push Python JSON Transform
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: examples/python/json-transform/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-json-transform:latest

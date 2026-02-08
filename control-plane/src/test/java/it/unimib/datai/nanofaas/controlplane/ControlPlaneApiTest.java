@@ -65,6 +65,7 @@ class ControlPlaneApiTest {
                 null,
                 ExecutionMode.LOCAL,
                 null,
+                null,
                 null
         ));
     }

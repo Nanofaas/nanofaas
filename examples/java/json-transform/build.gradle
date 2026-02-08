@@ -1,6 +1,7 @@
 plugins {
     id 'org.springframework.boot' version "${springBootVersion}"
     id 'io.spring.dependency-management' version "${springDependencyManagementVersion}"
+    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
     id 'java'
 }
 
@@ -16,4 +17,11 @@ tasks.named('test') {
 
 bootJar {
     archiveFileName = 'json-transform.jar'
+}
+
+bootBuildImage {
+    imageName = project.findProperty('functionImage') ?: 'nanofaas/java-json-transform:buildpack'
+    builder = 'paketobuildpacks/builder-jammy-tiny:latest'
+    runImage = 'paketobuildpacks/run-jammy-tiny:latest'
+    environment = ['BP_NATIVE_IMAGE': 'true']
 }

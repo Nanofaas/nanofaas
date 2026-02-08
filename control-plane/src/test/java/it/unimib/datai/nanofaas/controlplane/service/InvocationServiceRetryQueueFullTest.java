@@ -57,7 +57,7 @@ class InvocationServiceRetryQueueFullTest {
 
         FunctionSpec testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,
-                30000, 4, 100, 3, null, ExecutionMode.LOCAL, null, null
+                30000, 4, 100, 3, null, ExecutionMode.LOCAL, null, null, null
         );
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));

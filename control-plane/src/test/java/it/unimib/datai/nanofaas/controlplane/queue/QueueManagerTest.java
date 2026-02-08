@@ -30,6 +30,7 @@ class QueueManagerTest {
                 null,
                 ExecutionMode.LOCAL,
                 null,
+                null,
                 null
         );
         manager.getOrCreate(spec);

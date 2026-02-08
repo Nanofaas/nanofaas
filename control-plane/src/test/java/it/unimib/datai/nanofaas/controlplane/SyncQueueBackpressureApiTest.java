@@ -51,6 +51,7 @@ class SyncQueueBackpressureApiTest {
                 null,
                 ExecutionMode.LOCAL,
                 null,
+                null,
                 null
         ));
 

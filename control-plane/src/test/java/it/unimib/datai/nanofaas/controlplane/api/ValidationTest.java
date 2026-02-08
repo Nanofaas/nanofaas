@@ -9,7 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -26,10 +26,10 @@ class ValidationTest {
     @Autowired
     private WebTestClient webClient;
 
-    @MockBean
+    @MockitoBean
     private FunctionService functionService;
 
-    @MockBean
+    @MockitoBean
     private InvocationService invocationService;
 
     @Test
@@ -38,7 +38,7 @@ class ValidationTest {
                 "",  // blank name
                 "myimage",
                 null, null, null, null, null, null, null, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         webClient.post()
@@ -58,7 +58,7 @@ class ValidationTest {
                 "myfunc",
                 null,  // null image
                 null, null, null, null, null, null, null, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         webClient.post()
@@ -79,7 +79,7 @@ class ValidationTest {
                 null, null, null, null,
                 0,  // zero concurrency
                 null, null, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         webClient.post()
@@ -99,7 +99,7 @@ class ValidationTest {
                 "myfunc",
                 "myimage",
                 null, null, null, null, null, null, null, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         when(functionService.register(any())).thenReturn(Optional.of(spec));
@@ -150,7 +150,7 @@ class ValidationTest {
                 null, null, null, null,
                 -1,   // negative concurrency
                 null, null, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         webClient.post()
