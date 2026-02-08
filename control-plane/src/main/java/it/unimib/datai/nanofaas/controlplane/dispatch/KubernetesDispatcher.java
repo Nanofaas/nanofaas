@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
@@ -20,15 +21,15 @@ import java.util.concurrent.TimeoutException;
 public class KubernetesDispatcher implements Dispatcher {
     private static final Logger log = LoggerFactory.getLogger(KubernetesDispatcher.class);
 
-    private final KubernetesClient client;
+    private final ObjectProvider<KubernetesClient> clientProvider;
     private final KubernetesProperties properties;
     private final ExecutorService executor;
     private final String resolvedNamespace;
 
-    public KubernetesDispatcher(KubernetesClient client,
+    public KubernetesDispatcher(ObjectProvider<KubernetesClient> clientProvider,
                                 KubernetesProperties properties,
                                 @Qualifier("k8sDispatcherExecutor") ExecutorService executor) {
-        this.client = client;
+        this.clientProvider = clientProvider;
         this.properties = properties;
         this.executor = executor;
         this.resolvedNamespace = resolveNamespace(properties);
@@ -45,6 +46,7 @@ public class KubernetesDispatcher implements Dispatcher {
 
     private InvocationResult createJob(InvocationTask task) {
         try {
+            KubernetesClient client = clientProvider.getObject();
             KubernetesJobBuilder builder = new KubernetesJobBuilder(properties);
             Job job = builder.build(task);
 

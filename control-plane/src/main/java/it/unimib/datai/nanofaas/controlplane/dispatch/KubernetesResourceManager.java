@@ -8,19 +8,20 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.config.KubernetesProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
 public class KubernetesResourceManager {
     private static final Logger log = LoggerFactory.getLogger(KubernetesResourceManager.class);
 
-    private final KubernetesClient client;
+    private final ObjectProvider<KubernetesClient> clientProvider;
     private final KubernetesProperties properties;
     private final KubernetesDeploymentBuilder builder;
     private final String resolvedNamespace;
 
-    public KubernetesResourceManager(KubernetesClient client, KubernetesProperties properties) {
-        this.client = client;
+    public KubernetesResourceManager(ObjectProvider<KubernetesClient> clientProvider, KubernetesProperties properties) {
+        this.clientProvider = clientProvider;
         this.properties = properties;
         this.builder = new KubernetesDeploymentBuilder(properties);
         this.resolvedNamespace = resolveNamespace(properties);
@@ -34,6 +35,7 @@ public class KubernetesResourceManager {
     public String provision(FunctionSpec spec) {
         Deployment deployment = builder.buildDeployment(spec);
         io.fabric8.kubernetes.api.model.Service service = builder.buildService(spec);
+        KubernetesClient client = clientProvider.getObject();
 
         client.apps().deployments()
                 .inNamespace(resolvedNamespace)
@@ -69,6 +71,7 @@ public class KubernetesResourceManager {
      */
     public void deprovision(String functionName) {
         String name = KubernetesDeploymentBuilder.deploymentName(functionName);
+        KubernetesClient client = clientProvider.getObject();
 
         client.autoscaling().v2().horizontalPodAutoscalers()
                 .inNamespace(resolvedNamespace)
@@ -94,6 +97,7 @@ public class KubernetesResourceManager {
      */
     public void setReplicas(String functionName, int replicas) {
         String name = KubernetesDeploymentBuilder.deploymentName(functionName);
+        KubernetesClient client = clientProvider.getObject();
         client.apps().deployments()
                 .inNamespace(resolvedNamespace)
                 .withName(name)
@@ -106,6 +110,7 @@ public class KubernetesResourceManager {
      */
     public int getReadyReplicas(String functionName) {
         String name = KubernetesDeploymentBuilder.deploymentName(functionName);
+        KubernetesClient client = clientProvider.getObject();
         Deployment deployment = client.apps().deployments()
                 .inNamespace(resolvedNamespace)
                 .withName(name)

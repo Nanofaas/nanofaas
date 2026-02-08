@@ -8,11 +8,14 @@ import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.config.KubernetesProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @EnableKubernetesMockClient(crud = true)
 class KubernetesResourceManagerTest {
@@ -23,7 +26,10 @@ class KubernetesResourceManagerTest {
     @BeforeEach
     void setUp() {
         KubernetesProperties properties = new KubernetesProperties("default", null, 10, null);
-        resourceManager = new KubernetesResourceManager(client, properties);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<KubernetesClient> clientProvider = mock(ObjectProvider.class);
+        when(clientProvider.getObject()).thenReturn(client);
+        resourceManager = new KubernetesResourceManager(clientProvider, properties);
     }
 
     private FunctionSpec spec(ScalingConfig scaling) {

@@ -11,6 +11,8 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'io.fabric8:kubernetes-client:7.5.2'
+    // Needed at compile time to instantiate a concrete HttpClient.Factory (avoids reflection in native image).
+    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
@@ -29,6 +31,15 @@ tasks.named('test') {
     dependsOn ':function-runtime:bootJar'
     dependsOn ':examples:java:word-stats:bootJar'
     dependsOn ':examples:java:json-transform:bootJar'
+}
+
+graalvmNative {
+    binaries {
+        main {
+            // Fabric8's kubeconfig parsing (SnakeYAML engine) may probe UTF-32* charsets.
+            buildArgs.add('-H:+AddAllCharsets')
+        }
+    }
 }
 
 def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-kind').toString()
