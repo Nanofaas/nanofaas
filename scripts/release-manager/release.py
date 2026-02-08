@@ -23,9 +23,19 @@ def get_project_root():
 
 ROOT = get_project_root()
 
-def check_git_available():
+def check_tools():
     if not shutil.which("git"):
         console.print("[red]Error: 'git' command not found in PATH.[/red]")
+        sys.exit(1)
+    if not shutil.which("gh"):
+        console.print("[red]Error: 'gh' (GitHub CLI) not found in PATH. Install it first.[/red]")
+        sys.exit(1)
+    
+    # Check gh auth
+    try:
+        run_command("gh auth status")
+    except SystemExit:
+        console.print("[red]Error: You are not authenticated with 'gh'. Run 'gh auth login'.[/red]")
         sys.exit(1)
 
 def run_command(cmd, capture_output=True):
@@ -142,64 +152,70 @@ def main():
 
     console.print(Panel.fit(
         "[bold blue]nanoFaaS Release Manager[/bold blue]\n"
-        "[dim]Automated version bumping and deployment[/dim]",
+        "[dim]Automated PR, Merge, Bump and Release[/dim]",
         border_style="blue"
     ))
     
-    check_git_available()
+    check_tools()
     
     original_branch, dirty = get_git_status()
     
     if dirty and not args.dry_run:
         console.print("[yellow]Warning: Your working tree is dirty.[/yellow]")
-        if not questionary.confirm("Do you want to proceed despite uncommitted changes?").ask():
+        if not questionary.confirm("Do you want to proceed despite uncommitted changes? (Auto-push might include them)").ask():
             sys.exit(0)
 
     try:
-        # Switch to main if not already there
-        if original_branch != "main" and not args.dry_run:
-            if questionary.confirm(f"Currently on branch '{original_branch}'. Switch to 'main' for release?").ask():
-                run_command("git checkout main")
-                console.print("[green]Switched to branch 'main'[/green]")
+        # STEP 1: Handle PR and Merge if on feature branch
+        if original_branch != "main":
+            console.print(f"\n[bold]Current branch: {original_branch}[/bold]")
+            if questionary.confirm(f"Create PR from '{original_branch}' and merge into 'main'?").ask():
+                if args.dry_run:
+                    console.print("[dim](Dry-run) Would push, create PR, and merge.[/dim]")
+                else:
+                    console.print("[blue]Pushing current branch...[/blue]")
+                    run_command("git push origin HEAD")
+                    
+                    console.print("[blue]Creating Pull Request...[/blue]")
+                    run_command("gh pr create --fill --base main")
+                    
+                    console.print("[blue]Merging PR into main...[/blue]")
+                    run_command("gh pr merge --merge --delete-branch")
+                    console.print("[green]✓ Branch merged and deleted on remote.[/green]")
             else:
-                if not questionary.confirm(f"Proceed release on current branch '{original_branch}'?").ask():
+                if not questionary.confirm(f"Proceed with release directly on '{original_branch}'? (Not recommended)").ask():
                     return
 
+        # STEP 2: Sync main branch
+        if not args.dry_run:
+            console.print("[blue]Switching to main and syncing with origin...[/blue]")
+            run_command("git checkout main")
+            run_command("git fetch origin main")
+            run_command("git reset --hard origin/main")
+            console.print("[green]✓ Local main is now in sync with remote.[/green]")
+
+        # STEP 3: Version Bump Logic
         current_v_str = get_current_version()
-        console.print(f"Current version: [bold cyan]{current_v_str}[/bold cyan]")
+        console.print(f"\nCurrent version: [bold cyan]{current_v_str}[/bold cyan]")
         
         v = semver.VersionInfo.parse(current_v_str)
+        choices = [f"Patch ({v.bump_patch()})", f"Minor ({v.bump_minor()})", f"Major ({v.bump_major()})", "Custom"]
         
-        choices = [
-            f"Patch ({v.bump_patch()})",
-            f"Minor ({v.bump_minor()})",
-            f"Major ({v.bump_major()})",
-            "Custom"
-        ]
-        
-        choice = questionary.select(
-            "What type of release is this?",
-            choices=choices
-        ).ask()
-        
-        if not choice:
-            return
+        choice = questionary.select("What type of release is this?", choices=choices).ask()
+        if not choice: return
             
-        if "Patch" in choice:
-            new_v = str(v.bump_patch())
-        elif "Minor" in choice:
-            new_v = str(v.bump_minor())
-        elif "Major" in choice:
-            new_v = str(v.bump_major())
+        if "Patch" in choice: new_v = str(v.bump_patch())
+        elif "Minor" in choice: new_v = str(v.bump_minor())
+        elif "Major" in choice: new_v = str(v.bump_major())
         else:
             new_v_str = questionary.text("Enter custom version:").ask()
             new_v = str(semver.VersionInfo.parse(new_v_str))
 
         console.print(f"Bumping to: [bold green]{new_v}[/bold green]")
-        
         if not args.dry_run and not questionary.confirm(f"Confirm bump from {current_v_str} to {new_v}?").ask():
             return
             
+        # STEP 4: Release Notes
         latest_tag = get_latest_tag()
         commits = get_commits_since(latest_tag)
         notes = generate_release_notes(new_v, commits)
@@ -209,31 +225,29 @@ def main():
         
         if not args.dry_run and not questionary.confirm("Do you want to use these release notes?").ask():
             notes = questionary.text("Enter your custom release notes:", multiline=True, default=notes).ask()
-            if not notes:
-                return
+            if not notes: return
 
+        # STEP 5: Apply Changes and Commit
         updated_files = update_files(new_v, args.dry_run)
         
         if args.dry_run:
-            console.print("[yellow]Dry-run complete. No Git commands executed.[/yellow]")
+            console.print("[yellow]Dry-run complete. No changes performed.[/yellow]")
             return
 
         if not updated_files:
-            console.print("[red]No files were updated. Aborting Git operations.[/red]")
+            console.print("[red]No files were updated. Aborting.[/red]")
             return
 
-        console.print("\n[bold]Executing Git operations...[/bold]")
-        
+        console.print("\n[bold]Committing and Tagging...[/bold]")
         for f in updated_files:
             run_command(f"git add {f}")
         run_command(f'git commit -m "chore: bump version to {new_v}"')
-        console.print("[green]✓ Committed version bump[/green]")
         
-        if questionary.confirm("Push changes?").ask():
-            curr_branch, _ = get_git_status()
-            run_command(f"git push origin {curr_branch}")
-            console.print(f"[green]✓ Pushed to {curr_branch}[/green]")
+        if questionary.confirm("Push release commit to main?").ask():
+            run_command("git push origin main")
+            console.print("[green]✓ Pushed to main[/green]")
         
+        # STEP 6: Tagging
         tag_name = f"v{new_v}"
         tag_file = ROOT / "RELEASE_NOTES.tmp.md"
         tag_file.write_text(notes)
@@ -241,7 +255,7 @@ def main():
         os.remove(tag_file)
         console.print(f"[green]✓ Created tag {tag_name}[/green]")
         
-        if questionary.confirm(f"Push tag {tag_name}?").ask():
+        if questionary.confirm(f"Push tag {tag_name} to trigger GitOps pipeline?").ask():
             run_command(f"git push origin {tag_name}")
             console.print("[green]✓ Pushed tag to origin[/green]")
 
@@ -251,11 +265,11 @@ def main():
         ))
 
     finally:
-        # Restore original branch if we switched
-        current_branch, _ = get_git_status()
-        if current_branch != original_branch and not args.dry_run:
-            console.print(f"\n[yellow]Returning to original branch '{original_branch}'...[/yellow]")
-            run_command(f"git checkout {original_branch}")
+        # Restore original branch if we are not on it anymore
+        curr_branch, _ = get_git_status()
+        if curr_branch != original_branch and not args.dry_run:
+            if questionary.confirm(f"\nReturn to your original branch '{original_branch}'?").ask():
+                run_command(f"git checkout {original_branch}")
 
 if __name__ == "__main__":
     try:
