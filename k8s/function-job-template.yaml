@@ -12,7 +12,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: function
-          image: ghcr.io/miciav/nanofaas/function-runtime:v0.6.1
+          image: ghcr.io/miciav/nanofaas/function-runtime:v0.6.2
           env:
             - name: FUNCTION_NAME
               value: example
