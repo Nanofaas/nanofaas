@@ -88,6 +88,7 @@ class InvocationServiceRetryTest {
                 null,
                 ExecutionMode.LOCAL,
                 null,
+                null,
                 null
         );
 

@@ -26,7 +26,7 @@ class SyncSchedulerDispatchExceptionTest {
         QueueManager queueManager = new QueueManager(registry);
         FunctionSpec spec = new FunctionSpec(
                 "fn", "image", null, Map.of(), null,
-                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
         );
         queueManager.getOrCreate(spec);
 
@@ -65,7 +65,7 @@ class SyncSchedulerDispatchExceptionTest {
         QueueManager queueManager = new QueueManager(registry);
         FunctionSpec spec = new FunctionSpec(
                 "fn", "image", null, Map.of(), null,
-                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
         );
         queueManager.getOrCreate(spec);
 

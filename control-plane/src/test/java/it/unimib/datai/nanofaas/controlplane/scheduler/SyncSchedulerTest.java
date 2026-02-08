@@ -23,7 +23,7 @@ class SyncSchedulerTest {
     @Test
     void dispatchesWhenSlotAvailable() {
         QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
-        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null);
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         queueManager.getOrCreate(spec);
 
         SyncQueueProperties props = new SyncQueueProperties(

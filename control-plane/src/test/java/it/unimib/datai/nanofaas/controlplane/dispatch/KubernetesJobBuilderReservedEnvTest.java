@@ -34,7 +34,7 @@ class KubernetesJobBuilderReservedEnvTest {
                         "MY_CUSTOM_VAR", "allowed"
                 ),
                 null, 1000, 1, 10, 3, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         InvocationTask task = new InvocationTask(
@@ -78,7 +78,7 @@ class KubernetesJobBuilderReservedEnvTest {
                 "fn", "image", null,
                 Map.of("FOO", "bar", "BAZ", "qux"),
                 null, 1000, 1, 10, 3, null,
-                ExecutionMode.REMOTE, null, null
+                ExecutionMode.REMOTE, null, null, null
         );
 
         InvocationTask task = new InvocationTask(

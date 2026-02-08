@@ -31,7 +31,7 @@ class SyncQueueServiceTest {
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
         SyncQueueService service = new SyncQueueService(props, store, estimator, metrics, Clock.systemUTC());
 
-        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null);
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task1 = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
         InvocationTask task2 = new InvocationTask("e2", "fn", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1);
         store.put(new ExecutionRecord("e1", task1));
@@ -55,7 +55,7 @@ class SyncQueueServiceTest {
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
         SyncQueueService service = new SyncQueueService(props, store, estimator, metrics, fixed);
 
-        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null);
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, t0, 1);
         ExecutionRecord record = new ExecutionRecord("e1", task);
         store.put(record);

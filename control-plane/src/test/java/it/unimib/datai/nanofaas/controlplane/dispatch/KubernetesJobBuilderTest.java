@@ -34,6 +34,7 @@ class KubernetesJobBuilderTest {
                 null,
                 ExecutionMode.REMOTE,
                 null,
+                null,
                 null
         );
 

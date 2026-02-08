@@ -40,6 +40,7 @@ class KubernetesDispatcherTest {
                 null,
                 ExecutionMode.REMOTE,
                 null,
+                null,
                 null
         );
         InvocationTask task = new InvocationTask(

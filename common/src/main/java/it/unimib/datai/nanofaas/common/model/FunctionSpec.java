@@ -18,6 +18,7 @@ public record FunctionSpec(
         String endpointUrl,
         ExecutionMode executionMode,
         RuntimeMode runtimeMode,
-        String runtimeCommand
+        String runtimeCommand,
+        ScalingConfig scalingConfig
 ) {
 }

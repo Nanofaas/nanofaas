@@ -20,7 +20,7 @@ class QueueManagerGaugeCleanupTest {
 
         FunctionSpec spec = new FunctionSpec(
                 "fn1", "image", null, Map.of(), null,
-                1000, 2, 10, 3, null, ExecutionMode.REMOTE, null, null
+                1000, 2, 10, 3, null, ExecutionMode.REMOTE, null, null, null
         );
         queueManager.getOrCreate(spec);
 
@@ -58,11 +58,11 @@ class QueueManagerGaugeCleanupTest {
 
         FunctionSpec spec1 = new FunctionSpec(
                 "fn1", "image", null, Map.of(), null,
-                1000, 2, 10, 3, null, ExecutionMode.REMOTE, null, null
+                1000, 2, 10, 3, null, ExecutionMode.REMOTE, null, null, null
         );
         FunctionSpec spec2 = new FunctionSpec(
                 "fn2", "image", null, Map.of(), null,
-                1000, 2, 10, 3, null, ExecutionMode.REMOTE, null, null
+                1000, 2, 10, 3, null, ExecutionMode.REMOTE, null, null, null
         );
         queueManager.getOrCreate(spec1);
         queueManager.getOrCreate(spec2);

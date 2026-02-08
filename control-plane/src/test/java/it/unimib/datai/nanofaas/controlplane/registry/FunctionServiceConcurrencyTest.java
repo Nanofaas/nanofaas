@@ -31,7 +31,7 @@ class FunctionServiceConcurrencyTest {
     void setUp() {
         registry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        functionService = new FunctionService(registry, queueManager, defaults);
+        functionService = new FunctionService(registry, queueManager, defaults, null);
 
         when(queueManager.getOrCreate(any())).thenReturn(null);
     }
@@ -52,7 +52,7 @@ class FunctionServiceConcurrencyTest {
                     FunctionSpec spec = new FunctionSpec(
                             "myFunc",  // Same name
                             "image-" + threadId,
-                            null, null, null, null, null, null, null, null, null, null, null
+                            null, null, null, null, null, null, null, null, null, null, null, null
                     );
 
                     Optional<FunctionSpec> result = functionService.register(spec);
@@ -95,7 +95,7 @@ class FunctionServiceConcurrencyTest {
                     FunctionSpec spec = new FunctionSpec(
                             "func-" + threadId,  // Different names
                             "image-" + threadId,
-                            null, null, null, null, null, null, null, null, null, null, null
+                            null, null, null, null, null, null, null, null, null, null, null, null
                     );
 
                     Optional<FunctionSpec> result = functionService.register(spec);
@@ -122,11 +122,11 @@ class FunctionServiceConcurrencyTest {
     void register_existingFunction_returnsEmpty() {
         FunctionSpec spec1 = new FunctionSpec(
                 "myFunc", "image1",
-                null, null, null, null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null, null, null, null, null
         );
         FunctionSpec spec2 = new FunctionSpec(
                 "myFunc", "image2",
-                null, null, null, null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null, null, null, null, null
         );
 
         Optional<FunctionSpec> result1 = functionService.register(spec1);
