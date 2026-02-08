@@ -59,6 +59,12 @@ jobs:
       - name: Build Java artifacts
         run: ./gradlew build -x test
 
+      - name: Build Control Plane Native Image
+        run: |
+          ./gradlew :control-plane:bootBuildImage \
+            -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:latest
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -66,36 +72,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Control Plane
-        id: meta-cp
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane
+      - name: Push Control Plane images
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane --all-tags
 
-      - name: Build and push Control Plane
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: control-plane/Dockerfile
-          push: true
-          tags: ${{ steps.meta-cp.outputs.tags }}
-          labels: ${{ steps.meta-cp.outputs.labels }}
+      - name: Build Java Word Stats Native Image
+        run: |
+          ./gradlew :examples:java:word-stats:bootBuildImage \
+            -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:latest
 
-      - name: Build and push Java Word Stats
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: examples/java/word-stats/Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:latest
+      - name: Build Java JSON Transform Native Image
+        run: |
+          ./gradlew :examples:java:json-transform:bootBuildImage \
+            -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:latest
 
-      - name: Build and push Java JSON Transform
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: examples/java/json-transform/Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:latest
+      - name: Push Java functions images
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats --all-tags
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform --all-tags
 
       - name: Build and push Python Word Stats
         uses: docker/build-push-action@v5

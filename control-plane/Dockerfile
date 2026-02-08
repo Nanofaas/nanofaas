@@ -1,3 +1,5 @@
+# JVM-only local development Dockerfile. 
+# Production native images are built via GitHub Actions using Cloud Native Buildpacks.
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY build/libs/control-plane-0.5.0.jar app.jar

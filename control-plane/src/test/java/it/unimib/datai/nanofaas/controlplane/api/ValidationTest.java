@@ -9,7 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -26,10 +26,10 @@ class ValidationTest {
     @Autowired
     private WebTestClient webClient;
 
-    @MockBean
+    @MockitoBean
     private FunctionService functionService;
 
-    @MockBean
+    @MockitoBean
     private InvocationService invocationService;
 
     @Test
