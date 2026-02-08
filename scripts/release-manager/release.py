@@ -12,6 +12,11 @@ import semver
 
 console = Console()
 
+# Configuration - adjust if repository owner changes
+GH_OWNER = "miciav"
+GH_REPO = "nanofaas"
+REGISTRY = "ghcr.io"
+
 def get_project_root():
     """Find project root by looking for build.gradle"""
     current = Path(__file__).resolve().parent
@@ -30,8 +35,9 @@ def check_tools():
     if not shutil.which("gh"):
         console.print("[red]Error: 'gh' (GitHub CLI) not found in PATH. Install it first.[/red]")
         sys.exit(1)
+    if not shutil.which("docker"):
+        console.print("[yellow]Warning: 'docker' command not found. Local builds will be skipped.[/yellow]")
     
-    # Check gh auth
     try:
         run_command("gh auth status")
     except SystemExit:
@@ -81,43 +87,70 @@ def get_commits_since(tag=None):
 
 def generate_release_notes(new_v, commits):
     notes = f"# Release v{new_v}\n\n"
-    
-    categories = {
-        "feat": [],
-        "fix": [],
-        "chore": [],
-        "other": []
-    }
+    categories = {"feat": [], "fix": [], "chore": [], "other": []}
     
     for commit in commits:
         if not commit: continue
         match = re.match(r"^[a-f0-9]+\s+(\w+)(?:\(.*\))?:\s+(.*)$", commit)
         if match:
             ctype, msg = match.groups()
-            if ctype in categories:
-                categories[ctype].append(msg)
-            else:
-                categories["other"].append(f"{ctype}: {msg}")
+            if ctype in categories: categories[ctype].append(msg)
+            else: categories["other"].append(f"{ctype}: {msg}")
         else:
             msg = re.sub(r"^[a-f0-9]+\s+", "", commit)
             categories["other"].append(msg)
             
-    if categories["feat"]:
-        notes += "## Features\n" + "\n".join(f"- {m}" for m in categories["feat"]) + "\n\n"
-    if categories["fix"]:
-        notes += "## Bug Fixes\n" + "\n".join(f"- {m}" for m in categories["fix"]) + "\n\n"
+    if categories["feat"]: notes += "## Features\n" + "\n".join(f"- {m}" for m in categories["feat"]) + "\n\n"
+    if categories["fix"]: notes += "## Bug Fixes\n" + "\n".join(f"- {m}" for m in categories["fix"]) + "\n\n"
     if categories["other"] or categories["chore"]:
         notes += "## Other Changes\n"
         notes += "\n".join(f"- {m}" for m in categories["chore"]) + "\n"
         notes += "\n".join(f"- {m}" for m in categories["other"]) + "\n"
-        
     return notes.strip()
 
+def build_and_push_arm64(version):
+    """Local ARM64 builds for Mac M-series users"""
+    console.print("\n[bold]Starting local ARM64 builds...[/bold]")
+    
+    tag = f"v{version}"
+    base_image = f"{REGISTRY}/{GH_OWNER}/{GH_REPO}"
+    
+    # 1. Control Plane
+    cp_image = f"{base_image}/control-plane:{tag}-arm64"
+    console.print(f"[blue]Building {cp_image}...[/blue]")
+    run_command(f"./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage={cp_image}")
+    run_command(f"docker push {cp_image}")
+    
+    # 2. Java Runtime (referenced in job template)
+    jr_image = f"{base_image}/function-runtime:{tag}-arm64"
+    console.print(f"[blue]Building {jr_image}...[/blue]")
+    # Assuming function-runtime has bootBuildImage too
+    try:
+        run_command(f"./gradlew :function-runtime:bootBuildImage -PfunctionRuntimeImage={jr_image}")
+        run_command(f"docker push {jr_image}")
+    except:
+        console.print("[yellow]Warning: Could not build function-runtime, skipping.[/yellow]")
+
+    # 3. Python SDK Examples
+    for example in ["word-stats", "json-transform"]:
+        img = f"{base_image}/python-{example}:{tag}-arm64"
+        console.print(f"[blue]Building Python {example} ({img})...[/blue]")
+        run_command(f"docker build --platform linux/arm64 -t {img} -f examples/python/{example}/Dockerfile .")
+        run_command(f"docker push {img}")
+
+    console.print("[green]✓ Local ARM64 images pushed to GHCR.[/green]")
+
 def update_files(new_v, dry_run=False):
+    tag = f"v{new_v}"
+    base_image = f"{REGISTRY}/{GH_OWNER}/{GH_REPO}"
+    
     files_to_update = [
         ("build.gradle", r"(version\s*=\s*')[^']+'", rf"\g<1>{new_v}'"),
         ("function-sdk-python/pyproject.toml", r'(version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         ("watchdog/Cargo.toml", r'(^version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
+        # K8s Manifests
+        ("k8s/control-plane-deployment.yaml", r'image:\s*.*control-plane:.*', f'image: {base_image}/control-plane:{tag}'),
+        ("k8s/function-job-template.yaml", r'image:\s*.*function-runtime:.*', f'image: {base_image}/function-runtime:{tag}'),
     ]
     
     updated_files = []
@@ -148,132 +181,84 @@ def main():
     args = parser.parse_args()
     
     if args.dry_run:
-        console.print("[bold yellow]Running in DRY-RUN mode. No changes will be persisted.[/bold yellow]")
+        console.print("[bold yellow]Running in DRY-RUN mode.[/bold yellow]")
 
     console.print(Panel.fit(
-        "[bold blue]nanoFaaS Release Manager[/bold blue]\n"
-        "[dim]Automated PR, Merge, Bump and Release[/dim]",
+        "[bold blue]nanoFaaS Advanced Release Manager[/bold blue]\n"
+        "[dim]PR -> Merge -> Sync -> Bump -> K8s -> ARM64 -> Tag[/dim]",
         border_style="blue"
     ))
     
     check_tools()
-    
     original_branch, dirty = get_git_status()
     
     if dirty and not args.dry_run:
-        console.print("[yellow]Warning: Your working tree is dirty.[/yellow]")
-        if not questionary.confirm("Do you want to proceed despite uncommitted changes? (Auto-push might include them)").ask():
-            sys.exit(0)
+        console.print("[yellow]Warning: Working tree is dirty.[/yellow]")
+        if not questionary.confirm("Proceed anyway?").ask(): sys.exit(0)
 
     try:
-        # STEP 1: Handle PR and Merge if on feature branch
+        # 1. PR and Merge
         if original_branch != "main":
-            console.print(f"\n[bold]Current branch: {original_branch}[/bold]")
-            if questionary.confirm(f"Create PR from '{original_branch}' and merge into 'main'?").ask():
-                if args.dry_run:
-                    console.print("[dim](Dry-run) Would push, create PR, and merge.[/dim]")
+            if questionary.confirm(f"Merge '{original_branch}' into 'main' via PR?").ask():
+                if args.dry_run: console.print("[dim](Dry-run) Would PR & Merge.[/dim]")
                 else:
-                    console.print("[blue]Pushing current branch...[/blue]")
                     run_command("git push origin HEAD")
-                    
-                    console.print("[blue]Creating Pull Request...[/blue]")
                     run_command("gh pr create --fill --base main")
-                    
-                    console.print("[blue]Merging PR into main...[/blue]")
                     run_command("gh pr merge --merge --delete-branch")
-                    console.print("[green]✓ Branch merged and deleted on remote.[/green]")
-            else:
-                if not questionary.confirm(f"Proceed with release directly on '{original_branch}'? (Not recommended)").ask():
-                    return
+                    console.print("[green]✓ Branch merged via GitHub CLI.[/green]")
 
-        # STEP 2: Sync main branch
+        # 2. Sync Main
         if not args.dry_run:
-            console.print("[blue]Switching to main and syncing with origin...[/blue]")
             run_command("git checkout main")
             run_command("git fetch origin main")
             run_command("git reset --hard origin/main")
-            console.print("[green]✓ Local main is now in sync with remote.[/green]")
+            console.print("[green]✓ Local main synced.[/green]")
 
-        # STEP 3: Version Bump Logic
+        # 3. Bump Logic
         current_v_str = get_current_version()
-        console.print(f"\nCurrent version: [bold cyan]{current_v_str}[/bold cyan]")
-        
         v = semver.VersionInfo.parse(current_v_str)
         choices = [f"Patch ({v.bump_patch()})", f"Minor ({v.bump_minor()})", f"Major ({v.bump_major()})", "Custom"]
-        
-        choice = questionary.select("What type of release is this?", choices=choices).ask()
+        choice = questionary.select("Release type?", choices=choices).ask()
         if not choice: return
-            
-        if "Patch" in choice: new_v = str(v.bump_patch())
-        elif "Minor" in choice: new_v = str(v.bump_minor())
-        elif "Major" in choice: new_v = str(v.bump_major())
-        else:
-            new_v_str = questionary.text("Enter custom version:").ask()
-            new_v = str(semver.VersionInfo.parse(new_v_str))
+        new_v = str(v.bump_patch() if "Patch" in choice else v.bump_minor() if "Minor" in choice else v.bump_major() if "Major" in choice else semver.VersionInfo.parse(questionary.text("Custom version:").ask()))
 
-        console.print(f"Bumping to: [bold green]{new_v}[/bold green]")
-        if not args.dry_run and not questionary.confirm(f"Confirm bump from {current_v_str} to {new_v}?").ask():
-            return
-            
-        # STEP 4: Release Notes
-        latest_tag = get_latest_tag()
-        commits = get_commits_since(latest_tag)
-        notes = generate_release_notes(new_v, commits)
-        
-        console.print("\n[bold]Generated Release Notes:[/bold]")
-        console.print(Panel(notes, title="Preview"))
-        
-        if not args.dry_run and not questionary.confirm("Do you want to use these release notes?").ask():
-            notes = questionary.text("Enter your custom release notes:", multiline=True, default=notes).ask()
-            if not notes: return
+        # 4. Release Notes
+        notes = generate_release_notes(new_v, get_commits_since(get_latest_tag()))
+        console.print(Panel(notes, title="Release Notes Preview"))
+        if not args.dry_run and not questionary.confirm("Use these notes?").ask():
+            notes = questionary.text("Custom notes:", multiline=True, default=notes).ask()
 
-        # STEP 5: Apply Changes and Commit
+        # 5. Apply Changes (Files + K8s)
         updated_files = update_files(new_v, args.dry_run)
-        
-        if args.dry_run:
-            console.print("[yellow]Dry-run complete. No changes performed.[/yellow]")
-            return
+        if args.dry_run: return
 
-        if not updated_files:
-            console.print("[red]No files were updated. Aborting.[/red]")
-            return
-
-        console.print("\n[bold]Committing and Tagging...[/bold]")
-        for f in updated_files:
-            run_command(f"git add {f}")
-        run_command(f'git commit -m "chore: bump version to {new_v}"')
-        
-        if questionary.confirm("Push release commit to main?").ask():
+        # 6. Commit and Push Bump
+        for f in updated_files: run_command(f"git add {f}")
+        run_command(f'git commit -m "chore: release v{new_v}"')
+        if questionary.confirm("Push release commit?").ask():
             run_command("git push origin main")
-            console.print("[green]✓ Pushed to main[/green]")
-        
-        # STEP 6: Tagging
+
+        # 7. Optional Local ARM64 Builds
+        if questionary.confirm("Build and push ARM64 images from this machine?").ask():
+            build_and_push_arm64(new_v)
+
+        # 8. Tagging
         tag_name = f"v{new_v}"
         tag_file = ROOT / "RELEASE_NOTES.tmp.md"
         tag_file.write_text(notes)
         run_command(f'git tag -a {tag_name} -F RELEASE_NOTES.tmp.md')
         os.remove(tag_file)
-        console.print(f"[green]✓ Created tag {tag_name}[/green]")
-        
-        if questionary.confirm(f"Push tag {tag_name} to trigger GitOps pipeline?").ask():
+        if questionary.confirm(f"Push tag {tag_name}?").ask():
             run_command(f"git push origin {tag_name}")
-            console.print("[green]✓ Pushed tag to origin[/green]")
 
-        console.print(Panel.fit(
-            f"[bold green]Release v{new_v} successful![/bold green]",
-            border_style="green"
-        ))
+        console.print(Panel.fit(f"[bold green]Release {tag_name} successful![/bold green]", border_style="green"))
 
     finally:
-        # Restore original branch if we are not on it anymore
         curr_branch, _ = get_git_status()
         if curr_branch != original_branch and not args.dry_run:
-            if questionary.confirm(f"\nReturn to your original branch '{original_branch}'?").ask():
+            if questionary.confirm(f"Return to '{original_branch}'?").ask():
                 run_command(f"git checkout {original_branch}")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Release cancelled by user.[/yellow]")
-        sys.exit(0)
+    try: main()
+    except KeyboardInterrupt: sys.exit(0)
