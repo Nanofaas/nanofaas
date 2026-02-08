@@ -4,6 +4,7 @@ import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -22,6 +23,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Testcontainers
+@Tag("inter_e2e")
 class BuildpackE2eTest {
     private static final String CONTROL_IMAGE = "nanofaas/control-plane:buildpack";
     private static final String RUNTIME_IMAGE = "nanofaas/function-runtime:buildpack";
