@@ -1,0 +1,72 @@
+# Default namespace is the Helm release namespace; this chart can optionally
+# create the namespace object for convenience.
+namespace:
+  create: true
+  name: nanofaas
+
+controlPlane:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/miciav/nanofaas/control-plane
+    tag: v0.6.2
+    pullPolicy: IfNotPresent
+  service:
+    name: control-plane
+    type: ClusterIP
+    ports:
+      http: 8080
+      actuator: 8081
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: nanofaas-control-plane
+
+demos:
+  enabled: true
+  # The job will register these functions via the control-plane API.
+  # For DEPLOYMENT mode, the control-plane will provision Deployment/Service per function.
+  functions:
+    - name: word-stats-java
+      image: ghcr.io/miciav/nanofaas/java-word-stats:v0.6.2
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: json-transform-java
+      image: ghcr.io/miciav/nanofaas/java-json-transform:v0.6.2
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: word-stats-python
+      image: ghcr.io/miciav/nanofaas/python-word-stats:v0.6.2
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: json-transform-python
+      image: ghcr.io/miciav/nanofaas/python-json-transform:v0.6.2
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+
+  registerJob:
+    image: curlimages/curl:latest
+    backoffLimit: 6
+    # If you have strict clusters, you may want to pin a non-latest tag for curl.
+    ttlSecondsAfterFinished: 300

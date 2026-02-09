@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanofaas-control-plane
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+  labels:
+    {{- include "nanofaas.controlPlane.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controlPlane.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | quote }}
+      containers:
+        - name: control-plane
+          image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
+          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.controlPlane.service.ports.http }}
+            - containerPort: {{ .Values.controlPlane.service.ports.actuator }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: {{ .Values.controlPlane.service.ports.actuator }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: {{ .Values.controlPlane.service.ports.actuator }}

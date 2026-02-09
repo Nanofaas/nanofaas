@@ -1,0 +1,12 @@
+Nanofaas installed.
+
+Control-plane service:
+  {{ .Values.controlPlane.service.name }}.{{ include "nanofaas.namespace" . }}:{{ .Values.controlPlane.service.ports.http }}
+
+Port-forward (from your machine):
+  kubectl -n {{ include "nanofaas.namespace" . }} port-forward svc/{{ .Values.controlPlane.service.name }} 8080:{{ .Values.controlPlane.service.ports.http }} 8081:{{ .Values.controlPlane.service.ports.actuator }}
+
+Invoke a function (example):
+  curl -X POST http://localhost:8080/v1/functions/word-stats-java:invoke \
+    -H 'Content-Type: application/json' \
+    -d '{"input":{"text":"hello hello world"}}'
