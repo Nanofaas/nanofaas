@@ -77,6 +77,25 @@ jobs:
       - name: Push Control Plane images
         run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane --all-tags
 
+      - name: Build Function Runtime Image
+        env:
+          BP_OCI_SOURCE: https://github.com/${{ github.repository }}
+        run: |
+          ./gradlew :function-runtime:bootBuildImage \
+            -PfunctionRuntimeImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:latest
+
+      - name: Push Function Runtime images
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime --all-tags
+
+      - name: Build and push Watchdog
+        uses: docker/build-push-action@v5
+        with:
+          context: ./watchdog
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/watchdog:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/watchdog:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
       - name: Build Java Word Stats Image
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}

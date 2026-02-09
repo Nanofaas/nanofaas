@@ -1,25 +1,15 @@
-FROM python:3.11-slim
-
-LABEL org.opencontainers.image.source=https://github.com/miciav/nanofaas
-
-WORKDIR /app
-
-# Install uv for fast dependency management
+# Stage 1: Install dependencies
+FROM python:3.11-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv/bin/
-
-# Copy SDK and example (context is expected to be project root for GitOps)
 COPY function-sdk-python/ /tmp/sdk/
+RUN /uv/bin/uv pip install --system --target /deps /tmp/sdk/
+
+# Stage 2: Minimal runtime
+FROM python:3.11-slim
+LABEL org.opencontainers.image.source=https://github.com/miciav/nanofaas
+WORKDIR /app
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages/
 COPY examples/python/word-stats/ /app/
-
-# Install SDK and its dependencies
-RUN /uv/bin/uv pip install --system /tmp/sdk/
-
-# Environment configuration
-ENV HANDLER_MODULE=handler
-ENV PORT=8080
-ENV PYTHONPATH=/app
-
+ENV HANDLER_MODULE=handler PORT=8080 PYTHONPATH=/app
 EXPOSE 8080
-
-# Run the FastAPI runtime from the SDK
 CMD ["python", "-m", "uvicorn", "nanofaas.runtime.app:app", "--host", "0.0.0.0", "--port", "8080"]

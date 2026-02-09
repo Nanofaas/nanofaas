@@ -51,13 +51,13 @@ API gateway + scheduler + dispatcher in a single pod. Key components:
 - **FunctionRegistry** - In-memory function storage
 - **QueueManager** - Per-function bounded queues with backpressure (default 100 items)
 - **Scheduler** - Single dedicated thread dispatching from all queues
-- **KubernetesDispatcher** - Creates K8s Jobs for function execution
-- **PoolDispatcher** - Optional warm pool mode for faster invocation (supports WARM execution mode)
+- **PoolDispatcher** - Dispatches to warm Deployment+Service pods (supports DEPLOYMENT and POOL execution modes)
 - **ExecutionState** - Tracks execution lifecycle with TTL eviction
 
 Execution Modes:
-- **JOB** - Default mode; creates a new K8s Job per invocation
-- **WARM** - OpenWhisk-style warm containers; reuses running pods for lower latency
+- **DEPLOYMENT** - Default mode; routes to K8s Deployment+Service with warm containers
+- **POOL** - OpenWhisk-style warm pool mode
+- **LOCAL** - In-process execution for testing
 
 Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
 
@@ -71,13 +71,11 @@ Supports WARM mode via `X-Execution-Id` header for OpenWhisk-style execution.
 
 Spring Web (servlet). Port: 8080.
 
-### python-runtime/
-Python function runtime with watchdog for WARM execution mode:
-- Loads user functions dynamically
-- Supports OpenWhisk-style warm containers
-- Accepts `X-Execution-Id` and `X-Trace-Id` headers
+### python-runtime/ (deprecated)
+Legacy Python runtime. New Python functions should use `function-sdk-python/` instead.
 
-Build: `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/`
+### function-sdk-python/
+Python function SDK providing the FastAPI-based runtime for Python handlers.
 
 ### common/
 Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `ExecutionStatus`, `FunctionHandler` interface.
@@ -87,8 +85,8 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 1. Client → `POST /v1/functions/{name}:invoke` (sync) or `:enqueue` (async)
 2. Control plane validates, applies rate limit (1000/sec default), queues request
 3. Scheduler thread picks from queue, calls dispatcher
-4. KubernetesDispatcher creates Job using template from `k8s/function-job-template.yaml`
-5. Job pod runs function-runtime, calls handler, POSTs result back to `/v1/internal/executions`
+4. PoolDispatcher forwards request to the function's Deployment/Service endpoint
+5. Function pod processes request, returns result to control plane
 6. Control plane updates ExecutionState, returns result to client
 
 ## Key Configuration
