@@ -59,7 +59,9 @@ jobs:
       - name: Build Java artifacts
         run: ./gradlew build -x test
 
-      - name: Build Control Plane Native Image
+      - name: Build Control Plane Image
+        env:
+          BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
           ./gradlew :control-plane:bootBuildImage \
             -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
@@ -75,13 +77,17 @@ jobs:
       - name: Push Control Plane images
         run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane --all-tags
 
-      - name: Build Java Word Stats Native Image
+      - name: Build Java Word Stats Image
+        env:
+          BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
           ./gradlew :examples:java:word-stats:bootBuildImage \
             -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:latest
 
-      - name: Build Java JSON Transform Native Image
+      - name: Build Java JSON Transform Image
+        env:
+          BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
           ./gradlew :examples:java:json-transform:bootBuildImage \
             -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
@@ -99,6 +105,7 @@ jobs:
           file: examples/python/word-stats/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-word-stats:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Build and push Python JSON Transform
         uses: docker/build-push-action@v5
@@ -107,3 +114,4 @@ jobs:
           file: examples/python/json-transform/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-json-transform:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
