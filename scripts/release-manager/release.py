@@ -115,18 +115,19 @@ def build_and_push_arm64(version):
     tag = f"v{version}"
     base_image = f"{REGISTRY}/{GH_OWNER}/{GH_REPO}"
     
+    oci_source = f"https://github.com/{GH_OWNER}/{GH_REPO}"
+
     # 1. Control Plane
     cp_image = f"{base_image}/control-plane:{tag}-arm64"
     console.print(f"[blue]Building {cp_image}...[/blue]")
-    run_command(f"./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage={cp_image}")
+    run_command(f"BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage={cp_image}")
     run_command(f"docker push {cp_image}")
-    
+
     # 2. Java Runtime (referenced in job template)
     jr_image = f"{base_image}/function-runtime:{tag}-arm64"
     console.print(f"[blue]Building {jr_image}...[/blue]")
-    # Assuming function-runtime has bootBuildImage too
     try:
-        run_command(f"./gradlew :function-runtime:bootBuildImage -PfunctionRuntimeImage={jr_image}")
+        run_command(f"BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage -PfunctionRuntimeImage={jr_image}")
         run_command(f"docker push {jr_image}")
     except:
         console.print("[yellow]Warning: Could not build function-runtime, skipping.[/yellow]")
@@ -135,7 +136,7 @@ def build_and_push_arm64(version):
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/python-{example}:{tag}-arm64"
         console.print(f"[blue]Building Python {example} ({img})...[/blue]")
-        run_command(f"docker build --platform linux/arm64 -t {img} -f examples/python/{example}/Dockerfile .")
+        run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {img} -f examples/python/{example}/Dockerfile .")
         run_command(f"docker push {img}")
 
     console.print("[green]✓ Local ARM64 images pushed to GHCR.[/green]")
