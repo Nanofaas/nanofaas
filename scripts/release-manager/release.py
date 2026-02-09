@@ -53,6 +53,11 @@ def run_command(cmd, capture_output=True):
         sys.exit(1)
     return result.stdout.strip()
 
+def try_command(cmd):
+    """Run a command, return (success, stdout, stderr) without exiting on failure."""
+    result = subprocess.run(cmd, shell=True, text=True, capture_output=True, cwd=ROOT)
+    return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+
 def get_current_version():
     gradle_file = ROOT / "build.gradle"
     content = gradle_file.read_text()
@@ -221,12 +226,39 @@ def main():
         # 1. PR and Merge
         if original_branch != "main":
             if questionary.confirm(f"Merge '{original_branch}' into 'main' via PR?").ask():
-                if args.dry_run: console.print("[dim](Dry-run) Would PR & Merge.[/dim]")
+                if args.dry_run:
+                    console.print("[dim](Dry-run) Would PR & Merge.[/dim]")
                 else:
-                    run_command("git push origin HEAD")
-                    run_command("gh pr create --fill --base main")
-                    run_command("gh pr merge --merge --delete-branch")
-                    console.print("[green]✓ Branch merged via GitHub CLI.[/green]")
+                    # Check if branch is already fully merged into main
+                    ok, _, _ = try_command(f"git fetch origin main")
+                    ok, diff_out, _ = try_command(f"git log origin/main..HEAD --oneline")
+                    if not diff_out:
+                        console.print("[yellow]Branch already merged into main, skipping PR.[/yellow]")
+                    else:
+                        run_command("git push origin HEAD")
+                        # Check for existing open PR
+                        ok, pr_out, _ = try_command(f"gh pr list --head {original_branch} --base main --state open --json number --jq '.[0].number'")
+                        if ok and pr_out:
+                            console.print(f"[yellow]PR #{pr_out} already exists, merging it.[/yellow]")
+                        else:
+                            ok, _, pr_err = try_command("gh pr create --fill --base main")
+                            if not ok:
+                                if "No commits between" in pr_err or "already exists" in pr_err:
+                                    console.print("[yellow]Branch already up-to-date with main, skipping PR.[/yellow]")
+                                else:
+                                    console.print(f"[red]PR creation failed: {pr_err}[/red]")
+                                    if not questionary.confirm("Continue without PR merge?").ask():
+                                        sys.exit(1)
+                        # Try to merge if a PR exists
+                        ok, pr_num, _ = try_command(f"gh pr list --head {original_branch} --base main --state open --json number --jq '.[0].number'")
+                        if ok and pr_num:
+                            ok, _, merge_err = try_command(f"gh pr merge {pr_num} --merge --delete-branch")
+                            if ok:
+                                console.print("[green]✓ Branch merged via GitHub CLI.[/green]")
+                            else:
+                                console.print(f"[yellow]PR merge failed: {merge_err}[/yellow]")
+                                if not questionary.confirm("Continue anyway? (branch may already be merged)").ask():
+                                    sys.exit(1)
 
         # 2. Sync Main
         if not args.dry_run:
