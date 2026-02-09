@@ -245,8 +245,8 @@ components:
           description: Optional HTTP endpoint for pool execution mode
         executionMode:
           type: string
-          enum: [REMOTE, LOCAL, POOL]
-          description: Execution mode for the function (REMOTE is default)
+          enum: [LOCAL, POOL, DEPLOYMENT]
+          description: Execution mode for the function (DEPLOYMENT is default)
         runtimeMode:
           type: string
           enum: [HTTP, STDIO, FILE]

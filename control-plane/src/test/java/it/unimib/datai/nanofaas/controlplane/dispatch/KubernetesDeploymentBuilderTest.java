@@ -20,7 +20,7 @@ class KubernetesDeploymentBuilderTest {
 
     @BeforeEach
     void setUp() {
-        KubernetesProperties properties = new KubernetesProperties("default", null, 10, null);
+        KubernetesProperties properties = new KubernetesProperties("default", "http://control-plane:8080/v1/internal/executions");
         builder = new KubernetesDeploymentBuilder(properties);
     }
 
@@ -182,6 +182,16 @@ class KubernetesDeploymentBuilderTest {
     @Test
     void buildHpa_returnsNullWhenScalingConfigNull() {
         assertNull(builder.buildHpa(spec(null)));
+    }
+
+    @Test
+    void buildDeployment_containsCallbackUrlEnvVar() {
+        Deployment deployment = builder.buildDeployment(spec(null));
+        Container container = deployment.getSpec().getTemplate().getSpec().getContainers().get(0);
+        List<EnvVar> envVars = container.getEnv();
+
+        assertTrue(envVars.stream().anyMatch(e -> "CALLBACK_URL".equals(e.getName())
+                && "http://control-plane:8080/v1/internal/executions".equals(e.getValue())));
     }
 
     @Test

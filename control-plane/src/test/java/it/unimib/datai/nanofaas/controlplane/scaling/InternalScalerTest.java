@@ -93,7 +93,7 @@ class InternalScalerTest {
     void scalingLoop_ignoresNonDeploymentFunctions() {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));
-        FunctionSpec spec = functionSpec("echo", ExecutionMode.REMOTE, scaling);
+        FunctionSpec spec = functionSpec("echo", ExecutionMode.POOL, scaling);
 
         when(registry.list()).thenReturn(List.of(spec));
 

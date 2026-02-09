@@ -132,7 +132,27 @@ def build_and_push_arm64(version):
     except:
         console.print("[yellow]Warning: Could not build function-runtime, skipping.[/yellow]")
 
-    # 3. Python SDK Examples
+    # 3. Watchdog
+    wd_image = f"{base_image}/watchdog:{tag}-arm64"
+    console.print(f"[blue]Building {wd_image}...[/blue]")
+    try:
+        run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {wd_image} watchdog/")
+        run_command(f"docker push {wd_image}")
+    except:
+        console.print("[yellow]Warning: Could not build watchdog, skipping.[/yellow]")
+
+    # 4. Java Demo Functions
+    java_examples = {
+        "word-stats": ":examples:java:word-stats:bootBuildImage",
+        "json-transform": ":examples:java:json-transform:bootBuildImage",
+    }
+    for example, gradle_task in java_examples.items():
+        img = f"{base_image}/java-{example}:{tag}-arm64"
+        console.print(f"[blue]Building Java {example} ({img})...[/blue]")
+        run_command(f"BP_OCI_SOURCE={oci_source} ./gradlew {gradle_task} -PfunctionImage={img}")
+        run_command(f"docker push {img}")
+
+    # 5. Python Demo Functions
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/python-{example}:{tag}-arm64"
         console.print(f"[blue]Building Python {example} ({img})...[/blue]")
@@ -151,7 +171,7 @@ def update_files(new_v, dry_run=False):
         ("watchdog/Cargo.toml", r'(^version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         # K8s Manifests
         ("k8s/control-plane-deployment.yaml", r'image:\s*.*control-plane:.*', f'image: {base_image}/control-plane:{tag}'),
-        ("k8s/function-job-template.yaml", r'image:\s*.*function-runtime:.*', f'image: {base_image}/function-runtime:{tag}'),
+        # function-job-template.yaml removed (JOB mode no longer supported)
     ]
     
     updated_files = []

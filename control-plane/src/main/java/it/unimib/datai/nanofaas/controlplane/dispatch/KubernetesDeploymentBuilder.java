@@ -17,7 +17,7 @@ import java.util.Set;
 
 public class KubernetesDeploymentBuilder {
     private static final Set<String> RESERVED_ENV = Set.of(
-            "FUNCTION_NAME", "WARM", "TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD"
+            "FUNCTION_NAME", "WARM", "TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD", "CALLBACK_URL"
     );
 
     private final KubernetesProperties properties;
@@ -228,6 +228,11 @@ public class KubernetesDeploymentBuilder {
         if (spec.runtimeCommand() != null && !spec.runtimeCommand().isBlank()) {
             envVars.add(new EnvVarBuilder().withName("WATCHDOG_CMD")
                     .withValue(spec.runtimeCommand()).build());
+        }
+
+        if (properties.callbackUrl() != null && !properties.callbackUrl().isBlank()) {
+            envVars.add(new EnvVarBuilder().withName("CALLBACK_URL")
+                    .withValue(properties.callbackUrl()).build());
         }
 
         if (spec.env() != null) {

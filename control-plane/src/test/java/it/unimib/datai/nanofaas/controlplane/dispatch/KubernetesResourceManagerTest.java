@@ -25,7 +25,7 @@ class KubernetesResourceManagerTest {
 
     @BeforeEach
     void setUp() {
-        KubernetesProperties properties = new KubernetesProperties("default", null, 10, null);
+        KubernetesProperties properties = new KubernetesProperties("default", null);
         @SuppressWarnings("unchecked")
         ObjectProvider<KubernetesClient> clientProvider = mock(ObjectProvider.class);
         when(clientProvider.getObject()).thenReturn(client);

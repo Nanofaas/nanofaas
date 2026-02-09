@@ -1,5 +1,7 @@
 # nanofaas Python Runtime
 
+> **Deprecated:** This runtime is superseded by `function-sdk-python/`. New Python functions should use the SDK-based approach. See `examples/python/` for usage.
+
 Lightweight Python function runtime for nanofaas. Supports both one-shot (cold) and warm (OpenWhisk-style) execution modes.
 
 ## Handler Interface

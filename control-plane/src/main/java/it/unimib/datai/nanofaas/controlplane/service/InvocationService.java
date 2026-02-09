@@ -176,28 +176,18 @@ public class InvocationService {
         metrics.dispatch(task.functionName());
 
         ExecutionMode mode = task.functionSpec().executionMode();
-        if (mode == ExecutionMode.LOCAL || mode == ExecutionMode.POOL || mode == ExecutionMode.DEPLOYMENT) {
-            java.util.concurrent.CompletableFuture<InvocationResult> future = switch (mode) {
-                case LOCAL -> dispatcherRouter.dispatchLocal(task);
-                case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
-                default -> throw new IllegalStateException("Unexpected mode: " + mode);
-            };
+        java.util.concurrent.CompletableFuture<InvocationResult> future = switch (mode) {
+            case LOCAL -> dispatcherRouter.dispatchLocal(task);
+            case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
+        };
 
-            future.whenComplete((result, error) -> {
-                if (error != null) {
-                    completeExecution(task.executionId(), InvocationResult.error(mode.name() + "_ERROR", error.getMessage()));
-                } else {
-                    completeExecution(task.executionId(), result);
-                }
-            });
-        } else {
-            // REMOTE dispatch (legacy Job-per-invocation)
-            dispatcherRouter.dispatchRemote(task).whenComplete((result, error) -> {
-                if (error != null) {
-                    completeExecution(task.executionId(), InvocationResult.error("DISPATCH_ERROR", error.getMessage()));
-                }
-            });
-        }
+        future.whenComplete((result, error) -> {
+            if (error != null) {
+                completeExecution(task.executionId(), InvocationResult.error(mode.name() + "_ERROR", error.getMessage()));
+            } else {
+                completeExecution(task.executionId(), result);
+            }
+        });
     }
 
     public void completeExecution(String executionId, InvocationResult result) {

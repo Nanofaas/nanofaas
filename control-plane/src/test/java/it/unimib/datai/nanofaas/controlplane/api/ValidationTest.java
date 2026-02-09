@@ -38,7 +38,7 @@ class ValidationTest {
                 "",  // blank name
                 "myimage",
                 null, null, null, null, null, null, null, null,
-                ExecutionMode.REMOTE, null, null, null
+                ExecutionMode.DEPLOYMENT, null, null, null
         );
 
         webClient.post()
@@ -58,7 +58,7 @@ class ValidationTest {
                 "myfunc",
                 null,  // null image
                 null, null, null, null, null, null, null, null,
-                ExecutionMode.REMOTE, null, null, null
+                ExecutionMode.DEPLOYMENT, null, null, null
         );
 
         webClient.post()
@@ -79,7 +79,7 @@ class ValidationTest {
                 null, null, null, null,
                 0,  // zero concurrency
                 null, null, null,
-                ExecutionMode.REMOTE, null, null, null
+                ExecutionMode.DEPLOYMENT, null, null, null
         );
 
         webClient.post()
@@ -99,7 +99,7 @@ class ValidationTest {
                 "myfunc",
                 "myimage",
                 null, null, null, null, null, null, null, null,
-                ExecutionMode.REMOTE, null, null, null
+                ExecutionMode.DEPLOYMENT, null, null, null
         );
 
         when(functionService.register(any())).thenReturn(Optional.of(spec));
@@ -150,7 +150,7 @@ class ValidationTest {
                 null, null, null, null,
                 -1,   // negative concurrency
                 null, null, null,
-                ExecutionMode.REMOTE, null, null, null
+                ExecutionMode.DEPLOYMENT, null, null, null
         );
 
         webClient.post()
