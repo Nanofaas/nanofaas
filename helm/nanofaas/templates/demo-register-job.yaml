@@ -1,0 +1,47 @@
+{{- if .Values.demos.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-register-demos
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.demos.registerJob.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.demos.registerJob.ttlSecondsAfterFinished }}
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: register
+          image: {{ .Values.demos.registerJob.image | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+
+              CP_API="http://{{ .Values.controlPlane.service.name }}:{{ .Values.controlPlane.service.ports.http }}"
+              CP_MGMT="http://{{ .Values.controlPlane.service.name }}:{{ .Values.controlPlane.service.ports.actuator }}"
+
+              echo "Waiting for control-plane readiness..."
+              for i in $(seq 1 60); do
+                if curl -sf "${CP_MGMT}/actuator/health/readiness" >/dev/null; then
+                  echo "control-plane ready"
+                  break
+                fi
+                sleep 2
+              done
+
+              echo "Registering demo functions..."
+              {{- range $f := .Values.demos.functions }}
+              echo "  - {{ $f.name }}"
+              curl -sf -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{{- toJson $f -}}' >/dev/null || true
+              {{- end }}
+
+              echo "Done"
+{{- end -}}

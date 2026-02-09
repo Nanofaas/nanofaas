@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nanofaas
+description: Nanofaas control-plane + optional demo function registration
+type: application
+version: 0.1.0
+appVersion: "0.6.2"
