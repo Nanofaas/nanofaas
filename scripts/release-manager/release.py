@@ -164,6 +164,13 @@ def build_and_push_arm64(version):
         run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {img} -f examples/python/{example}/Dockerfile .")
         run_command(f"docker push {img}")
 
+    # 6. Exec (Bash) Demo Functions
+    for example in ["word-stats", "json-transform"]:
+        img = f"{base_image}/exec-{example}:{tag}-arm64"
+        console.print(f"[blue]Building Exec {example} ({img})...[/blue]")
+        run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {img} -f examples/bash/{example}/Dockerfile .")
+        run_command(f"docker push {img}")
+
     console.print("[green]✓ Local ARM64 images pushed to GHCR.[/green]")
 
 def update_files(new_v, dry_run=False):
