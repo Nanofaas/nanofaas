@@ -130,14 +130,14 @@ WARM (ExecutionMode = DEPLOYMENT, pod persistente)
 
    Control Plane          Deployment Pod (n repliche)
         |                      |
-        |                      |  watchdog avvia runtime
-        |                      |  runtime pronto su :8080
         |                      |  watchdog espone HTTP server su :8080
+        |                      |  (se EXECUTION_MODE=HTTP: avvia runtime interno su :8081)
         |                      |
-        |-- POST /invoke ----->|  {execution_id, callback_url, payload}
-        |                      |  watchdog --> POST /invoke al runtime
-        |                      |              con header X-Execution-Id
-        |<-- callback result --|
+        |-- POST /invoke ----->|  Header: X-Execution-Id
+        |   Body: InvocationRequest {input, metadata}
+        |                      |  watchdog:
+        |                      |    - STDIO/FILE: esegue WATCHDOG_CMD per invocazione
+        |                      |    - HTTP: proxy verso runtime interno
         |<----- response ------|
         |                      |
         |-- POST /invoke ----->|  (riusa stesso container!)
@@ -147,9 +147,10 @@ WARM (ExecutionMode = DEPLOYMENT, pod persistente)
         |      (il pod resta in vita tra le invocazioni)
 ```
 
-In modalita' WARM il watchdog **diventa un reverse proxy HTTP**: accetta
-richieste sulla porta 8080, le inoltra al runtime interno, e gestisce
-callback e tracing.
+In modalita' WARM il watchdog **espone un server HTTP**: accetta richieste
+su `/invoke` e restituisce l'output direttamente nella risposta HTTP.
+Per `STDIO`/`FILE` esegue `WATCHDOG_CMD` a ogni invocazione; per `HTTP`
+puo' fare da reverse proxy verso un runtime interno.
 
 ---
 
@@ -179,8 +180,8 @@ callback e tracing.
 | `WATCHDOG_CMD` | `java -jar /app/app.jar` | Comando per avviare il runtime |
 
 **Differenza chiave**: nel warm mode non ci sono `EXECUTION_ID`,
-`CALLBACK_URL`, `INVOCATION_PAYLOAD` come ENV. Arrivano nel body di ogni
-richiesta HTTP al watchdog.
+`CALLBACK_URL`, `INVOCATION_PAYLOAD` come ENV. L'`executionId` arriva
+come header `X-Execution-Id` e il body e' un `InvocationRequest`.
 
 ---
 

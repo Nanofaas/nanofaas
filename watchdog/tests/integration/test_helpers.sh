@@ -44,7 +44,7 @@ end_test() {
 
 pass_test() {
     echo -e "${GREEN}PASS${NC}"
-    ((TESTS_PASSED++))
+    ((TESTS_PASSED++)) || true
 }
 
 fail_test() {
@@ -53,7 +53,7 @@ fail_test() {
     if [ -n "$reason" ]; then
         echo -e "    ${RED}Reason: $reason${NC}"
     fi
-    ((TESTS_FAILED++))
+    ((TESTS_FAILED++)) || true
 }
 
 # ============================================================================

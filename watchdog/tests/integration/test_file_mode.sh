@@ -262,7 +262,7 @@ test_file_input_env_passed() {
     EXECUTION_ID="exec-file-010" \
     EXECUTION_MODE=FILE \
     TIMEOUT_MS=5000 \
-    WATCHDOG_CMD="bash -c 'echo \"{\\\"input\\\": \\\"$INPUT_FILE\\\", \\\"output\\\": \\\"$OUTPUT_FILE\\\"}\" > $OUTPUT_FILE'" \
+    WATCHDOG_CMD="${FIXTURES_DIR}/file_env_echo.sh" \
     INPUT_FILE="/tmp/env_in.json" \
     OUTPUT_FILE="/tmp/env_out.json" \
     INVOCATION_PAYLOAD='{"test": true}' \

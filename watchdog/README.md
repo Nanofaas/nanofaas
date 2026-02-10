@@ -90,32 +90,18 @@ INPUT_FILE=/tmp/input.json
 OUTPUT_FILE=/tmp/output.json
 ```
 
-### WARM Mode (OpenWhisk-style)
-For long-running runtimes that handle multiple sequential invocations. The container stays alive and processes requests one at a time.
+### Warm DEPLOYMENT Mode (`WARM=true`)
+For long-running containers that handle multiple sequential invocations (OpenWhisk-style warm containers). The watchdog stays alive and processes invocations one at a time.
 
-```
-Control Plane                    Watchdog                    Runtime
-    │                               │                           │
-    │── POST /invoke ──────────────►│                           │
-    │   {execution_id, payload}     ├── POST /invoke ──────────►│
-    │                               │◄─────────── {response} ───┤
-    │◄───────── {response} ─────────┤                           │
-    │                               │                           │
-    │── POST /invoke ──────────────►│  (same container!)        │
-    │   {execution_id, payload}     ├── POST /invoke ──────────►│
-    │                               │◄─────────── {response} ───┤
-    │◄───────── {response} ─────────┤                           │
-```
+In this mode, the watchdog exposes an HTTP server and executes your handler per request (for `STDIO`/`FILE`), or proxies to an internal HTTP runtime (for `HTTP`).
 
 **Environment:**
 ```bash
-EXECUTION_MODE=WARM
-WATCHDOG_CMD="java -jar /app/app.jar"
-RUNTIME_URL=http://127.0.0.1:8080/invoke
-HEALTH_URL=http://127.0.0.1:8080/health
+WARM=true
 WARM_PORT=8080
-WARM_IDLE_TIMEOUT_MS=300000  # 5 min idle timeout (not yet implemented)
-WARM_MAX_INVOCATIONS=0       # unlimited (not yet implemented)
+EXECUTION_MODE=STDIO           # or: FILE | HTTP
+WATCHDOG_CMD="/app/handler.sh" # command to run per invocation (STDIO/FILE) or internal runtime command (HTTP)
+TIMEOUT_MS=30000
 ```
 
 **Watchdog API (warm mode):**
@@ -123,24 +109,22 @@ WARM_MAX_INVOCATIONS=0       # unlimited (not yet implemented)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check, returns 200 OK |
-| `/invoke` | POST | Invoke function with JSON payload |
+| `/invoke` | POST | Invoke function |
 
-**Invoke Request Format:**
+**Invoke request (same as other nanoFaaS runtimes):**
+- Header: `X-Execution-Id` (required)
+- Header: `X-Trace-Id` (optional)
+- Body: `InvocationRequest` JSON:
 ```json
 {
-  "execution_id": "exec-123",
-  "callback_url": "http://control-plane:8080/v1/internal/executions",
-  "trace_id": "trace-456",
-  "payload": {"input": "..."},
-  "timeout_ms": 30000
+  "input": {"any": "json"},
+  "metadata": {"optional": "map"}
 }
 ```
 
-**Key Differences from HTTP Mode:**
-- Watchdog exposes HTTP server instead of consuming ENV payload
-- Runtime stays alive between invocations (warm start)
-- Each invocation gets its own `execution_id` via request body
-- Suitable for latency-sensitive workloads
+**Notes:**
+- In warm DEPLOYMENT mode, the control plane reads the HTTP response body as the function output (no per-invocation callback).
+- For `EXECUTION_MODE=HTTP`, configure `RUNTIME_URL`/`HEALTH_URL` to point to the internal runtime. By default the watchdog assumes the internal runtime listens on port `8081` in warm mode.
 
 ## Examples
 
@@ -286,21 +270,20 @@ process.stdin.on('end', () => {
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `EXECUTION_ID` | Yes | - | Unique execution identifier |
-| `CALLBACK_URL` | Yes | - | Control plane callback URL |
-| `EXECUTION_MODE` | No | HTTP | `HTTP`, `STDIO`, `FILE`, or `WARM` |
+| `WARM` | No | false | If true, watchdog starts an HTTP server and handles multiple invocations (warm DEPLOYMENT mode) |
+| `EXECUTION_ID` | Yes (one-shot) | - | Unique execution identifier |
+| `CALLBACK_URL` | Yes (one-shot) | - | Control plane callback URL |
+| `EXECUTION_MODE` | No | HTTP | `HTTP`, `STDIO`, or `FILE` |
 | `TIMEOUT_MS` | No | 30000 | Function timeout in milliseconds |
 | `TRACE_ID` | No | - | Distributed tracing ID |
 | `WATCHDOG_CMD` | No | `java -jar /app/app.jar` | Command to run |
-| `RUNTIME_URL` | No | `http://127.0.0.1:8080/invoke` | HTTP invoke endpoint |
+| `RUNTIME_URL` | No | `http://127.0.0.1:8080/invoke` (one-shot) / `http://127.0.0.1:8081/invoke` (warm) | HTTP invoke endpoint (HTTP mode) |
 | `HEALTH_URL` | No | derived from RUNTIME_URL | HTTP health endpoint |
 | `READY_TIMEOUT_MS` | No | 10000 | Max startup wait time |
 | `INPUT_FILE` | No | `/tmp/input.json` | Input file (FILE mode) |
 | `OUTPUT_FILE` | No | `/tmp/output.json` | Output file (FILE mode) |
-| `INVOCATION_PAYLOAD` | No | `null` | JSON payload |
-| `WARM_PORT` | No | 8080 | HTTP port for warm mode server |
-| `WARM_IDLE_TIMEOUT_MS` | No | 300000 | Idle timeout before shutdown (not implemented) |
-| `WARM_MAX_INVOCATIONS` | No | 0 | Max invocations before restart (not implemented) |
+| `INVOCATION_PAYLOAD` | No | `null` | JSON payload (one-shot only) |
+| `WARM_PORT` | No | 8080 | HTTP port for warm server (when `WARM=true`) |
 
 ## Callback Format
 
