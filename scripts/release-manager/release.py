@@ -375,11 +375,7 @@ def main():
                 "Skipping release commit (assuming main is already bumped).[/yellow]"
             )
 
-        # 7. Optional Local ARM64 Builds
-        if questionary.confirm("Build and push ARM64 images from this machine?").ask():
-            build_and_push_arm64(new_v)
-
-        # 8. Tagging
+        # 7. Tagging
         tag_name = f"v{new_v}"
         tag_file = ROOT / "RELEASE_NOTES.tmp.md"
         tag_file.write_text(notes)
@@ -387,6 +383,10 @@ def main():
         os.remove(tag_file)
         if questionary.confirm(f"Push tag {tag_name}?").ask():
             run_command(f"git push origin {tag_name}")
+
+        # 8. Optional Local Image Builds (run last so tagging isn't blocked by long local builds)
+        if questionary.confirm("Build and push images from this machine (ARM64)?").ask():
+            build_and_push_arm64(new_v)
 
         console.print(Panel.fit(f"[bold green]Release {tag_name} successful![/bold green]", border_style="green"))
 
