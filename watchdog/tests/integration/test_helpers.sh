@@ -19,9 +19,31 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Default paths (override in local runs)
-TESTS_ROOT="${TESTS_ROOT:-/tests}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# When running inside the integration-test container, sources are mounted under /tests.
+# When running from the repo, default to watchdog/tests.
+if [ -z "${TESTS_ROOT:-}" ]; then
+    if [ -d "/tests/fixtures" ]; then
+        TESTS_ROOT="/tests"
+    else
+        TESTS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    fi
+fi
+
 FIXTURES_DIR="${FIXTURES_DIR:-${TESTS_ROOT}/fixtures}"
-WATCHDOG_BIN="${WATCHDOG_BIN:-/usr/local/bin/watchdog}"
+
+if [ -z "${WATCHDOG_BIN:-}" ]; then
+    if [ -x "/usr/local/bin/watchdog" ]; then
+        WATCHDOG_BIN="/usr/local/bin/watchdog"
+    elif [ -x "$(cd "$SCRIPT_DIR/../.." && pwd)/target/debug/nanofaas-watchdog" ]; then
+        WATCHDOG_BIN="$(cd "$SCRIPT_DIR/../.." && pwd)/target/debug/nanofaas-watchdog"
+    elif [ -x "$(cd "$SCRIPT_DIR/../.." && pwd)/target/release/nanofaas-watchdog" ]; then
+        WATCHDOG_BIN="$(cd "$SCRIPT_DIR/../.." && pwd)/target/release/nanofaas-watchdog"
+    else
+        WATCHDOG_BIN="/usr/local/bin/watchdog"
+    fi
+fi
 
 # ============================================================================
 # Test Framework
@@ -44,7 +66,7 @@ end_test() {
 
 pass_test() {
     echo -e "${GREEN}PASS${NC}"
-    ((TESTS_PASSED++))
+    ((TESTS_PASSED++)) || true
 }
 
 fail_test() {
@@ -53,7 +75,7 @@ fail_test() {
     if [ -n "$reason" ]; then
         echo -e "    ${RED}Reason: $reason${NC}"
     fi
-    ((TESTS_FAILED++))
+    ((TESTS_FAILED++)) || true
 }
 
 # ============================================================================

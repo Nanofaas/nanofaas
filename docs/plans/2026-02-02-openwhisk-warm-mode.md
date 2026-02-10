@@ -6,6 +6,8 @@
 
 **Architecture:** Add WARM execution mode to watchdog that exposes an HTTP endpoint for receiving invocations. The watchdog spawns the runtime once, keeps it alive, and forwards invocations sequentially. The control-plane's existing PoolDispatcher routes to warm containers. Function runtimes accept execution ID per-request via header instead of environment variable.
 
+> **Note (2026-02-10):** The implemented warm DEPLOYMENT mode is now enabled via `WARM=true` (not `EXECUTION_MODE=WARM`) and uses the standard `InvocationRequest` body plus `X-Execution-Id` header. See `watchdog/README.md` for the current contract.
+
 **Tech Stack:** Rust (watchdog), Java 21/Spring Boot (function-runtime), Python 3.11/Flask (python-runtime), JUnit 5, pytest
 
 **Skills:** @superpowers:test-driven-development, @superpowers:verification-before-completion

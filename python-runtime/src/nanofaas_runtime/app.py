@@ -6,6 +6,7 @@ import time
 
 from flask import Flask, request, jsonify
 import requests as http_requests
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +21,23 @@ CALLBACK_URL = os.environ.get('CALLBACK_URL', '')
 DEFAULT_EXECUTION_ID = os.environ.get('EXECUTION_ID', '')
 HANDLER_MODULE = os.environ.get('HANDLER_MODULE', 'handler')
 HANDLER_FUNCTION = os.environ.get('HANDLER_FUNCTION', 'handle')
+FUNCTION_NAME = os.environ.get('FUNCTION_NAME') or HANDLER_MODULE or "unknown"
+
+RUNTIME_INVOCATIONS_TOTAL = Counter(
+    "runtime_invocations_total",
+    "Total invocations handled by the Python runtime (Flask)",
+    ["function", "success"],
+)
+RUNTIME_INVOCATION_DURATION_SECONDS = Histogram(
+    "runtime_invocation_duration_seconds",
+    "Invocation duration in seconds (Python runtime Flask)",
+    ["function"],
+)
+RUNTIME_IN_FLIGHT = Gauge(
+    "runtime_in_flight",
+    "In-flight invocations (Python runtime Flask)",
+    ["function"],
+)
 
 # Handler cache
 _handler = None
@@ -42,6 +60,10 @@ def get_handler():
 def health():
     return jsonify({"status": "ok"})
 
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    return app.response_class(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
 
 @app.route('/invoke', methods=['POST'])
 def invoke():
@@ -53,11 +75,14 @@ def invoke():
     if not execution_id:
         return jsonify({"error": "No execution ID provided"}), 400
 
+    start = time.perf_counter()
+    RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
     try:
         payload = request.get_json(silent=True)
         handler = get_handler()
         result = handler(payload)
 
+        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
         # Send callback (best effort)
         if callback_url:
             _send_callback(callback_url, execution_id, trace_id, {
@@ -70,6 +95,7 @@ def invoke():
 
     except Exception as e:
         logger.exception(f"Handler error: {e}")
+        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
 
         if callback_url:
             _send_callback(callback_url, execution_id, trace_id, {
@@ -79,6 +105,10 @@ def invoke():
             })
 
         return jsonify({"error": str(e)}), 500
+    finally:
+        elapsed = time.perf_counter() - start
+        RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
+        RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
 
 
 def _send_callback(callback_url: str, execution_id: str, trace_id: str, result: dict):

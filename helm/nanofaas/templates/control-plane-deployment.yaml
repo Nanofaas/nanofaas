@@ -14,6 +14,12 @@ spec:
     metadata:
       labels:
         {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 8 }}
+      {{- if .Values.prometheus.scrape.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: {{ .Values.prometheus.scrape.path | quote }}
+        prometheus.io/port: {{ .Values.controlPlane.service.ports.actuator | quote }}
+      {{- end }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name | quote }}
       containers:

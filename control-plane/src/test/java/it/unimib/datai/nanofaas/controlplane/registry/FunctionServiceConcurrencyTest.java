@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
+import it.unimib.datai.nanofaas.controlplane.service.TargetLoadMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +33,13 @@ class FunctionServiceConcurrencyTest {
     void setUp() {
         registry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        functionService = new FunctionService(registry, queueManager, defaults, null);
+        functionService = new FunctionService(
+                registry,
+                queueManager,
+                defaults,
+                null,
+                new TargetLoadMetrics(new SimpleMeterRegistry())
+        );
 
         when(queueManager.getOrCreate(any())).thenReturn(null);
     }

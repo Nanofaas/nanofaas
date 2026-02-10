@@ -101,8 +101,30 @@ class KubernetesDeploymentBuilderTest {
         Container container = deployment.getSpec().getTemplate().getSpec().getContainers().get(0);
 
         assertNotNull(container.getReadinessProbe());
-        assertEquals("/invoke", container.getReadinessProbe().getHttpGet().getPath());
+        assertEquals("/health", container.getReadinessProbe().getHttpGet().getPath());
         assertEquals(8080, container.getReadinessProbe().getHttpGet().getPort().getIntVal());
+    }
+
+    @Test
+    void buildDeployment_addsPrometheusScrapeAnnotations() {
+        Deployment deployment = builder.buildDeployment(spec(null));
+        Map<String, String> ann = deployment.getSpec().getTemplate().getMetadata().getAnnotations();
+
+        assertNotNull(ann);
+        assertEquals("true", ann.get("prometheus.io/scrape"));
+        assertEquals("/metrics", ann.get("prometheus.io/path"));
+        assertEquals("8080", ann.get("prometheus.io/port"));
+    }
+
+    @Test
+    void buildService_addsPrometheusScrapeAnnotations() {
+        var service = builder.buildService(spec(null));
+        Map<String, String> ann = service.getMetadata().getAnnotations();
+
+        assertNotNull(ann);
+        assertEquals("true", ann.get("prometheus.io/scrape"));
+        assertEquals("/metrics", ann.get("prometheus.io/path"));
+        assertEquals("8080", ann.get("prometheus.io/port"));
     }
 
     @Test

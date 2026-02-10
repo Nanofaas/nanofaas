@@ -8,24 +8,35 @@
 
 use axum::{
     extract::State,
+    http::header,
+    http::HeaderMap,
     http::StatusCode,
-    routing::{get, post},
+    response::IntoResponse,
+    routing::get,
     Json, Router,
 };
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Instant};
 use tracing::{debug, error, info, warn};
+
+use prometheus_client::encoding::text::encode;
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
+use prometheus_client::registry::Registry;
 
 // ============================================================================
 // Configuration
@@ -36,7 +47,6 @@ enum ExecutionMode {
     Http,  // POST to HTTP endpoint (one-shot)
     Stdio, // stdin/stdout (one-shot)
     File,  // /tmp/input.json -> /tmp/output.json (one-shot)
-    Warm,  // HTTP server receiving multiple invocations (persistent)
 }
 
 impl ExecutionMode {
@@ -45,7 +55,6 @@ impl ExecutionMode {
             "HTTP" => Self::Http,
             "STDIO" => Self::Stdio,
             "FILE" => Self::File,
-            "WARM" => Self::Warm,
             _ => Self::Http, // default
         }
     }
@@ -53,10 +62,12 @@ impl ExecutionMode {
 
 #[derive(Debug, Clone)]
 struct Config {
+    /// Warm (deployment-style) mode: expose /invoke and execute per request.
+    warm: bool,
     /// URL for callback to control plane
-    callback_url: String,
-    /// Execution ID
-    execution_id: String,
+    callback_url: Option<String>,
+    /// Execution ID (one-shot only)
+    execution_id: Option<String>,
     /// Timeout in milliseconds
     timeout_ms: u64,
     /// Trace ID for distributed tracing
@@ -75,21 +86,19 @@ struct Config {
     input_file: String,
     /// Output file path (for FILE mode)
     output_file: String,
-    /// Port for warm mode HTTP server
+    /// Port for warm HTTP server (when warm=true)
     warm_port: u16,
-    /// Idle timeout before shutdown (ms) - 0 means no timeout
-    warm_idle_timeout_ms: u64,
-    /// Max invocations before restart - 0 means unlimited
-    warm_max_invocations: u64,
 }
 
 impl Config {
     fn from_env() -> Result<Self, String> {
-        let callback_url = env::var("CALLBACK_URL")
-            .map_err(|_| "CALLBACK_URL not set")?;
+        let warm = env::var("WARM")
+            .ok()
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
 
-        let execution_id = env::var("EXECUTION_ID")
-            .map_err(|_| "EXECUTION_ID not set")?;
+        let callback_url = env::var("CALLBACK_URL").ok();
+        let execution_id = env::var("EXECUTION_ID").ok();
 
         let timeout_ms: u64 = env::var("TIMEOUT_MS")
             .unwrap_or_else(|_| "30000".to_string())
@@ -108,8 +117,16 @@ impl Config {
             &env::var("EXECUTION_MODE").unwrap_or_else(|_| "HTTP".to_string())
         );
 
+        // In warm mode, watchdog typically binds to 8080. Default the internal runtime to 8081
+        // to avoid port conflicts when mode=HTTP and the runtime is an internal server.
+        let default_runtime_url = if warm {
+            "http://127.0.0.1:8081/invoke"
+        } else {
+            "http://127.0.0.1:8080/invoke"
+        };
+
         let runtime_url = env::var("RUNTIME_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8080/invoke".to_string());
+            .unwrap_or_else(|_| default_runtime_url.to_string());
 
         let health_url = env::var("HEALTH_URL").ok();
 
@@ -129,17 +146,8 @@ impl Config {
             .parse()
             .unwrap_or(8080);
 
-        let warm_idle_timeout_ms: u64 = env::var("WARM_IDLE_TIMEOUT_MS")
-            .unwrap_or_else(|_| "300000".to_string()) // 5 minutes default
-            .parse()
-            .unwrap_or(300000);
-
-        let warm_max_invocations: u64 = env::var("WARM_MAX_INVOCATIONS")
-            .unwrap_or_else(|_| "0".to_string())
-            .parse()
-            .unwrap_or(0);
-
         Ok(Config {
+            warm,
             callback_url,
             execution_id,
             timeout_ms,
@@ -152,8 +160,6 @@ impl Config {
             input_file,
             output_file,
             warm_port,
-            warm_idle_timeout_ms,
-            warm_max_invocations,
         })
     }
 }
@@ -197,38 +203,102 @@ impl InvocationResult {
 }
 
 // ============================================================================
-// Warm Mode State
+// Warm Mode (deployment-style)
 // ============================================================================
 
-struct WarmState {
-    config: Config,
-    invocation_count: u64,
-    last_invocation: Instant,
+#[derive(Clone)]
+struct WarmAppState {
+    config: Arc<Config>,
+    // Warm containers handle one invocation at a time (OpenWhisk-style).
+    invoke_lock: Arc<Mutex<()>>,
+    metrics: Arc<WatchdogMetrics>,
+    function_name: String,
 }
 
-impl WarmState {
-    fn new(config: Config) -> Self {
+// ============================================================================
+// Prometheus Metrics (warm mode)
+// ============================================================================
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct InvocationsLabels {
+    function: String,
+    mode: String,
+    success: String,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct DurationLabels {
+    function: String,
+    mode: String,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct FunctionLabel {
+    function: String,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct TimeoutsLabels {
+    function: String,
+    mode: String,
+}
+
+struct WatchdogMetrics {
+    registry: Registry,
+    invocations_total: Family<InvocationsLabels, Counter>,
+    invocation_duration_seconds: Family<DurationLabels, Histogram>,
+    invocations_in_flight: Family<FunctionLabel, Gauge>,
+    timeouts_total: Family<TimeoutsLabels, Counter>,
+}
+
+impl WatchdogMetrics {
+    fn new() -> Self {
+        let invocations_total = Family::<InvocationsLabels, Counter>::default();
+        let invocation_duration_seconds = Family::<DurationLabels, Histogram>::new_with_constructor(|| {
+            // Seconds; from ~5ms to ~40s.
+            Histogram::new(exponential_buckets(0.005, 2.0, 14))
+        });
+        let invocations_in_flight = Family::<FunctionLabel, Gauge>::default();
+        let timeouts_total = Family::<TimeoutsLabels, Counter>::default();
+
+        let mut registry = Registry::default();
+        registry.register(
+            // prometheus-client appends "_total" to Counter names, so avoid duplicating it here.
+            "watchdog_invocations",
+            "Total invocations handled by the watchdog",
+            invocations_total.clone(),
+        );
+        registry.register(
+            "watchdog_invocation_duration_seconds",
+            "Invocation duration in seconds (watchdog)",
+            invocation_duration_seconds.clone(),
+        );
+        registry.register(
+            "watchdog_invocations_in_flight",
+            "In-flight invocations (watchdog)",
+            invocations_in_flight.clone(),
+        );
+        registry.register(
+            // prometheus-client appends "_total" to Counter names, so avoid duplicating it here.
+            "watchdog_timeouts",
+            "Invocation timeouts (watchdog)",
+            timeouts_total.clone(),
+        );
+
         Self {
-            config,
-            invocation_count: 0,
-            last_invocation: Instant::now(),
+            registry,
+            invocations_total,
+            invocation_duration_seconds,
+            invocations_in_flight,
+            timeouts_total,
         }
     }
-}
 
-#[derive(Deserialize)]
-struct WarmInvokeRequest {
-    execution_id: String,
-    callback_url: String,
-    #[serde(default)]
-    trace_id: Option<String>,
-    payload: serde_json::Value,
-    #[serde(default = "default_timeout")]
-    timeout_ms: u64,
-}
-
-fn default_timeout() -> u64 {
-    30000
+    fn render(&self) -> Result<String, std::fmt::Error> {
+        let mut buf = String::new();
+        encode(&mut buf, &self.registry)?;
+        Ok(buf)
+    }
 }
 
 // ============================================================================
@@ -260,11 +330,18 @@ async fn spawn_http_runtime(config: &Config) -> Result<Child, String> {
     let (program, args) = config.command.split_first().unwrap();
     info!(command = %program, mode = "HTTP", "Starting function runtime");
 
-    Command::new(program)
-        .args(args)
-        .env("EXECUTION_ID", &config.execution_id)
-        .env("PORT", "8080")
-        .spawn()
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+
+    if let Some(ref execution_id) = config.execution_id {
+        cmd.env("EXECUTION_ID", execution_id);
+    }
+
+    // In warm mode the watchdog binds to WARM_PORT (default 8080), so the internal runtime
+    // should bind to a different port (default 8081).
+    cmd.env("PORT", if config.warm { "8081" } else { "8080" });
+
+    cmd.spawn()
         .map_err(|e| format!("Failed to spawn runtime: {}", e))
 }
 
@@ -335,9 +412,11 @@ async fn invoke_http(
 // STDIO Mode
 // ============================================================================
 
-async fn run_stdio(
+async fn run_stdio_warm(
     config: &Config,
     payload: &serde_json::Value,
+    execution_id: &str,
+    trace_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     if config.command.is_empty() {
         return Err("No command specified".to_string());
@@ -348,7 +427,8 @@ async fn run_stdio(
 
     let mut child = Command::new(program)
         .args(args)
-        .env("EXECUTION_ID", &config.execution_id)
+        .env("EXECUTION_ID", execution_id)
+        .env("TRACE_ID", trace_id.unwrap_or(""))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -389,9 +469,11 @@ async fn run_stdio(
 // FILE Mode
 // ============================================================================
 
-async fn run_file(
+async fn run_file_warm(
     config: &Config,
     payload: &serde_json::Value,
+    execution_id: &str,
+    trace_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     // Write input file
     let payload_str = serde_json::to_string_pretty(payload)
@@ -414,7 +496,8 @@ async fn run_file(
 
     let mut child = Command::new(program)
         .args(args)
-        .env("EXECUTION_ID", &config.execution_id)
+        .env("EXECUTION_ID", execution_id)
+        .env("TRACE_ID", trace_id.unwrap_or(""))
         .env("INPUT_FILE", &config.input_file)
         .env("OUTPUT_FILE", &config.output_file)
         .spawn()
@@ -452,12 +535,14 @@ async fn run_file(
 // ============================================================================
 
 async fn send_callback(config: &Config, result: InvocationResult) -> Result<(), String> {
+    let callback_url = config.callback_url.as_ref().ok_or("CALLBACK_URL not set")?;
+    let execution_id = config.execution_id.as_ref().ok_or("EXECUTION_ID not set")?;
     let client = reqwest::Client::new();
 
-    let url = if config.callback_url.ends_with(":complete") {
-        config.callback_url.clone()
+    let url = if callback_url.ends_with(":complete") {
+        callback_url.clone()
     } else {
-        format!("{}/{}:complete", config.callback_url, config.execution_id)
+        format!("{}/{}:complete", callback_url, execution_id)
     };
 
     info!(url = %url, success = result.success, "Sending callback");
@@ -500,105 +585,210 @@ async fn send_callback(config: &Config, result: InvocationResult) -> Result<(), 
 }
 
 // ============================================================================
-// Warm Mode
+// Warm Mode (deployment-style)
 // ============================================================================
 
 async fn warm_health() -> StatusCode {
     StatusCode::OK
 }
 
-async fn warm_invoke(
-    State(state): State<Arc<Mutex<WarmState>>>,
-    Json(req): Json<WarmInvokeRequest>,
-) -> (StatusCode, Json<InvocationResult>) {
-    let (config, invocation_count) = {
-        let mut state_guard = state.lock().await;
-        state_guard.invocation_count += 1;
-        state_guard.last_invocation = Instant::now();
-        (state_guard.config.clone(), state_guard.invocation_count)
-    }; // Lock is released here
-
-    info!(
-        execution_id = %req.execution_id,
-        invocation = invocation_count,
-        "Processing warm invocation"
-    );
-
-    // Forward to runtime
-    let client = reqwest::Client::new();
-    let invoke_result = client
-        .post(&config.runtime_url)
-        .header("X-Execution-Id", &req.execution_id)
-        .header("X-Trace-Id", req.trace_id.as_deref().unwrap_or(""))
-        .json(&req.payload)
-        .timeout(Duration::from_millis(req.timeout_ms))
-        .send()
-        .await;
-
-    let result = match invoke_result {
-        Ok(response) if response.status().is_success() => {
-            match response.json::<serde_json::Value>().await {
-                Ok(output) => InvocationResult::success(output),
-                Err(e) => InvocationResult::error("PARSE_ERROR", &e.to_string()),
-            }
-        }
-        Ok(response) => {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            InvocationResult::error("RUNTIME_ERROR", &format!("{}: {}", status, body))
-        }
-        Err(e) if e.is_timeout() => {
-            InvocationResult::error("TIMEOUT", &format!("Timeout after {}ms", req.timeout_ms))
-        }
-        Err(e) => InvocationResult::error("INVOKE_ERROR", &e.to_string()),
-    };
-
-    // Send callback (best effort)
-    let callback_url = format!("{}/{}:complete", req.callback_url, req.execution_id);
-    let _ = client
-        .post(&callback_url)
-        .header("X-Trace-Id", req.trace_id.as_deref().unwrap_or(""))
-        .json(&result)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await;
-
-    let status = if result.success {
-        StatusCode::OK
-    } else {
-        StatusCode::INTERNAL_SERVER_ERROR
-    };
-
-    (status, Json(result))
+async fn warm_metrics(State(state): State<WarmAppState>) -> impl IntoResponse {
+    match state.metrics.render() {
+        Ok(body) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+            body,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("metrics encode failed: {e}")})),
+        )
+            .into_response(),
+    }
 }
 
-async fn execute_warm_mode(config: Config) -> ExitCode {
-    info!(port = config.warm_port, "Starting warm mode");
+async fn warm_invoke_get_ready() -> StatusCode {
+    // K8s readiness probes in this repo use GET /invoke.
+    StatusCode::OK
+}
 
-    // Spawn runtime
-    let mut child = match spawn_http_runtime(&config).await {
-        Ok(c) => c,
-        Err(e) => {
-            error!(error = %e, "Failed to spawn runtime");
-            return ExitCode::from(1);
-        }
-    };
+async fn warm_invoke(
+    State(state): State<WarmAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let execution_id = headers
+        .get("x-execution-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
 
-    // Wait for runtime ready
-    if let Err(e) = wait_for_http_ready(&config).await {
-        error!(error = %e, "Runtime failed to start");
-        kill_process(&child);
-        let _ = child.wait().await;
-        return ExitCode::from(1);
+    if execution_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "X-Execution-Id header is required"})),
+        );
     }
 
-    info!("Runtime ready, starting warm HTTP server");
+    let trace_id = headers
+        .get("x-trace-id")
+        .and_then(|v| v.to_str().ok());
 
-    let state = Arc::new(Mutex::new(WarmState::new(config.clone())));
+    // Ensure a single in-flight invocation per warm container.
+    let _guard = state.invoke_lock.lock().await;
+
+    let mode_str = match state.config.mode {
+        ExecutionMode::Http => "HTTP",
+        ExecutionMode::Stdio => "STDIO",
+        ExecutionMode::File => "FILE",
+    };
+
+    // Metrics: in-flight + duration + totals
+    let start = Instant::now();
+    state
+        .metrics
+        .invocations_in_flight
+        .get_or_create(&FunctionLabel {
+            function: state.function_name.clone(),
+        })
+        .inc();
+
+    let out = match state.config.mode {
+        ExecutionMode::Http => invoke_http_warm(&state.config, &payload, execution_id, trace_id).await,
+        ExecutionMode::Stdio => run_stdio_warm(&state.config, &payload, execution_id, trace_id).await,
+        ExecutionMode::File => run_file_warm(&state.config, &payload, execution_id, trace_id).await,
+    };
+
+    let elapsed = start.elapsed().as_secs_f64();
+    state
+        .metrics
+        .invocation_duration_seconds
+        .get_or_create(&DurationLabels {
+            function: state.function_name.clone(),
+            mode: mode_str.to_string(),
+        })
+        .observe(elapsed);
+
+    state
+        .metrics
+        .invocations_in_flight
+        .get_or_create(&FunctionLabel {
+            function: state.function_name.clone(),
+        })
+        .dec();
+
+    match out {
+        Ok(v) => {
+            state
+                .metrics
+                .invocations_total
+                .get_or_create(&InvocationsLabels {
+                    function: state.function_name.clone(),
+                    mode: mode_str.to_string(),
+                    success: "true".to_string(),
+                })
+                .inc();
+            (StatusCode::OK, Json(v))
+        }
+        Err(e) => {
+            if is_timeout_error(&e) {
+                state
+                    .metrics
+                    .timeouts_total
+                    .get_or_create(&TimeoutsLabels {
+                        function: state.function_name.clone(),
+                        mode: mode_str.to_string(),
+                    })
+                    .inc();
+            }
+            state
+                .metrics
+                .invocations_total
+                .get_or_create(&InvocationsLabels {
+                    function: state.function_name.clone(),
+                    mode: mode_str.to_string(),
+                    success: "false".to_string(),
+                })
+                .inc();
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
+        }
+    }
+}
+
+fn is_timeout_error(e: &str) -> bool {
+    let s = e.to_lowercase();
+    s.contains("timed out") || s.contains("timeout")
+}
+
+async fn invoke_http_warm(
+    config: &Config,
+    payload: &serde_json::Value,
+    execution_id: &str,
+    trace_id: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let mut req = client
+        .post(&config.runtime_url)
+        .header("X-Execution-Id", execution_id)
+        .json(payload)
+        .timeout(Duration::from_millis(config.timeout_ms));
+
+    if let Some(t) = trace_id {
+        req = req.header("X-Trace-Id", t);
+    }
+
+    let response = req
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    if response.status().is_success() {
+        response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("Runtime error {}: {}", status, body))
+    }
+}
+
+async fn execute_warm_server(config: Config) -> ExitCode {
+    info!(port = config.warm_port, mode = ?config.mode, "Starting warm server");
+
+    // If warm mode is HTTP, spawn the internal runtime once and keep it alive.
+    let mut child = if config.mode == ExecutionMode::Http {
+        let mut c = match spawn_http_runtime(&config).await {
+            Ok(c) => c,
+            Err(e) => {
+                error!(error = %e, "Failed to spawn runtime");
+                return ExitCode::from(1);
+            }
+        };
+
+        if let Err(e) = wait_for_http_ready(&config).await {
+            error!(error = %e, "Runtime failed to start");
+            kill_process(&c);
+            let _ = c.wait().await;
+            return ExitCode::from(1);
+        }
+        Some(c)
+    } else {
+        None
+    };
+
+    let state = WarmAppState {
+        config: Arc::new(config.clone()),
+        invoke_lock: Arc::new(Mutex::new(())),
+        metrics: Arc::new(WatchdogMetrics::new()),
+        function_name: env::var("FUNCTION_NAME").unwrap_or_else(|_| "unknown".to_string()),
+    };
 
     let app = Router::new()
         .route("/health", get(warm_health))
-        .route("/invoke", post(warm_invoke))
+        .route("/metrics", get(warm_metrics))
+        .route("/invoke", get(warm_invoke_get_ready).post(warm_invoke))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.warm_port));
@@ -606,15 +796,16 @@ async fn execute_warm_mode(config: Config) -> ExitCode {
         Ok(l) => l,
         Err(e) => {
             error!(error = %e, "Failed to bind to port");
-            kill_process(&child);
-            let _ = child.wait().await;
+            if let Some(ref mut c) = child {
+                kill_process(c);
+                let _ = c.wait().await;
+            }
             return ExitCode::from(1);
         }
     };
 
-    info!(addr = %addr, "Warm mode server listening");
+    info!(addr = %addr, "Warm server listening");
 
-    // Handle shutdown signal
     let shutdown = async {
         tokio::signal::ctrl_c().await.ok();
         info!("Shutdown signal received");
@@ -627,12 +818,13 @@ async fn execute_warm_mode(config: Config) -> ExitCode {
         error!(error = %e, "Server error");
     }
 
-    // Cleanup
-    info!("Shutting down runtime");
-    kill_process(&child);
-    let _ = child.wait().await;
+    if let Some(ref mut c) = child {
+        info!("Shutting down runtime");
+        kill_process(c);
+        let _ = c.wait().await;
+    }
 
-    info!("Warm mode shutdown complete");
+    info!("Warm server shutdown complete");
     ExitCode::SUCCESS
 }
 
@@ -642,6 +834,22 @@ async fn execute_warm_mode(config: Config) -> ExitCode {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
+    // Minimal CLI support (used by integration tests and container probes).
+    if env::args().any(|a| a == "--version" || a == "-V") {
+        println!("nanofaas-watchdog {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    if env::args().any(|a| a == "--help" || a == "-h") {
+        println!("nanofaas-watchdog");
+        println!();
+        println!("Environment-driven watchdog for nanofaas function containers.");
+        println!();
+        println!("Flags:");
+        println!("  --help, -h       Show this help");
+        println!("  --version, -V    Print version");
+        return ExitCode::SUCCESS;
+    }
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -663,11 +871,21 @@ async fn main() -> ExitCode {
     };
 
     info!(
-        execution_id = %config.execution_id,
         timeout_ms = config.timeout_ms,
         mode = ?config.mode,
+        warm = config.warm,
         "Configuration loaded"
     );
+
+    if config.warm {
+        return execute_warm_server(config).await;
+    }
+
+    // One-shot mode requires callback URL + execution id.
+    if config.callback_url.is_none() || config.execution_id.is_none() {
+        error!("CALLBACK_URL and EXECUTION_ID are required when WARM is not enabled");
+        return ExitCode::from(1);
+    }
 
     // Parse invocation payload
     let payload: serde_json::Value = match env::var("INVOCATION_PAYLOAD") {
@@ -685,9 +903,6 @@ async fn main() -> ExitCode {
         }
         ExecutionMode::File => {
             execute_file_mode(&config, &payload).await
-        }
-        ExecutionMode::Warm => {
-            return execute_warm_mode(config).await;
         }
     };
 
@@ -733,6 +948,13 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
             info!("Function executed successfully");
             InvocationResult::success(output)
         }
+        Ok(Err(e)) if e.to_lowercase().contains("timed out") || e.to_lowercase().contains("timeout") => {
+            error!(timeout_ms = config.timeout_ms, error = %e, "Function timed out");
+            InvocationResult::error(
+                "TIMEOUT",
+                &format!("Function exceeded timeout of {}ms", config.timeout_ms),
+            )
+        }
         Ok(Err(e)) => {
             error!(error = %e, "Function execution failed");
             InvocationResult::error("FUNCTION_ERROR", &e)
@@ -748,7 +970,8 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
 }
 
 async fn execute_stdio_mode(config: &Config, payload: &serde_json::Value) -> InvocationResult {
-    match run_stdio(config, payload).await {
+    let execution_id = config.execution_id.as_deref().unwrap_or("");
+    match run_stdio_warm(config, payload, execution_id, config.trace_id.as_deref()).await {
         Ok(output) => {
             info!("Function executed successfully");
             InvocationResult::success(output)
@@ -765,7 +988,8 @@ async fn execute_stdio_mode(config: &Config, payload: &serde_json::Value) -> Inv
 }
 
 async fn execute_file_mode(config: &Config, payload: &serde_json::Value) -> InvocationResult {
-    match run_file(config, payload).await {
+    let execution_id = config.execution_id.as_deref().unwrap_or("");
+    match run_file_warm(config, payload, execution_id, config.trace_id.as_deref()).await {
         Ok(output) => {
             info!("Function executed successfully");
             InvocationResult::success(output)

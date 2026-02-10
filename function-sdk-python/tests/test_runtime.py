@@ -19,6 +19,23 @@ def test_health(client):
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+def test_metrics_exposed_and_increments(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return {"ok": True}
+
+    # Trigger at least one invocation
+    response = client.post("/invoke",
+                         json={"input": "hello"},
+                         headers={"X-Execution-Id": "exec-metrics"})
+    assert response.status_code == 200
+
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+    body = metrics.text
+    assert "runtime_invocations_total" in body
+    assert 'function="' in body
+
 def test_invoke_without_handler(client):
     # Reset decorator registry for this test
     with patch('nanofaas.sdk.decorator._registered_handler', None):

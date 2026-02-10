@@ -3,6 +3,14 @@ kind: Service
 metadata:
   name: {{ .Values.controlPlane.service.name | quote }}
   namespace: {{ include "nanofaas.namespace" . | quote }}
+  labels:
+    {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 4 }}
+  {{- if .Values.prometheus.scrape.enabled }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: {{ .Values.prometheus.scrape.path | quote }}
+    prometheus.io/port: {{ .Values.controlPlane.service.ports.actuator | quote }}
+  {{- end }}
 spec:
   type: {{ .Values.controlPlane.service.type }}
   selector:
