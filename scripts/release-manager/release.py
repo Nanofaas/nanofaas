@@ -121,18 +121,25 @@ def build_and_push_arm64(version):
     base_image = f"{REGISTRY}/{GH_OWNER}/{GH_REPO}"
     
     oci_source = f"https://github.com/{GH_OWNER}/{GH_REPO}"
+    platform = "linux/arm64"
 
     # 1. Control Plane
     cp_image = f"{base_image}/control-plane:{tag}-arm64"
     console.print(f"[blue]Building {cp_image}...[/blue]")
-    run_command(f"BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage={cp_image}")
+    run_command(
+        f"BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage "
+        f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform}"
+    )
     run_command(f"docker push {cp_image}")
 
     # 2. Java Runtime (referenced in job template)
     jr_image = f"{base_image}/function-runtime:{tag}-arm64"
     console.print(f"[blue]Building {jr_image}...[/blue]")
     try:
-        run_command(f"BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage -PfunctionRuntimeImage={jr_image}")
+        run_command(
+            f"BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage "
+            f"-PfunctionRuntimeImage={jr_image} -PimagePlatform={platform}"
+        )
         run_command(f"docker push {jr_image}")
     except:
         console.print("[yellow]Warning: Could not build function-runtime, skipping.[/yellow]")
@@ -141,34 +148,48 @@ def build_and_push_arm64(version):
     wd_image = f"{base_image}/watchdog:{tag}-arm64"
     console.print(f"[blue]Building {wd_image}...[/blue]")
     try:
-        run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {wd_image} watchdog/")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {wd_image} watchdog/"
+        )
         run_command(f"docker push {wd_image}")
     except:
         console.print("[yellow]Warning: Could not build watchdog, skipping.[/yellow]")
 
     # 4. Java Demo Functions
-    java_examples = {
-        "word-stats": ":examples:java:word-stats:bootBuildImage",
-        "json-transform": ":examples:java:json-transform:bootBuildImage",
-    }
-    for example, gradle_task in java_examples.items():
+    #
+    # These examples have JVM-only Dockerfiles. Native images are intended to be produced
+    # in CI via buildpacks; building native images locally is slow and can exhaust Docker
+    # disk space (especially when multiple native builds run back-to-back).
+    java_examples = ["word-stats", "json-transform"]
+    for example in java_examples:
         img = f"{base_image}/java-{example}:{tag}-arm64"
         console.print(f"[blue]Building Java {example} ({img})...[/blue]")
-        run_command(f"BP_OCI_SOURCE={oci_source} ./gradlew {gradle_task} -PfunctionImage={img}")
+        run_command(f"./gradlew :examples:java:{example}:bootJar")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {img} -f examples/java/{example}/Dockerfile examples/java/{example}/"
+        )
         run_command(f"docker push {img}")
 
     # 5. Python Demo Functions
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/python-{example}:{tag}-arm64"
         console.print(f"[blue]Building Python {example} ({img})...[/blue]")
-        run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {img} -f examples/python/{example}/Dockerfile .")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {img} -f examples/python/{example}/Dockerfile ."
+        )
         run_command(f"docker push {img}")
 
     # 6. Exec (Bash) Demo Functions
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/exec-{example}:{tag}-arm64"
         console.print(f"[blue]Building Exec {example} ({img})...[/blue]")
-        run_command(f"docker build --platform linux/arm64 --label org.opencontainers.image.source={oci_source} -t {img} -f examples/bash/{example}/Dockerfile .")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {img} -f examples/bash/{example}/Dockerfile ."
+        )
         run_command(f"docker push {img}")
 
     console.print("[green]✓ Local ARM64 images pushed to GHCR.[/green]")
@@ -293,10 +314,17 @@ def main():
         if args.dry_run: return
 
         # 6. Commit and Push Bump
-        for f in updated_files: run_command(f"git add {f}")
-        run_command(f'git commit -m "chore: release v{new_v}"')
-        if questionary.confirm("Push release commit?").ask():
-            run_command("git push origin main")
+        if updated_files:
+            for f in updated_files:
+                run_command(f"git add {f}")
+            run_command(f'git commit -m "chore: release v{new_v}"')
+            if questionary.confirm("Push release commit?").ask():
+                run_command("git push origin main")
+        else:
+            console.print(
+                "[yellow]No files were updated for the selected version. "
+                "Skipping release commit (assuming main is already bumped).[/yellow]"
+            )
 
         # 7. Optional Local ARM64 Builds
         if questionary.confirm("Build and push ARM64 images from this machine?").ask():
