@@ -47,6 +47,37 @@ public final class ControlPlaneClient {
         }
     }
 
+    public FunctionSpec getFunctionOrNull(String name) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions/" + name))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() == 404) {
+            return null;
+        }
+        if (resp.statusCode() != 200) {
+            throw httpError("get function", resp);
+        }
+        return json.fromJson(resp.body(), FunctionSpec.class);
+    }
+
+    public void deleteFunction(String name) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions/" + name))
+                .DELETE()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() == 404) {
+            return;
+        }
+        if (resp.statusCode() != 204) {
+            throw httpError("delete function", resp);
+        }
+    }
+
     public FunctionSpec registerFunction(FunctionSpec spec) {
         String body = json.toJson(spec);
         HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions"))
