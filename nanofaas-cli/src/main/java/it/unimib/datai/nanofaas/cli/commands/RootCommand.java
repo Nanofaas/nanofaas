@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.cli.config.ConfigStore;
 import it.unimib.datai.nanofaas.cli.config.ResolvedContext;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneClient;
 import it.unimib.datai.nanofaas.cli.commands.exec.ExecCommand;
+import it.unimib.datai.nanofaas.cli.commands.deploy.DeployCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.EnqueueCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.InvokeCommand;
 import picocli.CommandLine.Command;
@@ -20,7 +21,8 @@ import java.nio.file.Path;
                 FnCommand.class,
                 InvokeCommand.class,
                 EnqueueCommand.class,
-                ExecCommand.class
+                ExecCommand.class,
+                DeployCommand.class
         }
 )
 public class RootCommand {
