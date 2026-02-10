@@ -1,29 +1,24 @@
 plugins {
     id 'application'
-    id 'io.spring.dependency-management' version "${springDependencyManagementVersion}"
-    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
-}
-
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
-    }
+    id 'org.graalvm.buildtools.native'
 }
 
 dependencies {
     implementation project(':common')
 
     implementation 'info.picocli:picocli:4.7.6'
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
 
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
-    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.3'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.3'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.3'
 
     implementation 'io.fabric8:kubernetes-client:7.5.2'
     // Needed at compile time to instantiate a concrete HttpClient.Factory (avoids reflection in native image).
     implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.assertj:assertj-core:3.26.3'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
     testImplementation 'io.fabric8:kubernetes-server-mock:7.5.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -35,6 +30,11 @@ application {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // Generate GraalVM reflection config for picocli command classes.
+    options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]
 }
 
 tasks.withType(Tar).configureEach {
