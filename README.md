@@ -72,3 +72,22 @@ export KUBECONFIG=~/.kube/nanofaas-kind.yaml
 ## Docs
 
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
+
+## nanofaas-cli (CLI)
+
+Standalone CLI (GraalVM native) under the `nanofaas-cli/` subproject.
+
+Build a native executable (requires GraalVM):
+
+```bash
+./gradlew :nanofaas-cli:nativeCompile
+./nanofaas-cli/build/native/nativeCompile/nanofaas-cli --help
+```
+
+Run on the JVM:
+
+```bash
+./gradlew :nanofaas-cli:run --args="--help"
+```
+
+Command reference: `docs/nanofaas-cli.md`.
