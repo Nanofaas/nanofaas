@@ -8,6 +8,9 @@ import picocli.CommandLine.Command;
         name = "fn",
         description = "Manage registered functions.",
         subcommands = {
+                FnListCommand.class,
+                FnGetCommand.class,
+                FnDeleteCommand.class,
                 FnApplyCommand.class
         }
 )

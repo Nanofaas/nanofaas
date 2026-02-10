@@ -4,6 +4,9 @@ import it.unimib.datai.nanofaas.cli.commands.fn.FnCommand;
 import it.unimib.datai.nanofaas.cli.config.ConfigStore;
 import it.unimib.datai.nanofaas.cli.config.ResolvedContext;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneClient;
+import it.unimib.datai.nanofaas.cli.commands.exec.ExecCommand;
+import it.unimib.datai.nanofaas.cli.commands.invoke.EnqueueCommand;
+import it.unimib.datai.nanofaas.cli.commands.invoke.InvokeCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -14,7 +17,10 @@ import java.nio.file.Path;
         mixinStandardHelpOptions = true,
         description = "Nanofaas CLI (control-plane client + Kubernetes helpers).",
         subcommands = {
-                FnCommand.class
+                FnCommand.class,
+                InvokeCommand.class,
+                EnqueueCommand.class,
+                ExecCommand.class
         }
 )
 public class RootCommand {
