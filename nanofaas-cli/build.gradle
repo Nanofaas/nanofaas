@@ -1,0 +1,48 @@
+plugins {
+    id 'application'
+    id 'io.spring.dependency-management' version "${springDependencyManagementVersion}"
+    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+dependencies {
+    implementation project(':common')
+
+    implementation 'info.picocli:picocli:4.7.6'
+
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+    implementation 'io.fabric8:kubernetes-client:7.5.2'
+    // Needed at compile time to instantiate a concrete HttpClient.Factory (avoids reflection in native image).
+    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+application {
+    mainClass = 'it.unimib.datai.nanofaas.cli.NanofaasCli'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'nanofaas-cli'
+            // Fabric8's kubeconfig parsing (SnakeYAML engine) may probe UTF-32* charsets.
+            buildArgs.add('-H:+AddAllCharsets')
+        }
+    }
+}
+
