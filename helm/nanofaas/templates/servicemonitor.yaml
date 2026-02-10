@@ -1,0 +1,25 @@
+{{- if .Values.prometheus.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nanofaas-control-plane
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+  labels:
+    {{- include "nanofaas.controlPlane.labels" . | nindent 4 }}
+    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ include "nanofaas.namespace" . | quote }}
+  selector:
+    matchLabels:
+      {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: {{ .Values.prometheus.scrape.portName | quote }}
+      path: {{ .Values.prometheus.scrape.path | quote }}
+      interval: {{ .Values.prometheus.serviceMonitor.interval | quote }}
+      scrapeTimeout: {{ .Values.prometheus.serviceMonitor.scrapeTimeout | quote }}
+{{- end -}}
+

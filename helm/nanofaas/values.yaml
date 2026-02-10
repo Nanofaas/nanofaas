@@ -31,6 +31,19 @@ serviceAccount:
   create: true
   name: nanofaas-control-plane
 
+prometheus:
+  # Basic Prometheus scrape annotations (works with "classic" Prometheus scrapers).
+  scrape:
+    enabled: true
+    path: /actuator/prometheus
+    portName: actuator
+  # Prometheus Operator integration (requires ServiceMonitor CRD installed).
+  serviceMonitor:
+    enabled: false
+    interval: 15s
+    scrapeTimeout: 10s
+    additionalLabels: {}
+
 demos:
   enabled: true
   # The job will register these functions via the control-plane API.
@@ -59,6 +72,20 @@ demos:
       executionMode: DEPLOYMENT
     - name: json-transform-python
       image: ghcr.io/miciav/nanofaas/python-json-transform:v0.6.2
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: word-stats-exec
+      image: ghcr.io/miciav/nanofaas/bash-word-stats:v0.6.2
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: json-transform-exec
+      image: ghcr.io/miciav/nanofaas/bash-json-transform:v0.6.2
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
