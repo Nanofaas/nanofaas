@@ -1,8 +1,8 @@
 package it.unimib.datai.nanofaas.cli.commands.deploy;
 
-import it.unimib.datai.nanofaas.cli.build.BuildSpec;
-import it.unimib.datai.nanofaas.cli.build.BuildSpecLoader;
-import it.unimib.datai.nanofaas.cli.build.DockerBuildx;
+import it.unimib.datai.nanofaas.cli.image.BuildSpec;
+import it.unimib.datai.nanofaas.cli.image.BuildSpecLoader;
+import it.unimib.datai.nanofaas.cli.image.DockerBuildx;
 import it.unimib.datai.nanofaas.cli.commands.RootCommand;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneHttpException;
 import it.unimib.datai.nanofaas.cli.io.YamlIO;
