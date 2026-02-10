@@ -13,6 +13,7 @@ allprojects {
 
 subprojects {
     apply plugin: 'java'
+    apply plugin: 'jacoco'
 
     java {
         toolchain {
@@ -20,10 +21,34 @@ subprojects {
         }
     }
 
+    jacoco {
+        toolVersion = '0.8.12'
+    }
+
     tasks.withType(Test).configureEach {
         useJUnitPlatform {
             if (!project.hasProperty('runE2e')) {
                 excludeTags 'inter_e2e'
+            }
+        }
+        finalizedBy jacocoTestReport
+    }
+
+    jacocoTestReport {
+        dependsOn test
+        reports {
+            xml.required = true
+            html.required = true
+            csv.required = false
+        }
+    }
+
+    jacocoTestCoverageVerification {
+        violationRules {
+            rule {
+                limit {
+                    minimum = 0.85
+                }
             }
         }
     }

@@ -1,0 +1,20 @@
+# Grafana for nanofaas load test visualization
+#
+# Usage:
+#   PROM_URL=http://<VM_IP>:30090 docker compose -f grafana/docker-compose.yml up -d
+#   Open http://localhost:3000 (admin/admin)
+#
+services:
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - PROM_URL=${PROM_URL:-http://host.docker.internal:30090}
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning
+      - ./dashboards:/var/lib/grafana/dashboards

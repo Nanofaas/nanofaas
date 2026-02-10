@@ -8,4 +8,9 @@ class FunctionRuntimeApplicationTest {
     @Test
     void issue015_contextLoads() {
     }
+
+    @Test
+    void main_startsApplication() {
+        FunctionRuntimeApplication.main(new String[]{"--server.port=0"});
+    }
 }

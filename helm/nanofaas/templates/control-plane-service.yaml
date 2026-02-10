@@ -19,6 +19,16 @@ spec:
     - name: http
       port: {{ .Values.controlPlane.service.ports.http }}
       targetPort: {{ .Values.controlPlane.service.ports.http }}
+      {{- if and (eq .Values.controlPlane.service.type "NodePort") .Values.controlPlane.service.nodePorts }}
+      {{- with .Values.controlPlane.service.nodePorts.http }}
+      nodePort: {{ . }}
+      {{- end }}
+      {{- end }}
     - name: actuator
       port: {{ .Values.controlPlane.service.ports.actuator }}
       targetPort: {{ .Values.controlPlane.service.ports.actuator }}
+      {{- if and (eq .Values.controlPlane.service.type "NodePort") .Values.controlPlane.service.nodePorts }}
+      {{- with .Values.controlPlane.service.nodePorts.actuator }}
+      nodePort: {{ . }}
+      {{- end }}
+      {{- end }}

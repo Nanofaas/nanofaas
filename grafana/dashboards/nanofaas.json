@@ -1,0 +1,194 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(function_enqueue_total[1m])",
+          "legendFormat": "{{function}} enqueue",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(function_success_total[1m])",
+          "legendFormat": "{{function}} success",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Error & Timeout Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(function_error_total[1m])",
+          "legendFormat": "{{function}} error",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(function_timeout_total[1m])",
+          "legendFormat": "{{function}} timeout",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(function_queue_rejected_total[1m])",
+          "legendFormat": "{{function}} rejected",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Latency p50 / p95 / p99 (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "function_latency_ms_seconds{quantile=\"0.5\"}",
+          "legendFormat": "{{function}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "function_latency_ms_seconds{quantile=\"0.95\"}",
+          "legendFormat": "{{function}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "function_latency_ms_seconds{quantile=\"0.99\"}",
+          "legendFormat": "{{function}} p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "function_queue_depth",
+          "legendFormat": "{{function}} queue",
+          "refId": "A"
+        },
+        {
+          "expr": "function_inFlight",
+          "legendFormat": "{{function}} in-flight",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Total Invocations (cumulative)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "function_enqueue_total",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "textMode": "auto",
+        "colorMode": "value"
+      }
+    },
+    {
+      "title": "Dispatch Rate (per function)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "rate(function_dispatch_total[1m])",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 50 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Retry Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "expr": "rate(function_retry_total[1m])",
+          "legendFormat": "{{function}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["nanofaas", "faas"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "title": "nanofaas - Function Metrics",
+  "uid": "nanofaas-functions",
+  "version": 1
+}
