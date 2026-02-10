@@ -1,0 +1,17 @@
+{{- if and .Values.prometheus.create .Values.prometheus.pvc.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nanofaas-prometheus-data
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.prometheus.pvc.size | quote }}
+  {{- with .Values.prometheus.pvc.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end -}}
+

@@ -32,6 +32,29 @@ serviceAccount:
   name: nanofaas-control-plane
 
 prometheus:
+  # Install an internal Prometheus instance (OpenFaaS-style "bundled Prometheus").
+  # This is meant for dev/POC and short retention; for long-term retention, scrape it externally.
+  create: true
+  image: prom/prometheus:v3.9.1
+  retention: 15d
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  service:
+    name: prometheus
+    type: ClusterIP
+    port: 9090
+  pvc:
+    enabled: false
+    size: 10Gi
+    storageClassName: ""
+  rbac:
+    create: true
+
   # Basic Prometheus scrape annotations (works with "classic" Prometheus scrapers).
   scrape:
     enabled: true

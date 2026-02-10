@@ -1,0 +1,141 @@
+{{- if .Values.prometheus.create -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanofaas-prometheus-config
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules.yml
+
+    scrape_configs:
+      - job_name: prometheus
+        scrape_interval: 10s
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Scrape Services/Endpoints annotated with prometheus.io/scrape=true in the Nanofaas namespace.
+      - job_name: nanofaas-endpoints
+        scrape_interval: 5s
+        honor_labels: false
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - {{ include "nanofaas.namespace" . }}
+        relabel_configs:
+          - action: keep
+            source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            regex: true
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            separator: ;
+            regex: ([^:]+)(?::\\d+)?;(\\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: replace
+            regex: (.+)
+            source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            target_label: __metrics_path__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_service_name
+        metric_relabel_configs:
+          # OpenFaaS-style label alias
+          - source_labels: [function]
+            regex: (.+)
+            target_label: function_name
+            replacement: $1
+            action: replace
+
+      # Scrape Pods annotated with prometheus.io/scrape=true in the Nanofaas namespace.
+      - job_name: nanofaas-pods
+        scrape_interval: 5s
+        honor_labels: false
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ include "nanofaas.namespace" . }}
+        relabel_configs:
+          - action: keep
+            source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: true
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\\d+)?;(\\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: replace
+            regex: (.+)
+            source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            target_label: __metrics_path__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+        metric_relabel_configs:
+          # OpenFaaS-style label alias
+          - source_labels: [function]
+            regex: (.+)
+            target_label: function_name
+            replacement: $1
+            action: replace
+  rules.yml: |
+    groups:
+      # Best-effort OpenFaaS metric name compatibility using Nanofaas control-plane counters/gauges.
+      #
+      # Notes:
+      # - Nanofaas does not have an OpenFaaS "gateway", so these are derived from control-plane metrics.
+      # - "code" is approximated (success=200, error=500, timeout=504, queue_rejected=429).
+      - name: openfaas_compat
+        interval: 15s
+        rules:
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_success_total, "code", "200", "function", ".*")
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_error_total, "code", "500", "function", ".*")
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_timeout_total, "code", "504", "function", ".*")
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_queue_rejected_total, "code", "429", "function", ".*")
+
+          # Approximate "started" as "dispatch" (execution handed off to a function pod).
+          - record: gateway_function_invocation_started
+            expr: function_dispatch_total
+
+          # Approximate "inflight" using the control-plane queue in-flight gauge.
+          - record: gateway_function_invocation_inflight
+            expr: function_in_flight OR function_inFlight
+
+          # Approximate OpenFaaS queue-worker pending messages using Nanofaas per-function queue depth.
+          - record: queue_worker_pending_messages
+            expr: function_queue_depth
+
+      # OpenFaaS CE ships a basic alert example; keep it for parity.
+      - name: openfaas_alerts
+        rules:
+          - alert: APIHighInvocationRate
+            expr: sum(rate(gateway_function_invocation_total{code="200"}[10s])) BY (function_name) > 5
+            for: 5s
+            labels:
+              service: nanofaas
+              severity: major
+            annotations:
+              description: High invocation total on "{{ "{{" }}$labels.function_name{{ "}}" }}"
+              summary: High invocation total on "{{ "{{" }}$labels.function_name{{ "}}" }}"
+{{- end -}}

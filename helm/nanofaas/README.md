@@ -16,7 +16,20 @@ The control-plane exposes Prometheus metrics via Spring Boot Actuator at:
 
 - `GET /actuator/prometheus` on port `8081` (service port name `actuator`)
 
-By default, the chart adds classic Prometheus scrape annotations to the control-plane Service
+### Bundled Prometheus (recommended for dev/POC)
+
+By default, the chart also installs an internal Prometheus instance (`prometheus.create=true`) configured with
+Kubernetes service discovery to scrape any annotated Pods/Services in the Nanofaas namespace.
+
+Disable bundled Prometheus:
+
+```bash
+helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas --set prometheus.create=false
+```
+
+### External Prometheus Scrape
+
+The chart adds classic Prometheus scrape annotations to the control-plane Service/Pod template
 (`prometheus.scrape.enabled=true`).
 
 If you are using Prometheus Operator, you can enable a `ServiceMonitor` (requires the CRD):

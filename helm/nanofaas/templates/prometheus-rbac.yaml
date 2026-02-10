@@ -1,0 +1,26 @@
+{{- if and .Values.prometheus.create .Values.prometheus.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nanofaas-prometheus
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nanofaas-prometheus
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: nanofaas-prometheus
+    namespace: {{ include "nanofaas.namespace" . | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nanofaas-prometheus
+{{- end -}}
+
