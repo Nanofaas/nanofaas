@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.cli.commands.exec.ExecCommand;
 import it.unimib.datai.nanofaas.cli.commands.deploy.DeployCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.EnqueueCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.InvokeCommand;
+import it.unimib.datai.nanofaas.cli.commands.k8s.K8sCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -22,7 +23,8 @@ import java.nio.file.Path;
                 InvokeCommand.class,
                 EnqueueCommand.class,
                 ExecCommand.class,
-                DeployCommand.class
+                DeployCommand.class,
+                K8sCommand.class
         }
 )
 public class RootCommand {
