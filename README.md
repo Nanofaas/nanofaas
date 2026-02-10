@@ -72,3 +72,36 @@ export KUBECONFIG=~/.kube/nanofaas-kind.yaml
 ## Docs
 
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
+
+## nanofaas-cli (CLI)
+
+The repository includes a standalone CLI (GraalVM native) under the `nanofaas-cli/` subproject.
+
+Build and run (JVM):
+
+```bash
+./gradlew :nanofaas-cli:run -- --help
+```
+
+Build native executable (requires GraalVM):
+
+```bash
+./gradlew :nanofaas-cli:nativeCompile
+./nanofaas-cli/build/native/nativeCompile/nanofaas-cli --help
+```
+
+Common usage:
+
+```bash
+# target the control-plane
+nanofaas --endpoint http://localhost:8080 fn list
+
+# build+push (docker buildx) and register
+nanofaas --endpoint http://localhost:8080 deploy -f function.yaml
+
+# invoke
+echo '{"input":{"message":"hi"}}' | nanofaas --endpoint http://localhost:8080 invoke echo -d @-
+
+# k8s helper (requires kubeconfig)
+nanofaas -n nanofaas k8s logs echo
+```
