@@ -21,7 +21,16 @@ bootJar {
 
 bootBuildImage {
     imageName = project.findProperty('functionImage') ?: 'nanofaas/java-json-transform:buildpack'
-    builder = 'paketobuildpacks/builder-jammy-tiny:latest'
-    runImage = 'paketobuildpacks/run-jammy-tiny:latest'
+    def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
+            ?: 'paketobuildpacks/builder-jammy-tiny:latest').toString()
+    def runImageName = (project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
+            ?: 'paketobuildpacks/run-jammy-tiny:latest').toString()
+    builder = builderImage
+    runImage = runImageName
+    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64)
+    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM')
+    if (targetPlatform) {
+        imagePlatform = targetPlatform
+    }
     environment = ['BP_NATIVE_IMAGE': 'true']
 }

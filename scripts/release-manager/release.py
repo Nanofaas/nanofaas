@@ -49,7 +49,12 @@ def run_command(cmd, capture_output=True):
     if result.returncode != 0:
         if capture_output:
             console.print(f"[red]Command failed: {cmd}[/red]")
-            console.print(f"[dim]{result.stderr}[/dim]")
+            if result.stdout:
+                console.print("[dim]--- stdout ---[/dim]")
+                console.print(f"[dim]{result.stdout.rstrip()}[/dim]")
+            if result.stderr:
+                console.print("[dim]--- stderr ---[/dim]")
+                console.print(f"[dim]{result.stderr.rstrip()}[/dim]")
         sys.exit(1)
     return result.stdout.strip()
 
@@ -57,6 +62,46 @@ def try_command(cmd):
     """Run a command, return (success, stdout, stderr) without exiting on failure."""
     result = subprocess.run(cmd, shell=True, text=True, capture_output=True, cwd=ROOT)
     return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+
+def prune_docker_build_caches():
+    """Best-effort cache cleanup to recover from Docker 'no space left on device' during native-image builds."""
+    if not shutil.which("docker"):
+        return
+    console.print("[yellow]Pruning Docker builder/buildpack caches to free space...[/yellow]")
+    # BuildKit cache (safe: affects only caches, not tagged images)
+    try_command("docker builder prune -f")
+    # Buildpacks caches created by pack/spring-boot (safe: just caches, will be recreated)
+    ok, vols, _ = try_command("docker volume ls -q | grep '^pack-cache-' || true")
+    for v in [x for x in vols.splitlines() if x.strip()]:
+        try_command(f"docker volume rm {v}")
+
+def run_with_disk_retry(cmd, retries=1):
+    """Run a command; if it fails with 'no space left on device', prune caches and retry."""
+    ok, out, err = try_command(cmd)
+    if ok:
+        return out
+    hay = (out or "") + "\n" + (err or "")
+    if retries > 0 and ("No space left on device" in hay or "no space left on device" in hay):
+        prune_docker_build_caches()
+        ok2, out2, err2 = try_command(cmd)
+        if ok2:
+            return out2
+        console.print(f"[red]Command failed after retry: {cmd}[/red]")
+        if out2:
+            console.print("[dim]--- stdout ---[/dim]")
+            console.print(f"[dim]{out2.rstrip()}[/dim]")
+        if err2:
+            console.print("[dim]--- stderr ---[/dim]")
+            console.print(f"[dim]{err2.rstrip()}[/dim]")
+        sys.exit(1)
+    console.print(f"[red]Command failed: {cmd}[/red]")
+    if out:
+        console.print("[dim]--- stdout ---[/dim]")
+        console.print(f"[dim]{out.rstrip()}[/dim]")
+    if err:
+        console.print("[dim]--- stderr ---[/dim]")
+        console.print(f"[dim]{err.rstrip()}[/dim]")
+    sys.exit(1)
 
 def get_current_version():
     gradle_file = ROOT / "build.gradle"
@@ -122,13 +167,17 @@ def build_and_push_arm64(version):
     
     oci_source = f"https://github.com/{GH_OWNER}/{GH_REPO}"
     platform = "linux/arm64"
+    # Paketo "builder-jammy-*" images are amd64-only; use a multi-arch builder for real ARM64 native images.
+    builder_image = "dashaun/builder:tiny"
+    run_image = "paketobuildpacks/run-jammy-tiny:latest"
 
     # 1. Control Plane
     cp_image = f"{base_image}/control-plane:{tag}-arm64"
     console.print(f"[blue]Building {cp_image}...[/blue]")
-    run_command(
+    run_with_disk_retry(
         f"BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage "
-        f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform}"
+        f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform} "
+        f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
     )
     run_command(f"docker push {cp_image}")
 
@@ -136,9 +185,10 @@ def build_and_push_arm64(version):
     jr_image = f"{base_image}/function-runtime:{tag}-arm64"
     console.print(f"[blue]Building {jr_image}...[/blue]")
     try:
-        run_command(
+        run_with_disk_retry(
             f"BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage "
-            f"-PfunctionRuntimeImage={jr_image} -PimagePlatform={platform}"
+            f"-PfunctionRuntimeImage={jr_image} -PimagePlatform={platform} "
+            f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
         )
         run_command(f"docker push {jr_image}")
     except:
@@ -157,18 +207,17 @@ def build_and_push_arm64(version):
         console.print("[yellow]Warning: Could not build watchdog, skipping.[/yellow]")
 
     # 4. Java Demo Functions
-    #
-    # These examples have JVM-only Dockerfiles. Native images are intended to be produced
-    # in CI via buildpacks; building native images locally is slow and can exhaust Docker
-    # disk space (especially when multiple native builds run back-to-back).
-    java_examples = ["word-stats", "json-transform"]
-    for example in java_examples:
+    java_examples = {
+        "word-stats": ":examples:java:word-stats:bootBuildImage",
+        "json-transform": ":examples:java:json-transform:bootBuildImage",
+    }
+    for example, gradle_task in java_examples.items():
         img = f"{base_image}/java-{example}:{tag}-arm64"
         console.print(f"[blue]Building Java {example} ({img})...[/blue]")
-        run_command(f"./gradlew :examples:java:{example}:bootJar")
-        run_command(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {img} -f examples/java/{example}/Dockerfile examples/java/{example}/"
+        run_with_disk_retry(
+            f"BP_OCI_SOURCE={oci_source} ./gradlew {gradle_task} "
+            f"-PfunctionImage={img} -PimagePlatform={platform} "
+            f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
         )
         run_command(f"docker push {img}")
 
