@@ -8,8 +8,10 @@
 
 use axum::{
     extract::State,
+    http::header,
     http::HeaderMap,
     http::StatusCode,
+    response::IntoResponse,
     routing::get,
     Json, Router,
 };
@@ -27,6 +29,14 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Instant};
 use tracing::{debug, error, info, warn};
+
+use prometheus_client::encoding::text::encode;
+use prometheus_client::encoding::EncodeLabelSet;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
+use prometheus_client::registry::Registry;
 
 // ============================================================================
 // Configuration
@@ -201,6 +211,94 @@ struct WarmAppState {
     config: Arc<Config>,
     // Warm containers handle one invocation at a time (OpenWhisk-style).
     invoke_lock: Arc<Mutex<()>>,
+    metrics: Arc<WatchdogMetrics>,
+    function_name: String,
+}
+
+// ============================================================================
+// Prometheus Metrics (warm mode)
+// ============================================================================
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct InvocationsLabels {
+    function: String,
+    mode: String,
+    success: String,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct DurationLabels {
+    function: String,
+    mode: String,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct FunctionLabel {
+    function: String,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct TimeoutsLabels {
+    function: String,
+    mode: String,
+}
+
+struct WatchdogMetrics {
+    registry: Registry,
+    invocations_total: Family<InvocationsLabels, Counter>,
+    invocation_duration_seconds: Family<DurationLabels, Histogram>,
+    invocations_in_flight: Family<FunctionLabel, Gauge>,
+    timeouts_total: Family<TimeoutsLabels, Counter>,
+}
+
+impl WatchdogMetrics {
+    fn new() -> Self {
+        let invocations_total = Family::<InvocationsLabels, Counter>::default();
+        let invocation_duration_seconds = Family::<DurationLabels, Histogram>::new_with_constructor(|| {
+            // Seconds; from ~5ms to ~40s.
+            Histogram::new(exponential_buckets(0.005, 2.0, 14))
+        });
+        let invocations_in_flight = Family::<FunctionLabel, Gauge>::default();
+        let timeouts_total = Family::<TimeoutsLabels, Counter>::default();
+
+        let mut registry = Registry::default();
+        registry.register(
+            // prometheus-client appends "_total" to Counter names, so avoid duplicating it here.
+            "watchdog_invocations",
+            "Total invocations handled by the watchdog",
+            invocations_total.clone(),
+        );
+        registry.register(
+            "watchdog_invocation_duration_seconds",
+            "Invocation duration in seconds (watchdog)",
+            invocation_duration_seconds.clone(),
+        );
+        registry.register(
+            "watchdog_invocations_in_flight",
+            "In-flight invocations (watchdog)",
+            invocations_in_flight.clone(),
+        );
+        registry.register(
+            // prometheus-client appends "_total" to Counter names, so avoid duplicating it here.
+            "watchdog_timeouts",
+            "Invocation timeouts (watchdog)",
+            timeouts_total.clone(),
+        );
+
+        Self {
+            registry,
+            invocations_total,
+            invocation_duration_seconds,
+            invocations_in_flight,
+            timeouts_total,
+        }
+    }
+
+    fn render(&self) -> Result<String, std::fmt::Error> {
+        let mut buf = String::new();
+        encode(&mut buf, &self.registry)?;
+        Ok(buf)
+    }
 }
 
 // ============================================================================
@@ -494,6 +592,22 @@ async fn warm_health() -> StatusCode {
     StatusCode::OK
 }
 
+async fn warm_metrics(State(state): State<WarmAppState>) -> impl IntoResponse {
+    match state.metrics.render() {
+        Ok(body) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+            body,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("metrics encode failed: {e}")})),
+        )
+            .into_response(),
+    }
+}
+
 async fn warm_invoke_get_ready() -> StatusCode {
     // K8s readiness probes in this repo use GET /invoke.
     StatusCode::OK
@@ -523,16 +637,87 @@ async fn warm_invoke(
     // Ensure a single in-flight invocation per warm container.
     let _guard = state.invoke_lock.lock().await;
 
+    let mode_str = match state.config.mode {
+        ExecutionMode::Http => "HTTP",
+        ExecutionMode::Stdio => "STDIO",
+        ExecutionMode::File => "FILE",
+    };
+
+    // Metrics: in-flight + duration + totals
+    let start = Instant::now();
+    state
+        .metrics
+        .invocations_in_flight
+        .get_or_create(&FunctionLabel {
+            function: state.function_name.clone(),
+        })
+        .inc();
+
     let out = match state.config.mode {
         ExecutionMode::Http => invoke_http_warm(&state.config, &payload, execution_id, trace_id).await,
         ExecutionMode::Stdio => run_stdio_warm(&state.config, &payload, execution_id, trace_id).await,
         ExecutionMode::File => run_file_warm(&state.config, &payload, execution_id, trace_id).await,
     };
 
+    let elapsed = start.elapsed().as_secs_f64();
+    state
+        .metrics
+        .invocation_duration_seconds
+        .get_or_create(&DurationLabels {
+            function: state.function_name.clone(),
+            mode: mode_str.to_string(),
+        })
+        .observe(elapsed);
+
+    state
+        .metrics
+        .invocations_in_flight
+        .get_or_create(&FunctionLabel {
+            function: state.function_name.clone(),
+        })
+        .dec();
+
     match out {
-        Ok(v) => (StatusCode::OK, Json(v)),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
+        Ok(v) => {
+            state
+                .metrics
+                .invocations_total
+                .get_or_create(&InvocationsLabels {
+                    function: state.function_name.clone(),
+                    mode: mode_str.to_string(),
+                    success: "true".to_string(),
+                })
+                .inc();
+            (StatusCode::OK, Json(v))
+        }
+        Err(e) => {
+            if is_timeout_error(&e) {
+                state
+                    .metrics
+                    .timeouts_total
+                    .get_or_create(&TimeoutsLabels {
+                        function: state.function_name.clone(),
+                        mode: mode_str.to_string(),
+                    })
+                    .inc();
+            }
+            state
+                .metrics
+                .invocations_total
+                .get_or_create(&InvocationsLabels {
+                    function: state.function_name.clone(),
+                    mode: mode_str.to_string(),
+                    success: "false".to_string(),
+                })
+                .inc();
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
+        }
     }
+}
+
+fn is_timeout_error(e: &str) -> bool {
+    let s = e.to_lowercase();
+    s.contains("timed out") || s.contains("timeout")
 }
 
 async fn invoke_http_warm(
@@ -596,10 +781,13 @@ async fn execute_warm_server(config: Config) -> ExitCode {
     let state = WarmAppState {
         config: Arc::new(config.clone()),
         invoke_lock: Arc::new(Mutex::new(())),
+        metrics: Arc::new(WatchdogMetrics::new()),
+        function_name: env::var("FUNCTION_NAME").unwrap_or_else(|_| "unknown".to_string()),
     };
 
     let app = Router::new()
         .route("/health", get(warm_health))
+        .route("/metrics", get(warm_metrics))
         .route("/invoke", get(warm_invoke_get_ready).post(warm_invoke))
         .with_state(state);
 
@@ -646,6 +834,22 @@ async fn execute_warm_server(config: Config) -> ExitCode {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
+    // Minimal CLI support (used by integration tests and container probes).
+    if env::args().any(|a| a == "--version" || a == "-V") {
+        println!("nanofaas-watchdog {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    if env::args().any(|a| a == "--help" || a == "-h") {
+        println!("nanofaas-watchdog");
+        println!();
+        println!("Environment-driven watchdog for nanofaas function containers.");
+        println!();
+        println!("Flags:");
+        println!("  --help, -h       Show this help");
+        println!("  --version, -V    Print version");
+        return ExitCode::SUCCESS;
+    }
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(

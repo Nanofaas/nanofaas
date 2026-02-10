@@ -54,6 +54,10 @@ prometheus:
     storageClassName: ""
   rbac:
     create: true
+  kubeletResourceMetrics:
+    enabled: false
+    # Resource metrics scrape uses the apiserver proxy and typically needs skipping TLS verification in dev clusters.
+    insecureSkipVerify: true
 
   # Basic Prometheus scrape annotations (works with "classic" Prometheus scrapers).
   scrape:

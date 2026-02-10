@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
+import it.unimib.datai.nanofaas.controlplane.service.TargetLoadMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,15 +21,18 @@ public class FunctionService {
     private final QueueManager queueManager;
     private final FunctionSpecResolver resolver;
     private final KubernetesResourceManager resourceManager;
+    private final TargetLoadMetrics targetLoadMetrics;
 
     public FunctionService(FunctionRegistry registry,
                            QueueManager queueManager,
                            FunctionDefaults defaults,
-                           @Autowired(required = false) KubernetesResourceManager resourceManager) {
+                           @Autowired(required = false) KubernetesResourceManager resourceManager,
+                           TargetLoadMetrics targetLoadMetrics) {
         this.registry = registry;
         this.queueManager = queueManager;
         this.resolver = new FunctionSpecResolver(defaults);
         this.resourceManager = resourceManager;
+        this.targetLoadMetrics = targetLoadMetrics;
     }
 
     public Collection<FunctionSpec> list() {
@@ -74,6 +78,8 @@ public class FunctionService {
         }
         // Registration succeeded - create the queue
         queueManager.getOrCreate(resolved);
+        // Expose scaling targets as metrics (used by OpenFaaS-compatible recording rules)
+        targetLoadMetrics.update(resolved);
         return Optional.of(resolved);
     }
 
@@ -103,6 +109,7 @@ public class FunctionService {
         FunctionSpec removed = registry.remove(name);
         if (removed != null) {
             queueManager.remove(name);
+            targetLoadMetrics.remove(name);
             if (removed.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
                 resourceManager.deprovision(name);
             }

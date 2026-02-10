@@ -2,10 +2,13 @@ import os
 import importlib
 import asyncio
 import logging
+import time
 from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 from nanofaas.sdk import context, decorator, logging as sdk_logging
 import requests
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 # Set up logging early
 sdk_logging.configure_logging()
@@ -16,6 +19,23 @@ app = FastAPI(title="nanoFaaS Python Runtime")
 CALLBACK_URL = os.environ.get('CALLBACK_URL', '')
 DEFAULT_EXECUTION_ID = os.environ.get('EXECUTION_ID', '')
 HANDLER_MODULE = os.environ.get('HANDLER_MODULE')
+FUNCTION_NAME = os.environ.get('FUNCTION_NAME') or HANDLER_MODULE or "unknown"
+
+RUNTIME_INVOCATIONS_TOTAL = Counter(
+    "runtime_invocations_total",
+    "Total invocations handled by the Python runtime",
+    ["function", "success"],
+)
+RUNTIME_INVOCATION_DURATION_SECONDS = Histogram(
+    "runtime_invocation_duration_seconds",
+    "Invocation duration in seconds (Python runtime)",
+    ["function"],
+)
+RUNTIME_IN_FLIGHT = Gauge(
+    "runtime_in_flight",
+    "In-flight invocations (Python runtime)",
+    ["function"],
+)
 
 @app.on_event("startup")
 async def startup_event():
@@ -81,6 +101,8 @@ async def invoke(
         logger.error("No handler registered")
         raise HTTPException(status_code=500, detail="No function registered with @nanofaas_function")
 
+    start = time.perf_counter()
+    RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
     try:
         payload = await request.json()
         # Java SDK expects the whole body as InvocationRequest, which has 'input' and 'metadata'
@@ -94,7 +116,8 @@ async def invoke(
             output = await handler(input_data)
         else:
             output = handler(input_data)
-            
+
+        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
         result = {"success": True, "output": output, "error": None}
         
         if callback_url:
@@ -103,6 +126,7 @@ async def invoke(
         return output
     except Exception as e:
         logger.exception(f"Handler error in execution {execution_id}: {e}")
+        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
         error_result = {
             "success": False, 
             "output": None, 
@@ -112,7 +136,15 @@ async def invoke(
             background_tasks.add_task(send_callback, callback_url, execution_id, trace_id, error_result)
             
         return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        elapsed = time.perf_counter() - start
+        RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
+        RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

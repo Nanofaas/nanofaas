@@ -62,9 +62,18 @@ run_warm_tests
 WARM_PASSED=$TESTS_PASSED
 WARM_FAILED=$TESTS_FAILED
 
+TESTS_PASSED=0
+TESTS_FAILED=0
+
+source "$SCRIPT_DIR/test_metrics.sh"
+run_metrics_tests
+
+METRICS_PASSED=$TESTS_PASSED
+METRICS_FAILED=$TESTS_FAILED
+
 # Calculate totals
-TOTAL_PASSED=$((HTTP_PASSED + STDIO_PASSED + FILE_PASSED + CALLBACK_PASSED + WARM_PASSED))
-TOTAL_FAILED=$((HTTP_FAILED + STDIO_FAILED + FILE_FAILED + CALLBACK_FAILED + WARM_FAILED))
+TOTAL_PASSED=$((HTTP_PASSED + STDIO_PASSED + FILE_PASSED + CALLBACK_PASSED + WARM_PASSED + METRICS_PASSED))
+TOTAL_FAILED=$((HTTP_FAILED + STDIO_FAILED + FILE_FAILED + CALLBACK_FAILED + WARM_FAILED + METRICS_FAILED))
 
 # Print final summary
 echo ""
@@ -77,6 +86,7 @@ printf "%-20s %s passed, %s failed\n" "STDIO Mode:" "$STDIO_PASSED" "$STDIO_FAIL
 printf "%-20s %s passed, %s failed\n" "FILE Mode:" "$FILE_PASSED" "$FILE_FAILED"
 printf "%-20s %s passed, %s failed\n" "Callback:" "$CALLBACK_PASSED" "$CALLBACK_FAILED"
 printf "%-20s %s passed, %s failed\n" "WARM:" "$WARM_PASSED" "$WARM_FAILED"
+printf "%-20s %s passed, %s failed\n" "Metrics:" "$METRICS_PASSED" "$METRICS_FAILED"
 echo "----------------------------------------"
 printf "%-20s %s passed, %s failed\n" "TOTAL:" "$TOTAL_PASSED" "$TOTAL_FAILED"
 echo ""

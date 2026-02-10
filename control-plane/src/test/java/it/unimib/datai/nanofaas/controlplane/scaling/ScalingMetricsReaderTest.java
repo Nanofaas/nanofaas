@@ -2,8 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.scaling;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.search.RequiredSearch;
-import io.micrometer.core.instrument.search.Search;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.controlplane.queue.FunctionQueueState;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
@@ -65,5 +64,16 @@ class ScalingMetricsReaderTest {
     void readMetric_unknownType_returnsZero() {
         double value = reader.readMetric("echo", new ScalingMetric("unknown_metric", "10", null));
         assertEquals(0.0, value);
+    }
+
+    @Test
+    void readMetric_rps_readsDispatchCounter() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        // Counter is stored as a double; using increment(3) is fine.
+        Counter.builder("function_dispatch_total").tag("function", "echo").register(registry).increment(3.0);
+
+        ScalingMetricsReader r = new ScalingMetricsReader(queueManager, registry);
+        double value = r.readMetric("echo", new ScalingMetric("rps", "1", null));
+        assertEquals(3.0, value);
     }
 }

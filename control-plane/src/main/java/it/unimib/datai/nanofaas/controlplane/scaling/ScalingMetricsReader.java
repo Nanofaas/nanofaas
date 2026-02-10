@@ -44,7 +44,7 @@ public class ScalingMetricsReader {
     }
 
     private double readRps(String functionName) {
-        Counter counter = meterRegistry.find("function_dispatched_total")
+        Counter counter = meterRegistry.find("function_dispatch_total")
                 .tag("function", functionName)
                 .counter();
         // Return total count; the scaler should track the rate over its poll interval
