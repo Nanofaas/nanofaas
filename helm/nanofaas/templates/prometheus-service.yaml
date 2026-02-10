@@ -14,5 +14,8 @@ spec:
     - name: http
       port: {{ .Values.prometheus.service.port }}
       targetPort: http
+      {{- if and (eq .Values.prometheus.service.type "NodePort") .Values.prometheus.service.nodePort }}
+      nodePort: {{ .Values.prometheus.service.nodePort }}
+      {{- end }}
 {{- end -}}
 

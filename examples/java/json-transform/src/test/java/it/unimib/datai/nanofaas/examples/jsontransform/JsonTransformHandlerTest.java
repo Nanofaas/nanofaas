@@ -110,4 +110,100 @@ class JsonTransformHandlerTest {
 
         assertTrue(result.containsKey("error"));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void minByGroup() {
+        InvocationRequest req = new InvocationRequest(
+                Map.of(
+                        "data", List.of(
+                                Map.of("dept", "eng", "salary", 80000),
+                                Map.of("dept", "eng", "salary", 90000)
+                        ),
+                        "groupBy", "dept",
+                        "operation", "min",
+                        "valueField", "salary"
+                ),
+                null
+        );
+
+        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        Map<String, Object> groups = (Map<String, Object>) result.get("groups");
+
+        assertEquals(80000.0, groups.get("eng"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void maxByGroup() {
+        InvocationRequest req = new InvocationRequest(
+                Map.of(
+                        "data", List.of(
+                                Map.of("dept", "eng", "salary", 80000),
+                                Map.of("dept", "eng", "salary", 90000)
+                        ),
+                        "groupBy", "dept",
+                        "operation", "max",
+                        "valueField", "salary"
+                ),
+                null
+        );
+
+        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        Map<String, Object> groups = (Map<String, Object>) result.get("groups");
+
+        assertEquals(90000.0, groups.get("eng"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void unknownOperation_returnsUnknownMessage() {
+        InvocationRequest req = new InvocationRequest(
+                Map.of(
+                        "data", List.of(Map.of("dept", "eng", "salary", 100)),
+                        "groupBy", "dept",
+                        "operation", "median",
+                        "valueField", "salary"
+                ),
+                null
+        );
+
+        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        Map<String, Object> groups = (Map<String, Object>) result.get("groups");
+
+        assertTrue(groups.get("eng").toString().contains("unknown operation"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void nonMapInput_returnsError() {
+        InvocationRequest req = new InvocationRequest("not a map", null);
+
+        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+
+        assertTrue(result.containsKey("error"));
+        assertTrue(result.get("error").toString().contains("JSON object"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void defaultOperationIsCount() {
+        InvocationRequest req = new InvocationRequest(
+                Map.of(
+                        "data", List.of(
+                                Map.of("dept", "eng"),
+                                Map.of("dept", "eng"),
+                                Map.of("dept", "sales")
+                        ),
+                        "groupBy", "dept"
+                ),
+                null
+        );
+
+        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        Map<String, Object> groups = (Map<String, Object>) result.get("groups");
+
+        assertEquals(2, groups.get("eng"));
+        assertEquals(1, groups.get("sales"));
+    }
 }
