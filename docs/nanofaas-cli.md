@@ -147,6 +147,62 @@ Resource conventions (as created by the control-plane):
 - label selector: `function=<name>`
 - deployment/service/hpa name: `fn-<name>`
 
+### `platform`
+
+Platform lifecycle commands (requires `helm` and Kubernetes access via kubeconfig/in-cluster config):
+
+- `nanofaas platform install`
+- `nanofaas platform status`
+- `nanofaas platform uninstall`
+
+#### `platform install`
+
+Installs/upgrades the Helm chart and configures a NodePort endpoint suitable for k3s defaults.
+
+Defaults:
+- release: `nanofaas`
+- chart: `helm/nanofaas`
+- namespace: `nanofaas` (or resolved global `--namespace`/config/env)
+- API NodePort: `30080`
+- actuator NodePort: `30081`
+
+Example:
+
+```bash
+nanofaas platform install
+```
+
+Custom release/namespace/tag:
+
+```bash
+nanofaas platform install --release nanofaas-dev -n dev --control-plane-tag v0.9.2
+```
+
+After install, the CLI resolves an endpoint like `http://<node-ip>:30080` and stores it in the active CLI context.
+
+#### `platform status`
+
+Shows:
+- control-plane deployment readiness (`ready/desired`)
+- service type
+- resolved endpoint
+
+Example:
+
+```bash
+nanofaas platform status
+```
+
+#### `platform uninstall`
+
+Runs Helm uninstall for the release/namespace.
+
+Example:
+
+```bash
+nanofaas platform uninstall --release nanofaas -n nanofaas
+```
+
 ## Testing
 
 ### Unit tests
@@ -172,4 +228,3 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 Requires Multipass and an SSH key. Creates a VM, deploys nanofaas on k3s,
 and exercises every CLI command end-to-end. See [docs/testing.md](testing.md)
 for configuration options and debugging instructions.
-
