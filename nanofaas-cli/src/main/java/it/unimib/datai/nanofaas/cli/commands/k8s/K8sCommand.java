@@ -2,7 +2,9 @@ package it.unimib.datai.nanofaas.cli.commands.k8s;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import it.unimib.datai.nanofaas.cli.commands.RootCommand;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.ParentCommand;
 
 import java.util.function.Supplier;
 
@@ -17,11 +19,14 @@ import java.util.function.Supplier;
 )
 public class K8sCommand {
 
+    @ParentCommand
+    private RootCommand root;
+
     private final Supplier<KubernetesClient> clientSupplier;
     private final Supplier<String> namespaceSupplier;
 
     public K8sCommand() {
-        this(() -> new KubernetesClientBuilder().build(), () -> "default");
+        this(() -> new KubernetesClientBuilder().build(), null);
     }
 
     // For tests.
@@ -35,6 +40,15 @@ public class K8sCommand {
     }
 
     String namespace() {
-        return namespaceSupplier.get();
+        if (namespaceSupplier != null) {
+            return namespaceSupplier.get();
+        }
+        if (root != null) {
+            String ns = root.resolvedContext().namespace();
+            if (ns != null && !ns.isBlank()) {
+                return ns;
+            }
+        }
+        return "default";
     }
 }

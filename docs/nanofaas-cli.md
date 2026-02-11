@@ -147,3 +147,29 @@ Resource conventions (as created by the control-plane):
 - label selector: `function=<name>`
 - deployment/service/hpa name: `fn-<name>`
 
+## Testing
+
+### Unit tests
+
+```bash
+./gradlew :nanofaas-cli:test
+```
+
+Comprehensive unit tests cover all commands using OkHttp MockWebServer (HTTP)
+and Fabric8 MockClient (Kubernetes). See [docs/testing.md](testing.md) for
+details and coverage targets.
+
+### E2E tests
+
+```bash
+# Full CLI E2E against a real k3s cluster (40 tests)
+./scripts/e2e-cli.sh
+
+# Keep VM for debugging
+KEEP_VM=true ./scripts/e2e-cli.sh
+```
+
+Requires Multipass and an SSH key. Creates a VM, deploys nanofaas on k3s,
+and exercises every CLI command end-to-end. See [docs/testing.md](testing.md)
+for configuration options and debugging instructions.
+

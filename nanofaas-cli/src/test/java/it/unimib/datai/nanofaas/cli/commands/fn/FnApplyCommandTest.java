@@ -33,6 +33,33 @@ class FnApplyCommandTest {
     }
 
     @Test
+    void applyFirstRegisterSucceeds() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        java.nio.file.Files.writeString(fn, """
+                name: echo
+                image: registry.example/echo:1
+                """);
+
+        // register -> 201 created (no conflict)
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
+        assertThat(exit).isEqualTo(0);
+
+        // Only 1 request: POST (201)
+        assertThat(server.getRequestCount()).isEqualTo(1);
+        RecordedRequest req = server.takeRequest();
+        assertThat(req.getMethod()).isEqualTo("POST");
+        assertThat(req.getPath()).isEqualTo("/v1/functions");
+    }
+
+    @Test
     void applyOnConflictReplacesWhenDifferent() throws Exception {
         Path fn = tmp.resolve("function.yaml");
         String yaml = """
@@ -87,5 +114,95 @@ class FnApplyCommandTest {
         assertThat(r4.getMethod()).isEqualTo("POST");
         assertThat(r4.getPath()).isEqualTo("/v1/functions");
         assertThat(r4.getBody().readUtf8()).contains("\"image\":\"registry.example/echo:1\"");
+    }
+
+    @Test
+    void applyOnConflictSkipsReplaceWhenSameSpec() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        String yaml = """
+                name: echo
+                image: registry.example/echo:1
+                timeoutMs: 1000
+                """;
+        java.nio.file.Files.writeString(fn, yaml);
+
+        // 1) register -> 409 conflict
+        server.enqueue(new MockResponse().setResponseCode(409));
+        // 2) get existing -> same spec (image and timeoutMs match)
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\",\"timeoutMs\":1000}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "fn", "apply",
+                "-f", fn.toString()
+        );
+
+        assertThat(exit).isEqualTo(0);
+
+        // Only 2 requests: POST (409) + GET (same spec) — no DELETE or re-POST
+        assertThat(server.getRequestCount()).isEqualTo(2);
+
+        RecordedRequest r1 = server.takeRequest();
+        assertThat(r1.getMethod()).isEqualTo("POST");
+
+        RecordedRequest r2 = server.takeRequest();
+        assertThat(r2.getMethod()).isEqualTo("GET");
+    }
+
+    @Test
+    void applyOnConflictRetriesWhenGetReturnsNull() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        java.nio.file.Files.writeString(fn, """
+                name: echo
+                image: registry.example/echo:1
+                """);
+
+        // 1) register -> 409
+        server.enqueue(new MockResponse().setResponseCode(409));
+        // 2) GET -> 404 (null)
+        server.enqueue(new MockResponse().setResponseCode(404));
+        // 3) retry register -> 201
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
+        assertThat(exit).isEqualTo(0);
+
+        assertThat(server.getRequestCount()).isEqualTo(3);
+        RecordedRequest r1 = server.takeRequest();
+        assertThat(r1.getMethod()).isEqualTo("POST");
+        RecordedRequest r2 = server.takeRequest();
+        assertThat(r2.getMethod()).isEqualTo("GET");
+        RecordedRequest r3 = server.takeRequest();
+        assertThat(r3.getMethod()).isEqualTo("POST"); // retry
+    }
+
+    @Test
+    void applyNon409ErrorExitsNonZero() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        java.nio.file.Files.writeString(fn, """
+                name: echo
+                image: registry.example/echo:1
+                """);
+
+        // register -> 500
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("Internal Server Error"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
+        assertThat(exit).isNotEqualTo(0);
     }
 }
