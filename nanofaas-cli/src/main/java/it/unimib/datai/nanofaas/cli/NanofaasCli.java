@@ -7,7 +7,9 @@ public final class NanofaasCli {
     private NanofaasCli() {}
 
     public static void main(String[] args) {
-        int exitCode = new CommandLine(new RootCommand()).execute(args);
+        CommandLine cli = new CommandLine(new RootCommand());
+        cli.setExpandAtFiles(false);
+        int exitCode = cli.execute(args);
         System.exit(exitCode);
     }
 }
