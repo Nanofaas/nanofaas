@@ -13,7 +13,6 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 
@@ -24,15 +23,18 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Testcontainers
 @Tag("inter_e2e")
 class E2eFlowTest {
-    // Paths relative to project root (test runs from control-plane/)
-    private static final Path PROJECT_ROOT = Path.of("..").toAbsolutePath().normalize();
     private static final Network network = Network.newNetwork();
+    private static final java.nio.file.Path FUNCTION_RUNTIME_JAR = E2eTestSupport.resolveBootJar(
+            E2eTestSupport.PROJECT_ROOT.resolve("function-runtime/build/libs"),
+            "function-runtime-");
+    private static final java.nio.file.Path CONTROL_PLANE_JAR = E2eTestSupport.resolveBootJar(
+            E2eTestSupport.PROJECT_ROOT.resolve("control-plane/build/libs"),
+            "control-plane-");
 
     private static final GenericContainer<?> functionRuntime = new GenericContainer<>(
             new ImageFromDockerfile()
-                    .withFileFromPath("Dockerfile", PROJECT_ROOT.resolve("function-runtime/Dockerfile"))
-                    .withFileFromPath("build/libs/function-runtime-0.5.0.jar",
-                            PROJECT_ROOT.resolve("function-runtime/build/libs/function-runtime-0.5.0.jar"))
+                    .withFileFromPath("Dockerfile", E2eTestSupport.PROJECT_ROOT.resolve("function-runtime/Dockerfile"))
+                    .withFileFromPath("build/libs/" + FUNCTION_RUNTIME_JAR.getFileName(), FUNCTION_RUNTIME_JAR)
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -41,9 +43,8 @@ class E2eFlowTest {
 
     private static final GenericContainer<?> controlPlane = new GenericContainer<>(
             new ImageFromDockerfile()
-                    .withFileFromPath("Dockerfile", PROJECT_ROOT.resolve("control-plane/Dockerfile"))
-                    .withFileFromPath("build/libs/control-plane-0.5.0.jar",
-                            PROJECT_ROOT.resolve("control-plane/build/libs/control-plane-0.5.0.jar"))
+                    .withFileFromPath("Dockerfile", E2eTestSupport.PROJECT_ROOT.resolve("control-plane/Dockerfile"))
+                    .withFileFromPath("build/libs/" + CONTROL_PLANE_JAR.getFileName(), CONTROL_PLANE_JAR)
     )
             .withExposedPorts(8080, 8081)
             .withNetwork(network)
@@ -65,7 +66,7 @@ class E2eFlowTest {
         String endpointUrl = "http://function-runtime:8080/invoke";
         Map<String, Object> spec = Map.of(
                 "name", "e2e-echo",
-                "image", "nanofaas/function-runtime:0.5.0",
+                "image", E2eTestSupport.versionedImage("function-runtime"),
                 "timeoutMs", 5000,
                 "concurrency", 2,
                 "queueSize", 20,

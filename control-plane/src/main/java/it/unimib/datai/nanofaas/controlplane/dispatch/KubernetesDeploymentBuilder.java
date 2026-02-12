@@ -37,6 +37,7 @@ public class KubernetesDeploymentBuilder {
     public Deployment buildDeployment(FunctionSpec spec) {
         List<EnvVar> envVars = buildEnvVars(spec);
         ResourceRequirementsBuilder resources = buildResources(spec);
+        List<LocalObjectReference> imagePullSecrets = buildImagePullSecrets(spec);
         int replicas = 1;
         if (spec.scalingConfig() != null && spec.scalingConfig().minReplicas() != null) {
             replicas = spec.scalingConfig().minReplicas();
@@ -85,6 +86,7 @@ public class KubernetesDeploymentBuilder {
                                     .withPeriodSeconds(5)
                                 .endReadinessProbe()
                             .endContainer()
+                            .withImagePullSecrets(imagePullSecrets)
                             .withRestartPolicy("Always")
                         .endSpec()
                     .endTemplate()
@@ -266,5 +268,18 @@ public class KubernetesDeploymentBuilder {
             }
         }
         return resources;
+    }
+
+    private List<LocalObjectReference> buildImagePullSecrets(FunctionSpec spec) {
+        List<LocalObjectReference> refs = new ArrayList<>();
+        if (spec.imagePullSecrets() == null) {
+            return refs;
+        }
+        for (String secretName : spec.imagePullSecrets()) {
+            if (secretName != null && !secretName.isBlank()) {
+                refs.add(new LocalObjectReference(secretName.trim()));
+            }
+        }
+        return refs;
     }
 }

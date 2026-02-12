@@ -901,7 +901,7 @@ Oggi l'utente deve orchestrare manualmente le chiamate dal client.
 ### Stato attuale
 - Documentazione: architettura, quickstart, API spec (OpenAPI).
 - Build: Gradle, Spring Boot buildpacks.
-- Test: E2E con Docker, K3s, kind.
+- Test: E2E con Docker e K3s.
 - Nessun tool di sviluppo locale dedicato.
 
 ### Problema

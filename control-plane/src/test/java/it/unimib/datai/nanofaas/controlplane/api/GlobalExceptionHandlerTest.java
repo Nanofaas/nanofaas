@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Path;
@@ -102,5 +103,25 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(500, response.getStatusCode().value());
         assertEquals("INTERNAL_ERROR", response.getBody().get("error"));
+    }
+
+    @Test
+    void handleImageValidationNotFound_returns422() {
+        ImageValidationException ex = ImageValidationException.notFound("ghcr.io/example/missing:v1");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleImageValidationException(ex);
+
+        assertEquals(422, response.getStatusCode().value());
+        assertEquals("IMAGE_NOT_FOUND", response.getBody().get("error"));
+    }
+
+    @Test
+    void handleImageValidationAuth_returns424() {
+        ImageValidationException ex = ImageValidationException.authRequired("ghcr.io/example/private:v1");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleImageValidationException(ex);
+
+        assertEquals(424, response.getStatusCode().value());
+        assertEquals("IMAGE_PULL_AUTH_REQUIRED", response.getBody().get("error"));
     }
 }

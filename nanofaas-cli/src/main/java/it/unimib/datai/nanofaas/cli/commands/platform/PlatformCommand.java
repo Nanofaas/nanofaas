@@ -160,7 +160,10 @@ public class PlatformCommand {
             String namespace,
             int httpNodePort,
             int actuatorNodePort,
-            String controlPlaneTag
+            String controlPlaneTag,
+            String controlPlaneRepository,
+            String controlPlanePullPolicy,
+            Boolean demosEnabled
     ) {
         List<String> cmd = new ArrayList<>();
         cmd.add("helm");
@@ -180,9 +183,21 @@ public class PlatformCommand {
         cmd.add("controlPlane.service.nodePorts.http=" + httpNodePort);
         cmd.add("--set");
         cmd.add("controlPlane.service.nodePorts.actuator=" + actuatorNodePort);
+        if (controlPlaneRepository != null && !controlPlaneRepository.isBlank()) {
+            cmd.add("--set");
+            cmd.add("controlPlane.image.repository=" + controlPlaneRepository);
+        }
         if (controlPlaneTag != null && !controlPlaneTag.isBlank()) {
             cmd.add("--set");
             cmd.add("controlPlane.image.tag=" + controlPlaneTag);
+        }
+        if (controlPlanePullPolicy != null && !controlPlanePullPolicy.isBlank()) {
+            cmd.add("--set");
+            cmd.add("controlPlane.image.pullPolicy=" + controlPlanePullPolicy);
+        }
+        if (demosEnabled != null) {
+            cmd.add("--set");
+            cmd.add("demos.enabled=" + demosEnabled);
         }
         return cmd;
     }

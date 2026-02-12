@@ -24,19 +24,24 @@ DISK=${DISK:-30G}
 NAMESPACE=${NAMESPACE:-nanofaas}
 KEEP_VM=${KEEP_VM:-true}
 SKIP_BUILD=${SKIP_BUILD:-false}
+LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
+VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS:-900}
+VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS:-30}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 
 # Image tags for local build
 TAG="e2e"
-CONTROL_IMAGE="nanofaas/control-plane:${TAG}"
-RUNTIME_IMAGE="nanofaas/function-runtime:${TAG}"
-JAVA_WORD_STATS_IMAGE="nanofaas/java-word-stats:${TAG}"
-JAVA_JSON_TRANSFORM_IMAGE="nanofaas/java-json-transform:${TAG}"
-PYTHON_WORD_STATS_IMAGE="nanofaas/python-word-stats:${TAG}"
-PYTHON_JSON_TRANSFORM_IMAGE="nanofaas/python-json-transform:${TAG}"
-BASH_WORD_STATS_IMAGE="nanofaas/bash-word-stats:${TAG}"
-BASH_JSON_TRANSFORM_IMAGE="nanofaas/bash-json-transform:${TAG}"
+CONTROL_IMAGE="${LOCAL_REGISTRY}/nanofaas/control-plane:${TAG}"
+RUNTIME_IMAGE="${LOCAL_REGISTRY}/nanofaas/function-runtime:${TAG}"
+JAVA_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-word-stats:${TAG}"
+JAVA_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-json-transform:${TAG}"
+PYTHON_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}"
+PYTHON_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/python-json-transform:${TAG}"
+BASH_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}"
+BASH_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}"
+CURL_IMAGE="${LOCAL_REGISTRY}/curlimages/curl:latest"
 
 # Colors
 RED='\033[0;31m'
@@ -49,6 +54,28 @@ log()  { echo -e "${GREEN}[e2e]${NC} $*"; }
 warn() { echo -e "${YELLOW}[e2e]${NC} $*"; }
 info() { echo -e "${CYAN}[e2e]${NC} $*"; }
 err()  { echo -e "${RED}[e2e]${NC} $*" >&2; }
+
+check_prerequisites() {
+    e2e_require_multipass
+}
+
+cleanup_stale_multipass_exec() {
+    local stale_pids
+    stale_pids=$(ps -axo pid=,ppid=,command= | awk -v vm="${VM_NAME}" '
+        $2 == 1 && $0 ~ ("multipass exec " vm " --") { print $1 }
+    ')
+
+    if [[ -z "${stale_pids}" ]]; then
+        return
+    fi
+
+    local stale_list
+    stale_list=$(echo "${stale_pids}" | tr '\n' ' ' | sed 's/[[:space:]]\+$//')
+    warn "Cleaning stale multipass exec processes: ${stale_list}"
+    # shellcheck disable=SC2086
+    kill ${stale_pids} 2>/dev/null || true
+    sleep 1
+}
 
 get_vm_ip() {
     multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3
@@ -77,7 +104,47 @@ cleanup() {
 trap cleanup EXIT
 
 vm_exec() {
-    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
+    local remote_cmd="$*"
+    local heartbeat_pid=""
+    local rc=0
+
+    if [[ "${VM_EXEC_HEARTBEAT_SECONDS}" -gt 0 ]]; then
+        (
+            while true; do
+                sleep "${VM_EXEC_HEARTBEAT_SECONDS}"
+                info "vm_exec still running: ${remote_cmd:0:120}"
+            done
+        ) &
+        heartbeat_pid=$!
+    fi
+
+    set +e
+    if [[ "${VM_EXEC_TIMEOUT_SECONDS}" -gt 0 ]]; then
+        if command -v gtimeout >/dev/null 2>&1; then
+            gtimeout "${VM_EXEC_TIMEOUT_SECONDS}" multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
+            rc=$?
+        elif command -v timeout >/dev/null 2>&1; then
+            timeout "${VM_EXEC_TIMEOUT_SECONDS}" multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
+            rc=$?
+        else
+            multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
+            rc=$?
+        fi
+    else
+        multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
+        rc=$?
+    fi
+    set -e
+
+    if [[ -n "${heartbeat_pid}" ]]; then
+        kill "${heartbeat_pid}" >/dev/null 2>&1 || true
+        wait "${heartbeat_pid}" 2>/dev/null || true
+    fi
+
+    if [[ "${rc}" -eq 124 ]]; then
+        err "vm_exec timed out after ${VM_EXEC_TIMEOUT_SECONDS}s: ${remote_cmd}"
+    fi
+    return "${rc}"
 }
 
 # ─── Phase 1: Create VM ─────────────────────────────────────────────────────
@@ -152,7 +219,7 @@ install_deps() {
     log "Dependencies installed"
 }
 
-# ─── Phase 3: Build and import images ───────────────────────────────────────
+# ─── Phase 3: Build and push images to local registry ───────────────────────
 sync_and_build() {
     if [[ "${SKIP_BUILD}" == "true" ]]; then
         log "SKIP_BUILD=true, skipping build..."
@@ -189,13 +256,13 @@ sync_and_build() {
     log "All images built"
 }
 
-import_images() {
+push_images() {
     if [[ "${SKIP_BUILD}" == "true" ]]; then
-        log "SKIP_BUILD=true, skipping image import..."
+        log "SKIP_BUILD=true, skipping image push..."
         return
     fi
 
-    log "Importing images to k3s..."
+    log "Pushing images to local registry ${LOCAL_REGISTRY}..."
 
     local images=(
         "${CONTROL_IMAGE}"
@@ -209,17 +276,17 @@ import_images() {
     )
 
     for img in "${images[@]}"; do
-        local tarname
-        tarname=$(echo "${img}" | tr '/:' '_')
-        vm_exec "sudo docker save ${img} -o /tmp/${tarname}.tar && sudo k3s ctr images import /tmp/${tarname}.tar && sudo rm -f /tmp/${tarname}.tar"
-        info "  imported: ${img}"
+        vm_exec "sudo docker push ${img}"
+        info "  pushed: ${img}"
     done
 
-    # Also pull + import the curl image needed by the registration job
-    info "Importing curlimages/curl for registration job..."
-    vm_exec "sudo docker pull curlimages/curl:latest && sudo docker save curlimages/curl:latest -o /tmp/curl.tar && sudo k3s ctr images import /tmp/curl.tar && sudo rm -f /tmp/curl.tar"
+    # Mirror curl image into local registry for the Helm registration job.
+    info "Mirroring curlimages/curl into local registry..."
+    vm_exec "sudo docker pull curlimages/curl:latest"
+    vm_exec "sudo docker tag curlimages/curl:latest ${CURL_IMAGE}"
+    vm_exec "sudo docker push ${CURL_IMAGE}"
 
-    log "All images imported"
+    log "All images pushed"
 }
 
 # ─── Phase 4: Helm install ──────────────────────────────────────────────────
@@ -232,16 +299,16 @@ helm_install() {
     sleep 3
 
     # Create values override for local images
-    vm_exec "cat > /tmp/e2e-values.yaml << 'ENDVALUES'
+    vm_exec "cat > /tmp/e2e-values.yaml << ENDVALUES
 namespace:
   create: false
   name: nanofaas
 
 controlPlane:
   image:
-    repository: nanofaas/control-plane
-    tag: e2e
-    pullPolicy: Never
+    repository: ${LOCAL_REGISTRY}/nanofaas/control-plane
+    tag: ${TAG}
+    pullPolicy: Always
   service:
     type: NodePort
     ports:
@@ -269,35 +336,35 @@ demos:
   enabled: true
   functions:
     - name: word-stats-java
-      image: nanofaas/java-word-stats:e2e
+      image: ${LOCAL_REGISTRY}/nanofaas/java-word-stats:${TAG}
       timeoutMs: 30000
       concurrency: 4
       queueSize: 100
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: json-transform-java
-      image: nanofaas/java-json-transform:e2e
+      image: ${LOCAL_REGISTRY}/nanofaas/java-json-transform:${TAG}
       timeoutMs: 30000
       concurrency: 4
       queueSize: 100
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: word-stats-python
-      image: nanofaas/python-word-stats:e2e
+      image: ${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}
       timeoutMs: 30000
       concurrency: 4
       queueSize: 100
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: json-transform-python
-      image: nanofaas/python-json-transform:e2e
+      image: ${LOCAL_REGISTRY}/nanofaas/python-json-transform:${TAG}
       timeoutMs: 30000
       concurrency: 4
       queueSize: 100
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: word-stats-exec
-      image: nanofaas/bash-word-stats:e2e
+      image: ${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}
       timeoutMs: 30000
       concurrency: 4
       queueSize: 100
@@ -305,13 +372,15 @@ demos:
       executionMode: DEPLOYMENT
       runtimeMode: STDIO
     - name: json-transform-exec
-      image: nanofaas/bash-json-transform:e2e
+      image: ${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}
       timeoutMs: 30000
       concurrency: 4
       queueSize: 100
       maxRetries: 3
       executionMode: DEPLOYMENT
       runtimeMode: STDIO
+  registerJob:
+    image: ${CURL_IMAGE}
 ENDVALUES"
 
     # Install with --create-namespace (namespace.create=false avoids the duplicate error)
@@ -350,11 +419,7 @@ verify() {
 
     # List registered functions
     log "Registered functions:"
-    vm_exec "curl -sf http://localhost:30080/v1/functions | python3 -c \"
-import json, sys
-for f in json.load(sys.stdin):
-    print(f'  {f[\"name\"]:30s} {f[\"executionMode\"]:12s} {f.get(\"runtimeMode\",\"HTTP\")}')
-\""
+    vm_exec "curl -sf http://localhost:30080/v1/functions"
 
     # Smoke-test: invoke each function
     log "Smoke-testing each function..."
@@ -431,13 +496,18 @@ print_summary() {
 main() {
     log "Starting nanofaas E2E setup..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK}"
+    log "  NAMESPACE=${NAMESPACE} LOCAL_REGISTRY=${LOCAL_REGISTRY} SKIP_BUILD=${SKIP_BUILD}"
+    log "  VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS} VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS}"
     log ""
 
+    check_prerequisites
+    cleanup_stale_multipass_exec
     create_vm
     install_deps
     install_k3s
+    e2e_setup_local_registry "${LOCAL_REGISTRY}"
     sync_and_build
-    import_images
+    push_images
     helm_install
     verify
     print_summary

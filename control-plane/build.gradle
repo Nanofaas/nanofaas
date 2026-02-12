@@ -27,6 +27,7 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    systemProperty 'project.version', project.version.toString()
     dependsOn 'bootJar'
     dependsOn ':function-runtime:bootJar'
     dependsOn ':examples:java:word-stats:bootJar'
@@ -42,13 +43,9 @@ graalvmNative {
     }
 }
 
-def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-kind').toString()
-def k8sKindCluster = (project.findProperty('k8sKindCluster') ?: System.getenv('KIND_CLUSTER') ?: 'nanofaas').toString()
-def k8sKubeconfig = (project.findProperty('k8sKubeconfig') ?: System.getenv('KUBECONFIG')
-        ?: "${System.getProperty('user.home')}/.kube/${k8sKindCluster}-kind.yaml").toString()
+def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-k3s-e2e').toString()
 def k8sNamespace = (project.findProperty('k8sNamespace') ?: System.getenv('NANOFAAS_E2E_NAMESPACE') ?: 'nanofaas-e2e').toString()
-def k8sDeleteVm = (project.findProperty('k8sDeleteVm') ?: System.getenv('K8S_DELETE_VM') ?: 'true').toString()
-def k8sDeleteKubeconfig = (project.findProperty('k8sDeleteKubeconfig') ?: System.getenv('K8S_DELETE_KUBECONFIG') ?: 'true').toString()
+def k8sKeepVm = (project.findProperty('k8sKeepVm') ?: System.getenv('KEEP_VM') ?: 'false').toString()
 def k8sCpus = project.findProperty('k8sCpus') ?: System.getenv('CPUS')
 def k8sMemory = project.findProperty('k8sMemory') ?: System.getenv('MEMORY')
 def k8sDisk = project.findProperty('k8sDisk') ?: System.getenv('DISK')
@@ -56,8 +53,8 @@ def k8sRemoteDir = project.findProperty('k8sRemoteDir') ?: System.getenv('REMOTE
 
 def k8sEnv = [
         VM_NAME: k8sVmName,
-        KIND_CLUSTER: k8sKindCluster,
-        NANOFAAS_E2E_NAMESPACE: k8sNamespace
+        NANOFAAS_E2E_NAMESPACE: k8sNamespace,
+        KEEP_VM: k8sKeepVm
 ]
 if (k8sCpus) {
     k8sEnv.CPUS = k8sCpus.toString()
@@ -72,53 +69,12 @@ if (k8sRemoteDir) {
     k8sEnv.REMOTE_DIR = k8sRemoteDir.toString()
 }
 
-tasks.register('k8sSetupKind', Exec) {
+tasks.register('k8sE2eTest', Exec) {
     group = 'verification'
-    description = 'Provision kind in Multipass and emit kubeconfig.'
+    description = 'Run K8sE2eTest in a Multipass VM with k3s.'
     workingDir = rootProject.projectDir
-    commandLine 'bash', 'scripts/setup-multipass-kind.sh'
+    commandLine 'bash', 'scripts/e2e-k8s-vm.sh'
     environment k8sEnv
-}
-
-tasks.register('k8sBuildLoadImages', Exec) {
-    group = 'verification'
-    description = 'Build control-plane/function-runtime images in VM and load into kind.'
-    workingDir = rootProject.projectDir
-    commandLine 'bash', 'scripts/kind-build-load.sh'
-    environment k8sEnv
-    dependsOn 'k8sSetupKind'
-}
-
-tasks.register('k8sE2eTest', Test) {
-    group = 'verification'
-    description = 'Run K8sE2eTest after provisioning kind and loading images.'
-    useJUnitPlatform()
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    dependsOn 'bootJar', ':function-runtime:bootJar', 'k8sBuildLoadImages'
-    environment 'KUBECONFIG', k8sKubeconfig
-    environment 'NANOFAAS_E2E_NAMESPACE', k8sNamespace
-    filter {
-        includeTestsMatching 'com.nanofaas.controlplane.e2e.K8sE2eTest'
-    }
-}
-
-tasks.register('k8sDeleteVm', Exec) {
-    group = 'verification'
-    description = 'Delete the Multipass VM used for K8s E2E.'
-    commandLine 'bash', '-lc', "command -v multipass >/dev/null 2>&1 && multipass delete -p ${k8sVmName} || true"
-    onlyIf { k8sDeleteVm.toBoolean() }
-}
-
-tasks.register('k8sDeleteKubeconfig', Exec) {
-    group = 'verification'
-    description = 'Delete the kubeconfig generated for the K8s E2E run.'
-    commandLine 'bash', '-lc', "test -f '${k8sKubeconfig}' && rm -f '${k8sKubeconfig}' || true"
-    onlyIf { k8sDeleteKubeconfig.toBoolean() }
-}
-
-tasks.named('k8sE2eTest') {
-    finalizedBy 'k8sDeleteVm', 'k8sDeleteKubeconfig'
 }
 
 // Disable AOT processing unless a native build task is requested

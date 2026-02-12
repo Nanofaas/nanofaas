@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,6 +117,17 @@ public class GlobalExceptionHandler {
                 "message", ex.getReason() != null ? ex.getReason() : "Request error"
         );
         return ResponseEntity.status(ex.getStatusCode()).body(body);
+    }
+
+    @ExceptionHandler(ImageValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleImageValidationException(
+            ImageValidationException ex) {
+        log.debug("Image validation failed: {} {}", ex.errorCode(), ex.getMessage());
+        Map<String, Object> body = Map.of(
+                "error", ex.errorCode(),
+                "message", ex.getMessage()
+        );
+        return ResponseEntity.status(ex.status()).body(body);
     }
 
     /**

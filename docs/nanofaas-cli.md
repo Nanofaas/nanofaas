@@ -66,6 +66,10 @@ Supported env overrides:
 `apply` behavior:
 - `POST /v1/functions`
 - if the server returns `409`, the CLI does `GET /v1/functions/<name>` and, if different, performs `DELETE` then `POST` again
+- the control-plane always validates image pull before registration
+  - `IMAGE_NOT_FOUND` (`422`): image/tag does not exist
+  - `IMAGE_PULL_AUTH_REQUIRED` (`424`): private image requires Kubernetes `imagePullSecrets`
+  - `IMAGE_REGISTRY_UNAVAILABLE` (`503`): temporary registry validation issue
 
 ### `deploy`
 
@@ -84,6 +88,8 @@ name: echo
 image: registry.example/team/echo:1.2.3
 timeoutMs: 10000
 concurrency: 2
+imagePullSecrets:
+  - ghcr-creds
 
 x-cli:
   build:
@@ -178,6 +184,18 @@ Custom release/namespace/tag:
 nanofaas platform install --release nanofaas-dev -n dev --control-plane-tag v0.9.2
 ```
 
+Local image (k3s e2e) and no demo registration:
+
+```bash
+nanofaas platform install \
+  --release nanofaas-dev \
+  -n dev \
+  --control-plane-repository nanofaas/control-plane \
+  --control-plane-tag e2e \
+  --control-plane-pull-policy Never \
+  --demos-enabled=false
+```
+
 After install, the CLI resolves an endpoint like `http://<node-ip>:30080` and stores it in the active CLI context.
 
 #### `platform status`
@@ -218,7 +236,7 @@ details and coverage targets.
 ### E2E tests
 
 ```bash
-# Full CLI E2E against a real k3s cluster (40 tests)
+# Full CLI E2E against a real k3s cluster (47 tests)
 ./scripts/e2e-cli.sh
 
 # Keep VM for debugging

@@ -16,7 +16,7 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 
 - Java 21 (SDKMAN recommended)
 - Docker-compatible container runtime (Docker Desktop or equivalent)
-- For Kubernetes E2E: `kubectl`, `kind`, and a reachable cluster
+- For Kubernetes E2E: [Multipass](https://multipass.run) and internet access to install k3s in-VM
 
 ## Quickstart (local)
 
@@ -53,12 +53,11 @@ E2E (buildpacks):
 ./scripts/e2e-buildpack.sh
 ```
 
-E2E (Kubernetes via Multipass + kind):
+E2E (Kubernetes via Multipass + k3s):
 ```bash
-./scripts/setup-multipass-kind.sh
-export KUBECONFIG=~/.kube/nanofaas-kind.yaml
-./scripts/kind-build-load.sh
-./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest
+./gradlew k8sE2e
+# or:
+./scripts/e2e-k8s-vm.sh
 ```
 
 ## Observability

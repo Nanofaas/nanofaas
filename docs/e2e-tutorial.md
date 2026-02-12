@@ -46,7 +46,7 @@ This script performs the following automatically:
 4. **Syncs the project** to the VM and **builds all artifacts**:
    - Gradle JARs: control-plane, function-runtime, Java demo functions
    - Docker images: 2 core + 2 Java + 2 Python + 2 Bash = 8 images
-5. **Imports images** into k3s containerd
+5. **Sets up a local registry** in the VM (`localhost:5000`) and **pushes images**
 6. **Deploys via Helm** with NodePort services:
    - Control-plane API on port **30080**
    - Actuator/metrics on port **30081**
@@ -85,6 +85,7 @@ On completion, you'll see:
 | `DISK` | `30G` | VM disk size |
 | `KEEP_VM` | `true` | Keep VM after script exits |
 | `SKIP_BUILD` | `false` | Skip build if images already exist |
+| `LOCAL_REGISTRY` | `localhost:5000` | Local in-VM registry used by k3s pulls |
 
 #### Idempotent re-runs
 
@@ -251,12 +252,12 @@ multipass exec nanofaas-e2e -- sudo kubectl get deployment nanofaas-control-plan
 
 ### Pods stuck in ImagePullBackOff
 
-This means k3s is trying to pull from a remote registry. The control-plane sets
-`imagePullPolicy: IfNotPresent` for function deployments. Verify images are
-imported:
+This means k3s cannot pull from the configured local registry. Verify the
+registry config and images:
 
 ```bash
-multipass exec nanofaas-e2e -- sudo k3s ctr images ls -q | grep nanofaas
+multipass exec nanofaas-e2e -- cat /etc/rancher/k3s/registries.yaml
+multipass exec nanofaas-e2e -- curl -s http://localhost:5000/v2/_catalog
 ```
 
 ### Bash functions crash-looping

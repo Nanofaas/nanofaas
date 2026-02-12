@@ -7,7 +7,11 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 
-@Command(name = "status", description = "Show nanofaas control-plane status and resolved endpoint.")
+@Command(
+        name = "status",
+        mixinStandardHelpOptions = true,
+        description = "Show nanofaas control-plane status and resolved endpoint."
+)
 public class PlatformStatusCommand implements Runnable {
 
     @ParentCommand

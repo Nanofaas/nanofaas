@@ -34,7 +34,8 @@ public class FunctionSpecResolver {
                 mode,
                 spec.runtimeMode() == null ? RuntimeMode.HTTP : spec.runtimeMode(),
                 spec.runtimeCommand(),
-                scaling
+                scaling,
+                spec.imagePullSecrets()
         );
     }
 

@@ -37,6 +37,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FunctionSummary'
+        '422':
+          description: Image not found in registry
+        '424':
+          description: Image pull authentication required (configure imagePullSecrets)
+        '503':
+          description: Registry unavailable during image validation
         '409':
           description: Function already exists
   /v1/functions/{name}:
@@ -261,6 +267,11 @@ components:
           description: |
             Custom command to run the function process.
             Default depends on runtime (e.g., "java -jar /app/app.jar" for Java).
+        imagePullSecrets:
+          type: array
+          description: Optional Kubernetes imagePullSecrets names used for private registry pulls.
+          items:
+            type: string
         queueSize:
           type: integer
           minimum: 1

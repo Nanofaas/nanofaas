@@ -13,14 +13,14 @@
 ## Build, Test, and Development Commands
 
 - `./gradlew build` — compile all modules and assemble artifacts.
-- `./gradlew test` — run unit/integration/E2E tests (requires container runtime; K8s E2E also requires `KUBECONFIG`).
+- `./gradlew test` — run unit/integration/E2E tests (requires container runtime).
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
 - `./gradlew :function-runtime:bootRun` — run the function runtime locally.
 - `./gradlew :control-plane:bootBuildImage` and `:function-runtime:bootBuildImage` — create buildpack images.
 - `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/` — build Python runtime image.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `scripts/e2e.sh` and `scripts/e2e-buildpack.sh` — run local E2E suites.
-- `scripts/setup-multipass-kind.sh` + `scripts/kind-build-load.sh` — provision a kind cluster in Multipass and load images.
+- `scripts/e2e-k8s-vm.sh` — provision a Multipass VM with k3s and run `K8sE2eTest`.
 
 ## Coding Style & Naming Conventions
 
@@ -32,7 +32,7 @@
 
 - JUnit 5 is the primary framework; tests are named `*Test.java`.
 - E2E tests use Testcontainers, RestAssured, and Fabric8; ensure Docker/compatible runtime is available.
-- K8s E2E (`K8sE2eTest`) requires `KUBECONFIG` and reachable images; it is not skipped by default.
+- K8s E2E (`K8sE2eTest`) runs via `scripts/e2e-k8s-vm.sh` on a real k3s cluster in Multipass.
 
 ## Project Constraints & Requirements (FaaS MVP)
 

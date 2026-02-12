@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintWriter;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -204,5 +206,53 @@ class FnApplyCommandTest {
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
         assertThat(exit).isNotEqualTo(0);
+    }
+
+    @Test
+    void applyImageNotFoundShowsSpecificMessage() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        java.nio.file.Files.writeString(fn, """
+                name: echo
+                image: ghcr.io/example/does-not-exist:v1
+                """);
+
+        server.enqueue(new MockResponse()
+                .setResponseCode(422)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"error\":\"IMAGE_NOT_FOUND\",\"message\":\"Image not found\"}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        cli.setErr(new PrintWriter(err, true));
+
+        int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
+
+        assertThat(exit).isNotEqualTo(0);
+        assertThat(err.toString()).contains("Image not found in registry");
+    }
+
+    @Test
+    void applyImageAuthFailureShowsSpecificMessage() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        java.nio.file.Files.writeString(fn, """
+                name: echo
+                image: ghcr.io/example/private:v1
+                """);
+
+        server.enqueue(new MockResponse()
+                .setResponseCode(424)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"error\":\"IMAGE_PULL_AUTH_REQUIRED\",\"message\":\"Authentication required\"}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        cli.setErr(new PrintWriter(err, true));
+
+        int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
+
+        assertThat(exit).isNotEqualTo(0);
+        assertThat(err.toString()).contains("Image pull authentication failed");
     }
 }

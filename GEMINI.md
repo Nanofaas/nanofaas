@@ -47,7 +47,7 @@ The system consists of four main modules:
 ### Prerequisites
 - Java 21 (SDKMAN recommended)
 - Docker / Container Runtime
-- `kubectl` and `kind` (for K8s E2E tests)
+- [Multipass](https://multipass.run) (for K8s E2E tests on k3s)
 
 ### Build & Test Commands
 
@@ -58,7 +58,7 @@ The system consists of four main modules:
 | **Run Specific Test** | `./gradlew :control-plane:test --tests com.nanofaas.controlplane.core.QueueManagerTest` |
 | **Local E2E** | `./scripts/e2e.sh` (Uses Testcontainers) |
 | **Buildpack E2E** | `./scripts/e2e-buildpack.sh` |
-| **K8s E2E** | `./scripts/setup-multipass-kind.sh` && `export KUBECONFIG=~/.kube/nanofaas-kind.yaml` && `./scripts/kind-build-load.sh` && `./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest` |
+| **K8s E2E** | `./scripts/e2e-k8s-vm.sh` or `./gradlew k8sE2e` |
 
 ### Running Locally
 

@@ -15,22 +15,17 @@
 - E2E buildpack test (builds minimal images with Spring Boot buildpacks):
   - `./scripts/e2e-buildpack.sh`
   - Requires Docker (buildpacks run with `bootBuildImage`).
-- E2E test on Kubernetes (requires kind + kubeconfig on host):
-  - Create VM + kind and generate kubeconfig:
-    - `./scripts/setup-multipass-kind.sh`
-  - Build images in VM and load into kind:
-    - `./scripts/kind-build-load.sh`
-  - Export kubeconfig and run:
-    - `export KUBECONFIG=$HOME/.kube/nanofaas-kind.yaml`
-    - `./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest`
+- E2E test on Kubernetes (k3s in Multipass):
+  - Fully automated:
+    - `./gradlew k8sE2e`
+  - Direct script entrypoint:
+    - `./scripts/e2e-k8s-vm.sh`
+  - Optional env for sizing/debug:
+    - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
   - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
   - The k8s E2E test will fail if `KUBECONFIG` is missing or invalid.
-  - Automated (provisions kind in Multipass, loads images, runs K8sE2eTest):
-    - `./gradlew k8sE2e`
-    - VM and kubeconfig are deleted after the test by default (set `-Pk8sDeleteVm=false` or `-Pk8sDeleteKubeconfig=false` to keep them).
-  - Fully isolated VM (k3s in Multipass, builds images in-VM, runs K8sE2eTest, cleans up):
+  - Alias task:
     - `./gradlew k8sE2eVm`
-    - Optional env: `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
 
 ## Run control plane locally
 
@@ -53,8 +48,8 @@
   - `kubectl apply -f k8s/control-plane-service.yaml`
 
 - Build and push images:
-  - `docker build -t nanofaas/control-plane:0.5.0 control-plane/`
-  - `docker build -t nanofaas/function-runtime:0.5.0 function-runtime/`
+  - `docker build -t nanofaas/control-plane:0.9.2 control-plane/`
+  - `docker build -t nanofaas/function-runtime:0.9.2 function-runtime/`
 
 ## Register and invoke
 

@@ -5,7 +5,11 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 
-@Command(name = "install", description = "Install or upgrade nanofaas via Helm (NodePort defaults for k3s).")
+@Command(
+        name = "install",
+        mixinStandardHelpOptions = true,
+        description = "Install or upgrade nanofaas via Helm (NodePort defaults for k3s)."
+)
 public class PlatformInstallCommand implements Runnable {
 
     @ParentCommand
@@ -29,6 +33,15 @@ public class PlatformInstallCommand implements Runnable {
     @Option(names = {"--control-plane-tag"}, description = "Override control-plane image tag (Helm value controlPlane.image.tag).")
     String controlPlaneTag;
 
+    @Option(names = {"--control-plane-repository"}, description = "Override control-plane image repository (Helm value controlPlane.image.repository).")
+    String controlPlaneRepository;
+
+    @Option(names = {"--control-plane-pull-policy"}, description = "Override control-plane image pull policy (Helm value controlPlane.image.pullPolicy).")
+    String controlPlanePullPolicy;
+
+    @Option(names = {"--demos-enabled"}, description = "Enable/disable demo function registration job (Helm value demos.enabled).")
+    Boolean demosEnabled;
+
     @Override
     public void run() {
         String ns = parent.resolveNamespace(namespace);
@@ -38,7 +51,10 @@ public class PlatformInstallCommand implements Runnable {
                 ns,
                 httpNodePort,
                 actuatorNodePort,
-                controlPlaneTag
+                controlPlaneTag,
+                controlPlaneRepository,
+                controlPlanePullPolicy,
+                demosEnabled
         ));
 
         KubernetesClient client = parent.client();

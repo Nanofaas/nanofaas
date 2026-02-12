@@ -36,15 +36,15 @@ import java.nio.file.Path;
 
 class K8sE2eTest {
     private static final String NS = System.getenv().getOrDefault("NANOFAAS_E2E_NAMESPACE", "nanofaas-e2e");
-    private static final String CONTROL_IMAGE = System.getenv().getOrDefault("CONTROL_PLANE_IMAGE", "nanofaas/control-plane:0.5.0");
-    private static final String RUNTIME_IMAGE = System.getenv().getOrDefault("FUNCTION_RUNTIME_IMAGE", "nanofaas/function-runtime:0.5.0");
+    private static final String CONTROL_IMAGE = System.getenv().getOrDefault("CONTROL_PLANE_IMAGE", "nanofaas/control-plane:e2e");
+    private static final String RUNTIME_IMAGE = System.getenv().getOrDefault("FUNCTION_RUNTIME_IMAGE", "nanofaas/function-runtime:e2e");
     private static KubernetesClient client;
 
     @BeforeAll
     static void setupCluster() {
         String kubeconfig = System.getenv("KUBECONFIG");
         assumeTrue(kubeconfig != null && !kubeconfig.isBlank(),
-            "KUBECONFIG not set. Run scripts/setup-multipass-kind.sh and export KUBECONFIG.");
+            "KUBECONFIG not set. Run scripts/e2e-k8s-vm.sh or export a valid k3s kubeconfig.");
         assumeTrue(Files.exists(Path.of(kubeconfig)),
             "KUBECONFIG file not found at: " + kubeconfig);
 

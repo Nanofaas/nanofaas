@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./scripts/e2e.sh                    # Local containers
 ./scripts/e2e-buildpack.sh          # Buildpack images
 
-# CLI E2E (full CLI against k3s, 40 tests)
+# CLI E2E (full CLI against k3s, 47 tests)
 ./scripts/e2e-cli.sh                       # Full test with VM cleanup
 KEEP_VM=true ./scripts/e2e-cli.sh          # Keep VM for debugging
 
@@ -30,11 +30,10 @@ KEEP_VM=true ./scripts/e2e-cli.sh          # Keep VM for debugging
 ./scripts/e2e-k3s-curl.sh              # Full test with VM cleanup
 KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
 
-# Kubernetes E2E (requires kind cluster)
-./scripts/setup-multipass-kind.sh
-export KUBECONFIG=~/.kube/nanofaas-kind.yaml
-./scripts/kind-build-load.sh
-./gradlew :control-plane:test --tests com.nanofaas.controlplane.e2e.K8sE2eTest
+# Kubernetes E2E (k3s in Multipass)
+./scripts/e2e-k8s-vm.sh
+# or:
+./gradlew k8sE2e
 
 # Build OCI images
 ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage

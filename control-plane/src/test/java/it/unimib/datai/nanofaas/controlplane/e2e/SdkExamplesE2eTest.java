@@ -12,7 +12,6 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -29,16 +28,23 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Tag("inter_e2e")
 class SdkExamplesE2eTest {
 
-    private static final Path PROJECT_ROOT = Path.of("..").toAbsolutePath().normalize();
     private static final Network network = Network.newNetwork();
+    private static final java.nio.file.Path WORD_STATS_JAR = E2eTestSupport.resolveBootJar(
+            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats/build/libs"),
+            "word-stats");
+    private static final java.nio.file.Path JSON_TRANSFORM_JAR = E2eTestSupport.resolveBootJar(
+            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform/build/libs"),
+            "json-transform");
+    private static final java.nio.file.Path CONTROL_PLANE_JAR = E2eTestSupport.resolveBootJar(
+            E2eTestSupport.PROJECT_ROOT.resolve("control-plane/build/libs"),
+            "control-plane-");
 
     // word-stats function container
     private static final GenericContainer<?> wordStats = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
-                            PROJECT_ROOT.resolve("examples/java/word-stats/Dockerfile"))
-                    .withFileFromPath("build/libs/word-stats.jar",
-                            PROJECT_ROOT.resolve("examples/java/word-stats/build/libs/word-stats.jar"))
+                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats/Dockerfile"))
+                    .withFileFromPath("build/libs/" + WORD_STATS_JAR.getFileName(), WORD_STATS_JAR)
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -49,9 +55,8 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> jsonTransform = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
-                            PROJECT_ROOT.resolve("examples/java/json-transform/Dockerfile"))
-                    .withFileFromPath("build/libs/json-transform.jar",
-                            PROJECT_ROOT.resolve("examples/java/json-transform/build/libs/json-transform.jar"))
+                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform/Dockerfile"))
+                    .withFileFromPath("build/libs/" + JSON_TRANSFORM_JAR.getFileName(), JSON_TRANSFORM_JAR)
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -62,9 +67,8 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> controlPlane = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
-                            PROJECT_ROOT.resolve("control-plane/Dockerfile"))
-                    .withFileFromPath("build/libs/control-plane-0.5.0.jar",
-                            PROJECT_ROOT.resolve("control-plane/build/libs/control-plane-0.5.0.jar"))
+                            E2eTestSupport.PROJECT_ROOT.resolve("control-plane/Dockerfile"))
+                    .withFileFromPath("build/libs/" + CONTROL_PLANE_JAR.getFileName(), CONTROL_PLANE_JAR)
     )
             .withExposedPorts(8080, 8081)
             .withNetwork(network)
