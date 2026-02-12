@@ -251,6 +251,11 @@ def update_files(new_v, dry_run=False):
         ("build.gradle", r"(version\s*=\s*')[^']+'", rf"\g<1>{new_v}'"),
         ("function-sdk-python/pyproject.toml", r'(version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         ("watchdog/Cargo.toml", r'(^version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
+        # Helm chart + default image tags
+        ("helm/nanofaas/Chart.yaml", r'(^version:\s*)[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{new_v}'),
+        ("helm/nanofaas/Chart.yaml", r'(^appVersion:\s*")[^"]+"', rf'\g<1>{new_v}"'),
+        ("helm/nanofaas/values.yaml", r'(^\s*tag:\s*)v[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>v{new_v}'),
+        ("helm/nanofaas/values.yaml", r'(ghcr\.io/miciav/nanofaas/[a-z0-9-]+:)v[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>v{new_v}'),
         # K8s Manifests
         ("k8s/control-plane-deployment.yaml", r'image:\s*.*control-plane:.*', f'image: {base_image}/control-plane:{tag}'),
         # function-job-template.yaml removed (JOB mode no longer supported)

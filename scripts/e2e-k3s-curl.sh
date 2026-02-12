@@ -7,11 +7,13 @@ CPUS=${CPUS:-4}
 MEMORY=${MEMORY:-8G}
 DISK=${DISK:-30G}
 NAMESPACE=${NAMESPACE:-nanofaas-e2e}
-CONTROL_IMAGE="nanofaas/control-plane:e2e"
-RUNTIME_IMAGE="nanofaas/function-runtime:e2e"
+LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
+CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:e2e}
+RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runtime:e2e}
 KEEP_VM=${KEEP_VM:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,10 +42,7 @@ cleanup() {
 trap cleanup EXIT
 
 check_prerequisites() {
-    if ! command -v multipass >/dev/null 2>&1; then
-        error "multipass not found. Install: brew install multipass"
-        exit 1
-    fi
+    e2e_require_multipass
     log "Prerequisites check passed"
 }
 
@@ -73,28 +72,7 @@ install_dependencies() {
 }
 
 install_k3s() {
-    log "Installing k3s..."
-
-    vm_exec "curl -sfL https://get.k3s.io | sudo sh -s - --disable traefik"
-
-    # Wait for k3s to be ready
-    vm_exec "for i in \$(seq 1 60); do
-        if sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready'; then
-            echo 'k3s node ready'
-            exit 0
-        fi
-        sleep 2
-    done
-    echo 'k3s node not ready after 120s' >&2
-    exit 1"
-
-    # Setup kubeconfig for ubuntu user
-    vm_exec "mkdir -p /home/ubuntu/.kube"
-    vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config"
-    vm_exec "sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config"
-    vm_exec "chmod 600 /home/ubuntu/.kube/config"
-
-    log "k3s installed and ready"
+    e2e_install_k3s
 }
 
 sync_project() {
@@ -117,14 +95,8 @@ build_images() {
     log "Docker images built"
 }
 
-import_images_to_k3s() {
-    log "Importing images to k3s..."
-    vm_exec "sudo docker save ${CONTROL_IMAGE} -o /tmp/control-plane.tar"
-    vm_exec "sudo docker save ${RUNTIME_IMAGE} -o /tmp/function-runtime.tar"
-    vm_exec "sudo k3s ctr images import /tmp/control-plane.tar"
-    vm_exec "sudo k3s ctr images import /tmp/function-runtime.tar"
-    vm_exec "sudo rm -f /tmp/control-plane.tar /tmp/function-runtime.tar"
-    log "Images imported to k3s"
+push_images_to_registry() {
+    e2e_push_images_to_registry "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 }
 
 create_namespace() {
@@ -157,7 +129,7 @@ spec:
       containers:
       - name: control-plane
         image: ${CONTROL_IMAGE}
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: api
@@ -227,7 +199,7 @@ spec:
       containers:
       - name: function-runtime
         image: ${RUNTIME_IMAGE}
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
         readinessProbe:
@@ -532,12 +504,13 @@ print_summary() {
     log "Summary:"
     log "  - VM: ${VM_NAME}"
     log "  - Namespace: ${NAMESPACE}"
+    log "  - Local registry: ${LOCAL_REGISTRY}"
     log "  - Control-plane image: ${CONTROL_IMAGE}"
     log "  - Function-runtime image: ${RUNTIME_IMAGE}"
     log ""
     log "Tests passed:"
     log "  [✓] VM creation and k3s installation"
-    log "  [✓] Docker image build and import"
+    log "  [✓] Docker image build and push to local registry"
     log "  [✓] Kubernetes deployment with health probes"
     log "  [✓] Health endpoint verification (liveness/readiness)"
     log "  [✓] Function registration"
@@ -554,6 +527,7 @@ main() {
     log "  VM_NAME=${VM_NAME}"
     log "  CPUS=${CPUS}, MEMORY=${MEMORY}, DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE}"
+    log "  LOCAL_REGISTRY=${LOCAL_REGISTRY}"
     log "  KEEP_VM=${KEEP_VM}"
     log ""
 
@@ -562,12 +536,13 @@ main() {
     create_vm
     install_dependencies
     install_k3s
+    e2e_setup_local_registry "${LOCAL_REGISTRY}"
 
     # Phase 2: Build
     sync_project
     build_jars
     build_images
-    import_images_to_k3s
+    push_images_to_registry
 
     # Phase 3: Deploy
     create_namespace

@@ -19,6 +19,41 @@ public record FunctionSpec(
         ExecutionMode executionMode,
         RuntimeMode runtimeMode,
         String runtimeCommand,
-        ScalingConfig scalingConfig
+        ScalingConfig scalingConfig,
+        List<String> imagePullSecrets
 ) {
+    public FunctionSpec(
+            String name,
+            String image,
+            List<String> command,
+            Map<String, String> env,
+            ResourceSpec resources,
+            Integer timeoutMs,
+            Integer concurrency,
+            Integer queueSize,
+            Integer maxRetries,
+            String endpointUrl,
+            ExecutionMode executionMode,
+            RuntimeMode runtimeMode,
+            String runtimeCommand,
+            ScalingConfig scalingConfig
+    ) {
+        this(
+                name,
+                image,
+                command,
+                env,
+                resources,
+                timeoutMs,
+                concurrency,
+                queueSize,
+                maxRetries,
+                endpointUrl,
+                executionMode,
+                runtimeMode,
+                runtimeCommand,
+                scalingConfig,
+                null
+        );
+    }
 }

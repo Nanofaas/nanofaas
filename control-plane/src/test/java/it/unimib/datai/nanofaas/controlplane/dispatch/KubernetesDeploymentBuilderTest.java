@@ -217,6 +217,25 @@ class KubernetesDeploymentBuilderTest {
     }
 
     @Test
+    void buildDeployment_setsImagePullSecrets() {
+        FunctionSpec withSecrets = new FunctionSpec(
+                "echo", "ghcr.io/private/echo:v1",
+                List.of(), Map.of(),
+                null, 30000, 4, 100, 3,
+                null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,
+                null, List.of("regcred", "ghcr-creds")
+        );
+
+        Deployment deployment = builder.buildDeployment(withSecrets);
+        var secrets = deployment.getSpec().getTemplate().getSpec().getImagePullSecrets();
+
+        assertNotNull(secrets);
+        assertEquals(2, secrets.size());
+        assertEquals("regcred", secrets.get(0).getName());
+        assertEquals("ghcr-creds", secrets.get(1).getName());
+    }
+
+    @Test
     void deploymentName_format() {
         assertEquals("fn-myFunc", KubernetesDeploymentBuilder.deploymentName("myFunc"));
     }

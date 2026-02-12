@@ -22,17 +22,29 @@ public class FunctionService {
     private final FunctionSpecResolver resolver;
     private final KubernetesResourceManager resourceManager;
     private final TargetLoadMetrics targetLoadMetrics;
+    private final ImageValidator imageValidator;
 
     public FunctionService(FunctionRegistry registry,
                            QueueManager queueManager,
                            FunctionDefaults defaults,
                            @Autowired(required = false) KubernetesResourceManager resourceManager,
                            TargetLoadMetrics targetLoadMetrics) {
+        this(registry, queueManager, defaults, resourceManager, targetLoadMetrics, ImageValidator.noOp());
+    }
+
+    @Autowired
+    public FunctionService(FunctionRegistry registry,
+                           QueueManager queueManager,
+                           FunctionDefaults defaults,
+                           @Autowired(required = false) KubernetesResourceManager resourceManager,
+                           TargetLoadMetrics targetLoadMetrics,
+                           @Autowired(required = false) ImageValidator imageValidator) {
         this.registry = registry;
         this.queueManager = queueManager;
         this.resolver = new FunctionSpecResolver(defaults);
         this.resourceManager = resourceManager;
         this.targetLoadMetrics = targetLoadMetrics;
+        this.imageValidator = imageValidator == null ? ImageValidator.noOp() : imageValidator;
     }
 
     public Collection<FunctionSpec> list() {
@@ -45,6 +57,7 @@ public class FunctionService {
 
     public Optional<FunctionSpec> register(FunctionSpec spec) {
         FunctionSpec resolved = resolver.resolve(spec);
+        imageValidator.validate(resolved);
 
         // For DEPLOYMENT mode, provision K8s resources and set the endpoint URL
         if (resolved.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
@@ -63,7 +76,8 @@ public class FunctionService {
                     resolved.executionMode(),
                     resolved.runtimeMode(),
                     resolved.runtimeCommand(),
-                    resolved.scalingConfig()
+                    resolved.scalingConfig(),
+                    resolved.imagePullSecrets()
             );
         }
 

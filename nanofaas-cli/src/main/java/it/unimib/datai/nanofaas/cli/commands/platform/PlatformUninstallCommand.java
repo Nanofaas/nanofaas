@@ -4,7 +4,11 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 
-@Command(name = "uninstall", description = "Uninstall nanofaas Helm release.")
+@Command(
+        name = "uninstall",
+        mixinStandardHelpOptions = true,
+        description = "Uninstall nanofaas Helm release."
+)
 public class PlatformUninstallCommand implements Runnable {
 
     @ParentCommand

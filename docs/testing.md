@@ -82,7 +82,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 3. Syncs the project and builds JARs + Docker images
 4. Deploys control-plane and function-runtime on k3s
 5. Builds the CLI distribution (`installDist`)
-6. Runs **40 tests** across all CLI commands:
+6. Runs **47 tests** across all CLI commands:
 
 | Phase | Tests | What is verified |
 |-------|-------|-----------------|
@@ -93,6 +93,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 | Async enqueue | 2 | Returns `executionId`, custom headers |
 | Execution status | 3 | `exec get`, ID matching, `--watch` polling |
 | Kubernetes | 8 | `k8s pods`, `k8s describe`, `k8s logs`, `--container` flag, negative cases |
+| Platform | 7 | `platform install/status/uninstall`, NodePort endpoint, post-uninstall failure |
 | Cleanup | 3 | Delete function, idempotent delete, verify empty list |
 
 **Configuration:**
@@ -163,18 +164,26 @@ of Dockerfiles.
 ./scripts/e2e-buildpack.sh
 ```
 
-### Kubernetes E2E (JUnit)
+### Kubernetes E2E (JUnit on k3s)
 
-JUnit-based E2E that requires a running `kind` cluster with pre-loaded images.
+JUnit-based E2E that runs in a dedicated Multipass VM with k3s.
 
 ```bash
-# Setup (one-time)
-./scripts/setup-multipass-kind.sh
-export KUBECONFIG=~/.kube/nanofaas-kind.yaml
-./scripts/kind-build-load.sh
+# Full run (provision VM, install k3s, build/push images to local registry, run test)
+./scripts/e2e-k8s-vm.sh
 
-# Run
-./gradlew :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.e2e.K8sE2eTest
+# Gradle alias
+./gradlew k8sE2e
+```
+
+### Host CLI Platform E2E (`scripts/e2e-cli-host-platform.sh`)
+
+End-to-end scenario where `nanofaas-cli` runs on the host machine and executes
+`platform install/status/uninstall` (Helm local to host) against a k3s cluster
+running in Multipass.
+
+```bash
+./scripts/e2e-cli-host-platform.sh
 ```
 
 ### Load Testing (`scripts/e2e-k3s-helm.sh` + `scripts/e2e-loadtest.sh`)
@@ -213,8 +222,9 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 |-------|-------|----------|---------|
 | Unit tests | All modules | JDK 21 | `./gradlew test` |
 | CLI E2E | All CLI commands | Multipass + SSH key | `./scripts/e2e-cli.sh` |
+| Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | Multipass + Helm on host | `./scripts/e2e-cli-host-platform.sh` |
 | K3s Curl E2E | REST API | Multipass | `./scripts/e2e-k3s-curl.sh` |
 | Docker E2E | Core flow | Docker | `./scripts/e2e.sh` |
 | Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/e2e-buildpack.sh` |
-| K8s E2E (JUnit) | Control-plane on k8s | kind cluster | `./gradlew :control-plane:test --tests ...K8sE2eTest` |
+| K8s E2E (JUnit) | Control-plane on k3s | Multipass | `./scripts/e2e-k8s-vm.sh` or `./gradlew k8sE2e` |
 | Load test | Performance | Multipass + k6 | `./scripts/e2e-k3s-helm.sh && ./scripts/e2e-loadtest.sh` |

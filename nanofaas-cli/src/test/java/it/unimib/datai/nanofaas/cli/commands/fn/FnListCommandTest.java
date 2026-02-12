@@ -1,15 +1,13 @@
 package it.unimib.datai.nanofaas.cli.commands.fn;
 
 import it.unimib.datai.nanofaas.cli.commands.RootCommand;
+import it.unimib.datai.nanofaas.cli.testsupport.CliTestSupport;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import picocli.CommandLine;
-
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,17 +36,11 @@ class FnListCommandTest {
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
 
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PrintStream prev = System.out;
-        System.setOut(new PrintStream(out));
-        try {
-            int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "list");
-            assertThat(exit).isEqualTo(0);
-        } finally {
-            System.setOut(prev);
-        }
+        CliTestSupport.CommandResult result = CliTestSupport.executeAndCaptureStdout(
+                cli, "--endpoint", server.url("/").toString(), "fn", "list");
+        assertThat(result.exitCode()).isEqualTo(0);
 
-        String output = out.toString();
+        String output = result.stdout();
         assertThat(output).contains("echo\timg/echo:1");
         assertThat(output).contains("greet\timg/greet:2");
     }
@@ -63,16 +55,10 @@ class FnListCommandTest {
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
 
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PrintStream prev = System.out;
-        System.setOut(new PrintStream(out));
-        try {
-            int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "list");
-            assertThat(exit).isEqualTo(0);
-        } finally {
-            System.setOut(prev);
-        }
+        CliTestSupport.CommandResult result = CliTestSupport.executeAndCaptureStdout(
+                cli, "--endpoint", server.url("/").toString(), "fn", "list");
+        assertThat(result.exitCode()).isEqualTo(0);
 
-        assertThat(out.toString().trim()).isEmpty();
+        assertThat(result.stdout().trim()).isEmpty();
     }
 }

@@ -21,6 +21,7 @@ class FunctionServiceTest {
     private FunctionDefaults defaults;
     private KubernetesResourceManager resourceManager;
     private TargetLoadMetrics targetLoadMetrics;
+    private ImageValidator imageValidator;
     private FunctionService service;
 
     @BeforeEach
@@ -30,7 +31,8 @@ class FunctionServiceTest {
         defaults = new FunctionDefaults(30000, 4, 100, 3);
         resourceManager = mock(KubernetesResourceManager.class);
         targetLoadMetrics = mock(TargetLoadMetrics.class);
-        service = new FunctionService(registry, queueManager, defaults, resourceManager, targetLoadMetrics);
+        imageValidator = mock(ImageValidator.class);
+        service = new FunctionService(registry, queueManager, defaults, resourceManager, targetLoadMetrics, imageValidator);
     }
 
     @Test
@@ -44,6 +46,7 @@ class FunctionServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals("http://fn-svc:8080", result.get().endpointUrl());
+        verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
         verify(resourceManager).provision(any());
         verify(queueManager).getOrCreate(any());
         verify(targetLoadMetrics).update(any());
@@ -72,7 +75,45 @@ class FunctionServiceTest {
         Optional<FunctionSpec> result = service.register(spec);
 
         assertTrue(result.isPresent());
+        verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.LOCAL));
         verify(resourceManager, never()).provision(any());
+    }
+
+    @Test
+    void register_alwaysValidatesImageEvenOnConflict() {
+        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+
+        service.register(spec);
+        service.register(spec);
+
+        verify(imageValidator, times(2)).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
+    }
+
+    private static FunctionSpec resolved(String name, String image, ExecutionMode mode) {
+        return new FunctionSpec(
+                name, image,
+                java.util.List.of(),
+                java.util.Map.of(),
+                null,
+                30000,
+                4,
+                100,
+                3,
+                null,
+                mode,
+                it.unimib.datai.nanofaas.common.model.RuntimeMode.HTTP,
+                null,
+                mode == ExecutionMode.DEPLOYMENT
+                        ? new it.unimib.datai.nanofaas.common.model.ScalingConfig(
+                        it.unimib.datai.nanofaas.common.model.ScalingStrategy.INTERNAL,
+                        1,
+                        10,
+                        java.util.List.of(new it.unimib.datai.nanofaas.common.model.ScalingMetric("queue_depth", "5", null))
+                )
+                        : null
+        );
     }
 
     @Test

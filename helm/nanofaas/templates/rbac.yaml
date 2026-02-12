@@ -10,7 +10,7 @@ rules:
     verbs: ["create", "get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["create", "delete", "get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "deployments/scale"]
     verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
