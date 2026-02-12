@@ -9,7 +9,8 @@ import java.util.concurrent.CompletableFuture;
 @Component
 public class LocalDispatcher implements Dispatcher {
     @Override
-    public CompletableFuture<InvocationResult> dispatch(InvocationTask task) {
-        return CompletableFuture.completedFuture(InvocationResult.success(task.request().input()));
+    public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
+        return CompletableFuture.completedFuture(
+                DispatchResult.warm(InvocationResult.success(task.request().input())));
     }
 }

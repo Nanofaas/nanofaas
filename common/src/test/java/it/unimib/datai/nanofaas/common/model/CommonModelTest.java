@@ -70,13 +70,15 @@ class CommonModelTest {
 
     @Test
     void executionStatus_recordAccessors() {
-        ExecutionStatus s = new ExecutionStatus("ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200), "result", null);
+        ExecutionStatus s = new ExecutionStatus("ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200), "result", null, true, 150L);
         assertEquals("ex-1", s.executionId());
         assertEquals("COMPLETED", s.status());
         assertEquals(Instant.ofEpochMilli(100), s.startedAt());
         assertEquals(Instant.ofEpochMilli(200), s.finishedAt());
         assertEquals("result", s.output());
         assertNull(s.error());
+        assertTrue(s.coldStart());
+        assertEquals(150L, s.initDurationMs());
     }
 
     // --- FunctionSpec ---

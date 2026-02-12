@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.scaling;
 
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.metrics.ColdStartTracker;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,9 +32,11 @@ class InternalScalerTest {
 
     private static final ScalingProperties PROPS = new ScalingProperties(5000L, 1, 10);
 
+    private final ColdStartTracker coldStartTracker = new ColdStartTracker();
+
     @BeforeEach
     void setUp() {
-        scaler = new InternalScaler(registry, metricsReader, resourceManager, PROPS);
+        scaler = new InternalScaler(registry, metricsReader, resourceManager, PROPS, coldStartTracker);
     }
 
     private FunctionSpec functionSpec(String name, ExecutionMode mode, ScalingConfig scaling) {
@@ -136,7 +139,7 @@ class InternalScalerTest {
 
     @Test
     void doesNotStartWithoutResourceManager() {
-        InternalScaler noK8sScaler = new InternalScaler(registry, metricsReader, null, PROPS);
+        InternalScaler noK8sScaler = new InternalScaler(registry, metricsReader, null, PROPS, coldStartTracker);
         noK8sScaler.start();
         assertFalse(noK8sScaler.isRunning());
     }

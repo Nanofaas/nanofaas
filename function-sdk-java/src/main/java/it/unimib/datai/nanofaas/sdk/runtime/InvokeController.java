@@ -9,11 +9,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 public class InvokeController {
     private static final Logger log = LoggerFactory.getLogger(InvokeController.class);
+    private static final AtomicBoolean FIRST_INVOCATION = new AtomicBoolean(true);
+    private static final Instant CONTAINER_START = Instant.now();
 
     private final CallbackClient callbackClient;
     private final HandlerRegistry handlerRegistry;
@@ -43,6 +47,8 @@ public class InvokeController {
                     .body(Map.of("error", "Execution ID not configured"));
         }
 
+        boolean isColdStart = FIRST_INVOCATION.compareAndSet(true, false);
+
         try {
             FunctionHandler handler = handlerRegistry.resolve();
             Object output = handler.handle(request);
@@ -53,7 +59,13 @@ public class InvokeController {
                 log.warn("Callback failed for execution {} but function succeeded, returning result anyway", effectiveExecutionId);
             }
 
-            return ResponseEntity.ok(output);
+            ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
+            if (isColdStart) {
+                long initDurationMs = Instant.now().toEpochMilli() - CONTAINER_START.toEpochMilli();
+                responseBuilder.header("X-Cold-Start", "true");
+                responseBuilder.header("X-Init-Duration-Ms", String.valueOf(initDurationMs));
+            }
+            return responseBuilder.body(output);
         } catch (Exception ex) {
             log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
 

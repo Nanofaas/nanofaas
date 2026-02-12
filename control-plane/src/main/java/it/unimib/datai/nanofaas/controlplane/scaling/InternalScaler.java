@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.metrics.ColdStartTracker;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ public class InternalScaler implements SmartLifecycle {
     private final ScalingMetricsReader metricsReader;
     private final KubernetesResourceManager resourceManager;
     private final ScalingProperties properties;
+    private final ColdStartTracker coldStartTracker;
     private final Map<String, Instant> lastScaleUp = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastScaleDown = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -34,11 +36,13 @@ public class InternalScaler implements SmartLifecycle {
     public InternalScaler(FunctionRegistry registry,
                           ScalingMetricsReader metricsReader,
                           @Autowired(required = false) KubernetesResourceManager resourceManager,
-                          ScalingProperties properties) {
+                          ScalingProperties properties,
+                          ColdStartTracker coldStartTracker) {
         this.registry = registry;
         this.metricsReader = metricsReader;
         this.resourceManager = resourceManager;
         this.properties = properties;
+        this.coldStartTracker = coldStartTracker;
     }
 
     @Override
@@ -148,6 +152,7 @@ public class InternalScaler implements SmartLifecycle {
             }
             log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
                     functionName, currentReplicas, desiredReplicas, maxRatio);
+            coldStartTracker.recordScaleUp(functionName, currentReplicas, desiredReplicas);
             resourceManager.setReplicas(functionName, desiredReplicas);
             lastScaleUp.put(functionName, now);
         } else {

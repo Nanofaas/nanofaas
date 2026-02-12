@@ -104,6 +104,42 @@ class ExecutionRecordStateTransitionTest {
         assertThat(snapshot.finishedAt()).isNull();
     }
 
+    @Test
+    void markColdStart_setsFieldsInSnapshot() {
+        ExecutionRecord record = createRecord("exec-1");
+        record.markRunning();
+        record.markColdStart(350);
+
+        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        assertThat(snapshot.coldStart()).isTrue();
+        assertThat(snapshot.initDurationMs()).isEqualTo(350L);
+    }
+
+    @Test
+    void markDispatchedAt_setsFieldInSnapshot() {
+        ExecutionRecord record = createRecord("exec-1");
+        record.markRunning();
+        record.markDispatchedAt();
+
+        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        assertThat(snapshot.dispatchedAt()).isNotNull();
+    }
+
+    @Test
+    void resetForRetry_clearsColdStartFields() {
+        ExecutionRecord record = createRecord("exec-1");
+        record.markRunning();
+        record.markColdStart(200);
+        record.markDispatchedAt();
+
+        record.resetForRetry(createTask("exec-1"));
+
+        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        assertThat(snapshot.coldStart()).isFalse();
+        assertThat(snapshot.initDurationMs()).isNull();
+        assertThat(snapshot.dispatchedAt()).isNull();
+    }
+
     private ExecutionRecord createRecord(String executionId) {
         return new ExecutionRecord(executionId, createTask(executionId));
     }

@@ -36,6 +36,19 @@ RUNTIME_IN_FLIGHT = Gauge(
     "In-flight invocations (Python runtime)",
     ["function"],
 )
+RUNTIME_INIT_DURATION_SECONDS = Histogram(
+    "runtime_init_duration_seconds",
+    "Container init duration until first invocation (Python runtime)",
+    ["function"],
+)
+RUNTIME_COLD_START_TOTAL = Counter(
+    "runtime_cold_start_total",
+    "Total cold start invocations (Python runtime)",
+    ["function"],
+)
+
+CONTAINER_START_TIME = time.monotonic()
+_first_invocation = True
 
 @app.on_event("startup")
 async def startup_event():
@@ -101,6 +114,11 @@ async def invoke(
         logger.error("No handler registered")
         raise HTTPException(status_code=500, detail="No function registered with @nanofaas_function")
 
+    global _first_invocation
+    is_cold_start = _first_invocation
+    if _first_invocation:
+        _first_invocation = False
+
     start = time.perf_counter()
     RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
     try:
@@ -119,11 +137,19 @@ async def invoke(
 
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
         result = {"success": True, "output": output, "error": None}
-        
+
         if callback_url:
             background_tasks.add_task(send_callback, callback_url, execution_id, trace_id, result)
-            
-        return output
+
+        headers = {}
+        if is_cold_start:
+            init_duration_ms = int((time.monotonic() - CONTAINER_START_TIME) * 1000)
+            headers["X-Cold-Start"] = "true"
+            headers["X-Init-Duration-Ms"] = str(init_duration_ms)
+            RUNTIME_COLD_START_TOTAL.labels(function=FUNCTION_NAME).inc()
+            RUNTIME_INIT_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(init_duration_ms / 1000.0)
+
+        return JSONResponse(content=output if isinstance(output, (dict, list)) else {"result": output}, headers=headers)
     except Exception as e:
         logger.exception(f"Handler error in execution {execution_id}: {e}")
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
