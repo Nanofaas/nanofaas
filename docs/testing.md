@@ -186,6 +186,18 @@ running in Multipass.
 ./scripts/e2e-cli-host-platform.sh
 ```
 
+### Host CLI Deploy E2E (`scripts/e2e-cli-deploy-host.sh`)
+
+Host-only validation of `nanofaas deploy` without Multipass/VM:
+- starts a local Docker registry container
+- runs a fake control-plane HTTP endpoint on host
+- executes CLI `deploy` (docker buildx + push + register)
+- verifies pushed tag exists in registry and `POST /v1/functions` payload
+
+```bash
+./scripts/e2e-cli-deploy-host.sh
+```
+
 ### Load Testing (`scripts/e2e-k3s-helm.sh` + `scripts/e2e-loadtest.sh`)
 
 Full Helm-based deployment with k6 load testing and Grafana dashboard.
@@ -223,6 +235,7 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | Unit tests | All modules | JDK 21 | `./gradlew test` |
 | CLI E2E | All CLI commands | Multipass + SSH key | `./scripts/e2e-cli.sh` |
 | Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | Multipass + Helm on host | `./scripts/e2e-cli-host-platform.sh` |
+| Host CLI Deploy E2E | Host-only deploy build+push+register | Docker + Python 3 | `./scripts/e2e-cli-deploy-host.sh` |
 | K3s Curl E2E | REST API | Multipass | `./scripts/e2e-k3s-curl.sh` |
 | Docker E2E | Core flow | Docker | `./scripts/e2e.sh` |
 | Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/e2e-buildpack.sh` |
