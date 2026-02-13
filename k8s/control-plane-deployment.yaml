@@ -16,7 +16,7 @@ spec:
       serviceAccountName: nanofaas-control-plane
       containers:
         - name: control-plane
-          image: ghcr.io/miciav/nanofaas/control-plane:v0.11.1
+          image: ghcr.io/miciav/nanofaas/control-plane:v0.11.2
           ports:
             - containerPort: 8080
             - containerPort: 8081
