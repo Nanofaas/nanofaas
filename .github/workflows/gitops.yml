@@ -63,8 +63,7 @@ jobs:
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :control-plane:bootBuildImage 
-            -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
+          ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:latest
 
       - name: Log in to the Container registry
@@ -81,8 +80,7 @@ jobs:
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :function-runtime:bootBuildImage 
-            -PfunctionRuntimeImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
+          ./gradlew :function-runtime:bootBuildImage -PfunctionRuntimeImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:latest
 
       - name: Push Function Runtime images
@@ -100,16 +98,14 @@ jobs:
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :examples:java:word-stats:bootBuildImage 
-            -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
+          ./gradlew :examples:java:word-stats:bootBuildImage -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:latest
 
       - name: Build Java JSON Transform Image
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :examples:java:json-transform:bootBuildImage 
-            -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
+          ./gradlew :examples:java:json-transform:bootBuildImage -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:latest
 
       - name: Push Java functions images
