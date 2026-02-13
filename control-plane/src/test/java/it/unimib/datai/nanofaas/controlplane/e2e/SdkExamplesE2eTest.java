@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.e2e;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -86,8 +87,12 @@ class SdkExamplesE2eTest {
         RestAssured.port = controlPlane.getMappedPort(8080);
 
         // Register both functions once
-        registerFunction("word-stats", "http://word-stats:8080/invoke");
-        registerFunction("json-transform", "http://json-transform:8080/invoke");
+        E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
+                "word-stats", "word-stats:test", "http://word-stats:8080/invoke",
+                10000, 4, 20, 3));
+        E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
+                "json-transform", "json-transform:test", "http://json-transform:8080/invoke",
+                10000, 4, 20, 3));
     }
 
     // ── word-stats ──────────────────────────────────────────────────
@@ -196,7 +201,7 @@ class SdkExamplesE2eTest {
                 .path("executionId");
 
         // Poll until complete
-        org.awaitility.Awaitility.await()
+        Awaitility.await()
                 .atMost(Duration.ofSeconds(15))
                 .pollInterval(Duration.ofMillis(300))
                 .untilAsserted(() -> {
@@ -210,24 +215,5 @@ class SdkExamplesE2eTest {
                     assertEquals(40.0f, ((Number) response.path("output.groups.A")).floatValue(), 0.01);
                     assertEquals(20.0f, ((Number) response.path("output.groups.B")).floatValue(), 0.01);
                 });
-    }
-
-    // ── helpers ──────────────────────────────────────────────────────
-
-    private static void registerFunction(String name, String endpointUrl) {
-        RestAssured.given()
-                .contentType(ContentType.JSON)
-                .body(Map.of(
-                        "name", name,
-                        "image", name + ":test",
-                        "timeoutMs", 10000,
-                        "concurrency", 4,
-                        "queueSize", 20,
-                        "executionMode", "POOL",
-                        "endpointUrl", endpointUrl
-                ))
-                .post("/v1/functions")
-                .then()
-                .statusCode(201);
     }
 }

@@ -1,8 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.e2e;
 
 import io.restassured.RestAssured;
-import io.restassured.http.ContentType;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,7 +15,6 @@ import java.time.Duration;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Testcontainers
@@ -64,73 +61,26 @@ class E2eFlowTest {
     @Test
     void e2eRegisterInvokeAndPoll() {
         String endpointUrl = "http://function-runtime:8080/invoke";
-        Map<String, Object> spec = Map.of(
-                "name", "e2e-echo",
-                "image", E2eTestSupport.versionedImage("function-runtime"),
-                "timeoutMs", 5000,
-                "concurrency", 2,
-                "queueSize", 20,
-                "maxRetries", 3,
-                "executionMode", "POOL",
-                "endpointUrl", endpointUrl
+        Map<String, Object> spec = E2eApiSupport.poolFunctionSpec(
+                "e2e-echo",
+                E2eTestSupport.versionedImage("function-runtime"),
+                endpointUrl
         );
+        E2eApiSupport.registerFunction(spec);
+        E2eApiSupport.awaitSyncInvokeSuccess("e2e-echo", "hi");
 
-        RestAssured.given()
-                .contentType(ContentType.JSON)
-                .body(spec)
-                .post("/v1/functions")
-                .then()
-                .statusCode(201)
-                .body("name", equalTo("e2e-echo"));
-
-        RestAssured.given()
-                .contentType(ContentType.JSON)
-                .body(Map.of("input", Map.of("message", "hi")))
-                .post("/v1/functions/e2e-echo:invoke")
-                .then()
-                .statusCode(200)
-                .body("status", equalTo("success"))
-                .body("output.message", equalTo("hi"));
-
-        String executionId = RestAssured.given()
-                .contentType(ContentType.JSON)
-                .header("Idempotency-Key", "abc")
-                .body(Map.of("input", "payload"))
-                .post("/v1/functions/e2e-echo:enqueue")
-                .then()
-                .statusCode(202)
-                .body("executionId", notNullValue())
-                .extract()
-                .path("executionId");
-
-        String executionId2 = RestAssured.given()
-                .contentType(ContentType.JSON)
-                .header("Idempotency-Key", "abc")
-                .body(Map.of("input", "payload"))
-                .post("/v1/functions/e2e-echo:enqueue")
-                .then()
-                .statusCode(202)
-                .extract()
-                .path("executionId");
+        String executionId = E2eApiSupport.enqueue("e2e-echo", "payload", "abc");
+        String executionId2 = E2eApiSupport.enqueue("e2e-echo", "payload", "abc");
 
         org.junit.jupiter.api.Assertions.assertEquals(executionId, executionId2);
 
-        Awaitility.await()
-                .atMost(Duration.ofSeconds(10))
-                .pollInterval(Duration.ofMillis(200))
-                .untilAsserted(() -> RestAssured.get("/v1/executions/{id}", executionId)
-                        .then()
-                        .statusCode(200)
-                        .body("status", equalTo("success")));
+        E2eApiSupport.awaitExecutionSuccess(executionId, Duration.ofSeconds(10));
     }
 
     @Test
     void e2ePrometheusMetricsExposed() {
-        String metrics = RestAssured.get("http://" + controlPlane.getHost() + ":" + controlPlane.getMappedPort(8081) + "/actuator/prometheus")
-                .then()
-                .statusCode(200)
-                .extract()
-                .asString();
-        org.junit.jupiter.api.Assertions.assertTrue(metrics.contains("function_enqueue_total"));
+        String metrics = E2eApiSupport.fetchPrometheusMetrics(
+                "http://" + controlPlane.getHost() + ":" + controlPlane.getMappedPort(8081) + "/actuator/prometheus");
+        E2eApiSupport.assertMetricPresent(metrics, "function_enqueue_total");
     }
 }

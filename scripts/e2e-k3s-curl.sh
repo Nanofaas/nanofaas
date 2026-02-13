@@ -47,9 +47,7 @@ check_prerequisites() {
 }
 
 create_vm() {
-    log "Creating VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})..."
-    multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
-    log "VM created successfully"
+    e2e_create_vm "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 }
 
 vm_exec() {
@@ -57,18 +55,7 @@ vm_exec() {
 }
 
 install_dependencies() {
-    log "Installing dependencies in VM..."
-
-    vm_exec "sudo apt-get update -y"
-    vm_exec "sudo apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk"
-
-    # Install Docker
-    vm_exec "if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo usermod -aG docker ubuntu
-    fi"
-
-    log "Dependencies installed"
+    e2e_install_vm_dependencies
 }
 
 install_k3s() {
@@ -76,23 +63,15 @@ install_k3s() {
 }
 
 sync_project() {
-    log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/nanofaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
-    log "Project synced"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
 }
 
 build_jars() {
-    log "Building JARs in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
-    log "JARs built"
+    e2e_build_core_jars "/home/ubuntu/nanofaas"
 }
 
 build_images() {
-    log "Building Docker images in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
-    log "Docker images built"
+    e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 }
 
 push_images_to_registry() {
@@ -100,316 +79,90 @@ push_images_to_registry() {
 }
 
 create_namespace() {
-    log "Creating namespace ${NAMESPACE}..."
-    vm_exec "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
-    log "Namespace created"
+    e2e_create_namespace "${NAMESPACE}"
 }
 
 deploy_control_plane() {
-    log "Deploying control-plane..."
-
-    vm_exec "cat <<'EOF' | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: control-plane
-  namespace: ${NAMESPACE}
-  labels:
-    app: control-plane
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: control-plane
-  template:
-    metadata:
-      labels:
-        app: control-plane
-    spec:
-      containers:
-      - name: control-plane
-        image: ${CONTROL_IMAGE}
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8080
-          name: api
-        - containerPort: 8081
-          name: management
-        env:
-        - name: POD_NAMESPACE
-          value: \"${NAMESPACE}\"
-        readinessProbe:
-          httpGet:
-            path: /actuator/health/readiness
-            port: 8081
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /actuator/health/liveness
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: control-plane
-  namespace: ${NAMESPACE}
-spec:
-  selector:
-    app: control-plane
-  ports:
-  - name: api
-    port: 8080
-    targetPort: 8080
-  - name: management
-    port: 8081
-    targetPort: 8081
-EOF"
-
-    log "Control-plane deployment created"
+    e2e_deploy_control_plane "${NAMESPACE}" "${CONTROL_IMAGE}" "${NAMESPACE}"
 }
 
 deploy_function_runtime() {
-    log "Deploying function-runtime..."
-
-    vm_exec "cat <<'EOF' | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: function-runtime
-  namespace: ${NAMESPACE}
-  labels:
-    app: function-runtime
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: function-runtime
-  template:
-    metadata:
-      labels:
-        app: function-runtime
-    spec:
-      containers:
-      - name: function-runtime
-        image: ${RUNTIME_IMAGE}
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8080
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: function-runtime
-  namespace: ${NAMESPACE}
-spec:
-  selector:
-    app: function-runtime
-  ports:
-  - name: http
-    port: 8080
-    targetPort: 8080
-EOF"
-
-    log "Function-runtime deployment created"
+    e2e_deploy_function_runtime "${NAMESPACE}" "${RUNTIME_IMAGE}"
 }
 
 wait_for_deployment() {
     local name=$1
     local timeout=${2:-180}
-
-    log "Waiting for deployment ${name} to be ready (timeout: ${timeout}s)..."
-
-    vm_exec "kubectl rollout status deployment/${name} -n ${NAMESPACE} --timeout=${timeout}s"
-
-    log "Deployment ${name} is ready"
+    e2e_wait_for_deployment "${NAMESPACE}" "${name}" "${timeout}"
 }
 
 verify_health_endpoints() {
-    log "Verifying health endpoints..."
-
-    # Get control-plane pod name
-    local pod_name
-    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
-
-    # Check /actuator/health
-    log "Checking /actuator/health..."
-    vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/health" | grep -q '"status":"UP"'
-    log "  /actuator/health: UP"
-
-    # Check /actuator/health/liveness
-    log "Checking /actuator/health/liveness..."
-    vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/health/liveness" | grep -q '"status":"UP"'
-    log "  /actuator/health/liveness: UP"
-
-    # Check /actuator/health/readiness
-    log "Checking /actuator/health/readiness..."
-    vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/health/readiness" | grep -q '"status":"UP"'
-    log "  /actuator/health/readiness: UP"
-
-    log "All health endpoints verified"
+    e2e_verify_control_plane_health "${NAMESPACE}"
 }
 
 verify_pods_running() {
-    log "Verifying all pods are running..."
-
-    # Check control-plane pod
-    local cp_status
-    cp_status=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].status.phase}'")
-    if [[ "${cp_status}" != "Running" ]]; then
-        error "control-plane pod is not Running (status: ${cp_status})"
-        vm_exec "kubectl describe pod -n ${NAMESPACE} -l app=control-plane"
-        exit 1
-    fi
-    log "  control-plane: Running"
-
-    # Check function-runtime pod
-    local fr_status
-    fr_status=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=function-runtime -o jsonpath='{.items[0].status.phase}'")
-    if [[ "${fr_status}" != "Running" ]]; then
-        error "function-runtime pod is not Running (status: ${fr_status})"
-        vm_exec "kubectl describe pod -n ${NAMESPACE} -l app=function-runtime"
-        exit 1
-    fi
-    log "  function-runtime: Running"
-
-    log "All pods running"
+    e2e_verify_core_pods_running "${NAMESPACE}"
 }
 
 register_function() {
-    log "Registering test function..."
-
-    # Register function via control-plane service
-    vm_exec "kubectl run curl-register --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-        curl -sf -X POST http://control-plane:8080/v1/functions \
-        -H 'Content-Type: application/json' \
-        -d '{
-            \"name\": \"echo-test\",
-            \"image\": \"${RUNTIME_IMAGE}\",
-            \"timeoutMs\": 5000,
-            \"concurrency\": 2,
-            \"queueSize\": 20,
-            \"maxRetries\": 3,
-            \"executionMode\": \"POOL\",
-            \"endpointUrl\": \"http://function-runtime:8080/invoke\"
-        }'"
-
-    log "Function registered"
+    e2e_register_pool_function \
+        "${NAMESPACE}" \
+        "echo-test" \
+        "${RUNTIME_IMAGE}" \
+        "http://function-runtime:8080/invoke" \
+        5000 \
+        2 \
+        20 \
+        3 \
+        "curl-register"
 }
 
 invoke_function_with_curl() {
-    log "Invoking function with curl container..."
-
-    # Create a Job that invokes the function and checks the response
-    vm_exec "cat <<'EOF' | kubectl apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: curl-invoke-test
-  namespace: ${NAMESPACE}
-spec:
-  ttlSecondsAfterFinished: 60
-  backoffLimit: 0
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: curl
-        image: curlimages/curl:latest
-        command:
-        - /bin/sh
-        - -c
-        - |
-          set -e
-          echo 'Invoking function...'
-          RESPONSE=\$(curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:invoke \
-            -H 'Content-Type: application/json' \
-            -d '{\"input\": {\"message\": \"hello-k3s-test\"}}')
-          echo \"Response: \${RESPONSE}\"
-
-          # Verify response contains expected values
-          if echo \"\${RESPONSE}\" | grep -q '\"status\":\"success\"'; then
-            echo 'SUCCESS: status is success'
-          else
-            echo 'FAIL: status is not success'
-            exit 1
-          fi
-
-          if echo \"\${RESPONSE}\" | grep -q '\"message\":\"hello-k3s-test\"'; then
-            echo 'SUCCESS: message echoed correctly'
-          else
-            echo 'FAIL: message not echoed correctly'
-            exit 1
-          fi
-
-          echo 'All verifications passed!'
-EOF"
-
-    log "Waiting for curl job to complete..."
-    vm_exec "kubectl wait --for=condition=complete job/curl-invoke-test -n ${NAMESPACE} --timeout=60s"
-
-    # Get job logs
-    log "Job logs:"
-    vm_exec "kubectl logs job/curl-invoke-test -n ${NAMESPACE}"
-
+    log "Invoking function and validating sync response..."
+    local response
+    response=$(e2e_invoke_sync_message "${NAMESPACE}" "echo-test" "hello-k3s-test" "curl-invoke-test")
+    if [[ -z "${response}" ]]; then
+        error "No valid JSON response from sync invoke"
+        exit 1
+    fi
+    if ! echo "${response}" | grep -q '"status":"success"'; then
+        error "Sync invoke did not return success: ${response}"
+        exit 1
+    fi
+    if ! echo "${response}" | grep -q '"message":"hello-k3s-test"'; then
+        error "Sync invoke did not echo expected message: ${response}"
+        exit 1
+    fi
     log "Function invocation verified successfully"
 }
 
 test_async_invocation() {
     log "Testing async function invocation..."
 
-    # Enqueue async invocation
-    local exec_id
-    exec_id=$(vm_exec "kubectl run curl-enqueue --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-        curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:enqueue \
-        -H 'Content-Type: application/json' \
-        -d '{\"input\": {\"message\": \"async-test\"}}'" | sed -n 's/.*"executionId":"\([^"]*\)".*/\1/p')
+    local enqueue_json exec_id
+    enqueue_json=$(e2e_enqueue_message "${NAMESPACE}" "echo-test" "async-test" "curl-enqueue")
+    exec_id=$(e2e_extract_execution_id "${enqueue_json}")
 
+    if [[ -z "${exec_id}" ]]; then
+        error "Failed to extract async execution ID: ${enqueue_json}"
+        exit 1
+    fi
     log "Async execution ID: ${exec_id}"
 
-    # Poll for completion
     log "Polling for execution completion..."
-    for i in $(seq 1 20); do
-        local status
-        status=$(vm_exec "kubectl run curl-poll-${i} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-            curl -sf http://control-plane:8080/v1/executions/${exec_id}" 2>/dev/null | sed -n 's/.*"status":"\([^"]*\)".*/\1/p' || echo "pending")
-
-        if [[ "${status}" == "success" ]]; then
-            log "Async execution completed successfully"
-            return 0
-        elif [[ "${status}" == "failed" ]]; then
-            error "Async execution failed"
-            exit 1
-        fi
-        sleep 1
-    done
-
-    error "Async execution did not complete within timeout"
+    if e2e_wait_execution_success "${NAMESPACE}" "${exec_id}" 20 1 "curl-poll"; then
+        log "Async execution completed successfully"
+        return 0
+    fi
+    error "Async execution did not complete successfully within timeout (executionId=${exec_id})"
     exit 1
 }
 
 verify_prometheus_metrics() {
     log "Verifying Prometheus metrics..."
 
-    # Get control-plane pod name
-    local pod_name
-    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
-
-    # Fetch metrics from Prometheus endpoint
     local metrics
-    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+    metrics=$(e2e_fetch_control_plane_prometheus "${NAMESPACE}")
 
     # Verify core metrics exist
     if echo "${metrics}" | grep -q 'function_enqueue_total'; then
@@ -446,25 +199,12 @@ verify_prometheus_metrics() {
 test_queue_depth() {
     log "Testing queue depth metric under load..."
 
-    # Get control-plane pod name
-    local pod_name
-    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
-
-    # Enqueue 5 requests rapidly (concurrency is 2, so some should queue)
-    log "Enqueueing multiple async requests..."
-    for i in $(seq 1 5); do
-        vm_exec "kubectl run curl-queue-${i} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-            curl -sf -X POST http://control-plane:8080/v1/functions/echo-test:enqueue \
-            -H 'Content-Type: application/json' \
-            -d '{\"input\": {\"message\": \"queue-test-${i}\"}}'" &
-    done
-
-    # Wait for background enqueue jobs
-    wait
+    log "Enqueueing burst async requests..."
+    e2e_enqueue_message_burst "${NAMESPACE}" "echo-test" "queue-test" 5 "curl-queue"
 
     # Check the metrics
     local metrics
-    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+    metrics=$(e2e_fetch_control_plane_prometheus "${NAMESPACE}")
 
     # Verify enqueue counter increased
     local enqueue_count
@@ -482,7 +222,7 @@ test_queue_depth() {
     sleep 5
 
     # Final metrics check
-    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+    metrics=$(e2e_fetch_control_plane_prometheus "${NAMESPACE}")
 
     local success_count
     success_count=$(echo "${metrics}" | grep 'function_success_total{' | grep 'echo-test' | sed -n 's/.*} \([0-9.]*\)/\1/p')

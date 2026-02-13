@@ -39,29 +39,23 @@ if multipass list | awk '{print $1}' | grep -q "^${VM_NAME}$"; then
 fi
 
 log "Starting multipass VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})"
-multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
+e2e_create_vm "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 
 vm_exec() {
   multipass exec "${VM_NAME}" -- bash -lc "$*"
 }
 
 log "Installing dependencies in VM"
-vm_exec "sudo apt-get update -y"
-vm_exec "sudo apt-get install -y curl ca-certificates tar unzip"
-vm_exec "if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sudo sh; fi"
-vm_exec "sudo usermod -aG docker ubuntu"
-vm_exec "sudo apt-get install -y openjdk-21-jdk"
+e2e_install_vm_dependencies
 
 log "Syncing repository to VM"
-vm_exec "rm -rf ${REMOTE_DIR}"
-multipass transfer --recursive . "${VM_NAME}:${REMOTE_DIR}"
+e2e_sync_project_to_vm "." "${VM_NAME}" "${REMOTE_DIR}"
 
 log "Building JARs in VM"
-vm_exec "cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon"
+e2e_build_core_jars "${REMOTE_DIR}" false
 
 log "Building container images in VM"
-vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${CONTROL_IMAGE} control-plane/"
-vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${RUNTIME_IMAGE} function-runtime/"
+e2e_build_core_images "${REMOTE_DIR}" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 
 log "Installing k3s"
 e2e_install_k3s

@@ -149,22 +149,7 @@ vm_exec() {
 
 # ─── Phase 1: Create VM ─────────────────────────────────────────────────────
 create_vm() {
-    if multipass info "${VM_NAME}" &>/dev/null; then
-        local state
-        state=$(multipass info "${VM_NAME}" --format csv | tail -1 | cut -d, -f2)
-        if [[ "${state}" == "Running" ]]; then
-            log "VM '${VM_NAME}' already running, reusing..."
-            return
-        else
-            log "VM '${VM_NAME}' exists but in state '${state}', starting..."
-            multipass start "${VM_NAME}"
-            return
-        fi
-    fi
-
-    log "Creating VM ${VM_NAME} (cpus=${CPUS}, mem=${MEMORY}, disk=${DISK})..."
-    multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
-    log "VM created"
+    e2e_ensure_vm_running "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 }
 
 # ─── Phase 2: Install k3s + dependencies ─────────────────────────────────────
@@ -174,25 +159,7 @@ install_k3s() {
         return
     fi
 
-    log "Installing k3s..."
-    vm_exec "curl -sfL https://get.k3s.io | sudo sh -s - --disable traefik"
-
-    # Wait for node Ready
-    vm_exec 'for i in $(seq 1 60); do
-        if sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q " Ready"; then
-            exit 0
-        fi
-        sleep 2
-    done
-    echo "k3s not ready" >&2; exit 1'
-
-    # Setup kubeconfig
-    vm_exec "mkdir -p /home/ubuntu/.kube"
-    vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config"
-    vm_exec "sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config"
-    vm_exec "chmod 600 /home/ubuntu/.kube/config"
-
-    log "k3s installed and ready"
+    e2e_install_k3s
 }
 
 install_deps() {
@@ -201,22 +168,7 @@ install_deps() {
         return
     fi
 
-    log "Installing dependencies (Docker, JDK 21, Helm)..."
-    vm_exec "sudo apt-get update -y -qq"
-    vm_exec "sudo apt-get install -y -qq curl ca-certificates tar unzip openjdk-21-jdk"
-
-    # Docker
-    vm_exec 'if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo usermod -aG docker ubuntu
-    fi'
-
-    # Helm
-    vm_exec 'if ! command -v helm >/dev/null 2>&1; then
-        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    fi'
-
-    log "Dependencies installed"
+    e2e_install_vm_dependencies true
 }
 
 # ─── Phase 3: Build and push images to local registry ───────────────────────
@@ -226,10 +178,7 @@ sync_and_build() {
         return
     fi
 
-    log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/nanofaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
-    log "Project synced"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
 
     log "Building JARs..."
     vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
@@ -237,9 +186,7 @@ sync_and_build() {
 
     log "Building Docker images..."
 
-    # Core images
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 
     # Java demo images
     vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_WORD_STATS_IMAGE} -f examples/java/word-stats/Dockerfile examples/java/word-stats/"
@@ -275,10 +222,7 @@ push_images() {
         "${BASH_JSON_TRANSFORM_IMAGE}"
     )
 
-    for img in "${images[@]}"; do
-        vm_exec "sudo docker push ${img}"
-        info "  pushed: ${img}"
-    done
+    e2e_push_images_to_registry "${images[@]}"
 
     # Mirror curl image into local registry for the Helm registration job.
     info "Mirroring curlimages/curl into local registry..."

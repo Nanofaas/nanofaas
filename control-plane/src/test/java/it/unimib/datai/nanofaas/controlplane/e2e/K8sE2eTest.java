@@ -12,27 +12,20 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.LocalPortForward;
 import io.restassured.RestAssured;
-import io.restassured.http.ContentType;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.IntStream;
-import java.util.regex.Pattern;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 class K8sE2eTest {
     private static final String NS = System.getenv().getOrDefault("NANOFAAS_E2E_NAMESPACE", "nanofaas-e2e");
@@ -103,24 +96,8 @@ class K8sE2eTest {
             awaitHealth(mgmtPort, "/actuator/health/readiness");
 
             String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
-            Map<String, Object> spec = Map.of(
-                    "name", "k8s-echo",
-                    "image", RUNTIME_IMAGE,
-                    "timeoutMs", 5000,
-                    "concurrency", 2,
-                    "queueSize", 20,
-                    "maxRetries", 3,
-                    "executionMode", "POOL",
-                    "endpointUrl", endpointUrl
-            );
-
-            RestAssured.given()
-                    .contentType(ContentType.JSON)
-                    .body(spec)
-                .post("/v1/functions")
-                .then()
-                .statusCode(201)
-                .body("name", equalTo("k8s-echo"));
+            Map<String, Object> spec = E2eApiSupport.poolFunctionSpec("k8s-echo", RUNTIME_IMAGE, endpointUrl);
+            E2eApiSupport.registerFunction(spec);
 
             RestAssured.get("/v1/functions")
                     .then()
@@ -133,45 +110,20 @@ class K8sE2eTest {
                     .body("name", equalTo("k8s-echo"))
                     .body("image", equalTo(RUNTIME_IMAGE));
 
-            awaitSyncInvokeSuccess("k8s-echo", "hi");
-            awaitSyncInvokeSuccess("k8s-echo", "hello");
+            E2eApiSupport.awaitSyncInvokeSuccess("k8s-echo", "hi");
+            E2eApiSupport.awaitSyncInvokeSuccess("k8s-echo", "hello");
 
-            String executionId = RestAssured.given()
-                    .contentType(ContentType.JSON)
-                    .header("Idempotency-Key", "abc")
-                    .body(Map.of("input", "payload"))
-                    .post("/v1/functions/k8s-echo:enqueue")
-                    .then()
-                    .statusCode(202)
-                    .body("executionId", notNullValue())
-                    .extract()
-                    .path("executionId");
-
-            String executionId2 = RestAssured.given()
-                    .contentType(ContentType.JSON)
-                    .header("Idempotency-Key", "abc")
-                    .body(Map.of("input", "payload"))
-                    .post("/v1/functions/k8s-echo:enqueue")
-                    .then()
-                    .statusCode(202)
-                    .extract()
-                    .path("executionId");
+            String executionId = E2eApiSupport.enqueue("k8s-echo", "payload", "abc");
+            String executionId2 = E2eApiSupport.enqueue("k8s-echo", "payload", "abc");
 
             org.junit.jupiter.api.Assertions.assertEquals(executionId, executionId2);
 
-            Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(500)).untilAsserted(() ->
-                    RestAssured.get("/v1/executions/{id}", executionId)
-                            .then()
-                            .statusCode(200)
-                            .body("status", equalTo("success")));
+            E2eApiSupport.awaitExecutionSuccess(executionId, Duration.ofSeconds(20));
 
-            String metrics = RestAssured.get("http://localhost:" + mgmtPort + "/actuator/prometheus")
-                    .then()
-                    .statusCode(200)
-                    .extract()
-                    .asString();
-            org.junit.jupiter.api.Assertions.assertTrue(metrics.contains("function_enqueue_total"));
-            org.junit.jupiter.api.Assertions.assertTrue(metrics.contains("function_success_total"));
+            String metrics = E2eApiSupport.fetchPrometheusMetrics(
+                    "http://localhost:" + mgmtPort + "/actuator/prometheus");
+            E2eApiSupport.assertMetricPresent(metrics, "function_enqueue_total");
+            E2eApiSupport.assertMetricPresent(metrics, "function_success_total");
         }
     }
 
@@ -189,28 +141,14 @@ class K8sE2eTest {
 
             String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
             String fn = "k8s-echo-sync-queue";
-            Map<String, Object> spec = Map.of(
-                    "name", fn,
-                    "image", RUNTIME_IMAGE,
-                    "timeoutMs", 5000,
-                    "concurrency", 1,
-                    "queueSize", 20,
-                    "maxRetries", 3,
-                    "executionMode", "POOL",
-                    "endpointUrl", endpointUrl
-            );
-
-            RestAssured.given()
-                    .contentType(ContentType.JSON)
-                    .body(spec)
-                .post("/v1/functions")
-                .then()
-                .statusCode(201);
-
-            awaitSyncInvokeSuccess(fn, "warmup");
+            Map<String, Object> spec = E2eApiSupport.poolFunctionSpec(
+                    fn, RUNTIME_IMAGE, endpointUrl, 5000, 1, 20, 3);
+            E2eApiSupport.registerFunction(spec);
+            E2eApiSupport.awaitSyncInvokeSuccess(fn, "warmup");
 
             Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
-                List<io.restassured.response.Response> responses = invokeSyncBurst(fn, 12);
+                List<io.restassured.response.Response> responses = E2eApiSupport.invokeSyncBurst(
+                        fn, 12, i -> Map.of("message", "sync-" + i));
                 long ok = responses.stream().filter(r -> r.statusCode() == 200).count();
                 java.util.Optional<io.restassured.response.Response> rejected = responses.stream()
                         .filter(r -> r.statusCode() == 429)
@@ -223,17 +161,45 @@ class K8sE2eTest {
             });
 
             Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
-                String metrics = RestAssured.get("http://localhost:" + mgmtPort + "/actuator/prometheus")
-                        .then()
-                        .statusCode(200)
-                        .extract()
-                        .asString();
+                String metrics = E2eApiSupport.fetchPrometheusMetrics(
+                        "http://localhost:" + mgmtPort + "/actuator/prometheus");
 
-                assertMetricSumAtLeast(metrics, "sync_queue_admitted_total", 1.0);
-                assertMetricSumAtLeast(metrics, "sync_queue_rejected_total", 1.0);
-                assertMetricSumAtLeast(metrics, "sync_queue_wait_seconds_count", 1.0);
-                assertMetricPresent(metrics, "sync_queue_depth");
+                E2eApiSupport.assertMetricSumAtLeast(metrics, "sync_queue_admitted_total", Map.of(), 1.0);
+                E2eApiSupport.assertMetricSumAtLeast(metrics, "sync_queue_rejected_total", Map.of(), 1.0);
+                E2eApiSupport.assertMetricSumAtLeast(metrics, "sync_queue_wait_seconds_count", Map.of(), 1.0);
+                E2eApiSupport.assertMetricPresent(metrics, "sync_queue_depth");
             });
+        }
+    }
+
+    @Test
+    void k8sColdStartMetrics_areRecorded() throws Exception {
+        try (LocalPortForward apiForward = client.services().inNamespace(NS).withName("control-plane").portForward(8080);
+             LocalPortForward mgmtForward = client.services().inNamespace(NS).withName("control-plane").portForward(8081)) {
+
+            RestAssured.baseURI = "http://localhost";
+            RestAssured.port = apiForward.getLocalPort();
+            int mgmtPort = mgmtForward.getLocalPort();
+            awaitHealth(mgmtPort, "/actuator/health");
+            awaitHealth(mgmtPort, "/actuator/health/readiness");
+
+            String functionName = "k8s-cold-metrics";
+            String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
+            E2eApiSupport.registerPoolFunction(functionName, RUNTIME_IMAGE, endpointUrl);
+
+            E2eApiSupport.awaitSyncInvokeSuccess(functionName, "cold");
+            E2eApiSupport.awaitSyncInvokeSuccess(functionName, "warm-1");
+            E2eApiSupport.awaitSyncInvokeSuccess(functionName, "warm-2");
+
+            String metrics = E2eApiSupport.fetchPrometheusMetrics(
+                    "http://localhost:" + mgmtPort + "/actuator/prometheus");
+
+            E2eApiSupport.assertMetricSumAtLeast(
+                    metrics, "function_cold_start_total", Map.of("function", functionName), 1.0);
+            E2eApiSupport.assertMetricSumAtLeast(
+                    metrics, "function_warm_start_total", Map.of("function", functionName), 1.0);
+            E2eApiSupport.assertMetricSumAtLeast(
+                    metrics, "function_init_duration_ms_seconds_count", Map.of("function", functionName), 1.0);
         }
     }
 
@@ -334,54 +300,4 @@ class K8sE2eTest {
                         .body("status", equalTo("UP")));
     }
 
-    private static void assertMetricPresent(String metrics, String metric) {
-        Pattern pattern = Pattern.compile("(?m)^\\s*" + Pattern.quote(metric) + "(\\{| )");
-        if (!pattern.matcher(metrics).find()) {
-            org.junit.jupiter.api.Assertions.fail("expected metric " + metric + " to be present");
-        }
-    }
-
-    private static void assertMetricSumAtLeast(String metrics, String metric, double min) {
-        Pattern pattern = Pattern.compile("(?m)^\\s*" + Pattern.quote(metric)
-                + "(\\{[^}]*})?\\s+([0-9.eE+-]+)\\s*$");
-        java.util.regex.Matcher matcher = pattern.matcher(metrics);
-        double sum = 0;
-        int matches = 0;
-        while (matcher.find()) {
-            sum += Double.parseDouble(matcher.group(2));
-            matches++;
-        }
-        org.junit.jupiter.api.Assertions.assertTrue(matches > 0,
-                "expected metric " + metric + " to be present");
-        org.junit.jupiter.api.Assertions.assertTrue(sum >= min,
-                "expected " + metric + " sum >= " + min + " but was " + sum);
-    }
-
-    private static void awaitSyncInvokeSuccess(String functionName, String message) {
-        Awaitility.await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() ->
-                RestAssured.given()
-                        .contentType(ContentType.JSON)
-                        .body(Map.of("input", Map.of("message", message)))
-                        .post("/v1/functions/" + functionName + ":invoke")
-                        .then()
-                        .statusCode(200)
-                        .body("status", equalTo("success"))
-                        .body("output.message", equalTo(message)));
-    }
-
-    private static List<io.restassured.response.Response> invokeSyncBurst(String functionName, int count) {
-        ExecutorService executor = Executors.newFixedThreadPool(count);
-        try {
-            List<CompletableFuture<io.restassured.response.Response>> futures = IntStream.range(0, count)
-                    .mapToObj(i -> CompletableFuture.supplyAsync(() ->
-                            RestAssured.given()
-                                    .contentType(ContentType.JSON)
-                                    .body(Map.of("input", Map.of("message", "sync-" + i)))
-                                    .post("/v1/functions/" + functionName + ":invoke"), executor))
-                    .toList();
-            return futures.stream().map(CompletableFuture::join).toList();
-        } finally {
-            executor.shutdown();
-        }
-    }
 }
