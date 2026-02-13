@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 VM_NAME=${VM_NAME:-nanofaas-e2e-$(date +%s)}
 CPUS=${CPUS:-4}
@@ -33,11 +34,6 @@ trap cleanup EXIT
 
 e2e_require_multipass
 
-if multipass list | awk '{print $1}' | grep -q "^${VM_NAME}$"; then
-  echo "VM ${VM_NAME} already exists. Choose a different VM_NAME." >&2
-  exit 1
-fi
-
 log "Starting multipass VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})"
 e2e_create_vm "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 
@@ -49,7 +45,7 @@ log "Installing dependencies in VM"
 e2e_install_vm_dependencies
 
 log "Syncing repository to VM"
-e2e_sync_project_to_vm "." "${VM_NAME}" "${REMOTE_DIR}"
+e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 
 log "Building JARs in VM"
 e2e_build_core_jars "${REMOTE_DIR}" false

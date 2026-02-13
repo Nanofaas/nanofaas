@@ -104,47 +104,7 @@ cleanup() {
 trap cleanup EXIT
 
 vm_exec() {
-    local remote_cmd="$*"
-    local heartbeat_pid=""
-    local rc=0
-
-    if [[ "${VM_EXEC_HEARTBEAT_SECONDS}" -gt 0 ]]; then
-        (
-            while true; do
-                sleep "${VM_EXEC_HEARTBEAT_SECONDS}"
-                info "vm_exec still running: ${remote_cmd:0:120}"
-            done
-        ) &
-        heartbeat_pid=$!
-    fi
-
-    set +e
-    if [[ "${VM_EXEC_TIMEOUT_SECONDS}" -gt 0 ]]; then
-        if command -v gtimeout >/dev/null 2>&1; then
-            gtimeout "${VM_EXEC_TIMEOUT_SECONDS}" multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
-            rc=$?
-        elif command -v timeout >/dev/null 2>&1; then
-            timeout "${VM_EXEC_TIMEOUT_SECONDS}" multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
-            rc=$?
-        else
-            multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
-            rc=$?
-        fi
-    else
-        multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; ${remote_cmd}"
-        rc=$?
-    fi
-    set -e
-
-    if [[ -n "${heartbeat_pid}" ]]; then
-        kill "${heartbeat_pid}" >/dev/null 2>&1 || true
-        wait "${heartbeat_pid}" 2>/dev/null || true
-    fi
-
-    if [[ "${rc}" -eq 124 ]]; then
-        err "vm_exec timed out after ${VM_EXEC_TIMEOUT_SECONDS}s: ${remote_cmd}"
-    fi
-    return "${rc}"
+    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
 }
 
 # ─── Phase 1: Create VM ─────────────────────────────────────────────────────
@@ -154,7 +114,7 @@ create_vm() {
 
 # ─── Phase 2: Install k3s + dependencies ─────────────────────────────────────
 install_k3s() {
-    if vm_exec "command -v k3s" &>/dev/null; then
+    if vm_exec "command -v k3s >/dev/null 2>&1"; then
         log "k3s already installed, skipping..."
         return
     fi
@@ -163,7 +123,9 @@ install_k3s() {
 }
 
 install_deps() {
-    if vm_exec "command -v docker" &>/dev/null && vm_exec "command -v java" &>/dev/null && vm_exec "command -v helm" &>/dev/null; then
+    if vm_exec "command -v docker >/dev/null 2>&1" \
+        && vm_exec "command -v java >/dev/null 2>&1" \
+        && vm_exec "command -v helm >/dev/null 2>&1"; then
         log "Dependencies already present, skipping..."
         return
     fi

@@ -83,7 +83,7 @@ create_namespace() {
 }
 
 deploy_control_plane() {
-    e2e_deploy_control_plane "${NAMESPACE}" "${CONTROL_IMAGE}" "${NAMESPACE}"
+    e2e_deploy_control_plane "${NAMESPACE}" "${CONTROL_IMAGE}" "${NAMESPACE}" "false"
 }
 
 deploy_function_runtime() {

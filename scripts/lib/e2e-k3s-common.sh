@@ -42,8 +42,9 @@ e2e_create_vm() {
     local disk=${4:-30G}
 
     if multipass list 2>/dev/null | awk '{print $1}' | grep -q "^${vm_name}$"; then
-        e2e_error "VM ${vm_name} already exists"
-        return 1
+        e2e_log "VM ${vm_name} already exists, ensuring it is running..."
+        multipass start "${vm_name}" >/dev/null 2>&1 || true
+        return 0
     fi
 
     e2e_log "Creating VM ${vm_name} (cpus=${cpus}, memory=${memory}, disk=${disk})..."
@@ -82,7 +83,7 @@ e2e_install_vm_dependencies() {
 
     e2e_log "Installing VM dependencies (docker, jdk21${helm_label})..."
     vm_exec "sudo apt-get update -y"
-    vm_exec "sudo apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk"
+    vm_exec "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk-headless"
     vm_exec 'if ! command -v docker >/dev/null 2>&1; then
         curl -fsSL https://get.docker.com | sudo sh
         sudo usermod -aG docker ubuntu
@@ -100,14 +101,35 @@ e2e_sync_project_to_vm() {
     local project_root=${1:?project_root is required}
     local vm_name=${2:?vm_name is required}
     local remote_dir=${3:-/home/ubuntu/nanofaas}
+    local sync_tar=/tmp/nanofaas-e2e-sync.tar
 
     e2e_log "Syncing project to VM (${remote_dir})..."
+    local tmp_tar
+    tmp_tar=$(mktemp "/tmp/nanofaas-e2e-sync-XXXXXX.tar")
+    tar -C "${project_root}" \
+        --exclude='.git' \
+        --exclude='.gradle' \
+        --exclude='.idea' \
+        --exclude='.worktrees' \
+        --exclude='.DS_Store' \
+        --exclude='build' \
+        --exclude='*/build' \
+        --exclude='target' \
+        --exclude='*/target' \
+        -cf "${tmp_tar}" .
+
     if declare -F vm_exec >/dev/null 2>&1; then
-        vm_exec "rm -rf ${remote_dir}"
+        vm_exec "rm -rf ${remote_dir} && mkdir -p ${remote_dir}"
     else
-        multipass exec "${vm_name}" -- bash -lc "rm -rf ${remote_dir}"
+        multipass exec "${vm_name}" -- bash -lc "rm -rf ${remote_dir} && mkdir -p ${remote_dir}"
     fi
-    multipass transfer --recursive "${project_root}" "${vm_name}:${remote_dir}"
+    multipass transfer "${tmp_tar}" "${vm_name}:${sync_tar}"
+    if declare -F vm_exec >/dev/null 2>&1; then
+        vm_exec "tar -xf ${sync_tar} -C ${remote_dir} && rm -f ${sync_tar}"
+    else
+        multipass exec "${vm_name}" -- bash -lc "tar -xf ${sync_tar} -C ${remote_dir} && rm -f ${sync_tar}"
+    fi
+    rm -f "${tmp_tar}"
     e2e_log "Project synced"
 }
 
@@ -414,19 +436,9 @@ e2e_register_pool_function() {
     local runner_name=${9:-curl-register}
 
     e2e_log "Registering function '${name}'..."
-    vm_exec "kubectl run ${runner_name} --rm -i --restart=Never --image=curlimages/curl:latest -n ${namespace} -- \
-        curl -sf -X POST http://control-plane:8080/v1/functions \
-        -H 'Content-Type: application/json' \
-        -d '{
-            \"name\": \"${name}\",
-            \"image\": \"${image}\",
-            \"timeoutMs\": ${timeout_ms},
-            \"concurrency\": ${concurrency},
-            \"queueSize\": ${queue_size},
-            \"maxRetries\": ${max_retries},
-            \"executionMode\": \"POOL\",
-            \"endpointUrl\": \"${endpoint_url}\"
-        }'"
+    local payload
+    payload="{\"name\":\"${name}\",\"image\":\"${image}\",\"timeoutMs\":${timeout_ms},\"concurrency\":${concurrency},\"queueSize\":${queue_size},\"maxRetries\":${max_retries},\"executionMode\":\"POOL\",\"endpointUrl\":\"${endpoint_url}\"}"
+    e2e_kubectl_curl_control_plane "${namespace}" "${runner_name}" "POST" "/v1/functions" "${payload}" "20" >/dev/null
     e2e_log "Function '${name}' registered"
 }
 
@@ -439,15 +451,17 @@ e2e_kubectl_curl_control_plane() {
     local body_json=${5:-}
     local max_time=${6:-35}
 
+    local service_ip
+    service_ip=$(vm_exec "kubectl get svc -n ${namespace} control-plane -o jsonpath='{.spec.clusterIP}'")
+
     if [[ -n "${body_json}" ]]; then
-        vm_exec "kubectl run ${runner_name} --rm -i --restart=Never --image=curlimages/curl:latest -n ${namespace} -- \
-            curl -s --max-time ${max_time} -X ${method} http://control-plane:8080${path} \
-            -H 'Content-Type: application/json' \
-            -d '${body_json}'"
-    else
-        vm_exec "kubectl run ${runner_name} --rm -i --restart=Never --image=curlimages/curl:latest -n ${namespace} -- \
-            curl -s --max-time ${max_time} -X ${method} http://control-plane:8080${path}"
+        local body_b64
+        body_b64=$(printf '%s' "${body_json}" | base64 | tr -d '\n')
+        vm_exec "echo '${body_b64}' | base64 -d | curl -s --max-time ${max_time} -X ${method} http://${service_ip}:8080${path} -H 'Content-Type: application/json' --data-binary @-"
+        return
     fi
+
+    vm_exec "curl -s --max-time ${max_time} -X ${method} http://${service_ip}:8080${path}"
 }
 
 e2e_extract_json_by_field() {
@@ -563,14 +577,12 @@ e2e_enqueue_message_burst() {
 
     local i
     for i in $(seq 1 "${count}"); do
-        e2e_kubectl_curl_control_plane \
+        e2e_enqueue_message \
             "${namespace}" \
-            "${runner_prefix}-${i}" \
-            "POST" \
-            "/v1/functions/${function_name}:enqueue" \
-            "{\"input\": {\"message\": \"${message_prefix}-${i}\"}}" >/dev/null &
+            "${function_name}" \
+            "${message_prefix}-${i}" \
+            "${runner_prefix}-${i}" >/dev/null
     done
-    wait
 }
 
 e2e_get_control_plane_pod_name() {
