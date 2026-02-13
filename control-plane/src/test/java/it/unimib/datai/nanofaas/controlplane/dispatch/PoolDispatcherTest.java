@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -14,6 +13,7 @@ import java.time.Instant;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,10 +57,11 @@ class PoolDispatcherTest {
         );
 
         PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
-        InvocationResult result = dispatcher.dispatch(task).get();
+        DispatchResult dr = dispatcher.dispatch(task).get();
 
-        assertTrue(result.success());
-        assertNotNull(result.output());
+        assertTrue(dr.result().success());
+        assertNotNull(dr.result().output());
+        assertFalse(dr.coldStart());
         assertEquals(1, server.getRequestCount());
         server.shutdown();
     }
@@ -104,10 +105,10 @@ class PoolDispatcherTest {
         );
 
         PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
-        InvocationResult result = dispatcher.dispatch(task).get();
+        DispatchResult dr = dispatcher.dispatch(task).get();
 
-        assertTrue(result.success());
-        assertEquals("plain-output", result.output());
+        assertTrue(dr.result().success());
+        assertEquals("plain-output", dr.result().output());
         server.shutdown();
     }
 }

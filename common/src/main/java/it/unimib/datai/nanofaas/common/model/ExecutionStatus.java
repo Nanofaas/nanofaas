@@ -8,6 +8,8 @@ public record ExecutionStatus(
         Instant startedAt,
         Instant finishedAt,
         Object output,
-        ErrorInfo error
+        ErrorInfo error,
+        boolean coldStart,
+        Long initDurationMs
 ) {
 }

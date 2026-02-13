@@ -39,8 +39,11 @@ public class ExecutionRecord {
     private ExecutionState state;
     private Instant startedAt;
     private Instant finishedAt;
+    private Instant dispatchedAt;
     private ErrorInfo lastError;
     private Object output;
+    private boolean coldStart;
+    private Long initDurationMs;
 
     public ExecutionRecord(String executionId, InvocationTask task) {
         this.executionId = executionId;
@@ -68,8 +71,11 @@ public class ExecutionRecord {
                 state,
                 startedAt,
                 finishedAt,
+                dispatchedAt,
                 output,
-                lastError
+                lastError,
+                coldStart,
+                initDurationMs
         );
     }
 
@@ -121,6 +127,21 @@ public class ExecutionRecord {
     }
 
     /**
+     * Marks the dispatch time for queue wait calculation.
+     */
+    public synchronized void markDispatchedAt() {
+        this.dispatchedAt = Instant.now();
+    }
+
+    /**
+     * Records cold start information from runtime headers.
+     */
+    public synchronized void markColdStart(long initDurationMs) {
+        this.coldStart = true;
+        this.initDurationMs = initDurationMs;
+    }
+
+    /**
      * Resets the execution for a retry attempt.
      */
     public synchronized void resetForRetry(InvocationTask retryTask) {
@@ -129,8 +150,11 @@ public class ExecutionRecord {
         this.state = ExecutionState.QUEUED;
         this.startedAt = null;
         this.finishedAt = null;
+        this.dispatchedAt = null;
         this.lastError = null;
         this.output = null;
+        this.coldStart = false;
+        this.initDurationMs = null;
     }
 
     // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads
@@ -218,7 +242,10 @@ public class ExecutionRecord {
             ExecutionState state,
             Instant startedAt,
             Instant finishedAt,
+            Instant dispatchedAt,
             Object output,
-            ErrorInfo lastError
+            ErrorInfo lastError,
+            boolean coldStart,
+            Long initDurationMs
     ) {}
 }

@@ -18,7 +18,12 @@ public class Metrics {
     private final Map<String, Counter> retryCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> timeoutCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> rejectedCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> coldStartCounters = new ConcurrentHashMap<>();
+    private final Map<String, Counter> warmStartCounters = new ConcurrentHashMap<>();
     private final Map<String, Timer> latencyTimers = new ConcurrentHashMap<>();
+    private final Map<String, Timer> initDurationTimers = new ConcurrentHashMap<>();
+    private final Map<String, Timer> queueWaitTimers = new ConcurrentHashMap<>();
+    private final Map<String, Timer> e2eLatencyTimers = new ConcurrentHashMap<>();
 
     public Metrics(MeterRegistry registry) {
         this.registry = registry;
@@ -52,8 +57,37 @@ public class Metrics {
         counter(rejectedCounters, "function_queue_rejected_total", function).increment();
     }
 
+    public void coldStart(String function) {
+        counter(coldStartCounters, "function_cold_start_total", function).increment();
+    }
+
+    public void warmStart(String function) {
+        counter(warmStartCounters, "function_warm_start_total", function).increment();
+    }
+
     public Timer latency(String function) {
         return latencyTimers.computeIfAbsent(function, name -> Timer.builder("function_latency_ms")
+                .tag("function", name)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry));
+    }
+
+    public Timer initDuration(String function) {
+        return initDurationTimers.computeIfAbsent(function, name -> Timer.builder("function_init_duration_ms")
+                .tag("function", name)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry));
+    }
+
+    public Timer queueWait(String function) {
+        return queueWaitTimers.computeIfAbsent(function, name -> Timer.builder("function_queue_wait_ms")
+                .tag("function", name)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry));
+    }
+
+    public Timer e2eLatency(String function) {
+        return e2eLatencyTimers.computeIfAbsent(function, name -> Timer.builder("function_e2e_latency_ms")
                 .tag("function", name)
                 .publishPercentiles(0.5, 0.95, 0.99)
                 .register(registry));

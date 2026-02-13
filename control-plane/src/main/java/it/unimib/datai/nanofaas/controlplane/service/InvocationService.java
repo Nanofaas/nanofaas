@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
@@ -173,24 +174,27 @@ public class InvocationService {
         }
 
         record.markRunning();
+        record.markDispatchedAt();
         metrics.dispatch(task.functionName());
 
         ExecutionMode mode = task.functionSpec().executionMode();
-        java.util.concurrent.CompletableFuture<InvocationResult> future = switch (mode) {
+        java.util.concurrent.CompletableFuture<DispatchResult> future = switch (mode) {
             case LOCAL -> dispatcherRouter.dispatchLocal(task);
             case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
         };
 
-        future.whenComplete((result, error) -> {
+        future.whenComplete((dispatchResult, error) -> {
             if (error != null) {
-                completeExecution(task.executionId(), InvocationResult.error(mode.name() + "_ERROR", error.getMessage()));
+                completeExecution(task.executionId(),
+                        DispatchResult.warm(InvocationResult.error(mode.name() + "_ERROR", error.getMessage())));
             } else {
-                completeExecution(task.executionId(), result);
+                completeExecution(task.executionId(), dispatchResult);
             }
         });
     }
 
-    public void completeExecution(String executionId, InvocationResult result) {
+    public void completeExecution(String executionId, DispatchResult dispatchResult) {
+        InvocationResult result = dispatchResult.result();
         ExecutionRecord record = executionStore.get(executionId).orElse(null);
         if (record == null) {
             return;
@@ -228,23 +232,59 @@ public class InvocationService {
             return;
         }
 
+        // Record cold start info from runtime headers
+        String functionName = record.task().functionName();
+        if (dispatchResult.coldStart()) {
+            record.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
+            metrics.coldStart(functionName);
+            if (dispatchResult.initDurationMs() != null) {
+                metrics.initDuration(functionName).record(dispatchResult.initDurationMs(), TimeUnit.MILLISECONDS);
+            }
+        } else {
+            metrics.warmStart(functionName);
+        }
+
         // No retry - complete the execution atomically
         ExecutionRecord.Snapshot beforeComplete = record.snapshot();
         if (result.success()) {
             record.markSuccess(result.output());
-            metrics.success(record.task().functionName());
+            metrics.success(functionName);
         } else {
             record.markError(result.error());
-            metrics.error(record.task().functionName());
+            metrics.error(functionName);
         }
 
         ExecutionRecord.Snapshot afterComplete = record.snapshot();
         if (beforeComplete.startedAt() != null && afterComplete.finishedAt() != null) {
             long durationMs = afterComplete.finishedAt().toEpochMilli() - beforeComplete.startedAt().toEpochMilli();
-            metrics.latency(record.task().functionName()).record(durationMs, TimeUnit.MILLISECONDS);
+            metrics.latency(functionName).record(durationMs, TimeUnit.MILLISECONDS);
+        }
+
+        // Queue wait time: startedAt - enqueuedAt
+        InvocationTask task = record.task();
+        if (task.enqueuedAt() != null && beforeComplete.startedAt() != null) {
+            long queueWaitMs = beforeComplete.startedAt().toEpochMilli() - task.enqueuedAt().toEpochMilli();
+            if (queueWaitMs >= 0) {
+                metrics.queueWait(functionName).record(queueWaitMs, TimeUnit.MILLISECONDS);
+            }
+        }
+
+        // E2E latency: finishedAt - enqueuedAt
+        if (task.enqueuedAt() != null && afterComplete.finishedAt() != null) {
+            long e2eMs = afterComplete.finishedAt().toEpochMilli() - task.enqueuedAt().toEpochMilli();
+            if (e2eMs >= 0) {
+                metrics.e2eLatency(functionName).record(e2eMs, TimeUnit.MILLISECONDS);
+            }
         }
 
         record.completion().complete(result);
+    }
+
+    /**
+     * Overload for backward compatibility (e.g., callback completions without cold start info).
+     */
+    public void completeExecution(String executionId, InvocationResult result) {
+        completeExecution(executionId, DispatchResult.warm(result));
     }
 
     private void enforceRateLimit() {
@@ -311,7 +351,9 @@ public class InvocationService {
                 snapshot.startedAt(),
                 snapshot.finishedAt(),
                 snapshot.output(),
-                snapshot.lastError()
+                snapshot.lastError(),
+                snapshot.coldStart(),
+                snapshot.initDurationMs()
         );
     }
 

@@ -95,7 +95,11 @@ class InvocationServiceRetryTest {
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
         when(queueManager.enqueue(any())).thenReturn(true);
         when(syncQueueService.enabled()).thenReturn(false);
-        when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test").register(new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry));
+        when(metrics.queueWait(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(simpleMeterRegistry));
+        when(metrics.e2eLatency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-e2e").register(simpleMeterRegistry));
+        when(metrics.initDuration(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-init").register(simpleMeterRegistry));
     }
 
     @Test

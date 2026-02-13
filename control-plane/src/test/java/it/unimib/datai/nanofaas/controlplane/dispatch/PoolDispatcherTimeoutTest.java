@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -43,11 +42,11 @@ class PoolDispatcherTimeoutTest {
         );
 
         PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
-        InvocationResult result = dispatcher.dispatch(task).get();
+        DispatchResult dr = dispatcher.dispatch(task).get();
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.error().code()).isEqualTo("POOL_TIMEOUT");
-        assertThat(result.error().message()).contains("200ms");
+        assertThat(dr.result().success()).isFalse();
+        assertThat(dr.result().error().code()).isEqualTo("POOL_TIMEOUT");
+        assertThat(dr.result().error().message()).contains("200ms");
 
         server.shutdown();
     }
@@ -66,10 +65,10 @@ class PoolDispatcherTimeoutTest {
         );
 
         PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
-        InvocationResult result = dispatcher.dispatch(task).get();
+        DispatchResult dr = dispatcher.dispatch(task).get();
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.error().code()).isEqualTo("POOL_ENDPOINT_MISSING");
+        assertThat(dr.result().success()).isFalse();
+        assertThat(dr.result().error().code()).isEqualTo("POOL_ENDPOINT_MISSING");
     }
 
     @Test
@@ -92,10 +91,10 @@ class PoolDispatcherTimeoutTest {
         );
 
         PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
-        InvocationResult result = dispatcher.dispatch(task).get();
+        DispatchResult dr = dispatcher.dispatch(task).get();
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.error().code()).isEqualTo("POOL_ERROR");
+        assertThat(dr.result().success()).isFalse();
+        assertThat(dr.result().error().code()).isEqualTo("POOL_ERROR");
 
         server.shutdown();
     }

@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.dispatch;
 
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Component;
 
@@ -17,11 +16,11 @@ public class DispatcherRouter {
         this.poolDispatcher = poolDispatcher;
     }
 
-    public CompletableFuture<InvocationResult> dispatchLocal(InvocationTask task) {
+    public CompletableFuture<DispatchResult> dispatchLocal(InvocationTask task) {
         return localDispatcher.dispatch(task);
     }
 
-    public CompletableFuture<InvocationResult> dispatchPool(InvocationTask task) {
+    public CompletableFuture<DispatchResult> dispatchPool(InvocationTask task) {
         return poolDispatcher.dispatch(task);
     }
 }
