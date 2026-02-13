@@ -57,20 +57,11 @@ check_prerequisites() {
 }
 
 create_vm() {
-    log "Creating VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})..."
-    multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
-    log "VM created successfully"
+    e2e_create_vm "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 }
 
 install_dependencies() {
-    log "Installing dependencies in VM..."
-    vm_exec "sudo apt-get update -y"
-    vm_exec "sudo apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk"
-    vm_exec "if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo usermod -aG docker ubuntu
-    fi"
-    log "Dependencies installed"
+    e2e_install_vm_dependencies
 }
 
 install_k3s() {
@@ -78,23 +69,15 @@ install_k3s() {
 }
 
 sync_project() {
-    log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/nanofaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
-    log "Project synced"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
 }
 
 build_jars() {
-    log "Building JARs in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
-    log "JARs built"
+    e2e_build_core_jars "/home/ubuntu/nanofaas"
 }
 
 build_images() {
-    log "Building Docker images in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
-    log "Docker images built"
+    e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 }
 
 push_images_to_registry() {
@@ -102,193 +85,44 @@ push_images_to_registry() {
 }
 
 create_namespace() {
-    log "Creating namespace ${NAMESPACE}..."
-    vm_exec "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
-    log "Namespace created"
+    e2e_create_namespace "${NAMESPACE}"
 }
 
 deploy_control_plane() {
-    log "Deploying control-plane..."
-
-    vm_exec "cat <<'EOF' | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: control-plane
-  namespace: ${NAMESPACE}
-  labels:
-    app: control-plane
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: control-plane
-  template:
-    metadata:
-      labels:
-        app: control-plane
-    spec:
-      containers:
-      - name: control-plane
-        image: ${CONTROL_IMAGE}
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8080
-          name: api
-        - containerPort: 8081
-          name: management
-        env:
-        - name: POD_NAMESPACE
-          value: \"${NAMESPACE}\"
-        - name: SYNC_QUEUE_ENABLED
-          value: \"false\"
-        readinessProbe:
-          httpGet:
-            path: /actuator/health/readiness
-            port: 8081
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /actuator/health/liveness
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: control-plane
-  namespace: ${NAMESPACE}
-spec:
-  selector:
-    app: control-plane
-  ports:
-  - name: api
-    port: 8080
-    targetPort: 8080
-  - name: management
-    port: 8081
-    targetPort: 8081
-EOF"
-
-    log "Control-plane deployment created"
+    e2e_deploy_control_plane "${NAMESPACE}" "${CONTROL_IMAGE}" "${NAMESPACE}" "false"
 }
 
 deploy_function_runtime() {
-    log "Deploying function-runtime..."
-
-    vm_exec "cat <<'EOF' | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: function-runtime
-  namespace: ${NAMESPACE}
-  labels:
-    app: function-runtime
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: function-runtime
-  template:
-    metadata:
-      labels:
-        app: function-runtime
-    spec:
-      containers:
-      - name: function-runtime
-        image: ${RUNTIME_IMAGE}
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8080
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: function-runtime
-  namespace: ${NAMESPACE}
-spec:
-  selector:
-    app: function-runtime
-  ports:
-  - name: http
-    port: 8080
-    targetPort: 8080
-EOF"
-
-    log "Function-runtime deployment created"
+    e2e_deploy_function_runtime "${NAMESPACE}" "${RUNTIME_IMAGE}"
 }
 
 wait_for_deployment() {
     local name=$1
     local timeout=${2:-180}
-    log "Waiting for deployment ${name} to be ready (timeout: ${timeout}s)..."
-    vm_exec "kubectl rollout status deployment/${name} -n ${NAMESPACE} --timeout=${timeout}s"
-    log "Deployment ${name} is ready"
+    e2e_wait_for_deployment "${NAMESPACE}" "${name}" "${timeout}"
 }
 
 verify_pods_running() {
-    log "Verifying all pods are running..."
-
-    local cp_status
-    cp_status=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].status.phase}'")
-    if [[ "${cp_status}" != "Running" ]]; then
-        error "control-plane pod is not Running (status: ${cp_status})"
-        vm_exec "kubectl describe pod -n ${NAMESPACE} -l app=control-plane"
-        exit 1
-    fi
-    log "  control-plane: Running"
-
-    local fr_status
-    fr_status=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=function-runtime -o jsonpath='{.items[0].status.phase}'")
-    if [[ "${fr_status}" != "Running" ]]; then
-        error "function-runtime pod is not Running (status: ${fr_status})"
-        vm_exec "kubectl describe pod -n ${NAMESPACE} -l app=function-runtime"
-        exit 1
-    fi
-    log "  function-runtime: Running"
-
-    log "All pods running"
+    e2e_verify_core_pods_running "${NAMESPACE}"
 }
 
 dump_pod_logs() {
-    warn "--- control-plane logs (last 50 lines) ---"
-    vm_exec "kubectl logs -n ${NAMESPACE} -l app=control-plane --tail=50" 2>/dev/null || true
-    warn "--- function-runtime logs (last 50 lines) ---"
-    vm_exec "kubectl logs -n ${NAMESPACE} -l app=function-runtime --tail=50" 2>/dev/null || true
+    e2e_dump_core_pod_logs "${NAMESPACE}" 50
 }
 
 # --- Test-specific functions ---
 
 register_function() {
-    log "Registering echo-test function in POOL mode..."
-
-    vm_exec "kubectl run curl-register --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-        curl -sf -X POST http://control-plane:8080/v1/functions \
-        -H 'Content-Type: application/json' \
-        -d '{
-            \"name\": \"echo-test\",
-            \"image\": \"${RUNTIME_IMAGE}\",
-            \"timeoutMs\": 30000,
-            \"concurrency\": 2,
-            \"queueSize\": 20,
-            \"maxRetries\": 3,
-            \"executionMode\": \"POOL\",
-            \"endpointUrl\": \"http://function-runtime:8080/invoke\"
-        }'"
-
-    log "Function registered"
+    e2e_register_pool_function \
+        "${NAMESPACE}" \
+        "echo-test" \
+        "${RUNTIME_IMAGE}" \
+        "http://function-runtime:8080/invoke" \
+        30000 \
+        2 \
+        20 \
+        3 \
+        "curl-register"
 
     # Allow scheduler to pick up the new function
     sleep 2
@@ -298,20 +132,11 @@ invoke_sync() {
     local label=$1
     log "Sync invoke (${label})..."
 
-    # Invoke and capture response. kubectl run --rm -i mixes pod deletion message
-    # into stdout, so we grep for the JSON body instead of parsing HTTP codes.
-    local response
-    response=$(vm_exec "kubectl run curl-invoke-${label} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-        curl -s --max-time 35 -X POST http://control-plane:8080/v1/functions/echo-test:invoke \
-        -H 'Content-Type: application/json' \
-        -d '{\"input\": {\"message\": \"${label}\"}}'")
-
-    # Extract JSON body (line containing executionId)
     local body
-    body=$(echo "${response}" | grep '"executionId"' | head -1)
+    body=$(e2e_invoke_sync_message "${NAMESPACE}" "echo-test" "${label}" "curl-invoke-${label}")
 
     if [[ -z "${body}" ]]; then
-        error "  ${label}: No valid JSON response — raw output: ${response}"
+        error "  ${label}: No valid JSON response"
         return 1
     fi
 
@@ -323,22 +148,20 @@ invoke_sync() {
 
     # Extract executionId
     local exec_id
-    exec_id=$(echo "${body}" | sed -n 's/.*"executionId":"\([^"]*\)".*/\1/p')
+    exec_id=$(e2e_extract_execution_id "${body}")
 
     if [[ -z "${exec_id}" ]]; then
         warn "  Could not extract executionId from response: ${body}"
         return
     fi
 
-    # Query execution status to get cold start details
     local status_response
-    status_response=$(vm_exec "kubectl run curl-status-${label} --rm -i --restart=Never --image=curlimages/curl:latest -n ${NAMESPACE} -- \
-        curl -s --max-time 10 http://control-plane:8080/v1/executions/${exec_id}" | grep '"executionId"' | head -1)
+    status_response=$(e2e_fetch_execution "${NAMESPACE}" "${exec_id}" "curl-status-${label}")
 
     local is_cold
-    is_cold=$(echo "${status_response}" | sed -n 's/.*"coldStart":\([a-z]*\).*/\1/p')
+    is_cold=$(e2e_extract_bool_field "${status_response}" "coldStart")
     local init_ms
-    init_ms=$(echo "${status_response}" | sed -n 's/.*"initDurationMs":\([0-9]*\).*/\1/p')
+    init_ms=$(e2e_extract_numeric_field "${status_response}" "initDurationMs")
 
     if [[ "${is_cold}" == "true" ]]; then
         log "  ${label}: COLD START (initDurationMs=${init_ms:-N/A}ms) [executionId=${exec_id}]"
@@ -419,11 +242,8 @@ assert_metric_gt() {
 verify_cold_start_metrics() {
     log "Scraping Prometheus metrics from control-plane management port..."
 
-    local pod_name
-    pod_name=$(vm_exec "kubectl get pods -n ${NAMESPACE} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
-
     local metrics
-    metrics=$(vm_exec "kubectl exec -n ${NAMESPACE} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus")
+    metrics=$(e2e_fetch_control_plane_prometheus "${NAMESPACE}")
 
     log "Asserting cold start metrics..."
 

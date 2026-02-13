@@ -34,6 +34,14 @@ tasks.named('test') {
     dependsOn ':examples:java:json-transform:bootJar'
 }
 
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
+
+tasks.named('jar') {
+    enabled = false
+}
+
 graalvmNative {
     binaries {
         main {
