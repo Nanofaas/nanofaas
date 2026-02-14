@@ -8,6 +8,7 @@ set -euo pipefail
 #   ./scripts/e2e-k3s-helm.sh                  # Full setup (build + deploy)
 #   SKIP_BUILD=true ./scripts/e2e-k3s-helm.sh  # Skip build if images exist
 #   KEEP_VM=false ./scripts/e2e-k3s-helm.sh    # Delete VM on exit
+#   MULTIPASS_PURGE=never ./scripts/e2e-k3s-helm.sh  # Keep deleted-VM cache untouched
 #
 # Prerequisites:
 #   - multipass (https://multipass.run)
@@ -30,6 +31,8 @@ VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS:-30}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+e2e_set_log_prefix "e2e"
+vm_exec() { e2e_vm_exec "$@"; }
 
 # Image tags for local build
 TAG="e2e"
@@ -43,69 +46,27 @@ BASH_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}"
 BASH_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}"
 CURL_IMAGE="${LOCAL_REGISTRY}/curlimages/curl:latest"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-log()  { echo -e "${GREEN}[e2e]${NC} $*"; }
-warn() { echo -e "${YELLOW}[e2e]${NC} $*"; }
-info() { echo -e "${CYAN}[e2e]${NC} $*"; }
-err()  { echo -e "${RED}[e2e]${NC} $*" >&2; }
-
 check_prerequisites() {
     e2e_require_multipass
 }
 
-cleanup_stale_multipass_exec() {
-    local stale_pids
-    stale_pids=$(ps -axo pid=,ppid=,command= | awk -v vm="${VM_NAME}" '
-        $2 == 1 && $0 ~ ("multipass exec " vm " --") { print $1 }
-    ')
-
-    if [[ -z "${stale_pids}" ]]; then
-        return
-    fi
-
-    local stale_list
-    stale_list=$(echo "${stale_pids}" | tr '\n' ' ' | sed 's/[[:space:]]\+$//')
-    warn "Cleaning stale multipass exec processes: ${stale_list}"
-    # shellcheck disable=SC2086
-    kill ${stale_pids} 2>/dev/null || true
-    sleep 1
-}
-
-get_vm_ip() {
-    multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3
-}
-
 cleanup() {
     local exit_code=$?
-    if [[ "${KEEP_VM}" == "true" ]]; then
+    if [[ "${KEEP_VM:-false}" == "true" ]]; then
         local vm_ip
-        vm_ip=$(get_vm_ip) || true
-        warn "KEEP_VM=true — VM '${VM_NAME}' preserved"
-        warn "  SSH:    multipass shell ${VM_NAME}"
-        warn "  Delete: multipass delete ${VM_NAME} && multipass purge"
+        vm_ip=$(e2e_get_vm_ip) || true
+        e2e_cleanup_vm
         if [[ -n "${vm_ip}" ]]; then
-            warn "  API:    http://${vm_ip}:30080/v1/functions"
+            warn "  API:     http://${vm_ip}:30080/v1/functions"
             warn "  Metrics: http://${vm_ip}:30081/actuator/prometheus"
             warn "  Prom UI: http://${vm_ip}:30090"
         fi
-        return
+    else
+        e2e_cleanup_vm
     fi
-    log "Cleaning up VM ${VM_NAME}..."
-    multipass delete "${VM_NAME}" 2>/dev/null || true
-    multipass purge 2>/dev/null || true
-    exit $exit_code
+    exit "${exit_code}"
 }
 trap cleanup EXIT
-
-vm_exec() {
-    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
-}
 
 # ─── Phase 1: Create VM ─────────────────────────────────────────────────────
 create_vm() {
@@ -330,7 +291,7 @@ verify() {
     # Smoke-test: invoke each function
     log "Smoke-testing each function..."
     local vm_ip
-    vm_ip=$(get_vm_ip)
+    vm_ip=$(e2e_get_vm_ip)
 
     local ws_payload='{"input":{"text":"hello world test"}}'
     local jt_payload='{"input":{"data":[{"dept":"eng","salary":80000},{"dept":"sales","salary":70000}],"groupBy":"dept","operation":"count"}}'
@@ -380,7 +341,7 @@ verify() {
 
 print_summary() {
     local vm_ip
-    vm_ip=$(get_vm_ip) || vm_ip="<VM_IP>"
+    vm_ip=$(e2e_get_vm_ip) || vm_ip="<VM_IP>"
 
     log ""
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -407,7 +368,6 @@ main() {
     log ""
 
     check_prerequisites
-    cleanup_stale_multipass_exec
     create_vm
     install_deps
     install_k3s

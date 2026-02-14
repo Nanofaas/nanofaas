@@ -138,6 +138,39 @@ class InternalScalerTest {
     }
 
     @Test
+    void scalingLoop_scalesFromZeroWhenLoadPresent() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 5,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        FunctionSpec spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
+
+        when(registry.list()).thenReturn(List.of(spec));
+        // 0 ready replicas, minReplicas=0 → currentReplicas should be treated as 1
+        when(resourceManager.getReadyReplicas("echo")).thenReturn(0);
+        // in_flight = 4, target = 2, ratio = 2.0, desired = ceil(2.0 * 1) = 2
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(4.0);
+
+        scaler.scalingLoop();
+
+        verify(resourceManager).setReplicas("echo", 2);
+    }
+
+    @Test
+    void scalingLoop_scalesToZeroWhenNoLoad() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 5,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        FunctionSpec spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
+
+        when(registry.list()).thenReturn(List.of(spec));
+        when(resourceManager.getReadyReplicas("echo")).thenReturn(2);
+        // in_flight = 0, target = 2, ratio = 0.0, desired = ceil(0 * 2) = 0, clamped to min=0
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+
+        scaler.scalingLoop();
+
+        verify(resourceManager).setReplicas("echo", 0);
+    }
+
+    @Test
     void doesNotStartWithoutResourceManager() {
         InternalScaler noK8sScaler = new InternalScaler(registry, metricsReader, null, PROPS, coldStartTracker);
         noK8sScaler.start();

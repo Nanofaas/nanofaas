@@ -15,14 +15,8 @@ CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:${
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
-
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-log() { echo -e "${GREEN}[host-cli-e2e]${NC} $*"; }
-warn() { echo -e "${YELLOW}[host-cli-e2e]${NC} $*"; }
-err() { echo -e "${RED}[host-cli-e2e]${NC} $*" >&2; }
+e2e_set_log_prefix "host-cli-e2e"
+vm_exec() { e2e_vm_exec "$@"; }
 
 KUBECONFIG_HOST=""
 CLI_CONFIG=""
@@ -31,24 +25,9 @@ CLI_BIN="${PROJECT_ROOT}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas"
 
 cleanup() {
     local exit_code=$?
-
-    if [[ -n "${CLI_CONFIG}" && -f "${CLI_CONFIG}" ]]; then
-        rm -f "${CLI_CONFIG}" || true
-    fi
-    if [[ -n "${KUBECONFIG_HOST}" && -f "${KUBECONFIG_HOST}" ]]; then
-        rm -f "${KUBECONFIG_HOST}" || true
-    fi
-
-    if [[ "${KEEP_VM}" == "true" ]]; then
-        warn "KEEP_VM=true, VM '${VM_NAME}' preserved"
-        warn "  SSH: multipass shell ${VM_NAME}"
-        warn "  Delete: multipass delete ${VM_NAME} && multipass purge"
-        return
-    fi
-
-    log "Cleaning up VM ${VM_NAME}..."
-    multipass delete "${VM_NAME}" >/dev/null 2>&1 || true
-    multipass purge >/dev/null 2>&1 || true
+    [[ -n "${CLI_CONFIG}" && -f "${CLI_CONFIG}" ]] && rm -f "${CLI_CONFIG}" || true
+    [[ -n "${KUBECONFIG_HOST}" && -f "${KUBECONFIG_HOST}" ]] && rm -f "${KUBECONFIG_HOST}" || true
+    e2e_cleanup_vm
     exit "${exit_code}"
 }
 trap cleanup EXIT
@@ -61,31 +40,15 @@ check_prerequisites() {
 }
 
 create_vm() {
-    if multipass info "${VM_NAME}" >/dev/null 2>&1; then
-        log "VM ${VM_NAME} already exists, reusing"
-        multipass start "${VM_NAME}" >/dev/null 2>&1 || true
-        return
-    fi
-    log "Creating VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})..."
-    multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
-}
-
-vm_exec() {
-    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
+    e2e_ensure_vm_running "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 }
 
 install_vm_dependencies() {
-    log "Installing dependencies in VM..."
-    vm_exec "sudo apt-get update -y"
-    vm_exec "sudo apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk"
-    vm_exec "if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sudo sh; fi"
-    vm_exec "sudo usermod -aG docker ubuntu"
+    e2e_install_vm_dependencies
 }
 
 sync_project() {
-    log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/nanofaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
 }
 
 build_control_plane_image() {
@@ -101,9 +64,9 @@ build_control_plane_image() {
 }
 
 extract_vm_ip() {
-    VM_IP=$(multipass info "${VM_NAME}" --format csv | tail -1 | cut -d, -f3)
+    VM_IP=$(e2e_get_vm_ip)
     if [[ -z "${VM_IP}" ]]; then
-        err "Failed to resolve VM IP"
+        error "Failed to resolve VM IP"
         exit 1
     fi
 }
@@ -111,7 +74,7 @@ extract_vm_ip() {
 export_kubeconfig_to_host() {
     log "Exporting kubeconfig from VM to host..."
     KUBECONFIG_HOST="$(mktemp -t nanofaas-kubeconfig.XXXXXX)"
-    multipass transfer "${VM_NAME}:/home/ubuntu/.kube/config" "${KUBECONFIG_HOST}"
+    e2e_copy_from_vm "${VM_NAME}" "/home/ubuntu/.kube/config" "${KUBECONFIG_HOST}"
 
     python3 - "${KUBECONFIG_HOST}" "${VM_IP}" <<'PY'
 import pathlib

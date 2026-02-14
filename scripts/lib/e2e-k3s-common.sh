@@ -1,23 +1,337 @@
 #!/usr/bin/env bash
 
 # Shared helpers for k3s-based E2E scripts.
-# Callers are expected to define:
-#   - log/warn/error functions (optional)
-#   - vm_exec() for remote command execution where required
+# Source this file and then call e2e_set_log_prefix to set your script's prefix.
 
-e2e_log() {
-    if declare -F log >/dev/null 2>&1; then
-        log "$@"
-    else
-        echo "[e2e] $*"
+# ─── Colors ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ─── Logging with configurable prefix ────────────────────────────────────────
+E2E_LOG_PREFIX="e2e"
+e2e_set_log_prefix() { E2E_LOG_PREFIX="$1"; }
+
+log()   { echo -e "${GREEN}[${E2E_LOG_PREFIX}]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[${E2E_LOG_PREFIX}]${NC} $*"; }
+info()  { echo -e "${CYAN}[${E2E_LOG_PREFIX}]${NC} $*"; }
+error() { echo -e "${RED}[${E2E_LOG_PREFIX}]${NC} $*" >&2; }
+err()   { error "$@"; }
+
+# Backward-compat aliases
+e2e_log() { log "$@"; }
+e2e_error() { error "$@"; }
+e2e_warn_stderr() { echo -e "${YELLOW}[${E2E_LOG_PREFIX}]${NC} $*" >&2; }
+
+# ─── Temp file helpers ───────────────────────────────────────────────────────
+e2e_mktemp_file() {
+    local prefix=${1:?prefix is required}
+    local suffix=${2:-}
+    local tmp
+
+    tmp=$(mktemp "/tmp/${prefix}.XXXXXX")
+    if [[ -n "${suffix}" ]]; then
+        local with_suffix="${tmp}${suffix}"
+        mv "${tmp}" "${with_suffix}"
+        tmp="${with_suffix}"
+    fi
+    echo "${tmp}"
+}
+
+# ─── Multipass purge policy ──────────────────────────────────────────────────
+# MULTIPASS_PURGE:
+#   - always|true|1|yes  -> always run multipass purge
+#   - never|false|0|no   -> never run multipass purge
+#   - auto (default)     -> run purge only in CI
+e2e_should_purge() {
+    local mode=${MULTIPASS_PURGE:-auto}
+    mode=$(echo "${mode}" | tr '[:upper:]' '[:lower:]')
+
+    case "${mode}" in
+        always|true|1|yes)
+            return 0
+            ;;
+        never|false|0|no)
+            return 1
+            ;;
+        auto|"")
+            [[ "${CI:-}" == "true" || "${CI:-}" == "1" ]]
+            return
+            ;;
+        *)
+            warn "Unknown MULTIPASS_PURGE='${MULTIPASS_PURGE}'. Using 'auto'."
+            [[ "${CI:-}" == "true" || "${CI:-}" == "1" ]]
+            return
+            ;;
+    esac
+}
+
+# ─── VM transport backend ────────────────────────────────────────────────────
+# E2E_VM_BACKEND:
+#   - ssh  -> use ssh/scp for exec and copy
+#   - auto -> alias of ssh (default)
+#   - multipass -> legacy alias, coerced to ssh for portability
+e2e_get_vm_backend() {
+    local backend=${E2E_VM_BACKEND:-auto}
+    backend=$(echo "${backend}" | tr '[:upper:]' '[:lower:]')
+    case "${backend}" in
+        ssh|auto|"")
+            if command -v ssh >/dev/null 2>&1; then
+                echo "ssh"
+            else
+                e2e_error "ssh not found. Install OpenSSH client."
+                return 1
+            fi
+            ;;
+        multipass)
+            e2e_warn_stderr "E2E_VM_BACKEND=multipass is deprecated for command transport; using ssh."
+            if command -v ssh >/dev/null 2>&1; then
+                echo "ssh"
+            else
+                e2e_error "ssh not found. Install OpenSSH client."
+                return 1
+            fi
+            ;;
+        *)
+            warn "Unknown E2E_VM_BACKEND='${E2E_VM_BACKEND}'. Using 'auto'."
+            if command -v ssh >/dev/null 2>&1; then
+                echo "ssh"
+            else
+                e2e_error "ssh not found. Install OpenSSH client."
+                return 1
+            fi
+            ;;
+    esac
+}
+
+e2e_detect_multipass_ssh_key() {
+    local candidates=(
+        "${HOME}/Library/Application Support/multipassd/ssh-keys/id_rsa"
+        "/var/snap/multipass/common/data/multipassd/ssh-keys/id_rsa"
+        "${HOME}/snap/multipass/common/data/multipassd/ssh-keys/id_rsa"
+    )
+    local key
+    for key in "${candidates[@]}"; do
+        if [[ -f "${key}" ]]; then
+            echo "${key}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+e2e_get_ssh_identity_opt() {
+    local key=${E2E_SSH_KEY:-}
+    if [[ -z "${key}" ]]; then
+        key=$(e2e_detect_multipass_ssh_key || true)
+    fi
+    if [[ -n "${key}" ]]; then
+        printf -- "-i %q" "${key}"
     fi
 }
 
-e2e_error() {
-    if declare -F error >/dev/null 2>&1; then
-        error "$@"
+e2e_get_host_pubkey() {
+    local key
+    for key in "${HOME}/.ssh/id_ed25519.pub" "${HOME}/.ssh/id_rsa.pub"; do
+        if [[ -f "${key}" ]]; then
+            cat "${key}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+e2e_ssh_exec() {
+    local vm_ip=${1:?vm_ip is required}
+    local remote_cmd=${2:?remote_cmd is required}
+    local user=${E2E_VM_USER:-ubuntu}
+    local connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
+    # Commands like gradle test/image build can legitimately run for minutes.
+    local cmd_timeout=${E2E_SSH_CMD_TIMEOUT:-900}
+    local retries=${E2E_SSH_RETRIES:-6}
+    local retry_delay=${E2E_SSH_RETRY_DELAY_SECONDS:-2}
+    local identity_opt
+    local attempt rc
+    identity_opt=$(e2e_get_ssh_identity_opt || true)
+
+    for ((attempt = 1; attempt <= retries; attempt++)); do
+        if [[ "${cmd_timeout}" =~ ^[0-9]+$ ]] && (( cmd_timeout > 0 )) && command -v perl >/dev/null 2>&1; then
+            # shellcheck disable=SC2086
+            perl -e 'alarm shift @ARGV; exec @ARGV' "${cmd_timeout}" \
+                ssh -n ${identity_opt} \
+                -o BatchMode=yes \
+                -o StrictHostKeyChecking=no \
+                -o UserKnownHostsFile=/dev/null \
+                -o LogLevel=ERROR \
+                -o ConnectTimeout="${connect_timeout}" \
+                "${user}@${vm_ip}" "${remote_cmd}"
+            rc=$?
+        else
+            # shellcheck disable=SC2086
+            ssh -n ${identity_opt} \
+                -o BatchMode=yes \
+                -o StrictHostKeyChecking=no \
+                -o UserKnownHostsFile=/dev/null \
+                -o LogLevel=ERROR \
+                -o ConnectTimeout="${connect_timeout}" \
+                "${user}@${vm_ip}" "${remote_cmd}"
+            rc=$?
+        fi
+
+        if [[ "${rc}" -eq 0 ]]; then
+            return 0
+        fi
+
+        # Retry only transport-level failures (e.g. VM still booting SSH).
+        if [[ "${rc}" -eq 255 && "${attempt}" -lt "${retries}" ]]; then
+            sleep "${retry_delay}"
+            continue
+        fi
+        return "${rc}"
+    done
+
+    return 1
+}
+
+e2e_scp_to_vm() {
+    local src=${1:?src is required}
+    local vm_ip=${2:?vm_ip is required}
+    local dest=${3:?dest is required}
+    local user=${E2E_VM_USER:-ubuntu}
+    local connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
+    local identity_opt
+    identity_opt=$(e2e_get_ssh_identity_opt || true)
+
+    # shellcheck disable=SC2086
+    scp ${identity_opt} \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o LogLevel=ERROR \
+        -o ConnectTimeout="${connect_timeout}" \
+        "${src}" "${user}@${vm_ip}:${dest}"
+}
+
+e2e_scp_from_vm() {
+    local vm_ip=${1:?vm_ip is required}
+    local src=${2:?src is required}
+    local dest=${3:?dest is required}
+    local user=${E2E_VM_USER:-ubuntu}
+    local connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
+    local identity_opt
+    identity_opt=$(e2e_get_ssh_identity_opt || true)
+
+    # shellcheck disable=SC2086
+    scp ${identity_opt} \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o LogLevel=ERROR \
+        -o ConnectTimeout="${connect_timeout}" \
+        "${user}@${vm_ip}:${src}" "${dest}"
+}
+
+# ─── Standard vm_exec ────────────────────────────────────────────────────────
+e2e_vm_exec() {
+    local backend
+    backend=$(e2e_get_vm_backend) || return 1
+    local cmd_string="export KUBECONFIG=/home/ubuntu/.kube/config; $*"
+
+    if [[ "${backend}" != "ssh" ]]; then
+        e2e_error "Unsupported vm backend '${backend}'"
+        return 1
+    fi
+
+    local vm_ip quoted
+    vm_ip=$(e2e_get_vm_ip) || true
+    if [[ -z "${vm_ip}" ]]; then
+        e2e_error "Cannot determine VM IP for '${VM_NAME}'"
+        return 1
+    fi
+    quoted=$(printf '%q' "${cmd_string}")
+    if e2e_ssh_exec "${vm_ip}" "bash -lc ${quoted}"; then
+        return
+    fi
+    e2e_error "SSH exec failed for VM '${VM_NAME}'"
+    return 1
+}
+
+# ─── VM IP resolution ────────────────────────────────────────────────────────
+e2e_get_vm_ip() {
+    if [[ -n "${VM_IP:-}" ]]; then
+        echo "${VM_IP}"
+        return 0
+    fi
+    multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3
+}
+
+e2e_resolve_nanofaas_url() {
+    local port=${1:-30080}
+    if [[ -n "${NANOFAAS_URL:-}" ]]; then echo "${NANOFAAS_URL}"; return; fi
+    local vm_ip
+    vm_ip=$(e2e_get_vm_ip) || true
+    if [[ -z "${vm_ip}" ]]; then error "Cannot determine VM IP for '${VM_NAME}'"; return 1; fi
+    echo "http://${vm_ip}:${port}"
+}
+
+# ─── VM auto-detect ──────────────────────────────────────────────────────────
+e2e_auto_detect_vm() {
+    local default_name=${1:-nanofaas-e2e}
+    if [[ -n "${VM_NAME:-}" ]]; then echo "${VM_NAME}"; return; fi
+    if command -v multipass &>/dev/null; then
+        local detected
+        detected=$(multipass list --format csv 2>/dev/null | tail -n +2 | grep -i "nanofaas" | grep "Running" | head -1 | cut -d, -f1) || true
+        if [[ -n "${detected}" ]]; then echo "${detected}"; return; fi
+    fi
+    echo "${default_name}"
+}
+
+# ─── Test counters ───────────────────────────────────────────────────────────
+E2E_PASS=0
+E2E_FAIL=0
+E2E_TESTS_RUN=()
+
+e2e_test_init() { E2E_PASS=0; E2E_FAIL=0; E2E_TESTS_RUN=(); }
+e2e_pass() { ((E2E_PASS++)); E2E_TESTS_RUN+=("[PASS] $1"); log "  PASS: $*"; }
+e2e_fail() { ((E2E_FAIL++)); E2E_TESTS_RUN+=("[FAIL] $1"); error "  FAIL: $*"; }
+
+# ─── Deployment replica queries ──────────────────────────────────────────────
+e2e_get_ready_replicas() {
+    local ns=${1:?} deploy=${2:?}
+    local val
+    val=$(e2e_vm_exec "kubectl get deployment ${deploy} -n ${ns} -o jsonpath='{.status.readyReplicas}' 2>/dev/null") || true
+    [[ -z "${val}" || "${val}" == "null" ]] && echo "0" || echo "${val}"
+}
+
+e2e_get_desired_replicas() {
+    local ns=${1:?} deploy=${2:?}
+    local val
+    val=$(e2e_vm_exec "kubectl get deployment ${deploy} -n ${ns} -o jsonpath='{.spec.replicas}' 2>/dev/null") || true
+    [[ -z "${val}" || "${val}" == "null" ]] && echo "0" || echo "${val}"
+}
+
+# ─── Cleanup helper ──────────────────────────────────────────────────────────
+e2e_cleanup_vm() {
+    if [[ "${KEEP_VM:-false}" == "true" ]]; then
+        warn "KEEP_VM=true — VM '${VM_NAME}' preserved"
+        local vm_ip
+        vm_ip=$(e2e_get_vm_ip || true)
+        if [[ -n "${vm_ip}" ]]; then
+            warn "  SSH:    ssh ${E2E_VM_USER:-ubuntu}@${vm_ip}"
+        else
+            warn "  Shell:  multipass shell ${VM_NAME}"
+        fi
+        warn "  Delete: multipass delete ${VM_NAME}"
+        return
+    fi
+    log "Cleaning up VM ${VM_NAME}..."
+    multipass delete "${VM_NAME}" 2>/dev/null || true
+    if e2e_should_purge; then
+        info "Running multipass purge (MULTIPASS_PURGE=${MULTIPASS_PURGE:-auto})"
+        multipass purge 2>/dev/null || true
     else
-        echo "[e2e] $*" >&2
+        info "Skipping multipass purge (MULTIPASS_PURGE=${MULTIPASS_PURGE:-auto})"
     fi
 }
 
@@ -48,7 +362,24 @@ e2e_create_vm() {
     fi
 
     e2e_log "Creating VM ${vm_name} (cpus=${cpus}, memory=${memory}, disk=${disk})..."
-    multipass launch --name "${vm_name}" --cpus "${cpus}" --memory "${memory}" --disk "${disk}"
+    local host_pubkey cloud_init
+    host_pubkey=$(e2e_get_host_pubkey || true)
+    if [[ -n "${host_pubkey}" ]]; then
+        cloud_init=$(e2e_mktemp_file "nanofaas-cloud-init" ".yaml")
+        cat > "${cloud_init}" <<EOF
+#cloud-config
+ssh_authorized_keys:
+  - ${host_pubkey}
+EOF
+        if ! multipass launch --name "${vm_name}" --cpus "${cpus}" --memory "${memory}" --disk "${disk}" --cloud-init "${cloud_init}"; then
+            rm -f "${cloud_init}"
+            return 1
+        fi
+        rm -f "${cloud_init}"
+    else
+        e2e_warn_stderr "No host SSH public key found (~/.ssh/id_ed25519.pub or id_rsa.pub); SSH transport may fail."
+        multipass launch --name "${vm_name}" --cpus "${cpus}" --memory "${memory}" --disk "${disk}"
+    fi
     e2e_log "VM created successfully"
 }
 
@@ -76,6 +407,8 @@ e2e_ensure_vm_running() {
 e2e_install_vm_dependencies() {
     e2e_require_vm_exec || return 1
     local install_helm=${1:-false}
+    local helm_version=${HELM_VERSION:-3.16.4}
+    helm_version=${helm_version#v}
     local helm_label=""
     if [[ "${install_helm}" == "true" ]]; then
         helm_label=", helm"
@@ -83,18 +416,74 @@ e2e_install_vm_dependencies() {
 
     e2e_log "Installing VM dependencies (docker, jdk21${helm_label})..."
     vm_exec "sudo apt-get update -y"
-    vm_exec "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk-headless"
-    vm_exec 'if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo usermod -aG docker ubuntu
-    fi'
+    vm_exec "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk-headless docker.io"
+    vm_exec "sudo systemctl enable --now docker"
+    vm_exec "sudo usermod -aG docker ubuntu || true"
 
     if [[ "${install_helm}" == "true" ]]; then
-        vm_exec 'if ! command -v helm >/dev/null 2>&1; then
-            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        fi'
+        vm_exec "if ! command -v helm >/dev/null 2>&1; then
+            arch=\$(uname -m)
+            case \"\${arch}\" in
+                x86_64|amd64) helm_arch=amd64 ;;
+                aarch64|arm64) helm_arch=arm64 ;;
+                *) echo \"Unsupported architecture for helm: \${arch}\" >&2; exit 1 ;;
+            esac
+            archive=/tmp/helm-v${helm_version}-linux-\${helm_arch}.tar.gz
+            curl -fsSL -o \"\${archive}\" \"https://get.helm.sh/helm-v${helm_version}-linux-\${helm_arch}.tar.gz\"
+            tar -xzf \"\${archive}\" -C /tmp
+            sudo install -m 0755 /tmp/linux-\${helm_arch}/helm /usr/local/bin/helm
+            rm -rf /tmp/linux-\${helm_arch} \"\${archive}\"
+        fi"
     fi
     e2e_log "VM dependencies installed"
+}
+
+e2e_copy_to_vm() {
+    local src=${1:?src is required}
+    local vm_name=${2:?vm_name is required}
+    local dest=${3:?dest is required}
+    local backend
+    backend=$(e2e_get_vm_backend) || return 1
+    if [[ "${backend}" != "ssh" ]]; then
+        e2e_error "Unsupported vm backend '${backend}'"
+        return 1
+    fi
+
+    local vm_ip
+    vm_ip=$(e2e_get_vm_ip) || true
+    if [[ -z "${vm_ip}" ]]; then
+        e2e_error "Cannot determine VM IP for '${vm_name}'"
+        return 1
+    fi
+    if e2e_scp_to_vm "${src}" "${vm_ip}" "${dest}"; then
+        return
+    fi
+    e2e_error "SCP upload failed for VM '${vm_name}'"
+    return 1
+}
+
+e2e_copy_from_vm() {
+    local vm_name=${1:?vm_name is required}
+    local src=${2:?src is required}
+    local dest=${3:?dest is required}
+    local backend
+    backend=$(e2e_get_vm_backend) || return 1
+    if [[ "${backend}" != "ssh" ]]; then
+        e2e_error "Unsupported vm backend '${backend}'"
+        return 1
+    fi
+
+    local vm_ip
+    vm_ip=$(e2e_get_vm_ip) || true
+    if [[ -z "${vm_ip}" ]]; then
+        e2e_error "Cannot determine VM IP for '${vm_name}'"
+        return 1
+    fi
+    if e2e_scp_from_vm "${vm_ip}" "${src}" "${dest}"; then
+        return
+    fi
+    e2e_error "SCP download failed for VM '${vm_name}'"
+    return 1
 }
 
 e2e_sync_project_to_vm() {
@@ -105,29 +494,50 @@ e2e_sync_project_to_vm() {
 
     e2e_log "Syncing project to VM (${remote_dir})..."
     local tmp_tar
-    tmp_tar=$(mktemp "/tmp/nanofaas-e2e-sync-XXXXXX.tar")
-    tar -C "${project_root}" \
-        --exclude='.git' \
-        --exclude='.gradle' \
-        --exclude='.idea' \
-        --exclude='.worktrees' \
-        --exclude='.DS_Store' \
-        --exclude='build' \
-        --exclude='*/build' \
-        --exclude='target' \
-        --exclude='*/target' \
-        -cf "${tmp_tar}" .
+    local -a tar_flags=()
+    if tar --help 2>&1 | grep -q -- '--disable-copyfile'; then tar_flags+=(--disable-copyfile); fi
+    if tar --help 2>&1 | grep -q -- '--no-mac-metadata'; then tar_flags+=(--no-mac-metadata); fi
+    if tar --help 2>&1 | grep -q -- '--no-xattrs'; then tar_flags+=(--no-xattrs); fi
+    if tar --help 2>&1 | grep -q -- '--no-acls'; then tar_flags+=(--no-acls); fi
+    tmp_tar=$(e2e_mktemp_file "nanofaas-e2e-sync" ".tar")
+    if [[ ${#tar_flags[@]} -gt 0 ]]; then
+        COPYFILE_DISABLE=1 tar "${tar_flags[@]}" -C "${project_root}" \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='.worktrees' \
+            --exclude='.DS_Store' \
+            --exclude='build' \
+            --exclude='*/build' \
+            --exclude='target' \
+            --exclude='*/target' \
+            -cf "${tmp_tar}" .
+    else
+        COPYFILE_DISABLE=1 tar -C "${project_root}" \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.idea' \
+            --exclude='.worktrees' \
+            --exclude='.DS_Store' \
+            --exclude='build' \
+            --exclude='*/build' \
+            --exclude='target' \
+            --exclude='*/target' \
+            -cf "${tmp_tar}" .
+    fi
 
     if declare -F vm_exec >/dev/null 2>&1; then
         vm_exec "rm -rf ${remote_dir} && mkdir -p ${remote_dir}"
     else
-        multipass exec "${vm_name}" -- bash -lc "rm -rf ${remote_dir} && mkdir -p ${remote_dir}"
+        e2e_vm_exec "rm -rf ${remote_dir} && mkdir -p ${remote_dir}"
     fi
-    multipass transfer "${tmp_tar}" "${vm_name}:${sync_tar}"
+    e2e_copy_to_vm "${tmp_tar}" "${vm_name}" "${sync_tar}"
+    local extract_sync_cmd
+    extract_sync_cmd="if tar --help 2>&1 | grep -q -- '--warning'; then tar --warning=no-unknown-keyword -xf ${sync_tar} -C ${remote_dir}; else tar -xf ${sync_tar} -C ${remote_dir}; fi && rm -f ${sync_tar}"
     if declare -F vm_exec >/dev/null 2>&1; then
-        vm_exec "tar -xf ${sync_tar} -C ${remote_dir} && rm -f ${sync_tar}"
+        vm_exec "${extract_sync_cmd}"
     else
-        multipass exec "${vm_name}" -- bash -lc "tar -xf ${sync_tar} -C ${remote_dir} && rm -f ${sync_tar}"
+        e2e_vm_exec "${extract_sync_cmd}"
     fi
     rm -f "${tmp_tar}"
     e2e_log "Project synced"
@@ -466,30 +876,174 @@ e2e_kubectl_curl_control_plane() {
 
 e2e_extract_json_by_field() {
     local text=${1:-}
-    local field=${2:?field is required}
-    echo "${text}" | grep "\"${field}\"" | head -1
+    local field=${2:-}
+    python3 -c '
+import json
+import sys
+
+field = sys.argv[1]
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+
+decoder = json.JSONDecoder()
+obj = None
+candidates = [raw.strip()] + [line.strip() for line in raw.splitlines() if line.strip()]
+for candidate in candidates:
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, dict):
+            obj = parsed
+            break
+    except Exception:
+        continue
+if obj is None:
+    for idx, ch in enumerate(raw):
+        if ch not in "{[":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(raw[idx:])
+            if isinstance(parsed, dict):
+                obj = parsed
+                break
+        except Exception:
+            continue
+
+if isinstance(obj, dict):
+    if not field or field in obj:
+        print(json.dumps(obj, separators=(",", ":")))
+' "${field}" <<< "${text}"
 }
 
 e2e_extract_execution_id() {
     local json_line=${1:-}
-    echo "${json_line}" | sed -n 's/.*"executionId":"\([^"]*\)".*/\1/p'
+    python3 -c '
+import json
+import sys
+
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+decoder = json.JSONDecoder()
+obj = None
+try:
+    obj = json.loads(raw.strip())
+except Exception:
+    for idx, ch in enumerate(raw):
+        if ch != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(raw[idx:])
+            if isinstance(parsed, dict):
+                obj = parsed
+                break
+        except Exception:
+            continue
+try:
+    if isinstance(obj, dict):
+        val = obj.get("executionId")
+        if isinstance(val, str):
+            print(val)
+except Exception:
+    pass
+' <<< "${json_line}"
 }
 
 e2e_extract_execution_status() {
     local json_line=${1:-}
-    echo "${json_line}" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p'
+    python3 -c '
+import json
+import sys
+
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+decoder = json.JSONDecoder()
+obj = None
+try:
+    obj = json.loads(raw.strip())
+except Exception:
+    for idx, ch in enumerate(raw):
+        if ch != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(raw[idx:])
+            if isinstance(parsed, dict):
+                obj = parsed
+                break
+        except Exception:
+            continue
+if isinstance(obj, dict):
+    val = obj.get("status")
+    if isinstance(val, str):
+        print(val)
+' <<< "${json_line}"
 }
 
 e2e_extract_bool_field() {
     local json_line=${1:-}
     local field=${2:?field is required}
-    echo "${json_line}" | sed -n "s/.*\"${field}\":\\([a-z]*\\).*/\\1/p"
+    python3 -c '
+import json
+import sys
+
+field = sys.argv[1]
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+decoder = json.JSONDecoder()
+obj = None
+try:
+    obj = json.loads(raw.strip())
+except Exception:
+    for idx, ch in enumerate(raw):
+        if ch != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(raw[idx:])
+            if isinstance(parsed, dict):
+                obj = parsed
+                break
+        except Exception:
+            continue
+if isinstance(obj, dict):
+    val = obj.get(field)
+    if isinstance(val, bool):
+        print("true" if val else "false")
+' "${field}" <<< "${json_line}"
 }
 
 e2e_extract_numeric_field() {
     local json_line=${1:-}
     local field=${2:?field is required}
-    echo "${json_line}" | sed -n "s/.*\"${field}\":\\([0-9]*\\).*/\\1/p"
+    python3 -c '
+import json
+import sys
+
+field = sys.argv[1]
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(0)
+decoder = json.JSONDecoder()
+obj = None
+try:
+    obj = json.loads(raw.strip())
+except Exception:
+    for idx, ch in enumerate(raw):
+        if ch != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(raw[idx:])
+            if isinstance(parsed, dict):
+                obj = parsed
+                break
+        except Exception:
+            continue
+if isinstance(obj, dict):
+    val = obj.get(field)
+    if isinstance(val, (int, float)):
+        print(val)
+' "${field}" <<< "${json_line}"
 }
 
 e2e_invoke_sync_message() {
@@ -506,7 +1060,7 @@ e2e_invoke_sync_message() {
         "POST" \
         "/v1/functions/${function_name}:invoke" \
         "{\"input\": {\"message\": \"${message}\"}}")
-    e2e_extract_json_by_field "${raw}" "executionId"
+    e2e_extract_json_by_field "${raw}"
 }
 
 e2e_enqueue_message() {
@@ -601,9 +1155,10 @@ e2e_fetch_control_plane_prometheus() {
 
 e2e_install_k3s() {
     e2e_require_vm_exec || return 1
+    local k3s_version=${K3S_VERSION:-v1.32.2+k3s1}
 
-    e2e_log "Installing k3s..."
-    vm_exec "curl -sfL https://get.k3s.io | sudo sh -s - --disable traefik"
+    e2e_log "Installing k3s (${k3s_version})..."
+    vm_exec "curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='${k3s_version}' sh -s - --disable traefik"
 
     vm_exec "for i in \$(seq 1 60); do
         if sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready'; then
@@ -687,6 +1242,13 @@ e2e_push_images_to_registry() {
         vm_exec "sudo docker push ${img}"
     done
     e2e_log "Pushed images to registry"
+}
+
+e2e_cleanup_host_resources() {
+    local pid=${1:-} container=${2:-} tmpdir=${3:-}
+    if [[ -n "${pid}" ]]; then kill "${pid}" >/dev/null 2>&1 || true; wait "${pid}" 2>/dev/null || true; fi
+    if [[ -n "${container}" ]]; then docker rm -f "${container}" >/dev/null 2>&1 || true; fi
+    if [[ -n "${tmpdir}" && -d "${tmpdir}" ]]; then rm -rf "${tmpdir}" || true; fi
 }
 
 e2e_import_images_to_k3s() {
