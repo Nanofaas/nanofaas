@@ -75,7 +75,7 @@ create_vm() {
 
 # ─── Phase 2: Install k3s + dependencies ─────────────────────────────────────
 install_k3s() {
-    if vm_exec "command -v k3s >/dev/null 2>&1"; then
+    if [[ "$(e2e_vm_has_command k3s)" == "yes" ]]; then
         log "k3s already installed, skipping..."
         return
     fi
@@ -84,9 +84,9 @@ install_k3s() {
 }
 
 install_deps() {
-    if vm_exec "command -v docker >/dev/null 2>&1" \
-        && vm_exec "command -v java >/dev/null 2>&1" \
-        && vm_exec "command -v helm >/dev/null 2>&1"; then
+    if [[ "$(e2e_vm_has_command docker)" == "yes" ]] \
+        && [[ "$(e2e_vm_has_command java)" == "yes" ]] \
+        && [[ "$(e2e_vm_has_command helm)" == "yes" ]]; then
         log "Dependencies already present, skipping..."
         return
     fi

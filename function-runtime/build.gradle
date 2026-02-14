@@ -22,8 +22,11 @@ tasks.named('jar') {
     enabled = false
 }
 
-// Disable AOT processing unless a native build task is requested
-def nativeBuildRequested = gradle.startParameter.taskNames.any { it.contains('nativeCompile') || it.contains('nativeTest') }
+// Disable AOT processing unless a native-oriented task is requested.
+// bootBuildImage is used for release images with BP_NATIVE_IMAGE=true.
+def nativeBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains('nativeCompile') || it.contains('nativeTest') || it.contains('bootBuildImage')
+}
 if (!nativeBuildRequested) {
     // Main AOT - not needed for regular builds
     tasks.named('processAot') { enabled = false }
