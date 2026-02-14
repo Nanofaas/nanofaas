@@ -29,7 +29,8 @@ public class KubernetesResourceManager {
 
     /**
      * Creates Deployment + Service (+ HPA if strategy=HPA) for a function.
-     * Uses createOrReplace for idempotency (safe on control-plane restart).
+     * Uses delete+create for idempotency to avoid Fabric8 createOrReplace clone path
+     * that is problematic in GraalVM native mode.
      * Returns the service URL for invocations.
      */
     public String provision(FunctionSpec spec) {
@@ -39,14 +40,22 @@ public class KubernetesResourceManager {
 
         client.apps().deployments()
                 .inNamespace(resolvedNamespace)
+                .withName(deployment.getMetadata().getName())
+                .delete();
+        client.apps().deployments()
+                .inNamespace(resolvedNamespace)
                 .resource(deployment)
-                .createOrReplace();
+                .create();
         log.info("Created/updated Deployment {} for function {}", deployment.getMetadata().getName(), spec.name());
 
         client.services()
                 .inNamespace(resolvedNamespace)
+                .withName(service.getMetadata().getName())
+                .delete();
+        client.services()
+                .inNamespace(resolvedNamespace)
                 .resource(service)
-                .createOrReplace();
+                .create();
         log.info("Created/updated Service {} for function {}", service.getMetadata().getName(), spec.name());
 
         if (spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA) {
@@ -54,8 +63,12 @@ public class KubernetesResourceManager {
             if (hpa != null) {
                 client.autoscaling().v2().horizontalPodAutoscalers()
                         .inNamespace(resolvedNamespace)
+                        .withName(hpa.getMetadata().getName())
+                        .delete();
+                client.autoscaling().v2().horizontalPodAutoscalers()
+                        .inNamespace(resolvedNamespace)
                         .resource(hpa)
-                        .createOrReplace();
+                        .create();
                 log.info("Created/updated HPA {} for function {}", hpa.getMetadata().getName(), spec.name());
             }
         }

@@ -20,6 +20,7 @@ import java.util.Locale;
 
 @Service
 public class KubernetesImageValidator implements ImageValidator {
+    private static final String NATIVE_IMAGE_CODE_PROPERTY = "org.graalvm.nativeimage.imagecode";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMillis(500);
 
@@ -48,6 +49,12 @@ public class KubernetesImageValidator implements ImageValidator {
         if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
             return;
         }
+        // Fabric8's generic Kubernetes model serialization relies heavily on runtime reflection.
+        // In GraalVM native runtime this may fail despite targeted hints, so skip proactive
+        // image validation and let deployment-time pull errors surface normally.
+        if (isNativeRuntime()) {
+            return;
+        }
 
         KubernetesClient client;
         try {
@@ -61,7 +68,7 @@ public class KubernetesImageValidator implements ImageValidator {
         Pod pod = buildValidationPod(spec, podName);
 
         try {
-            client.pods().inNamespace(namespace).resource(pod).createOrReplace();
+            client.pods().inNamespace(namespace).resource(pod).create();
             waitForImagePullResult(client, namespace, podName, spec.image());
         } finally {
             try {
@@ -204,5 +211,9 @@ public class KubernetesImageValidator implements ImageValidator {
             base = base.replaceAll("-+$", "");
         }
         return base + "-" + suffix;
+    }
+
+    private static boolean isNativeRuntime() {
+        return System.getProperty(NATIVE_IMAGE_CODE_PROPERTY) != null;
     }
 }
