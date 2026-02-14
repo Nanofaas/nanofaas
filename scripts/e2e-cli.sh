@@ -16,32 +16,15 @@ CONTROL_IMAGE_TAG=${CONTROL_IMAGE##*:}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
-
-# Test counters
-TESTS_PASSED=0
-TESTS_FAILED=0
-TESTS_RUN=()
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-log() { echo -e "${GREEN}[cli-e2e]${NC} $*"; }
-warn() { echo -e "${YELLOW}[cli-e2e]${NC} $*"; }
-error() { echo -e "${RED}[cli-e2e]${NC} $*" >&2; }
+e2e_set_log_prefix "cli-e2e"
+e2e_test_init
 
 pass() {
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-    TESTS_RUN+=("[PASS] $1")
-    log "  $1: OK"
+    e2e_pass "$1"
 }
 
 fail() {
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    TESTS_RUN+=("[FAIL] $1")
-    error "  $1: FAILED - $2"
+    e2e_fail "$1 - $2"
 }
 
 # assert_exit_zero: run a command and expect exit 0
@@ -66,16 +49,8 @@ assert_exit_nonzero() {
 
 cleanup() {
     local exit_code=$?
-    if [[ "${KEEP_VM}" == "true" ]]; then
-        warn "KEEP_VM=true, VM '${VM_NAME}' preserved for debugging"
-        warn "SSH: multipass shell ${VM_NAME}"
-        warn "Delete: multipass delete ${VM_NAME} && multipass purge"
-        return
-    fi
-    log "Cleaning up VM ${VM_NAME}..."
-    multipass delete "${VM_NAME}" 2>/dev/null || true
-    multipass purge 2>/dev/null || true
-    exit $exit_code
+    e2e_cleanup_vm
+    exit "${exit_code}"
 }
 
 trap cleanup EXIT
@@ -109,6 +84,8 @@ create_vm() {
     log "SSH access configured"
 }
 
+# NOTE: uses SSH-based vm_exec — see create_vm() for SSH setup.
+# multipass exec hangs for background CLI processes (known multipass bug).
 vm_exec() {
     # Inclusion of NANOFAAS_ENDPOINT and NANOFAAS_NAMESPACE if they are set
     local env_vars=""
@@ -984,16 +961,16 @@ test_cli_platform_lifecycle() {
 print_summary() {
     log ""
     log "=========================================="
-    if [[ ${TESTS_FAILED} -eq 0 ]]; then
-        log "    CLI E2E: ALL ${TESTS_PASSED} TESTS PASSED"
+    if [[ ${E2E_FAIL} -eq 0 ]]; then
+        log "    CLI E2E: ALL ${E2E_PASS} TESTS PASSED"
     else
-        error "    CLI E2E: ${TESTS_FAILED} FAILED / ${TESTS_PASSED} PASSED"
+        error "    CLI E2E: ${E2E_FAIL} FAILED / ${E2E_PASS} PASSED"
     fi
     log "=========================================="
     log ""
     log "VM: ${VM_NAME} | Namespace: ${NAMESPACE}"
     log ""
-    for t in "${TESTS_RUN[@]}"; do
+    for t in "${E2E_TESTS_RUN[@]}"; do
         if [[ "${t}" == "[PASS]"* ]]; then
             log "  ${t}"
         else
@@ -1001,10 +978,10 @@ print_summary() {
         fi
     done
     log ""
-    log "Total: $((TESTS_PASSED + TESTS_FAILED)) tests, ${TESTS_PASSED} passed, ${TESTS_FAILED} failed"
+    log "Total: $((E2E_PASS + E2E_FAIL)) tests, ${E2E_PASS} passed, ${E2E_FAIL} failed"
     log ""
 
-    if [[ ${TESTS_FAILED} -gt 0 ]]; then
+    if [[ ${E2E_FAIL} -gt 0 ]]; then
         exit 1
     fi
 }

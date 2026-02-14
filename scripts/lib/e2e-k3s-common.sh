@@ -1,24 +1,96 @@
 #!/usr/bin/env bash
 
 # Shared helpers for k3s-based E2E scripts.
-# Callers are expected to define:
-#   - log/warn/error functions (optional)
-#   - vm_exec() for remote command execution where required
+# Source this file and then call e2e_set_log_prefix to set your script's prefix.
 
-e2e_log() {
-    if declare -F log >/dev/null 2>&1; then
-        log "$@"
-    else
-        echo "[e2e] $*"
-    fi
+# ─── Colors ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ─── Logging with configurable prefix ────────────────────────────────────────
+E2E_LOG_PREFIX="e2e"
+e2e_set_log_prefix() { E2E_LOG_PREFIX="$1"; }
+
+log()   { echo -e "${GREEN}[${E2E_LOG_PREFIX}]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[${E2E_LOG_PREFIX}]${NC} $*"; }
+info()  { echo -e "${CYAN}[${E2E_LOG_PREFIX}]${NC} $*"; }
+error() { echo -e "${RED}[${E2E_LOG_PREFIX}]${NC} $*" >&2; }
+err()   { error "$@"; }
+
+# Backward-compat aliases
+e2e_log() { log "$@"; }
+e2e_error() { error "$@"; }
+
+# ─── Standard vm_exec ────────────────────────────────────────────────────────
+e2e_vm_exec() {
+    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
 }
 
-e2e_error() {
-    if declare -F error >/dev/null 2>&1; then
-        error "$@"
-    else
-        echo "[e2e] $*" >&2
+# ─── VM IP resolution ────────────────────────────────────────────────────────
+e2e_get_vm_ip() {
+    multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3
+}
+
+e2e_resolve_nanofaas_url() {
+    local port=${1:-30080}
+    if [[ -n "${NANOFAAS_URL:-}" ]]; then echo "${NANOFAAS_URL}"; return; fi
+    local vm_ip
+    vm_ip=$(e2e_get_vm_ip) || true
+    if [[ -z "${vm_ip}" ]]; then error "Cannot determine VM IP for '${VM_NAME}'"; return 1; fi
+    echo "http://${vm_ip}:${port}"
+}
+
+# ─── VM auto-detect ──────────────────────────────────────────────────────────
+e2e_auto_detect_vm() {
+    local default_name=${1:-nanofaas-e2e}
+    if [[ -n "${VM_NAME:-}" ]]; then echo "${VM_NAME}"; return; fi
+    if command -v multipass &>/dev/null; then
+        local detected
+        detected=$(multipass list --format csv 2>/dev/null | tail -n +2 | grep -i "nanofaas" | grep "Running" | head -1 | cut -d, -f1) || true
+        if [[ -n "${detected}" ]]; then echo "${detected}"; return; fi
     fi
+    echo "${default_name}"
+}
+
+# ─── Test counters ───────────────────────────────────────────────────────────
+E2E_PASS=0
+E2E_FAIL=0
+E2E_TESTS_RUN=()
+
+e2e_test_init() { E2E_PASS=0; E2E_FAIL=0; E2E_TESTS_RUN=(); }
+e2e_pass() { ((E2E_PASS++)); E2E_TESTS_RUN+=("[PASS] $1"); log "  PASS: $*"; }
+e2e_fail() { ((E2E_FAIL++)); E2E_TESTS_RUN+=("[FAIL] $1"); error "  FAIL: $*"; }
+
+# ─── Deployment replica queries ──────────────────────────────────────────────
+e2e_get_ready_replicas() {
+    local ns=${1:?} deploy=${2:?}
+    local val
+    val=$(e2e_vm_exec "kubectl get deployment ${deploy} -n ${ns} -o jsonpath='{.status.readyReplicas}' 2>/dev/null") || true
+    [[ -z "${val}" || "${val}" == "null" ]] && echo "0" || echo "${val}"
+}
+
+e2e_get_desired_replicas() {
+    local ns=${1:?} deploy=${2:?}
+    local val
+    val=$(e2e_vm_exec "kubectl get deployment ${deploy} -n ${ns} -o jsonpath='{.spec.replicas}' 2>/dev/null") || true
+    [[ -z "${val}" || "${val}" == "null" ]] && echo "0" || echo "${val}"
+}
+
+# ─── Cleanup helper ──────────────────────────────────────────────────────────
+e2e_cleanup_vm() {
+    if [[ "${KEEP_VM:-false}" == "true" ]]; then
+        warn "KEEP_VM=true — VM '${VM_NAME}' preserved"
+        warn "  SSH:    multipass shell ${VM_NAME}"
+        warn "  Delete: multipass delete ${VM_NAME} && multipass purge"
+        return
+    fi
+    log "Cleaning up VM ${VM_NAME}..."
+    multipass delete "${VM_NAME}" 2>/dev/null || true
+    multipass purge 2>/dev/null || true
 }
 
 e2e_require_multipass() {
@@ -687,6 +759,13 @@ e2e_push_images_to_registry() {
         vm_exec "sudo docker push ${img}"
     done
     e2e_log "Pushed images to registry"
+}
+
+e2e_cleanup_host_resources() {
+    local pid=${1:-} container=${2:-} tmpdir=${3:-}
+    if [[ -n "${pid}" ]]; then kill "${pid}" >/dev/null 2>&1 || true; wait "${pid}" 2>/dev/null || true; fi
+    if [[ -n "${container}" ]]; then docker rm -f "${container}" >/dev/null 2>&1 || true; fi
+    if [[ -n "${tmpdir}" && -d "${tmpdir}" ]]; then rm -rf "${tmpdir}" || true; fi
 }
 
 e2e_import_images_to_k3s() {

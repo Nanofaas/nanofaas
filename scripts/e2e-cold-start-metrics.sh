@@ -16,38 +16,17 @@ KEEP_VM=${KEEP_VM:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-log() { echo -e "${GREEN}[cold-start-e2e]${NC} $*"; }
-warn() { echo -e "${YELLOW}[cold-start-e2e]${NC} $*"; }
-error() { echo -e "${RED}[cold-start-e2e]${NC} $*" >&2; }
-
-TESTS_PASSED=0
-TESTS_FAILED=0
+e2e_set_log_prefix "cold-start-e2e"
+e2e_test_init
+vm_exec() { e2e_vm_exec "$@"; }
 
 cleanup() {
     local exit_code=$?
-    if [[ "${KEEP_VM}" == "true" ]]; then
-        warn "KEEP_VM=true, VM '${VM_NAME}' preserved for debugging"
-        warn "SSH: multipass shell ${VM_NAME}"
-        warn "Delete: multipass delete ${VM_NAME} && multipass purge"
-        return
-    fi
-    log "Cleaning up VM ${VM_NAME}..."
-    multipass delete "${VM_NAME}" 2>/dev/null || true
-    multipass purge 2>/dev/null || true
-    exit $exit_code
+    e2e_cleanup_vm
+    exit "${exit_code}"
 }
 
 trap cleanup EXIT
-
-vm_exec() {
-    multipass exec "${VM_NAME}" -- bash -lc "export KUBECONFIG=/home/ubuntu/.kube/config; $*"
-}
 
 # --- Setup (reused pattern from e2e-k3s-curl.sh) ---
 
@@ -57,7 +36,7 @@ check_prerequisites() {
 }
 
 create_vm() {
-    e2e_create_vm "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
+    e2e_ensure_vm_running "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
 }
 
 install_dependencies() {
@@ -181,18 +160,18 @@ assert_metric_gte() {
 
     if [[ -z "${value}" ]]; then
         error "FAIL: ${description} — metric '${metric_name}' not found"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
 
     # Compare as floats: value >= min_value
     if awk "BEGIN {exit !(${value} >= ${min_value})}"; then
         log "  PASS: ${description} (${metric_name} = ${value}, expected >= ${min_value})"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
+        E2E_PASS=$((E2E_PASS + 1))
         return 0
     else
         error "FAIL: ${description} (${metric_name} = ${value}, expected >= ${min_value})"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
 }
@@ -204,11 +183,11 @@ assert_metric_exists() {
 
     if echo "${metrics}" | grep -q "${metric_name}"; then
         log "  PASS: ${description} (${metric_name} present)"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
+        E2E_PASS=$((E2E_PASS + 1))
         return 0
     else
         error "FAIL: ${description} (${metric_name} not found)"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
 }
@@ -224,17 +203,17 @@ assert_metric_gt() {
 
     if [[ -z "${value}" ]]; then
         error "FAIL: ${description} — metric '${metric_name}' not found"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
 
     if awk "BEGIN {exit !(${value} > ${min_exclusive})}"; then
         log "  PASS: ${description} (${metric_name} = ${value}, expected > ${min_exclusive})"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
+        E2E_PASS=$((E2E_PASS + 1))
         return 0
     else
         error "FAIL: ${description} (${metric_name} = ${value}, expected > ${min_exclusive})"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
+        E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
 }
@@ -314,11 +293,11 @@ print_summary() {
     log "  VM: ${VM_NAME}"
     log "  Namespace: ${NAMESPACE}"
     log ""
-    log "  Assertions passed: ${TESTS_PASSED}"
-    log "  Assertions failed: ${TESTS_FAILED}"
+    log "  Assertions passed: ${E2E_PASS}"
+    log "  Assertions failed: ${E2E_FAIL}"
     log ""
 
-    if [[ "${TESTS_FAILED}" -gt 0 ]]; then
+    if [[ "${E2E_FAIL}" -gt 0 ]]; then
         error "SOME ASSERTIONS FAILED"
         exit 1
     fi

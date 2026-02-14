@@ -119,7 +119,7 @@ public class InternalScaler implements SmartLifecycle {
         String functionName = spec.name();
         int currentReplicas = resourceManager.getReadyReplicas(functionName);
         if (currentReplicas <= 0) {
-            currentReplicas = scaling.minReplicas();
+            currentReplicas = Math.max(1, scaling.minReplicas());
         }
 
         double maxRatio = 0.0;

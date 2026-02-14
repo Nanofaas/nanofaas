@@ -18,54 +18,20 @@ VM_NAME=${VM_NAME:-nanofaas-e2e}
 SKIP_GRAFANA=${SKIP_GRAFANA:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+e2e_set_log_prefix "loadtest"
 K6_DIR="${PROJECT_ROOT}/k6"
 RESULTS_DIR="${K6_DIR}/results"
 GRAFANA_DIR="${PROJECT_ROOT}/grafana"
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-RED='\033[0;31m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-log()  { echo -e "${GREEN}[loadtest]${NC} $*"; }
-warn() { echo -e "${YELLOW}[loadtest]${NC} $*"; }
-info() { echo -e "${CYAN}[loadtest]${NC} $*"; }
-err()  { echo -e "${RED}[loadtest]${NC} $*" >&2; }
-
-# ─── Resolve VM IP ───────────────────────────────────────────────────────────
-resolve_vm_ip() {
-    if [[ -n "${NANOFAAS_URL:-}" ]]; then
-        echo "${NANOFAAS_URL}"
-        return
-    fi
-
-    if ! command -v multipass &>/dev/null; then
-        err "multipass not found and NANOFAAS_URL not set."
-        err "Set NANOFAAS_URL=http://<IP>:30080 manually."
-        exit 1
-    fi
-
-    local vm_ip
-    vm_ip=$(multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3) || true
-    if [[ -z "${vm_ip}" ]]; then
-        err "Cannot determine VM IP. Is '${VM_NAME}' running?"
-        err "Set NANOFAAS_URL=http://<IP>:30080 manually."
-        exit 1
-    fi
-    echo "http://${vm_ip}:30080"
-}
+resolve_vm_ip() { e2e_resolve_nanofaas_url 30080; }
 
 resolve_prom_url() {
     if [[ -n "${PROM_URL:-}" ]]; then
         echo "${PROM_URL}"
         return
     fi
-    local vm_ip
-    vm_ip=$(multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3) || true
-    echo "http://${vm_ip}:30090"
+    e2e_resolve_nanofaas_url 30090
 }
 
 # ─── Pre-flight checks ──────────────────────────────────────────────────────

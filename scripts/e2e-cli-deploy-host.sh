@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+e2e_set_log_prefix "deploy-host-e2e"
 CLI_BIN="${PROJECT_ROOT}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas"
 
 REGISTRY_PORT=${REGISTRY_PORT:-5050}
@@ -19,31 +21,9 @@ FAKE_CP_SCRIPT_PATH=""
 FAKE_CP_LOG_PATH=""
 FAKE_CP_PID=""
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log()  { echo -e "${GREEN}[deploy-host-e2e]${NC} $*"; }
-warn() { echo -e "${YELLOW}[deploy-host-e2e]${NC} $*"; }
-err()  { echo -e "${RED}[deploy-host-e2e]${NC} $*" >&2; }
-
 cleanup() {
     local exit_code=$?
-
-    if [[ -n "${FAKE_CP_PID}" ]]; then
-        kill "${FAKE_CP_PID}" >/dev/null 2>&1 || true
-        wait "${FAKE_CP_PID}" 2>/dev/null || true
-    fi
-
-    if [[ -n "${REGISTRY_CONTAINER_NAME}" ]]; then
-        docker rm -f "${REGISTRY_CONTAINER_NAME}" >/dev/null 2>&1 || true
-    fi
-
-    if [[ -n "${WORK_DIR}" && -d "${WORK_DIR}" ]]; then
-        rm -rf "${WORK_DIR}" || true
-    fi
-
+    e2e_cleanup_host_resources "${FAKE_CP_PID}" "${REGISTRY_CONTAINER_NAME}" "${WORK_DIR}"
     exit "${exit_code}"
 }
 trap cleanup EXIT
