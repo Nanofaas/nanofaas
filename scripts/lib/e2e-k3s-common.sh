@@ -349,6 +349,11 @@ e2e_require_vm_exec() {
     fi
 }
 
+e2e_vm_has_command() {
+    local cmd=${1:?command name is required}
+    e2e_vm_exec "if command -v ${cmd} >/dev/null 2>&1; then echo yes; else echo no; fi"
+}
+
 e2e_create_vm() {
     local vm_name=${1:?vm_name is required}
     local cpus=${2:-4}

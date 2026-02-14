@@ -103,6 +103,45 @@ def run_with_disk_retry(cmd, retries=1):
         console.print(f"[dim]{err.rstrip()}[/dim]")
     sys.exit(1)
 
+def smoke_test_service_image(image, component, timeout_seconds=25):
+    """
+    Run a short-lived smoke test for service images.
+    - If process keeps running until timeout, consider it healthy enough for startup.
+    - If process exits with AOT initializer errors, fail fast.
+    - Any other non-zero exit is treated as failure.
+    """
+    console.print(f"[blue]Smoke-testing {component} ({image})...[/blue]")
+    try:
+        result = subprocess.run(
+            ["docker", "run", "--rm", image],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        console.print(f"[green]✓ {component} stayed up for {timeout_seconds}s.[/green]")
+        return
+
+    output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+    if "AotInitializerNotFoundException" in output:
+        console.print(f"[red]Smoke-test failed for {component}: AOT initializer not found.[/red]")
+        if output:
+            console.print("[dim]--- container output ---[/dim]")
+            console.print(f"[dim]{output[:4000]}[/dim]")
+        sys.exit(1)
+
+    if result.returncode != 0:
+        console.print(
+            f"[red]Smoke-test failed for {component}: container exited with code {result.returncode}.[/red]"
+        )
+        if output:
+            console.print("[dim]--- container output ---[/dim]")
+            console.print(f"[dim]{output[:4000]}[/dim]")
+        sys.exit(1)
+
+    console.print(f"[green]✓ Smoke-test passed for {component}.[/green]")
+
 def get_current_version():
     gradle_file = ROOT / "build.gradle"
     content = gradle_file.read_text()
@@ -179,6 +218,7 @@ def build_and_push_arm64(version):
         f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform} "
         f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
     )
+    smoke_test_service_image(cp_image, "control-plane")
     run_command(f"docker push {cp_image}")
 
     # 2. Java Runtime (referenced in job template)
@@ -190,6 +230,7 @@ def build_and_push_arm64(version):
             f"-PfunctionRuntimeImage={jr_image} -PimagePlatform={platform} "
             f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
         )
+        smoke_test_service_image(jr_image, "function-runtime")
         run_command(f"docker push {jr_image}")
     except:
         console.print("[yellow]Warning: Could not build function-runtime, skipping.[/yellow]")
