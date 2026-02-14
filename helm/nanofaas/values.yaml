@@ -8,7 +8,7 @@ controlPlane:
   replicaCount: 1
   image:
     repository: ghcr.io/miciav/nanofaas/control-plane
-    tag: v0.11.2
+    tag: v0.11.3
     pullPolicy: IfNotPresent
   service:
     name: control-plane
@@ -77,42 +77,42 @@ demos:
   # For DEPLOYMENT mode, the control-plane will provision Deployment/Service per function.
   functions:
     - name: word-stats-java
-      image: ghcr.io/miciav/nanofaas/java-word-stats:v0.11.2
+      image: ghcr.io/miciav/nanofaas/java-word-stats:v0.11.3
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: json-transform-java
-      image: ghcr.io/miciav/nanofaas/java-json-transform:v0.11.2
+      image: ghcr.io/miciav/nanofaas/java-json-transform:v0.11.3
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: word-stats-python
-      image: ghcr.io/miciav/nanofaas/python-word-stats:v0.11.2
+      image: ghcr.io/miciav/nanofaas/python-word-stats:v0.11.3
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: json-transform-python
-      image: ghcr.io/miciav/nanofaas/python-json-transform:v0.11.2
+      image: ghcr.io/miciav/nanofaas/python-json-transform:v0.11.3
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: word-stats-exec
-      image: ghcr.io/miciav/nanofaas/bash-word-stats:v0.11.2
+      image: ghcr.io/miciav/nanofaas/bash-word-stats:v0.11.3
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
     - name: json-transform-exec
-      image: ghcr.io/miciav/nanofaas/bash-json-transform:v0.11.2
+      image: ghcr.io/miciav/nanofaas/bash-json-transform:v0.11.3
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
