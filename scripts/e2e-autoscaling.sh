@@ -263,7 +263,7 @@ phase_e_report() {
         err "AUTOSCALING TEST FAILED"
         # Dump logs for debugging
         info "Control-plane logs (last 30 lines):"
-        vm_exec "kubectl logs -n ${NAMESPACE} -l app=nanofaas-control-plane --tail=30" 2>/dev/null || true
+        vm_exec "kubectl logs -n ${NAMESPACE} -l app=control-plane --tail=30" 2>/dev/null || true
         info "k6 output (last 20 lines):"
         tail -20 /tmp/k6-autoscaling.log 2>/dev/null || true
         exit 1

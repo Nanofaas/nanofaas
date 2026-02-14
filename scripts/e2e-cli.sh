@@ -62,64 +62,28 @@ check_prerequisites() {
 
 create_vm() {
     log "Creating VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})..."
-    multipass launch --name "${VM_NAME}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
-
-    # Get VM IP for SSH-based execution (multipass exec hangs in background processes)
-    VM_IP=$(multipass info "${VM_NAME}" --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(list(d['info'].values())[0]['ipv4'][0])")
-    log "VM created successfully (IP: ${VM_IP})"
-
-    # Setup SSH access: add local key to VM authorized_keys
-    if [[ -f "${HOME}/.ssh/id_rsa.pub" ]]; then
-        cat "${HOME}/.ssh/id_rsa.pub" | multipass exec "${VM_NAME}" -- bash -c "cat >> /home/ubuntu/.ssh/authorized_keys"
-    elif [[ -f "${HOME}/.ssh/id_ed25519.pub" ]]; then
-        cat "${HOME}/.ssh/id_ed25519.pub" | multipass exec "${VM_NAME}" -- bash -c "cat >> /home/ubuntu/.ssh/authorized_keys"
-    else
-        error "No SSH public key found (~/.ssh/id_rsa.pub or id_ed25519.pub)"
+    e2e_ensure_vm_running "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
+    VM_IP=$(e2e_get_vm_ip)
+    if [[ -z "${VM_IP}" ]]; then
+        error "Failed to resolve VM IP for ${VM_NAME}"
         exit 1
     fi
-
-    # Verify SSH connectivity
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        -o ConnectTimeout=10 "ubuntu@${VM_IP}" "echo SSH OK" >/dev/null 2>&1
-    log "SSH access configured"
+    vm_exec "echo SSH OK" >/dev/null 2>&1
+    log "VM ready (IP: ${VM_IP})"
 }
 
-# NOTE: uses SSH-based vm_exec — see create_vm() for SSH setup.
-# multipass exec hangs for background CLI processes (known multipass bug).
+# Shared lib handles SSH/multipass transport; keep wrapper only for CLI env.
 vm_exec() {
-    # Inclusion of NANOFAAS_ENDPOINT and NANOFAAS_NAMESPACE if they are set
     local env_vars=""
     if [[ -n "${NANOFAAS_ENDPOINT:-}" ]]; then env_vars+="export NANOFAAS_ENDPOINT=${NANOFAAS_ENDPOINT}; "; fi
     if [[ -n "${NANOFAAS_NAMESPACE:-}" ]]; then env_vars+="export NANOFAAS_NAMESPACE=${NANOFAAS_NAMESPACE}; "; fi
 
-    # Path to CLI binary
     local cli_path="/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin"
-
-    # Use SSH instead of multipass exec — multipass exec hangs at 100% CPU
-    # when run from background/non-TTY processes (known multipass bug)
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        -o ConnectTimeout=10 "ubuntu@${VM_IP}" \
-        "export KUBECONFIG=/home/ubuntu/.kube/config; export PATH=\$PATH:${cli_path}; ${env_vars} $*"
+    e2e_vm_exec "export PATH=\$PATH:${cli_path}; ${env_vars} $*"
 }
 
 install_dependencies() {
-    log "Installing dependencies in VM..."
-
-    vm_exec "sudo apt-get update -y"
-    vm_exec "sudo apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk"
-
-    # Install Docker
-    vm_exec "if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo usermod -aG docker ubuntu
-    fi"
-
-    # Install Helm for platform lifecycle tests
-    vm_exec 'if ! command -v helm >/dev/null 2>&1; then
-        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    fi'
-
-    log "Dependencies installed"
+    e2e_install_vm_dependencies true
 }
 
 install_k3s() {
@@ -127,10 +91,7 @@ install_k3s() {
 }
 
 sync_project() {
-    log "Syncing project to VM..."
-    vm_exec "rm -rf /home/ubuntu/nanofaas"
-    multipass transfer --recursive "${PROJECT_ROOT}" "${VM_NAME}:/home/ubuntu/nanofaas"
-    log "Project synced"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
 }
 
 build_jars() {
@@ -573,10 +534,16 @@ test_cli_fn_get() {
 
 test_cli_fn_get_nonexistent() {
     log "Testing 'nanofaas fn get nonexistent' fails..."
-    if vm_exec "nanofaas fn get this-function-does-not-exist" >/dev/null 2>&1; then
+    local rc=0
+    if vm_exec "timeout 30s nanofaas fn get this-function-does-not-exist" >/dev/null 2>&1; then
         fail "fn get nonexistent exits non-zero" "expected failure but got exit 0"
     else
-        pass "fn get nonexistent exits non-zero"
+        rc=$?
+        if [[ "${rc}" -eq 124 ]]; then
+            fail "fn get nonexistent exits non-zero" "command timed out after 30s"
+        else
+            pass "fn get nonexistent exits non-zero"
+        fi
     fi
 }
 

@@ -12,6 +12,7 @@ set -euo pipefail
 #   ./scripts/e2e-all.sh --skip docker      # Skip Docker-based suites (e2e, buildpack)
 #   ./scripts/e2e-all.sh --only k3s-curl cold-start  # Run only specific suites
 #   DRY_RUN=true ./scripts/e2e-all.sh       # Print what would run without executing
+#   MULTIPASS_PURGE=never ./scripts/e2e-all.sh --only helm-stack
 #
 # Suites (in execution order):
 #   docker          - e2e.sh (local Docker containers)
@@ -29,6 +30,11 @@ set -euo pipefail
 #   - multipass (for k3s/VM suites)
 #   - k6 (for loadtest/autoscaling)
 #
+# Multipass cleanup policy (handled by shared lib):
+#   - MULTIPASS_PURGE=auto   (default) purge only in CI
+#   - MULTIPASS_PURGE=always always run multipass purge
+#   - MULTIPASS_PURGE=never  never run multipass purge
+#
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
@@ -37,7 +43,7 @@ e2e_set_log_prefix "e2e-all"
 DRY_RUN=${DRY_RUN:-false}
 
 # ─── Suite definitions ───────────────────────────────────────────────────────
-# Each entry: suite_name|description|commands (semicolon-separated)
+# Each entry: suite_name|description|script path
 #
 # The helm-stack suite keeps VM alive for loadtest+autoscaling, then cleans up.
 SUITES=(
@@ -128,7 +134,7 @@ run_suite() {
     fi
 
     start=$(date +%s)
-    if eval "${cmd}"; then
+    if "${cmd}"; then
         elapsed=$(( $(date +%s) - start ))
         log "PASSED: ${name} (${elapsed}s)"
         PASSED_SUITES+=("${name}")
@@ -192,8 +198,7 @@ run_helm_stack() {
 
     # Cleanup the shared VM
     log "Cleaning up helm-stack VM ${helm_vm_name}..."
-    multipass delete "${helm_vm_name}" 2>/dev/null || true
-    multipass purge 2>/dev/null || true
+    KEEP_VM=false VM_NAME="${helm_vm_name}" e2e_cleanup_vm
 
     elapsed=$(( $(date +%s) - start ))
     if [[ "${suite_ok}" == "true" ]]; then

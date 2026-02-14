@@ -8,6 +8,7 @@ set -euo pipefail
 #   ./scripts/e2e-k3s-helm.sh                  # Full setup (build + deploy)
 #   SKIP_BUILD=true ./scripts/e2e-k3s-helm.sh  # Skip build if images exist
 #   KEEP_VM=false ./scripts/e2e-k3s-helm.sh    # Delete VM on exit
+#   MULTIPASS_PURGE=never ./scripts/e2e-k3s-helm.sh  # Keep deleted-VM cache untouched
 #
 # Prerequisites:
 #   - multipass (https://multipass.run)
@@ -47,24 +48,6 @@ CURL_IMAGE="${LOCAL_REGISTRY}/curlimages/curl:latest"
 
 check_prerequisites() {
     e2e_require_multipass
-}
-
-cleanup_stale_multipass_exec() {
-    local stale_pids
-    stale_pids=$(ps -axo pid=,ppid=,command= | awk -v vm="${VM_NAME}" '
-        $2 == 1 && $0 ~ ("multipass exec " vm " --") { print $1 }
-    ')
-
-    if [[ -z "${stale_pids}" ]]; then
-        return
-    fi
-
-    local stale_list
-    stale_list=$(echo "${stale_pids}" | tr '\n' ' ' | sed 's/[[:space:]]\+$//')
-    warn "Cleaning stale multipass exec processes: ${stale_list}"
-    # shellcheck disable=SC2086
-    kill ${stale_pids} 2>/dev/null || true
-    sleep 1
 }
 
 cleanup() {
@@ -385,7 +368,6 @@ main() {
     log ""
 
     check_prerequisites
-    cleanup_stale_multipass_exec
     create_vm
     install_deps
     install_k3s

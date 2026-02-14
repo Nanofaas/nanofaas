@@ -243,6 +243,6 @@ details and coverage targets.
 KEEP_VM=true ./scripts/e2e-cli.sh
 ```
 
-Requires Multipass and an SSH key. Creates a VM, deploys nanofaas on k3s,
+Requires Multipass. Creates a VM, deploys nanofaas on k3s,
 and exercises every CLI command end-to-end. See [docs/testing.md](testing.md)
 for configuration options and debugging instructions.

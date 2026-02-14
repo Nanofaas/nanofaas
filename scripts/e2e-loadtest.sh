@@ -110,6 +110,8 @@ run_tests() {
     log "  Tests:  ${#tests[@]} functions"
     log ""
 
+    local last_index=$(( ${#tests[@]} - 1 ))
+    local idx=0
     for test in "${tests[@]}"; do
         local script="${K6_DIR}/${test}.js"
         if [[ ! -f "${script}" ]]; then
@@ -130,10 +132,11 @@ run_tests() {
         echo ""
 
         # Cool-down between tests
-        if [[ "${test}" != "${tests[-1]}" ]]; then
+        if [[ ${idx} -lt ${last_index} ]]; then
             info "Cool-down 10s..."
             sleep 10
         fi
+        ((idx++))
     done
 }
 
@@ -242,7 +245,8 @@ print_summary() {
     log "  docker compose -f grafana/docker-compose.yml down"
     log ""
     log "To tear down the VM:"
-    log "  multipass delete ${VM_NAME} && multipass purge"
+    log "  multipass delete ${VM_NAME}"
+    log "  multipass purge   # optional: clean all deleted VMs"
     log ""
 }
 

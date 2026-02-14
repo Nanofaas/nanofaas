@@ -74,7 +74,7 @@ extract_vm_ip() {
 export_kubeconfig_to_host() {
     log "Exporting kubeconfig from VM to host..."
     KUBECONFIG_HOST="$(mktemp -t nanofaas-kubeconfig.XXXXXX)"
-    multipass transfer "${VM_NAME}:/home/ubuntu/.kube/config" "${KUBECONFIG_HOST}"
+    e2e_copy_from_vm "${VM_NAME}" "/home/ubuntu/.kube/config" "${KUBECONFIG_HOST}"
 
     python3 - "${KUBECONFIG_HOST}" "${VM_IP}" <<'PY'
 import pathlib
