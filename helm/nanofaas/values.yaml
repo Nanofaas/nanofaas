@@ -83,6 +83,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: json-transform-java
       image: ghcr.io/miciav/nanofaas/java-json-transform:v0.12.0
       timeoutMs: 10000
@@ -90,6 +97,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: word-stats-python
       image: ghcr.io/miciav/nanofaas/python-word-stats:v0.12.0
       timeoutMs: 10000
@@ -97,6 +111,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: json-transform-python
       image: ghcr.io/miciav/nanofaas/python-json-transform:v0.12.0
       timeoutMs: 10000
@@ -104,6 +125,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: word-stats-exec
       image: ghcr.io/miciav/nanofaas/bash-word-stats:v0.12.0
       timeoutMs: 10000
@@ -111,6 +139,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: json-transform-exec
       image: ghcr.io/miciav/nanofaas/bash-json-transform:v0.12.0
       timeoutMs: 10000
@@ -118,6 +153,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: word-stats-java-lite
       image: ghcr.io/miciav/nanofaas/java-lite-word-stats:v0.12.0
       timeoutMs: 10000
@@ -125,6 +167,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: json-transform-java-lite
       image: ghcr.io/miciav/nanofaas/java-lite-json-transform:v0.12.0
       timeoutMs: 10000
@@ -132,6 +181,13 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
 
   registerJob:
     image: curlimages/curl:latest

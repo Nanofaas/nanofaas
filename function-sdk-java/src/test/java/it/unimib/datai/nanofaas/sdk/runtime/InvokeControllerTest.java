@@ -41,7 +41,7 @@ class InvokeControllerTest {
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(Map.of("result", "hello"), response.getBody());
-        verify(callbackClient).sendResult(eq("env-exec-id"), any(InvocationResult.class), eq("trace-1"));
+        verify(callbackClient, timeout(2000)).sendResult(eq("env-exec-id"), any(InvocationResult.class), eq("trace-1"));
     }
 
     @Test
@@ -52,7 +52,7 @@ class InvokeControllerTest {
         InvocationRequest request = new InvocationRequest("input", null);
         controller.invoke(request, "header-exec-id", null);
 
-        verify(callbackClient).sendResult(eq("header-exec-id"), any(), isNull());
+        verify(callbackClient, timeout(2000)).sendResult(eq("header-exec-id"), any(), isNull());
     }
 
     @Test
@@ -66,7 +66,7 @@ class InvokeControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, String> body = (Map<String, String>) response.getBody();
         assertEquals("boom", body.get("error"));
-        verify(callbackClient).sendResult(eq("env-exec-id"), argThat(r -> !r.success()), eq("t-1"));
+        verify(callbackClient, timeout(2000)).sendResult(eq("env-exec-id"), argThat(r -> !r.success()), eq("t-1"));
     }
 
     @Test

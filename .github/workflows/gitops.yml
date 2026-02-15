@@ -113,21 +113,20 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats --all-tags
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform --all-tags
 
-      - name: Build Java Lite distributions
-        run: ./gradlew :examples:java:word-stats-lite:installDist :examples:java:json-transform-lite:installDist
-
-      - name: Build and push Java Lite Word Stats
+      - name: Build and push Java Lite Word Stats (native)
         uses: docker/build-push-action@v5
         with:
-          context: ./examples/java/word-stats-lite
+          context: .
+          file: examples/java/word-stats-lite/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-word-stats:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
-      - name: Build and push Java Lite JSON Transform
+      - name: Build and push Java Lite JSON Transform (native)
         uses: docker/build-push-action@v5
         with:
-          context: ./examples/java/json-transform-lite
+          context: .
+          file: examples/java/json-transform-lite/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-json-transform:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
