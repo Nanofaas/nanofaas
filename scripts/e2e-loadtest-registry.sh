@@ -268,6 +268,13 @@ controlPlane:
     nodePorts:
       http: 30080
       actuator: 30081
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: \"1\"
+      memory: 2Gi
   extraEnv:
     - name: KUBERNETES_TRUST_CERTIFICATES
       value: \"true\"
