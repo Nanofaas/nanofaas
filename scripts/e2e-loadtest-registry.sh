@@ -102,6 +102,8 @@ vm_exec() { e2e_vm_exec "$@"; }
 
 RESOLVED_TAG=""         # Computed in resolve_image_tag()
 RESOLVED_EXEC_PREFIX="" # Computed in resolve_exec_image_prefix()
+LOADTEST_START_EPOCH=0
+LOADTEST_END_EPOCH=0
 
 # ─── Stage 1: Pre-flight checks ───────────────────────────────────────────────
 check_prerequisites() {
@@ -504,9 +506,33 @@ verify_registered_functions() {
 # with 10s cool-down between each test. Results saved to k6/results/.
 run_loadtest() {
     log "Starting load test suite (e2e-loadtest.sh)..."
+    local cp_samples_file="${PROJECT_ROOT}/k6/results/control-plane-top-samples.txt"
+    : > "${cp_samples_file}"
+
+    LOADTEST_START_EPOCH=$(date +%s)
+    (
+        while true; do
+            sample=$(vm_exec "sudo kubectl top pods -n ${NAMESPACE} -l app=nanofaas-control-plane --no-headers 2>/dev/null | head -n 1" || true)
+            if [[ -n "${sample}" ]]; then
+                echo "${sample}" >> "${cp_samples_file}"
+            fi
+            sleep 5
+        done
+    ) &
+    local sampler_pid=$!
+
+    local rc=0
     VM_NAME="${VM_NAME}" \
     SKIP_GRAFANA="${SKIP_GRAFANA}" \
-    "${SCRIPT_DIR}/e2e-loadtest.sh"
+    "${SCRIPT_DIR}/e2e-loadtest.sh" || rc=$?
+
+    LOADTEST_END_EPOCH=$(date +%s)
+    kill "${sampler_pid}" 2>/dev/null || true
+    wait "${sampler_pid}" 2>/dev/null || true
+
+    if [[ ${rc} -ne 0 ]]; then
+        return ${rc}
+    fi
 }
 
 # ─── Stage 13: Comparison summary tables ───────────────────────────────────────
@@ -527,11 +553,16 @@ print_summary() {
     # Dump Prometheus metrics to a temp file for the Python report
     local prom_dump="${results_dir}/prometheus-dump.json"
     log "Collecting Prometheus metrics..."
-    python3 - "${prom_url}" "${prom_dump}" << 'PROM_DUMP'
+python3 - "${prom_url}" "${prom_dump}" << 'PROM_DUMP'
 import json, sys, urllib.request, urllib.error, urllib.parse
+from pathlib import Path
 
 prom_url = sys.argv[1]
 out_path = sys.argv[2]
+project_root = Path(out_path).resolve().parents[2]
+sys.path.insert(0, str(project_root / "scripts" / "lib"))
+
+from loadtest_registry_metrics import build_prom_queries
 
 def prom_query(expr):
     """Execute a PromQL instant query and return the result list."""
@@ -584,34 +615,7 @@ init_base = find_metric("function_init_duration_ms_seconds", [
     "function_init_duration_ms_seconds", "function_init_duration_ms",
 ])
 
-queries = {
-    # Counters
-    "enqueue":        'function_enqueue_total',
-    "dispatch":       'function_dispatch_total',
-    "success":        'function_success_total',
-    "error":          'function_error_total',
-    "timeout":        'function_timeout_total',
-    "rejected":       'function_queue_rejected_total',
-    "retry":          'function_retry_total',
-    "cold_start":     'function_cold_start_total',
-    "warm_start":     'function_warm_start_total',
-    # Timers — quantiles
-    "latency_p50":    f'{lat_base}{{quantile="0.5"}}',
-    "latency_p95":    f'{lat_base}{{quantile="0.95"}}',
-    "latency_p99":    f'{lat_base}{{quantile="0.99"}}',
-    "latency_count":  f'{lat_base}_count',
-    "latency_sum":    f'{lat_base}_sum',
-    "e2e_p50":        f'{e2e_base}{{quantile="0.5"}}',
-    "e2e_p95":        f'{e2e_base}{{quantile="0.95"}}',
-    "e2e_p99":        f'{e2e_base}{{quantile="0.99"}}',
-    "queue_wait_p50": f'{qw_base}{{quantile="0.5"}}',
-    "queue_wait_p95": f'{qw_base}{{quantile="0.95"}}',
-    "init_p50":       f'{init_base}{{quantile="0.5"}}',
-    "init_p95":       f'{init_base}{{quantile="0.95"}}',
-    # Gauges
-    "queue_depth":    'function_queue_depth',
-    "in_flight":      'function_inFlight',
-}
+queries = build_prom_queries(lat_base, e2e_base, qw_base, init_base)
 
 data = {}
 query_hits = 0
@@ -731,12 +735,19 @@ K8S_DUMP
     log "VM: ${VM_NAME} (${vm_ip})  |  Image: ${IMAGE_REPO}:${RESOLVED_TAG}  |  Exec prefix: ${RESOLVED_EXEC_PREFIX}"
     log ""
 
-    python3 - "${results_dir}" "${prom_dump}" "${k8s_dump}" << 'PYEOF'
+    python3 - "${results_dir}" "${prom_dump}" "${k8s_dump}" "${LOADTEST_START_EPOCH}" "${LOADTEST_END_EPOCH}" << 'PYEOF'
 import json, os, sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve().parents[1]
+sys.path.insert(0, str(project_root / "scripts" / "lib"))
+from loadtest_registry_metrics import summarize_control_plane_samples
 
 results_dir = sys.argv[1]
 prom_path = sys.argv[2]
 k8s_path = sys.argv[3]
+loadtest_start = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+loadtest_end = int(sys.argv[5]) if len(sys.argv) > 5 else 0
 
 # Load Prometheus dump
 prom = {}
@@ -800,6 +811,11 @@ def fmt_ms(seconds):
         return "-"
     return f"{seconds * 1000:.1f}"
 
+def fmt_avg_ms(sum_seconds, count):
+    if count <= 0:
+        return "-"
+    return f"{(sum_seconds / count) * 1000:.1f}"
+
 # ════════════════════════════════════════════════════════════════════════════════
 # SECTION 1: k6 CLIENT-SIDE LATENCY (per workload)
 # ════════════════════════════════════════════════════════════════════════════════
@@ -846,6 +862,8 @@ print("=" * 105)
 print()
 print("  Latency measured inside the control-plane (excludes network hop from k6).")
 print("  Timers: function_latency_ms (dispatch→response), function_e2e_latency_ms (enqueue→response).")
+if not any(pget(fn, "latency_p50") > 0 for fn in ALL_FUNCTIONS):
+    print("  Note: percentile series are zero in this run; Avg(ms) from sum/count is the reliable value.")
 print()
 
 header =  f"│ {'Function':<28s} │ {'Lat p50':>8s} │ {'Lat p95':>8s} │ {'Lat p99':>8s} │ {'E2E p50':>8s} │ {'E2E p95':>8s} │ {'E2E p99':>8s} │ {'Avg(ms)':>8s} │"
@@ -865,7 +883,7 @@ for fn in ALL_FUNCTIONS:
     ep99 = fmt_ms(pget(fn, "e2e_p99"))
     cnt = pget(fn, "latency_count")
     sm  = pget(fn, "latency_sum")
-    avg = fmt_ms(sm / cnt) if cnt > 0 else "-"
+    avg = fmt_avg_ms(sm, cnt)
     print(f"│ {fn:<28s} │ {lp50:>8s} │ {lp95:>8s} │ {lp99:>8s} │ {ep50:>8s} │ {ep95:>8s} │ {ep99:>8s} │ {avg:>8s} │")
 print(sep_bot)
 print()
@@ -905,22 +923,27 @@ print(f"{'SECTION 4: QUEUE WAIT TIME':^105s}")
 print("=" * 105)
 print()
 print("  Time between enqueue and dispatch (function_queue_wait_ms).")
+if not any(pget(fn, "queue_wait_p50") > 0 for fn in ALL_FUNCTIONS):
+    print("  Note: queue quantiles are zero in this run; QWait avg is derived from sum/count.")
 print()
 
-h  = f"│ {'Function':<28s} │ {'QWait p50':>10s} │ {'QWait p95':>10s} │ {'QDepth':>8s} │ {'InFlight':>8s} │"
-s1 = f"┌{'─'*30}┬{'─'*12}┬{'─'*12}┬{'─'*10}┬{'─'*10}┐"
-s2 = f"├{'─'*30}┼{'─'*12}┼{'─'*12}┼{'─'*10}┼{'─'*10}┤"
-s3 = f"└{'─'*30}┴{'─'*12}┴{'─'*12}┴{'─'*10}┴{'─'*10}┘"
+h  = f"│ {'Function':<28s} │ {'QWait avg':>10s} │ {'QWait p50':>10s} │ {'QWait p95':>10s} │ {'QDepth':>8s} │ {'InFlight':>8s} │"
+s1 = f"┌{'─'*30}┬{'─'*12}┬{'─'*12}┬{'─'*12}┬{'─'*10}┬{'─'*10}┐"
+s2 = f"├{'─'*30}┼{'─'*12}┼{'─'*12}┼{'─'*12}┼{'─'*10}┼{'─'*10}┤"
+s3 = f"└{'─'*30}┴{'─'*12}┴{'─'*12}┴{'─'*12}┴{'─'*10}┴{'─'*10}┘"
 
 print(s1)
 print(h)
 print(s2)
 for fn in ALL_FUNCTIONS:
+    qcnt = pget(fn, "queue_wait_count")
+    qsum = pget(fn, "queue_wait_sum")
+    qavg = fmt_avg_ms(qsum, qcnt)
     qp50 = fmt_ms(pget(fn, "queue_wait_p50"))
     qp95 = fmt_ms(pget(fn, "queue_wait_p95"))
     qdepth = int(pget(fn, "queue_depth"))
     inflight = int(pget(fn, "in_flight"))
-    print(f"│ {fn:<28s} │ {qp50:>10s} │ {qp95:>10s} │ {qdepth:>8d} │ {inflight:>8d} │")
+    print(f"│ {fn:<28s} │ {qavg:>10s} │ {qp50:>10s} │ {qp95:>10s} │ {qdepth:>8d} │ {inflight:>8d} │")
 print(s3)
 print()
 
@@ -1135,12 +1158,45 @@ if prom_rows:
         best_init = min(init_rows, key=lambda x: x[2])
         print(f"     Fastest cold start:  {best_init[0]} [{best_init[1]}] — {best_init[2]*1000:.1f}ms (init p50)")
 
-    # Lowest queue wait
-    qw_rows = [(fn, runtime_label.get(fn, fn), pget(fn, "queue_wait_p50"))
-               for fn in ALL_FUNCTIONS if pget(fn, "queue_wait_p50") > 0]
+    # Lowest queue wait (avg from sum/count)
+    qw_rows = []
+    for fn in ALL_FUNCTIONS:
+        qcnt = pget(fn, "queue_wait_count")
+        qsum = pget(fn, "queue_wait_sum")
+        if qcnt > 0:
+            qw_rows.append((fn, runtime_label.get(fn, fn), (qsum / qcnt) * 1000))
     if qw_rows:
         best_qw = min(qw_rows, key=lambda x: x[2])
-        print(f"     Lowest queue wait:   {best_qw[0]} [{best_qw[1]}] — {best_qw[2]*1000:.1f}ms (queue p50)")
+        print(f"     Lowest queue wait:   {best_qw[0]} [{best_qw[1]}] — {best_qw[2]:.1f}ms (queue avg)")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# SECTION 8: CONTROL-PLANE RESOURCE PROFILE (during test run)
+# ════════════════════════════════════════════════════════════════════════════════
+print()
+print("=" * 105)
+print(f"{'SECTION 8: CONTROL-PLANE RESOURCE PROFILE':^105s}")
+print("=" * 105)
+print()
+
+samples_path = os.path.join(results_dir, "control-plane-top-samples.txt")
+sample_lines = []
+if os.path.exists(samples_path):
+    with open(samples_path) as f:
+        sample_lines = [line.strip() for line in f if line.strip()]
+
+cp_stats = summarize_control_plane_samples(sample_lines)
+duration_s = (loadtest_end - loadtest_start) if loadtest_end > loadtest_start else 0
+
+if cp_stats["samples"] == 0:
+    print("  No control-plane resource samples collected (metrics-server might be unavailable).")
+else:
+    print(f"  Window: {duration_s}s, samples: {int(cp_stats['samples'])}")
+    print(f"  ┌─────────────────┬──────────┬──────────┬──────────┐")
+    print(f"  │ {'Metric':<15s} │ {'Avg':>8s} │ {'p95':>8s} │ {'Max':>8s} │")
+    print(f"  ├─────────────────┼──────────┼──────────┼──────────┤")
+    print(f"  │ {'CPU (m)':<15s} │ {cp_stats['cpu_avg_m']:>8.1f} │ {cp_stats['cpu_p95_m']:>8.1f} │ {cp_stats['cpu_max_m']:>8.1f} │")
+    print(f"  │ {'RAM (Mi)':<15s} │ {cp_stats['mem_avg_bytes']/1024/1024:>8.1f} │ {cp_stats['mem_p95_bytes']/1024/1024:>8.1f} │ {cp_stats['mem_max_bytes']/1024/1024:>8.1f} │")
+    print(f"  └─────────────────┴──────────┴──────────┴──────────┘")
 PYEOF
 
     log ""
