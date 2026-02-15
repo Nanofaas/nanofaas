@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Function;
 
 @Configuration
 public class KubernetesClientConfig {
@@ -22,10 +23,23 @@ public class KubernetesClientConfig {
     private static final Logger log = LoggerFactory.getLogger(KubernetesClientConfig.class);
     private static final Path SA_TOKEN = Path.of("/var/run/secrets/kubernetes.io/serviceaccount/token");
     private static final Path SA_CA    = Path.of("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt");
+    private final Path saTokenPath;
+    private final Path saCaPath;
+    private final Function<String, String> envProvider;
+
+    public KubernetesClientConfig() {
+        this(SA_TOKEN, SA_CA, System::getenv);
+    }
+
+    KubernetesClientConfig(Path saTokenPath, Path saCaPath, Function<String, String> envProvider) {
+        this.saTokenPath = saTokenPath;
+        this.saCaPath = saCaPath;
+        this.envProvider = envProvider;
+    }
 
     @Bean
     public KubernetesClient kubernetesClient() {
-        if (Files.exists(SA_TOKEN)) {
+        if (Files.exists(saTokenPath)) {
             return inClusterClient();
         }
         // Local / dev: KubernetesClientBuilder reads ~/.kube/config automatically
@@ -36,10 +50,18 @@ public class KubernetesClientConfig {
 
     private KubernetesClient inClusterClient() {
         try {
-            String host = System.getenv("KUBERNETES_SERVICE_HOST");
-            String port = System.getenv("KUBERNETES_SERVICE_PORT");
-            String token = Files.readString(SA_TOKEN).trim();
-            String caCert = SA_CA.toAbsolutePath().toString();
+            String host = envProvider.apply("KUBERNETES_SERVICE_HOST");
+            String port = envProvider.apply("KUBERNETES_SERVICE_PORT");
+            if (host == null || host.isBlank() || port == null || port.isBlank()) {
+                throw new IllegalStateException("Missing Kubernetes service host/port environment variables");
+            }
+
+            String token = Files.readString(saTokenPath).trim();
+            if (token.isBlank()) {
+                throw new IllegalStateException("ServiceAccount token is empty");
+            }
+
+            String caCert = saCaPath.toAbsolutePath().toString();
             String masterUrl = "https://" + host + ":" + port;
 
             log.info("In-cluster K8s config: masterUrl={}, caCert={}, tokenLen={}",

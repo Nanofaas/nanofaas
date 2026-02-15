@@ -108,7 +108,11 @@ public class InternalScaler implements SmartLifecycle {
                 if (scaling == null || scaling.strategy() != ScalingStrategy.INTERNAL) {
                     continue;
                 }
-                evaluateAndScale(spec, scaling);
+                try {
+                    evaluateAndScale(spec, scaling);
+                } catch (Exception ex) {
+                    log.error("Error scaling function {}", spec.name(), ex);
+                }
             }
         } catch (Exception ex) {
             log.error("Error in scaling loop", ex);
@@ -172,8 +176,11 @@ public class InternalScaler implements SmartLifecycle {
 
     private double parseTarget(String target) {
         try {
+            if (target == null || target.isBlank()) {
+                return 50.0;
+            }
             return Double.parseDouble(target);
-        } catch (NumberFormatException e) {
+        } catch (RuntimeException e) {
             return 50.0;
         }
     }

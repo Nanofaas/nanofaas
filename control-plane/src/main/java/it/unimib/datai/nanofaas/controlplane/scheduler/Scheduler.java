@@ -90,7 +90,13 @@ public class Scheduler implements SmartLifecycle {
                         state.releaseSlot();
                     } else {
                         didWork.set(true);
-                        invocationService.dispatch(task);
+                        try {
+                            invocationService.dispatch(task);
+                        } catch (Exception ex) {
+                            state.releaseSlot();
+                            log.error("Dispatch failed for execution {}: {}",
+                                    task.executionId(), ex.getMessage(), ex);
+                        }
                     }
                 }
             });

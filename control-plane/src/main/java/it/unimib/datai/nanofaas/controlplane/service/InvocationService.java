@@ -178,10 +178,17 @@ public class InvocationService {
         metrics.dispatch(task.functionName());
 
         ExecutionMode mode = task.functionSpec().executionMode();
-        java.util.concurrent.CompletableFuture<DispatchResult> future = switch (mode) {
-            case LOCAL -> dispatcherRouter.dispatchLocal(task);
-            case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
-        };
+        java.util.concurrent.CompletableFuture<DispatchResult> future;
+        try {
+            future = switch (mode) {
+                case LOCAL -> dispatcherRouter.dispatchLocal(task);
+                case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
+            };
+        } catch (Exception ex) {
+            completeExecution(task.executionId(),
+                    DispatchResult.warm(InvocationResult.error(mode.name() + "_ERROR", ex.getMessage())));
+            return;
+        }
 
         future.whenComplete((dispatchResult, error) -> {
             if (error != null) {
