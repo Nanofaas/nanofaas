@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -66,5 +68,32 @@ class SyncQueueServiceTest {
 
         assertTrue(record.completion().isDone());
         assertEquals("QUEUE_TIMEOUT", record.completion().join().error().code());
+    }
+
+    @Test
+    void awaitWork_unblocksWhenTaskIsEnqueued() throws Exception {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        SyncQueueService service = new SyncQueueService(props, store, estimator, metrics, Clock.systemUTC());
+
+        CountDownLatch done = new CountDownLatch(1);
+        Thread waiter = new Thread(() -> {
+            service.awaitWork(500);
+            done.countDown();
+        });
+        waiter.start();
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        store.put(new ExecutionRecord("e1", task));
+        Thread.sleep(50);
+        service.enqueueOrThrow(task);
+
+        assertTrue(done.await(300, TimeUnit.MILLISECONDS));
+        waiter.join(500);
     }
 }

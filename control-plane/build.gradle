@@ -119,6 +119,6 @@ bootBuildImage {
     }
     environment = [
             'BP_NATIVE_IMAGE': 'true',
-            'BP_NATIVE_IMAGE_BUILD_ARGUMENTS': '-H:+AddAllCharsets -R:RuntimeArgs=-XX:+UseSerialGC'
+            'BP_NATIVE_IMAGE_BUILD_ARGUMENTS': '-H:+AddAllCharsets'
     ]
 }

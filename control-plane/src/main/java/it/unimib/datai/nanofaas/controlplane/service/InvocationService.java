@@ -167,7 +167,7 @@ public class InvocationService {
     }
 
     public void dispatch(InvocationTask task) {
-        ExecutionRecord record = executionStore.get(task.executionId()).orElse(null);
+        ExecutionRecord record = executionStore.getOrNull(task.executionId());
         if (record == null) {
             queueManager.decrementInFlight(task.functionName());
             return;
@@ -202,7 +202,7 @@ public class InvocationService {
 
     public void completeExecution(String executionId, DispatchResult dispatchResult) {
         InvocationResult result = dispatchResult.result();
-        ExecutionRecord record = executionStore.get(executionId).orElse(null);
+        ExecutionRecord record = executionStore.getOrNull(executionId);
         if (record == null) {
             return;
         }
@@ -305,17 +305,22 @@ public class InvocationService {
                                                    InvocationRequest request,
                                                    String idempotencyKey,
                                                    String traceId) {
+        String executionId = UUID.randomUUID().toString();
+        boolean idempotencyStored = false;
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            Optional<String> existingId = idempotencyStore.getExecutionId(functionName, idempotencyKey);
-            if (existingId.isPresent()) {
-                ExecutionRecord existing = executionStore.get(existingId.get()).orElse(null);
+            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, executionId);
+            if (existingExecutionId != null) {
+                ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
                 if (existing != null) {
                     return new ExecutionLookup(existing, false);
                 }
+                // Stale idempotency mapping pointing to an evicted execution.
+                idempotencyStore.put(functionName, idempotencyKey, executionId);
+            } else {
+                idempotencyStored = true;
             }
         }
 
-        String executionId = UUID.randomUUID().toString();
         InvocationTask task = new InvocationTask(
                 executionId,
                 functionName,
@@ -328,7 +333,8 @@ public class InvocationService {
         );
         ExecutionRecord record = new ExecutionRecord(executionId, task);
         executionStore.put(record);
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+        if (!idempotencyStored && idempotencyKey != null && !idempotencyKey.isBlank()) {
+            // Keep mapping fresh for TTL semantics.
             idempotencyStore.put(functionName, idempotencyKey, executionId);
         }
         return new ExecutionLookup(record, true);

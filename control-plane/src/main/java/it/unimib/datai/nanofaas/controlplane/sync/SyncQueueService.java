@@ -22,6 +22,7 @@ public class SyncQueueService {
     private final SyncQueueMetrics metrics;
     private final Clock clock;
     private final BlockingQueue<SyncQueueItem> queue;
+    private final Object workSignal = new Object();
     private final SyncQueueAdmissionController admissionController;
 
     @Autowired
@@ -68,8 +69,29 @@ public class SyncQueueService {
             metrics.rejected(task.functionName());
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, props.retryAfterSeconds());
         }
+        synchronized (workSignal) {
+            workSignal.notify();
+        }
         metrics.registerFunction(task.functionName());
         metrics.admitted(task.functionName());
+    }
+
+    /**
+     * Waits for new work when the queue is empty to avoid busy polling.
+     */
+    public void awaitWork(long timeoutMs) {
+        if (timeoutMs <= 0 || !queue.isEmpty()) {
+            return;
+        }
+        synchronized (workSignal) {
+            if (queue.isEmpty()) {
+                try {
+                    workSignal.wait(timeoutMs);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
     }
 
     public SyncQueueItem peekReady(Instant now) {
@@ -106,7 +128,7 @@ public class SyncQueueService {
     }
 
     private void timeout(SyncQueueItem item) {
-        ExecutionRecord record = executionStore.get(item.task().executionId()).orElse(null);
+        ExecutionRecord record = executionStore.getOrNull(item.task().executionId());
         if (record != null) {
             record.markTimeout();
             record.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));

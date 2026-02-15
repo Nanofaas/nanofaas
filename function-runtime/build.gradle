@@ -55,7 +55,6 @@ bootBuildImage {
         imagePlatform = targetPlatform
     }
     environment = [
-            'BP_NATIVE_IMAGE': 'true',
-            'BP_NATIVE_IMAGE_BUILD_ARGUMENTS': '-R:RuntimeArgs=-XX:+UseSerialGC'
+            'BP_NATIVE_IMAGE': 'true'
     ]
 }

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.function.Consumer;
 
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
@@ -27,6 +28,7 @@ class SyncSchedulerBranchTest {
         scheduler.tickOnce();
 
         verify(queue, never()).pollReady(any(Instant.class));
+        verify(queue).awaitWork(anyLong());
         verify(queueManager, never()).tryAcquireSlot(anyString());
         verifyNoInteractions(dispatch);
     }

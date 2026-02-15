@@ -37,6 +37,14 @@ public class ExecutionStore {
         return Optional.of(stored.record());
     }
 
+    /**
+     * Hot-path lookup without Optional allocation.
+     */
+    public ExecutionRecord getOrNull(String executionId) {
+        StoredExecution stored = executions.get(executionId);
+        return stored == null ? null : stored.record();
+    }
+
     public void remove(String executionId) {
         executions.remove(executionId);
     }
