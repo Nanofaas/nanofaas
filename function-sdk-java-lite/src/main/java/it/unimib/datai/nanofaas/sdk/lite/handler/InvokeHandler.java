@@ -15,12 +15,16 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class InvokeHandler implements HttpHandler {
     private static final Logger log = LoggerFactory.getLogger(InvokeHandler.class);
     private static final Instant CONTAINER_START = Instant.now();
     private static final AtomicBoolean FIRST_INVOCATION = new AtomicBoolean(true);
+
+    private static final ExecutorService CALLBACK_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
     private final FunctionHandler functionHandler;
     private final CallbackClient callbackClient;
@@ -77,7 +81,11 @@ public final class InvokeHandler implements HttpHandler {
             double durationSec = (System.nanoTime() - startNanos) / 1_000_000_000.0;
             metrics.observeDuration(functionName, durationSec);
 
-            callbackClient.sendResult(effectiveExecutionId, InvocationResult.success(output), traceId);
+            // Fire-and-forget: callback must not block the response to the control plane
+            final String cbExecId = effectiveExecutionId;
+            final String cbTraceId = traceId;
+            final InvocationResult cbResult = InvocationResult.success(output);
+            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
 
             if (isColdStart) {
                 long initDurationMs = Instant.now().toEpochMilli() - CONTAINER_START.toEpochMilli();
@@ -93,7 +101,10 @@ public final class InvokeHandler implements HttpHandler {
             double durationSec = (System.nanoTime() - startNanos) / 1_000_000_000.0;
             metrics.observeDuration(functionName, durationSec);
 
-            callbackClient.sendResult(effectiveExecutionId, InvocationResult.error("HANDLER_ERROR", ex.getMessage()), traceId);
+            final String cbExecId = effectiveExecutionId;
+            final String cbTraceId = traceId;
+            final InvocationResult cbResult = InvocationResult.error("HANDLER_ERROR", ex.getMessage());
+            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
 
             sendJson(exchange, 500, Map.of("error", ex.getMessage() != null ? ex.getMessage() : "Internal error"));
         } finally {

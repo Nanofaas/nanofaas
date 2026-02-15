@@ -123,12 +123,14 @@ run_tests() {
 
         log "━━━ ${test} ━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+        # Allow k6 to exit non-zero when thresholds are crossed (report handles it)
         k6 run \
             --env "NANOFAAS_URL=${nanofaas_url}" \
             --summary-export="${RESULTS_DIR}/${test}.json" \
             "${script}" 2>&1 | tee "${RESULTS_DIR}/${test}.log" \
             | grep -E "█|✓|✗|http_req_duration\b|http_req_failed\b|http_reqs\b|iterations\b|default" \
-            | grep -v "running ("
+            | grep -v "running (" \
+            || true
 
         log "Results saved: ${RESULTS_DIR}/${test}.json"
         echo ""

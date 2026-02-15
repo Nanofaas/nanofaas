@@ -64,33 +64,27 @@ class SdkExamplesE2eTest {
             .withNetworkAliases("json-transform")
             .waitingFor(Wait.forHttp("/actuator/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
 
-    // word-stats-lite function container (Lite SDK)
-    private static final java.nio.file.Path WORD_STATS_LITE_DIST =
-            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats-lite/build/install/word-stats-lite");
+    // word-stats-lite function container (Lite SDK, native multi-stage build)
     private static final GenericContainer<?> wordStatsLite = new GenericContainer<>(
             new ImageFromDockerfile()
-                    .withFileFromPath("Dockerfile",
-                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats-lite/Dockerfile"))
-                    .withFileFromPath("build/install/word-stats-lite", WORD_STATS_LITE_DIST)
+                    .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
+                    .withDockerfilePath("examples/java/word-stats-lite/Dockerfile")
     )
             .withExposedPorts(8080)
             .withNetwork(network)
             .withNetworkAliases("word-stats-lite")
-            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
+            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(300)));
 
-    // json-transform-lite function container (Lite SDK)
-    private static final java.nio.file.Path JSON_TRANSFORM_LITE_DIST =
-            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform-lite/build/install/json-transform-lite");
+    // json-transform-lite function container (Lite SDK, native multi-stage build)
     private static final GenericContainer<?> jsonTransformLite = new GenericContainer<>(
             new ImageFromDockerfile()
-                    .withFileFromPath("Dockerfile",
-                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform-lite/Dockerfile"))
-                    .withFileFromPath("build/install/json-transform-lite", JSON_TRANSFORM_LITE_DIST)
+                    .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
+                    .withDockerfilePath("examples/java/json-transform-lite/Dockerfile")
     )
             .withExposedPorts(8080)
             .withNetwork(network)
             .withNetworkAliases("json-transform-lite")
-            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
+            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(300)));
 
     // control plane
     private static final GenericContainer<?> controlPlane = new GenericContainer<>(
