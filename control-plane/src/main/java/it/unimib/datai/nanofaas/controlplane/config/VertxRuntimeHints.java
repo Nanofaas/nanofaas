@@ -88,7 +88,6 @@ public class VertxRuntimeHints {
                             .map(entry -> entry.getName())
                             .filter(name -> name.startsWith(packagePath + "/"))
                             .filter(name -> name.endsWith(".class"))
-                            .filter(name -> !name.contains("$"))
                             .filter(name -> !name.endsWith("package-info.class"))
                             .filter(name -> !name.endsWith("module-info.class"))
                             .map(name -> name.substring(0, name.length() - 6).replace('/', '.'))
@@ -106,7 +105,6 @@ public class VertxRuntimeHints {
                     files.filter(Files::isRegularFile)
                             .map(path -> packageDir.relativize(path).toString())
                             .filter(name -> name.endsWith(".class"))
-                            .filter(name -> !name.contains("$"))
                             .filter(name -> !name.endsWith("package-info.class"))
                             .filter(name -> !name.endsWith("module-info.class"))
                             .map(name -> packagePath + "/" + name.replace('\\', '/'))
@@ -126,6 +124,7 @@ public class VertxRuntimeHints {
                 }
                 hints.reflection().registerType(
                         type,
+                        MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
                         MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS,
                         MemberCategory.INVOKE_PUBLIC_METHODS
                 );
