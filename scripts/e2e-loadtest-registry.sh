@@ -514,7 +514,7 @@ run_loadtest() {
         while true; do
             sample=$(vm_exec "sudo kubectl top pods -n ${NAMESPACE} -l app=nanofaas-control-plane --no-headers 2>/dev/null | head -n 1" || true)
             if [[ -n "${sample}" ]]; then
-                echo "${sample}" >> "${cp_samples_file}"
+                echo "$(date +%s) ${sample}" >> "${cp_samples_file}"
             fi
             sleep 5
         done
@@ -741,7 +741,11 @@ from pathlib import Path
 
 project_root = Path(sys.argv[1]).resolve().parents[1]
 sys.path.insert(0, str(project_root / "scripts" / "lib"))
-from loadtest_registry_metrics import summarize_control_plane_samples
+from loadtest_registry_metrics import (
+    merge_prom_with_snapshots,
+    summarize_control_plane_samples,
+    summarize_control_plane_samples_by_windows,
+)
 
 results_dir = sys.argv[1]
 prom_path = sys.argv[2]
@@ -754,6 +758,21 @@ prom = {}
 if os.path.exists(prom_path):
     with open(prom_path) as f:
         prom = json.load(f)
+
+# Merge per-test Prometheus snapshots to fill function-level percentile gaps.
+snapshots = []
+snap_path = os.path.join(results_dir, "prom-snapshots.jsonl")
+if os.path.exists(snap_path):
+    with open(snap_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                snapshots.append(json.loads(line))
+            except Exception:
+                continue
+prom = merge_prom_with_snapshots(prom, snapshots)
 
 # Load Kubernetes resource dump
 k8s = {}
@@ -1197,6 +1216,40 @@ else:
     print(f"  │ {'CPU (m)':<15s} │ {cp_stats['cpu_avg_m']:>8.1f} │ {cp_stats['cpu_p95_m']:>8.1f} │ {cp_stats['cpu_max_m']:>8.1f} │")
     print(f"  │ {'RAM (Mi)':<15s} │ {cp_stats['mem_avg_bytes']/1024/1024:>8.1f} │ {cp_stats['mem_p95_bytes']/1024/1024:>8.1f} │ {cp_stats['mem_max_bytes']/1024/1024:>8.1f} │")
     print(f"  └─────────────────┴──────────┴──────────┴──────────┘")
+
+    windows = []
+    windows_path = os.path.join(results_dir, "test-windows.jsonl")
+    if os.path.exists(windows_path):
+        with open(windows_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    windows.append(json.loads(line))
+                except Exception:
+                    continue
+
+    by_function = summarize_control_plane_samples_by_windows(sample_lines, windows)
+    if by_function:
+        print()
+        print("  Per-function experiment profile:")
+        print(f"  ┌──────────────────────────────┬─────────┬─────────┬─────────┬──────────┬──────────┬──────────┐")
+        print(f"  │ {'Function':<28s} │ {'CPU a':>7s} │ {'CPU95':>7s} │ {'CPU m':>7s} │ {'RAM a':>8s} │ {'RAM95':>8s} │ {'RAM m':>8s} │")
+        print(f"  ├──────────────────────────────┼─────────┼─────────┼─────────┼──────────┼──────────┼──────────┤")
+        for fn in ALL_FUNCTIONS:
+            s = by_function.get(fn, {})
+            if not s or s.get("samples", 0) == 0:
+                print(f"  │ {fn:<28s} │ {'-':>7s} │ {'-':>7s} │ {'-':>7s} │ {'-':>8s} │ {'-':>8s} │ {'-':>8s} │")
+                continue
+            ram_avg = s["mem_avg_bytes"] / 1024 / 1024
+            ram_p95 = s["mem_p95_bytes"] / 1024 / 1024
+            ram_max = s["mem_max_bytes"] / 1024 / 1024
+            print(
+                f"  │ {fn:<28s} │ {s['cpu_avg_m']:>7.1f} │ {s['cpu_p95_m']:>7.1f} │ {s['cpu_max_m']:>7.1f} │ "
+                f"{ram_avg:>8.1f} │ {ram_p95:>8.1f} │ {ram_max:>8.1f} │"
+            )
+        print(f"  └──────────────────────────────┴─────────┴─────────┴─────────┴──────────┴──────────┴──────────┘")
 PYEOF
 
     log ""

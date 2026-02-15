@@ -92,8 +92,8 @@ def summarize_control_plane_samples(lines: list[str]) -> dict[str, float]:
         parts = line.split()
         if len(parts) < 3:
             continue
-        cpu_m.append(_parse_cpu_milli(parts[1]))
-        mem_b.append(_parse_mem_bytes(parts[2]))
+        cpu_m.append(_parse_cpu_milli(parts[-2]))
+        mem_b.append(_parse_mem_bytes(parts[-1]))
 
     if not cpu_m or not mem_b:
         return {
@@ -115,3 +115,70 @@ def summarize_control_plane_samples(lines: list[str]) -> dict[str, float]:
         "mem_p95_bytes": _percentile(mem_b, 95),
         "mem_max_bytes": float(max(mem_b)),
     }
+
+
+def _parse_timed_sample(line: str) -> tuple[int, str] | None:
+    parts = line.split()
+    if len(parts) < 4:
+        return None
+    try:
+        ts = int(parts[0])
+    except ValueError:
+        return None
+    # Normalize to the format expected by summarize_control_plane_samples.
+    return ts, f"{parts[1]} {parts[2]} {parts[3]}"
+
+
+def summarize_control_plane_samples_by_windows(
+    sample_lines: list[str],
+    windows: list[dict[str, int | str]],
+) -> dict[str, dict[str, float]]:
+    parsed = []
+    for line in sample_lines:
+        item = _parse_timed_sample(line)
+        if item is not None:
+            parsed.append(item)
+
+    grouped: dict[str, dict[str, float]] = {}
+    for window in windows:
+        fn = str(window.get("function", ""))
+        start = int(window.get("start", 0))
+        end = int(window.get("end", 0))
+        if not fn or end <= start:
+            continue
+
+        lines = [payload for ts, payload in parsed if start <= ts <= end]
+        grouped[fn] = summarize_control_plane_samples(lines)
+    return grouped
+
+
+def merge_prom_with_snapshots(
+    prom: dict[str, dict[str, float]],
+    snapshots: list[dict],
+) -> dict[str, dict[str, float]]:
+    # Mutate a copy so callers can keep original data if needed.
+    merged: dict[str, dict[str, float]] = {fn: dict(metrics) for fn, metrics in prom.items()}
+    keys = (
+        "latency_p50",
+        "latency_p95",
+        "latency_p99",
+        "e2e_p50",
+        "e2e_p95",
+        "e2e_p99",
+        "queue_wait_p50",
+        "queue_wait_p95",
+        "init_p50",
+        "init_p95",
+    )
+    for snap in snapshots:
+        fn = snap.get("function")
+        metrics = snap.get("metrics", {})
+        if not fn:
+            continue
+        merged.setdefault(fn, {})
+        for key in keys:
+            value = float(metrics.get(key, 0.0) or 0.0)
+            current = float(merged[fn].get(key, 0.0) or 0.0)
+            if current == 0.0 and value > 0.0:
+                merged[fn][key] = value
+    return merged

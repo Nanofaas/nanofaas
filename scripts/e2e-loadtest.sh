@@ -34,6 +34,63 @@ resolve_prom_url() {
     e2e_resolve_nanofaas_url 30090
 }
 
+capture_prom_snapshot() {
+    local test_name="$1"
+    local prom_url
+    prom_url=$(resolve_prom_url)
+    local out_file="${RESULTS_DIR}/prom-snapshots.jsonl"
+
+    python3 - "${prom_url}" "${test_name}" "${out_file}" << 'PYEOF' || true
+import json, sys, time, urllib.parse, urllib.request
+
+prom_url = sys.argv[1]
+function = sys.argv[2]
+out_file = sys.argv[3]
+
+def prom_query(expr):
+    url = f"{prom_url}/api/v1/query?query={urllib.parse.quote(expr, safe='')}"
+    with urllib.request.urlopen(url, timeout=8) as resp:
+        body = json.loads(resp.read())
+    return body.get("data", {}).get("result", [])
+
+def metric_max(expr):
+    try:
+        rows = prom_query(expr)
+    except Exception:
+        return 0.0
+    if not rows:
+        return 0.0
+    vals = []
+    for row in rows:
+        try:
+            vals.append(float(row["value"][1]))
+        except Exception:
+            continue
+    return max(vals) if vals else 0.0
+
+queries = {
+    "latency_p50": f'max(function_latency_ms_seconds{{function="{function}",quantile="0.5"}})',
+    "latency_p95": f'max(function_latency_ms_seconds{{function="{function}",quantile="0.95"}})',
+    "latency_p99": f'max(function_latency_ms_seconds{{function="{function}",quantile="0.99"}})',
+    "e2e_p50": f'max(function_e2e_latency_ms_seconds{{function="{function}",quantile="0.5"}})',
+    "e2e_p95": f'max(function_e2e_latency_ms_seconds{{function="{function}",quantile="0.95"}})',
+    "e2e_p99": f'max(function_e2e_latency_ms_seconds{{function="{function}",quantile="0.99"}})',
+    "queue_wait_p50": f'max(function_queue_wait_ms_seconds{{function="{function}",quantile="0.5"}})',
+    "queue_wait_p95": f'max(function_queue_wait_ms_seconds{{function="{function}",quantile="0.95"}})',
+    "init_p50": f'max(function_init_duration_ms_seconds{{function="{function}",quantile="0.5"}})',
+    "init_p95": f'max(function_init_duration_ms_seconds{{function="{function}",quantile="0.95"}})',
+}
+
+payload = {
+    "function": function,
+    "timestamp": int(time.time()),
+    "metrics": {key: metric_max(expr) for key, expr in queries.items()},
+}
+with open(out_file, "a", encoding="utf-8") as f:
+    f.write(json.dumps(payload) + "\n")
+PYEOF
+}
+
 # ─── Pre-flight checks ──────────────────────────────────────────────────────
 preflight() {
     log "Pre-flight checks..."
@@ -92,6 +149,10 @@ run_tests() {
     nanofaas_url=$(resolve_vm_ip)
 
     mkdir -p "${RESULTS_DIR}"
+    local windows_file="${RESULTS_DIR}/test-windows.jsonl"
+    local prom_snapshots_file="${RESULTS_DIR}/prom-snapshots.jsonl"
+    : > "${windows_file}"
+    : > "${prom_snapshots_file}"
 
     local tests=(
         "word-stats-java"
@@ -122,6 +183,8 @@ run_tests() {
         fi
 
         log "━━━ ${test} ━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        local test_start_epoch
+        test_start_epoch=$(date +%s)
 
         # Allow k6 to exit non-zero when thresholds are crossed (report handles it)
         k6 run \
@@ -131,6 +194,12 @@ run_tests() {
             | grep -E "█|✓|✗|http_req_duration\b|http_req_failed\b|http_reqs\b|iterations\b|default" \
             | grep -v "running (" \
             || true
+
+        local test_end_epoch
+        test_end_epoch=$(date +%s)
+        printf '{"function":"%s","start":%s,"end":%s}\n' \
+            "${test}" "${test_start_epoch}" "${test_end_epoch}" >> "${windows_file}"
+        capture_prom_snapshot "${test}"
 
         log "Results saved: ${RESULTS_DIR}/${test}.json"
         echo ""
