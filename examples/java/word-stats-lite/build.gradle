@@ -1,0 +1,25 @@
+plugins {
+    id 'application'
+    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
+}
+
+dependencies {
+    implementation project(':function-sdk-java-lite')
+}
+
+application {
+    mainClass = 'it.unimib.datai.nanofaas.examples.wordstatslite.WordStatsLite'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'word-stats-lite'
+            mainClass = 'it.unimib.datai.nanofaas.examples.wordstatslite.WordStatsLite'
+        }
+    }
+}

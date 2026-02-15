@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * E2E test that validates the Java SDK example functions (word-stats, json-transform)
- * running as real containers through the control plane.
+ * and their lite SDK counterparts running as real containers through the control plane.
  */
 @Testcontainers
 @Tag("inter_e2e")
@@ -40,7 +40,7 @@ class SdkExamplesE2eTest {
             E2eTestSupport.PROJECT_ROOT.resolve("control-plane/build/libs"),
             "control-plane-");
 
-    // word-stats function container
+    // word-stats function container (Spring SDK)
     private static final GenericContainer<?> wordStats = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
@@ -52,7 +52,7 @@ class SdkExamplesE2eTest {
             .withNetworkAliases("word-stats")
             .waitingFor(Wait.forHttp("/actuator/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
 
-    // json-transform function container
+    // json-transform function container (Spring SDK)
     private static final GenericContainer<?> jsonTransform = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
@@ -63,6 +63,34 @@ class SdkExamplesE2eTest {
             .withNetwork(network)
             .withNetworkAliases("json-transform")
             .waitingFor(Wait.forHttp("/actuator/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
+
+    // word-stats-lite function container (Lite SDK)
+    private static final java.nio.file.Path WORD_STATS_LITE_DIST =
+            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats-lite/build/install/word-stats-lite");
+    private static final GenericContainer<?> wordStatsLite = new GenericContainer<>(
+            new ImageFromDockerfile()
+                    .withFileFromPath("Dockerfile",
+                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats-lite/Dockerfile"))
+                    .withFileFromPath("build/install/word-stats-lite", WORD_STATS_LITE_DIST)
+    )
+            .withExposedPorts(8080)
+            .withNetwork(network)
+            .withNetworkAliases("word-stats-lite")
+            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
+
+    // json-transform-lite function container (Lite SDK)
+    private static final java.nio.file.Path JSON_TRANSFORM_LITE_DIST =
+            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform-lite/build/install/json-transform-lite");
+    private static final GenericContainer<?> jsonTransformLite = new GenericContainer<>(
+            new ImageFromDockerfile()
+                    .withFileFromPath("Dockerfile",
+                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform-lite/Dockerfile"))
+                    .withFileFromPath("build/install/json-transform-lite", JSON_TRANSFORM_LITE_DIST)
+    )
+            .withExposedPorts(8080)
+            .withNetwork(network)
+            .withNetworkAliases("json-transform-lite")
+            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(60)));
 
     // control plane
     private static final GenericContainer<?> controlPlane = new GenericContainer<>(
@@ -82,16 +110,26 @@ class SdkExamplesE2eTest {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker not available");
         wordStats.start();
         jsonTransform.start();
+        wordStatsLite.start();
+        jsonTransformLite.start();
         controlPlane.start();
         RestAssured.baseURI = "http://" + controlPlane.getHost();
         RestAssured.port = controlPlane.getMappedPort(8080);
 
-        // Register both functions once
+        // Register Spring SDK functions
         E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
                 "word-stats", "word-stats:test", "http://word-stats:8080/invoke",
                 10000, 4, 20, 3));
         E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
                 "json-transform", "json-transform:test", "http://json-transform:8080/invoke",
+                10000, 4, 20, 3));
+
+        // Register Lite SDK functions
+        E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
+                "word-stats-lite", "word-stats-lite:test", "http://word-stats-lite:8080/invoke",
+                10000, 4, 20, 3));
+        E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
+                "json-transform-lite", "json-transform-lite:test", "http://json-transform-lite:8080/invoke",
                 10000, 4, 20, 3));
     }
 
@@ -215,5 +253,71 @@ class SdkExamplesE2eTest {
                     assertEquals(40.0f, ((Number) response.path("output.groups.A")).floatValue(), 0.01);
                     assertEquals(20.0f, ((Number) response.path("output.groups.B")).floatValue(), 0.01);
                 });
+    }
+
+    // ── word-stats-lite (Lite SDK) ───────────────────────────────────
+
+    @Test
+    void wordStatsLite_syncInvoke_returnsCorrectStatistics() {
+        RestAssured.given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("input", Map.of(
+                        "text", "the quick brown fox jumps over the lazy dog the dog",
+                        "topN", 3
+                )))
+                .post("/v1/functions/word-stats-lite:invoke")
+                .then()
+                .statusCode(200)
+                .body("status", equalTo("success"))
+                .body("output.wordCount", equalTo(11))
+                .body("output.uniqueWords", equalTo(8))
+                .body("output.topWords", hasSize(3));
+    }
+
+    // ── json-transform-lite (Lite SDK) ───────────────────────────────
+
+    @Test
+    void jsonTransformLite_syncInvoke_groupAndCount() {
+        RestAssured.given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("input", Map.of(
+                        "data", List.of(
+                                Map.of("dept", "eng", "salary", 80000),
+                                Map.of("dept", "sales", "salary", 60000),
+                                Map.of("dept", "eng", "salary", 90000),
+                                Map.of("dept", "sales", "salary", 70000),
+                                Map.of("dept", "eng", "salary", 85000)
+                        ),
+                        "groupBy", "dept",
+                        "operation", "count"
+                )))
+                .post("/v1/functions/json-transform-lite:invoke")
+                .then()
+                .statusCode(200)
+                .body("status", equalTo("success"))
+                .body("output.groupBy", equalTo("dept"))
+                .body("output.operation", equalTo("count"))
+                .body("output.groups.eng", equalTo(3))
+                .body("output.groups.sales", equalTo(2));
+    }
+
+    @Test
+    void jsonTransformLite_syncInvoke_groupAndAvg() {
+        RestAssured.given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("input", Map.of(
+                        "data", List.of(
+                                Map.of("dept", "eng", "salary", 80000),
+                                Map.of("dept", "eng", "salary", 90000)
+                        ),
+                        "groupBy", "dept",
+                        "operation", "avg",
+                        "valueField", "salary"
+                )))
+                .post("/v1/functions/json-transform-lite:invoke")
+                .then()
+                .statusCode(200)
+                .body("status", equalTo("success"))
+                .body("output.groups.eng", equalTo(85000.0f));
     }
 }

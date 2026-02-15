@@ -1,0 +1,33 @@
+plugins {
+    id 'java-library'
+    id 'org.graalvm.buildtools.native'
+}
+
+dependencies {
+    api project(':common')
+    api 'com.fasterxml.jackson.core:jackson-databind:2.18.3'
+
+    api 'io.prometheus:prometheus-metrics-core:1.3.6'
+    api 'io.prometheus:prometheus-metrics-exposition-formats:1.3.6'
+
+    api 'org.slf4j:slf4j-api:2.0.16'
+    implementation 'ch.qos.logback:logback-classic:1.5.16'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'nanofaas-lite-runtime'
+        }
+    }
+    metadataRepository {
+        enabled = true
+    }
+}

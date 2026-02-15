@@ -294,6 +294,18 @@ def build_and_push_arm64(version):
         )
         run_command(f"docker push {img}")
 
+    # 7. Java Lite Demo Functions
+    console.print("[blue]Building Java Lite distributions...[/blue]")
+    run_command("./gradlew :examples:java:word-stats-lite:installDist :examples:java:json-transform-lite:installDist")
+    for example in ["word-stats", "json-transform"]:
+        img = f"{base_image}/java-lite-{example}:{tag}-arm64"
+        console.print(f"[blue]Building Java Lite {example} ({img})...[/blue]")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {img} -f examples/java/{example}-lite/Dockerfile examples/java/{example}-lite/"
+        )
+        run_command(f"docker push {img}")
+
     console.print("[green]✓ Local ARM64 images pushed to GHCR.[/green]")
 
 def update_files(new_v, dry_run=False):

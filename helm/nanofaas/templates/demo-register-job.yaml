@@ -27,20 +27,26 @@ spec:
               CP_MGMT="http://{{ .Values.controlPlane.service.name }}:{{ .Values.controlPlane.service.ports.actuator }}"
 
               echo "Waiting for control-plane readiness..."
+              ready=0
               for i in $(seq 1 60); do
                 if curl -sf "${CP_MGMT}/actuator/health/readiness" >/dev/null; then
                   echo "control-plane ready"
+                  ready=1
                   break
                 fi
                 sleep 2
               done
+              if [ "${ready}" -ne 1 ]; then
+                echo "control-plane readiness check failed after timeout" >&2
+                exit 1
+              fi
 
               echo "Registering demo functions..."
               {{- range $f := .Values.demos.functions }}
               echo "  - {{ $f.name }}"
-              curl -sf -X POST "${CP_API}/v1/functions" \
+              curl -fsS -X POST "${CP_API}/v1/functions" \
                 -H 'Content-Type: application/json' \
-                -d '{{- toJson $f -}}' >/dev/null || true
+                -d '{{- toJson $f -}}' >/dev/null
               {{- end }}
 
               echo "Done"

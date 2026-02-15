@@ -31,6 +31,8 @@ IMAGE_REPO=${IMAGE_REPO:-ghcr.io/miciav/nanofaas}
 EXEC_IMAGE_PREFIX=${EXEC_IMAGE_PREFIX:-}
 CURL_IMAGE=${CURL_IMAGE:-docker.io/curlimages/curl:latest}
 HELM_TIMEOUT=${HELM_TIMEOUT:-10m}
+EXPECTED_READY_PODS=${EXPECTED_READY_PODS:-auto}
+EXPECTED_FUNCTIONS=${EXPECTED_FUNCTIONS:-8}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -141,6 +143,8 @@ pull_registry_images() {
         "${IMAGE_REPO}/python-json-transform:${RESOLVED_TAG}"
         "${IMAGE_REPO}/${RESOLVED_EXEC_PREFIX}-word-stats:${RESOLVED_TAG}"
         "${IMAGE_REPO}/${RESOLVED_EXEC_PREFIX}-json-transform:${RESOLVED_TAG}"
+        "${IMAGE_REPO}/java-lite-word-stats:${RESOLVED_TAG}"
+        "${IMAGE_REPO}/java-lite-json-transform:${RESOLVED_TAG}"
         "${CURL_IMAGE}"
     )
 
@@ -249,6 +253,20 @@ demos:
       maxRetries: 3
       executionMode: DEPLOYMENT
       runtimeMode: STDIO
+    - name: word-stats-java-lite
+      image: ${IMAGE_REPO}/java-lite-word-stats:${RESOLVED_TAG}
+      timeoutMs: 30000
+      concurrency: 4
+      queueSize: 100
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: json-transform-java-lite
+      image: ${IMAGE_REPO}/java-lite-json-transform:${RESOLVED_TAG}
+      timeoutMs: 30000
+      concurrency: 4
+      queueSize: 100
+      maxRetries: 3
+      executionMode: DEPLOYMENT
   registerJob:
     image: ${CURL_IMAGE}
 ENDVALUES"
@@ -268,17 +286,71 @@ verify_deployment() {
     vm_exec "kubectl rollout status deployment/nanofaas-control-plane -n ${NAMESPACE} --timeout=180s"
 
     vm_exec "for i in \$(seq 1 90); do
-        ready=\$(kubectl get pods -n ${NAMESPACE} --no-headers 2>/dev/null | grep -c \"1/1.*Running\" || echo 0)
-        total=\$(kubectl get pods -n ${NAMESPACE} --no-headers 2>/dev/null | grep -cv Completed 2>/dev/null || echo 0)
-        echo \"  pods: \${ready}/\${total} Running\"
-        if [ \"\${ready}\" -ge 8 ]; then exit 0; fi
+        snapshot=\$(kubectl get pods -n ${NAMESPACE} --no-headers 2>/dev/null || true)
+        if [ -z \"\${snapshot}\" ]; then
+            echo \"  pods ready: 0/0 (waiting for pod creation)\"
+            sleep 5
+            continue
+        fi
+
+        total=\$(echo \"\${snapshot}\" | awk '\$3 != \"Completed\" {c++} END {print c+0}')
+        ready=\$(echo \"\${snapshot}\" | awk '\$3 == \"Running\" {split(\$2,a,\"/\"); if (a[1] == a[2]) c++} END {print c+0}')
+        not_ready=\$((total - ready))
+        deploy_snapshot=\$(kubectl get deploy -n ${NAMESPACE} --no-headers 2>/dev/null || true)
+        expected_mode=\"${EXPECTED_READY_PODS}\"
+        if [ \"\${expected_mode}\" = \"auto\" ]; then
+            expected=\$(echo \"\${deploy_snapshot}\" | awk 'NF >= 2 {split(\$2,a,\"/\"); desired=a[2]+0; if (desired > 0) s += desired} END {print s+0}')
+        else
+            expected=\"\${expected_mode}\"
+        fi
+        case \"\${expected}\" in
+            ''|*[!0-9]*)
+                expected=0
+                ;;
+        esac
+        zero_replica=\$(echo \"\${deploy_snapshot}\" | awk 'NF >= 2 {split(\$2,a,\"/\"); if ((a[2]+0) == 0) c++} END {print c+0}')
+
+        echo \"  pods ready: \${ready}/\${total} (not-ready: \${not_ready}, expected: \${expected}, zero-replica deploys: \${zero_replica})\"
+        if [ -n \"\${deploy_snapshot}\" ]; then
+            echo \"\${deploy_snapshot}\" | awk 'NF >= 2 {printf \"    DEPLOY %-28s READY=%-7s UP-TO-DATE=%-4s AVAILABLE=%-4s\\n\", \$1, \$2, \$3, \$4}'
+        fi
+        echo \"\${snapshot}\" | awk '\$3 != \"Completed\" {
+            split(\$2,a,\"/\");
+            state=(\$3 == \"Running\" && a[1] == a[2]) ? \"READY\" : \"NOT_READY\";
+            printf \"    %-9s %-12s %-8s %s\\n\", state, \$3, \$2, \$1
+        }'
+
+        if [ \"\${ready}\" -ge \"\${expected}\" ]; then exit 0; fi
         sleep 5
     done
-    echo \"Not all pods ready\" >&2
-    kubectl get pods -n ${NAMESPACE}
+    echo \"Not all expected pods became ready\" >&2
+    kubectl get pods -n ${NAMESPACE} -o wide
     exit 1"
 
     vm_exec "kubectl get pods -n ${NAMESPACE}"
+}
+
+verify_registered_functions() {
+    log "Verifying function registration..."
+    vm_exec "for i in \$(seq 1 60); do
+        count=\$(curl -sf http://127.0.0.1:30080/v1/functions \
+            | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
+        echo \"  functions: \${count}/${EXPECTED_FUNCTIONS}\"
+        if [ \"\${count}\" -ge ${EXPECTED_FUNCTIONS} ]; then
+            exit 0
+        fi
+        sleep 2
+    done
+    echo \"Expected at least ${EXPECTED_FUNCTIONS} functions but registration did not complete\" >&2
+    echo \"Current /v1/functions response:\"
+    curl -s http://127.0.0.1:30080/v1/functions || true
+    echo
+    echo \"Control-plane logs (tail):\" >&2
+    pod=\$(kubectl get pods -n ${NAMESPACE} -o name | grep control-plane | head -1)
+    if [ -n \"\${pod}\" ]; then
+        kubectl logs -n ${NAMESPACE} \"\${pod}\" --tail=120 || true
+    fi
+    exit 1"
 }
 
 run_loadtest() {
@@ -325,6 +397,7 @@ main() {
     pull_registry_images
     helm_install_registry
     verify_deployment
+    verify_registered_functions
     run_loadtest
     print_summary
 }
