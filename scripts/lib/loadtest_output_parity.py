@@ -27,13 +27,40 @@ def semantically_equal(left, right, tolerance: float = 1e-9) -> bool:
     return left == right
 
 
-def compare_case_outputs(outputs_by_function: list[tuple[str, object]], tolerance: float = 1e-9):
+def normalize_case_output(case_name: str | None, output):
+    if case_name != "word-stats" or not isinstance(output, dict):
+        return output
+
+    top_words = output.get("topWords")
+    if not isinstance(top_words, list):
+        return output
+    if not all(isinstance(item, dict) and "word" in item for item in top_words):
+        return output
+
+    normalized = dict(output)
+    normalized["topWords"] = sorted(
+        top_words,
+        key=lambda item: (
+            str(item.get("word", "")),
+            item.get("count", 0),
+        ),
+    )
+    return normalized
+
+
+def compare_case_outputs(
+    outputs_by_function: list[tuple[str, object]],
+    tolerance: float = 1e-9,
+    case_name: str | None = None,
+):
     if not outputs_by_function:
         return []
 
     baseline_fn, baseline_output = outputs_by_function[0]
+    baseline_output = normalize_case_output(case_name, baseline_output)
     mismatches = []
     for function_name, function_output in outputs_by_function[1:]:
+        function_output = normalize_case_output(case_name, function_output)
         if not semantically_equal(baseline_output, function_output, tolerance):
             mismatches.append((function_name, baseline_fn, baseline_output, function_output))
     return mismatches

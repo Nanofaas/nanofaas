@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.queue;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.WorkSignaler;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -17,9 +18,20 @@ public class QueueManager {
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
+    private WorkSignaler workSignaler;
 
     public QueueManager(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
+    }
+
+    public void setWorkSignaler(WorkSignaler workSignaler) {
+        this.workSignaler = workSignaler;
+    }
+
+    private void notifyWork(String functionName) {
+        if (workSignaler != null) {
+            workSignaler.signalWork(functionName);
+        }
     }
 
     public FunctionQueueState getOrCreate(FunctionSpec spec) {
@@ -66,7 +78,11 @@ public class QueueManager {
         if (state == null) {
             return false;
         }
-        return state.offer(task);
+        boolean success = state.offer(task);
+        if (success) {
+            notifyWork(task.functionName());
+        }
+        return success;
     }
 
     public void incrementInFlight(String functionName) {
@@ -92,6 +108,9 @@ public class QueueManager {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {
             state.releaseSlot();
+            if (state.queued() > 0) {
+                notifyWork(functionName);
+            }
         }
     }
 }

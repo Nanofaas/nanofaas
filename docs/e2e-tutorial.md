@@ -100,14 +100,21 @@ dependencies, and performs a clean Helm install each time.
 
 This script:
 
-1. **Verifies** the nanofaas API is reachable and all 6 functions are registered
-2. **Starts Grafana** locally via Docker (port 3000), auto-provisioned with:
+1. **Verifies** the nanofaas API is reachable and all 8 functions are registered
+2. **Checks output parity** across runtimes (`word-stats`, `json-transform-*`) before load generation
+3. **Starts Grafana** locally via Docker (port 3000), auto-provisioned with:
    - Prometheus datasource pointing to the VM
    - Pre-built dashboard with 7 panels
-3. **Runs k6 load tests** for each function sequentially:
+4. **Runs k6 load tests** for each function sequentially:
    - Ramp-up profile: 0 → 5 → 10 → 20 → 20 → 0 VUs over ~2 minutes
    - 10-second cooldown between tests
-4. **Generates a performance report** with per-function and per-runtime analysis
+5. **Generates a performance report** with per-function and per-runtime analysis
+
+For all supported parameters and examples:
+
+```bash
+./scripts/e2e-loadtest.sh --help
+```
 
 #### Load test profile
 
@@ -137,6 +144,8 @@ Each k6 test uses a 5-stage ramp pattern:
 | `PROM_URL` | Auto-detected from VM | Override Prometheus URL |
 | `VM_NAME` | `nanofaas-e2e` | VM name for IP detection |
 | `SKIP_GRAFANA` | `false` | Skip Grafana startup |
+| `VERIFY_OUTPUT_PARITY` | `true` | Run semantic output parity checks before k6 |
+| `PARITY_TIMEOUT_SECONDS` | `20` | Request timeout (seconds) for each parity invocation |
 
 ### Step 3: View results
 

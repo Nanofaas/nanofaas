@@ -29,3 +29,70 @@ def test_compare_case_outputs_detects_mismatch():
     mismatches = compare_case_outputs(outputs)
     assert len(mismatches) == 1
     assert mismatches[0][0] == "word-stats-python"
+
+
+def test_compare_case_outputs_word_stats_ignores_topwords_order():
+    outputs = [
+        (
+            "word-stats-java",
+            {
+                "wordCount": 15,
+                "uniqueWords": 10,
+                "averageWordLength": 3.67,
+                "topWords": [
+                    {"word": "the", "count": 4},
+                    {"word": "dog", "count": 2},
+                    {"word": "fox", "count": 2},
+                ],
+            },
+        ),
+        (
+            "word-stats-python",
+            {
+                "wordCount": 15,
+                "uniqueWords": 10,
+                "averageWordLength": 3.67,
+                "topWords": [
+                    {"word": "fox", "count": 2},
+                    {"word": "the", "count": 4},
+                    {"word": "dog", "count": 2},
+                ],
+            },
+        ),
+    ]
+    mismatches = compare_case_outputs(outputs, case_name="word-stats")
+    assert mismatches == []
+
+
+def test_compare_case_outputs_word_stats_detects_different_words():
+    outputs = [
+        (
+            "word-stats-java",
+            {
+                "wordCount": 15,
+                "uniqueWords": 10,
+                "averageWordLength": 3.67,
+                "topWords": [
+                    {"word": "the", "count": 4},
+                    {"word": "dog", "count": 2},
+                    {"word": "fox", "count": 2},
+                ],
+            },
+        ),
+        (
+            "word-stats-python",
+            {
+                "wordCount": 15,
+                "uniqueWords": 10,
+                "averageWordLength": 3.67,
+                "topWords": [
+                    {"word": "the", "count": 4},
+                    {"word": "quick", "count": 2},
+                    {"word": "fox", "count": 2},
+                ],
+            },
+        ),
+    ]
+    mismatches = compare_case_outputs(outputs, case_name="word-stats")
+    assert len(mismatches) == 1
+    assert mismatches[0][0] == "word-stats-python"

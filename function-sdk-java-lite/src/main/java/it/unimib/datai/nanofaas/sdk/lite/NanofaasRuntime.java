@@ -100,11 +100,17 @@ public final class NanofaasRuntime {
                 effectiveName = "unknown";
             }
 
-            ObjectMapper objectMapper = new ObjectMapper()
-                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                        ObjectMapper objectMapper = new ObjectMapper()
 
-            String callbackUrl = System.getenv("CALLBACK_URL");
-            CallbackClient callbackClient = new CallbackClient(objectMapper, callbackUrl);
+                                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+            
+
+                        String callbackUrl = System.getenv("CALLBACK_URL");
+
+            
+                        CallbackClient callbackClient = new CallbackClient(objectMapper, callbackUrl);
+            
             RuntimeMetrics metrics = new RuntimeMetrics(effectiveName);
 
             try {

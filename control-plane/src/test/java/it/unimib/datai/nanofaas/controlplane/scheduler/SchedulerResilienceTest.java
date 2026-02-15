@@ -23,25 +23,34 @@ class SchedulerResilienceTest {
         FunctionQueueState state = mock(FunctionQueueState.class);
         InvocationTask task = mock(InvocationTask.class);
 
-        when(state.tryAcquireSlot()).thenReturn(true);
-        when(state.poll()).thenReturn(task).thenReturn((InvocationTask) null);
+        when(queueManager.get("testFunc")).thenReturn(state);
+        when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false); // Process once per signal
+        when(state.poll()).thenReturn(task);
         doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(task);
 
-        AtomicInteger iterations = new AtomicInteger();
-        doAnswer(invocation -> {
-            iterations.incrementAndGet();
-            @SuppressWarnings("unchecked")
-            Consumer<FunctionQueueState> action = invocation.getArgument(0);
-            action.accept(state);
-            return null;
-        }).when(queueManager).forEachQueue(any());
-
         Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        scheduler.init();
         scheduler.start();
         try {
+            // First signal
+            scheduler.signalWork("testFunc");
+            
+            // Verify first dispatch was attempted
             Awaitility.await()
-                    .atMost(Duration.ofSeconds(1))
-                    .untilAsserted(() -> assertThat(iterations.get()).isGreaterThan(1));
+                    .atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> verify(invocationService, atLeastOnce()).dispatch(task));
+
+            // Signal again to prove loop is still alive
+            reset(invocationService);
+            doNothing().when(invocationService).dispatch(task);
+            when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false);
+            when(state.poll()).thenReturn(task);
+            
+            scheduler.signalWork("testFunc");
+            
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> verify(invocationService, atLeastOnce()).dispatch(task));
         } finally {
             scheduler.stop();
         }

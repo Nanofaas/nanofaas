@@ -34,6 +34,9 @@ set -euo pipefail
 #   # Default (v0.12.0, auto-detect ARM64):
 #   ./scripts/e2e-loadtest-registry.sh
 #
+#   # Summary only from existing k6/results artifacts (no deploy/loadtest):
+#   ./scripts/e2e-loadtest-registry.sh --summary-only
+#
 #   # Explicit version:
 #   BASE_IMAGE_TAG=v0.12.0 ./scripts/e2e-loadtest-registry.sh
 #
@@ -63,6 +66,9 @@ set -euo pipefail
 #   HELM_TIMEOUT         Helm install timeout               (default: 10m)
 #   EXPECTED_READY_PODS  Expected ready pods (int|auto)     (default: auto)
 #   EXPECTED_FUNCTIONS   Expected registered functions       (default: 8)
+#   SUMMARY_ONLY         Skip deploy/loadtest, print summary from existing results (default: false)
+#   REFRESH_SUMMARY_METRICS  In summary-only, refresh Prom/K8s inputs from VM      (default: true)
+#   RESULTS_DIR_OVERRIDE Override k6 results directory path                          (default: k6/results)
 #
 # Prerequisites:
 #   - macOS or Linux host with multipass installed
@@ -93,6 +99,9 @@ CURL_IMAGE=${CURL_IMAGE:-docker.io/curlimages/curl:latest}
 HELM_TIMEOUT=${HELM_TIMEOUT:-10m}
 EXPECTED_READY_PODS=${EXPECTED_READY_PODS:-auto}
 EXPECTED_FUNCTIONS=${EXPECTED_FUNCTIONS:-8}
+SUMMARY_ONLY=${SUMMARY_ONLY:-false}
+REFRESH_SUMMARY_METRICS=${REFRESH_SUMMARY_METRICS:-true}
+RESULTS_DIR_OVERRIDE=${RESULTS_DIR_OVERRIDE:-}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -105,6 +114,119 @@ RESOLVED_EXEC_PREFIX="" # Computed in resolve_exec_image_prefix()
 LOADTEST_START_EPOCH=0
 LOADTEST_END_EPOCH=0
 
+show_help() {
+    cat <<'EOF'
+Usage:
+  ./scripts/e2e-loadtest-registry.sh [--summary-only] [--no-refresh-summary-metrics] [--help|-h]
+
+Modes:
+  default:
+    Provision VM + deploy nanofaas + run load tests + print summary.
+  --summary-only:
+    Skip provisioning/deploy/loadtest and render final tables from existing artifacts.
+
+Options:
+  --summary-only                 Render only the final comparison summary.
+  --no-refresh-summary-metrics   In --summary-only mode, do not query VM/Prometheus/Kubernetes.
+  --help, -h                     Show this help.
+
+Useful env vars:
+  VM_NAME, CPUS, MEMORY, DISK, NAMESPACE, KEEP_VM
+  SKIP_GRAFANA, BASE_IMAGE_TAG, ARM64_TAG_SUFFIX, IMAGE_TAG_OVERRIDE
+  IMAGE_REPO, EXEC_IMAGE_PREFIX, CURL_IMAGE, HELM_TIMEOUT
+  EXPECTED_READY_PODS, EXPECTED_FUNCTIONS
+  SUMMARY_ONLY, REFRESH_SUMMARY_METRICS, RESULTS_DIR_OVERRIDE
+
+Examples:
+  ./scripts/e2e-loadtest-registry.sh
+  BASE_IMAGE_TAG=v0.13.0 ARM64_TAG_SUFFIX=-arm64 ./scripts/e2e-loadtest-registry.sh
+  ./scripts/e2e-loadtest-registry.sh --summary-only
+  ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
+  RESULTS_DIR_OVERRIDE=/tmp/k6-results ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
+EOF
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            --summary-only)
+                SUMMARY_ONLY=true
+                ;;
+            --no-refresh-summary-metrics)
+                REFRESH_SUMMARY_METRICS=false
+                ;;
+            *)
+                err "Unknown argument: $1"
+                echo ""
+                show_help
+                exit 2
+                ;;
+        esac
+        shift
+    done
+}
+
+get_results_dir() {
+    if [[ -n "${RESULTS_DIR_OVERRIDE}" ]]; then
+        echo "${RESULTS_DIR_OVERRIDE}"
+        return
+    fi
+    echo "${PROJECT_ROOT}/k6/results"
+}
+
+derive_loadtest_window_from_results() {
+    if [[ "${LOADTEST_START_EPOCH}" -gt 0 && "${LOADTEST_END_EPOCH}" -gt 0 ]]; then
+        return
+    fi
+
+    local windows_file
+    windows_file="$(get_results_dir)/test-windows.jsonl"
+    if [[ ! -f "${windows_file}" ]]; then
+        return
+    fi
+
+    local bounds
+    bounds=$(python3 - "${windows_file}" <<'PYEOF'
+import json, sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+starts = []
+ends = []
+for line in path.read_text(encoding="utf-8").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        item = json.loads(line)
+    except Exception:
+        continue
+    s = item.get("start", 0)
+    e = item.get("end", 0)
+    if isinstance(s, int) and s > 0:
+        starts.append(s)
+    if isinstance(e, int) and e > 0:
+        ends.append(e)
+
+if starts and ends:
+    print(f"{min(starts)} {max(ends)}")
+PYEOF
+) || true
+
+    if [[ -n "${bounds}" ]]; then
+        local start_epoch end_epoch
+        read -r start_epoch end_epoch <<< "${bounds}"
+        if [[ -n "${start_epoch}" && -n "${end_epoch}" ]]; then
+            LOADTEST_START_EPOCH="${start_epoch}"
+            LOADTEST_END_EPOCH="${end_epoch}"
+        fi
+    fi
+}
+
 # ─── Stage 1: Pre-flight checks ───────────────────────────────────────────────
 check_prerequisites() {
     e2e_require_multipass
@@ -116,10 +238,11 @@ check_prerequisites() {
 
 cleanup() {
     local exit_code=$?
-    e2e_cleanup_vm
+    if [[ "${SUMMARY_ONLY}" != "true" ]]; then
+        e2e_cleanup_vm
+    fi
     exit "${exit_code}"
 }
-trap cleanup EXIT
 
 # ─── Stage 2: VM provisioning ──────────────────────────────────────────────────
 create_vm() {
@@ -506,7 +629,11 @@ verify_registered_functions() {
 # with 10s cool-down between each test. Results saved to k6/results/.
 run_loadtest() {
     log "Starting load test suite (e2e-loadtest.sh)..."
-    local cp_samples_file="${PROJECT_ROOT}/k6/results/control-plane-top-samples.txt"
+    local results_dir
+    results_dir="$(get_results_dir)"
+    mkdir -p "${results_dir}"
+
+    local cp_samples_file="${results_dir}/control-plane-top-samples.txt"
     : > "${cp_samples_file}"
 
     LOADTEST_START_EPOCH=$(date +%s)
@@ -544,15 +671,27 @@ run_loadtest() {
 #   5. Error breakdown: timeouts, rejections, retries per function
 #   6. Overall winners
 print_summary() {
-    local vm_ip
-    vm_ip=$(e2e_get_vm_ip) || vm_ip="<VM_IP>"
+    local results_dir
+    results_dir="$(get_results_dir)"
+    mkdir -p "${results_dir}"
 
-    local results_dir="${PROJECT_ROOT}/k6/results"
-    local prom_url="http://${vm_ip}:30090"
-
-    # Dump Prometheus metrics to a temp file for the Python report
     local prom_dump="${results_dir}/prometheus-dump.json"
-    log "Collecting Prometheus metrics..."
+    local k8s_dump="${results_dir}/k8s-resources.json"
+    local vm_ip="<VM_IP>"
+    local should_refresh="${REFRESH_SUMMARY_METRICS}"
+
+    if [[ "${should_refresh}" == "true" ]]; then
+        vm_ip=$(e2e_get_vm_ip || true)
+        if [[ -z "${vm_ip}" ]]; then
+            warn "Cannot determine VM IP; using cached summary inputs from ${results_dir}"
+            should_refresh="false"
+            vm_ip="<VM_IP>"
+        fi
+    fi
+
+    if [[ "${should_refresh}" == "true" ]]; then
+        local prom_url="http://${vm_ip}:30090"
+        log "Collecting Prometheus metrics..."
 python3 - "${prom_url}" "${prom_dump}" << 'PROM_DUMP'
 import json, sys, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
@@ -636,14 +775,13 @@ with open(out_path, "w") as f:
 print(f"  Prometheus metrics collected for {len(data)} functions ({query_hits}/{len(queries)} queries returned data)")
 PROM_DUMP
 
-    # Collect Kubernetes pod/resource info from the VM
-    local k8s_dump="${results_dir}/k8s-resources.json"
-    log "Collecting Kubernetes resource metrics..."
-    vm_exec "sudo kubectl top pods -n ${NAMESPACE} --no-headers 2>/dev/null || true" > "${results_dir}/kubectl-top-pods.txt" 2>/dev/null || true
-    vm_exec "sudo kubectl get pods -n ${NAMESPACE} -o json 2>/dev/null" > "${results_dir}/kubectl-pods.json" 2>/dev/null || true
-    vm_exec "free -b 2>/dev/null" > "${results_dir}/vm-memory.txt" 2>/dev/null || true
+        # Collect Kubernetes pod/resource info from the VM
+        log "Collecting Kubernetes resource metrics..."
+        vm_exec "sudo kubectl top pods -n ${NAMESPACE} --no-headers 2>/dev/null || true" > "${results_dir}/kubectl-top-pods.txt" 2>/dev/null || true
+        vm_exec "sudo kubectl get pods -n ${NAMESPACE} -o json 2>/dev/null" > "${results_dir}/kubectl-pods.json" 2>/dev/null || true
+        vm_exec "free -b 2>/dev/null" > "${results_dir}/vm-memory.txt" 2>/dev/null || true
 
-    python3 - "${results_dir}" "${k8s_dump}" << 'K8S_DUMP'
+        python3 - "${results_dir}" "${k8s_dump}" << 'K8S_DUMP'
 import json, os, sys, re
 
 results_dir = sys.argv[1]
@@ -726,20 +864,26 @@ with open(out_path, "w") as f:
 fn_count = len(data.get("pods", {}))
 print(f"  Kubernetes resource metrics collected for {fn_count} functions")
 K8S_DUMP
+    else
+        log "REFRESH_SUMMARY_METRICS=false, using cached summary inputs from ${results_dir}"
+    fi
+
+    local tag_display="${RESOLVED_TAG:-${IMAGE_TAG_OVERRIDE:-${BASE_IMAGE_TAG}}}"
+    local exec_prefix_display="${RESOLVED_EXEC_PREFIX:-${EXEC_IMAGE_PREFIX:-auto}}"
 
     log ""
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log "                              REGISTRY-BASED LOAD TEST — COMPARISON SUMMARY"
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log ""
-    log "VM: ${VM_NAME} (${vm_ip})  |  Image: ${IMAGE_REPO}:${RESOLVED_TAG}  |  Exec prefix: ${RESOLVED_EXEC_PREFIX}"
+    log "VM: ${VM_NAME} (${vm_ip})  |  Image: ${IMAGE_REPO}:${tag_display}  |  Exec prefix: ${exec_prefix_display}"
     log ""
 
-    python3 - "${results_dir}" "${prom_dump}" "${k8s_dump}" "${LOADTEST_START_EPOCH}" "${LOADTEST_END_EPOCH}" << 'PYEOF'
+    python3 - "${results_dir}" "${prom_dump}" "${k8s_dump}" "${LOADTEST_START_EPOCH}" "${LOADTEST_END_EPOCH}" "${PROJECT_ROOT}" << 'PYEOF'
 import json, os, sys
 from pathlib import Path
 
-project_root = Path(sys.argv[1]).resolve().parents[1]
+project_root = Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else Path(sys.argv[1]).resolve().parents[1]
 sys.path.insert(0, str(project_root / "scripts" / "lib"))
 from loadtest_registry_metrics import (
     merge_prom_with_snapshots,
@@ -1261,12 +1405,23 @@ PYEOF
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 main() {
+    parse_args "$@"
     log "Starting registry-based E2E load test..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK} KEEP_VM=${KEEP_VM}"
     log "  IMAGE_REPO=${IMAGE_REPO} BASE_IMAGE_TAG=${BASE_IMAGE_TAG} ARM64_TAG_SUFFIX=${ARM64_TAG_SUFFIX}"
     log "  CURL_IMAGE=${CURL_IMAGE}"
     log "  HELM_TIMEOUT=${HELM_TIMEOUT}"
+    log "  SUMMARY_ONLY=${SUMMARY_ONLY} REFRESH_SUMMARY_METRICS=${REFRESH_SUMMARY_METRICS}"
     log ""
+
+    if [[ "${SUMMARY_ONLY}" == "true" ]]; then
+        log "Summary-only mode: skipping VM provisioning, deployment, and load generation."
+        derive_loadtest_window_from_results
+        print_summary
+        return
+    fi
+
+    trap cleanup EXIT
 
     check_prerequisites
     create_vm
