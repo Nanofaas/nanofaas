@@ -17,6 +17,8 @@ public class ExecutionStore {
     private final Map<String, StoredExecution> executions = new ConcurrentHashMap<>();
     private final ScheduledExecutorService janitor = Executors.newSingleThreadScheduledExecutor();
     private final Duration ttl = Duration.ofMinutes(15);
+    /** Force-evict even RUNNING/QUEUED executions after this deadline to prevent unbounded growth. */
+    private final Duration staleTtl = Duration.ofMinutes(30);
 
     public ExecutionStore() {
         janitor.scheduleAtFixedRate(this::evictExpired, 1, 1, TimeUnit.MINUTES);
@@ -39,12 +41,19 @@ public class ExecutionStore {
     }
 
     private void evictExpired() {
-        Instant cutoff = Instant.now().minus(ttl);
+        Instant now = Instant.now();
+        Instant cutoff = now.minus(ttl);
+        Instant staleCutoff = now.minus(staleTtl);
         executions.entrySet().removeIf(entry -> {
             StoredExecution stored = entry.getValue();
-            if (stored.createdAt().isBefore(cutoff)) {
+            Instant created = stored.createdAt();
+            if (created.isBefore(staleCutoff)) {
+                // Force-evict everything older than staleTtl, including stuck RUNNING/QUEUED
+                return true;
+            }
+            if (created.isBefore(cutoff)) {
                 ExecutionState state = stored.record().state();
-                // Don't evict active executions
+                // Don't evict active executions until staleTtl
                 return state != ExecutionState.RUNNING && state != ExecutionState.QUEUED;
             }
             return false;
