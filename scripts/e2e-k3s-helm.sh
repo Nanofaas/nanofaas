@@ -44,6 +44,8 @@ PYTHON_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}"
 PYTHON_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/python-json-transform:${TAG}"
 BASH_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}"
 BASH_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}"
+JAVA_LITE_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-lite-word-stats:${TAG}"
+JAVA_LITE_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-lite-json-transform:${TAG}"
 CURL_IMAGE="${LOCAL_REGISTRY}/curlimages/curl:latest"
 
 check_prerequisites() {
@@ -103,9 +105,9 @@ sync_and_build() {
 
     e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
 
-    log "Building JARs..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
-    log "JARs built"
+    log "Building JARs and distributions..."
+    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar :examples:java:word-stats-lite:installDist :examples:java:json-transform-lite:installDist --no-daemon -q"
+    log "JARs and distributions built"
 
     log "Building Docker images..."
 
@@ -122,6 +124,10 @@ sync_and_build() {
     # Bash demo images (need repo root for watchdog build)
     vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_WORD_STATS_IMAGE} -f examples/bash/word-stats/Dockerfile ."
     vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_JSON_TRANSFORM_IMAGE} -f examples/bash/json-transform/Dockerfile ."
+
+    # Java lite demo images
+    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_WORD_STATS_IMAGE} -f examples/java/word-stats-lite/Dockerfile examples/java/word-stats-lite/"
+    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform-lite/Dockerfile examples/java/json-transform-lite/"
 
     log "All images built"
 }
@@ -143,6 +149,8 @@ push_images() {
         "${PYTHON_JSON_TRANSFORM_IMAGE}"
         "${BASH_WORD_STATS_IMAGE}"
         "${BASH_JSON_TRANSFORM_IMAGE}"
+        "${JAVA_LITE_WORD_STATS_IMAGE}"
+        "${JAVA_LITE_JSON_TRANSFORM_IMAGE}"
     )
 
     e2e_push_images_to_registry "${images[@]}"
@@ -246,6 +254,20 @@ demos:
       maxRetries: 3
       executionMode: DEPLOYMENT
       runtimeMode: STDIO
+    - name: word-stats-java-lite
+      image: ${LOCAL_REGISTRY}/nanofaas/java-lite-word-stats:${TAG}
+      timeoutMs: 30000
+      concurrency: 4
+      queueSize: 100
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: json-transform-java-lite
+      image: ${LOCAL_REGISTRY}/nanofaas/java-lite-json-transform:${TAG}
+      timeoutMs: 30000
+      concurrency: 4
+      queueSize: 100
+      maxRetries: 3
+      executionMode: DEPLOYMENT
   registerJob:
     image: ${CURL_IMAGE}
 ENDVALUES"
@@ -268,13 +290,13 @@ verify() {
     vm_exec "kubectl rollout status deployment/nanofaas-control-plane -n ${NAMESPACE} --timeout=180s"
     log "  control-plane: Ready"
 
-    # Wait for demo function pods (8 total: 1 control-plane + 1 prometheus + 6 functions)
+    # Wait for demo function pods (10 total: 1 control-plane + 1 prometheus + 8 functions)
     log "Waiting for demo function pods..."
     vm_exec 'for i in $(seq 1 90); do
         ready=$(kubectl get pods -n nanofaas --no-headers 2>/dev/null | grep -c "1/1.*Running" || echo 0)
         total=$(kubectl get pods -n nanofaas --no-headers 2>/dev/null | grep -cv Completed 2>/dev/null || echo 0)
         echo "  pods: ${ready}/${total} Running"
-        if [ "${ready}" -ge 8 ]; then exit 0; fi
+        if [ "${ready}" -ge 10 ]; then exit 0; fi
         sleep 5
     done
     echo "Not all pods ready" >&2
@@ -297,7 +319,7 @@ verify() {
     local jt_payload='{"input":{"data":[{"dept":"eng","salary":80000},{"dept":"sales","salary":70000}],"groupBy":"dept","operation":"count"}}'
 
     local all_ok=true
-    for fn in word-stats-java word-stats-python word-stats-exec; do
+    for fn in word-stats-java word-stats-python word-stats-exec word-stats-java-lite; do
         local code
         code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${vm_ip}:30080/v1/functions/${fn}:invoke" \
             -H "Content-Type: application/json" -d "${ws_payload}" --max-time 30) || code="000"
@@ -309,7 +331,7 @@ verify() {
         fi
     done
 
-    for fn in json-transform-java json-transform-python json-transform-exec; do
+    for fn in json-transform-java json-transform-python json-transform-exec json-transform-java-lite; do
         local code
         code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${vm_ip}:30080/v1/functions/${fn}:invoke" \
             -H "Content-Type: application/json" -d "${jt_payload}" --max-time 30) || code="000"

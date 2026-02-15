@@ -118,6 +118,20 @@ demos:
       queueSize: 50
       maxRetries: 3
       executionMode: DEPLOYMENT
+    - name: word-stats-java-lite
+      image: ghcr.io/miciav/nanofaas/java-lite-word-stats:v0.10.0
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+    - name: json-transform-java-lite
+      image: ghcr.io/miciav/nanofaas/java-lite-json-transform:v0.10.0
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
 
   registerJob:
     image: curlimages/curl:latest

@@ -56,8 +56,8 @@ preflight() {
     # Verify functions are registered
     local fn_count
     fn_count=$(curl -sf "${nanofaas_url}/v1/functions" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null) || fn_count=0
-    if [[ "${fn_count}" -lt 6 ]]; then
-        err "Expected 6 functions, found ${fn_count}."
+    if [[ "${fn_count}" -lt 8 ]]; then
+        err "Expected 8 functions, found ${fn_count}."
         exit 1
     fi
 
@@ -100,6 +100,8 @@ run_tests() {
         "json-transform-python"
         "word-stats-exec"
         "json-transform-exec"
+        "word-stats-java-lite"
+        "json-transform-java-lite"
     )
 
     log ""
@@ -157,6 +159,7 @@ tests = [
     "word-stats-java", "json-transform-java",
     "word-stats-python", "json-transform-python",
     "word-stats-exec", "json-transform-exec",
+    "word-stats-java-lite", "json-transform-java-lite",
 ]
 
 rows = []
@@ -202,9 +205,10 @@ if rows:
     print(f"  Highest throughput:   {fastest[0]} ({fastest[8]:.1f} req/s)")
 
     # Group by runtime
-    runtimes = {"Java": [], "Python": [], "Bash": []}
+    runtimes = {"Java": [], "Java-Lite": [], "Python": [], "Bash": []}
     for r in rows:
-        if "java" in r[0]: runtimes["Java"].append(r)
+        if "java-lite" in r[0]: runtimes["Java-Lite"].append(r)
+        elif "java" in r[0]: runtimes["Java"].append(r)
         elif "python" in r[0]: runtimes["Python"].append(r)
         elif "exec" in r[0]: runtimes["Bash"].append(r)
 
