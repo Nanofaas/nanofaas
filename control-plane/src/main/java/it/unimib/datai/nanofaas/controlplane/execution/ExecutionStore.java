@@ -16,9 +16,10 @@ import jakarta.annotation.PreDestroy;
 public class ExecutionStore {
     private final Map<String, StoredExecution> executions = new ConcurrentHashMap<>();
     private final ScheduledExecutorService janitor = Executors.newSingleThreadScheduledExecutor();
-    private final Duration ttl = Duration.ofMinutes(15);
+    private final Duration cleanupTtl = Duration.ofMinutes(2);
+    private final Duration ttl = Duration.ofMinutes(5);
     /** Force-evict even RUNNING/QUEUED executions after this deadline to prevent unbounded growth. */
-    private final Duration staleTtl = Duration.ofMinutes(30);
+    private final Duration staleTtl = Duration.ofMinutes(10);
 
     public ExecutionStore() {
         janitor.scheduleAtFixedRate(this::evictExpired, 1, 1, TimeUnit.MINUTES);
@@ -43,7 +44,9 @@ public class ExecutionStore {
     private void evictExpired() {
         Instant now = Instant.now();
         Instant cutoff = now.minus(ttl);
+        Instant cleanupCutoff = now.minus(cleanupTtl);
         Instant staleCutoff = now.minus(staleTtl);
+
         executions.entrySet().removeIf(entry -> {
             StoredExecution stored = entry.getValue();
             Instant created = stored.createdAt();
@@ -54,7 +57,16 @@ public class ExecutionStore {
             if (created.isBefore(cutoff)) {
                 ExecutionState state = stored.record().state();
                 // Don't evict active executions until staleTtl
-                return state != ExecutionState.RUNNING && state != ExecutionState.QUEUED;
+                if (state != ExecutionState.RUNNING && state != ExecutionState.QUEUED) {
+                    return true;
+                }
+            }
+            if (created.isBefore(cleanupCutoff)) {
+                // Only cleanup if finished
+                ExecutionState state = stored.record().state();
+                if (state != ExecutionState.RUNNING && state != ExecutionState.QUEUED) {
+                    stored.record().cleanup();
+                }
             }
             return false;
         });

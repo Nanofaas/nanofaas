@@ -19,7 +19,7 @@ public class IdempotencyStore {
     private final Duration ttl;
 
     public IdempotencyStore() {
-        this(Duration.ofMinutes(15));
+        this(Duration.ofMinutes(5));
     }
 
     public IdempotencyStore(Duration ttl) {

@@ -206,7 +206,16 @@ See [docs/e2e-tutorial.md](e2e-tutorial.md) for a detailed walkthrough.
 ```bash
 ./scripts/e2e-k3s-helm.sh     # deploy nanofaas with Helm
 ./scripts/e2e-loadtest.sh     # run k6 load tests + Grafana
+./scripts/e2e-loadtest.sh --help
+./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
 ```
+
+Key load-test parameters:
+- `SKIP_GRAFANA=true` to skip local Grafana startup
+- `VERIFY_OUTPUT_PARITY=false` to skip pre-load runtime output parity checks
+- `PARITY_TIMEOUT_SECONDS=<n>` to tune parity request timeout
+- `NANOFAAS_URL` and `PROM_URL` to override auto-discovered endpoints
+- `./scripts/e2e-loadtest-registry.sh --summary-only` to regenerate Section 1..8 from existing `k6/results`
 
 ---
 

@@ -142,6 +142,27 @@ public class ExecutionRecord {
     }
 
     /**
+     * Releases heavy payloads (request input and response output) to save memory.
+     * Should be called after the result has been consumed or is no longer needed.
+     */
+    public synchronized void cleanup() {
+        this.output = null;
+        if (this.task != null) {
+            // Replace task with one that has no request payload
+            this.task = new InvocationTask(
+                    task.executionId(),
+                    task.functionName(),
+                    task.functionSpec(),
+                    null, // Clear request
+                    task.idempotencyKey(),
+                    task.traceId(),
+                    task.enqueuedAt(),
+                    task.attempt()
+            );
+        }
+    }
+
+    /**
      * Resets the execution for a retry attempt.
      */
     public synchronized void resetForRetry(InvocationTask retryTask) {

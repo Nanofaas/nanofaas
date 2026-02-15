@@ -26,6 +26,54 @@ K6_DIR="${PROJECT_ROOT}/k6"
 RESULTS_DIR="${K6_DIR}/results"
 GRAFANA_DIR="${PROJECT_ROOT}/grafana"
 
+show_help() {
+    cat <<EOF
+Usage:
+  ./scripts/e2e-loadtest.sh [--help|-h]
+
+Description:
+  Run end-to-end load tests against all demo functions with k6.
+  The script performs:
+    1) pre-flight checks
+    2) optional output parity verification across runtimes
+    3) optional Grafana startup
+    4) sequential k6 runs + summary report
+
+Environment variables:
+  NANOFAAS_URL            Override API base URL (default: auto from VM_NAME:30080)
+  PROM_URL                Override Prometheus URL (default: auto from VM_NAME:30090)
+  VM_NAME                 Multipass VM name used for auto-discovery (default: nanofaas-e2e)
+  SKIP_GRAFANA            Skip local Grafana startup: true|false (default: false)
+  VERIFY_OUTPUT_PARITY    Validate semantic parity before k6 tests: true|false (default: true)
+  PARITY_TIMEOUT_SECONDS  Timeout per parity invocation request (default: 20)
+
+Examples:
+  ./scripts/e2e-loadtest.sh
+  SKIP_GRAFANA=true ./scripts/e2e-loadtest.sh
+  VERIFY_OUTPUT_PARITY=false ./scripts/e2e-loadtest.sh
+  PARITY_TIMEOUT_SECONDS=40 ./scripts/e2e-loadtest.sh
+  NANOFAAS_URL=http://192.168.64.2:30080 PROM_URL=http://192.168.64.2:30090 ./scripts/e2e-loadtest.sh
+EOF
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                err "Unknown argument: $1"
+                echo ""
+                show_help
+                exit 2
+                ;;
+        esac
+        shift
+    done
+}
+
 resolve_vm_ip() { e2e_resolve_nanofaas_url 30080; }
 
 resolve_prom_url() {
@@ -60,7 +108,8 @@ CASES = [
         "name": "word-stats",
         "functions": ["word-stats-java", "word-stats-java-lite", "word-stats-python", "word-stats-exec"],
         "input": {
-            "text": "The quick brown fox jumps over the lazy dog. The dog barked at the fox.",
+            # Deterministic ranking for topN: alpha(5), beta(4), gamma(3), delta(2), epsilon(1)
+            "text": "alpha alpha alpha alpha alpha beta beta beta beta gamma gamma gamma delta delta epsilon",
             "topN": 5,
         },
     },
@@ -124,7 +173,7 @@ for case in CASES:
     outputs = []
     for fn in case["functions"]:
         outputs.append((fn, invoke(fn, case["input"])))
-    mismatches = compare_case_outputs(outputs)
+    mismatches = compare_case_outputs(outputs, case_name=case["name"])
     if mismatches:
         all_ok = False
         print(f"[parity] mismatch in case '{case['name']}':")
@@ -439,6 +488,7 @@ print_summary() {
 }
 
 main() {
+    parse_args "$@"
     preflight
     start_grafana
     run_tests

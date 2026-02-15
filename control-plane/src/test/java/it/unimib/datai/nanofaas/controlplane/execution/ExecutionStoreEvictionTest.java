@@ -29,7 +29,7 @@ class ExecutionStoreEvictionTest {
         store.put(record);
 
         // Backdate the createdAt to simulate TTL expiry
-        backdateEntry("exec-running", Instant.now().minus(Duration.ofMinutes(20)));
+        backdateEntry("exec-running", Instant.now().minus(Duration.ofMinutes(7)));
 
         // Trigger eviction
         invokeEvictExpired();
@@ -44,7 +44,7 @@ class ExecutionStoreEvictionTest {
         store.put(record);
         assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
 
-        backdateEntry("exec-queued", Instant.now().minus(Duration.ofMinutes(20)));
+        backdateEntry("exec-queued", Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 
@@ -58,7 +58,7 @@ class ExecutionStoreEvictionTest {
         record.markSuccess("result");
         store.put(record);
 
-        backdateEntry("exec-done", Instant.now().minus(Duration.ofMinutes(20)));
+        backdateEntry("exec-done", Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 
@@ -72,7 +72,7 @@ class ExecutionStoreEvictionTest {
         record.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("ERR", "failed"));
         store.put(record);
 
-        backdateEntry("exec-err", Instant.now().minus(Duration.ofMinutes(20)));
+        backdateEntry("exec-err", Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 
@@ -86,7 +86,7 @@ class ExecutionStoreEvictionTest {
         record.markTimeout();
         store.put(record);
 
-        backdateEntry("exec-timeout", Instant.now().minus(Duration.ofMinutes(20)));
+        backdateEntry("exec-timeout", Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 

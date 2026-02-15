@@ -1,19 +1,20 @@
 package it.unimib.datai.nanofaas.controlplane.scheduler;
 
+import it.unimib.datai.nanofaas.controlplane.queue.FunctionQueueState;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-public class Scheduler implements SmartLifecycle {
+public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
 
     private final QueueManager queueManager;
@@ -24,12 +25,26 @@ public class Scheduler implements SmartLifecycle {
         return t;
     });
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private volatile long tickMs = 2;
+
+    private final BlockingQueue<String> activeFunctions = new LinkedBlockingQueue<>();
+    private final Set<String> enqueuedFunctions = ConcurrentHashMap.newKeySet();
 
     public Scheduler(QueueManager queueManager,
                      InvocationService invocationService) {
         this.queueManager = queueManager;
         this.invocationService = invocationService;
+    }
+
+    @PostConstruct
+    public void init() {
+        queueManager.setWorkSignaler(this);
+    }
+
+    @Override
+    public void signalWork(String functionName) {
+        if (enqueuedFunctions.add(functionName)) {
+            activeFunctions.offer(functionName);
+        }
     }
 
     @Override
@@ -74,44 +89,45 @@ public class Scheduler implements SmartLifecycle {
     }
 
     private void loop() {
-        log.debug("Scheduler loop started");
+        log.info("Scheduler loop started");
         while (running.get()) {
-            java.util.concurrent.atomic.AtomicBoolean didWork = new java.util.concurrent.atomic.AtomicBoolean(false);
-            queueManager.forEachQueue(state -> {
-                if (!running.get()) {
-                    return;
+            try {
+                String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
+                if (functionName == null) {
+                    continue;
                 }
-                // Atomically acquire a dispatch slot
-                if (state.tryAcquireSlot()) {
-                    // Slot acquired - try to get a task
-                    InvocationTask task = state.poll();
-                    if (task == null) {
-                        // No task in queue - release the slot
-                        state.releaseSlot();
-                    } else {
-                        didWork.set(true);
-                        try {
-                            invocationService.dispatch(task);
-                        } catch (Exception ex) {
-                            state.releaseSlot();
-                            log.error("Dispatch failed for execution {}: {}",
-                                    task.executionId(), ex.getMessage(), ex);
-                        }
-                    }
-                }
-            });
-            if (!didWork.get()) {
-                sleep(tickMs);
+                enqueuedFunctions.remove(functionName);
+                processFunction(functionName);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.error("Error in scheduler loop", e);
             }
         }
-        log.debug("Scheduler loop exited");
+        log.info("Scheduler loop exited");
     }
 
-    private void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
+    private void processFunction(String functionName) {
+        FunctionQueueState state = queueManager.get(functionName);
+        if (state == null) {
+            return;
+        }
+
+        while (running.get() && state.tryAcquireSlot()) {
+            InvocationTask task = state.poll();
+            if (task == null) {
+                state.releaseSlot();
+                break;
+            }
+            try {
+                invocationService.dispatch(task);
+            } catch (Exception ex) {
+                state.releaseSlot();
+                log.error("Dispatch failed for execution {}: {}",
+                        task.executionId(), ex.getMessage(), ex);
+            }
         }
     }
+
 }
