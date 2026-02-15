@@ -4,26 +4,26 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 @ConfigurationProperties(prefix = "nanofaas.rate")
 public class RateLimiter {
-    private int maxPerSecond = 1000;
-    private long windowStartSecond = Instant.now().getEpochSecond();
-    private int windowCount = 0;
+    private volatile int maxPerSecond = 1000;
+    private final AtomicLong windowStartSecond = new AtomicLong(Instant.now().getEpochSecond());
+    private final AtomicInteger windowCount = new AtomicInteger();
 
     /**
-     * Thread-safe rate limiting using a sliding window per second.
-     * All operations are synchronized to prevent race conditions.
+     * Thread-safe rate limiting using atomics and a per-second window.
      */
-    public synchronized boolean allow() {
+    public boolean allow() {
         long now = Instant.now().getEpochSecond();
-        if (now != windowStartSecond) {
-            windowStartSecond = now;
-            windowCount = 0;
+        long currentWindow = windowStartSecond.get();
+        if (now != currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
+            windowCount.set(0);
         }
-        windowCount++;
-        return windowCount <= maxPerSecond;
+        return windowCount.incrementAndGet() <= maxPerSecond;
     }
 
     public int getMaxPerSecond() {

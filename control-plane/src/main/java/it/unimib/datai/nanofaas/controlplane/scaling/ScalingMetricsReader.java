@@ -15,6 +15,7 @@ public class ScalingMetricsReader {
 
     private final QueueManager queueManager;
     private final MeterRegistry meterRegistry;
+    private final java.util.Map<String, Counter> dispatchCounters = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ScalingMetricsReader(QueueManager queueManager, MeterRegistry meterRegistry) {
         this.queueManager = queueManager;
@@ -44,10 +45,11 @@ public class ScalingMetricsReader {
     }
 
     private double readRps(String functionName) {
-        Counter counter = meterRegistry.find("function_dispatch_total")
-                .tag("function", functionName)
-                .counter();
-        // Return total count; the scaler should track the rate over its poll interval
-        return counter != null ? counter.count() : 0;
+        Counter counter = dispatchCounters.computeIfAbsent(functionName, fn ->
+                Counter.builder("function_dispatch_total")
+                        .tag("function", fn)
+                        .register(meterRegistry));
+        // Return cumulative count; scaler computes rate over its poll interval.
+        return counter.count();
     }
 }

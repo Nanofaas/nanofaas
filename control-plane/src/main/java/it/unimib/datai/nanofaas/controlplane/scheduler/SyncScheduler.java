@@ -86,7 +86,7 @@ public class SyncScheduler implements SmartLifecycle {
         Instant now = Instant.now();
         SyncQueueItem item = queue.peekReady(now);
         if (item == null) {
-            sleep(tickMs);
+            queue.awaitWork(tickMs);
             return;
         }
         if (!queueManager.tryAcquireSlot(item.task().functionName())) {
