@@ -16,6 +16,8 @@ set -euo pipefail
 
 VM_NAME=${VM_NAME:-nanofaas-e2e}
 SKIP_GRAFANA=${SKIP_GRAFANA:-false}
+VERIFY_OUTPUT_PARITY=${VERIFY_OUTPUT_PARITY:-true}
+PARITY_TIMEOUT_SECONDS=${PARITY_TIMEOUT_SECONDS:-20}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
@@ -32,6 +34,110 @@ resolve_prom_url() {
         return
     fi
     e2e_resolve_nanofaas_url 30090
+}
+
+verify_output_parity() {
+    local nanofaas_url="$1"
+    local timeout_seconds="$2"
+
+    log "Verifying output parity across runtimes..."
+    python3 - "${nanofaas_url}" "${timeout_seconds}" "${PROJECT_ROOT}" << 'PYEOF'
+import json
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+base_url = sys.argv[1].rstrip("/")
+timeout_s = float(sys.argv[2])
+project_root = Path(sys.argv[3]).resolve()
+sys.path.insert(0, str(project_root / "scripts" / "lib"))
+
+from loadtest_output_parity import compare_case_outputs, extract_output
+
+CASES = [
+    {
+        "name": "word-stats",
+        "functions": ["word-stats-java", "word-stats-java-lite", "word-stats-python", "word-stats-exec"],
+        "input": {
+            "text": "The quick brown fox jumps over the lazy dog. The dog barked at the fox.",
+            "topN": 5,
+        },
+    },
+    {
+        "name": "json-transform-count",
+        "functions": ["json-transform-java", "json-transform-java-lite", "json-transform-python", "json-transform-exec"],
+        "input": {
+            "data": [
+                {"dept": "eng", "salary": 100, "age": 30},
+                {"dept": "eng", "salary": 200, "age": 35},
+                {"dept": "sales", "salary": 300, "age": 28},
+            ],
+            "groupBy": "dept",
+            "operation": "count",
+        },
+    },
+    {
+        "name": "json-transform-sum",
+        "functions": ["json-transform-java", "json-transform-java-lite", "json-transform-python", "json-transform-exec"],
+        "input": {
+            "data": [
+                {"dept": "eng", "salary": 100, "age": 30},
+                {"dept": "eng", "salary": 200, "age": 35},
+                {"dept": "sales", "salary": 300, "age": 28},
+            ],
+            "groupBy": "dept",
+            "operation": "sum",
+            "valueField": "salary",
+        },
+    },
+]
+
+def invoke(function_name, payload):
+    url = f"{base_url}/v1/functions/{function_name}:invoke"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"input": payload}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            body = resp.read().decode("utf-8")
+            status = resp.getcode()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"[parity] {function_name} returned HTTP {exc.code}: {body[:400]}")
+    except Exception as exc:
+        raise SystemExit(f"[parity] {function_name} request failed: {exc}")
+
+    if status != 200:
+        raise SystemExit(f"[parity] {function_name} unexpected status={status} body={body[:400]}")
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"[parity] {function_name} returned non-JSON body: {exc}")
+    return extract_output(parsed)
+
+all_ok = True
+for case in CASES:
+    outputs = []
+    for fn in case["functions"]:
+        outputs.append((fn, invoke(fn, case["input"])))
+    mismatches = compare_case_outputs(outputs)
+    if mismatches:
+        all_ok = False
+        print(f"[parity] mismatch in case '{case['name']}':")
+        for fn, baseline_fn, baseline_output, function_output in mismatches:
+            print(f"  - {fn} differs from baseline {baseline_fn}")
+            print(f"    baseline: {json.dumps(baseline_output, sort_keys=True)[:500]}")
+            print(f"    actual  : {json.dumps(function_output, sort_keys=True)[:500]}")
+    else:
+        print(f"[parity] ok: {case['name']}")
+
+if not all_ok:
+    raise SystemExit(1)
+PYEOF
 }
 
 capture_prom_snapshot() {
@@ -119,6 +225,13 @@ preflight() {
     fi
 
     info "API reachable at ${nanofaas_url} (${fn_count} functions registered)"
+
+    if [[ "${VERIFY_OUTPUT_PARITY}" == "true" ]]; then
+        verify_output_parity "${nanofaas_url}" "${PARITY_TIMEOUT_SECONDS}"
+        info "Output parity check passed across runtimes"
+    else
+        log "VERIFY_OUTPUT_PARITY=false, skipping output parity check"
+    fi
 }
 
 # ─── Start Grafana ───────────────────────────────────────────────────────────
