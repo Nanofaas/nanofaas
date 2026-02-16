@@ -59,6 +59,7 @@ set -euo pipefail
 #   SKIP_GRAFANA         Skip Grafana startup               (default: false)
 #   BASE_IMAGE_TAG       Base image version tag             (default: v0.12.0)
 #   ARM64_TAG_SUFFIX     Suffix appended on ARM64 VMs       (default: -arm64)
+#   TAG_SUFFIX           Explicit image suffix override      (default: empty; e.g. arm64|amd64)
 #   IMAGE_TAG_OVERRIDE   Skip arch detection, use this tag  (default: empty)
 #   IMAGE_REPO           GHCR image repository prefix       (default: ghcr.io/miciav/nanofaas)
 #   EXEC_IMAGE_PREFIX    Force "exec" or "bash" prefix      (default: auto-detected)
@@ -92,6 +93,7 @@ KEEP_VM=${KEEP_VM:-true}
 SKIP_GRAFANA=${SKIP_GRAFANA:-false}
 BASE_IMAGE_TAG=${BASE_IMAGE_TAG:-v0.12.0}
 ARM64_TAG_SUFFIX=${ARM64_TAG_SUFFIX:--arm64}
+TAG_SUFFIX=${TAG_SUFFIX:-}
 IMAGE_TAG_OVERRIDE=${IMAGE_TAG_OVERRIDE:-}
 IMAGE_REPO=${IMAGE_REPO:-ghcr.io/miciav/nanofaas}
 EXEC_IMAGE_PREFIX=${EXEC_IMAGE_PREFIX:-}
@@ -102,6 +104,11 @@ EXPECTED_FUNCTIONS=${EXPECTED_FUNCTIONS:-8}
 SUMMARY_ONLY=${SUMMARY_ONLY:-false}
 REFRESH_SUMMARY_METRICS=${REFRESH_SUMMARY_METRICS:-true}
 RESULTS_DIR_OVERRIDE=${RESULTS_DIR_OVERRIDE:-}
+LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
+LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
+INVOCATION_MODE=${INVOCATION_MODE:-sync}
+K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-}
+INTERACTIVE=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -117,7 +124,7 @@ LOADTEST_END_EPOCH=0
 show_help() {
     cat <<'EOF'
 Usage:
-  ./scripts/e2e-loadtest-registry.sh [--summary-only] [--no-refresh-summary-metrics] [--help|-h]
+  ./scripts/e2e-loadtest-registry.sh [--interactive] [--summary-only] [--no-refresh-summary-metrics] [--help|-h]
 
 Modes:
   default:
@@ -126,6 +133,7 @@ Modes:
     Skip provisioning/deploy/loadtest and render final tables from existing artifacts.
 
 Options:
+  --interactive                  Open interactive configurator (uv + questionary).
   --summary-only                 Render only the final comparison summary.
   --no-refresh-summary-metrics   In --summary-only mode, do not query VM/Prometheus/Kubernetes.
   --help, -h                     Show this help.
@@ -133,15 +141,20 @@ Options:
 Useful env vars:
   VM_NAME, CPUS, MEMORY, DISK, NAMESPACE, KEEP_VM
   SKIP_GRAFANA, BASE_IMAGE_TAG, ARM64_TAG_SUFFIX, IMAGE_TAG_OVERRIDE
+  TAG_SUFFIX
   IMAGE_REPO, EXEC_IMAGE_PREFIX, CURL_IMAGE, HELM_TIMEOUT
   EXPECTED_READY_PODS, EXPECTED_FUNCTIONS
+  LOADTEST_WORKLOADS, LOADTEST_RUNTIMES, INVOCATION_MODE, K6_STAGE_SEQUENCE
   SUMMARY_ONLY, REFRESH_SUMMARY_METRICS, RESULTS_DIR_OVERRIDE
 
 Examples:
+  ./scripts/e2e-loadtest-registry.sh --interactive
   ./scripts/e2e-loadtest-registry.sh
   BASE_IMAGE_TAG=v0.13.0 ARM64_TAG_SUFFIX=-arm64 ./scripts/e2e-loadtest-registry.sh
   ./scripts/e2e-loadtest-registry.sh --summary-only
   ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
+  INVOCATION_MODE=async LOADTEST_RUNTIMES=java,python ./scripts/e2e-loadtest-registry.sh
+  BASE_IMAGE_TAG=v0.13.0 TAG_SUFFIX=amd64 ./scripts/e2e-loadtest-registry.sh
   RESULTS_DIR_OVERRIDE=/tmp/k6-results ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
 EOF
 }
@@ -159,6 +172,9 @@ parse_args() {
             --no-refresh-summary-metrics)
                 REFRESH_SUMMARY_METRICS=false
                 ;;
+            --interactive)
+                INTERACTIVE=true
+                ;;
             *)
                 err "Unknown argument: $1"
                 echo ""
@@ -168,6 +184,14 @@ parse_args() {
         esac
         shift
     done
+}
+
+launch_interactive_configurator() {
+    if ! command -v uv &>/dev/null; then
+        err "uv is required for --interactive mode. Install uv and retry."
+        exit 1
+    fi
+    uv run "${SCRIPT_DIR}/e2e-loadtest-registry-interactive.py"
 }
 
 get_results_dir() {
@@ -281,6 +305,19 @@ resolve_image_tag() {
     if [[ -n "${IMAGE_TAG_OVERRIDE}" ]]; then
         RESOLVED_TAG="${IMAGE_TAG_OVERRIDE}"
         info "Using explicit IMAGE_TAG_OVERRIDE=${RESOLVED_TAG}"
+        return
+    fi
+
+    if [[ -n "${TAG_SUFFIX}" ]]; then
+        local suffix="${TAG_SUFFIX#-}"
+        suffix=$(printf '%s' "${suffix}" | tr '[:upper:]' '[:lower:]')
+        if [[ -z "${suffix}" || "${suffix}" == "none" ]]; then
+            RESOLVED_TAG="${BASE_IMAGE_TAG}"
+            info "Using BASE_IMAGE_TAG without suffix: ${RESOLVED_TAG}"
+        else
+            RESOLVED_TAG="${BASE_IMAGE_TAG}-${suffix}"
+            info "Using explicit TAG_SUFFIX=${suffix}, image tag=${RESOLVED_TAG}"
+        fi
         return
     fi
 
@@ -651,6 +688,11 @@ run_loadtest() {
     local rc=0
     VM_NAME="${VM_NAME}" \
     SKIP_GRAFANA="${SKIP_GRAFANA}" \
+    LOADTEST_WORKLOADS="${LOADTEST_WORKLOADS}" \
+    LOADTEST_RUNTIMES="${LOADTEST_RUNTIMES}" \
+    INVOCATION_MODE="${INVOCATION_MODE}" \
+    K6_STAGE_SEQUENCE="${K6_STAGE_SEQUENCE}" \
+    RESULTS_DIR_OVERRIDE="${results_dir}" \
     "${SCRIPT_DIR}/e2e-loadtest.sh" || rc=$?
 
     LOADTEST_END_EPOCH=$(date +%s)
@@ -1406,11 +1448,18 @@ PYEOF
 # ─── Main ──────────────────────────────────────────────────────────────────────
 main() {
     parse_args "$@"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        launch_interactive_configurator
+        return
+    fi
     log "Starting registry-based E2E load test..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK} KEEP_VM=${KEEP_VM}"
     log "  IMAGE_REPO=${IMAGE_REPO} BASE_IMAGE_TAG=${BASE_IMAGE_TAG} ARM64_TAG_SUFFIX=${ARM64_TAG_SUFFIX}"
+    log "  TAG_SUFFIX=${TAG_SUFFIX:-<auto>}"
     log "  CURL_IMAGE=${CURL_IMAGE}"
     log "  HELM_TIMEOUT=${HELM_TIMEOUT}"
+    log "  LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS} LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES}"
+    log "  INVOCATION_MODE=${INVOCATION_MODE} K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-<default>}"
     log "  SUMMARY_ONLY=${SUMMARY_ONLY} REFRESH_SUMMARY_METRICS=${REFRESH_SUMMARY_METRICS}"
     log ""
 
