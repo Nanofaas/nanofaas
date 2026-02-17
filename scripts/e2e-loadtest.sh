@@ -133,14 +133,14 @@ normalize_csv_selection() {
     local tokens=()
     IFS=',' read -r -a tokens <<< "${lowered}"
     local token
-    for token in "${tokens[@]}"; do
+    for token in ${tokens[@]+"${tokens[@]}"}; do
         token="${token//[[:space:]]/}"
         [[ -z "${token}" ]] && continue
         if ! array_contains "${token}" "${allowed[@]}"; then
             err "Invalid value '${token}' in '${raw_csv}'. Allowed: ${allowed[*]}"
             exit 2
         fi
-        if ! array_contains "${token}" "${selected[@]}"; then
+        if ! array_contains "${token}" ${selected[@]+"${selected[@]}"}; then
             selected+=("${token}")
         fi
     done
@@ -164,11 +164,11 @@ build_selected_tests() {
     SELECTED_TESTS=()
     local workload runtime
     for workload in "${allowed_workloads[@]}"; do
-        if ! array_contains "${workload}" "${selected_workloads[@]}"; then
+        if ! array_contains "${workload}" ${selected_workloads[@]+"${selected_workloads[@]}"}; then
             continue
         fi
         for runtime in "${allowed_runtimes[@]}"; do
-            if ! array_contains "${runtime}" "${selected_runtimes[@]}"; then
+            if ! array_contains "${runtime}" ${selected_runtimes[@]+"${selected_runtimes[@]}"}; then
                 continue
             fi
             SELECTED_TESTS+=("${workload}-${runtime}")
@@ -218,7 +218,7 @@ build_stage_args() {
     local tokens=()
     IFS=',' read -r -a tokens <<< "${K6_STAGE_SEQUENCE}"
     local stage
-    for stage in "${tokens[@]}"; do
+    for stage in ${tokens[@]+"${tokens[@]}"}; do
         stage="${stage//[[:space:]]/}"
         [[ -z "${stage}" ]] && continue
         if [[ ! "${stage}" =~ ^[0-9]+[smhd]:[0-9]+$ ]]; then
@@ -500,7 +500,7 @@ run_tests() {
 
         # Allow k6 to exit non-zero when thresholds are crossed (report handles it)
         k6 run \
-            "${K6_STAGE_ARGS[@]}" \
+            ${K6_STAGE_ARGS[@]+"${K6_STAGE_ARGS[@]}"} \
             --summary-trend-stats "avg,min,med,max,p(25),p(75),p(90),p(95)" \
             --env "NANOFAAS_URL=${nanofaas_url}" \
             --env "INVOCATION_MODE=${INVOCATION_MODE}" \
