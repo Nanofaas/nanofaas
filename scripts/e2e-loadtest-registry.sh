@@ -108,6 +108,8 @@ LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
 INVOCATION_MODE=${INVOCATION_MODE:-sync}
 K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-}
+K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE:-legacy-random}
+K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE:-5000}
 INTERACTIVE=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -145,6 +147,7 @@ Useful env vars:
   IMAGE_REPO, EXEC_IMAGE_PREFIX, CURL_IMAGE, HELM_TIMEOUT
   EXPECTED_READY_PODS, EXPECTED_FUNCTIONS
   LOADTEST_WORKLOADS, LOADTEST_RUNTIMES, INVOCATION_MODE, K6_STAGE_SEQUENCE
+  K6_PAYLOAD_MODE, K6_PAYLOAD_POOL_SIZE
   SUMMARY_ONLY, REFRESH_SUMMARY_METRICS, RESULTS_DIR_OVERRIDE
 
 Examples:
@@ -154,6 +157,7 @@ Examples:
   ./scripts/e2e-loadtest-registry.sh --summary-only
   ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
   INVOCATION_MODE=async LOADTEST_RUNTIMES=java,python ./scripts/e2e-loadtest-registry.sh
+  K6_PAYLOAD_MODE=pool-sequential K6_PAYLOAD_POOL_SIZE=5000 ./scripts/e2e-loadtest-registry.sh
   BASE_IMAGE_TAG=v0.13.0 TAG_SUFFIX=amd64 ./scripts/e2e-loadtest-registry.sh
   RESULTS_DIR_OVERRIDE=/tmp/k6-results ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
 EOF
@@ -692,6 +696,8 @@ run_loadtest() {
     LOADTEST_RUNTIMES="${LOADTEST_RUNTIMES}" \
     INVOCATION_MODE="${INVOCATION_MODE}" \
     K6_STAGE_SEQUENCE="${K6_STAGE_SEQUENCE}" \
+    K6_PAYLOAD_MODE="${K6_PAYLOAD_MODE}" \
+    K6_PAYLOAD_POOL_SIZE="${K6_PAYLOAD_POOL_SIZE}" \
     RESULTS_DIR_OVERRIDE="${results_dir}" \
     "${SCRIPT_DIR}/e2e-loadtest.sh" || rc=$?
 
@@ -938,6 +944,11 @@ prom_path = sys.argv[2]
 k8s_path = sys.argv[3]
 loadtest_start = int(sys.argv[4]) if len(sys.argv) > 4 else 0
 loadtest_end = int(sys.argv[5]) if len(sys.argv) > 5 else 0
+payload_mode = os.environ.get("K6_PAYLOAD_MODE", "legacy-random").strip().lower()
+try:
+    payload_pool_size = max(1, int(os.environ.get("K6_PAYLOAD_POOL_SIZE", "5000")))
+except ValueError:
+    payload_pool_size = 5000
 
 # Load Prometheus dump
 prom = {}
@@ -995,6 +1006,10 @@ def load_result(name):
     fails = int(m.get("http_req_failed", {}).get("passes", 0))
     dur = m.get("http_req_duration", {})
     iters = m.get("iterations", {})
+    payload_size = m.get("payload_size_bytes", {})
+    iterations_count = int(iters.get("count", reqs))
+    if iterations_count <= 0:
+        iterations_count = reqs
     return {
         "reqs": reqs,
         "fail_pct": (fails / max(1, reqs)) * 100,
@@ -1004,6 +1019,11 @@ def load_result(name):
         "p95": dur.get("p(95)", 0),
         "max": dur.get("max", 0),
         "rps": float(iters.get("rate", 0)),
+        "iterations": iterations_count,
+        "payload_avg_b": float(payload_size.get("avg", 0.0)),
+        "payload_q1_b": float(payload_size.get("p(25)", 0.0)),
+        "payload_q2_b": float(payload_size.get("med", 0.0)),
+        "payload_q3_b": float(payload_size.get("p(75)", 0.0)),
     }
 
 def pget(fn, key, default=0.0):
@@ -1020,6 +1040,21 @@ def fmt_avg_ms(sum_seconds, count):
     if count <= 0:
         return "-"
     return f"{(sum_seconds / count) * 1000:.1f}"
+
+def fmt_num(value, digits=1):
+    if value is None:
+        return "-"
+    return f"{value:.{digits}f}"
+
+def estimate_unique_payloads(iterations, mode, pool_size):
+    if iterations <= 0:
+        return 0.0
+    if mode == "pool-sequential":
+        return float(min(iterations, pool_size))
+    if mode == "pool-random":
+        # Expected distinct values after k samples from uniform pool of size N.
+        return float(pool_size) * (1.0 - (1.0 - 1.0 / float(pool_size)) ** float(iterations))
+    return None
 
 # ════════════════════════════════════════════════════════════════════════════════
 # SECTION 1: k6 CLIENT-SIDE LATENCY (per workload)
@@ -1436,6 +1471,63 @@ else:
                 f"{ram_avg:>8.1f} │ {ram_p95:>8.1f} │ {ram_max:>8.1f} │"
             )
         print(f"  └──────────────────────────────┴─────────┴─────────┴─────────┴──────────┴──────────┴──────────┘")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# SECTION 9: PAYLOAD PROFILE (k6 INPUT MIX)
+# ════════════════════════════════════════════════════════════════════════════════
+print()
+print("=" * 105)
+print(f"{'SECTION 9: PAYLOAD PROFILE (k6 INPUT MIX)':^105s}")
+print("=" * 105)
+print()
+print("  Payload bytes from k6 custom trend metric `payload_size_bytes` (Avg/Q1/Q2/Q3).")
+
+table_rows = []
+for fn in ALL_FUNCTIONS:
+    r = load_result(fn)
+    if not r:
+        continue
+    iterations = int(r.get("iterations", 0))
+    unique_payloads = estimate_unique_payloads(iterations, payload_mode, payload_pool_size)
+    if unique_payloads is None:
+        coverage_pct = None
+        reuse_factor = None
+        collisions = None
+        unique_display = "-"
+    else:
+        coverage_pct = (unique_payloads / float(payload_pool_size)) * 100.0
+        reuse_factor = (float(iterations) / unique_payloads) if unique_payloads > 0 else None
+        collisions = max(0.0, float(iterations) - unique_payloads)
+        unique_display = fmt_num(unique_payloads, 0 if payload_mode == "pool-sequential" else 1)
+
+    table_rows.append({
+        "function": fn,
+        "iterations": iterations,
+        "unique": unique_display,
+        "coverage": fmt_num(coverage_pct, 1) if coverage_pct is not None else "-",
+        "reuse": fmt_num(reuse_factor, 2) if reuse_factor is not None else "-",
+        "collisions": fmt_num(collisions, 1) if collisions is not None else "-",
+        "payload_avg_b": fmt_num(r.get("payload_avg_b", 0.0), 1),
+        "payload_q1_b": fmt_num(r.get("payload_q1_b", 0.0), 1),
+        "payload_q2_b": fmt_num(r.get("payload_q2_b", 0.0), 1),
+        "payload_q3_b": fmt_num(r.get("payload_q3_b", 0.0), 1),
+    })
+
+print(f"  Mode: {payload_mode} | Pool size: {payload_pool_size}")
+print(f"  ┌──────────────────────────────┬───────┬────────┬──────────┬────────┬────────────┬──────────┬──────────┬──────────┬──────────┐")
+print(f"  │ {'Function':<28s} │ {'Iter':>5s} │ {'Unique':>6s} │ {'Cover%':>8s} │ {'Reuse':>6s} │ {'Collisions':>10s} │ {'Avg(B)':>8s} │ {'Q1(B)':>8s} │ {'Q2(B)':>8s} │ {'Q3(B)':>8s} │")
+print(f"  ├──────────────────────────────┼───────┼────────┼──────────┼────────┼────────────┼──────────┼──────────┼──────────┼──────────┤")
+if not table_rows:
+    print(f"  │ {'(no k6 summaries found)':<28s} │ {'-':>5s} │ {'-':>6s} │ {'-':>8s} │ {'-':>6s} │ {'-':>10s} │ {'-':>8s} │ {'-':>8s} │ {'-':>8s} │ {'-':>8s} │")
+else:
+    for row in table_rows:
+        coverage_disp = f"{row['coverage']}%" if row["coverage"] != "-" else "-"
+        print(
+            f"  │ {row['function']:<28s} │ {row['iterations']:>5d} │ {row['unique']:>6s} │ {coverage_disp:>8s} │ "
+            f"{row['reuse']:>6s} │ {row['collisions']:>10s} │ {row['payload_avg_b']:>8s} │ {row['payload_q1_b']:>8s} │ "
+            f"{row['payload_q2_b']:>8s} │ {row['payload_q3_b']:>8s} │"
+        )
+print(f"  └──────────────────────────────┴───────┴────────┴──────────┴────────┴────────────┴──────────┴──────────┴──────────┴──────────┘")
 PYEOF
 
     log ""
@@ -1460,6 +1552,7 @@ main() {
     log "  HELM_TIMEOUT=${HELM_TIMEOUT}"
     log "  LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS} LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES}"
     log "  INVOCATION_MODE=${INVOCATION_MODE} K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-<default>}"
+    log "  K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE} K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE}"
     log "  SUMMARY_ONLY=${SUMMARY_ONLY} REFRESH_SUMMARY_METRICS=${REFRESH_SUMMARY_METRICS}"
     log ""
 

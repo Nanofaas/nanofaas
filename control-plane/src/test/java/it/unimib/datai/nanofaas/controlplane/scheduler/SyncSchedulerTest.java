@@ -4,9 +4,11 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.controlplane.config.runtime.RuntimeConfigService;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -31,7 +33,8 @@ class SyncSchedulerTest {
         );
         ExecutionStore store = new ExecutionStore();
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics);
+        RuntimeConfigService configService = new RuntimeConfigService(new RateLimiter(), props);
+        SyncQueueService queue = new SyncQueueService(props, store, metrics, configService);
 
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
         store.put(new ExecutionRecord("e1", task));

@@ -116,6 +116,10 @@ For all supported parameters and examples:
 ./scripts/e2e-loadtest.sh --help
 ```
 
+Payload variability and payload-profile metrics are documented in:
+
+- [docs/loadtest-payload-profile.md](loadtest-payload-profile.md)
+
 #### Load test profile
 
 Each k6 test uses a 5-stage ramp pattern:
@@ -146,6 +150,8 @@ Each k6 test uses a 5-stage ramp pattern:
 | `SKIP_GRAFANA` | `false` | Skip Grafana startup |
 | `VERIFY_OUTPUT_PARITY` | `true` | Run semantic output parity checks before k6 |
 | `PARITY_TIMEOUT_SECONDS` | `20` | Request timeout (seconds) for each parity invocation |
+| `K6_PAYLOAD_MODE` | `legacy-random` | Payload mode: `legacy-random`, `pool-sequential`, `pool-random` |
+| `K6_PAYLOAD_POOL_SIZE` | `5000` | Pool size for pool-based modes |
 
 ### Step 3: View results
 
@@ -163,6 +169,13 @@ Each k6 test uses a 5-stage ramp pattern:
 **Prometheus**: http://192.168.x.x:30090 — run arbitrary PromQL queries
 
 **k6 results**: `k6/results/` directory with JSON summaries and log files
+
+The registry summary now includes:
+
+- `SECTION 9: PAYLOAD PROFILE (k6 INPUT MIX)`
+
+This section reports payload coverage/reuse/collision stats and payload-size
+distribution (`Avg(B)`, `Q1(B)`, `Q2(B)`, `Q3(B)`).
 
 ### Step 4: Cleanup
 

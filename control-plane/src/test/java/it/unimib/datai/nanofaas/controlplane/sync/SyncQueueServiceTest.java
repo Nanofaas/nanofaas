@@ -4,9 +4,11 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.controlplane.config.runtime.RuntimeConfigService;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +25,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SyncQueueServiceTest {
+
+    private static SyncQueueService createService(SyncQueueProperties props, ExecutionStore store,
+                                                   WaitEstimator estimator, SyncQueueMetrics metrics, Clock clock) {
+        RuntimeConfigService configService = new RuntimeConfigService(new RateLimiter(), props);
+        return new SyncQueueService(props, store, estimator, metrics, clock, configService);
+    }
+
     @Test
     void rejectsWhenQueueIsFull() {
         SyncQueueProperties props = new SyncQueueProperties(
@@ -31,7 +40,7 @@ class SyncQueueServiceTest {
         ExecutionStore store = new ExecutionStore();
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
-        SyncQueueService service = new SyncQueueService(props, store, estimator, metrics, Clock.systemUTC());
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task1 = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
@@ -55,7 +64,7 @@ class SyncQueueServiceTest {
         ExecutionStore store = new ExecutionStore();
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
-        SyncQueueService service = new SyncQueueService(props, store, estimator, metrics, fixed);
+        SyncQueueService service = createService(props, store, estimator, metrics, fixed);
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, t0, 1);
@@ -78,7 +87,7 @@ class SyncQueueServiceTest {
         ExecutionStore store = new ExecutionStore();
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
-        SyncQueueService service = new SyncQueueService(props, store, estimator, metrics, Clock.systemUTC());
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         CountDownLatch done = new CountDownLatch(1);
         Thread waiter = new Thread(() -> {

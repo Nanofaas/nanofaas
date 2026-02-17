@@ -71,6 +71,7 @@ E2E (Kubernetes via Multipass + k3s):
 ## Docs
 
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
+- `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
 
 ## nanofaas-cli (CLI)
 

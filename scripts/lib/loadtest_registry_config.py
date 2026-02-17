@@ -13,6 +13,8 @@ _PRESET_STAGE_SEQUENCES = {
     "stress": "20s:10,60s:20,60s:35,60s:35,20s:0",
 }
 
+_PAYLOAD_MODES = {"legacy-random", "pool-sequential", "pool-random"}
+
 
 def _normalize_csv(values: list[str]) -> list[str]:
     normalized: list[str] = []
@@ -106,6 +108,23 @@ def build_stage_sequence(profile: str, custom_total_seconds: int | None = None) 
     return _PRESET_STAGE_SEQUENCES[normalized_profile]
 
 
+def resolve_payload_mode(value: str) -> str:
+    mode = value.strip().lower()
+    if mode not in _PAYLOAD_MODES:
+        raise ValueError(f"invalid payload mode: {value}")
+    return mode
+
+
+def resolve_payload_pool_size(value: int | str) -> int:
+    try:
+        size = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"payload pool size must be a positive integer: {value}") from exc
+    if size < 1:
+        raise ValueError(f"payload pool size must be >= 1: {size}")
+    return size
+
+
 @dataclass(frozen=True)
 class InteractiveLoadtestConfig:
     workloads: list[str]
@@ -113,6 +132,8 @@ class InteractiveLoadtestConfig:
     invocation_mode: str
     stage_profile: str
     custom_total_seconds: int | None = None
+    payload_mode: str = "legacy-random"
+    payload_pool_size: int = 5000
 
     def selected_tests(self) -> list[str]:
         return build_test_matrix(self.workloads, self.runtimes)
@@ -122,3 +143,9 @@ class InteractiveLoadtestConfig:
 
     def stage_sequence(self) -> str:
         return build_stage_sequence(self.stage_profile, self.custom_total_seconds)
+
+    def payload_env(self) -> dict[str, str]:
+        return {
+            "K6_PAYLOAD_MODE": resolve_payload_mode(self.payload_mode),
+            "K6_PAYLOAD_POOL_SIZE": str(resolve_payload_pool_size(self.payload_pool_size)),
+        }
