@@ -9,6 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class WaitEstimatorTest {
     @Test
+    void returnsZeroWhenQueueDepthIsZeroEvenWithoutSamples() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3);
+        Instant now = Instant.parse("2026-02-01T00:00:10Z");
+
+        double est = estimator.estimateWaitSeconds("fn", 0, now);
+
+        assertEquals(0.0, est, 0.0);
+    }
+
+    @Test
     void usesPerFunctionWhenEnoughSamples() {
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3);
         Instant now = Instant.parse("2026-02-01T00:00:10Z");

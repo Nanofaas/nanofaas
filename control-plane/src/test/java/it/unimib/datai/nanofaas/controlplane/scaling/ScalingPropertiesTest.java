@@ -59,4 +59,24 @@ class ScalingPropertiesTest {
         ScalingProperties props = new ScalingProperties(null, null, 20);
         assertEquals(20, props.defaultMaxReplicasOrDefault());
     }
+
+    @Test
+    void defaultTargetInFlightPerPodOrDefault_returns2WhenUnset() {
+        ScalingProperties props = new ScalingProperties(null, null, null);
+        assertEquals(2, props.defaultTargetInFlightPerPodOrDefault());
+    }
+
+    @Test
+    void concurrencyCooldownDefaults_areApplied() {
+        ScalingProperties props = new ScalingProperties(null, null, null);
+        assertEquals(30000L, props.concurrencyUpscaleCooldownMsOrDefault());
+        assertEquals(60000L, props.concurrencyDownscaleCooldownMsOrDefault());
+    }
+
+    @Test
+    void concurrencyLoadThresholdDefaults_areApplied() {
+        ScalingProperties props = new ScalingProperties(null, null, null);
+        assertEquals(0.85, props.concurrencyHighLoadThresholdOrDefault());
+        assertEquals(0.35, props.concurrencyLowLoadThresholdOrDefault());
+    }
 }

@@ -1,7 +1,7 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { sleep } from 'k6';
+import { checkInvocationResponse, invocationPath } from './common.js';
 
-const BASE_URL = __ENV.NANOFAAS_URL || 'http://localhost:30080';
 const FN = 'json-transform-python';
 
 export const options = {
@@ -45,16 +45,13 @@ export default function () {
 
     const payload = JSON.stringify({ input: input });
 
-    const res = http.post(`${BASE_URL}/v1/functions/${FN}:invoke`, payload, {
+    const res = http.post(invocationPath(FN), payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: '30s',
     });
 
-    check(res, {
-        'status is 200': (r) => r.status === 200,
-        'has groups': (r) => {
-            try { const d = JSON.parse(r.body); return d.output && d.output.groups !== undefined; } catch (e) { return false; }
-        },
+    checkInvocationResponse(res, (body) => {
+        return body.output && body.output.groups !== undefined;
     });
 
     sleep(0.1);

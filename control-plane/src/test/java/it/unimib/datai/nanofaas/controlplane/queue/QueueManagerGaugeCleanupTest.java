@@ -29,7 +29,7 @@ class QueueManagerGaugeCleanupTest {
                 .filter(m -> m.getId().getTag("function") != null
                         && m.getId().getTag("function").equals("fn1"))
                 .toList();
-        assertThat(gaugesBefore).hasSize(2);
+        assertThat(gaugesBefore).hasSize(7);
 
         // Remove function
         queueManager.remove("fn1");
@@ -75,7 +75,7 @@ class QueueManagerGaugeCleanupTest {
                 .filter(m -> m.getId().getTag("function") != null
                         && m.getId().getTag("function").equals("fn2"))
                 .toList();
-        assertThat(fn2Gauges).hasSize(2);
+        assertThat(fn2Gauges).hasSize(7);
 
         // fn1 gauges should be gone
         List<Meter> fn1Gauges = registry.getMeters().stream()

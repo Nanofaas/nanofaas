@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.scaling;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
@@ -28,6 +29,8 @@ public class InternalScaler implements SmartLifecycle {
     private final KubernetesResourceManager resourceManager;
     private final ScalingProperties properties;
     private final ColdStartTracker coldStartTracker;
+    private final StaticPerPodConcurrencyController staticConcurrencyController;
+    private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
     private final Map<String, Instant> lastScaleUp = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastScaleDown = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -43,6 +46,8 @@ public class InternalScaler implements SmartLifecycle {
         this.resourceManager = resourceManager;
         this.properties = properties;
         this.coldStartTracker = coldStartTracker;
+        this.staticConcurrencyController = new StaticPerPodConcurrencyController();
+        this.adaptiveConcurrencyController = new AdaptivePerPodConcurrencyController();
     }
 
     @Override
@@ -141,37 +146,92 @@ public class InternalScaler implements SmartLifecycle {
         int desiredReplicas = (int) Math.ceil(maxRatio * currentReplicas);
         desiredReplicas = Math.max(scaling.minReplicas(), Math.min(scaling.maxReplicas(), desiredReplicas));
 
-        if (desiredReplicas == currentReplicas) {
-            return;
-        }
-
         Instant now = Instant.now();
+        boolean downscaleSignal = desiredReplicas < currentReplicas;
+        boolean scaled = false;
+        int effectiveReplicas = currentReplicas;
         if (desiredReplicas > currentReplicas) {
             // Scale up
             Instant lastUp = lastScaleUp.get(functionName);
             long cooldownMs = scaling.metrics() != null && !scaling.metrics().isEmpty() ? 30_000 : 30_000;
             if (lastUp != null && now.toEpochMilli() - lastUp.toEpochMilli() < cooldownMs) {
                 log.debug("Skipping scale-up for {} (cooldown)", functionName);
-                return;
+            } else {
+                log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
+                        functionName, currentReplicas, desiredReplicas, maxRatio);
+                coldStartTracker.recordScaleUp(functionName, currentReplicas, desiredReplicas);
+                resourceManager.setReplicas(functionName, desiredReplicas);
+                lastScaleUp.put(functionName, now);
+                scaled = true;
+                effectiveReplicas = desiredReplicas;
             }
-            log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
-                    functionName, currentReplicas, desiredReplicas, maxRatio);
-            coldStartTracker.recordScaleUp(functionName, currentReplicas, desiredReplicas);
-            resourceManager.setReplicas(functionName, desiredReplicas);
-            lastScaleUp.put(functionName, now);
         } else {
-            // Scale down
-            Instant lastDown = lastScaleDown.get(functionName);
-            long cooldownMs = 60_000;
-            if (lastDown != null && now.toEpochMilli() - lastDown.toEpochMilli() < cooldownMs) {
-                log.debug("Skipping scale-down for {} (cooldown)", functionName);
-                return;
+            if (desiredReplicas < currentReplicas) {
+                // Scale down
+                Instant lastDown = lastScaleDown.get(functionName);
+                long cooldownMs = 60_000;
+                if (lastDown != null && now.toEpochMilli() - lastDown.toEpochMilli() < cooldownMs) {
+                    log.debug("Skipping scale-down for {} (cooldown)", functionName);
+                } else {
+                    log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
+                            functionName, currentReplicas, desiredReplicas, maxRatio);
+                    resourceManager.setReplicas(functionName, desiredReplicas);
+                    lastScaleDown.put(functionName, now);
+                    scaled = true;
+                    effectiveReplicas = desiredReplicas;
+                }
             }
-            log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
-                    functionName, currentReplicas, desiredReplicas, maxRatio);
-            resourceManager.setReplicas(functionName, desiredReplicas);
-            lastScaleDown.put(functionName, now);
         }
+
+        if (!scaled && currentReplicas <= 0) {
+            effectiveReplicas = Math.max(1, scaling.minReplicas());
+        }
+
+        applyConcurrencyControl(spec, scaling, maxRatio, effectiveReplicas, downscaleSignal, currentReplicas);
+    }
+
+    private void applyConcurrencyControl(FunctionSpec spec,
+                                         ScalingConfig scaling,
+                                         double loadRatio,
+                                         int effectiveReplicas,
+                                         boolean downscaleSignal,
+                                         int currentReplicas) {
+        String functionName = spec.name();
+        int configuredConcurrency = spec.concurrency();
+        int effectiveConcurrency = configuredConcurrency;
+        ConcurrencyControlMode controllerMode = ConcurrencyControlMode.FIXED;
+        int targetInFlightPerPod = 0;
+
+        if (scaling.concurrencyControl() != null) {
+            ConcurrencyControlMode mode = scaling.concurrencyControl().mode();
+            if (mode == ConcurrencyControlMode.STATIC_PER_POD) {
+                controllerMode = ConcurrencyControlMode.STATIC_PER_POD;
+                targetInFlightPerPod = scaling.concurrencyControl().targetInFlightPerPod() == null
+                        ? 0
+                        : scaling.concurrencyControl().targetInFlightPerPod();
+                effectiveConcurrency = staticConcurrencyController.computeEffectiveConcurrency(spec, effectiveReplicas);
+            } else if (mode == ConcurrencyControlMode.ADAPTIVE_PER_POD) {
+                controllerMode = ConcurrencyControlMode.ADAPTIVE_PER_POD;
+                boolean atMaxReplicas = currentReplicas >= scaling.maxReplicas();
+                effectiveConcurrency = adaptiveConcurrencyController.computeEffectiveConcurrency(
+                        spec,
+                        effectiveReplicas,
+                        loadRatio,
+                        downscaleSignal,
+                        atMaxReplicas,
+                        Instant.now().toEpochMilli()
+                );
+                targetInFlightPerPod = adaptiveConcurrencyController.currentTargetInFlightPerPod(
+                        functionName,
+                        scaling.concurrencyControl().targetInFlightPerPod() == null
+                                ? properties.defaultTargetInFlightPerPodOrDefault()
+                                : scaling.concurrencyControl().targetInFlightPerPod()
+                );
+            }
+        }
+
+        metricsReader.setEffectiveConcurrency(functionName, effectiveConcurrency);
+        metricsReader.updateConcurrencyControllerState(functionName, controllerMode, targetInFlightPerPod);
     }
 
     private double parseTarget(String target) {

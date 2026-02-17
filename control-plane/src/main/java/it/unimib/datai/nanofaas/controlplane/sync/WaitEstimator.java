@@ -28,6 +28,9 @@ public class WaitEstimator {
     }
 
     public double estimateWaitSeconds(String functionName, int queueDepth, Instant now) {
+        if (queueDepth <= 0) {
+            return 0.0;
+        }
         double perFunctionThroughput = throughput(perFunctionEvents.get(functionName), now);
         if (perFunctionSamples(functionName, now) >= perFunctionMinSamples && perFunctionThroughput > 0) {
             return queueDepth / perFunctionThroughput;

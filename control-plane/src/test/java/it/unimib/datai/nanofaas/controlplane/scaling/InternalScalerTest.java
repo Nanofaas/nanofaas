@@ -171,6 +171,51 @@ class InternalScalerTest {
     }
 
     @Test
+    void scalingLoop_adaptiveMode_reducesEffectiveConcurrencyWhenMaxedAndHot() {
+        ConcurrencyControlConfig control = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.ADAPTIVE_PER_POD,
+                4,
+                1,
+                6,
+                0L,
+                0L,
+                0.8,
+                0.3
+        );
+        ScalingConfig scaling = new ScalingConfig(
+                ScalingStrategy.INTERNAL,
+                1,
+                4,
+                List.of(new ScalingMetric("queue_depth", "5", null)),
+                control
+        );
+        FunctionSpec spec = new FunctionSpec(
+                "echo",
+                "image:latest",
+                List.of(),
+                Map.of(),
+                null,
+                30000,
+                20,
+                100,
+                3,
+                "http://fn-echo.default.svc:8080/invoke",
+                ExecutionMode.DEPLOYMENT,
+                RuntimeMode.HTTP,
+                null,
+                scaling
+        );
+
+        when(registry.list()).thenReturn(List.of(spec));
+        when(resourceManager.getReadyReplicas("echo")).thenReturn(4);
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(30.0);
+
+        scaler.scalingLoop();
+
+        verify(metricsReader).setEffectiveConcurrency(eq("echo"), eq(12));
+    }
+
+    @Test
     void doesNotStartWithoutResourceManager() {
         InternalScaler noK8sScaler = new InternalScaler(registry, metricsReader, null, PROPS, coldStartTracker);
         noK8sScaler.start();

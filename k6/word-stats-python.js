@@ -1,7 +1,7 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { sleep } from 'k6';
+import { checkInvocationResponse, invocationPath } from './common.js';
 
-const BASE_URL = __ENV.NANOFAAS_URL || 'http://localhost:30080';
 const FN = 'word-stats-python';
 
 export const options = {
@@ -32,16 +32,13 @@ export default function () {
         input: { text: text, topN: 5 },
     });
 
-    const res = http.post(`${BASE_URL}/v1/functions/${FN}:invoke`, payload, {
+    const res = http.post(invocationPath(FN), payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: '30s',
     });
 
-    check(res, {
-        'status is 200': (r) => r.status === 200,
-        'has wordCount': (r) => {
-            try { const d = JSON.parse(r.body); return d.output && d.output.wordCount > 0; } catch (e) { return false; }
-        },
+    checkInvocationResponse(res, (body) => {
+        return body.output && body.output.wordCount > 0;
     });
 
     sleep(0.1);

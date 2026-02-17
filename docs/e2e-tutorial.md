@@ -104,7 +104,7 @@ This script:
 2. **Checks output parity** across runtimes (`word-stats`, `json-transform-*`) before load generation
 3. **Starts Grafana** locally via Docker (port 3000), auto-provisioned with:
    - Prometheus datasource pointing to the VM
-   - Pre-built dashboard with 7 panels
+   - Pre-built dashboard with function filter, queue-depth percentiles, and zero-filled error-rate panels
 4. **Runs k6 load tests** for each function sequentially:
    - Ramp-up profile: 0 → 5 → 10 → 20 → 20 → 0 VUs over ~2 minutes
    - 10-second cooldown between tests

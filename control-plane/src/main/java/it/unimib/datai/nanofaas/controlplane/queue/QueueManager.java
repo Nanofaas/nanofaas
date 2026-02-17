@@ -1,8 +1,10 @@
 package it.unimib.datai.nanofaas.controlplane.queue;
 
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.WorkSignaler;
+import it.unimib.datai.nanofaas.controlplane.service.ConcurrencyControlMetrics;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -18,10 +20,12 @@ public class QueueManager {
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
+    private final ConcurrencyControlMetrics concurrencyMetrics;
     private WorkSignaler workSignaler;
 
     public QueueManager(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
+        this.concurrencyMetrics = new ConcurrencyControlMetrics(meterRegistry);
     }
 
     public void setWorkSignaler(WorkSignaler workSignaler) {
@@ -49,6 +53,14 @@ public class QueueManager {
                 ids.add(Gauge.builder("function_inFlight", state::inFlight)
                         .tag("function", name)
                         .register(meterRegistry).getId());
+                ids.add(Gauge.builder("function_effective_concurrency", state::effectiveConcurrency)
+                        .tag("function", name)
+                        .register(meterRegistry).getId());
+                concurrencyMetrics.ensureRegistered(
+                        name,
+                        resolveMode(spec),
+                        resolveTargetInFlightPerPod(spec)
+                );
                 meterIds.put(name, ids);
                 return state;
             }
@@ -63,6 +75,7 @@ public class QueueManager {
 
     public void remove(String name) {
         queues.remove(name);
+        concurrencyMetrics.remove(name);
         List<Meter.Id> ids = meterIds.remove(name);
         if (ids != null) {
             ids.forEach(meterRegistry::remove);
@@ -104,6 +117,20 @@ public class QueueManager {
         return state != null && state.tryAcquireSlot();
     }
 
+    public void setEffectiveConcurrency(String functionName, int effectiveConcurrency) {
+        FunctionQueueState state = queues.get(functionName);
+        if (state != null) {
+            state.setEffectiveConcurrency(effectiveConcurrency);
+        }
+    }
+
+    public void updateConcurrencyController(String functionName,
+                                            ConcurrencyControlMode mode,
+                                            int targetInFlightPerPod) {
+        concurrencyMetrics.ensureRegistered(functionName, mode, targetInFlightPerPod);
+        concurrencyMetrics.update(functionName, mode, targetInFlightPerPod);
+    }
+
     public void releaseSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {
@@ -112,5 +139,22 @@ public class QueueManager {
                 notifyWork(functionName);
             }
         }
+    }
+
+    private static ConcurrencyControlMode resolveMode(FunctionSpec spec) {
+        if (spec.scalingConfig() == null
+                || spec.scalingConfig().concurrencyControl() == null
+                || spec.scalingConfig().concurrencyControl().mode() == null) {
+            return ConcurrencyControlMode.FIXED;
+        }
+        return spec.scalingConfig().concurrencyControl().mode();
+    }
+
+    private static int resolveTargetInFlightPerPod(FunctionSpec spec) {
+        if (spec.scalingConfig() == null || spec.scalingConfig().concurrencyControl() == null) {
+            return 0;
+        }
+        Integer target = spec.scalingConfig().concurrencyControl().targetInFlightPerPod();
+        return target == null ? 0 : Math.max(0, target);
     }
 }

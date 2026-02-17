@@ -30,6 +30,8 @@ def test_registry_help_mentions_summary_only():
     assert proc.returncode == 0
     assert "--summary-only" in proc.stdout
     assert "--no-refresh-summary-metrics" in proc.stdout
+    assert "--interactive" in proc.stdout
+    assert "TAG_SUFFIX" in proc.stdout
 
 
 def test_registry_summary_only_uses_local_results_without_vm(tmp_path: Path):

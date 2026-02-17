@@ -6,6 +6,15 @@ public record ScalingConfig(
         ScalingStrategy strategy,
         Integer minReplicas,
         Integer maxReplicas,
-        List<ScalingMetric> metrics
+        List<ScalingMetric> metrics,
+        ConcurrencyControlConfig concurrencyControl
 ) {
+    public ScalingConfig(
+            ScalingStrategy strategy,
+            Integer minReplicas,
+            Integer maxReplicas,
+            List<ScalingMetric> metrics
+    ) {
+        this(strategy, minReplicas, maxReplicas, metrics, null);
+    }
 }
