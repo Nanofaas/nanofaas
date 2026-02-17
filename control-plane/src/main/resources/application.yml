@@ -26,6 +26,9 @@ management:
         enabled: true
 
 nanofaas:
+  admin:
+    runtime-config:
+      enabled: false
   defaults:
     timeoutMs: 30000
     concurrency: 4

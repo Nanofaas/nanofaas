@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.sync;
 
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.controlplane.config.runtime.RuntimeConfigService;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -11,13 +13,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SyncQueueAdmissionControllerTest {
+
+    private static RuntimeConfigService configService(SyncQueueProperties props) {
+        return new RuntimeConfigService(new RateLimiter(), props);
+    }
+
     @Test
     void rejectsWhenDepthExceeded() {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 1, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
         );
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3);
-        SyncQueueAdmissionController controller = new SyncQueueAdmissionController(props, estimator);
+        SyncQueueAdmissionController controller = new SyncQueueAdmissionController(configService(props), props.maxDepth(), estimator);
 
         SyncQueueAdmissionResult result = controller.evaluate("fn", 1, Instant.parse("2026-02-01T00:00:10Z"));
 
@@ -35,7 +42,7 @@ class SyncQueueAdmissionControllerTest {
         estimator.recordDispatch("fn", now.minusSeconds(9));
         estimator.recordDispatch("fn", now.minusSeconds(8));
         estimator.recordDispatch("fn", now.minusSeconds(7));
-        SyncQueueAdmissionController controller = new SyncQueueAdmissionController(props, estimator);
+        SyncQueueAdmissionController controller = new SyncQueueAdmissionController(configService(props), props.maxDepth(), estimator);
 
         SyncQueueAdmissionResult result = controller.evaluate("fn", 6, now);
 
@@ -53,7 +60,7 @@ class SyncQueueAdmissionControllerTest {
         estimator.recordDispatch("fn", now.minusSeconds(9));
         estimator.recordDispatch("fn", now.minusSeconds(8));
         estimator.recordDispatch("fn", now.minusSeconds(7));
-        SyncQueueAdmissionController controller = new SyncQueueAdmissionController(props, estimator);
+        SyncQueueAdmissionController controller = new SyncQueueAdmissionController(configService(props), props.maxDepth(), estimator);
 
         SyncQueueAdmissionResult result = controller.evaluate("fn", 1, now);
 
