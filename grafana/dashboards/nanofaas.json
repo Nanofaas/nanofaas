@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -7,17 +9,22 @@
   "links": [],
   "panels": [
     {
-      "title": "Request Rate (req/s)",
+      "title": "Dispatch / Success Rate (req/s)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
       "targets": [
         {
-          "expr": "rate(function_enqueue_total[1m])",
-          "legendFormat": "{{function}} enqueue",
+          "expr": "sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m])))",
+          "legendFormat": "{{function}} dispatch",
           "refId": "A"
         },
         {
-          "expr": "rate(function_success_total[1m])",
+          "expr": "sum by (function) (max by (function, instance) (rate(function_success_total{function=~\"$function\"}[1m])))",
           "legendFormat": "{{function}} success",
           "refId": "B"
         }
@@ -25,159 +32,294 @@
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
     },
     {
-      "title": "Error & Timeout Rate",
+      "title": "Error / Timeout / Reject / Retry Rate",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
         {
-          "expr": "rate(function_error_total[1m])",
+          "expr": "(sum by (function) (max by (function, instance) (rate(function_error_total{function=~\"$function\"}[1m])))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
           "legendFormat": "{{function}} error",
           "refId": "A"
         },
         {
-          "expr": "rate(function_timeout_total[1m])",
+          "expr": "(sum by (function) (max by (function, instance) (rate(function_timeout_total{function=~\"$function\"}[1m])))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
           "legendFormat": "{{function}} timeout",
           "refId": "B"
         },
         {
-          "expr": "rate(function_queue_rejected_total[1m])",
+          "expr": "(sum by (function) (max by (function, instance) (rate(function_queue_rejected_total{function=~\"$function\"}[1m])))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
           "legendFormat": "{{function}} rejected",
           "refId": "C"
+        },
+        {
+          "expr": "(sum by (function) (max by (function, instance) (rate(function_retry_total{function=~\"$function\"}[1m])))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
+          "legendFormat": "{{function}} retry",
+          "refId": "D"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
     },
     {
-      "title": "Latency p50 / p95 / p99 (ms)",
+      "title": "Latency Avg (ms, dispatch->response)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
       "targets": [
         {
-          "expr": "function_latency_ms_seconds{quantile=\"0.5\"}",
-          "legendFormat": "{{function}} p50",
+          "expr": "1000 * (sum by (function) (max by (function, instance) (rate(function_latency_ms_seconds_sum{function=~\"$function\"}[1m]))) / clamp_min(sum by (function) (max by (function, instance) (rate(function_latency_ms_seconds_count{function=~\"$function\"}[1m]))), 0.001))",
+          "legendFormat": "{{function}} avg",
           "refId": "A"
         },
         {
-          "expr": "function_latency_ms_seconds{quantile=\"0.95\"}",
+          "expr": "1000 * (sum by (function) (max by (function, instance) (rate(function_e2e_latency_ms_seconds_sum{function=~\"$function\"}[1m]))) / clamp_min(sum by (function) (max by (function, instance) (rate(function_e2e_latency_ms_seconds_count{function=~\"$function\"}[1m]))), 0.001))",
+          "legendFormat": "{{function}} e2e-avg",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Latency p95 / p99 (ms)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "(1000 * sum by (function) (max by (function, instance) (function_latency_ms_seconds{function=~\"$function\",quantile=\"0.95\"}))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
           "legendFormat": "{{function}} p95",
+          "refId": "A"
+        },
+        {
+          "expr": "(1000 * sum by (function) (max by (function, instance) (function_latency_ms_seconds{function=~\"$function\",quantile=\"0.99\"}))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
+          "legendFormat": "{{function}} p99",
           "refId": "B"
         },
         {
-          "expr": "function_latency_ms_seconds{quantile=\"0.99\"}",
-          "legendFormat": "{{function}} p99",
+          "expr": "(1000 * sum by (function) (max by (function, instance) (function_queue_wait_ms_seconds{function=~\"$function\",quantile=\"0.95\"}))) or on(function) (0 * sum by (function) (max by (function, instance) (rate(function_dispatch_total{function=~\"$function\"}[1m]))))",
+          "legendFormat": "{{function}} queue-wait p95",
           "refId": "C"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
         },
         "overrides": []
       }
     },
     {
-      "title": "Queue Depth",
+      "title": "Queue Depth / InFlight / Effective Concurrency",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
       "targets": [
         {
-          "expr": "function_queue_depth",
+          "expr": "sum by (function) (max by (function, instance) (function_queue_depth{function=~\"$function\"}))",
           "legendFormat": "{{function}} queue",
           "refId": "A"
         },
         {
-          "expr": "function_inFlight",
+          "expr": "sum by (function) (max by (function, instance) (function_inFlight{function=~\"$function\"}))",
           "legendFormat": "{{function}} in-flight",
           "refId": "B"
+        },
+        {
+          "expr": "sum by (function) (max by (function, instance) (function_effective_concurrency{function=~\"$function\"}))",
+          "legendFormat": "{{function}} effective-concurrency",
+          "refId": "C"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15
+          }
         },
         "overrides": []
       }
     },
     {
-      "title": "Total Invocations (cumulative)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
+      "title": "Queue Depth Percentiles (window)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
       "targets": [
         {
-          "expr": "function_enqueue_total",
-          "legendFormat": "{{function}}",
+          "expr": "quantile_over_time(0.50, (sum by (function) (max by (function, instance) (function_queue_depth{function=~\"$function\"})))[5m:])",
+          "legendFormat": "{{function}} qdepth p50",
           "refId": "A"
+        },
+        {
+          "expr": "quantile_over_time(0.95, (sum by (function) (max by (function, instance) (function_queue_depth{function=~\"$function\"})))[5m:])",
+          "legendFormat": "{{function}} qdepth p95",
+          "refId": "B"
+        },
+        {
+          "expr": "quantile_over_time(0.99, (sum by (function) (max by (function, instance) (function_queue_depth{function=~\"$function\"})))[5m:])",
+          "legendFormat": "{{function}} qdepth p99",
+          "refId": "C"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 500 },
-              { "color": "red", "value": 1000 }
-            ]
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
           }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Total Dispatch (cumulative)",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(sum by (function) (max by (function, instance) (function_dispatch_total{function=~\"$function\"})))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
         "orientation": "horizontal",
         "textMode": "auto",
         "colorMode": "value"
       }
     },
     {
-      "title": "Dispatch Rate (per function)",
+      "title": "Cold / Warm Starts (cumulative)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
       "targets": [
         {
-          "expr": "rate(function_dispatch_total[1m])",
-          "legendFormat": "{{function}}",
+          "expr": "sum by (function) (max by (function, instance) (function_cold_start_total{function=~\"$function\"}))",
+          "legendFormat": "{{function}} cold",
           "refId": "A"
+        },
+        {
+          "expr": "sum by (function) (max by (function, instance) (function_warm_start_total{function=~\"$function\"}))",
+          "legendFormat": "{{function}} warm",
+          "refId": "B"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 50 }
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
     },
     {
-      "title": "Retry Rate",
+      "title": "Target InFlight per Pod",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
       "targets": [
         {
-          "expr": "rate(function_retry_total[1m])",
-          "legendFormat": "{{function}}",
+          "expr": "sum by (function) (max by (function, instance) (function_target_inflight_per_pod{function=~\"$function\"}))",
+          "legendFormat": "{{function}} target-inflight/pod",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
         "overrides": []
       }
@@ -185,10 +327,34 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": ["nanofaas", "faas"],
-  "templating": { "list": [] },
-  "time": { "from": "now-15m", "to": "now" },
+  "tags": [
+    "nanofaas",
+    "faas"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "function",
+        "type": "query",
+        "label": "Function",
+        "datasource": "Prometheus",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "query": "label_values(function_dispatch_total, function)",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "title": "nanofaas - Function Metrics",
   "uid": "nanofaas-functions",
-  "version": 1
+  "version": 2
 }
