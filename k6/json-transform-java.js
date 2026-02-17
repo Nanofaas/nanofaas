@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
-import { checkInvocationResponse, invocationPath } from './common.js';
+import { buildInvocationPayload, buildJsonTransformInput, checkInvocationResponse, invocationPath, selectPayloadIndex } from './common.js';
 
 const FN = 'json-transform-java';
 
@@ -18,33 +18,8 @@ export const options = {
     },
 };
 
-const OPERATIONS = ['count', 'sum', 'avg', 'min', 'max'];
-const DEPTS = ['eng', 'sales', 'hr', 'marketing', 'finance'];
-
-function generateData(size) {
-    const data = [];
-    for (let i = 0; i < size; i++) {
-        data.push({
-            dept: DEPTS[Math.floor(Math.random() * DEPTS.length)],
-            salary: Math.floor(Math.random() * 100000) + 40000,
-            age: Math.floor(Math.random() * 40) + 22,
-        });
-    }
-    return data;
-}
-
 export default function () {
-    const op = OPERATIONS[Math.floor(Math.random() * OPERATIONS.length)];
-    const input = {
-        data: generateData(20),
-        groupBy: 'dept',
-        operation: op,
-    };
-    if (op !== 'count') {
-        input.valueField = 'salary';
-    }
-
-    const payload = JSON.stringify({ input: input });
+    const payload = buildInvocationPayload(buildJsonTransformInput(selectPayloadIndex()));
 
     const res = http.post(invocationPath(FN), payload, {
         headers: { 'Content-Type': 'application/json' },

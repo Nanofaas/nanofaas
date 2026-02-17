@@ -215,7 +215,25 @@ Key load-test parameters:
 - `VERIFY_OUTPUT_PARITY=false` to skip pre-load runtime output parity checks
 - `PARITY_TIMEOUT_SECONDS=<n>` to tune parity request timeout
 - `NANOFAAS_URL` and `PROM_URL` to override auto-discovered endpoints
-- `./scripts/e2e-loadtest-registry.sh --summary-only` to regenerate Section 1..8 from existing `k6/results`
+- `K6_PAYLOAD_MODE=pool-sequential|pool-random|legacy-random` for payload model
+- `K6_PAYLOAD_POOL_SIZE=<n>` for pool size in pool modes
+- `./scripts/e2e-loadtest-registry.sh --summary-only` to regenerate Section 1..9 from existing `k6/results`
+
+Payload-specific tests and metrics:
+
+```bash
+# Pure JS unit tests for payload model logic
+node --test k6/tests/payload-model.test.mjs
+
+# Pytest bridge that executes the Node test
+uv run pytest scripts/tests/test_k6_payload_model_js.py -q
+
+# Full scripts suite (includes registry summary payload section assertions)
+uv run pytest scripts/tests -q
+```
+
+Additional reference:
+- [docs/loadtest-payload-profile.md](loadtest-payload-profile.md)
 
 ---
 

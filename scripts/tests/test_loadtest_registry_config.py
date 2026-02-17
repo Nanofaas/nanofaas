@@ -8,6 +8,8 @@ from loadtest_registry_config import (
     build_test_matrix,
     normalize_tag_suffix,
     pick_latest_base_tag,
+    resolve_payload_mode,
+    resolve_payload_pool_size,
     resolve_invocation_modes,
 )
 
@@ -73,3 +75,30 @@ def test_pick_latest_base_tag_ignores_arch_suffix_tags():
 def test_pick_latest_base_tag_falls_back_when_no_semver_tags():
     tags = ["latest", "dev", "v0.12.0-arm64"]
     assert pick_latest_base_tag(tags, fallback="v0.12.0") == "v0.12.0"
+
+
+def test_resolve_payload_mode_accepts_supported_values():
+    assert resolve_payload_mode("legacy-random") == "legacy-random"
+    assert resolve_payload_mode("pool-sequential") == "pool-sequential"
+    assert resolve_payload_mode("pool-random") == "pool-random"
+
+
+def test_resolve_payload_mode_rejects_invalid_value():
+    try:
+        resolve_payload_mode("invalid")
+    except ValueError as exc:
+        assert "invalid payload mode" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for invalid payload mode")
+
+
+def test_resolve_payload_pool_size_requires_positive_integer():
+    assert resolve_payload_pool_size("5000") == 5000
+    assert resolve_payload_pool_size(1) == 1
+    for value in ("0", 0, "-5", -5, "abc"):
+        try:
+            resolve_payload_pool_size(value)
+        except ValueError as exc:
+            assert "payload pool size" in str(exc)
+        else:
+            raise AssertionError(f"Expected ValueError for payload pool size={value!r}")

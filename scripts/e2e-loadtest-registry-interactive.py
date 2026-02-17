@@ -138,6 +138,29 @@ def choose_config() -> tuple[InteractiveLoadtestConfig, bool, str, str, str]:
             raise SystemExit(1)
         custom_total_seconds = int(value)
 
+    payload_mode = questionary.select(
+        "Variabilita payload k6:",
+        choices=[
+            questionary.Choice("Pool sequenziale (raccomandato per benchmark)", value="pool-sequential"),
+            questionary.Choice("Pool random", value="pool-random"),
+            questionary.Choice("Legacy random (comportamento storico)", value="legacy-random"),
+        ],
+        default="pool-sequential",
+    ).ask()
+    if payload_mode is None:
+        raise SystemExit(1)
+
+    payload_pool_size = 5000
+    if payload_mode != "legacy-random":
+        pool_size_value = questionary.text(
+            "Dimensione pool payload (min 1):",
+            default="5000",
+            validate=lambda txt: txt.isdigit() and int(txt) >= 1,
+        ).ask()
+        if pool_size_value is None:
+            raise SystemExit(1)
+        payload_pool_size = int(pool_size_value)
+
     skip_grafana = questionary.confirm("Saltare avvio Grafana locale?", default=True).ask()
     if skip_grafana is None:
         raise SystemExit(1)
@@ -189,6 +212,8 @@ def choose_config() -> tuple[InteractiveLoadtestConfig, bool, str, str, str]:
         invocation_mode=invocation_mode,
         stage_profile=stage_profile,
         custom_total_seconds=custom_total_seconds,
+        payload_mode=payload_mode,
+        payload_pool_size=payload_pool_size,
     )
     return config, bool(skip_grafana), results_root.strip(), base_image_tag.strip(), tag_suffix
 
@@ -211,6 +236,9 @@ def run_registry(
     print(f"  Runtimes: {','.join(config.runtimes)}")
     print(f"  Invocation mode: {config.invocation_mode}")
     print(f"  Stage profile: {config.stage_profile} ({stage_sequence})")
+    print(f"  Payload mode: {config.payload_mode}")
+    if config.payload_mode != "legacy-random":
+        print(f"  Payload pool size: {config.payload_pool_size}")
     print(f"  BASE_IMAGE_TAG: {base_image_tag}")
     print(f"  TAG_SUFFIX: {tag_suffix or '<none>'}")
     print(f"  Selected tests: {len(selected_tests)} -> {', '.join(selected_tests)}")
@@ -228,6 +256,7 @@ def run_registry(
     env["K6_STAGE_SEQUENCE"] = stage_sequence
     env["BASE_IMAGE_TAG"] = base_image_tag
     env["TAG_SUFFIX"] = tag_suffix
+    env.update(config.payload_env())
     if skip_grafana:
         env["SKIP_GRAFANA"] = "true"
 

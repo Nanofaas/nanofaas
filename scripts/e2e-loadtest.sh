@@ -22,6 +22,8 @@ LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
 INVOCATION_MODE=${INVOCATION_MODE:-sync}
 K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-}
+K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE:-legacy-random}
+K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE:-5000}
 RESULTS_DIR_OVERRIDE=${RESULTS_DIR_OVERRIDE:-}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -63,6 +65,9 @@ Environment variables:
                           (default: java,java-lite,python,exec)
   INVOCATION_MODE         Invocation mode: sync|async (default: sync)
   K6_STAGE_SEQUENCE       Override stages CSV, e.g. 5s:3,15s:8,15s:12,5s:0
+  K6_PAYLOAD_MODE         Payload selection mode: legacy-random|pool-sequential|pool-random
+                          (default: legacy-random)
+  K6_PAYLOAD_POOL_SIZE    Pool size for pool-* modes (default: 5000)
   RESULTS_DIR_OVERRIDE    Override output directory for logs and JSON results
 
 Examples:
@@ -71,6 +76,7 @@ Examples:
   VERIFY_OUTPUT_PARITY=false ./scripts/e2e-loadtest.sh
   INVOCATION_MODE=async LOADTEST_RUNTIMES=java,python ./scripts/e2e-loadtest.sh
   K6_STAGE_SEQUENCE=5s:3,15s:8,15s:12,5s:0 ./scripts/e2e-loadtest.sh
+  K6_PAYLOAD_MODE=pool-sequential K6_PAYLOAD_POOL_SIZE=5000 ./scripts/e2e-loadtest.sh
   PARITY_TIMEOUT_SECONDS=40 ./scripts/e2e-loadtest.sh
   NANOFAAS_URL=http://192.168.64.2:30080 PROM_URL=http://192.168.64.2:30090 ./scripts/e2e-loadtest.sh
 EOF
@@ -187,6 +193,23 @@ validate_invocation_mode() {
     esac
 }
 
+validate_payload_options() {
+    K6_PAYLOAD_MODE=$(printf '%s' "${K6_PAYLOAD_MODE}" | tr '[:upper:]' '[:lower:]')
+    case "${K6_PAYLOAD_MODE}" in
+        legacy-random|pool-sequential|pool-random)
+            ;;
+        *)
+            err "Invalid K6_PAYLOAD_MODE='${K6_PAYLOAD_MODE}'. Allowed values: legacy-random, pool-sequential, pool-random"
+            exit 2
+            ;;
+    esac
+
+    if [[ ! "${K6_PAYLOAD_POOL_SIZE}" =~ ^[0-9]+$ ]] || [[ "${K6_PAYLOAD_POOL_SIZE}" -lt 1 ]]; then
+        err "Invalid K6_PAYLOAD_POOL_SIZE='${K6_PAYLOAD_POOL_SIZE}'. Value must be an integer >= 1"
+        exit 2
+    fi
+}
+
 build_stage_args() {
     K6_STAGE_ARGS=()
     if [[ -z "${K6_STAGE_SEQUENCE}" ]]; then
@@ -208,6 +231,7 @@ build_stage_args() {
 
 prepare_loadtest_configuration() {
     validate_invocation_mode
+    validate_payload_options
     build_selected_tests
     build_stage_args
 }
@@ -458,6 +482,7 @@ run_tests() {
     if [[ -n "${K6_STAGE_SEQUENCE}" ]]; then
         log "  Stages override: ${K6_STAGE_SEQUENCE}"
     fi
+    log "  Payload mode: ${K6_PAYLOAD_MODE} (pool size=${K6_PAYLOAD_POOL_SIZE})"
     log ""
 
     local last_index=$(( ${#tests[@]} - 1 ))
@@ -476,8 +501,11 @@ run_tests() {
         # Allow k6 to exit non-zero when thresholds are crossed (report handles it)
         k6 run \
             "${K6_STAGE_ARGS[@]}" \
+            --summary-trend-stats "avg,min,med,max,p(25),p(75),p(90),p(95)" \
             --env "NANOFAAS_URL=${nanofaas_url}" \
             --env "INVOCATION_MODE=${INVOCATION_MODE}" \
+            --env "K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE}" \
+            --env "K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE}" \
             --summary-export="${RESULTS_DIR}/${test}.json" \
             "${script}" 2>&1 | tee "${RESULTS_DIR}/${test}.log" \
             | grep -E "█|✓|✗|http_req_duration\b|http_req_failed\b|http_reqs\b|iterations\b|default" \
