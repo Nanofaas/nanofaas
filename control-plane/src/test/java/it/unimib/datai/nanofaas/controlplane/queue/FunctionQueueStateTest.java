@@ -138,6 +138,28 @@ class FunctionQueueStateTest {
         assertThat(state.queued()).isEqualTo(1);
     }
 
+    @Test
+    void setEffectiveConcurrency_limitsAcquireWithoutChangingConfigured() {
+        FunctionQueueState state = new FunctionQueueState("fn", 100, 6);
+        state.setEffectiveConcurrency(2);
+
+        assertThat(state.configuredConcurrency()).isEqualTo(6);
+        assertThat(state.effectiveConcurrency()).isEqualTo(2);
+        assertThat(state.tryAcquireSlot()).isTrue();
+        assertThat(state.tryAcquireSlot()).isTrue();
+        assertThat(state.tryAcquireSlot()).isFalse();
+    }
+
+    @Test
+    void configuredConcurrency_reducesEffectiveWhenLowered() {
+        FunctionQueueState state = new FunctionQueueState("fn", 100, 6);
+        state.setEffectiveConcurrency(5);
+        state.concurrency(3);
+
+        assertThat(state.configuredConcurrency()).isEqualTo(3);
+        assertThat(state.effectiveConcurrency()).isEqualTo(3);
+    }
+
     private InvocationTask createTask(String executionId) {
         return new InvocationTask(
                 executionId,

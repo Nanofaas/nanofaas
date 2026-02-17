@@ -110,7 +110,17 @@ class FunctionServiceTest {
                         it.unimib.datai.nanofaas.common.model.ScalingStrategy.INTERNAL,
                         1,
                         10,
-                        java.util.List.of(new it.unimib.datai.nanofaas.common.model.ScalingMetric("queue_depth", "5", null))
+                        java.util.List.of(new it.unimib.datai.nanofaas.common.model.ScalingMetric("queue_depth", "5", null)),
+                        new it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig(
+                                it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode.FIXED,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null
+                        )
                 )
                         : null
         );

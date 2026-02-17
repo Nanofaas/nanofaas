@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.scaling;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.controlplane.queue.FunctionQueueState;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
@@ -42,6 +43,24 @@ public class ScalingMetricsReader {
     private double readInFlight(String functionName) {
         FunctionQueueState state = queueManager.get(functionName);
         return state != null ? state.inFlight() : 0;
+    }
+
+    public double queueDepth(String functionName) {
+        return readQueueDepth(functionName);
+    }
+
+    public double inFlight(String functionName) {
+        return readInFlight(functionName);
+    }
+
+    public void setEffectiveConcurrency(String functionName, int effectiveConcurrency) {
+        queueManager.setEffectiveConcurrency(functionName, effectiveConcurrency);
+    }
+
+    public void updateConcurrencyControllerState(String functionName,
+                                                 ConcurrencyControlMode mode,
+                                                 int targetInFlightPerPod) {
+        queueManager.updateConcurrencyController(functionName, mode, targetInFlightPerPod);
     }
 
     private double readRps(String functionName) {

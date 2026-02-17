@@ -9,13 +9,15 @@ public class FunctionQueueState {
     private final String functionName;
     private final ArrayBlockingQueue<InvocationTask> queue;
     private final AtomicInteger inFlight;
-    private volatile int concurrency;
+    private volatile int configuredConcurrency;
+    private volatile int effectiveConcurrency;
 
     public FunctionQueueState(String functionName, int queueSize, int concurrency) {
         this.functionName = functionName;
         this.queue = new ArrayBlockingQueue<>(queueSize);
         this.inFlight = new AtomicInteger();
-        this.concurrency = concurrency;
+        this.configuredConcurrency = Math.max(1, concurrency);
+        this.effectiveConcurrency = Math.max(1, concurrency);
     }
 
     public String functionName() {
@@ -52,7 +54,7 @@ public class FunctionQueueState {
     public boolean tryAcquireSlot() {
         while (true) {
             int current = inFlight.get();
-            if (current >= concurrency) {
+            if (current >= effectiveConcurrency) {
                 return false;
             }
             if (inFlight.compareAndSet(current, current + 1)) {
@@ -74,7 +76,7 @@ public class FunctionQueueState {
      */
     @Deprecated
     public boolean canDispatch() {
-        return inFlight.get() < concurrency;
+        return inFlight.get() < effectiveConcurrency;
     }
 
     /**
@@ -94,7 +96,31 @@ public class FunctionQueueState {
     }
 
     public void concurrency(int concurrency) {
-        this.concurrency = concurrency;
+        int previousConfigured = this.configuredConcurrency;
+        int normalized = Math.max(1, concurrency);
+        this.configuredConcurrency = normalized;
+        if (effectiveConcurrency == previousConfigured) {
+            // Preserve fixed-mode semantics: effective limit tracks configured limit.
+            effectiveConcurrency = normalized;
+        } else if (effectiveConcurrency > normalized) {
+            effectiveConcurrency = normalized;
+        }
+    }
+
+    public int configuredConcurrency() {
+        return configuredConcurrency;
+    }
+
+    public int effectiveConcurrency() {
+        return effectiveConcurrency;
+    }
+
+    public void setEffectiveConcurrency(int effectiveConcurrency) {
+        int clamped = Math.max(1, effectiveConcurrency);
+        if (clamped > configuredConcurrency) {
+            clamped = configuredConcurrency;
+        }
+        this.effectiveConcurrency = clamped;
     }
 
     private void decrementInFlightNonNegative() {

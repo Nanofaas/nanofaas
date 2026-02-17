@@ -122,6 +122,36 @@ class CommonModelTest {
     }
 
     @Test
+    void concurrencyControlMode_values() {
+        assertEquals(3, ConcurrencyControlMode.values().length);
+        assertNotNull(ConcurrencyControlMode.valueOf("FIXED"));
+        assertNotNull(ConcurrencyControlMode.valueOf("STATIC_PER_POD"));
+        assertNotNull(ConcurrencyControlMode.valueOf("ADAPTIVE_PER_POD"));
+    }
+
+    @Test
+    void concurrencyControlConfig_recordAccessors() {
+        ConcurrencyControlConfig c = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.STATIC_PER_POD,
+                2,
+                1,
+                6,
+                30000L,
+                60000L,
+                0.8,
+                0.2
+        );
+        assertEquals(ConcurrencyControlMode.STATIC_PER_POD, c.mode());
+        assertEquals(2, c.targetInFlightPerPod());
+        assertEquals(1, c.minTargetInFlightPerPod());
+        assertEquals(6, c.maxTargetInFlightPerPod());
+        assertEquals(30000L, c.upscaleCooldownMs());
+        assertEquals(60000L, c.downscaleCooldownMs());
+        assertEquals(0.8, c.highLoadThreshold());
+        assertEquals(0.2, c.lowLoadThreshold());
+    }
+
+    @Test
     void scalingMetric_recordAccessors() {
         ScalingMetric m = new ScalingMetric("cpu", "80", null);
         assertEquals("cpu", m.type());
@@ -141,9 +171,20 @@ class CommonModelTest {
 
     @Test
     void scalingConfig_recordAccessors() {
-        ScalingConfig c = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10, null);
+        ConcurrencyControlConfig control = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.FIXED,
+                2,
+                1,
+                4,
+                1000L,
+                2000L,
+                0.7,
+                0.3
+        );
+        ScalingConfig c = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10, null, control);
         assertEquals(ScalingStrategy.INTERNAL, c.strategy());
         assertEquals(1, c.minReplicas());
         assertEquals(10, c.maxReplicas());
+        assertEquals(control, c.concurrencyControl());
     }
 }
