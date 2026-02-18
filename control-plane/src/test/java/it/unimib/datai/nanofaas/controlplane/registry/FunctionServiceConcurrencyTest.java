@@ -1,30 +1,26 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
+import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
-import it.unimib.datai.nanofaas.controlplane.service.TargetLoadMetrics;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
 class FunctionServiceConcurrencyTest {
-
-    @Mock
-    private QueueManager queueManager;
 
     private FunctionRegistry registry;
     private FunctionService functionService;
@@ -35,13 +31,11 @@ class FunctionServiceConcurrencyTest {
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
         functionService = new FunctionService(
                 registry,
-                queueManager,
                 defaults,
                 null,
-                new TargetLoadMetrics(new SimpleMeterRegistry())
+                ImageValidator.noOp(),
+                List.of()
         );
-
-        when(queueManager.getOrCreate(any())).thenReturn(null);
     }
 
     @Test
@@ -145,5 +139,57 @@ class FunctionServiceConcurrencyTest {
 
         // Original registration should be preserved
         assertThat(functionService.get("myFunc").orElseThrow().image()).isEqualTo("image1");
+    }
+
+    @Test
+    void registerAndRemove_sameName_areSerialized() throws Exception {
+        FunctionRegistry localRegistry = new FunctionRegistry();
+        FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
+        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        FunctionService localService = new FunctionService(
+                localRegistry,
+                defaults,
+                localResourceManager,
+                ImageValidator.noOp(),
+                List.of()
+        );
+
+        CountDownLatch provisionStarted = new CountDownLatch(1);
+        CountDownLatch allowProvision = new CountDownLatch(1);
+        when(localResourceManager.provision(any())).thenAnswer(invocation -> {
+            provisionStarted.countDown();
+            if (!allowProvision.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish provision");
+            }
+            return "http://fn-svc:8080";
+        });
+
+        FunctionSpec spec = new FunctionSpec(
+                "race-fn", "img:latest",
+                null, null, null, null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null
+        );
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Optional<FunctionSpec>> registerFuture = executor.submit(() -> localService.register(spec));
+
+            assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> localService.remove("race-fn"));
+
+            Thread.sleep(150);
+            assertThat(removeFuture.isDone()).isFalse();
+
+            allowProvision.countDown();
+
+            assertThat(registerFuture.get(5, TimeUnit.SECONDS)).isPresent();
+            assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(localService.get("race-fn")).isEmpty();
+        verify(localResourceManager, times(1)).provision(any());
+        verify(localResourceManager, times(1)).deprovision("race-fn");
     }
 }

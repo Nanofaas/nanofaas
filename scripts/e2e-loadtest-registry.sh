@@ -756,7 +756,7 @@ from pathlib import Path
 
 prom_url = sys.argv[1]
 out_path = sys.argv[2]
-project_root = Path(out_path).resolve().parents[2]
+project_root = Path(out_path).resolve().parents[3]
 sys.path.insert(0, str(project_root / "scripts" / "lib"))
 
 from loadtest_registry_metrics import build_prom_queries
@@ -941,7 +941,7 @@ K8S_DUMP
 import json, os, sys
 from pathlib import Path
 
-project_root = Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else Path(sys.argv[1]).resolve().parents[1]
+project_root = Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else Path(sys.argv[1]).resolve().parents[2]
 sys.path.insert(0, str(project_root / "scripts" / "lib"))
 from loadtest_registry_metrics import (
     merge_prom_with_snapshots,

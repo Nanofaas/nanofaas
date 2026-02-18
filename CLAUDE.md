@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew test
 
 # Run a single test class
-./gradlew :control-plane:test --tests com.nanofaas.controlplane.core.QueueManagerTest
+./gradlew :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
 
 # E2E tests (requires Docker)
 ./scripts/e2e.sh                    # Local containers
@@ -38,6 +38,12 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
 # Build OCI images
 ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
 
+# Control-plane optional module selection
+./gradlew :control-plane:bootRun -PcontrolPlaneModules=all
+./gradlew :control-plane:test -PcontrolPlaneModules=all
+NANOFAAS_CONTROL_PLANE_MODULES=none ./gradlew :control-plane:bootJar
+# If selector is omitted: runtime/artifact tasks default to all modules, non-runtime tasks default to core-only.
+
 # Build Python runtime image
 cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime python-runtime/
 
@@ -47,15 +53,28 @@ cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime p
 
 ## Architecture Overview
 
-nanofaas is a minimal FaaS platform for Kubernetes with four modules:
+nanofaas is a minimal FaaS platform for Kubernetes.
 
 ### control-plane/
-API gateway + scheduler + dispatcher in a single pod. Key components:
+Minimal core API + dispatch orchestration in a single pod. Core components:
 - **FunctionRegistry** - In-memory function storage
-- **QueueManager** - Per-function bounded queues with backpressure (default 100 items)
-- **Scheduler** - Single dedicated thread dispatching from all queues
+- **InvocationService** - Sync/async invocation orchestration, retries, idempotency integration
 - **PoolDispatcher** - Dispatches to warm Deployment+Service pods (supports DEPLOYMENT and POOL execution modes)
-- **ExecutionState** - Tracks execution lifecycle with TTL eviction
+- **ExecutionStore** - Tracks execution lifecycle with TTL eviction
+
+Core provides no-op defaults for:
+- **InvocationEnqueuer**
+- **ScalingMetricsSource**
+- **SyncQueueGateway**
+- **ImageValidator**
+
+Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `control-plane-modules/`):
+- **async-queue** - Per-function queues + scheduler for async enqueue path
+- **sync-queue** - Sync admission/backpressure queue
+- **autoscaler** - Internal scaler and scaling metrics integration
+- **runtime-config** - Hot runtime config service and admin API (`/v1/admin/runtime-config`) when `nanofaas.admin.runtime-config.enabled=true`
+- **image-validator** - Kubernetes-backed image validation
+- **build-metadata** - `/modules/build-metadata` diagnostics endpoint
 
 Execution Modes:
 - **DEPLOYMENT** - Default mode; routes to K8s Deployment+Service with warm containers
@@ -85,12 +104,12 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 
 ## Request Flow
 
-1. Client → `POST /v1/functions/{name}:invoke` (sync) or `:enqueue` (async)
-2. Control plane validates, applies rate limit (1000/sec default), queues request
-3. Scheduler thread picks from queue, calls dispatcher
-4. PoolDispatcher forwards request to the function's Deployment/Service endpoint
-5. Function pod processes request, returns result to control plane
-6. Control plane updates ExecutionState, returns result to client
+1. Client -> `POST /v1/functions/{name}:invoke` (sync) or `:enqueue` (async)
+2. Control plane validates, applies rate limit, creates execution state
+3. Sync path: uses `sync-queue` if enabled, else `async-queue` if enabled, else dispatches inline from core
+4. Async path: requires `async-queue` (otherwise API returns `501 Not Implemented`)
+5. Dispatcher forwards request to runtime endpoint (LOCAL/POOL/DEPLOYMENT mode)
+6. Control plane updates execution state and returns result/status
 
 ## Key Configuration
 
@@ -109,7 +128,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 ## Project Constraints
 
 - Single control-plane pod (no HA/distributed mode)
-- In-memory queues (no durability)
+- In-memory state (and in-memory queues when queue modules are enabled)
 - No authentication/authorization
 - Performance and latency prioritized over features
 - Java 21 toolchain, 4-space indentation, `com.nanofaas` package root

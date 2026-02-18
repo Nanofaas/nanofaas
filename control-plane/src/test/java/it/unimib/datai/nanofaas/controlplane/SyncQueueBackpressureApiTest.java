@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -11,6 +12,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -38,6 +42,8 @@ class SyncQueueBackpressureApiTest {
 
     @Test
     void syncInvokeReturns429WithRetryAfter() {
+        Assumptions.assumeTrue(selectedModules().contains("sync-queue"));
+
         functionService.register(new FunctionSpec(
                 "echo",
                 "local",
@@ -62,5 +68,13 @@ class SyncQueueBackpressureApiTest {
                 .expectStatus().isEqualTo(429)
                 .expectHeader().valueEquals("Retry-After", "2")
                 .expectHeader().valueEquals("X-Queue-Reject-Reason", "est_wait");
+    }
+
+    private static Set<String> selectedModules() {
+        String modules = System.getProperty("nanofaas.selectedControlPlaneModules", "");
+        return Stream.of(modules.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toSet());
     }
 }

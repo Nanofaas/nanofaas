@@ -1,1 +1,0 @@
-{"function": "word-stats-java", "timestamp": 1771334922, "metrics": {"latency_p50": 0.001998848, "latency_p95": 0.048201728, "latency_p99": 0.104824832, "e2e_p50": 0.335511552, "e2e_p95": 1.342144512, "e2e_p99": 2.013233152, "queue_wait_p50": 0.335511552, "queue_wait_p95": 1.275035648, "init_p50": 14.361296896, "init_p95": 23.4881024}}

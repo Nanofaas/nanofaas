@@ -25,11 +25,35 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 ./gradlew :function-runtime:bootRun
 ```
 
+`bootRun` includes all optional control-plane modules by default.
+Use `-PcontrolPlaneModules=none` to run a core-only control plane.
+
 ## Build images (buildpacks)
 
 ```bash
 ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
 ```
+
+## Custom control-plane builds
+
+You can build a custom control plane by selecting optional modules at compile time.
+
+```bash
+# include one module
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=build-metadata
+
+# include all modules found under control-plane-modules/
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
+
+# include no optional modules (core only)
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=none
+
+# inspect which modules are included in the current build
+./gradlew :control-plane:printSelectedControlPlaneModules -PcontrolPlaneModules=build-metadata
+```
+
+You can also use `NANOFAAS_CONTROL_PLANE_MODULES` instead of `-PcontrolPlaneModules`.
+Module authoring details are in `docs/control-plane-modules.md`.
 
 ## Native build (GraalVM)
 

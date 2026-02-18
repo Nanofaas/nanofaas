@@ -10,9 +10,8 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +25,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,10 +34,10 @@ import static org.mockito.Mockito.when;
 class InvocationServiceRetryQueueFullTest {
 
     @Mock private FunctionService functionService;
-    @Mock private QueueManager queueManager;
+    @Mock private InvocationEnqueuer enqueuer;
     @Mock private Metrics metrics;
     @Mock private DispatcherRouter dispatcherRouter;
-    @Mock private SyncQueueService syncQueueService;
+    @Mock private SyncQueueGateway syncQueueGateway;
 
     private ExecutionStore executionStore;
     private IdempotencyStore idempotencyStore;
@@ -51,8 +52,8 @@ class InvocationServiceRetryQueueFullTest {
         rateLimiter.setMaxPerSecond(1000);
 
         invocationService = new InvocationService(
-                functionService, queueManager, executionStore, idempotencyStore,
-                dispatcherRouter, rateLimiter, metrics, syncQueueService
+                functionService, enqueuer, executionStore, idempotencyStore,
+                dispatcherRouter, rateLimiter, metrics, syncQueueGateway
         );
 
         FunctionSpec testSpec = new FunctionSpec(
@@ -61,7 +62,8 @@ class InvocationServiceRetryQueueFullTest {
         );
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
-        when(syncQueueService.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(true);
+        when(syncQueueGateway.enabled()).thenReturn(false);
         io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry));
         when(metrics.queueWait(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(simpleMeterRegistry));
@@ -72,7 +74,7 @@ class InvocationServiceRetryQueueFullTest {
     @Test
     void retryWithQueueFull_completesFutureWithError() {
         // Initial enqueue succeeds
-        when(queueManager.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any())).thenReturn(true);
 
         InvocationResponse response = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), null, null
@@ -82,7 +84,7 @@ class InvocationServiceRetryQueueFullTest {
         assertThat(record.completion().isDone()).isFalse();
 
         // Now make queue reject on retry
-        when(queueManager.enqueue(any())).thenReturn(false);
+        when(enqueuer.enqueue(any())).thenReturn(false);
 
         // Complete with error - should attempt retry but queue is full
         InvocationResult errorResult = InvocationResult.error("ERROR", "First attempt failed");
@@ -95,12 +97,14 @@ class InvocationServiceRetryQueueFullTest {
         InvocationResult result = record.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
+        verify(enqueuer).decrementInFlight("testFunc");
+        verify(enqueuer).releaseSlot("testFunc");
     }
 
     @Test
     void retryWithQueueFull_afterSuccessfulRetries_completesFuture() {
         // Initial enqueue and first retry succeed, second retry fails
-        when(queueManager.enqueue(any()))
+        when(enqueuer.enqueue(any()))
                 .thenReturn(true)   // initial enqueue
                 .thenReturn(true)   // first retry enqueue
                 .thenReturn(false); // second retry enqueue fails
@@ -126,5 +130,7 @@ class InvocationServiceRetryQueueFullTest {
         // Future should be completed because retry queue was full
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        verify(enqueuer, times(2)).decrementInFlight("testFunc");
+        verify(enqueuer, times(2)).releaseSlot("testFunc");
     }
 }

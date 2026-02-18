@@ -3,48 +3,40 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
-import it.unimib.datai.nanofaas.controlplane.service.TargetLoadMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 @Service
 public class FunctionService {
     private static final Logger log = LoggerFactory.getLogger(FunctionService.class);
 
     private final FunctionRegistry registry;
-    private final QueueManager queueManager;
     private final FunctionSpecResolver resolver;
     private final KubernetesResourceManager resourceManager;
-    private final TargetLoadMetrics targetLoadMetrics;
     private final ImageValidator imageValidator;
-
-    public FunctionService(FunctionRegistry registry,
-                           QueueManager queueManager,
-                           FunctionDefaults defaults,
-                           @Autowired(required = false) KubernetesResourceManager resourceManager,
-                           TargetLoadMetrics targetLoadMetrics) {
-        this(registry, queueManager, defaults, resourceManager, targetLoadMetrics, ImageValidator.noOp());
-    }
+    private final List<FunctionRegistrationListener> listeners;
+    private final ConcurrentHashMap<String, LockEntry> functionLocks = new ConcurrentHashMap<>();
 
     @Autowired
     public FunctionService(FunctionRegistry registry,
-                           QueueManager queueManager,
                            FunctionDefaults defaults,
                            @Autowired(required = false) KubernetesResourceManager resourceManager,
-                           TargetLoadMetrics targetLoadMetrics,
-                           @Autowired(required = false) ImageValidator imageValidator) {
+                           ImageValidator imageValidator,
+                           @Autowired(required = false) List<FunctionRegistrationListener> listeners) {
         this.registry = registry;
-        this.queueManager = queueManager;
         this.resolver = new FunctionSpecResolver(defaults);
         this.resourceManager = resourceManager;
-        this.targetLoadMetrics = targetLoadMetrics;
-        this.imageValidator = imageValidator == null ? ImageValidator.noOp() : imageValidator;
+        this.imageValidator = imageValidator;
+        this.listeners = listeners == null ? List.of() : listeners;
     }
 
     public Collection<FunctionSpec> list() {
@@ -56,45 +48,49 @@ public class FunctionService {
     }
 
     public Optional<FunctionSpec> register(FunctionSpec spec) {
-        FunctionSpec resolved = resolver.resolve(spec);
-        imageValidator.validate(resolved);
+        FunctionSpec initialResolved = resolver.resolve(spec);
 
-        // For DEPLOYMENT mode, provision K8s resources and set the endpoint URL
-        if (resolved.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
-            String serviceUrl = resourceManager.provision(resolved);
-            resolved = new FunctionSpec(
-                    resolved.name(),
-                    resolved.image(),
-                    resolved.command(),
-                    resolved.env(),
-                    resolved.resources(),
-                    resolved.timeoutMs(),
-                    resolved.concurrency(),
-                    resolved.queueSize(),
-                    resolved.maxRetries(),
-                    serviceUrl,
-                    resolved.executionMode(),
-                    resolved.runtimeMode(),
-                    resolved.runtimeCommand(),
-                    resolved.scalingConfig(),
-                    resolved.imagePullSecrets()
-            );
-        }
-
-        // Atomic check-and-put: returns null if successful, or existing value if already present
-        FunctionSpec existing = registry.putIfAbsent(resolved);
-        if (existing != null) {
-            // Function already exists - deprovision what we just created
-            if (resolved.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
-                resourceManager.deprovision(resolved.name());
+        return withFunctionLock(initialResolved.name(), () -> {
+            // Atomic winner selection happens before any side effects.
+            FunctionSpec existing = registry.putIfAbsent(initialResolved);
+            if (existing != null) {
+                return Optional.empty();
             }
-            return Optional.empty();
-        }
-        // Registration succeeded - create the queue
-        queueManager.getOrCreate(resolved);
-        // Expose scaling targets as metrics (used by OpenFaaS-compatible recording rules)
-        targetLoadMetrics.update(resolved);
-        return Optional.of(resolved);
+
+            FunctionSpec resolved;
+            try {
+                imageValidator.validate(initialResolved);
+                resolved = initialResolved;
+                if (initialResolved.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
+                    String serviceUrl = resourceManager.provision(initialResolved);
+                    resolved = new FunctionSpec(
+                            initialResolved.name(),
+                            initialResolved.image(),
+                            initialResolved.command(),
+                            initialResolved.env(),
+                            initialResolved.resources(),
+                            initialResolved.timeoutMs(),
+                            initialResolved.concurrency(),
+                            initialResolved.queueSize(),
+                            initialResolved.maxRetries(),
+                            serviceUrl,
+                            initialResolved.executionMode(),
+                            initialResolved.runtimeMode(),
+                            initialResolved.runtimeCommand(),
+                            initialResolved.scalingConfig(),
+                            initialResolved.imagePullSecrets()
+                    );
+                    registry.put(resolved);
+                }
+            } catch (RuntimeException e) {
+                registry.remove(initialResolved.name());
+                throw e;
+            }
+
+            FunctionSpec registered = resolved;
+            listeners.forEach(l -> l.onRegister(registered));
+            return Optional.of(registered);
+        });
     }
 
     /**
@@ -120,15 +116,50 @@ public class FunctionService {
     }
 
     public Optional<FunctionSpec> remove(String name) {
-        FunctionSpec removed = registry.remove(name);
-        if (removed != null) {
-            queueManager.remove(name);
-            targetLoadMetrics.remove(name);
-            if (removed.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
-                resourceManager.deprovision(name);
+        return withFunctionLock(name, () -> {
+            FunctionSpec removed = registry.remove(name);
+            if (removed != null) {
+                listeners.forEach(l -> l.onRemove(name));
+                if (removed.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
+                    resourceManager.deprovision(name);
+                }
+                return Optional.of(removed);
             }
-            return Optional.of(removed);
+            return Optional.empty();
+        });
+    }
+
+    private <T> T withFunctionLock(String functionName, Supplier<T> action) {
+        LockEntry lockEntry = acquireLockEntry(functionName);
+        lockEntry.lock.lock();
+        try {
+            return action.get();
+        } finally {
+            lockEntry.lock.unlock();
+            releaseLockEntry(functionName, lockEntry);
         }
-        return Optional.empty();
+    }
+
+    private LockEntry acquireLockEntry(String functionName) {
+        return functionLocks.compute(functionName, (ignored, existing) -> {
+            LockEntry entry = existing == null ? new LockEntry() : existing;
+            entry.users++;
+            return entry;
+        });
+    }
+
+    private void releaseLockEntry(String functionName, LockEntry lockEntry) {
+        functionLocks.computeIfPresent(functionName, (ignored, existing) -> {
+            if (existing != lockEntry) {
+                return existing;
+            }
+            existing.users--;
+            return existing.users == 0 ? null : existing;
+        });
+    }
+
+    private static final class LockEntry {
+        private final ReentrantLock lock = new ReentrantLock();
+        private int users;
     }
 }
