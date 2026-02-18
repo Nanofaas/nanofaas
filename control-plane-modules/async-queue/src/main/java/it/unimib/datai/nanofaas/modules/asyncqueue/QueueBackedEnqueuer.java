@@ -21,18 +21,12 @@ public class QueueBackedEnqueuer implements InvocationEnqueuer {
     }
 
     @Override
-    public void decrementInFlight(String functionName) {
-        // Slot release is handled by releaseSlot(functionName).
-        // Keeping this as a no-op avoids double-decrement when callers invoke both APIs.
-    }
-
-    @Override
     public boolean tryAcquireSlot(String functionName) {
         return queueManager.tryAcquireSlot(functionName);
     }
 
     @Override
-    public void releaseSlot(String functionName) {
+    public void releaseDispatchSlot(String functionName) {
         queueManager.releaseSlot(functionName);
     }
 }

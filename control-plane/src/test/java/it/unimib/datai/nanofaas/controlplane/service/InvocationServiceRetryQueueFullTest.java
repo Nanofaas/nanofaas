@@ -97,8 +97,7 @@ class InvocationServiceRetryQueueFullTest {
         InvocationResult result = record.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
-        verify(enqueuer).decrementInFlight("testFunc");
-        verify(enqueuer).releaseSlot("testFunc");
+        verify(enqueuer).releaseDispatchSlot("testFunc");
     }
 
     @Test
@@ -130,7 +129,6 @@ class InvocationServiceRetryQueueFullTest {
         // Future should be completed because retry queue was full
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(2)).decrementInFlight("testFunc");
-        verify(enqueuer, times(2)).releaseSlot("testFunc");
+        verify(enqueuer, times(2)).releaseDispatchSlot("testFunc");
     }
 }

@@ -8,13 +8,11 @@ public interface InvocationEnqueuer {
 
     boolean enabled();
 
-    void decrementInFlight(String functionName);
-
     default boolean tryAcquireSlot(String functionName) {
         return true;
     }
 
-    default void releaseSlot(String functionName) {
+    default void releaseDispatchSlot(String functionName) {
     }
 
     static InvocationEnqueuer noOp() {

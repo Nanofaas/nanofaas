@@ -131,8 +131,7 @@ class InvocationServiceRetryTest {
 
         // Enqueue should have been called twice (initial + retry)
         verify(enqueuer, times(2)).enqueue(any());
-        verify(enqueuer).decrementInFlight("testFunc");
-        verify(enqueuer).releaseSlot("testFunc");
+        verify(enqueuer).releaseDispatchSlot("testFunc");
     }
 
     @Test
@@ -173,8 +172,7 @@ class InvocationServiceRetryTest {
         // NOW the future should be completed with the error
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(3)).decrementInFlight("testFunc");
-        verify(enqueuer, times(3)).releaseSlot("testFunc");
+        verify(enqueuer, times(3)).releaseDispatchSlot("testFunc");
     }
 
     @Test
@@ -199,8 +197,7 @@ class InvocationServiceRetryTest {
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(record.output()).isEqualTo("result");
-        verify(enqueuer).decrementInFlight("testFunc");
-        verify(enqueuer).releaseSlot("testFunc");
+        verify(enqueuer).releaseDispatchSlot("testFunc");
     }
 
     @Test

@@ -3,11 +3,13 @@ package it.unimib.datai.nanofaas.modules.runtimeconfig;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@ConditionalOnBean(RateLimiter.class)
 public class RuntimeConfigConfiguration {
 
     @Bean

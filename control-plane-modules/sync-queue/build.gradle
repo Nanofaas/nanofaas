@@ -13,13 +13,11 @@ dependencies {
     implementation project(':common')
     implementation project(':control-plane')
     implementation project(':control-plane-modules:async-queue')
-    implementation project(':control-plane-modules:runtime-config')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation project(':control-plane-modules:runtime-config')
     testImplementation 'org.awaitility:awaitility:4.2.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

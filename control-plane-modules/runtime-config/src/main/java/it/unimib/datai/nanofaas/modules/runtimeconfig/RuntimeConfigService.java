@@ -2,8 +2,10 @@ package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -11,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * compare-and-set updates with revision-based optimistic locking.
  */
 @Service
-public class RuntimeConfigService {
+public class RuntimeConfigService implements SyncQueueConfigSource {
 
     private final AtomicReference<RuntimeConfigSnapshot> current;
 
@@ -30,6 +32,31 @@ public class RuntimeConfigService {
 
     public RuntimeConfigSnapshot getSnapshot() {
         return current.get();
+    }
+
+    @Override
+    public boolean syncQueueEnabled() {
+        return current.get().syncQueueEnabled();
+    }
+
+    @Override
+    public boolean syncQueueAdmissionEnabled() {
+        return current.get().syncQueueAdmissionEnabled();
+    }
+
+    @Override
+    public Duration syncQueueMaxEstimatedWait() {
+        return current.get().syncQueueMaxEstimatedWait();
+    }
+
+    @Override
+    public Duration syncQueueMaxQueueWait() {
+        return current.get().syncQueueMaxQueueWait();
+    }
+
+    @Override
+    public int syncQueueRetryAfterSeconds() {
+        return current.get().syncQueueRetryAfterSeconds();
     }
 
     /**

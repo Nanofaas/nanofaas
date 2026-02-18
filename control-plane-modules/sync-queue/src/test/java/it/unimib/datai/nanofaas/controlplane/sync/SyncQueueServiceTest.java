@@ -4,11 +4,9 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigService;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -28,8 +26,8 @@ class SyncQueueServiceTest {
 
     private static SyncQueueService createService(SyncQueueProperties props, ExecutionStore store,
                                                    WaitEstimator estimator, SyncQueueMetrics metrics, Clock clock) {
-        RuntimeConfigService configService = new RuntimeConfigService(new RateLimiter(), props.runtimeDefaults());
-        return new SyncQueueService(props, store, estimator, metrics, clock, configService);
+        SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
+        return new SyncQueueService(props, store, estimator, metrics, clock, configSource);
     }
 
     @Test

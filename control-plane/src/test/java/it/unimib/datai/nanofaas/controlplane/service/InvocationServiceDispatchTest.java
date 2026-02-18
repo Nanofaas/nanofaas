@@ -110,8 +110,7 @@ class InvocationServiceDispatchTest {
 
         invocationService.dispatch(missingTask);
 
-        verify(enqueuer).decrementInFlight("fn");
-        verify(enqueuer).releaseSlot("fn");
+        verify(enqueuer).releaseDispatchSlot("fn");
         verifyNoInteractions(dispatcherRouter);
     }
 
@@ -130,8 +129,7 @@ class InvocationServiceDispatchTest {
         assertThat(result.error().code()).isEqualTo("LOCAL_ERROR");
         assertThat(result.error().message()).contains("router down");
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer).decrementInFlight("local-fn");
-        verify(enqueuer).releaseSlot("local-fn");
+        verify(enqueuer).releaseDispatchSlot("local-fn");
     }
 
     @Test
@@ -174,8 +172,7 @@ class InvocationServiceDispatchTest {
         verify(dispatcherRouter).dispatchLocal(any());
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer).decrementInFlight("inline-fn");
-        verify(enqueuer).releaseSlot("inline-fn");
+        verify(enqueuer).releaseDispatchSlot("inline-fn");
     }
 
     @Test
@@ -209,8 +206,7 @@ class InvocationServiceDispatchTest {
         assertThat(response.output()).isEqualTo("inline-ok");
         verify(dispatcherRouter).dispatchLocal(any());
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer).decrementInFlight("inline-no-sync-queue-fn");
-        verify(enqueuer).releaseSlot("inline-no-sync-queue-fn");
+        verify(enqueuer).releaseDispatchSlot("inline-no-sync-queue-fn");
     }
 
     @Test
@@ -258,8 +254,7 @@ class InvocationServiceDispatchTest {
         assertThat(response.output()).isEqualTo("ok");
         verify(syncQueueGateway).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer).decrementInFlight("sync-queued-sync-fn");
-        verify(enqueuer).releaseSlot("sync-queued-sync-fn");
+        verify(enqueuer).releaseDispatchSlot("sync-queued-sync-fn");
         verifyNoInteractions(dispatcherRouter);
     }
 

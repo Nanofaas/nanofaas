@@ -40,10 +40,6 @@ class CoreDefaultsTest {
             public boolean enabled() {
                 return true;
             }
-
-            @Override
-            public void decrementInFlight(String functionName) {
-            }
         };
         ScalingMetricsSource customScalingMetricsSource = new ScalingMetricsSource() {
             @Override

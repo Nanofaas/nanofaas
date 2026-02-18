@@ -4,11 +4,10 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigService;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -37,8 +36,8 @@ class SyncSchedulerDispatchExceptionTest {
         );
         ExecutionStore store = new ExecutionStore();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
-        RuntimeConfigService configService = new RuntimeConfigService(new RateLimiter(), props.runtimeDefaults());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics, configService);
+        SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
+        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource);
 
         InvocationTask task = new InvocationTask(
                 "e1", "fn", spec,
@@ -55,7 +54,7 @@ class SyncSchedulerDispatchExceptionTest {
 
         scheduler.tickOnce();
 
-        verify(enqueuer).releaseSlot("fn");
+        verify(enqueuer).releaseDispatchSlot("fn");
     }
 
     @Test
@@ -73,8 +72,8 @@ class SyncSchedulerDispatchExceptionTest {
         );
         ExecutionStore store = new ExecutionStore();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
-        RuntimeConfigService configService = new RuntimeConfigService(new RateLimiter(), props.runtimeDefaults());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics, configService);
+        SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
+        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource);
 
         InvocationTask task = new InvocationTask(
                 "e1", "fn", spec,
@@ -89,6 +88,6 @@ class SyncSchedulerDispatchExceptionTest {
 
         scheduler.tickOnce();
 
-        verify(enqueuer, never()).releaseSlot("fn");
+        verify(enqueuer, never()).releaseDispatchSlot("fn");
     }
 }

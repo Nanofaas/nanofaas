@@ -33,14 +33,6 @@ class NoOpInvocationEnqueuerTest {
     }
 
     @Test
-    void decrementInFlightIsNoOp() {
-        InvocationEnqueuer enqueuer = InvocationEnqueuer.noOp();
-
-        assertThatCode(() -> enqueuer.decrementInFlight("functionName"))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
     void tryAcquireSlotAlwaysReturnsTrue() {
         InvocationEnqueuer enqueuer = InvocationEnqueuer.noOp();
 
@@ -48,10 +40,10 @@ class NoOpInvocationEnqueuerTest {
     }
 
     @Test
-    void releaseSlotIsNoOp() {
+    void releaseDispatchSlotIsNoOp() {
         InvocationEnqueuer enqueuer = InvocationEnqueuer.noOp();
 
-        assertThatCode(() -> enqueuer.releaseSlot("functionName"))
+        assertThatCode(() -> enqueuer.releaseDispatchSlot("functionName"))
                 .doesNotThrowAnyException();
     }
 }

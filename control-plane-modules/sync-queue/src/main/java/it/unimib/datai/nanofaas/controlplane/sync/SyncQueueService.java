@@ -2,8 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.sync;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigService;
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigSnapshot;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
@@ -18,7 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 @Component
 public class SyncQueueService implements SyncQueueGateway {
-    private final RuntimeConfigService runtimeConfigService;
+    private final SyncQueueConfigSource configSource;
     private final ExecutionStore executionStore;
     private final WaitEstimator estimator;
     private final SyncQueueMetrics metrics;
@@ -31,13 +29,13 @@ public class SyncQueueService implements SyncQueueGateway {
     public SyncQueueService(SyncQueueProperties props,
                             ExecutionStore executionStore,
                             SyncQueueMetrics metrics,
-                            RuntimeConfigService runtimeConfigService) {
+                            SyncQueueConfigSource configSource) {
         this(props,
                 executionStore,
                 new WaitEstimator(props.throughputWindow(), props.perFunctionMinSamples()),
                 metrics,
                 Clock.systemUTC(),
-                runtimeConfigService);
+                configSource);
     }
 
     SyncQueueService(SyncQueueProperties props,
@@ -45,36 +43,35 @@ public class SyncQueueService implements SyncQueueGateway {
                      WaitEstimator estimator,
                      SyncQueueMetrics metrics,
                      Clock clock,
-                     RuntimeConfigService runtimeConfigService) {
-        this.runtimeConfigService = runtimeConfigService;
+                     SyncQueueConfigSource configSource) {
+        this.configSource = configSource;
         this.executionStore = executionStore;
         this.estimator = estimator;
         this.metrics = metrics;
         this.clock = clock;
         this.queue = new LinkedBlockingQueue<>(props.maxDepth());
-        this.admissionController = new SyncQueueAdmissionController(runtimeConfigService, props.maxDepth(), estimator);
+        this.admissionController = new SyncQueueAdmissionController(configSource, props.maxDepth(), estimator);
     }
 
     public boolean enabled() {
-        return runtimeConfigService.getSnapshot().syncQueueEnabled();
+        return configSource.syncQueueEnabled();
     }
 
     public int retryAfterSeconds() {
-        return runtimeConfigService.getSnapshot().syncQueueRetryAfterSeconds();
+        return configSource.syncQueueRetryAfterSeconds();
     }
 
     @Override
     public void enqueueOrThrow(InvocationTask task) {
         Instant now = clock.instant();
         SyncQueueAdmissionResult decision = admissionController.evaluate(task.functionName(), queue.size(), now);
-        RuntimeConfigSnapshot config = runtimeConfigService.getSnapshot();
         if (!decision.accepted()) {
             metrics.rejected(task.functionName());
-            throw new SyncQueueRejectedException(decision.reason(), config.syncQueueRetryAfterSeconds());
+            throw new SyncQueueRejectedException(decision.reason(), configSource.syncQueueRetryAfterSeconds());
         }
         if (!queue.offer(new SyncQueueItem(task, now))) {
             metrics.rejected(task.functionName());
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, config.syncQueueRetryAfterSeconds());
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
         }
         synchronized (workSignal) {
             workSignal.notify();
@@ -131,7 +128,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private boolean isTimedOut(SyncQueueItem item, Instant now) {
-        return item.enqueuedAt().plus(runtimeConfigService.getSnapshot().syncQueueMaxQueueWait()).isBefore(now);
+        return item.enqueuedAt().plus(configSource.syncQueueMaxQueueWait()).isBefore(now);
     }
 
     private void timeout(SyncQueueItem item) {

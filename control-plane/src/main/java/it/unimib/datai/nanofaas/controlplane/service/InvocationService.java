@@ -301,8 +301,7 @@ public class InvocationService {
     }
 
     private void releaseDispatchSlot(String functionName) {
-        enqueuer.decrementInFlight(functionName);
-        enqueuer.releaseSlot(functionName);
+        enqueuer.releaseDispatchSlot(functionName);
     }
 
     /**

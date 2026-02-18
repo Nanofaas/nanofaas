@@ -16,17 +16,12 @@ enum NoOpInvocationEnqueuer implements InvocationEnqueuer {
     }
 
     @Override
-    public void decrementInFlight(String functionName) {
-        // no-op
-    }
-
-    @Override
     public boolean tryAcquireSlot(String functionName) {
         return true;
     }
 
     @Override
-    public void releaseSlot(String functionName) {
+    public void releaseDispatchSlot(String functionName) {
         // no-op
     }
 }

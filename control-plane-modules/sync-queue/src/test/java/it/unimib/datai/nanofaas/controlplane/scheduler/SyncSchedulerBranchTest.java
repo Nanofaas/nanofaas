@@ -73,7 +73,7 @@ class SyncSchedulerBranchTest {
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
         scheduler.tickOnce();
 
-        verify(enqueuer).releaseSlot("fn");
+        verify(enqueuer).releaseDispatchSlot("fn");
         verify(queue, never()).recordDispatched(anyString(), any(Instant.class));
         verifyNoInteractions(dispatch);
     }

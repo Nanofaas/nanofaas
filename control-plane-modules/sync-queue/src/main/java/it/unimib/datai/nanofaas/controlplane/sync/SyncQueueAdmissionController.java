@@ -1,17 +1,14 @@
 package it.unimib.datai.nanofaas.controlplane.sync;
 
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigService;
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigSnapshot;
-
 import java.time.Instant;
 
 public class SyncQueueAdmissionController {
-    private final RuntimeConfigService runtimeConfigService;
+    private final SyncQueueConfigSource configSource;
     private final WaitEstimator estimator;
     private final int maxDepth;
 
-    public SyncQueueAdmissionController(RuntimeConfigService runtimeConfigService, int maxDepth, WaitEstimator estimator) {
-        this.runtimeConfigService = runtimeConfigService;
+    public SyncQueueAdmissionController(SyncQueueConfigSource configSource, int maxDepth, WaitEstimator estimator) {
+        this.configSource = configSource;
         this.maxDepth = maxDepth;
         this.estimator = estimator;
     }
@@ -20,10 +17,9 @@ public class SyncQueueAdmissionController {
         if (depth >= maxDepth) {
             return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.DEPTH, Double.POSITIVE_INFINITY);
         }
-        RuntimeConfigSnapshot config = runtimeConfigService.getSnapshot();
         double estWaitSeconds = estimator.estimateWaitSeconds(functionName, depth, now);
-        long maxWaitSeconds = config.syncQueueMaxEstimatedWait().toSeconds();
-        if (config.syncQueueAdmissionEnabled() && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
+        long maxWaitSeconds = configSource.syncQueueMaxEstimatedWait().toSeconds();
+        if (configSource.syncQueueAdmissionEnabled() && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
             return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.EST_WAIT, estWaitSeconds);
         }
         return SyncQueueAdmissionResult.accepted(estWaitSeconds);

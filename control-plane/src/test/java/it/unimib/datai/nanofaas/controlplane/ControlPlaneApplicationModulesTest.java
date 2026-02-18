@@ -9,10 +9,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ControlPlaneApplicationModulesTest {
 
     @Test
-    void applicationSourcesIncludesDiscoveredModuleConfigurations() {
-        Set<String> sources = ControlPlaneApplication.applicationSources(Thread.currentThread().getContextClassLoader());
+    void importSelectorDiscoversTestModuleConfiguration() {
+        ControlPlaneModuleImportSelector selector = new ControlPlaneModuleImportSelector();
+        String[] imports = selector.selectImports(null);
 
-        assertThat(sources).contains(ControlPlaneApplication.class.getName());
-        assertThat(sources).contains(TestModuleConfiguration.class.getName());
+        assertThat(imports).contains(TestModuleConfiguration.class.getName());
     }
 }

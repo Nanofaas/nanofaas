@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.config;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -35,5 +36,17 @@ public class CoreDefaults {
     @ConditionalOnMissingBean(ImageValidator.class)
     public ImageValidator imageValidator() {
         return ImageValidator.noOp();
+    }
+
+    @Bean
+    @Fallback
+    public SyncQueueRuntimeDefaults syncQueueRuntimeDefaults() {
+        return SyncQueueRuntimeDefaults.defaults();
+    }
+
+    @Bean
+    @Fallback
+    public SyncQueueConfigSource syncQueueConfigSource(SyncQueueRuntimeDefaults defaults) {
+        return SyncQueueConfigSource.fixed(defaults);
     }
 }
