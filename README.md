@@ -84,6 +84,11 @@ E2E (Kubernetes via Multipass + k3s):
 ./scripts/e2e-k8s-vm.sh
 ```
 
+E2E/module matrix (control-plane optional modules compile):
+```bash
+./scripts/test-control-plane-module-combinations.sh
+```
+
 ## Observability
 
 - Prometheus metrics are exposed via Spring Actuator (`/actuator/prometheus` on the management port).

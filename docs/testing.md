@@ -235,6 +235,19 @@ uv run pytest scripts/tests -q
 Additional reference:
 - [docs/loadtest-payload-profile.md](loadtest-payload-profile.md)
 
+### Control-plane module matrix (`scripts/test-control-plane-module-combinations.sh`)
+
+Compiles the control-plane for every combination of optional modules
+(`-PcontrolPlaneModules=<csv|none>`), with per-combination logs.
+
+```bash
+# Run full matrix (all combinations)
+./scripts/test-control-plane-module-combinations.sh
+
+# Quick check
+./scripts/test-control-plane-module-combinations.sh --max-combinations 10
+```
+
 ---
 
 ## Test Coverage
@@ -268,3 +281,4 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/e2e-buildpack.sh` |
 | K8s E2E (JUnit) | Control-plane on k3s | Multipass | `./scripts/e2e-k8s-vm.sh` or `./gradlew k8sE2e` |
 | Load test | Performance | Multipass + k6 | `./scripts/e2e-k3s-helm.sh && ./scripts/e2e-loadtest.sh` |
+| Control-plane module matrix | Compile-time module compatibility | JDK 21 | `./scripts/test-control-plane-module-combinations.sh` |
