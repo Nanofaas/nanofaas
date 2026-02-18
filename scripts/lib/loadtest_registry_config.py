@@ -13,6 +13,12 @@ _PRESET_STAGE_SEQUENCES = {
     "stress": "20s:10,60s:20,60s:35,60s:35,20s:0",
 }
 
+_PRESET_STAGE_TARGETS = {
+    "quick": [3, 8, 12, 0],
+    "standard": [5, 10, 20, 20, 0],
+    "stress": [10, 20, 35, 35, 0],
+}
+
 _PAYLOAD_MODES = {"legacy-random", "pool-sequential", "pool-random"}
 
 
@@ -97,15 +103,60 @@ def _build_custom_sequence(custom_total_seconds: int) -> str:
     return f"{ramp_up}s:5,{steady_1}s:10,{steady_2}s:20,{sustain}s:20,{ramp_down}s:0"
 
 
-def build_stage_sequence(profile: str, custom_total_seconds: int | None = None) -> str:
+def _validate_max_vus(max_vus: int | None) -> int | None:
+    if max_vus is None:
+        return None
+    if max_vus < 1:
+        raise ValueError(f"max_vus must be >= 1: {max_vus}")
+    return max_vus
+
+
+def _scale_targets(base_targets: list[int], peak: int) -> list[int]:
+    base_peak = max(base_targets) if base_targets else 1
+    scaled = []
+    for target in base_targets:
+        if target <= 0:
+            scaled.append(0)
+            continue
+        scaled.append(max(1, round((target / base_peak) * peak)))
+    return scaled
+
+
+def _build_custom_sequence_with_peak(custom_total_seconds: int, peak_vus: int) -> str:
+    if custom_total_seconds < 30:
+        raise ValueError("custom_total_seconds must be >= 30")
+    ramp_up = max(5, custom_total_seconds * 10 // 100)
+    steady_1 = max(10, custom_total_seconds * 30 // 100)
+    steady_2 = max(10, custom_total_seconds * 40 // 100)
+    sustain = max(5, custom_total_seconds * 15 // 100)
+    ramp_down = max(5, custom_total_seconds - (ramp_up + steady_1 + steady_2 + sustain))
+    t1 = max(1, round(peak_vus * 0.25))
+    t2 = max(1, round(peak_vus * 0.5))
+    return f"{ramp_up}s:{t1},{steady_1}s:{t2},{steady_2}s:{peak_vus},{sustain}s:{peak_vus},{ramp_down}s:0"
+
+
+def build_stage_sequence(
+    profile: str,
+    custom_total_seconds: int | None = None,
+    max_vus: int | None = None,
+) -> str:
     normalized_profile = profile.strip().lower()
+    validated_peak = _validate_max_vus(max_vus)
     if normalized_profile == "custom":
         if custom_total_seconds is None:
             raise ValueError("custom_total_seconds is required for custom profile")
+        if validated_peak is not None:
+            return _build_custom_sequence_with_peak(custom_total_seconds, validated_peak)
         return _build_custom_sequence(custom_total_seconds)
-    if normalized_profile not in _PRESET_STAGE_SEQUENCES:
+    if normalized_profile not in _PRESET_STAGE_TARGETS:
         raise ValueError(f"invalid profile: {profile}")
-    return _PRESET_STAGE_SEQUENCES[normalized_profile]
+    if validated_peak is None:
+        return _PRESET_STAGE_SEQUENCES[normalized_profile]
+    base_targets = _PRESET_STAGE_TARGETS[normalized_profile]
+    scaled = _scale_targets(base_targets, validated_peak)
+    durations = [segment.split(":")[0] for segment in _PRESET_STAGE_SEQUENCES[normalized_profile].split(",")]
+    parts = [f"{dur}:{target}" for dur, target in zip(durations, scaled, strict=True)]
+    return ",".join(parts)
 
 
 def resolve_payload_mode(value: str) -> str:
@@ -132,6 +183,7 @@ class InteractiveLoadtestConfig:
     invocation_mode: str
     stage_profile: str
     custom_total_seconds: int | None = None
+    max_vus: int | None = None
     payload_mode: str = "legacy-random"
     payload_pool_size: int = 5000
 
@@ -142,7 +194,7 @@ class InteractiveLoadtestConfig:
         return resolve_invocation_modes(self.invocation_mode)
 
     def stage_sequence(self) -> str:
-        return build_stage_sequence(self.stage_profile, self.custom_total_seconds)
+        return build_stage_sequence(self.stage_profile, self.custom_total_seconds, self.max_vus)
 
     def payload_env(self) -> dict[str, str]:
         return {

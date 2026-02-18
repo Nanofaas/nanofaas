@@ -87,7 +87,12 @@ def test_registry_summary_only_uses_local_results_without_vm(tmp_path: Path):
         payload_q2=1100.0,
         payload_q3=1240.0,
     )
-    (results_dir / "prometheus-dump.json").write_text("{}", encoding="utf-8")
+    prom_payload = {
+        "word-stats-java": {"latency_p50": 0.001, "latency_p95": 0.002, "latency_count": 10, "latency_sum": 0.01},
+        "json-transform-java": {"latency_p50": 0.002, "latency_p95": 0.003, "latency_count": 10, "latency_sum": 0.02},
+        "word-stats-python": {"latency_p50": 0.001, "latency_p95": 0.002, "latency_count": 10, "latency_sum": 0.01},
+    }
+    (results_dir / "prometheus-dump.json").write_text(json.dumps(prom_payload), encoding="utf-8")
     (results_dir / "k8s-resources.json").write_text("{}", encoding="utf-8")
 
     env = os.environ.copy()
@@ -110,3 +115,26 @@ def test_registry_summary_only_uses_local_results_without_vm(tmp_path: Path):
     assert "Payload bytes" in proc.stdout
     assert "Q1(B)" in proc.stdout
     assert "Q3(B)" in proc.stdout
+    assert "word-stats-python" not in proc.stdout
+
+
+def test_registry_build_run_results_dir_is_unique_and_mode_scoped(tmp_path: Path):
+    results_root = tmp_path / "results-root"
+    cmd = (
+        f"source {SCRIPT}; "
+        f"RESULTS_DIR_OVERRIDE='{results_root}'; "
+        "INVOCATION_MODE='sync'; LOADTEST_RUN_ID_OVERRIDE='run-a'; build_run_results_dir; "
+        "INVOCATION_MODE='async'; LOADTEST_RUN_ID_OVERRIDE='run-b'; build_run_results_dir"
+    )
+    proc = subprocess.run(
+        ["bash", "-lc", cmd],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    assert len(lines) == 2
+    assert lines[0].endswith("/run-run-a-sync")
+    assert lines[1].endswith("/run-run-b-async")
+    assert lines[0] != lines[1]

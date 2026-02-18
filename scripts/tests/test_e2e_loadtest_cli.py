@@ -7,6 +7,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "e2e-loadtest.sh"
 
 
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o755)
+
+
 def test_loadtest_help_mentions_mode_and_selection_env_vars():
     proc = subprocess.run(
         ["bash", str(SCRIPT), "--help"],
@@ -41,3 +46,78 @@ def test_loadtest_selection_works_on_bash3_without_unbound_array_error():
     assert proc.returncode == 2
     assert "Invalid stage 'bad-stage'" in combined
     assert "unbound variable" not in combined
+
+
+def test_loadtest_script_does_not_use_post_increment_with_set_e():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert "((idx++))" not in content
+    assert "idx=$((idx + 1))" in content
+
+
+def test_loadtest_script_avoids_bash4_uppercase_expansion():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert "^^" not in content
+
+
+def test_loadtest_single_selected_function_reaches_final_report(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+
+    _write_executable(
+        fake_bin / "k6",
+        """#!/usr/bin/env bash
+set -euo pipefail
+summary=""
+for arg in "$@"; do
+  case "$arg" in
+    --summary-export=*) summary="${arg#*=}" ;;
+  esac
+done
+if [[ -z "${summary}" ]]; then
+  echo "missing --summary-export" >&2
+  exit 2
+fi
+mkdir -p "$(dirname "${summary}")"
+cat > "${summary}" <<'JSON'
+{"metrics":{"http_reqs":{"count":10},"http_req_failed":{"passes":0},"http_req_duration":{"avg":1.0,"med":1.0,"p(90)":1.0,"p(95)":1.0,"max":1.0},"iterations":{"rate":2.0}}}
+JSON
+echo "default ✓ [ 100% ] 00/01 VUs  2s"
+""",
+    )
+    _write_executable(
+        fake_bin / "curl",
+        """#!/usr/bin/env bash
+set -euo pipefail
+url="${@: -1}"
+if [[ "${url}" == *"/v1/functions" ]]; then
+  printf '[{"name":"f1"},{"name":"f2"},{"name":"f3"},{"name":"f4"},{"name":"f5"},{"name":"f6"},{"name":"f7"},{"name":"f8"}]'
+  exit 0
+fi
+echo '{}'
+""",
+    )
+
+    results_dir = tmp_path / "results"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["NANOFAAS_URL"] = "http://127.0.0.1:30080"
+    env["PROM_URL"] = "http://127.0.0.1:1"
+    env["SKIP_GRAFANA"] = "true"
+    env["VERIFY_OUTPUT_PARITY"] = "false"
+    env["LOADTEST_WORKLOADS"] = "word-stats"
+    env["LOADTEST_RUNTIMES"] = "java"
+    env["RESULTS_DIR_OVERRIDE"] = str(results_dir)
+
+    proc = subprocess.run(
+        ["bash", str(SCRIPT)],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+
+    combined = proc.stdout + proc.stderr
+    assert proc.returncode == 0, combined
+    assert "PERFORMANCE REPORT (SYNC)" in combined
+    assert "LOAD TEST COMPLETE (SYNC)" in combined
+    assert (results_dir / "word-stats-java.json").exists()

@@ -138,6 +138,21 @@ def choose_config() -> tuple[InteractiveLoadtestConfig, bool, str, str, str]:
             raise SystemExit(1)
         custom_total_seconds = int(value)
 
+    default_peak_by_profile = {
+        "quick": "12",
+        "standard": "20",
+        "stress": "35",
+        "custom": "20",
+    }
+    max_vus_value = questionary.text(
+        "Picco massimo VU (min 1):",
+        default=default_peak_by_profile.get(stage_profile, "20"),
+        validate=lambda txt: txt.isdigit() and int(txt) >= 1,
+    ).ask()
+    if max_vus_value is None:
+        raise SystemExit(1)
+    max_vus = int(max_vus_value)
+
     payload_mode = questionary.select(
         "Variabilita payload k6:",
         choices=[
@@ -212,6 +227,7 @@ def choose_config() -> tuple[InteractiveLoadtestConfig, bool, str, str, str]:
         invocation_mode=invocation_mode,
         stage_profile=stage_profile,
         custom_total_seconds=custom_total_seconds,
+        max_vus=max_vus,
         payload_mode=payload_mode,
         payload_pool_size=payload_pool_size,
     )
@@ -236,6 +252,7 @@ def run_registry(
     print(f"  Runtimes: {','.join(config.runtimes)}")
     print(f"  Invocation mode: {config.invocation_mode}")
     print(f"  Stage profile: {config.stage_profile} ({stage_sequence})")
+    print(f"  Peak VUs: {config.max_vus}")
     print(f"  Payload mode: {config.payload_mode}")
     if config.payload_mode != "legacy-random":
         print(f"  Payload pool size: {config.payload_pool_size}")

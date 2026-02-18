@@ -55,6 +55,22 @@ def test_build_stage_sequence_supports_presets_and_custom_seconds():
     assert build_stage_sequence("custom", custom_total_seconds=120) == "12s:5,36s:10,48s:20,18s:20,6s:0"
 
 
+def test_build_stage_sequence_supports_custom_peak_vus():
+    assert build_stage_sequence("standard", max_vus=30) == "10s:8,30s:15,30s:30,30s:30,10s:0"
+    assert build_stage_sequence("quick", max_vus=24) == "5s:6,15s:16,15s:24,5s:0"
+    assert build_stage_sequence("custom", custom_total_seconds=120, max_vus=40) == "12s:10,36s:20,48s:40,18s:40,6s:0"
+
+
+def test_build_stage_sequence_rejects_invalid_custom_peak_vus():
+    for bad in (0, -1):
+        try:
+            build_stage_sequence("standard", max_vus=bad)
+        except ValueError as exc:
+            assert "max_vus" in str(exc)
+        else:
+            raise AssertionError(f"Expected ValueError for max_vus={bad}")
+
+
 def test_normalize_tag_suffix_supports_arm64_and_amd64():
     assert normalize_tag_suffix("arm64") == "arm64"
     assert normalize_tag_suffix("-arm64") == "arm64"

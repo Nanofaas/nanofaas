@@ -526,16 +526,18 @@ run_tests() {
             info "Cool-down 10s..."
             sleep 10
         fi
-        ((idx++))
+        idx=$((idx + 1))
     done
 }
 
 # ─── Generate report ────────────────────────────────────────────────────────
 generate_report() {
     local tests=("${SELECTED_TESTS[@]}")
+    local mode_upper
+    mode_upper=$(printf '%s' "${INVOCATION_MODE}" | tr '[:lower:]' '[:upper:]')
     log ""
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "         PERFORMANCE REPORT (${INVOCATION_MODE^^})"
+    log "         PERFORMANCE REPORT (${mode_upper})"
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log ""
 
@@ -621,11 +623,13 @@ PYEOF
 # ─── Print final summary ────────────────────────────────────────────────────
 print_summary() {
     local prom_url
+    local mode_upper
     prom_url=$(resolve_prom_url)
+    mode_upper=$(printf '%s' "${INVOCATION_MODE}" | tr '[:lower:]' '[:upper:]')
 
     log ""
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "         LOAD TEST COMPLETE (${INVOCATION_MODE^^})"
+    log "         LOAD TEST COMPLETE (${mode_upper})"
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log ""
     if [[ "${SKIP_GRAFANA}" != "true" ]]; then

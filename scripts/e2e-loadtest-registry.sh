@@ -206,6 +206,14 @@ get_results_dir() {
     echo "${PROJECT_ROOT}/k6/results"
 }
 
+build_run_results_dir() {
+    local base_results_dir
+    base_results_dir="$(get_results_dir)"
+    local run_id
+    run_id="${LOADTEST_RUN_ID_OVERRIDE:-$(date +%Y%m%d-%H%M%S)}"
+    echo "${base_results_dir}/run-${run_id}-${INVOCATION_MODE}"
+}
+
 derive_loadtest_window_from_results() {
     if [[ "${LOADTEST_START_EPOCH}" -gt 0 && "${LOADTEST_END_EPOCH}" -gt 0 ]]; then
         return
@@ -671,8 +679,10 @@ verify_registered_functions() {
 run_loadtest() {
     log "Starting load test suite (e2e-loadtest.sh)..."
     local results_dir
-    results_dir="$(get_results_dir)"
+    results_dir="$(build_run_results_dir)"
+    RESULTS_DIR_OVERRIDE="${results_dir}"
     mkdir -p "${results_dir}"
+    log "Run results directory: ${results_dir}"
 
     local cp_samples_file="${results_dir}/control-plane-top-samples.txt"
     : > "${cp_samples_file}"
@@ -983,6 +993,12 @@ ALL_FUNCTIONS = [
     "json-transform-java", "json-transform-java-lite", "json-transform-python", "json-transform-exec",
 ]
 
+SELECTED_FUNCTIONS = [
+    fn for fn in ALL_FUNCTIONS if os.path.exists(os.path.join(results_dir, f"{fn}.json"))
+]
+if not SELECTED_FUNCTIONS:
+    SELECTED_FUNCTIONS = list(ALL_FUNCTIONS)
+
 pairs = [
     ("word-stats",      ["word-stats-java", "word-stats-java-lite", "word-stats-python", "word-stats-exec"]),
     ("json-transform",  ["json-transform-java", "json-transform-java-lite", "json-transform-python", "json-transform-exec"]),
@@ -1102,7 +1118,7 @@ print("=" * 105)
 print()
 print("  Latency measured inside the control-plane (excludes network hop from k6).")
 print("  Timers: function_latency_ms (dispatch→response), function_e2e_latency_ms (enqueue→response).")
-if not any(pget(fn, "latency_p50") > 0 for fn in ALL_FUNCTIONS):
+if not any(pget(fn, "latency_p50") > 0 for fn in SELECTED_FUNCTIONS):
     print("  Note: percentile series are zero in this run; Avg(ms) from sum/count is the reliable value.")
 print()
 
@@ -1114,7 +1130,7 @@ sep_bot = f"└{'─'*30}┴{'─'*10}┴{'─'*10}┴{'─'*10}┴{'─'*10}┴
 print(sep_top)
 print(header)
 print(sep_mid)
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     lp50 = fmt_ms(pget(fn, "latency_p50"))
     lp95 = fmt_ms(pget(fn, "latency_p95"))
     lp99 = fmt_ms(pget(fn, "latency_p99"))
@@ -1144,7 +1160,7 @@ s3 = f"└{'─'*30}┴{'─'*8}┴{'─'*8}┴{'─'*8}┴{'─'*9}┴{'─'*11
 print(s1)
 print(h)
 print(s2)
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     cold = int(pget(fn, "cold_start"))
     warm = int(pget(fn, "warm_start"))
     total = cold + warm
@@ -1163,7 +1179,7 @@ print(f"{'SECTION 4: QUEUE WAIT TIME':^105s}")
 print("=" * 105)
 print()
 print("  Time between enqueue and dispatch (function_queue_wait_ms).")
-if not any(pget(fn, "queue_wait_p50") > 0 for fn in ALL_FUNCTIONS):
+if not any(pget(fn, "queue_wait_p50") > 0 for fn in SELECTED_FUNCTIONS):
     print("  Note: queue quantiles are zero in this run; QWait avg is derived from sum/count.")
 print()
 
@@ -1175,7 +1191,7 @@ s3 = f"└{'─'*30}┴{'─'*12}┴{'─'*12}┴{'─'*12}┴{'─'*10}┴{'─
 print(s1)
 print(h)
 print(s2)
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     qcnt = pget(fn, "queue_wait_count")
     qsum = pget(fn, "queue_wait_sum")
     qavg = fmt_avg_ms(qsum, qcnt)
@@ -1203,7 +1219,7 @@ s3 = f"└{'─'*30}┴{'─'*10}┴{'─'*10}┴{'─'*10}┴{'─'*9}┴{'─'
 print(s1)
 print(h)
 print(s2)
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     enq  = int(pget(fn, "enqueue"))
     disp = int(pget(fn, "dispatch"))
     succ = int(pget(fn, "success"))
@@ -1255,7 +1271,7 @@ if k8s_pods:
     total_mem = 0
     total_pods = 0
     total_restarts = 0
-    for fn in ALL_FUNCTIONS:
+    for fn in SELECTED_FUNCTIONS:
         pods = k8s_pods.get(fn, [])
         n = len(pods)
         cpu = sum(p.get("cpu_milli", 0) for p in pods)
@@ -1272,7 +1288,7 @@ if k8s_pods:
     print()
     print(f"  Per-runtime averages:")
     rt_pods = {}
-    for fn in ALL_FUNCTIONS:
+    for fn in SELECTED_FUNCTIONS:
         label = runtime_label.get(fn, fn)
         pods = k8s_pods.get(fn, [])
         n = len(pods)
@@ -1331,7 +1347,7 @@ print()
 
 # Prometheus aggregate
 prom_runtimes = {"Java (Spring)": [], "Java (Lite)": [], "Python": [], "Exec/Bash": []}
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     label = runtime_label.get(fn, fn)
     cnt = pget(fn, "latency_count")
     sm = pget(fn, "latency_sum")
@@ -1380,7 +1396,7 @@ if all_rows:
 
 # Prometheus-based winners (by avg server-side latency)
 prom_rows = []
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     cnt = pget(fn, "latency_count")
     sm = pget(fn, "latency_sum")
     if cnt > 0:
@@ -1393,14 +1409,14 @@ if prom_rows:
 
     # Fastest cold start
     init_rows = [(fn, runtime_label.get(fn, fn), pget(fn, "init_p50"))
-                 for fn in ALL_FUNCTIONS if pget(fn, "init_p50") > 0]
+                 for fn in SELECTED_FUNCTIONS if pget(fn, "init_p50") > 0]
     if init_rows:
         best_init = min(init_rows, key=lambda x: x[2])
         print(f"     Fastest cold start:  {best_init[0]} [{best_init[1]}] — {best_init[2]*1000:.1f}ms (init p50)")
 
     # Lowest queue wait (avg from sum/count)
     qw_rows = []
-    for fn in ALL_FUNCTIONS:
+    for fn in SELECTED_FUNCTIONS:
         qcnt = pget(fn, "queue_wait_count")
         qsum = pget(fn, "queue_wait_sum")
         if qcnt > 0:
@@ -1458,7 +1474,7 @@ else:
         print(f"  ┌──────────────────────────────┬─────────┬─────────┬─────────┬──────────┬──────────┬──────────┐")
         print(f"  │ {'Function':<28s} │ {'CPU a':>7s} │ {'CPU95':>7s} │ {'CPU m':>7s} │ {'RAM a':>8s} │ {'RAM95':>8s} │ {'RAM m':>8s} │")
         print(f"  ├──────────────────────────────┼─────────┼─────────┼─────────┼──────────┼──────────┼──────────┤")
-        for fn in ALL_FUNCTIONS:
+        for fn in SELECTED_FUNCTIONS:
             s = by_function.get(fn, {})
             if not s or s.get("samples", 0) == 0:
                 print(f"  │ {fn:<28s} │ {'-':>7s} │ {'-':>7s} │ {'-':>7s} │ {'-':>8s} │ {'-':>8s} │ {'-':>8s} │")
@@ -1483,7 +1499,7 @@ print()
 print("  Payload bytes from k6 custom trend metric `payload_size_bytes` (Avg/Q1/Q2/Q3).")
 
 table_rows = []
-for fn in ALL_FUNCTIONS:
+for fn in SELECTED_FUNCTIONS:
     r = load_result(fn)
     if not r:
         continue
@@ -1533,7 +1549,7 @@ PYEOF
     log ""
     log "API:        http://${vm_ip}:30080/v1/functions"
     log "Prometheus: http://${vm_ip}:30090"
-    log "Results:    ${PROJECT_ROOT}/k6/results/"
+    log "Results:    ${results_dir}/"
     log ""
 }
 
@@ -1580,4 +1596,6 @@ main() {
     print_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
