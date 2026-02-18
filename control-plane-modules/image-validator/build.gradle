@@ -1,0 +1,21 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+dependencies {
+    implementation project(':common')
+    implementation project(':control-plane')
+
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'io.fabric8:kubernetes-client:7.5.2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}

@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
+import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
@@ -67,6 +68,8 @@ public class InvocationController {
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
         } catch (FunctionNotFoundException ex) {
             return ResponseEntity.notFound().build();
+        } catch (AsyncQueueUnavailableException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
         } catch (RateLimitException | QueueFullException ex) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }

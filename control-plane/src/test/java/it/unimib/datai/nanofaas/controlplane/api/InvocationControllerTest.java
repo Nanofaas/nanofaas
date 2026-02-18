@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
@@ -152,6 +153,20 @@ class InvocationControllerTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isNotFound();
+    }
+
+    @Test
+    void invokeAsync_whenAsyncQueueUnavailable_returns501() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeAsync(eq("echo"), any(), eq(null), eq(null)))
+                .thenThrow(new AsyncQueueUnavailableException());
+
+        webClient.post()
+                .uri("/v1/functions/echo:enqueue")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(501);
     }
 
     @Test

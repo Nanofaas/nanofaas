@@ -1,131 +1,58 @@
 # Control Plane Design (Detailed)
 
-## Responsibilities
+For module selection and module packaging details, see `docs/control-plane-modules.md`.
 
-- HTTP API for function registry and invocation.
-- In-memory function registry and execution state.
-- Per-function bounded queues.
-- Dedicated scheduler thread for dispatch.
-- Kubernetes Job creation and lifecycle tracking.
-- Prometheus metrics export.
+## Architecture Summary
+
+- The control-plane is a minimal core plus optional modules from `control-plane-modules/`.
+- Optional module configs are loaded through the `ControlPlaneModule` SPI (`ServiceLoader`), then imported during bootstrap.
+- Core registers no-op defaults for `InvocationEnqueuer`, `ScalingMetricsSource`, `SyncQueueGateway`, and `ImageValidator`, so the app can run without optional modules.
+
+## Core Responsibilities (Always Included)
+
+- HTTP API for function registration, invocation, and execution status.
+- In-memory function registry and execution state store.
+- Invocation dispatch routing for `LOCAL`, `POOL`, and `DEPLOYMENT` execution modes.
+- Rate limiting, idempotency tracking, retry handling, and Micrometer metrics.
+
+## Optional Module Capabilities
+
+- `async-queue`: per-function async queue + scheduler, queue-backed enqueue/dispatch flow, scaling metrics source.
+- `sync-queue`: sync queue admission/backpressure with estimated-wait checks and retry-after behavior.
+- `autoscaler`: internal scaler and related metrics/readers that consume scaling signals and tune concurrency/replicas.
+- `runtime-config`: hot runtime configuration service (rate limit + sync-queue runtime knobs), optional admin API when `nanofaas.admin.runtime-config.enabled=true`.
+- `image-validator`: proactive Kubernetes image pull validation during function registration.
+- `build-metadata`: module diagnostics endpoint (`GET /modules/build-metadata`).
+
+## Invocation Behavior By Module Set
+
+- Sync invoke (`POST /v1/functions/{name}:invoke`):
+  - with `sync-queue`: request enters sync admission queue.
+  - else with `async-queue`: request is enqueued through async queueing path and awaited.
+  - with core-only: request is dispatched inline (no queue module required).
+- Async invoke (`POST /v1/functions/{name}:enqueue`):
+  - requires `async-queue`.
+  - returns `501 Not Implemented` when async queueing is not present.
+
+## Build-Time Module Selection
+
+Use either selector input:
+
+- `-PcontrolPlaneModules=<csv>`
+- `NANOFAAS_CONTROL_PLANE_MODULES=<csv>`
+
+Special values:
+
+- `all`: include all optional modules.
+- `none`: include no optional modules (core-only).
+
+When selector is omitted:
+
+- Runtime/artifact tasks (`bootRun`, `bootJar`, `bootBuildImage`, `build`, `assemble`) default to `all`.
+- Non-runtime tasks (for example `:control-plane:test`) default to core-only.
 
 ## Runtime Model
 
-- JVM: Java 21 (target) with Spring Boot AOT/GraalVM.
-- HTTP: Spring WebFlux for non-blocking I/O.
-- Threading:
-  - WebFlux event loop for request handling.
-  - Scheduler uses a single dedicated thread.
-  - Dispatcher uses an async Kubernetes client or a bounded thread pool.
-
-## Core Data Structures
-
-### FunctionSpec
-
-- name: string
-- image: string
-- command: optional string[]
-- env: map<string,string>
-- resources: cpu/memory requests and limits
-- timeoutMs: per-invocation timeout
-- concurrency: max in-flight per function
-- queueSize: max pending per function
-- maxRetries: default 3
-- endpointUrl: optional pool endpoint URL
-- executionMode: REMOTE | LOCAL | POOL
-
-### Invocation
-
-- executionId: string (UUID)
-- functionName: string
-- payload: JSON or binary
-- metadata: map
-- idempotencyKey: optional
-- traceId: optional
-- enqueueTime: epoch ms
-- attempt: int
-
-### ExecutionRecord
-
-- executionId
-- status: queued | running | success | error | timeout
-- startedAt / finishedAt
-- response payload or error
-- attempts
-- lastError
-
-## Queue Manager
-
-- One bounded queue per function.
-- Data structure: ArrayBlockingQueue or ring buffer.
-- Enqueue policy:
-  - If full: return 429 (rate limited).
-- Dequeue policy:
-  - FIFO per function.
-- Metrics:
-  - queue depth gauge per function.
-  - enqueue counter per function.
-
-## Scheduler Algorithm (Single Thread)
-
-- Loop at a fixed tick interval (e.g., 1-5ms) or use blocking take.
-- For each function, enforce concurrency limit.
-- Dispatch order: round-robin over functions with non-empty queues.
-- On dispatch:
-  - increment attempt
-  - mark execution running
-  - create Job via dispatcher
-- On completion:
-  - success: store output + status
-  - failure: if attempts <= maxRetries, re-enqueue with minimal delay
-  - failure after retries: mark error
-
-## Retry Policy
-
-- Default maxRetries = 3 (configurable per function).
-- Retries are immediate or minimal delay to avoid latency inflation.
-- Only transient errors are retried (pod failed to start, timeout).
-- Client must supply idempotency to avoid duplicate side effects.
-
-## Dispatcher (K8s Integration)
-
-- Create Job per invocation (default) using a cached Job template.
-- Set labels: function, executionId, attempt.
-- Set annotations: traceId, idempotencyKey.
-- Pass payload via HTTP to runtime or via mounted config map (size-limited).
-- Track Job status via watch or polling; update execution record.
-- Pool mode dispatches to endpointUrl (HTTP) for warm pods.
-
-## Execution Store
-
-- In-memory map keyed by executionId.
-- TTL eviction (configurable, e.g., 15 min).
-- For async calls, used by `/v1/executions/{executionId}`.
-
-## Error Handling
-
-- 400: invalid payload or function spec.
-- 404: function not found.
-- 408: timeout (sync only).
-- 429: queue full or rate limit.
-- 500: internal error or failed invocation.
-
-## Metrics (Micrometer)
-
-- function_queue_depth{function}
-- function_enqueue_total{function}
-- function_dispatch_total{function}
-- function_success_total{function}
-- function_error_total{function}
-- function_retry_total{function}
-- function_latency_ms{function}
-- function_cold_start_ms{function}
-
-## Configuration (Env Vars)
-
-- DEFAULT_TIMEOUT_MS
-- DEFAULT_QUEUE_SIZE
-- DEFAULT_CONCURRENCY
-- DEFAULT_MAX_RETRIES
-- EXECUTION_TTL_MS
-- SCHEDULER_TICK_MS
+- Spring WebFlux handles HTTP I/O.
+- Dispatch completion is asynchronous via dispatcher futures/callbacks.
+- Optional modules add extra runtime loops where applicable (for example queue schedulers).

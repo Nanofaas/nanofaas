@@ -13,16 +13,17 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.lang.Nullable;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -36,30 +37,30 @@ public class InvocationService {
     private static final Logger log = LoggerFactory.getLogger(InvocationService.class);
 
     private final FunctionService functionService;
-    private final QueueManager queueManager;
+    private final InvocationEnqueuer enqueuer;
     private final ExecutionStore executionStore;
     private final IdempotencyStore idempotencyStore;
     private final DispatcherRouter dispatcherRouter;
     private final RateLimiter rateLimiter;
     private final Metrics metrics;
-    private final SyncQueueService syncQueueService;
+    private final SyncQueueGateway syncQueueGateway;
 
     public InvocationService(FunctionService functionService,
-                             QueueManager queueManager,
+                             @Nullable InvocationEnqueuer enqueuer,
                              ExecutionStore executionStore,
                              IdempotencyStore idempotencyStore,
                              DispatcherRouter dispatcherRouter,
                              RateLimiter rateLimiter,
                              Metrics metrics,
-                             SyncQueueService syncQueueService) {
+                             @Autowired(required = false) @Nullable SyncQueueGateway syncQueueGateway) {
         this.functionService = functionService;
-        this.queueManager = queueManager;
+        this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
         this.dispatcherRouter = dispatcherRouter;
         this.rateLimiter = rateLimiter;
         this.metrics = metrics;
-        this.syncQueueService = syncQueueService;
+        this.syncQueueGateway = syncQueueGateway == null ? SyncQueueGateway.noOp() : syncQueueGateway;
     }
 
     public InvocationResponse invokeSync(String functionName,
@@ -81,10 +82,12 @@ public class InvocationService {
         }
 
         if (lookup.isNew()) {
-            if (syncQueueService.enabled()) {
-                syncQueueService.enqueueOrThrow(record.task());
-            } else {
+            if (syncQueueEnabled()) {
+                syncQueueGateway.enqueueOrThrow(record.task());
+            } else if (enqueuer.enabled()) {
                 enqueueOrThrow(record);
+            } else {
+                dispatch(record.task());
             }
         }
 
@@ -92,7 +95,7 @@ public class InvocationService {
         try {
             InvocationResult result = record.completion().get(timeoutMs, TimeUnit.MILLISECONDS);
             if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
-                throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueService.retryAfterSeconds());
+                throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueRetryAfterSeconds());
             }
             return toResponse(record, result);
         } catch (SyncQueueRejectedException ex) {
@@ -123,10 +126,16 @@ public class InvocationService {
         }
 
         if (lookup.isNew()) {
-            if (syncQueueService.enabled()) {
-                syncQueueService.enqueueOrThrow(record.task());
-            } else {
-                enqueueOrThrow(record);
+            try {
+                if (syncQueueEnabled()) {
+                    syncQueueGateway.enqueueOrThrow(record.task());
+                } else if (enqueuer.enabled()) {
+                    enqueueOrThrow(record);
+                } else {
+                    dispatch(record.task());
+                }
+            } catch (RuntimeException ex) {
+                return Mono.error(ex);
             }
         }
 
@@ -135,7 +144,7 @@ public class InvocationService {
                 .timeout(Duration.ofMillis(timeoutMs))
                 .map(result -> {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
-                        throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueService.retryAfterSeconds());
+                        throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueRetryAfterSeconds());
                     }
                     return toResponse(record, result);
                 })
@@ -153,6 +162,10 @@ public class InvocationService {
         enforceRateLimit();
 
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
+        if (!enqueuer.enabled()) {
+            throw new AsyncQueueUnavailableException();
+        }
+
         ExecutionLookup lookup = createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
         ExecutionRecord record = lookup.record();
 
@@ -169,7 +182,7 @@ public class InvocationService {
     public void dispatch(InvocationTask task) {
         ExecutionRecord record = executionStore.getOrNull(task.executionId());
         if (record == null) {
-            queueManager.decrementInFlight(task.functionName());
+            releaseDispatchSlot(task.functionName());
             return;
         }
 
@@ -207,7 +220,8 @@ public class InvocationService {
             return;
         }
 
-        queueManager.decrementInFlight(record.task().functionName());
+        String functionName = record.task().functionName();
+        releaseDispatchSlot(functionName);
 
         // Check if retry is needed BEFORE completing the future
         boolean shouldRetry = !result.success()
@@ -240,7 +254,6 @@ public class InvocationService {
         }
 
         // Record cold start info from runtime headers
-        String functionName = record.task().functionName();
         if (dispatchResult.coldStart()) {
             record.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
             metrics.coldStart(functionName);
@@ -285,6 +298,11 @@ public class InvocationService {
         }
 
         record.completion().complete(result);
+    }
+
+    private void releaseDispatchSlot(String functionName) {
+        enqueuer.decrementInFlight(functionName);
+        enqueuer.releaseSlot(functionName);
     }
 
     /**
@@ -341,7 +359,7 @@ public class InvocationService {
     }
 
     private void enqueueOrThrow(ExecutionRecord record) {
-        boolean enqueued = queueManager.enqueue(record.task());
+        boolean enqueued = enqueuer.enqueue(record.task());
         if (!enqueued) {
             metrics.queueRejected(record.task().functionName());
             throw new QueueFullException();
@@ -352,6 +370,14 @@ public class InvocationService {
     private InvocationResponse toResponse(ExecutionRecord record, InvocationResult result) {
         String status = result.success() ? "success" : "error";
         return new InvocationResponse(record.executionId(), status, result.output(), result.error());
+    }
+
+    private boolean syncQueueEnabled() {
+        return syncQueueGateway.enabled();
+    }
+
+    private int syncQueueRetryAfterSeconds() {
+        return syncQueueGateway.retryAfterSeconds();
     }
 
     private ExecutionStatus toStatus(ExecutionRecord record) {

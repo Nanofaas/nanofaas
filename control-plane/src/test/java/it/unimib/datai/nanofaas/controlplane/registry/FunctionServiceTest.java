@@ -3,36 +3,35 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
-import it.unimib.datai.nanofaas.controlplane.service.TargetLoadMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class FunctionServiceTest {
 
     private FunctionRegistry registry;
-    private QueueManager queueManager;
     private FunctionDefaults defaults;
     private KubernetesResourceManager resourceManager;
-    private TargetLoadMetrics targetLoadMetrics;
+    private FunctionRegistrationListener listener;
     private ImageValidator imageValidator;
     private FunctionService service;
 
     @BeforeEach
     void setUp() {
         registry = new FunctionRegistry();
-        queueManager = mock(QueueManager.class);
         defaults = new FunctionDefaults(30000, 4, 100, 3);
         resourceManager = mock(KubernetesResourceManager.class);
-        targetLoadMetrics = mock(TargetLoadMetrics.class);
+        listener = mock(FunctionRegistrationListener.class);
         imageValidator = mock(ImageValidator.class);
-        service = new FunctionService(registry, queueManager, defaults, resourceManager, targetLoadMetrics, imageValidator);
+        service = new FunctionService(registry, defaults, resourceManager, imageValidator, List.of(listener));
     }
 
     @Test
@@ -48,12 +47,11 @@ class FunctionServiceTest {
         assertEquals("http://fn-svc:8080", result.get().endpointUrl());
         verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
         verify(resourceManager).provision(any());
-        verify(queueManager).getOrCreate(any());
-        verify(targetLoadMetrics).update(any());
+        verify(listener).onRegister(any());
     }
 
     @Test
-    void register_duplicate_returnsEmptyAndDeprovisions() {
+    void register_duplicate_returnsEmptyAndDoesNotDeprovision() {
         when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
@@ -63,8 +61,9 @@ class FunctionServiceTest {
         Optional<FunctionSpec> dup = service.register(spec);
 
         assertTrue(dup.isEmpty());
-        verify(resourceManager, times(2)).provision(any());
-        verify(resourceManager).deprovision("fn");
+        verify(resourceManager, times(1)).provision(any());
+        verify(resourceManager, never()).deprovision("fn");
+        verify(listener, times(1)).onRegister(any());
     }
 
     @Test
@@ -80,7 +79,7 @@ class FunctionServiceTest {
     }
 
     @Test
-    void register_alwaysValidatesImageEvenOnConflict() {
+    void register_duplicateSkipsImageValidationOnConflict() {
         when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
@@ -88,7 +87,19 @@ class FunctionServiceTest {
         service.register(spec);
         service.register(spec);
 
-        verify(imageValidator, times(2)).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
+        verify(imageValidator, times(1)).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
+    }
+
+    @Test
+    void perFunctionLocksAreCleanedUpAfterOperations() throws Exception {
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.LOCAL, null, null, null);
+
+        service.register(spec);
+        service.remove("fn");
+        service.remove("ghost");
+
+        assertEquals(0, functionLockCount(service));
     }
 
     private static FunctionSpec resolved(String name, String image, ExecutionMode mode) {
@@ -138,8 +149,7 @@ class FunctionServiceTest {
 
         assertTrue(removed.isPresent());
         verify(resourceManager).deprovision("fn");
-        verify(queueManager).remove("fn");
-        verify(targetLoadMetrics).remove("fn");
+        verify(listener).onRemove("fn");
     }
 
     @Test
@@ -191,5 +201,12 @@ class FunctionServiceTest {
         service.register(spec);
 
         assertTrue(service.get("fn").isPresent());
+    }
+
+    private static int functionLockCount(FunctionService service) throws Exception {
+        Field functionLocksField = FunctionService.class.getDeclaredField("functionLocks");
+        functionLocksField.setAccessible(true);
+        ConcurrentHashMap<?, ?> functionLocks = (ConcurrentHashMap<?, ?>) functionLocksField.get(service);
+        return functionLocks.size();
     }
 }

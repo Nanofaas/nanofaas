@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
@@ -10,10 +11,11 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,13 +26,19 @@ import org.mockito.quality.Strictness;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -43,7 +51,7 @@ class InvocationServiceDispatchTest {
     private FunctionService functionService;
 
     @Mock
-    private QueueManager queueManager;
+    private InvocationEnqueuer enqueuer;
 
     @Mock
     private Metrics metrics;
@@ -52,7 +60,7 @@ class InvocationServiceDispatchTest {
     private DispatcherRouter dispatcherRouter;
 
     @Mock
-    private SyncQueueService syncQueueService;
+    private SyncQueueGateway syncQueueGateway;
 
     private ExecutionStore executionStore;
     private InvocationService invocationService;
@@ -66,13 +74,13 @@ class InvocationServiceDispatchTest {
 
         invocationService = new InvocationService(
                 functionService,
-                queueManager,
+                enqueuer,
                 executionStore,
                 idempotencyStore,
                 dispatcherRouter,
                 rateLimiter,
                 metrics,
-                syncQueueService
+                syncQueueGateway
         );
 
         io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry =
@@ -102,7 +110,8 @@ class InvocationServiceDispatchTest {
 
         invocationService.dispatch(missingTask);
 
-        verify(queueManager).decrementInFlight("fn");
+        verify(enqueuer).decrementInFlight("fn");
+        verify(enqueuer).releaseSlot("fn");
         verifyNoInteractions(dispatcherRouter);
     }
 
@@ -121,7 +130,8 @@ class InvocationServiceDispatchTest {
         assertThat(result.error().code()).isEqualTo("LOCAL_ERROR");
         assertThat(result.error().message()).contains("router down");
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        verify(queueManager).decrementInFlight("local-fn");
+        verify(enqueuer).decrementInFlight("local-fn");
+        verify(enqueuer).releaseSlot("local-fn");
     }
 
     @Test
@@ -140,6 +150,138 @@ class InvocationServiceDispatchTest {
         assertThat(result.output()).isEqualTo("ok");
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
         verify(dispatcherRouter).dispatchPool(task);
+    }
+
+    @Test
+    void invokeSync_whenSyncQueueAndEnqueuerDisabled_dispatchesInline() throws InterruptedException {
+        FunctionSpec spec = functionSpec("inline-fn", ExecutionMode.LOCAL);
+        when(functionService.get("inline-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(false);
+        when(dispatcherRouter.dispatchLocal(any())).thenReturn(
+                CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("inline-ok"))));
+
+        InvocationResponse response = invocationService.invokeSync(
+                "inline-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        );
+
+        assertThat(response.status()).isEqualTo("success");
+        assertThat(response.output()).isEqualTo("inline-ok");
+        verify(dispatcherRouter).dispatchLocal(any());
+        verify(syncQueueGateway, never()).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verify(enqueuer).decrementInFlight("inline-fn");
+        verify(enqueuer).releaseSlot("inline-fn");
+    }
+
+    @Test
+    void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() throws InterruptedException {
+        InvocationService invocationServiceWithoutSyncQueue = new InvocationService(
+                functionService,
+                enqueuer,
+                executionStore,
+                new IdempotencyStore(),
+                dispatcherRouter,
+                new RateLimiter(),
+                metrics,
+                null
+        );
+
+        FunctionSpec spec = functionSpec("inline-no-sync-queue-fn", ExecutionMode.LOCAL);
+        when(functionService.get("inline-no-sync-queue-fn")).thenReturn(Optional.of(spec));
+        when(enqueuer.enabled()).thenReturn(false);
+        when(dispatcherRouter.dispatchLocal(any())).thenReturn(
+                CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("inline-ok"))));
+
+        InvocationResponse response = invocationServiceWithoutSyncQueue.invokeSync(
+                "inline-no-sync-queue-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        );
+
+        assertThat(response.status()).isEqualTo("success");
+        assertThat(response.output()).isEqualTo("inline-ok");
+        verify(dispatcherRouter).dispatchLocal(any());
+        verify(enqueuer, never()).enqueue(any());
+        verify(enqueuer).decrementInFlight("inline-no-sync-queue-fn");
+        verify(enqueuer).releaseSlot("inline-no-sync-queue-fn");
+    }
+
+    @Test
+    void invokeSyncReactive_whenSyncQueueEnabled_usesSyncQueueOnly() {
+        FunctionSpec spec = functionSpec("sync-queued-fn", ExecutionMode.LOCAL);
+        when(functionService.get("sync-queued-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(true);
+
+        invocationService.invokeSyncReactive(
+                "sync-queued-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        );
+
+        verify(syncQueueGateway).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verifyNoInteractions(dispatcherRouter);
+    }
+
+    @Test
+    void invokeSync_whenSyncQueueEnabled_usesSyncQueueOnlyAndReturnsSuccess() throws InterruptedException {
+        FunctionSpec spec = functionSpec("sync-queued-sync-fn", ExecutionMode.LOCAL);
+        when(functionService.get("sync-queued-sync-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            invocationService.completeExecution(
+                    task.executionId(),
+                    DispatchResult.warm(InvocationResult.success("ok"))
+            );
+            return null;
+        }).when(syncQueueGateway).enqueueOrThrow(any());
+
+        InvocationResponse response = invocationService.invokeSync(
+                "sync-queued-sync-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        );
+
+        assertThat(response.status()).isEqualTo("success");
+        assertThat(response.output()).isEqualTo("ok");
+        verify(syncQueueGateway).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verify(enqueuer).decrementInFlight("sync-queued-sync-fn");
+        verify(enqueuer).releaseSlot("sync-queued-sync-fn");
+        verifyNoInteractions(dispatcherRouter);
+    }
+
+    @Test
+    void invokeSyncReactive_whenSyncQueueRejects_emitsReactiveError() {
+        FunctionSpec spec = functionSpec("sync-reject-fn", ExecutionMode.LOCAL);
+        when(functionService.get("sync-reject-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        doThrow(new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 3))
+                .when(syncQueueGateway).enqueueOrThrow(any());
+
+        AtomicReference<reactor.core.publisher.Mono<InvocationResponse>> monoRef = new AtomicReference<>();
+        assertThatCode(() -> monoRef.set(invocationService.invokeSyncReactive(
+                "sync-reject-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        ))).doesNotThrowAnyException();
+
+        assertThatThrownBy(() -> monoRef.get().block())
+                .isInstanceOf(SyncQueueRejectedException.class);
     }
 
     private InvocationTask task(String executionId, String functionName, ExecutionMode mode) {

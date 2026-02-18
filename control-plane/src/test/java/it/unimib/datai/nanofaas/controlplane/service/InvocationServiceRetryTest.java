@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
-import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -11,10 +10,8 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueManager;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +24,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
@@ -39,7 +37,7 @@ class InvocationServiceRetryTest {
     private FunctionService functionService;
 
     @Mock
-    private QueueManager queueManager;
+    private InvocationEnqueuer enqueuer;
 
     @Mock
     private Metrics metrics;
@@ -48,7 +46,7 @@ class InvocationServiceRetryTest {
     private DispatcherRouter dispatcherRouter;
 
     @Mock
-    private SyncQueueService syncQueueService;
+    private SyncQueueGateway syncQueueGateway;
 
     private ExecutionStore executionStore;
     private IdempotencyStore idempotencyStore;
@@ -66,13 +64,13 @@ class InvocationServiceRetryTest {
 
         invocationService = new InvocationService(
                 functionService,
-                queueManager,
+                enqueuer,
                 executionStore,
                 idempotencyStore,
                 dispatcherRouter,
                 rateLimiter,
                 metrics,
-                syncQueueService
+                syncQueueGateway
         );
 
         testSpec = new FunctionSpec(
@@ -93,8 +91,9 @@ class InvocationServiceRetryTest {
         );
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
-        when(queueManager.enqueue(any())).thenReturn(true);
-        when(syncQueueService.enabled()).thenReturn(false);
+        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enabled()).thenReturn(true);
+        when(syncQueueGateway.enabled()).thenReturn(false);
         io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry));
         when(metrics.queueWait(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(simpleMeterRegistry));
@@ -131,7 +130,9 @@ class InvocationServiceRetryTest {
         assertThat(record.task().attempt()).isEqualTo(2);
 
         // Enqueue should have been called twice (initial + retry)
-        verify(queueManager, times(2)).enqueue(any());
+        verify(enqueuer, times(2)).enqueue(any());
+        verify(enqueuer).decrementInFlight("testFunc");
+        verify(enqueuer).releaseSlot("testFunc");
     }
 
     @Test
@@ -172,6 +173,8 @@ class InvocationServiceRetryTest {
         // NOW the future should be completed with the error
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        verify(enqueuer, times(3)).decrementInFlight("testFunc");
+        verify(enqueuer, times(3)).releaseSlot("testFunc");
     }
 
     @Test
@@ -196,6 +199,8 @@ class InvocationServiceRetryTest {
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(record.output()).isEqualTo("result");
+        verify(enqueuer).decrementInFlight("testFunc");
+        verify(enqueuer).releaseSlot("testFunc");
     }
 
     @Test
@@ -245,6 +250,49 @@ class InvocationServiceRetryTest {
 
         // Retry task should NOT have idempotency key (internal retry)
         assertThat(record.task().idempotencyKey()).isNull();
+    }
+
+    @Test
+    void invokeAsync_whenEnqueuerDisabled_throwsAsyncQueueUnavailableException() {
+        when(enqueuer.enabled()).thenReturn(false);
+
+        assertThatThrownBy(() -> invocationService.invokeAsync(
+                "testFunc",
+                new InvocationRequest("payload", null),
+                null,
+                null
+        )).isInstanceOf(AsyncQueueUnavailableException.class)
+                .hasMessage("Async invocation requires the async-queue module");
+    }
+
+    @Test
+    void invokeAsync_whenQueueUnavailable_doesNotLeakExecutionOrIdempotencyEntry() {
+        when(enqueuer.enabled()).thenReturn(false, true, true);
+        when(enqueuer.enqueue(any())).thenReturn(true);
+
+        assertThatThrownBy(() -> invocationService.invokeAsync(
+                "testFunc",
+                new InvocationRequest("payload", null),
+                "idem-123",
+                null
+        )).isInstanceOf(AsyncQueueUnavailableException.class);
+
+        InvocationResponse queued = invocationService.invokeAsync(
+                "testFunc",
+                new InvocationRequest("payload", null),
+                "idem-123",
+                null
+        );
+
+        InvocationResponse replay = invocationService.invokeAsync(
+                "testFunc",
+                new InvocationRequest("payload", null),
+                "idem-123",
+                null
+        );
+
+        assertThat(replay.executionId()).isEqualTo(queued.executionId());
+        verify(enqueuer, times(1)).enqueue(any());
     }
 
     @Test

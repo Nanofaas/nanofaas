@@ -21,3 +21,45 @@ include('examples:java:word-stats')
 include('examples:java:json-transform')
 include('examples:java:word-stats-lite')
 include('examples:java:json-transform-lite')
+
+def parseCsvModules = { String raw ->
+    if (raw == null || raw.trim().isEmpty()) {
+        return [] as List<String>
+    }
+    return raw.split(',')
+            .collect { it.trim() }
+            .findAll { !it.isEmpty() }
+}
+
+def modulesRootDir = new File(settingsDir, 'control-plane-modules')
+def availableModules = [] as List<String>
+
+if (modulesRootDir.isDirectory()) {
+    modulesRootDir.eachDir { dir ->
+        if (new File(dir, 'build.gradle').exists() || new File(dir, 'build.gradle.kts').exists()) {
+            availableModules.add(dir.name)
+            String projectPath = ":control-plane-modules:${dir.name}"
+            include(projectPath)
+            project(projectPath).projectDir = dir
+        }
+    }
+}
+
+def requestedModulesRaw = startParameter.projectProperties['controlPlaneModules'] ?: System.getenv('NANOFAAS_CONTROL_PLANE_MODULES')
+def requestedModules = new LinkedHashSet<String>(parseCsvModules(requestedModulesRaw))
+
+if (requestedModules.contains('none')) {
+    if (requestedModules.size() > 1) {
+        throw new GradleException("Module selector 'none' cannot be combined with other values: ${requestedModules}")
+    }
+    requestedModules.clear()
+}
+
+if (requestedModules.contains('all')) {
+    requestedModules = new LinkedHashSet<String>(availableModules)
+}
+
+def unknownModules = requestedModules.findAll { !availableModules.contains(it) }
+if (!unknownModules.isEmpty()) {
+    throw new GradleException("Unknown control-plane modules: ${unknownModules}. Available: ${availableModules}")
+}

@@ -4,8 +4,55 @@ plugins {
     id 'org.graalvm.buildtools.native'
 }
 
+def parseCsvModules = { String raw ->
+    if (raw == null || raw.trim().isEmpty()) {
+        return [] as List<String>
+    }
+    return raw.split(',')
+            .collect { it.trim() }
+            .findAll { !it.isEmpty() }
+}
+
+def availableOptionalControlPlaneModuleProjects = rootProject.subprojects
+        .findAll { it.path.startsWith(':control-plane-modules:') }
+def availableOptionalControlPlaneModuleNames = availableOptionalControlPlaneModuleProjects.collect { it.name }
+
+def requestedTaskNames = gradle.startParameter.taskNames.collect { it.toLowerCase() }
+def invocationBuildsRuntimeArtifact = requestedTaskNames.any { taskName ->
+    taskName == 'bootrun' || taskName.endsWith(':bootrun') ||
+            taskName == 'bootjar' || taskName.endsWith(':bootjar') ||
+            taskName == 'bootbuildimage' || taskName.endsWith(':bootbuildimage') ||
+            taskName == 'build' || taskName.endsWith(':build') ||
+            taskName == 'assemble' || taskName.endsWith(':assemble')
+}
+
+def requestedModulesRaw = (project.findProperty('controlPlaneModules') ?: System.getenv('NANOFAAS_CONTROL_PLANE_MODULES'))?.toString()
+if (requestedModulesRaw == null || requestedModulesRaw.trim().isEmpty()) {
+    // Keep tests core-only by default while preserving historical runtime behavior.
+    requestedModulesRaw = invocationBuildsRuntimeArtifact ? 'all' : ''
+}
+def requestedControlPlaneModuleNames = new LinkedHashSet<String>(parseCsvModules(requestedModulesRaw))
+if (requestedControlPlaneModuleNames.contains('none')) {
+    if (requestedControlPlaneModuleNames.size() > 1) {
+        throw new GradleException("Module selector 'none' cannot be combined with other values: ${requestedControlPlaneModuleNames}")
+    }
+    requestedControlPlaneModuleNames.clear()
+}
+if (requestedControlPlaneModuleNames.contains('all')) {
+    requestedControlPlaneModuleNames = new LinkedHashSet<String>(availableOptionalControlPlaneModuleNames)
+}
+def unknownControlPlaneModules = requestedControlPlaneModuleNames.findAll { !availableOptionalControlPlaneModuleNames.contains(it) }
+if (!unknownControlPlaneModules.isEmpty()) {
+    throw new GradleException("Unknown control-plane modules: ${unknownControlPlaneModules}. Available: ${availableOptionalControlPlaneModuleNames}")
+}
+def selectedOptionalControlPlaneModuleProjects = availableOptionalControlPlaneModuleProjects
+        .findAll { requestedControlPlaneModuleNames.contains(it.name) }
+
 dependencies {
     implementation project(':common')
+    selectedOptionalControlPlaneModuleProjects.each { moduleProject ->
+        runtimeOnly project(moduleProject.path)
+    }
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
@@ -25,9 +72,23 @@ dependencies {
     testImplementation 'io.rest-assured:rest-assured:5.4.0'
 }
 
+tasks.register('printSelectedControlPlaneModules') {
+    group = 'help'
+    description = 'Print the control-plane modules included in this build.'
+    doLast {
+        def names = selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort()
+        if (names.isEmpty()) {
+            println 'No optional control-plane modules selected.'
+        } else {
+            println "Selected control-plane modules: ${names.join(', ')}"
+        }
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
     systemProperty 'project.version', project.version.toString()
+    systemProperty 'nanofaas.selectedControlPlaneModules', selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort().join(',')
     dependsOn 'bootJar'
     dependsOn ':function-runtime:bootJar'
     dependsOn ':examples:java:word-stats:bootJar'
@@ -39,7 +100,8 @@ tasks.named('bootJar') {
 }
 
 tasks.named('jar') {
-    enabled = false
+    // Keep a plain JAR consumable so optional modules can compile against control-plane types.
+    enabled = true
 }
 
 graalvmNative {

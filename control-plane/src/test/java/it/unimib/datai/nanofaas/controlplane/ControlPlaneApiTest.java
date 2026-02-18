@@ -5,7 +5,6 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
-import it.unimib.datai.nanofaas.controlplane.scheduler.Scheduler;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,7 +18,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -40,9 +38,6 @@ class ControlPlaneApiTest {
 
     @Autowired
     private RateLimiter rateLimiter;
-
-    @Autowired
-    private Scheduler scheduler;
 
     @Autowired
     private MeterRegistry meterRegistry;
@@ -94,21 +89,21 @@ class ControlPlaneApiTest {
         rateLimiter.setMaxPerSecond(1000);
 
         Map<String, Object> body1 = webTestClient.post()
-                .uri("/v1/functions/echo:enqueue")
+                .uri("/v1/functions/echo:invoke")
                 .header("Idempotency-Key", "abc")
                 .bodyValue(new InvocationRequest("payload", Map.of()))
                 .exchange()
-                .expectStatus().isAccepted()
+                .expectStatus().isOk()
                 .expectBody(Map.class)
                 .returnResult()
                 .getResponseBody();
 
         Map<String, Object> body2 = webTestClient.post()
-                .uri("/v1/functions/echo:enqueue")
+                .uri("/v1/functions/echo:invoke")
                 .header("Idempotency-Key", "abc")
                 .bodyValue(new InvocationRequest("payload", Map.of()))
                 .exchange()
-                .expectStatus().isAccepted()
+                .expectStatus().isOk()
                 .expectBody(Map.class)
                 .returnResult()
                 .getResponseBody();
@@ -123,10 +118,10 @@ class ControlPlaneApiTest {
         rateLimiter.setMaxPerSecond(1000);
 
         Map<String, Object> body = webTestClient.post()
-                .uri("/v1/functions/echo:enqueue")
+                .uri("/v1/functions/echo:invoke")
                 .bodyValue(new InvocationRequest("payload", Map.of()))
                 .exchange()
-                .expectStatus().isAccepted()
+                .expectStatus().isOk()
                 .expectBody(Map.class)
                 .returnResult()
                 .getResponseBody();
@@ -161,17 +156,16 @@ class ControlPlaneApiTest {
     @Test
     void issue017_prometheusMetricsExposed() {
         webTestClient.post()
-                .uri("/v1/functions/echo:enqueue")
+                .uri("/v1/functions/echo:invoke")
                 .bodyValue(new InvocationRequest("payload", Map.of()))
                 .exchange()
-                .expectStatus().isAccepted();
+                .expectStatus().isOk();
 
-        assertNotNull(meterRegistry.find("function_enqueue_total").counter());
+        assertNotNull(meterRegistry.find("function_dispatch_total").counter());
     }
 
     @Test
-    void issue018_healthAndSchedulerRunning() {
+    void issue018_healthEndpointIsUp() {
         assertEquals("UP", healthEndpoint.health().getStatus().getCode());
-        assertTrue(scheduler.isRunning());
     }
 }
