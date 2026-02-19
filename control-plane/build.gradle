@@ -181,8 +181,3 @@ bootBuildImage {
     if (targetPlatform) {
         imagePlatform = targetPlatform
     }
-    environment = [
-            'BP_NATIVE_IMAGE': 'true',
-            'BP_NATIVE_IMAGE_BUILD_ARGUMENTS': '-H:+AddAllCharsets'
-    ]
-}

@@ -9,6 +9,7 @@ set -euo pipefail
 #   SKIP_BUILD=true ./scripts/e2e-k3s-helm.sh  # Skip build if images exist
 #   KEEP_VM=false ./scripts/e2e-k3s-helm.sh    # Delete VM on exit
 #   MULTIPASS_PURGE=never ./scripts/e2e-k3s-helm.sh  # Keep deleted-VM cache untouched
+#   CONTROL_PLANE_NATIVE_BUILD=true CONTROL_PLANE_MODULES=async-queue,sync-queue ./scripts/e2e-k3s-helm.sh
 #
 # Prerequisites:
 #   - multipass (https://multipass.run)
@@ -26,6 +27,12 @@ NAMESPACE=${NAMESPACE:-nanofaas}
 KEEP_VM=${KEEP_VM:-true}
 SKIP_BUILD=${SKIP_BUILD:-false}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
+TAG=${TAG:-e2e}
+CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD:-false}
+CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES:-all}
+CONTROL_PLANE_IMAGE_BUILDER=${CONTROL_PLANE_IMAGE_BUILDER:-}
+CONTROL_PLANE_IMAGE_RUN_IMAGE=${CONTROL_PLANE_IMAGE_RUN_IMAGE:-}
+CONTROL_PLANE_IMAGE_PLATFORM=${CONTROL_PLANE_IMAGE_PLATFORM:-}
 VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS:-900}
 VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS:-30}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +42,6 @@ e2e_set_log_prefix "e2e"
 vm_exec() { e2e_vm_exec "$@"; }
 
 # Image tags for local build
-TAG="e2e"
 CONTROL_IMAGE="${LOCAL_REGISTRY}/nanofaas/control-plane:${TAG}"
 RUNTIME_IMAGE="${LOCAL_REGISTRY}/nanofaas/function-runtime:${TAG}"
 JAVA_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-word-stats:${TAG}"
@@ -110,8 +116,26 @@ sync_and_build() {
     log "JARs built"
 
     log "Building Docker images..."
-
-    e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        local module_selector="${CONTROL_PLANE_MODULES:-all}"
+        local native_cmd
+        native_cmd="cd /home/ubuntu/nanofaas && BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${CONTROL_IMAGE} -PcontrolPlaneModules=${module_selector} --no-daemon"
+        if [[ -n "${CONTROL_PLANE_IMAGE_BUILDER}" ]]; then
+            native_cmd="${native_cmd} -PimageBuilder=${CONTROL_PLANE_IMAGE_BUILDER}"
+        fi
+        if [[ -n "${CONTROL_PLANE_IMAGE_RUN_IMAGE}" ]]; then
+            native_cmd="${native_cmd} -PimageRunImage=${CONTROL_PLANE_IMAGE_RUN_IMAGE}"
+        fi
+        if [[ -n "${CONTROL_PLANE_IMAGE_PLATFORM}" ]]; then
+            native_cmd="${native_cmd} -PimagePlatform=${CONTROL_PLANE_IMAGE_PLATFORM}"
+        fi
+        log "Building control-plane as native image via buildpacks (modules=${module_selector})..."
+        vm_exec "${native_cmd}"
+        log "Building function-runtime Docker image..."
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    else
+        e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+    fi
 
     # Java demo images
     vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_WORD_STATS_IMAGE} -f examples/java/word-stats/Dockerfile examples/java/word-stats/"
@@ -386,6 +410,7 @@ main() {
     log "Starting nanofaas E2E setup..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE} LOCAL_REGISTRY=${LOCAL_REGISTRY} SKIP_BUILD=${SKIP_BUILD}"
+    log "  TAG=${TAG} CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD} CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES}"
     log "  VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS} VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS}"
     log ""
 
