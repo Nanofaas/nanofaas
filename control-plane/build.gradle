@@ -29,7 +29,9 @@ def invocationBuildsRuntimeArtifact = requestedTaskNames.any { taskName ->
 def requestedModulesRaw = (project.findProperty('controlPlaneModules') ?: System.getenv('NANOFAAS_CONTROL_PLANE_MODULES'))?.toString()
 if (requestedModulesRaw == null || requestedModulesRaw.trim().isEmpty()) {
     // Keep tests core-only by default while preserving historical runtime behavior.
-    requestedModulesRaw = invocationBuildsRuntimeArtifact ? 'all' : ''
+    // Exception: E2E tests (runE2e flag) need the full fat-jar with all modules.
+    def isE2eBuild = project.hasProperty('runE2e')
+    requestedModulesRaw = (invocationBuildsRuntimeArtifact || isE2eBuild) ? 'all' : ''
 }
 def requestedControlPlaneModuleNames = new LinkedHashSet<String>(parseCsvModules(requestedModulesRaw))
 if (requestedControlPlaneModuleNames.contains('none')) {
