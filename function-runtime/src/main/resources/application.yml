@@ -8,6 +8,7 @@ management:
         include: health
   endpoint:
     health:
+      enabled: true
       probes:
         enabled: true
   health:
