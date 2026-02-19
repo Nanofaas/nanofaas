@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.config;
 
 import io.fabric8.kubernetes.api.model.DeleteOptions;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
@@ -32,6 +33,10 @@ class VertxRuntimeHintsTest {
         assertThat(RuntimeHintsPredicates.reflection()
                 .onType(DeleteOptions.class)
                 .withMemberCategory(MemberCategory.INVOKE_PUBLIC_METHODS)
+                .test(hints)).isTrue();
+        assertThat(RuntimeHintsPredicates.reflection()
+                .onType(KubernetesClientImpl.class)
+                .withMemberCategory(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS)
                 .test(hints)).isTrue();
         assertThat(hints.reflection().typeHints().count()).isGreaterThan(2);
     }

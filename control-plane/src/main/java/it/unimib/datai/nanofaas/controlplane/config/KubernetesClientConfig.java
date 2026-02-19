@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.config;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.http.HttpClient;
 import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
 import io.fabric8.kubernetes.client.vertx.VertxHttpClientFactory;
@@ -42,10 +41,9 @@ public class KubernetesClientConfig {
         if (Files.exists(saTokenPath)) {
             return inClusterClient();
         }
-        // Local / dev: KubernetesClientBuilder reads ~/.kube/config automatically
-        return new KubernetesClientBuilder()
-                .withHttpClientFactory(new VertxHttpClientFactory())
-                .build();
+        // Local / dev: mirror KubernetesClientBuilder defaults without reflective class loading.
+        Config config = Config.autoConfigure(null);
+        return createClient(config);
     }
 
     private KubernetesClient inClusterClient() {
@@ -77,11 +75,14 @@ public class KubernetesClientConfig {
 
             log.info("Config built: masterUrl={}, hasToken={}", config.getMasterUrl(), config.getOauthToken() != null);
 
-            // Use KubernetesClientImpl directly to avoid KubernetesClientBuilder overriding config
-            HttpClient httpClient = new VertxHttpClientFactory().newBuilder(config).build();
-            return new KubernetesClientImpl(httpClient, config);
+            return createClient(config);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read in-cluster ServiceAccount credentials", e);
         }
+    }
+
+    private KubernetesClient createClient(Config config) {
+        HttpClient httpClient = new VertxHttpClientFactory().newBuilder(config).build();
+        return new KubernetesClientImpl(httpClient, config);
     }
 }

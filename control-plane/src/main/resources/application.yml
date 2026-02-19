@@ -13,6 +13,7 @@ management:
     prometheus:
       enabled: true
     health:
+      enabled: true
       probes:
         enabled: true
   health:

@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.config;
 
 import io.fabric8.kubernetes.api.model.DeleteOptions;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -50,6 +51,12 @@ public class VertxRuntimeHints {
             hints.reflection().registerType(Pod.class, MemberCategory.INVOKE_PUBLIC_METHODS);
             // Fabric8 serializes DeleteOptions reflectively when deleting validation pods.
             hints.reflection().registerType(DeleteOptions.class, MemberCategory.INVOKE_PUBLIC_METHODS);
+            // Fabric8's KubernetesClientBuilder locates this class dynamically; keep it reachable in native images.
+            hints.reflection().registerType(
+                    KubernetesClientImpl.class,
+                    MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+                    MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS
+            );
             registerFabric8ModelHints(hints, classLoader);
         }
 

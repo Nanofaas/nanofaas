@@ -55,22 +55,79 @@ RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then
   CONTROL_BIN="control-plane/build/native/nativeCompile/control-plane"
   RUNTIME_BIN="function-runtime/build/native/nativeCompile/function-runtime"
+  CONTROL_PID=""
+  RUNTIME_PID=""
+
+  is_port_in_use() {
+    local port="$1"
+    if command -v lsof >/dev/null 2>&1; then
+      lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+      return
+    fi
+    if command -v ss >/dev/null 2>&1; then
+      ss -ltn "sport = :${port}" | tail -n +2 | grep -q .
+      return
+    fi
+    return 1
+  }
+
+  pick_available_port() {
+    local port="$1"
+    while is_port_in_use "$port"; do
+      port=$((port + 1))
+    done
+    echo "$port"
+  }
+
+  wait_for_http_ok() {
+    local url="$1"
+    local attempts="${2:-30}"
+    local sleep_secs="${3:-1}"
+
+    local i=1
+    while [ "$i" -le "$attempts" ]; do
+      if curl -sf "$url" >/dev/null; then
+        return 0
+      fi
+      sleep "$sleep_secs"
+      i=$((i + 1))
+    done
+    return 1
+  }
+
+  CONTROL_PORT=$(pick_available_port "${CONTROL_SERVER_PORT:-18080}")
+  MGMT_PORT=$(pick_available_port "${CONTROL_MANAGEMENT_PORT:-18081}")
+  if [ "$MGMT_PORT" = "$CONTROL_PORT" ]; then
+    MGMT_PORT=$(pick_available_port "$((MGMT_PORT + 1))")
+  fi
+  RUNTIME_PORT=$(pick_available_port "${RUNTIME_SERVER_PORT:-18090}")
+  if [ "$RUNTIME_PORT" = "$CONTROL_PORT" ] || [ "$RUNTIME_PORT" = "$MGMT_PORT" ]; then
+    RUNTIME_PORT=$(pick_available_port "$((RUNTIME_PORT + 1))")
+  fi
+
+  trap 'if [ -n "${CONTROL_PID}" ] && kill -0 "${CONTROL_PID}" 2>/dev/null; then kill "${CONTROL_PID}"; fi; if [ -n "${RUNTIME_PID}" ] && kill -0 "${RUNTIME_PID}" 2>/dev/null; then kill "${RUNTIME_PID}"; fi' EXIT
+
+  echo "Native smoke ports: control=${CONTROL_PORT}, management=${MGMT_PORT}, runtime=${RUNTIME_PORT}"
 
   if [ -x "$CONTROL_BIN" ]; then
-    "$CONTROL_BIN" --server.port=18080 --management.server.port=18081 &
+    "$CONTROL_BIN" --server.port="${CONTROL_PORT}" --management.server.port="${MGMT_PORT}" &
     CONTROL_PID=$!
+  else
+    echo "Missing control-plane native binary: $CONTROL_BIN" >&2
+    exit 1
   fi
 
   if [ -x "$RUNTIME_BIN" ]; then
-    "$RUNTIME_BIN" --server.port=18090 &
+    "$RUNTIME_BIN" --server.port="${RUNTIME_PORT}" &
     RUNTIME_PID=$!
+  else
+    echo "Missing function-runtime native binary: $RUNTIME_BIN" >&2
+    exit 1
   fi
 
-  trap '[[ -n "${CONTROL_PID:-}" ]] && kill "$CONTROL_PID"; [[ -n "${RUNTIME_PID:-}" ]] && kill "$RUNTIME_PID"' EXIT
-
-  sleep 3
-  curl -sf http://localhost:18081/actuator/health > /dev/null
-  curl -sf -X POST http://localhost:18090/invoke \
+  wait_for_http_ok "http://localhost:${MGMT_PORT}/actuator/health"
+  wait_for_http_ok "http://localhost:${RUNTIME_PORT}/actuator/health"
+  curl -sf -X POST "http://localhost:${RUNTIME_PORT}/invoke" \
     -H 'Content-Type: application/json' \
     -d '{"input":{"message":"hi"}}' > /dev/null
 
