@@ -6,6 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from control_plane_experiment_config import (  # noqa: E402
     build_deploy_env,
     build_control_plane_modules_selector,
+    discover_module_dependencies,
+    split_module_selection_details,
+    resolve_module_selection_with_dependencies,
     normalize_module_selection,
 )
 
@@ -59,6 +62,9 @@ def test_build_deploy_env_sets_native_and_module_selector():
     assert env["KEEP_VM"] == "true"
     assert env["TAG"] == "exp-123"
     assert env["CONTROL_PLANE_NATIVE_BUILD"] == "true"
+    assert env["CONTROL_PLANE_BUILD_ON_HOST"] == "true"
+    assert env["CONTROL_PLANE_ONLY"] == "true"
+    assert env["E2E_K3S_HELM_NONINTERACTIVE"] == "true"
     assert env["CONTROL_PLANE_MODULES"] == "async-queue,sync-queue"
 
 
@@ -75,3 +81,80 @@ def test_build_deploy_env_maps_empty_modules_to_none():
     )
     assert env["KEEP_VM"] == "false"
     assert env["CONTROL_PLANE_MODULES"] == "none"
+
+
+def test_resolve_module_selection_auto_adds_dependencies():
+    available = ["async-queue", "sync-queue", "autoscaler"]
+    dependencies = {"sync-queue": ["async-queue"]}
+    resolved = resolve_module_selection_with_dependencies(
+        available_modules=available,
+        selected_modules=["sync-queue"],
+        module_dependencies=dependencies,
+    )
+    assert resolved == ["async-queue", "sync-queue"]
+
+
+def test_resolve_module_selection_applies_transitive_dependencies():
+    available = ["a", "b", "c", "d"]
+    dependencies = {
+        "d": ["c"],
+        "c": ["b"],
+        "b": ["a"],
+    }
+    resolved = resolve_module_selection_with_dependencies(
+        available_modules=available,
+        selected_modules=["d"],
+        module_dependencies=dependencies,
+    )
+    assert resolved == ["a", "b", "c", "d"]
+
+
+def test_resolve_module_selection_rejects_missing_dependency():
+    available = ["sync-queue"]
+    dependencies = {"sync-queue": ["async-queue"]}
+    try:
+        resolve_module_selection_with_dependencies(
+            available_modules=available,
+            selected_modules=["sync-queue"],
+            module_dependencies=dependencies,
+        )
+    except ValueError as exc:
+        assert "depends on missing module" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for missing dependency")
+
+
+def test_discover_module_dependencies_reads_build_gradle(tmp_path):
+    modules_root = tmp_path / "control-plane-modules"
+    sync_module = modules_root / "sync-queue"
+    async_module = modules_root / "async-queue"
+    sync_module.mkdir(parents=True)
+    async_module.mkdir(parents=True)
+
+    (sync_module / "build.gradle").write_text(
+        "\n".join(
+            [
+                "dependencies {",
+                "    implementation project(':control-plane-modules:async-queue')",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (async_module / "build.gradle").write_text(
+        "dependencies { implementation project(':common') }",
+        encoding="utf-8",
+    )
+
+    deps = discover_module_dependencies(modules_root)
+    assert deps["sync-queue"] == ["async-queue"]
+    assert deps["async-queue"] == []
+
+
+def test_split_module_selection_details_preserves_order():
+    explicit, auto = split_module_selection_details(
+        resolved_modules=["async-queue", "sync-queue", "autoscaler"],
+        explicitly_selected_modules=["sync-queue", "autoscaler"],
+    )
+    assert explicit == ["sync-queue", "autoscaler"]
+    assert auto == ["async-queue"]

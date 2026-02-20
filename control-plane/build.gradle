@@ -167,7 +167,7 @@ tasks.named('compileAotTestJava') { enabled = false }
 tasks.named('processAotTestResources') { enabled = false }
 tasks.named('aotTestClasses') { enabled = false }
 
-bootBuildImage {
+tasks.named('bootBuildImage') {
     imageName = project.findProperty('controlPlaneImage') ?: (System.getenv('CONTROL_PLANE_IMAGE') ?: 'nanofaas/control-plane:buildpack')
     // Builder/run image are overrideable to support multi-arch native builds (e.g., ARM64 on Apple Silicon).
     def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
@@ -181,3 +181,11 @@ bootBuildImage {
     if (targetPlatform) {
         imagePlatform = targetPlatform
     }
+    def nativeImageBuildArguments = (project.findProperty('nativeImageBuildArgs')
+            ?: System.getenv('NATIVE_IMAGE_BUILD_ARGS')
+            ?: '-H:+AddAllCharsets').toString()
+    environment = [
+            'BP_NATIVE_IMAGE': 'true',
+            'BP_NATIVE_IMAGE_BUILD_ARGUMENTS': nativeImageBuildArguments
+    ]
+}

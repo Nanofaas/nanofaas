@@ -59,6 +59,14 @@ def test_loadtest_script_avoids_bash4_uppercase_expansion():
     assert "^^" not in content
 
 
+def test_loadtest_preflight_uses_dynamic_required_functions_and_guidance():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert "Expected 8 functions" not in content
+    assert "Missing required functions for selected tests" in content
+    assert "No functions registered" in content
+    assert "Control-plane-only deployment detected" in content
+
+
 def test_loadtest_single_selected_function_reaches_final_report(tmp_path: Path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(parents=True, exist_ok=True)
@@ -90,7 +98,7 @@ echo "default ✓ [ 100% ] 00/01 VUs  2s"
 set -euo pipefail
 url="${@: -1}"
 if [[ "${url}" == *"/v1/functions" ]]; then
-  printf '[{"name":"f1"},{"name":"f2"},{"name":"f3"},{"name":"f4"},{"name":"f5"},{"name":"f6"},{"name":"f7"},{"name":"f8"}]'
+  printf '[{"name":"word-stats-java"},{"name":"word-stats-java-lite"},{"name":"word-stats-python"},{"name":"word-stats-exec"},{"name":"json-transform-java"},{"name":"json-transform-java-lite"},{"name":"json-transform-python"},{"name":"json-transform-exec"}]'
   exit 0
 fi
 echo '{}'

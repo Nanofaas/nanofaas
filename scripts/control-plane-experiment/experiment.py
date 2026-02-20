@@ -17,7 +17,10 @@ sys.path.insert(0, str(SCRIPTS_DIR / "lib"))
 
 from control_plane_experiment_config import (  # noqa: E402
     build_deploy_env,
+    discover_module_dependencies,
     normalize_module_selection,
+    resolve_module_selection_with_dependencies,
+    split_module_selection_details,
 )
 from loadtest_registry_config import (  # noqa: E402
     InteractiveLoadtestConfig,
@@ -36,6 +39,12 @@ RUNTIME_CHOICES = [
     ("Exec/Bash", "exec"),
 ]
 
+DEFAULT_VM_NAME = "nanofaas-e2e"
+DEFAULT_CPUS = "4"
+DEFAULT_MEMORY = "12G"
+DEFAULT_DISK = "30G"
+DEFAULT_NAMESPACE = "nanofaas"
+
 
 @dataclass(frozen=True)
 class DeployConfig:
@@ -47,6 +56,8 @@ class DeployConfig:
     keep_vm: bool
     tag: str
     selected_modules: list[str]
+    explicitly_selected_modules: list[str]
+    auto_added_modules: list[str]
 
 
 @dataclass(frozen=True)
@@ -57,15 +68,10 @@ class WizardConfig:
     skip_grafana: bool
 
 
-def discover_control_plane_modules() -> list[str]:
+def discover_control_plane_modules_with_dependencies() -> tuple[list[str], dict[str, list[str]]]:
     modules_root = REPO_ROOT / "control-plane-modules"
-    names: list[str] = []
-    for entry in modules_root.iterdir():
-        if not entry.is_dir():
-            continue
-        if (entry / "build.gradle").is_file():
-            names.append(entry.name)
-    return sorted(names)
+    dependencies = discover_module_dependencies(modules_root)
+    return sorted(dependencies.keys()), dependencies
 
 
 def ask_checkbox(message: str, choices: list[questionary.Choice], allow_empty: bool = False) -> list[str]:
@@ -85,7 +91,7 @@ def ask_text(message: str, default: str, validator) -> str:
 
 
 def ask_deploy_config() -> DeployConfig:
-    available_modules = discover_control_plane_modules()
+    available_modules, module_dependencies = discover_control_plane_modules_with_dependencies()
     if not available_modules:
         raise SystemExit("Nessun modulo control-plane trovato in control-plane-modules/.")
 
@@ -97,34 +103,46 @@ def ask_deploy_config() -> DeployConfig:
         ],
         allow_empty=True,
     )
-    selected_modules = normalize_module_selection(available_modules, selected_raw)
+    explicitly_selected_modules = normalize_module_selection(available_modules, selected_raw)
+    selected_modules = resolve_module_selection_with_dependencies(
+        available_modules=available_modules,
+        selected_modules=explicitly_selected_modules,
+        module_dependencies=module_dependencies,
+    )
+    explicit_modules, auto_added = split_module_selection_details(
+        resolved_modules=selected_modules,
+        explicitly_selected_modules=explicitly_selected_modules,
+    )
+    if auto_added:
+        print("")
+        print(f"Dipendenze aggiunte automaticamente: {', '.join(auto_added)}")
 
     suggested_tag = f"exp-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     tag = ask_text(
         "Tag immagine locale:",
-        default=os.environ.get("TAG", suggested_tag),
+        default=suggested_tag,
         validator=lambda txt: bool(txt.strip()),
     )
 
     vm_name = ask_text(
         "VM_NAME:",
-        default=os.environ.get("VM_NAME", "nanofaas-e2e"),
+        default=DEFAULT_VM_NAME,
         validator=lambda txt: bool(txt.strip()),
     )
-    cpus = ask_text("CPUS:", default=os.environ.get("CPUS", "4"), validator=lambda txt: txt.isdigit() and int(txt) >= 1)
+    cpus = ask_text("CPUS:", default=DEFAULT_CPUS, validator=lambda txt: txt.isdigit() and int(txt) >= 1)
     memory = ask_text(
         "MEMORY (es. 8G):",
-        default=os.environ.get("MEMORY", "8G"),
+        default=DEFAULT_MEMORY,
         validator=lambda txt: bool(txt.strip()),
     )
     disk = ask_text(
         "DISK (es. 30G):",
-        default=os.environ.get("DISK", "30G"),
+        default=DEFAULT_DISK,
         validator=lambda txt: bool(txt.strip()),
     )
     namespace = ask_text(
         "Namespace Kubernetes:",
-        default=os.environ.get("NAMESPACE", "nanofaas"),
+        default=DEFAULT_NAMESPACE,
         validator=lambda txt: bool(txt.strip()),
     )
     keep_vm = questionary.confirm("Tenere la VM al termine?", default=True).ask()
@@ -140,6 +158,8 @@ def ask_deploy_config() -> DeployConfig:
         keep_vm=bool(keep_vm),
         tag=tag,
         selected_modules=selected_modules,
+        explicitly_selected_modules=explicit_modules,
+        auto_added_modules=auto_added,
     )
 
 
@@ -262,12 +282,29 @@ def run_cmd(cmd: list[str], env: dict[str, str]) -> None:
 
 def print_summary(config: WizardConfig) -> None:
     modules_label = ",".join(config.deploy.selected_modules) if config.deploy.selected_modules else "none (core-only)"
+    manual_label = ",".join(config.deploy.explicitly_selected_modules) if config.deploy.explicitly_selected_modules else "none"
+    auto_label = ",".join(config.deploy.auto_added_modules) if config.deploy.auto_added_modules else "none"
     print("")
-    print("Configurazione esperimento:")
-    print(f"  VM: {config.deploy.vm_name} ({config.deploy.cpus} CPU, {config.deploy.memory} RAM, {config.deploy.disk} disk)")
+    print("Configurazione esperimento (dettagliata):")
+    print(f"  VM: {config.deploy.vm_name}")
+    print(f"  Risorse VM: {config.deploy.cpus} CPU, {config.deploy.memory} RAM, {config.deploy.disk} disk")
     print(f"  Namespace: {config.deploy.namespace}")
-    print(f"  Image tag: {config.deploy.tag}")
-    print(f"  Control-plane modules: {modules_label}")
+    print(f"  Image tag control-plane: {config.deploy.tag}")
+    print(f"  Keep VM a fine run: {config.deploy.keep_vm}")
+    print("  Modalita build/deploy:")
+    print("    - Compilazione control-plane: nativa (obbligatoria)")
+    print("    - Build immagine control-plane: host (Docker Desktop)")
+    print("    - Scope deploy: solo control-plane (demo disabilitate)")
+    print("  Moduli control-plane:")
+    print(f"    - Finali (con dipendenze): {modules_label}")
+    print(f"    - Selezionati manualmente: {manual_label}")
+    print(f"    - Aggiunti per dipendenza: {auto_label}")
+    print("  Piano esecuzione:")
+    print("    1. Build immagine control-plane nativa su host")
+    print("    2. Creazione VM k3s e registry locale")
+    print("    3. Copia/push immagine nel registry della VM")
+    print("    4. Deploy Helm piattaforma")
+    print("    5. Verifica health control-plane + Prometheus")
     if config.run_loadtest and config.loadtest is not None:
         print("  Load test: enabled")
         print(f"    Workloads: {','.join(config.loadtest.workloads)}")

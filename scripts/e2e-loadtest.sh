@@ -410,22 +410,61 @@ preflight() {
     local nanofaas_url
     nanofaas_url=$(resolve_vm_ip)
 
-    # Verify API reachable
-    if ! curl -sf "${nanofaas_url}/v1/functions" >/dev/null 2>&1; then
+    local functions_payload
+    if ! functions_payload=$(curl -sf "${nanofaas_url}/v1/functions"); then
         err "Cannot reach ${nanofaas_url}/v1/functions"
         err "Is nanofaas running? Run ./scripts/e2e-k3s-helm.sh first."
         exit 1
     fi
 
-    # Verify functions are registered
+    # Verify functions selected for this loadtest are registered.
     local fn_count
-    fn_count=$(curl -sf "${nanofaas_url}/v1/functions" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null) || fn_count=0
-    if [[ "${fn_count}" -lt 8 ]]; then
-        err "Expected 8 functions, found ${fn_count}."
+    fn_count=$(printf '%s' "${functions_payload}" | python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data) if isinstance(data,list) else 0)" 2>/dev/null) || fn_count=0
+
+    local missing_functions
+    missing_functions=$(printf '%s' "${functions_payload}" | python3 -c '
+import json
+import sys
+
+expected = sys.argv[1:]
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    print("__PARSE_ERROR__")
+    raise SystemExit(0)
+
+available = []
+if isinstance(payload, list):
+    for item in payload:
+        if isinstance(item, str):
+            available.append(item.strip())
+            continue
+        if isinstance(item, dict):
+            name = item.get("name")
+            if isinstance(name, str):
+                available.append(name.strip())
+
+available_set = {name for name in available if name}
+missing = [fn for fn in expected if fn not in available_set]
+print(",".join(missing))
+' "${SELECTED_TESTS[@]}")
+
+    if [[ "${missing_functions}" == "__PARSE_ERROR__" ]]; then
+        err "Could not parse function list from ${nanofaas_url}/v1/functions"
         exit 1
     fi
 
-    info "API reachable at ${nanofaas_url} (${fn_count} functions registered)"
+    if [[ -n "${missing_functions}" ]]; then
+        err "Missing required functions for selected tests: ${missing_functions}"
+        if [[ "${fn_count}" -eq 0 ]]; then
+            err "No functions registered."
+            err "Control-plane-only deployment detected (or demos disabled)."
+        fi
+        err "Register functions before running load tests, then retry."
+        exit 1
+    fi
+
+    info "API reachable at ${nanofaas_url} (${fn_count} functions registered, all required functions available)"
 
     if [[ "${VERIFY_OUTPUT_PARITY}" == "true" ]]; then
         verify_output_parity "${nanofaas_url}" "${PARITY_TIMEOUT_SECONDS}"
