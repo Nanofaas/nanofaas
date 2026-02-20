@@ -15,10 +15,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "autoscale"
 e2e_test_init
-K6_DIR="${PROJECT_ROOT}/k6"
+K6_DIR="${PROJECT_ROOT}/experiments/k6"
 FUNCTION_NAME=${FUNCTION_NAME:-word-stats-java}
 NAMESPACE=${NAMESPACE:-nanofaas}
 

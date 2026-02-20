@@ -6,7 +6,6 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.api.model.autoscaling.v2.*;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
-import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.config.KubernetesProperties;
 
@@ -21,17 +20,18 @@ public class KubernetesDeploymentBuilder {
     );
 
     private final KubernetesProperties properties;
+    private final KubernetesMetricsTranslator metricsTranslator = new KubernetesMetricsTranslator();
 
     public KubernetesDeploymentBuilder(KubernetesProperties properties) {
         this.properties = properties;
     }
 
     public static String deploymentName(String functionName) {
-        return "fn-" + functionName;
+        return NanofaasDeploymentConstants.DEPLOYMENT_NAME_PREFIX + functionName;
     }
 
     public static String serviceName(String functionName) {
-        return "fn-" + functionName;
+        return NanofaasDeploymentConstants.SERVICE_NAME_PREFIX + functionName;
     }
 
     public Deployment buildDeployment(FunctionSpec spec) {
@@ -61,9 +61,9 @@ public class KubernetesDeploymentBuilder {
                     .withNewTemplate()
                         .withNewMetadata()
                             .addToLabels(labels)
-                            .addToAnnotations("prometheus.io/scrape", "true")
-                            .addToAnnotations("prometheus.io/path", "/metrics")
-                            .addToAnnotations("prometheus.io/port", "8080")
+                            .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_SCRAPE, "true")
+                            .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PATH, "/metrics")
+                            .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PORT, "8080")
                         .endMetadata()
                         .withNewSpec()
                             .addNewContainer()
@@ -100,9 +100,9 @@ public class KubernetesDeploymentBuilder {
                     .withName(serviceName(spec.name()))
                     .addToLabels("app", "nanofaas")
                     .addToLabels("function", spec.name())
-                    .addToAnnotations("prometheus.io/scrape", "true")
-                    .addToAnnotations("prometheus.io/path", "/metrics")
-                    .addToAnnotations("prometheus.io/port", "8080")
+                    .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_SCRAPE, "true")
+                    .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PATH, "/metrics")
+                    .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PORT, "8080")
                 .endMetadata()
                 .withNewSpec()
                     .withType("ClusterIP")
@@ -122,15 +122,7 @@ public class KubernetesDeploymentBuilder {
             return null;
         }
 
-        List<MetricSpec> metricSpecs = new ArrayList<>();
-        if (scaling.metrics() != null) {
-            for (ScalingMetric m : scaling.metrics()) {
-                MetricSpec ms = toK8sMetricSpec(m, spec.name());
-                if (ms != null) {
-                    metricSpecs.add(ms);
-                }
-            }
-        }
+        List<MetricSpec> metricSpecs = metricsTranslator.toMetricSpecs(scaling, spec);
 
         return new HorizontalPodAutoscalerBuilder()
                 .withNewMetadata()
@@ -149,76 +141,6 @@ public class KubernetesDeploymentBuilder {
                     .withMetrics(metricSpecs)
                 .endSpec()
                 .build();
-    }
-
-    private MetricSpec toK8sMetricSpec(ScalingMetric metric, String functionName) {
-        String type = metric.type();
-        int targetValue = parseTarget(metric.target());
-
-        return switch (type) {
-            case "cpu" -> new MetricSpecBuilder()
-                    .withType("Resource")
-                    .withNewResource()
-                        .withName("cpu")
-                        .withNewTarget()
-                            .withType("Utilization")
-                            .withAverageUtilization(targetValue)
-                        .endTarget()
-                    .endResource()
-                    .build();
-            case "memory" -> new MetricSpecBuilder()
-                    .withType("Resource")
-                    .withNewResource()
-                        .withName("memory")
-                        .withNewTarget()
-                            .withType("Utilization")
-                            .withAverageUtilization(targetValue)
-                        .endTarget()
-                    .endResource()
-                    .build();
-            case "queue_depth", "in_flight", "rps" -> new MetricSpecBuilder()
-                    .withType("External")
-                    .withNewExternal()
-                        .withNewMetric()
-                            .withName("nanofaas_" + type)
-                            .withNewSelector()
-                                .addToMatchLabels("function", functionName)
-                            .endSelector()
-                        .endMetric()
-                        .withNewTarget()
-                            .withType("Value")
-                            .withValue(new Quantity(String.valueOf(targetValue)))
-                        .endTarget()
-                    .endExternal()
-                    .build();
-            case "prometheus" -> {
-                String metricName = "nanofaas_custom_" + functionName;
-                yield new MetricSpecBuilder()
-                        .withType("External")
-                        .withNewExternal()
-                            .withNewMetric()
-                                .withName(metricName)
-                                .withNewSelector()
-                                    .addToMatchLabels("function", functionName)
-                                .endSelector()
-                            .endMetric()
-                            .withNewTarget()
-                                .withType("Value")
-                                .withValue(new Quantity(String.valueOf(targetValue)))
-                            .endTarget()
-                        .endExternal()
-                        .build();
-            }
-            default -> null;
-        };
-    }
-
-    private int parseTarget(String target) {
-        try {
-            return Integer.parseInt(target);
-        } catch (NumberFormatException e) {
-            return 50;
-        }
     }
 
     private List<EnvVar> buildEnvVars(FunctionSpec spec) {

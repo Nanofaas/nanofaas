@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${SCRIPT_DIR}/control-plane-experiment"
+PROJECT_DIR="${SCRIPT_DIR}/wizard"
 ENTRYPOINT="${PROJECT_DIR}/experiment.py"
 
 if ! command -v uv >/dev/null 2>&1; then

@@ -114,7 +114,7 @@ INTERACTIVE=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "loadtest-registry"
 vm_exec() { e2e_vm_exec "$@"; }
 
@@ -203,7 +203,7 @@ get_results_dir() {
         echo "${RESULTS_DIR_OVERRIDE}"
         return
     fi
-    echo "${PROJECT_ROOT}/k6/results"
+    echo "${PROJECT_ROOT}/experiments/k6/results"
 }
 
 build_run_results_dir() {
@@ -757,7 +757,7 @@ from pathlib import Path
 prom_url = sys.argv[1]
 out_path = sys.argv[2]
 project_root = Path(out_path).resolve().parents[3]
-sys.path.insert(0, str(project_root / "scripts" / "lib"))
+sys.path.insert(0, str(project_root / "experiments" / "lib"))
 
 from loadtest_registry_metrics import build_prom_queries
 
@@ -942,7 +942,7 @@ import json, os, sys
 from pathlib import Path
 
 project_root = Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else Path(sys.argv[1]).resolve().parents[2]
-sys.path.insert(0, str(project_root / "scripts" / "lib"))
+sys.path.insert(0, str(project_root / "experiments" / "lib"))
 from loadtest_registry_metrics import (
     merge_prom_with_snapshots,
     summarize_control_plane_samples,

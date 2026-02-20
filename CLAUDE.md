@@ -49,6 +49,16 @@ cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime p
 
 # Native build (GraalVM via SDKMAN)
 ./scripts/native-build.sh
+
+# Experiments / load tests (see experiments/)
+./experiments/e2e-loadtest.sh             # k6 load tests + Grafana (requires deployed nanofaas)
+./experiments/e2e-loadtest-registry.sh    # Full VM deploy + load test from registry images
+./experiments/e2e-autoscaling.sh          # Autoscaling verification
+./experiments/e2e-cold-start-metrics.sh   # Cold start metrics
+./experiments/e2e-runtime-config.sh       # Runtime config hot-update E2E
+./experiments/run.sh                      # Interactive wizard (control-plane experiment)
+# Python tests for experiments
+cd experiments && python -m pytest tests/ -v
 ```
 
 ## Architecture Overview

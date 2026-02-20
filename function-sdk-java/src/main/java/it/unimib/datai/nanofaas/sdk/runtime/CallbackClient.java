@@ -1,3 +1,6 @@
+// Parallel implementation exists in function-sdk-java-lite (same retry logic, different HTTP stack:
+// java.net.http.HttpClient instead of Spring RestClient). Keep retry constants and URL-building
+// logic in sync when modifying.
 package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;

@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class FunctionSpecResolver {
     private static final int DEFAULT_TARGET_PER_POD = 2;
@@ -28,21 +29,21 @@ public class FunctionSpecResolver {
     }
 
     public FunctionSpec resolve(FunctionSpec spec) {
-        ExecutionMode mode = spec.executionMode() == null ? ExecutionMode.DEPLOYMENT : spec.executionMode();
+        ExecutionMode mode = Optional.ofNullable(spec.executionMode()).orElse(ExecutionMode.DEPLOYMENT);
         ScalingConfig scaling = resolveScalingConfig(spec.scalingConfig(), mode);
         return new FunctionSpec(
                 spec.name(),
                 spec.image(),
-                spec.command() == null ? List.of() : spec.command(),
-                spec.env() == null ? Map.of() : spec.env(),
+                Optional.ofNullable(spec.command()).orElse(List.of()),
+                Optional.ofNullable(spec.env()).orElse(Map.of()),
                 spec.resources(),
-                spec.timeoutMs() == null ? defaults.timeoutMs() : spec.timeoutMs(),
-                spec.concurrency() == null ? defaults.concurrency() : spec.concurrency(),
-                spec.queueSize() == null ? defaults.queueSize() : spec.queueSize(),
-                spec.maxRetries() == null ? defaults.maxRetries() : spec.maxRetries(),
+                Optional.ofNullable(spec.timeoutMs()).orElse(defaults.timeoutMs()),
+                Optional.ofNullable(spec.concurrency()).orElse(defaults.concurrency()),
+                Optional.ofNullable(spec.queueSize()).orElse(defaults.queueSize()),
+                Optional.ofNullable(spec.maxRetries()).orElse(defaults.maxRetries()),
                 spec.endpointUrl(),
                 mode,
-                spec.runtimeMode() == null ? RuntimeMode.HTTP : spec.runtimeMode(),
+                Optional.ofNullable(spec.runtimeMode()).orElse(RuntimeMode.HTTP),
                 spec.runtimeCommand(),
                 scaling,
                 spec.imagePullSecrets()
@@ -63,12 +64,11 @@ public class FunctionSpecResolver {
             );
         }
         return new ScalingConfig(
-                config.strategy() == null ? ScalingStrategy.INTERNAL : config.strategy(),
-                config.minReplicas() == null ? 1 : config.minReplicas(),
-                config.maxReplicas() == null ? 10 : config.maxReplicas(),
-                config.metrics() == null || config.metrics().isEmpty()
-                        ? List.of(new ScalingMetric("queue_depth", "5", null))
-                        : config.metrics(),
+                Optional.ofNullable(config.strategy()).orElse(ScalingStrategy.INTERNAL),
+                Optional.ofNullable(config.minReplicas()).orElse(1),
+                Optional.ofNullable(config.maxReplicas()).orElse(10),
+                Optional.ofNullable(config.metrics()).filter(m -> !m.isEmpty())
+                        .orElseGet(() -> List.of(new ScalingMetric("queue_depth", "5", null))),
                 normalizeConcurrencyControl(config.concurrencyControl())
         );
     }
@@ -87,19 +87,17 @@ public class FunctionSpecResolver {
             );
         }
 
-        int min = config.minTargetInFlightPerPod() == null
-                ? DEFAULT_MIN_TARGET_PER_POD
-                : Math.max(1, config.minTargetInFlightPerPod());
-        int max = config.maxTargetInFlightPerPod() == null
-                ? DEFAULT_MAX_TARGET_PER_POD
-                : Math.max(1, config.maxTargetInFlightPerPod());
+        int min = Optional.ofNullable(config.minTargetInFlightPerPod())
+                .map(v -> Math.max(1, v))
+                .orElse(DEFAULT_MIN_TARGET_PER_POD);
+        int max = Optional.ofNullable(config.maxTargetInFlightPerPod())
+                .map(v -> Math.max(1, v))
+                .orElse(DEFAULT_MAX_TARGET_PER_POD);
         if (min > max) {
             min = max;
         }
 
-        int target = config.targetInFlightPerPod() == null
-                ? DEFAULT_TARGET_PER_POD
-                : config.targetInFlightPerPod();
+        int target = Optional.ofNullable(config.targetInFlightPerPod()).orElse(DEFAULT_TARGET_PER_POD);
         target = Math.max(min, Math.min(max, target));
 
         return new ConcurrencyControlConfig(
@@ -107,10 +105,10 @@ public class FunctionSpecResolver {
                 target,
                 min,
                 max,
-                config.upscaleCooldownMs() == null ? DEFAULT_UPSCALE_COOLDOWN_MS : config.upscaleCooldownMs(),
-                config.downscaleCooldownMs() == null ? DEFAULT_DOWNSCALE_COOLDOWN_MS : config.downscaleCooldownMs(),
-                config.highLoadThreshold() == null ? DEFAULT_HIGH_LOAD_THRESHOLD : config.highLoadThreshold(),
-                config.lowLoadThreshold() == null ? DEFAULT_LOW_LOAD_THRESHOLD : config.lowLoadThreshold()
+                Optional.ofNullable(config.upscaleCooldownMs()).orElse(DEFAULT_UPSCALE_COOLDOWN_MS),
+                Optional.ofNullable(config.downscaleCooldownMs()).orElse(DEFAULT_DOWNSCALE_COOLDOWN_MS),
+                Optional.ofNullable(config.highLoadThreshold()).orElse(DEFAULT_HIGH_LOAD_THRESHOLD),
+                Optional.ofNullable(config.lowLoadThreshold()).orElse(DEFAULT_LOW_LOAD_THRESHOLD)
         );
     }
 }

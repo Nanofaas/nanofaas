@@ -63,6 +63,7 @@ class InvocationServiceDispatchTest {
     private SyncQueueGateway syncQueueGateway;
 
     private ExecutionStore executionStore;
+    private ExecutionCompletionHandler completionHandler;
     private InvocationService invocationService;
 
     @BeforeEach
@@ -72,15 +73,17 @@ class InvocationServiceDispatchTest {
         RateLimiter rateLimiter = new RateLimiter();
         rateLimiter.setMaxPerSecond(1000);
 
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+
         invocationService = new InvocationService(
                 functionService,
                 enqueuer,
                 executionStore,
                 idempotencyStore,
-                dispatcherRouter,
                 rateLimiter,
                 metrics,
-                syncQueueGateway
+                syncQueueGateway,
+                completionHandler
         );
 
         io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry =
@@ -177,15 +180,16 @@ class InvocationServiceDispatchTest {
 
     @Test
     void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() throws InterruptedException {
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
         InvocationService invocationServiceWithoutSyncQueue = new InvocationService(
                 functionService,
                 enqueuer,
                 executionStore,
                 new IdempotencyStore(),
-                dispatcherRouter,
                 new RateLimiter(),
                 metrics,
-                null
+                null,
+                handler
         );
 
         FunctionSpec spec = functionSpec("inline-no-sync-queue-fn", ExecutionMode.LOCAL);

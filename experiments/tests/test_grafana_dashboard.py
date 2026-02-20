@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DASHBOARD = REPO_ROOT / "grafana" / "dashboards" / "nanofaas.json"
+DASHBOARD = REPO_ROOT / "experiments" / "grafana" / "dashboards" / "nanofaas.json"
 
 
 def _load_dashboard():

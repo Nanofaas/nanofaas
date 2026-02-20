@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "e2e-loadtest.sh"
+SCRIPT = REPO_ROOT / "experiments" / "e2e-loadtest.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:

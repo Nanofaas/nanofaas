@@ -13,7 +13,8 @@ import questionary
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR / "lib"))
+EXPERIMENTS_DIR = REPO_ROOT / "experiments"
+sys.path.insert(0, str(EXPERIMENTS_DIR / "lib"))
 
 from control_plane_experiment_config import (  # noqa: E402
     build_deploy_env,
@@ -348,7 +349,7 @@ def run_loadtests(config: WizardConfig) -> None:
     for mode in config.loadtest.selected_modes():
         env = dict(base_env)
         env["INVOCATION_MODE"] = mode
-        run_cmd(["bash", str(SCRIPTS_DIR / "e2e-loadtest.sh")], env)
+        run_cmd(["bash", str(EXPERIMENTS_DIR / "e2e-loadtest.sh")], env)
 
 
 def main() -> int:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-JS_TEST = REPO_ROOT / "k6" / "tests" / "payload-model.test.mjs"
+JS_TEST = REPO_ROOT / "experiments" / "k6" / "tests" / "payload-model.test.mjs"
 
 
 def test_k6_payload_model_js_unit_tests_pass():

@@ -51,9 +51,12 @@ class InvocationServiceRetryQueueFullTest {
         rateLimiter = new RateLimiter();
         rateLimiter.setMaxPerSecond(1000);
 
+        ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
+                executionStore, enqueuer, dispatcherRouter, metrics);
+
         invocationService = new InvocationService(
                 functionService, enqueuer, executionStore, idempotencyStore,
-                dispatcherRouter, rateLimiter, metrics, syncQueueGateway
+                rateLimiter, metrics, syncQueueGateway, completionHandler
         );
 
         FunctionSpec testSpec = new FunctionSpec(

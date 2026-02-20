@@ -27,15 +27,15 @@ K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE:-5000}
 RESULTS_DIR_OVERRIDE=${RESULTS_DIR_OVERRIDE:-}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "loadtest"
-K6_DIR="${PROJECT_ROOT}/k6"
+K6_DIR="${PROJECT_ROOT}/experiments/k6"
 if [[ -n "${RESULTS_DIR_OVERRIDE}" ]]; then
     RESULTS_DIR="${RESULTS_DIR_OVERRIDE}"
 else
     RESULTS_DIR="${K6_DIR}/results"
 fi
-GRAFANA_DIR="${PROJECT_ROOT}/grafana"
+GRAFANA_DIR="${PROJECT_ROOT}/experiments/grafana"
 SELECTED_TESTS=()
 K6_STAGE_ARGS=()
 
@@ -251,7 +251,7 @@ from pathlib import Path
 base_url = sys.argv[1].rstrip("/")
 timeout_s = float(sys.argv[2])
 project_root = Path(sys.argv[3]).resolve()
-sys.path.insert(0, str(project_root / "scripts" / "lib"))
+sys.path.insert(0, str(project_root / "experiments" / "lib"))
 
 from loadtest_output_parity import compare_case_outputs, extract_output
 
@@ -679,7 +679,7 @@ print_summary() {
     log "Results:    ${RESULTS_DIR}/"
     log ""
     log "To stop Grafana:"
-    log "  docker compose -f grafana/docker-compose.yml down"
+    log "  docker compose -f experiments/grafana/docker-compose.yml down"
     log ""
     log "To tear down the VM:"
     log "  multipass delete ${VM_NAME}"

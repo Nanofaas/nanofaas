@@ -15,7 +15,7 @@ RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runt
 KEEP_VM=${KEEP_VM:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
+source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "cold-start-e2e"
 e2e_test_init
 vm_exec() { e2e_vm_exec "$@"; }

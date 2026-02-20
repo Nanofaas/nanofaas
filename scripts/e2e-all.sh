@@ -37,6 +37,7 @@ set -euo pipefail
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "e2e-all"
 
@@ -51,7 +52,7 @@ SUITES=(
     "buildpack|Buildpack images|${SCRIPT_DIR}/e2e-buildpack.sh"
     "k3s-curl|k3s + curl tests|${SCRIPT_DIR}/e2e-k3s-curl.sh"
     "k8s-vm|K8sE2eTest in VM|${SCRIPT_DIR}/e2e-k8s-vm.sh"
-    "cold-start|Cold start metrics|${SCRIPT_DIR}/e2e-cold-start-metrics.sh"
+    "cold-start|Cold start metrics|${PROJECT_ROOT}/experiments/e2e-cold-start-metrics.sh"
     "cli|Full CLI test suite|${SCRIPT_DIR}/e2e-cli.sh"
     "helm-stack|Helm + loadtest + autoscaling|HELM_STACK"
     "cli-host|Host CLI + platform|${SCRIPT_DIR}/e2e-cli-host-platform.sh"
@@ -181,7 +182,7 @@ run_helm_stack() {
     # Phase 2: Load test (reuses helm VM)
     if [[ "${suite_ok}" == "true" ]]; then
         log "Phase 2/3: Load test..."
-        if ! VM_NAME="${helm_vm_name}" "${SCRIPT_DIR}/e2e-loadtest.sh"; then
+        if ! VM_NAME="${helm_vm_name}" "${PROJECT_ROOT}/experiments/e2e-loadtest.sh"; then
             error "Load test failed"
             suite_ok=false
         fi
@@ -190,7 +191,7 @@ run_helm_stack() {
     # Phase 3: Autoscaling test (reuses helm VM)
     if [[ "${suite_ok}" == "true" ]]; then
         log "Phase 3/3: Autoscaling test..."
-        if ! VM_NAME="${helm_vm_name}" "${SCRIPT_DIR}/e2e-autoscaling.sh"; then
+        if ! VM_NAME="${helm_vm_name}" "${PROJECT_ROOT}/experiments/e2e-autoscaling.sh"; then
             error "Autoscaling test failed"
             suite_ok=false
         fi

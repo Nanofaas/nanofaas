@@ -16,3 +16,8 @@
 **/.pytest_cache/
 **/.venv/
 **/.uv/
+
+# k6 / experiment results
+k6/results/
+experiments/k6/results/
+experiments/loadtest/results/
