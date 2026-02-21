@@ -1,4 +1,5 @@
 .gradle/
+.gradle-local/
 **/build/
 **/out/
 **/target/
@@ -21,3 +22,4 @@
 k6/results/
 experiments/k6/results/
 experiments/loadtest/results/
+experiments/.image-cache/

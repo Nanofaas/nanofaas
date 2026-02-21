@@ -52,6 +52,11 @@ def test_build_deploy_env_sets_native_and_module_selector():
         namespace="nanofaas",
         keep_vm=True,
         tag="exp-123",
+        control_plane_native_build=True,
+        control_plane_only=True,
+        host_rebuild_images=True,
+        loadtest_workloads="word-stats,json-transform",
+        loadtest_runtimes="java,python,exec,java-lite",
         selected_modules=["async-queue", "sync-queue"],
     )
     assert env["VM_NAME"] == "vm-x"
@@ -64,6 +69,9 @@ def test_build_deploy_env_sets_native_and_module_selector():
     assert env["CONTROL_PLANE_NATIVE_BUILD"] == "true"
     assert env["CONTROL_PLANE_BUILD_ON_HOST"] == "true"
     assert env["CONTROL_PLANE_ONLY"] == "true"
+    assert env["HOST_REBUILD_IMAGES"] == "true"
+    assert env["LOADTEST_WORKLOADS"] == "word-stats,json-transform"
+    assert env["LOADTEST_RUNTIMES"] == "java,python,exec,java-lite"
     assert env["E2E_K3S_HELM_NONINTERACTIVE"] == "true"
     assert env["CONTROL_PLANE_MODULES"] == "async-queue,sync-queue"
 
@@ -77,9 +85,19 @@ def test_build_deploy_env_maps_empty_modules_to_none():
         namespace="nanofaas",
         keep_vm=False,
         tag="exp-core",
+        control_plane_native_build=False,
+        control_plane_only=False,
+        host_rebuild_images=False,
+        loadtest_workloads="word-stats",
+        loadtest_runtimes="java",
         selected_modules=[],
     )
     assert env["KEEP_VM"] == "false"
+    assert env["CONTROL_PLANE_NATIVE_BUILD"] == "false"
+    assert env["CONTROL_PLANE_ONLY"] == "false"
+    assert env["HOST_REBUILD_IMAGES"] == "false"
+    assert env["LOADTEST_WORKLOADS"] == "word-stats"
+    assert env["LOADTEST_RUNTIMES"] == "java"
     assert env["CONTROL_PLANE_MODULES"] == "none"
 
 

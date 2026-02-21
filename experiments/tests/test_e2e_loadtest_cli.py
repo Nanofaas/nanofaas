@@ -65,6 +65,15 @@ def test_loadtest_preflight_uses_dynamic_required_functions_and_guidance():
     assert "Missing required functions for selected tests" in content
     assert "No functions registered" in content
     assert "Control-plane-only deployment detected" in content
+    assert "python3 - \"${nanofaas_url}\" \"${timeout_seconds}\" \"${PROJECT_ROOT}\" \"${SELECTED_TESTS[@]}\"" in content
+    assert "if len(case_functions) < 2:" in content
+
+
+def test_loadtest_results_default_dir_is_mode_scoped_and_fail_rate_uses_fails():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert "RESULTS_ROOT_DIR" in content
+    assert "RESULTS_DIR=\"${RESULTS_ROOT_DIR}/${INVOCATION_MODE}\"" in content
+    assert "failed.get(\"fails\", 0)" in content
 
 
 def test_loadtest_single_selected_function_reaches_final_report(tmp_path: Path):

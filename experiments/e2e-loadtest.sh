@@ -30,11 +30,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "loadtest"
 K6_DIR="${PROJECT_ROOT}/experiments/k6"
-if [[ -n "${RESULTS_DIR_OVERRIDE}" ]]; then
-    RESULTS_DIR="${RESULTS_DIR_OVERRIDE}"
-else
-    RESULTS_DIR="${K6_DIR}/results"
-fi
+RESULTS_ROOT_DIR="${K6_DIR}/results"
+RESULTS_DIR=""
 GRAFANA_DIR="${PROJECT_ROOT}/experiments/grafana"
 SELECTED_TESTS=()
 K6_STAGE_ARGS=()
@@ -234,6 +231,11 @@ prepare_loadtest_configuration() {
     validate_payload_options
     build_selected_tests
     build_stage_args
+    if [[ -n "${RESULTS_DIR_OVERRIDE}" ]]; then
+        RESULTS_DIR="${RESULTS_DIR_OVERRIDE}"
+    else
+        RESULTS_DIR="${RESULTS_ROOT_DIR}/${INVOCATION_MODE}"
+    fi
 }
 
 verify_output_parity() {
@@ -241,7 +243,7 @@ verify_output_parity() {
     local timeout_seconds="$2"
 
     log "Verifying output parity across runtimes..."
-    python3 - "${nanofaas_url}" "${timeout_seconds}" "${PROJECT_ROOT}" << 'PYEOF'
+    python3 - "${nanofaas_url}" "${timeout_seconds}" "${PROJECT_ROOT}" "${SELECTED_TESTS[@]}" << 'PYEOF'
 import json
 import sys
 import urllib.error
@@ -251,11 +253,12 @@ from pathlib import Path
 base_url = sys.argv[1].rstrip("/")
 timeout_s = float(sys.argv[2])
 project_root = Path(sys.argv[3]).resolve()
+selected_functions = set(sys.argv[4:])
 sys.path.insert(0, str(project_root / "experiments" / "lib"))
 
 from loadtest_output_parity import compare_case_outputs, extract_output
 
-CASES = [
+ALL_CASES = [
     {
         "name": "word-stats",
         "functions": ["word-stats-java", "word-stats-java-lite", "word-stats-python", "word-stats-exec"],
@@ -321,9 +324,15 @@ def invoke(function_name, payload):
     return extract_output(parsed)
 
 all_ok = True
-for case in CASES:
+executed_cases = 0
+for case in ALL_CASES:
+    case_functions = [fn for fn in case["functions"] if fn in selected_functions]
+    if len(case_functions) < 2:
+        print(f"[parity] skip: {case['name']} (selected runtimes for this workload: {len(case_functions)})")
+        continue
+    executed_cases += 1
     outputs = []
-    for fn in case["functions"]:
+    for fn in case_functions:
         outputs.append((fn, invoke(fn, case["input"])))
     mismatches = compare_case_outputs(outputs, case_name=case["name"])
     if mismatches:
@@ -335,6 +344,9 @@ for case in CASES:
             print(f"    actual  : {json.dumps(function_output, sort_keys=True)[:500]}")
     else:
         print(f"[parity] ok: {case['name']}")
+
+if executed_cases == 0:
+    print("[parity] skipped: no workload has at least two selected runtimes")
 
 if not all_ok:
     raise SystemExit(1)
@@ -602,7 +614,13 @@ for test in tests:
         d = json.load(f)
     m = d.get("metrics", {})
     reqs = int(m.get("http_reqs", {}).get("count", 0))
-    fails = int(m.get("http_req_failed", {}).get("passes", 0))
+    failed = m.get("http_req_failed", {})
+    if "fails" in failed:
+        fails = int(failed.get("fails", 0))
+    elif "passes" in failed:
+        fails = max(0, reqs - int(failed.get("passes", 0)))
+    else:
+        fails = 0
     dur = m.get("http_req_duration", {})
     avg = dur.get("avg", 0)
     p90 = dur.get("p(90)", 0)

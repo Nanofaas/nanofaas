@@ -21,6 +21,9 @@ TAG=""
 PUSH=true
 PLATFORM=""
 TARGETS="all"
+NATIVE_IMAGE_XMX=${NATIVE_IMAGE_XMX:-8g}
+NATIVE_ACTIVE_PROCESSORS=${NATIVE_ACTIVE_PROCESSORS:-}
+NATIVE_IMAGE_BUILD_ARGS=${NATIVE_IMAGE_BUILD_ARGS:-}
 
 usage() {
     cat <<EOF
@@ -81,9 +84,34 @@ push_image() {
     fi
 }
 
+detect_cpu_count() {
+    if command -v getconf >/dev/null 2>&1; then
+        getconf _NPROCESSORS_ONLN 2>/dev/null && return
+    fi
+    if command -v nproc >/dev/null 2>&1; then
+        nproc 2>/dev/null && return
+    fi
+    if command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.logicalcpu 2>/dev/null && return
+    fi
+    echo 4
+}
+
 DOCKER_PLATFORM_FLAG=""
 if [[ -n "$PLATFORM" ]]; then
     DOCKER_PLATFORM_FLAG="--platform $PLATFORM"
+fi
+
+RESOLVED_NATIVE_IMAGE_BUILD_ARGS="$NATIVE_IMAGE_BUILD_ARGS"
+if [[ -z "$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" ]]; then
+    resolved_active_processors="$NATIVE_ACTIVE_PROCESSORS"
+    if [[ -z "$resolved_active_processors" ]]; then
+        resolved_active_processors="$(detect_cpu_count | tr -d '\r\n')"
+    fi
+    if [[ ! "$resolved_active_processors" =~ ^[0-9]+$ ]] || (( resolved_active_processors < 1 )); then
+        resolved_active_processors=4
+    fi
+    RESOLVED_NATIVE_IMAGE_BUILD_ARGS="-H:+AddAllCharsets -J-Xmx${NATIVE_IMAGE_XMX} -J-XX:ActiveProcessorCount=${resolved_active_processors}"
 fi
 
 cd "$ROOT"
@@ -92,7 +120,7 @@ cd "$ROOT"
 if should_build "control-plane"; then
     IMG="${BASE}/control-plane:${TAG}${TAG_SUFFIX}"
     info "Building control-plane → $IMG"
-    BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew :control-plane:bootBuildImage \
+    NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew :control-plane:bootBuildImage \
         -PcontrolPlaneImage="$IMG"
     ok "Built $IMG"
     push_image "$IMG"
@@ -102,7 +130,7 @@ fi
 if should_build "function-runtime"; then
     IMG="${BASE}/function-runtime:${TAG}${TAG_SUFFIX}"
     info "Building function-runtime → $IMG"
-    BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew :function-runtime:bootBuildImage \
+    NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew :function-runtime:bootBuildImage \
         -PfunctionRuntimeImage="$IMG" || { warn "function-runtime build failed, skipping"; }
     if docker image inspect "$IMG" &>/dev/null; then
         ok "Built $IMG"
@@ -128,7 +156,7 @@ if should_build "java-demos"; then
     for example in word-stats json-transform; do
         IMG="${BASE}/java-${example}:${TAG}${TAG_SUFFIX}"
         info "Building java/${example} → $IMG"
-        BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew ":examples:java:${example}:bootBuildImage" \
+        NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew ":examples:java:${example}:bootBuildImage" \
             -PfunctionImage="$IMG"
         ok "Built $IMG"
         push_image "$IMG"

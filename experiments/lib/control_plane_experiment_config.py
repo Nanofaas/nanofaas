@@ -94,6 +94,11 @@ def build_deploy_env(
     namespace: str,
     keep_vm: bool,
     tag: str,
+    control_plane_native_build: bool,
+    control_plane_only: bool,
+    host_rebuild_images: bool,
+    loadtest_workloads: str,
+    loadtest_runtimes: str,
     selected_modules: list[str],
 ) -> dict[str, str]:
     return {
@@ -104,9 +109,12 @@ def build_deploy_env(
         "NAMESPACE": namespace,
         "KEEP_VM": "true" if keep_vm else "false",
         "TAG": tag,
-        "CONTROL_PLANE_NATIVE_BUILD": "true",
+        "CONTROL_PLANE_NATIVE_BUILD": "true" if control_plane_native_build else "false",
         "CONTROL_PLANE_BUILD_ON_HOST": "true",
-        "CONTROL_PLANE_ONLY": "true",
+        "CONTROL_PLANE_ONLY": "true" if control_plane_only else "false",
+        "HOST_REBUILD_IMAGES": "true" if host_rebuild_images else "false",
+        "LOADTEST_WORKLOADS": loadtest_workloads,
+        "LOADTEST_RUNTIMES": loadtest_runtimes,
         "E2E_K3S_HELM_NONINTERACTIVE": "true",
         "CONTROL_PLANE_MODULES": build_control_plane_modules_selector(selected_modules),
     }

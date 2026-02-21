@@ -28,11 +28,15 @@ TAG=${TAG:-e2e}
 CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD:-false}
 CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST:-false}
 CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY:-false}
+HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES:-true}
+LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
+LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
 CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES:-all}
 CONTROL_PLANE_IMAGE_BUILDER=${CONTROL_PLANE_IMAGE_BUILDER:-}
 CONTROL_PLANE_IMAGE_RUN_IMAGE=${CONTROL_PLANE_IMAGE_RUN_IMAGE:-}
 CONTROL_PLANE_IMAGE_PLATFORM=${CONTROL_PLANE_IMAGE_PLATFORM:-}
 CONTROL_PLANE_NATIVE_IMAGE_BUILD_ARGS=${CONTROL_PLANE_NATIVE_IMAGE_BUILD_ARGS:-}
+CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS=${CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS:-}
 VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS:-900}
 VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS:-30}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +44,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 if [[ "${E2E_K3S_HELM_NONINTERACTIVE:-false}" != "true" ]]; then
     echo "[e2e] Modalita interattiva obbligatoria: avvio configuratore..."
-    exec bash "${SCRIPT_DIR}/e2e-control-plane-experiment.sh"
+    exec bash "${PROJECT_ROOT}/experiments/run.sh"
 fi
 
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
@@ -59,14 +63,35 @@ BASH_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}
 JAVA_LITE_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-lite-word-stats:${TAG}"
 JAVA_LITE_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-lite-json-transform:${TAG}"
 CURL_IMAGE="${LOCAL_REGISTRY}/curlimages/curl:latest"
-HOST_CONTROL_IMAGE="nanofaas/control-plane:host-${TAG}"
+HOST_CONTROL_IMAGE=""
+CONTROL_PLANE_CACHE_ROOT="${PROJECT_ROOT}/experiments/.image-cache/control-plane"
+CONTROL_PLANE_CACHE_DIR=""
+CONTROL_PLANE_CACHE_MANIFEST=""
 
 RESOLVED_CP_IMAGE_PLATFORM=""
 RESOLVED_CP_IMAGE_BUILDER=""
 RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS=""
+SELECTED_WORKLOADS=()
+SELECTED_RUNTIMES=()
+SELECTED_DEMO_FUNCTIONS=()
+DEMO_FUNCTIONS_YAML=""
+
+detect_local_cpu_count() {
+    if command -v getconf >/dev/null 2>&1; then
+        getconf _NPROCESSORS_ONLN 2>/dev/null && return
+    fi
+    if command -v nproc >/dev/null 2>&1; then
+        nproc 2>/dev/null && return
+    fi
+    if command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.logicalcpu 2>/dev/null && return
+    fi
+    echo 4
+}
 
 resolve_control_plane_native_settings_for_arch() {
     local arch=${1:-}
+    local active_processors=${2:-}
     RESOLVED_CP_IMAGE_PLATFORM="${CONTROL_PLANE_IMAGE_PLATFORM:-}"
     RESOLVED_CP_IMAGE_BUILDER="${CONTROL_PLANE_IMAGE_BUILDER:-}"
     RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS="${CONTROL_PLANE_NATIVE_IMAGE_BUILD_ARGS:-}"
@@ -84,20 +109,363 @@ resolve_control_plane_native_settings_for_arch() {
     if [[ -z "${RESOLVED_CP_IMAGE_BUILDER}" && "${RESOLVED_CP_IMAGE_PLATFORM}" == "linux/arm64" ]]; then
         RESOLVED_CP_IMAGE_BUILDER="paketobuildpacks/builder-jammy-java-tiny:latest"
     fi
+    if [[ -z "${active_processors}" ]]; then
+        active_processors="$(detect_local_cpu_count | tr -d '\r\n')"
+    fi
+    if [[ -n "${CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS}" ]]; then
+        active_processors="${CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS}"
+    fi
+    if [[ ! "${active_processors}" =~ ^[0-9]+$ ]] || (( active_processors < 1 )); then
+        active_processors=4
+    fi
     if [[ -z "${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}" ]]; then
-        local memory_upper
-        memory_upper="$(printf '%s' "${MEMORY}" | tr '[:lower:]' '[:upper:]')"
-        case "${memory_upper}" in
-            [0-8]G|8G)
-                RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS="-H:+AddAllCharsets -J-Xmx4g -J-XX:ActiveProcessorCount=2"
-                ;;
-            9G|10G|11G|12G)
-                RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS="-H:+AddAllCharsets -J-Xmx6g -J-XX:ActiveProcessorCount=3"
-                ;;
-            *)
-                RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS="-H:+AddAllCharsets -J-Xmx8g -J-XX:ActiveProcessorCount=4"
-                ;;
-        esac
+        RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS="-H:+AddAllCharsets -J-Xmx8g -J-XX:ActiveProcessorCount=${active_processors}"
+    fi
+}
+
+compute_sha256_12() {
+    local input=${1:-}
+    if command -v shasum >/dev/null 2>&1; then
+        printf '%s' "${input}" | shasum -a 256 | awk '{print $1}' | cut -c1-12
+        return
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "${input}" | sha256sum | awk '{print $1}' | cut -c1-12
+        return
+    fi
+    # Fallback (worst-case) to a stable sentinel; build will still function, only reuse precision degrades.
+    echo "nohashsupport"
+}
+
+resolve_host_control_image_ref() {
+    local build_mode="jvm"
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        build_mode="native"
+    fi
+    local modules_selector="${CONTROL_PLANE_MODULES:-none}"
+    local fingerprint
+    fingerprint="$(compute_sha256_12 "${build_mode}|${modules_selector}")"
+    echo "nanofaas/control-plane:host-${build_mode}-${fingerprint}"
+}
+
+array_contains() {
+    local needle="$1"
+    shift
+    local item
+    for item in "$@"; do
+        if [[ "${item}" == "${needle}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+normalize_csv_selection() {
+    local raw_csv="$1"
+    shift
+    local allowed=("$@")
+    local selected=()
+    local lowered
+    lowered=$(printf '%s' "${raw_csv}" | tr '[:upper:]' '[:lower:]')
+    local tokens=()
+    IFS=',' read -r -a tokens <<< "${lowered}"
+    local token
+    for token in ${tokens[@]+"${tokens[@]}"}; do
+        token="${token//[[:space:]]/}"
+        [[ -z "${token}" ]] && continue
+        if ! array_contains "${token}" "${allowed[@]}"; then
+            err "Invalid value '${token}' in '${raw_csv}'. Allowed: ${allowed[*]}"
+            exit 2
+        fi
+        if ! array_contains "${token}" ${selected[@]+"${selected[@]}"}; then
+            selected+=("${token}")
+        fi
+    done
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        err "Selection '${raw_csv}' produced no valid entries."
+        exit 2
+    fi
+    echo "${selected[*]}"
+}
+
+demo_function_name() {
+    local workload="$1"
+    local runtime="$2"
+    case "${runtime}" in
+        java|java-lite|python|exec)
+            echo "${workload}-${runtime}"
+            ;;
+        *)
+            err "Unknown runtime '${runtime}'"
+            exit 2
+            ;;
+    esac
+}
+
+host_image_exists() {
+    local image_ref=${1:?image_ref is required}
+    docker image inspect "${image_ref}" >/dev/null 2>&1
+}
+
+host_image_id() {
+    local image_ref=${1:?image_ref is required}
+    docker image inspect --format='{{.Id}}' "${image_ref}" 2>/dev/null | tr -d '\r\n'
+}
+
+host_latest_image_for_repository() {
+    local repo=${1:?repo is required}
+    local candidate=""
+    while IFS= read -r candidate; do
+        [[ -z "${candidate}" ]] && continue
+        [[ "${candidate}" == *":<none>" ]] && continue
+        if host_image_exists "${candidate}"; then
+            echo "${candidate}"
+            return 0
+        fi
+    done < <(docker image ls "${repo}" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true)
+    return 1
+}
+
+ensure_host_image_available_from_local_cache() {
+    local target_ref=${1:?target_ref is required}
+    if host_image_exists "${target_ref}"; then
+        return 0
+    fi
+    local repo
+    repo="${target_ref%:*}"
+    local source_ref
+    source_ref="$(host_latest_image_for_repository "${repo}" || true)"
+    if [[ -z "${source_ref}" ]]; then
+        return 1
+    fi
+    if [[ "${source_ref}" == "${target_ref}" ]]; then
+        return 1
+    fi
+    log "Host image '${target_ref}' missing; retagging from '${source_ref}'."
+    docker tag "${source_ref}" "${target_ref}"
+    host_image_exists "${target_ref}"
+}
+
+resolve_control_plane_compatible_image_ref() {
+    if [[ ! -f "${CONTROL_PLANE_CACHE_MANIFEST}" ]]; then
+        return 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local build_mode="jvm"
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        build_mode="native"
+    fi
+    local modules_selector="${CONTROL_PLANE_MODULES:-none}"
+    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${build_mode}" "${modules_selector}" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+expected_mode = sys.argv[2]
+expected_selector = sys.argv[3]
+
+try:
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+manifest_modules = payload.get("selected_modules")
+if not isinstance(manifest_modules, list):
+    raise SystemExit(1)
+expected_modules = [] if expected_selector in {"", "none"} else [item for item in expected_selector.split(",") if item]
+if sorted(str(item).strip() for item in manifest_modules if str(item).strip()) != sorted(expected_modules):
+    raise SystemExit(1)
+if payload.get("build_mode") != expected_mode:
+    raise SystemExit(1)
+image_ref = payload.get("image_ref")
+if not isinstance(image_ref, str) or not image_ref.strip():
+    raise SystemExit(1)
+print(image_ref.strip())
+PYEOF
+}
+
+resolve_control_plane_cache_dir() {
+    local build_mode="jvm"
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        build_mode="native"
+    fi
+    local modules_selector="${CONTROL_PLANE_MODULES:-none}"
+    local modules_hash
+    modules_hash="$(compute_sha256_12 "${modules_selector}")"
+    echo "${CONTROL_PLANE_CACHE_ROOT}/${build_mode}/${modules_hash}"
+}
+
+control_plane_cache_manifest_is_valid() {
+    if [[ ! -f "${CONTROL_PLANE_CACHE_MANIFEST}" ]]; then
+        return 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        warn "python3 not found: cannot validate control-plane cache manifest."
+        return 1
+    fi
+    local image_id
+    image_id="$(host_image_id "${HOST_CONTROL_IMAGE}")"
+    if [[ -z "${image_id}" ]]; then
+        return 1
+    fi
+
+    local build_mode="jvm"
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        build_mode="native"
+    fi
+    local modules_selector="${CONTROL_PLANE_MODULES:-none}"
+
+    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${HOST_CONTROL_IMAGE}" "${image_id}" "${build_mode}" "${modules_selector}" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+expected_ref = sys.argv[2]
+expected_id = sys.argv[3]
+expected_mode = sys.argv[4]
+expected_selector = sys.argv[5]
+
+try:
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+expected_modules = [] if expected_selector in {"", "none"} else [item for item in expected_selector.split(",") if item]
+manifest_modules = payload.get("selected_modules")
+if not isinstance(manifest_modules, list):
+    raise SystemExit(1)
+
+if payload.get("build_mode") != expected_mode:
+    raise SystemExit(1)
+if payload.get("image_ref") != expected_ref:
+    raise SystemExit(1)
+if payload.get("image_id") != expected_id:
+    raise SystemExit(1)
+if sorted(str(item).strip() for item in manifest_modules if str(item).strip()) != sorted(expected_modules):
+    raise SystemExit(1)
+PYEOF
+}
+
+write_control_plane_cache_manifest() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        warn "python3 not found: skipping control-plane cache manifest write."
+        return
+    fi
+    local image_id
+    image_id="$(host_image_id "${HOST_CONTROL_IMAGE}")"
+    if [[ -z "${image_id}" ]]; then
+        warn "Cannot determine control-plane image id for '${HOST_CONTROL_IMAGE}', skipping cache manifest write."
+        return
+    fi
+    local build_mode="jvm"
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        build_mode="native"
+    fi
+    local modules_selector="${CONTROL_PLANE_MODULES:-none}"
+
+    mkdir -p "${CONTROL_PLANE_CACHE_DIR}"
+    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${HOST_CONTROL_IMAGE}" "${image_id}" "${build_mode}" "${modules_selector}" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+image_ref = sys.argv[2]
+image_id = sys.argv[3]
+build_mode = sys.argv[4]
+modules_selector = sys.argv[5]
+
+selected_modules = [] if modules_selector in {"", "none"} else [item for item in modules_selector.split(",") if item]
+payload = {
+    "build_mode": build_mode,
+    "selected_modules": sorted(selected_modules),
+    "image_ref": image_ref,
+    "image_id": image_id,
+    "built_at": datetime.now(timezone.utc).isoformat(),
+}
+manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PYEOF
+}
+
+should_include_demo() {
+    local workload="$1"
+    local runtime="$2"
+    if [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
+        return 1
+    fi
+    array_contains "${workload}" ${SELECTED_WORKLOADS[@]+"${SELECTED_WORKLOADS[@]}"} || return 1
+    array_contains "${runtime}" ${SELECTED_RUNTIMES[@]+"${SELECTED_RUNTIMES[@]}"} || return 1
+    return 0
+}
+
+resolve_selected_demo_targets() {
+    local allowed_workloads=("word-stats" "json-transform")
+    local allowed_runtimes=("java" "java-lite" "python" "exec")
+    read -r -a SELECTED_WORKLOADS <<< "$(normalize_csv_selection "${LOADTEST_WORKLOADS}" "${allowed_workloads[@]}")"
+    read -r -a SELECTED_RUNTIMES <<< "$(normalize_csv_selection "${LOADTEST_RUNTIMES}" "${allowed_runtimes[@]}")"
+    SELECTED_DEMO_FUNCTIONS=()
+    local workload runtime
+    for workload in "${SELECTED_WORKLOADS[@]}"; do
+        for runtime in "${SELECTED_RUNTIMES[@]}"; do
+            SELECTED_DEMO_FUNCTIONS+=("$(demo_function_name "${workload}" "${runtime}")")
+        done
+    done
+    if [[ "${CONTROL_PLANE_ONLY}" != "true" && ${#SELECTED_DEMO_FUNCTIONS[@]} -eq 0 ]]; then
+        err "No demo functions selected while CONTROL_PLANE_ONLY=false."
+        exit 2
+    fi
+}
+
+append_demo_function_yaml() {
+    local name="$1"
+    local image="$2"
+    local runtime_mode="${3:-}"
+    DEMO_FUNCTIONS_YAML+="    - name: ${name}"$'\n'
+    DEMO_FUNCTIONS_YAML+="      image: ${image}"$'\n'
+    DEMO_FUNCTIONS_YAML+="      timeoutMs: 30000"$'\n'
+    DEMO_FUNCTIONS_YAML+="      concurrency: 4"$'\n'
+    DEMO_FUNCTIONS_YAML+="      queueSize: 100"$'\n'
+    DEMO_FUNCTIONS_YAML+="      maxRetries: 3"$'\n'
+    DEMO_FUNCTIONS_YAML+="      executionMode: DEPLOYMENT"$'\n'
+    if [[ -n "${runtime_mode}" ]]; then
+        DEMO_FUNCTIONS_YAML+="      runtimeMode: ${runtime_mode}"$'\n'
+    fi
+}
+
+build_demo_functions_yaml() {
+    DEMO_FUNCTIONS_YAML=""
+    if should_include_demo "word-stats" "java"; then
+        append_demo_function_yaml "word-stats-java" "${LOCAL_REGISTRY}/nanofaas/java-word-stats:${TAG}"
+    fi
+    if should_include_demo "json-transform" "java"; then
+        append_demo_function_yaml "json-transform-java" "${LOCAL_REGISTRY}/nanofaas/java-json-transform:${TAG}"
+    fi
+    if should_include_demo "word-stats" "python"; then
+        append_demo_function_yaml "word-stats-python" "${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}"
+    fi
+    if should_include_demo "json-transform" "python"; then
+        append_demo_function_yaml "json-transform-python" "${LOCAL_REGISTRY}/nanofaas/python-json-transform:${TAG}"
+    fi
+    if should_include_demo "word-stats" "exec"; then
+        append_demo_function_yaml "word-stats-exec" "${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}" "STDIO"
+    fi
+    if should_include_demo "json-transform" "exec"; then
+        append_demo_function_yaml "json-transform-exec" "${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}" "STDIO"
+    fi
+    if should_include_demo "word-stats" "java-lite"; then
+        append_demo_function_yaml "word-stats-java-lite" "${LOCAL_REGISTRY}/nanofaas/java-lite-word-stats:${TAG}"
+    fi
+    if should_include_demo "json-transform" "java-lite"; then
+        append_demo_function_yaml "json-transform-java-lite" "${LOCAL_REGISTRY}/nanofaas/java-lite-json-transform:${TAG}"
+    fi
+    if [[ -z "${DEMO_FUNCTIONS_YAML}" ]]; then
+        DEMO_FUNCTIONS_YAML="    []"$'\n'
     fi
 }
 
@@ -112,11 +480,37 @@ build_control_plane_image_on_host() {
         err "docker non trovato sul host. Avvia Docker Desktop e riprova."
         exit 1
     fi
+    if [[ "${HOST_REBUILD_IMAGES}" != "true" ]]; then
+        if host_image_exists "${HOST_CONTROL_IMAGE}"; then
+            if control_plane_cache_manifest_is_valid; then
+                log "Reusing existing host-built control-plane image: ${HOST_CONTROL_IMAGE}"
+                return
+            fi
+            log "Reusing existing host-built control-plane image and refreshing cache manifest: ${HOST_CONTROL_IMAGE}"
+            write_control_plane_cache_manifest
+            return
+        fi
+
+        local compatible_source_ref=""
+        compatible_source_ref="$(resolve_control_plane_compatible_image_ref || true)"
+        if [[ -n "${compatible_source_ref}" ]] && host_image_exists "${compatible_source_ref}"; then
+            if [[ "${compatible_source_ref}" != "${HOST_CONTROL_IMAGE}" ]]; then
+                log "Host control-plane image '${HOST_CONTROL_IMAGE}' missing; retagging from compatible cached image '${compatible_source_ref}'."
+                docker tag "${compatible_source_ref}" "${HOST_CONTROL_IMAGE}"
+            fi
+            write_control_plane_cache_manifest
+            log "Reusing existing host-built control-plane image: ${HOST_CONTROL_IMAGE}"
+            return
+        fi
+        warn "HOST_REBUILD_IMAGES=false but missing host control-plane image '${HOST_CONTROL_IMAGE}'. Falling back to host build."
+    fi
 
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         local host_arch
+        local host_cpu_count
         host_arch="$(uname -m | tr -d '\r\n')"
-        resolve_control_plane_native_settings_for_arch "${host_arch}"
+        host_cpu_count="$(detect_local_cpu_count | tr -d '\r\n')"
+        resolve_control_plane_native_settings_for_arch "${host_arch}" "${host_cpu_count}"
 
         local native_cmd
         native_cmd="cd ${PROJECT_ROOT} && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${HOST_CONTROL_IMAGE} -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon"
@@ -133,8 +527,96 @@ build_control_plane_image_on_host() {
         /bin/bash -lc "${native_cmd}"
     else
         log "Building control-plane image on host (JVM Dockerfile)..."
-        (cd "${PROJECT_ROOT}" && ./gradlew :control-plane:bootJar --no-daemon -q)
+        (cd "${PROJECT_ROOT}" && ./gradlew :control-plane:bootJar -PcontrolPlaneModules="${CONTROL_PLANE_MODULES}" --no-daemon -q)
         (cd "${PROJECT_ROOT}" && docker build -t "${HOST_CONTROL_IMAGE}" -f control-plane/Dockerfile control-plane/)
+    fi
+    write_control_plane_cache_manifest
+}
+
+build_non_control_plane_images_on_host() {
+    if [[ "${SKIP_BUILD}" == "true" ]]; then
+        return
+    fi
+    if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" != "true" ]]; then
+        return
+    fi
+    if [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
+        return
+    fi
+    if ! command -v docker >/dev/null 2>&1; then
+        err "docker non trovato sul host. Avvia Docker Desktop e riprova."
+        exit 1
+    fi
+    if [[ "${HOST_REBUILD_IMAGES}" != "true" ]]; then
+        local expected_images=("${RUNTIME_IMAGE}")
+        if should_include_demo "word-stats" "java"; then expected_images+=("${JAVA_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "java"; then expected_images+=("${JAVA_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "python"; then expected_images+=("${PYTHON_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "python"; then expected_images+=("${PYTHON_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "exec"; then expected_images+=("${BASH_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "exec"; then expected_images+=("${BASH_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "java-lite"; then expected_images+=("${JAVA_LITE_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "java-lite"; then expected_images+=("${JAVA_LITE_JSON_TRANSFORM_IMAGE}"); fi
+
+        local image_ref missing_image=false
+        for image_ref in "${expected_images[@]}"; do
+            if ! ensure_host_image_available_from_local_cache "${image_ref}"; then
+                missing_image=true
+                break
+            fi
+        done
+        if [[ "${missing_image}" == "false" ]]; then
+            log "Reusing existing host-built function/runtime/demo images."
+            return
+        fi
+        warn "HOST_REBUILD_IMAGES=false but one or more host images are missing. Falling back to host build."
+    fi
+
+    local gradle_tasks=(":function-runtime:bootJar")
+    if should_include_demo "word-stats" "java"; then
+        gradle_tasks+=(":examples:java:word-stats:bootJar")
+    fi
+    if should_include_demo "json-transform" "java"; then
+        gradle_tasks+=(":examples:java:json-transform:bootJar")
+    fi
+
+    log "Building function/runtime JARs on host..."
+    (cd "${PROJECT_ROOT}" && ./gradlew "${gradle_tasks[@]}" --no-daemon -q)
+
+    log "Building function-runtime image on host..."
+    (cd "${PROJECT_ROOT}" && docker build -t "${RUNTIME_IMAGE}" -f function-runtime/Dockerfile function-runtime/)
+
+    if should_include_demo "word-stats" "java"; then
+        log "Building image on host: word-stats-java"
+        (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_WORD_STATS_IMAGE}" -f examples/java/word-stats/Dockerfile examples/java/word-stats/)
+    fi
+    if should_include_demo "json-transform" "java"; then
+        log "Building image on host: json-transform-java"
+        (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_JSON_TRANSFORM_IMAGE}" -f examples/java/json-transform/Dockerfile examples/java/json-transform/)
+    fi
+    if should_include_demo "word-stats" "python"; then
+        log "Building image on host: word-stats-python"
+        (cd "${PROJECT_ROOT}" && docker build -t "${PYTHON_WORD_STATS_IMAGE}" -f examples/python/word-stats/Dockerfile .)
+    fi
+    if should_include_demo "json-transform" "python"; then
+        log "Building image on host: json-transform-python"
+        (cd "${PROJECT_ROOT}" && docker build -t "${PYTHON_JSON_TRANSFORM_IMAGE}" -f examples/python/json-transform/Dockerfile .)
+    fi
+    if should_include_demo "word-stats" "exec"; then
+        log "Building image on host: word-stats-exec"
+        (cd "${PROJECT_ROOT}" && docker build -t "${BASH_WORD_STATS_IMAGE}" -f examples/bash/word-stats/Dockerfile .)
+    fi
+    if should_include_demo "json-transform" "exec"; then
+        log "Building image on host: json-transform-exec"
+        (cd "${PROJECT_ROOT}" && docker build -t "${BASH_JSON_TRANSFORM_IMAGE}" -f examples/bash/json-transform/Dockerfile .)
+    fi
+    if should_include_demo "word-stats" "java-lite"; then
+        log "Building image on host: word-stats-java-lite"
+        (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_LITE_WORD_STATS_IMAGE}" -f examples/java/word-stats-lite/Dockerfile .)
+    fi
+    if should_include_demo "json-transform" "java-lite"; then
+        log "Building image on host: json-transform-java-lite"
+        (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_LITE_JSON_TRANSFORM_IMAGE}" -f examples/java/json-transform-lite/Dockerfile .)
     fi
 }
 
@@ -162,12 +644,53 @@ push_host_control_plane_image_to_registry() {
     log "Host-built control-plane image pushed to registry"
 }
 
+push_host_non_control_plane_images_to_registry() {
+    if [[ "${SKIP_BUILD}" == "true" ]]; then
+        return
+    fi
+    if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" != "true" ]]; then
+        return
+    fi
+    if [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
+        return
+    fi
+
+    local images=("${RUNTIME_IMAGE}")
+    if should_include_demo "word-stats" "java"; then images+=("${JAVA_WORD_STATS_IMAGE}"); fi
+    if should_include_demo "json-transform" "java"; then images+=("${JAVA_JSON_TRANSFORM_IMAGE}"); fi
+    if should_include_demo "word-stats" "python"; then images+=("${PYTHON_WORD_STATS_IMAGE}"); fi
+    if should_include_demo "json-transform" "python"; then images+=("${PYTHON_JSON_TRANSFORM_IMAGE}"); fi
+    if should_include_demo "word-stats" "exec"; then images+=("${BASH_WORD_STATS_IMAGE}"); fi
+    if should_include_demo "json-transform" "exec"; then images+=("${BASH_JSON_TRANSFORM_IMAGE}"); fi
+    if should_include_demo "word-stats" "java-lite"; then images+=("${JAVA_LITE_WORD_STATS_IMAGE}"); fi
+    if should_include_demo "json-transform" "java-lite"; then images+=("${JAVA_LITE_JSON_TRANSFORM_IMAGE}"); fi
+
+    local host_tar
+    host_tar="$(mktemp /tmp/nanofaas-host-function-images.XXXXXX.tar)"
+    log "Exporting host function/demo images..."
+    docker save "${images[@]}" -o "${host_tar}"
+
+    log "Copying host function/demo images to VM and pushing to ${LOCAL_REGISTRY}..."
+    e2e_copy_to_vm "${host_tar}" "${VM_NAME}" "/tmp/host-function-images.tar"
+    rm -f "${host_tar}"
+
+    vm_exec "sudo docker load -i /tmp/host-function-images.tar"
+    local image
+    for image in "${images[@]}"; do
+        vm_exec "sudo docker push ${image}"
+    done
+    vm_exec "rm -f /tmp/host-function-images.tar"
+    log "Host-built function/demo images pushed to registry"
+}
+
 build_control_plane_image_on_vm() {
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         local module_selector="${CONTROL_PLANE_MODULES:-all}"
         local vm_arch
+        local vm_cpu_count
         vm_arch="$(vm_exec "uname -m" | tr -d '\r\n' || true)"
-        resolve_control_plane_native_settings_for_arch "${vm_arch}"
+        vm_cpu_count="$(vm_exec "getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo ${CPUS}" | tr -d '\r\n' || true)"
+        resolve_control_plane_native_settings_for_arch "${vm_arch}" "${vm_cpu_count}"
         local native_cmd
         native_cmd="cd /home/ubuntu/nanofaas && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${CONTROL_IMAGE} -PcontrolPlaneModules=${module_selector} --no-daemon"
         if [[ -n "${RESOLVED_CP_IMAGE_BUILDER}" ]]; then
@@ -185,7 +708,7 @@ build_control_plane_image_on_vm() {
     fi
 
     log "Building control-plane image (JVM Dockerfile)..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar --no-daemon -q"
+    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
     vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
 }
 
@@ -257,12 +780,17 @@ sync_and_build() {
         return
     fi
 
+    if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
+        log "Using host-built function-runtime/demo images; skipping in-VM image builds."
+        return
+    fi
+
     log "Building JARs and distributions..."
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" || "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
         # Native control-plane image is built via bootBuildImage below with explicit module selector.
         vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
     else
-        vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
+        vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
     fi
     log "JARs built"
 
@@ -280,20 +808,36 @@ sync_and_build() {
     fi
 
     # Java demo images
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_WORD_STATS_IMAGE} -f examples/java/word-stats/Dockerfile examples/java/word-stats/"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform/Dockerfile examples/java/json-transform/"
+    if should_include_demo "word-stats" "java"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_WORD_STATS_IMAGE} -f examples/java/word-stats/Dockerfile examples/java/word-stats/"
+    fi
+    if should_include_demo "json-transform" "java"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform/Dockerfile examples/java/json-transform/"
+    fi
 
     # Python demo images (need repo root context for function-sdk-python)
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_WORD_STATS_IMAGE} -f examples/python/word-stats/Dockerfile ."
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_JSON_TRANSFORM_IMAGE} -f examples/python/json-transform/Dockerfile ."
+    if should_include_demo "word-stats" "python"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_WORD_STATS_IMAGE} -f examples/python/word-stats/Dockerfile ."
+    fi
+    if should_include_demo "json-transform" "python"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_JSON_TRANSFORM_IMAGE} -f examples/python/json-transform/Dockerfile ."
+    fi
 
     # Bash demo images (need repo root for watchdog build)
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_WORD_STATS_IMAGE} -f examples/bash/word-stats/Dockerfile ."
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_JSON_TRANSFORM_IMAGE} -f examples/bash/json-transform/Dockerfile ."
+    if should_include_demo "word-stats" "exec"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_WORD_STATS_IMAGE} -f examples/bash/word-stats/Dockerfile ."
+    fi
+    if should_include_demo "json-transform" "exec"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_JSON_TRANSFORM_IMAGE} -f examples/bash/json-transform/Dockerfile ."
+    fi
 
     # Java lite demo images (native compilation via multi-stage, needs repo root context)
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_WORD_STATS_IMAGE} -f examples/java/word-stats-lite/Dockerfile ."
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform-lite/Dockerfile ."
+    if should_include_demo "word-stats" "java-lite"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_WORD_STATS_IMAGE} -f examples/java/word-stats-lite/Dockerfile ."
+    fi
+    if should_include_demo "json-transform" "java-lite"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform-lite/Dockerfile ."
+    fi
 
     log "All images built"
 }
@@ -306,28 +850,28 @@ push_images() {
 
     log "Pushing images to local registry ${LOCAL_REGISTRY}..."
 
+    if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
+        log "Skipping in-VM image push (host-built images already pushed to registry)."
+    else
     local images=()
-    if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" != "true" ]]; then
-        images+=("${CONTROL_IMAGE}")
-    fi
+    images+=("${CONTROL_IMAGE}")
     if [[ "${CONTROL_PLANE_ONLY}" != "true" ]]; then
-        images+=(
-            "${RUNTIME_IMAGE}"
-            "${JAVA_WORD_STATS_IMAGE}"
-            "${JAVA_JSON_TRANSFORM_IMAGE}"
-            "${PYTHON_WORD_STATS_IMAGE}"
-            "${PYTHON_JSON_TRANSFORM_IMAGE}"
-            "${BASH_WORD_STATS_IMAGE}"
-            "${BASH_JSON_TRANSFORM_IMAGE}"
-            "${JAVA_LITE_WORD_STATS_IMAGE}"
-            "${JAVA_LITE_JSON_TRANSFORM_IMAGE}"
-        )
+        images+=("${RUNTIME_IMAGE}")
+        if should_include_demo "word-stats" "java"; then images+=("${JAVA_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "java"; then images+=("${JAVA_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "python"; then images+=("${PYTHON_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "python"; then images+=("${PYTHON_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "exec"; then images+=("${BASH_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "exec"; then images+=("${BASH_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "java-lite"; then images+=("${JAVA_LITE_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "java-lite"; then images+=("${JAVA_LITE_JSON_TRANSFORM_IMAGE}"); fi
     fi
 
     if [[ "${#images[@]}" -gt 0 ]]; then
         e2e_push_images_to_registry "${images[@]}"
     else
-        log "No in-VM images to push (control-plane image already provided by host build)."
+        log "No in-VM images to push."
+    fi
     fi
 
     if [[ "${CONTROL_PLANE_ONLY}" != "true" ]]; then
@@ -351,6 +895,11 @@ helm_install() {
         demos_enabled="false"
         log "Control-plane-only mode: disabling demo function deployment in Helm values."
     fi
+    build_demo_functions_yaml
+    if [[ "${demos_enabled}" == "true" && -z "${DEMO_FUNCTIONS_YAML}" ]]; then
+        err "No demo functions selected for deployment."
+        exit 2
+    fi
 
     # Uninstall previous release if present (clean state)
     vm_exec "helm uninstall nanofaas --namespace ${NAMESPACE} 2>/dev/null || true"
@@ -361,7 +910,7 @@ helm_install() {
     vm_exec "cat > /tmp/e2e-values.yaml << ENDVALUES
 namespace:
   create: false
-  name: nanofaas
+  name: ${NAMESPACE}
 
 controlPlane:
   image:
@@ -394,64 +943,7 @@ prometheus:
 demos:
   enabled: ${demos_enabled}
   functions:
-    - name: word-stats-java
-      image: ${LOCAL_REGISTRY}/nanofaas/java-word-stats:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-    - name: json-transform-java
-      image: ${LOCAL_REGISTRY}/nanofaas/java-json-transform:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-    - name: word-stats-python
-      image: ${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-    - name: json-transform-python
-      image: ${LOCAL_REGISTRY}/nanofaas/python-json-transform:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-    - name: word-stats-exec
-      image: ${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-      runtimeMode: STDIO
-    - name: json-transform-exec
-      image: ${LOCAL_REGISTRY}/nanofaas/bash-json-transform:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-      runtimeMode: STDIO
-    - name: word-stats-java-lite
-      image: ${LOCAL_REGISTRY}/nanofaas/java-lite-word-stats:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
-    - name: json-transform-java-lite
-      image: ${LOCAL_REGISTRY}/nanofaas/java-lite-json-transform:${TAG}
-      timeoutMs: 30000
-      concurrency: 4
-      queueSize: 100
-      maxRetries: 3
-      executionMode: DEPLOYMENT
+${DEMO_FUNCTIONS_YAML}
   registerJob:
     image: ${CURL_IMAGE}
 ENDVALUES"
@@ -479,18 +971,20 @@ verify() {
     vm_ip=$(e2e_get_vm_ip)
 
     if [[ "${CONTROL_PLANE_ONLY}" != "true" ]]; then
-        # Wait for demo function pods (10 total: 1 control-plane + 1 prometheus + 8 functions)
+        local expected_ready_pods
+        expected_ready_pods=$((2 + ${#SELECTED_DEMO_FUNCTIONS[@]}))
+        # Wait for base pods + selected demo function pods.
         log "Waiting for demo function pods..."
-        vm_exec 'for i in $(seq 1 90); do
-            ready=$(kubectl get pods -n nanofaas --no-headers 2>/dev/null | grep -c "1/1.*Running" || echo 0)
-            total=$(kubectl get pods -n nanofaas --no-headers 2>/dev/null | grep -cv Completed 2>/dev/null || echo 0)
-            echo "  pods: ${ready}/${total} Running"
-            if [ "${ready}" -ge 10 ]; then exit 0; fi
+        vm_exec "for i in \$(seq 1 90); do
+            ready=\$(kubectl get pods -n ${NAMESPACE} --no-headers 2>/dev/null | grep -c '1/1.*Running' || echo 0)
+            total=\$(kubectl get pods -n ${NAMESPACE} --no-headers 2>/dev/null | grep -cv Completed 2>/dev/null || echo 0)
+            echo \"  pods: \${ready}/\${total} Running\"
+            if [ \"\${ready}\" -ge ${expected_ready_pods} ]; then exit 0; fi
             sleep 5
         done
-        echo "Not all pods ready" >&2
-        kubectl get pods -n nanofaas
-        exit 1'
+        echo \"Not all pods ready\" >&2
+        kubectl get pods -n ${NAMESPACE}
+        exit 1"
 
         # Show pods
         vm_exec "kubectl get pods -n ${NAMESPACE}"
@@ -503,28 +997,27 @@ verify() {
         log "Smoke-testing each function..."
         local ws_payload='{"input":{"text":"hello world test"}}'
         local jt_payload='{"input":{"data":[{"dept":"eng","salary":80000},{"dept":"sales","salary":70000}],"groupBy":"dept","operation":"count"}}'
-        for fn in word-stats-java word-stats-python word-stats-exec word-stats-java-lite; do
-            local code
-            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${vm_ip}:30080/v1/functions/${fn}:invoke" \
-                -H "Content-Type: application/json" -d "${ws_payload}" --max-time 30) || code="000"
-            if [[ "${code}" == "200" ]]; then
-                info "  ${fn}: OK (${code})"
+        local workload runtime payload fn code
+        for workload in "${SELECTED_WORKLOADS[@]}"; do
+            if [[ "${workload}" == "word-stats" ]]; then
+                payload="${ws_payload}"
             else
-                err "  ${fn}: FAIL (${code})"
-                all_ok=false
+                payload="${jt_payload}"
             fi
-        done
-
-        for fn in json-transform-java json-transform-python json-transform-exec json-transform-java-lite; do
-            local code
-            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${vm_ip}:30080/v1/functions/${fn}:invoke" \
-                -H "Content-Type: application/json" -d "${jt_payload}" --max-time 30) || code="000"
-            if [[ "${code}" == "200" ]]; then
-                info "  ${fn}: OK (${code})"
-            else
-                err "  ${fn}: FAIL (${code})"
-                all_ok=false
-            fi
+            for runtime in "${SELECTED_RUNTIMES[@]}"; do
+                if ! should_include_demo "${workload}" "${runtime}"; then
+                    continue
+                fi
+                fn="$(demo_function_name "${workload}" "${runtime}")"
+                code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${vm_ip}:30080/v1/functions/${fn}:invoke" \
+                    -H "Content-Type: application/json" -d "${payload}" --max-time 30) || code="000"
+                if [[ "${code}" == "200" ]]; then
+                    info "  ${fn}: OK (${code})"
+                else
+                    err "  ${fn}: FAIL (${code})"
+                    all_ok=false
+                fi
+            done
         done
     else
         log "Control-plane-only mode: skipping demo pod readiness and function smoke tests."
@@ -567,13 +1060,16 @@ print_summary() {
     log "  Metrics:    http://${vm_ip}:30081/actuator/prometheus"
     log "  Prometheus: http://${vm_ip}:30090"
     log ""
-    if [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
+    if [[ "${KEEP_VM:-false}" != "true" ]]; then
+        log "VM cleanup is enabled (KEEP_VM=false): the VM will be deleted at script exit."
+        log "To run load tests later, re-run with KEEP_VM=true."
+    elif [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
         log "Next step — register functions before running load tests:"
         log "  1) Register your functions via API/Helm"
-        log "  2) Run: ./scripts/e2e-loadtest.sh"
+        log "  2) Run: ./experiments/e2e-loadtest.sh"
     else
         log "Next step — run the load test:"
-        log "  ./scripts/e2e-loadtest.sh"
+        log "  ./experiments/e2e-loadtest.sh"
     fi
     log ""
 }
@@ -582,17 +1078,33 @@ main() {
     log "Starting nanofaas E2E setup..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE} LOCAL_REGISTRY=${LOCAL_REGISTRY} SKIP_BUILD=${SKIP_BUILD}"
-    log "  TAG=${TAG} CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD} CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST} CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY} CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES}"
+    log "  TAG=${TAG} CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD} CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST} CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY} HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES} CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES}"
     log "  VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS} VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS}"
+    if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" && "${CONTROL_PLANE_ONLY}" != "true" ]]; then
+        log "  Build strategy: control-plane/function-runtime/demo images on host"
+    elif [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
+        log "  Build strategy: control-plane image on host; runtime/demo image build disabled"
+    fi
     log ""
 
     check_prerequisites
+    resolve_selected_demo_targets
+    HOST_CONTROL_IMAGE="$(resolve_host_control_image_ref)"
+    CONTROL_PLANE_CACHE_DIR="$(resolve_control_plane_cache_dir)"
+    CONTROL_PLANE_CACHE_MANIFEST="${CONTROL_PLANE_CACHE_DIR}/manifest.json"
+    if [[ "${CONTROL_PLANE_ONLY}" != "true" ]]; then
+        local selected_demo_label
+        selected_demo_label=$(IFS=,; echo "${SELECTED_DEMO_FUNCTIONS[*]}")
+        log "  Selected demo functions: ${selected_demo_label}"
+    fi
     build_control_plane_image_on_host
+    build_non_control_plane_images_on_host
     create_vm
     install_deps
     install_k3s
     e2e_setup_local_registry "${LOCAL_REGISTRY}"
     push_host_control_plane_image_to_registry
+    push_host_non_control_plane_images_to_registry
     sync_and_build
     push_images
     helm_install

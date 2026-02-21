@@ -3,8 +3,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
+import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -45,6 +48,8 @@ DEFAULT_CPUS = "4"
 DEFAULT_MEMORY = "12G"
 DEFAULT_DISK = "30G"
 DEFAULT_NAMESPACE = "nanofaas"
+DEFAULT_LOCAL_REGISTRY = "localhost:5000"
+CONTROL_PLANE_CACHE_ROOT = REPO_ROOT / "experiments" / ".image-cache/control-plane"
 
 
 @dataclass(frozen=True)
@@ -56,6 +61,7 @@ class DeployConfig:
     namespace: str
     keep_vm: bool
     tag: str
+    control_plane_native_build: bool
     selected_modules: list[str]
     explicitly_selected_modules: list[str]
     auto_added_modules: list[str]
@@ -67,6 +73,252 @@ class WizardConfig:
     run_loadtest: bool
     loadtest: InteractiveLoadtestConfig | None
     skip_grafana: bool
+    host_rebuild_images: bool
+
+
+def docker_image_exists(image_ref: str) -> bool:
+    cmd = f"docker image inspect {shlex.quote(image_ref)} >/dev/null 2>&1"
+    result = subprocess.run(["bash", "-lc", cmd], cwd=str(REPO_ROOT), check=False)
+    return result.returncode == 0
+
+
+def docker_image_id(image_ref: str) -> str | None:
+    cmd = f"docker image inspect --format='{{{{.Id}}}}' {shlex.quote(image_ref)}"
+    result = subprocess.run(
+        ["bash", "-lc", cmd],
+        cwd=str(REPO_ROOT),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    image_id = result.stdout.strip()
+    return image_id or None
+
+
+def build_host_control_plane_image_ref(
+    *,
+    control_plane_native_build: bool,
+    selected_modules: list[str],
+) -> str:
+    build_mode = "native" if control_plane_native_build else "jvm"
+    modules_selector = ",".join(selected_modules) if selected_modules else "none"
+    fingerprint_input = f"{build_mode}|{modules_selector}"
+    fingerprint = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()[:12]
+    return f"nanofaas/control-plane:host-{build_mode}-{fingerprint}"
+
+
+def control_plane_compat_manifest_path(
+    *,
+    control_plane_native_build: bool,
+    selected_modules: list[str],
+) -> Path:
+    build_mode = "native" if control_plane_native_build else "jvm"
+    modules_selector = ",".join(selected_modules) if selected_modules else "none"
+    modules_hash = hashlib.sha256(modules_selector.encode("utf-8")).hexdigest()[:12]
+    return CONTROL_PLANE_CACHE_ROOT / build_mode / modules_hash / "manifest.json"
+
+
+def control_plane_cache_manifest_is_valid(
+    *,
+    manifest_path: Path,
+    image_ref: str,
+    expected_build_mode: str,
+    expected_modules: list[str],
+) -> bool:
+    if not manifest_path.is_file():
+        return False
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+    image_id = docker_image_id(image_ref)
+    if image_id is None:
+        return False
+
+    expected_modules_sorted = sorted(expected_modules)
+    manifest_modules = payload.get("selected_modules")
+    if not isinstance(manifest_modules, list):
+        return False
+    manifest_modules_sorted = sorted(str(item).strip() for item in manifest_modules if str(item).strip())
+
+    return (
+        payload.get("build_mode") == expected_build_mode
+        and payload.get("image_ref") == image_ref
+        and payload.get("image_id") == image_id
+        and manifest_modules_sorted == expected_modules_sorted
+    )
+
+
+def docker_latest_image_for_repository(repo: str) -> str | None:
+    cmd = f"docker image ls {shlex.quote(repo)} --format '{{{{.Repository}}}}:{{{{.Tag}}}}'"
+    result = subprocess.run(
+        ["bash", "-lc", cmd],
+        cwd=str(REPO_ROOT),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        ref = line.strip()
+        if not ref or ref.endswith(":<none>"):
+            continue
+        return ref
+    return None
+
+
+def resolve_reusable_control_plane_image_ref(
+    *,
+    control_plane_native_build: bool,
+    selected_modules: list[str],
+) -> str | None:
+    manifest_path = control_plane_compat_manifest_path(
+        control_plane_native_build=control_plane_native_build,
+        selected_modules=selected_modules,
+    )
+    if not manifest_path.is_file():
+        return None
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    image_ref = payload.get("image_ref")
+    image_id = payload.get("image_id")
+    if not isinstance(image_ref, str) or not image_ref.strip():
+        return None
+    if not isinstance(image_id, str) or not image_id.strip():
+        return None
+    actual_image_id = docker_image_id(image_ref)
+    if actual_image_id is None or actual_image_id != image_id:
+        return None
+    build_mode = "native" if control_plane_native_build else "jvm"
+    if payload.get("build_mode") != build_mode:
+        return None
+    manifest_modules = payload.get("selected_modules")
+    if not isinstance(manifest_modules, list):
+        return None
+    expected_modules_sorted = sorted(selected_modules)
+    manifest_modules_sorted = sorted(str(item).strip() for item in manifest_modules if str(item).strip())
+    if manifest_modules_sorted != expected_modules_sorted:
+        return None
+    return image_ref
+
+
+def required_host_images_for_selection(
+    *,
+    tag: str,
+    control_plane_native_build: bool,
+    selected_modules: list[str],
+    run_loadtest: bool,
+    loadtest: InteractiveLoadtestConfig | None,
+) -> list[str]:
+    images = [
+        build_host_control_plane_image_ref(
+            control_plane_native_build=control_plane_native_build,
+            selected_modules=selected_modules,
+        )
+    ]
+    if not run_loadtest or loadtest is None:
+        return images
+
+    images.append(f"{DEFAULT_LOCAL_REGISTRY}/nanofaas/function-runtime:{tag}")
+    for test_name in loadtest.selected_tests():
+        if test_name.endswith("-java-lite"):
+            workload = test_name[: -len("-java-lite")]
+            images.append(f"{DEFAULT_LOCAL_REGISTRY}/nanofaas/java-lite-{workload}:{tag}")
+        elif test_name.endswith("-java"):
+            workload = test_name[: -len("-java")]
+            images.append(f"{DEFAULT_LOCAL_REGISTRY}/nanofaas/java-{workload}:{tag}")
+        elif test_name.endswith("-python"):
+            workload = test_name[: -len("-python")]
+            images.append(f"{DEFAULT_LOCAL_REGISTRY}/nanofaas/python-{workload}:{tag}")
+        elif test_name.endswith("-exec"):
+            workload = test_name[: -len("-exec")]
+            images.append(f"{DEFAULT_LOCAL_REGISTRY}/nanofaas/bash-{workload}:{tag}")
+    return images
+
+
+def ask_host_rebuild_images(
+    *,
+    tag: str,
+    control_plane_native_build: bool,
+    selected_modules: list[str],
+    run_loadtest: bool,
+    loadtest: InteractiveLoadtestConfig | None,
+) -> bool:
+    required_images = required_host_images_for_selection(
+        tag=tag,
+        control_plane_native_build=control_plane_native_build,
+        selected_modules=selected_modules,
+        run_loadtest=run_loadtest,
+        loadtest=loadtest,
+    )
+    control_plane_image_ref = required_images[0]
+
+    present_images: list[str] = []
+    reusable_images: list[tuple[str, str]] = []
+    missing_images: list[str] = []
+    for index, image_ref in enumerate(required_images):
+        if not docker_image_exists(image_ref):
+            if index == 0:
+                reusable_ref = resolve_reusable_control_plane_image_ref(
+                    control_plane_native_build=control_plane_native_build,
+                    selected_modules=selected_modules,
+                )
+                if reusable_ref:
+                    reusable_images.append((image_ref, reusable_ref))
+                    continue
+            repo = image_ref.rsplit(":", 1)[0]
+            reusable_ref = docker_latest_image_for_repository(repo)
+            if reusable_ref:
+                reusable_images.append((image_ref, reusable_ref))
+                continue
+            missing_images.append(image_ref)
+            continue
+        present_images.append(image_ref)
+
+    if present_images:
+        print("")
+        print("Immagini host gia presenti localmente:")
+        for image_ref in present_images:
+            print(f"  - {image_ref}")
+    if reusable_images:
+        print("")
+        print("Immagini riusabili da tag differente (retag automatico):")
+        for target_ref, source_ref in reusable_images:
+            print(f"  - {target_ref} <= {source_ref}")
+
+    if not missing_images and (present_images or reusable_images):
+        rebuild = questionary.confirm(
+            "Le immagini host richieste sono gia presenti/riusabili localmente. Vuoi comunque ricompilarle?",
+            default=False,
+        ).ask()
+        if rebuild is None:
+            raise SystemExit(1)
+        return bool(rebuild)
+
+    if (present_images or reusable_images) and missing_images:
+        print("")
+        print("Alcune immagini non sono presenti localmente: verranno compilate.")
+        for image_ref in missing_images:
+            print(f"  - {image_ref}")
+        rebuild = questionary.confirm(
+            "Vuoi comunque ricompilare anche le immagini gia presenti?",
+            default=False,
+        ).ask()
+        if rebuild is None:
+            raise SystemExit(1)
+        return bool(rebuild)
+
+    print("")
+    print("Immagini host mancanti: verranno compilate automaticamente.")
+    for image_ref in missing_images:
+        print(f"  - {image_ref}")
+    return True
 
 
 def discover_control_plane_modules_with_dependencies() -> tuple[list[str], dict[str, list[str]]]:
@@ -150,6 +402,17 @@ def ask_deploy_config() -> DeployConfig:
     if keep_vm is None:
         raise SystemExit(1)
 
+    build_mode = questionary.select(
+        "Build control-plane:",
+        choices=[
+            questionary.Choice("JVM (piu veloce)", value=False),
+            questionary.Choice("Native (piu lenta, latenza minore)", value=True),
+        ],
+        default=False,
+    ).ask()
+    if build_mode is None:
+        raise SystemExit(1)
+
     return DeployConfig(
         vm_name=vm_name,
         cpus=cpus,
@@ -158,6 +421,7 @@ def ask_deploy_config() -> DeployConfig:
         namespace=namespace,
         keep_vm=bool(keep_vm),
         tag=tag,
+        control_plane_native_build=bool(build_mode),
         selected_modules=selected_modules,
         explicitly_selected_modules=explicit_modules,
         auto_added_modules=auto_added,
@@ -265,11 +529,19 @@ def ask_loadtest_config() -> tuple[bool, InteractiveLoadtestConfig | None, bool]
 def ask_config() -> WizardConfig:
     deploy = ask_deploy_config()
     run_loadtest, loadtest, skip_grafana = ask_loadtest_config()
+    host_rebuild_images = ask_host_rebuild_images(
+        tag=deploy.tag,
+        control_plane_native_build=deploy.control_plane_native_build,
+        selected_modules=deploy.selected_modules,
+        run_loadtest=run_loadtest,
+        loadtest=loadtest,
+    )
     return WizardConfig(
         deploy=deploy,
         run_loadtest=run_loadtest,
         loadtest=loadtest,
         skip_grafana=skip_grafana,
+        host_rebuild_images=host_rebuild_images,
     )
 
 
@@ -285,6 +557,18 @@ def print_summary(config: WizardConfig) -> None:
     modules_label = ",".join(config.deploy.selected_modules) if config.deploy.selected_modules else "none (core-only)"
     manual_label = ",".join(config.deploy.explicitly_selected_modules) if config.deploy.explicitly_selected_modules else "none"
     auto_label = ",".join(config.deploy.auto_added_modules) if config.deploy.auto_added_modules else "none"
+    build_mode_label = "nativa" if config.deploy.control_plane_native_build else "JVM"
+    control_plane_only = not config.run_loadtest
+    scope_label = (
+        "solo control-plane (demo disabilitate)"
+        if control_plane_only
+        else "piattaforma completa (demo abilitate per load test)"
+    )
+    image_build_label = (
+        "control-plane, runtime e demo su host"
+        if not control_plane_only
+        else "control-plane su host; nessun build runtime/demo"
+    )
     print("")
     print("Configurazione esperimento (dettagliata):")
     print(f"  VM: {config.deploy.vm_name}")
@@ -293,15 +577,17 @@ def print_summary(config: WizardConfig) -> None:
     print(f"  Image tag control-plane: {config.deploy.tag}")
     print(f"  Keep VM a fine run: {config.deploy.keep_vm}")
     print("  Modalita build/deploy:")
-    print("    - Compilazione control-plane: nativa (obbligatoria)")
+    print(f"    - Compilazione control-plane: {build_mode_label} (selezionabile)")
     print("    - Build immagine control-plane: host (Docker Desktop)")
-    print("    - Scope deploy: solo control-plane (demo disabilitate)")
+    print(f"    - Build immagini host: {'ricompila' if config.host_rebuild_images else 'riuso immagini locali'}")
+    print(f"    - Strategia build immagini: {image_build_label}")
+    print(f"    - Scope deploy: {scope_label}")
     print("  Moduli control-plane:")
     print(f"    - Finali (con dipendenze): {modules_label}")
     print(f"    - Selezionati manualmente: {manual_label}")
     print(f"    - Aggiunti per dipendenza: {auto_label}")
     print("  Piano esecuzione:")
-    print("    1. Build immagine control-plane nativa su host")
+    print(f"    1. Build immagine control-plane {build_mode_label} su host")
     print("    2. Creazione VM k3s e registry locale")
     print("    3. Copia/push immagine nel registry della VM")
     print("    4. Deploy Helm piattaforma")
@@ -313,11 +599,22 @@ def print_summary(config: WizardConfig) -> None:
         print(f"    Invocation: {config.loadtest.invocation_mode}")
         print(f"    Stages: {config.loadtest.stage_sequence()}")
         print(f"    Payload mode: {config.loadtest.payload_mode}")
+        if not config.deploy.keep_vm:
+            print("    Nota: la VM verra mantenuta fino al termine dei load test e poi rimossa")
     else:
         print("  Load test: disabled")
 
 
-def run_deploy(config: DeployConfig) -> None:
+def run_deploy(
+    config: DeployConfig,
+    keep_vm: bool,
+    run_loadtest: bool,
+    loadtest: InteractiveLoadtestConfig | None,
+    host_rebuild_images: bool,
+) -> None:
+    control_plane_only = not run_loadtest
+    loadtest_workloads = ",".join(loadtest.workloads) if loadtest is not None else ",".join([item[1] for item in WORKLOAD_CHOICES])
+    loadtest_runtimes = ",".join(loadtest.runtimes) if loadtest is not None else ",".join([item[1] for item in RUNTIME_CHOICES])
     env = os.environ.copy()
     env.update(
         build_deploy_env(
@@ -326,8 +623,13 @@ def run_deploy(config: DeployConfig) -> None:
             memory=config.memory,
             disk=config.disk,
             namespace=config.namespace,
-            keep_vm=config.keep_vm,
+            keep_vm=keep_vm,
             tag=config.tag,
+            control_plane_native_build=config.control_plane_native_build,
+            control_plane_only=control_plane_only,
+            host_rebuild_images=host_rebuild_images,
+            loadtest_workloads=loadtest_workloads,
+            loadtest_runtimes=loadtest_runtimes,
             selected_modules=config.selected_modules,
         )
     )
@@ -352,6 +654,23 @@ def run_loadtests(config: WizardConfig) -> None:
         run_cmd(["bash", str(EXPERIMENTS_DIR / "e2e-loadtest.sh")], env)
 
 
+def cleanup_vm(vm_name: str) -> None:
+    env = os.environ.copy()
+    env["VM_NAME"] = vm_name
+    env["KEEP_VM"] = "false"
+    common_script = SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh"
+    cmd = (
+        f"source {shlex.quote(str(common_script))}; "
+        "e2e_set_log_prefix wizard; "
+        "e2e_cleanup_vm"
+    )
+    print("")
+    print(f"$ bash -lc {shlex.quote(cmd)}")
+    result = subprocess.run(["bash", "-lc", cmd], cwd=str(REPO_ROOT), env=env, check=False)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
 def main() -> int:
     config = ask_config()
     print_summary(config)
@@ -360,8 +679,19 @@ def main() -> int:
         print("Operazione annullata.")
         return 1
 
-    run_deploy(config.deploy)
-    run_loadtests(config)
+    keep_vm_during_deploy = config.deploy.keep_vm or config.run_loadtest
+    try:
+        run_deploy(
+            config.deploy,
+            keep_vm=keep_vm_during_deploy,
+            run_loadtest=config.run_loadtest,
+            loadtest=config.loadtest,
+            host_rebuild_images=config.host_rebuild_images,
+        )
+        run_loadtests(config)
+    finally:
+        if not config.deploy.keep_vm:
+            cleanup_vm(config.deploy.vm_name)
     print("")
     print("Esperimento completato.")
     return 0

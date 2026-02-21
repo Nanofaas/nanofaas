@@ -401,6 +401,19 @@ e2e_ensure_vm_running() {
             e2e_log "VM '${vm_name}' already running, reusing..."
             return 0
         fi
+        if [[ "${state}" == "Deleted" ]]; then
+            e2e_warn_stderr "VM '${vm_name}' is in state 'Deleted'."
+            e2e_log "Attempting to recover VM '${vm_name}'..."
+            if multipass recover "${vm_name}" >/dev/null 2>&1; then
+                e2e_log "Recover succeeded for '${vm_name}', starting..."
+                multipass start "${vm_name}"
+                return 0
+            fi
+            e2e_warn_stderr "Recover failed for '${vm_name}', purging deleted instances and recreating VM..."
+            multipass purge >/dev/null 2>&1 || true
+            e2e_create_vm "${vm_name}" "${cpus}" "${memory}" "${disk}"
+            return 0
+        fi
         e2e_log "VM '${vm_name}' exists with state '${state}', starting..."
         multipass start "${vm_name}"
         return 0

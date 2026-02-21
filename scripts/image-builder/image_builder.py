@@ -1,4 +1,6 @@
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -193,10 +195,38 @@ def build_image_reference(name: str, tag: str, arch: str, use_arch_suffix: bool)
     return f"{REGISTRY}/{GH_OWNER}/{GH_REPO}/{name}:{tag}{suffix}"
 
 
+def resolve_native_active_processors() -> str:
+    raw = os.getenv("NATIVE_ACTIVE_PROCESSORS", "").strip()
+    if raw:
+        try:
+            parsed = int(raw)
+            if parsed >= 1:
+                return str(parsed)
+        except ValueError:
+            pass
+    detected = os.cpu_count() or 4
+    if detected < 1:
+        detected = 4
+    return str(detected)
+
+
+def resolve_native_image_build_args() -> str:
+    explicit = os.getenv("NATIVE_IMAGE_BUILD_ARGS", "").strip()
+    if explicit:
+        return explicit
+    xmx = os.getenv("NATIVE_IMAGE_XMX", "8g").strip() or "8g"
+    return (
+        f"-H:+AddAllCharsets -J-Xmx{xmx} "
+        f"-J-XX:ActiveProcessorCount={resolve_native_active_processors()}"
+    )
+
+
 def build_gradle_command(image_cfg: dict[str, str], full_image: str, arch: str) -> str:
     platform = "linux/arm64,linux/amd64" if arch == "multi" else f"linux/{arch}"
+    native_args = shlex.quote(resolve_native_image_build_args())
     cmd = (
-        f"./gradlew {image_cfg['task']} -P{image_cfg['image_param']}={full_image} "
+        f"NATIVE_IMAGE_BUILD_ARGS={native_args} ./gradlew {image_cfg['task']} "
+        f"-P{image_cfg['image_param']}={full_image} "
         f"-PimagePlatform={platform}"
     )
     if arch == "arm64":

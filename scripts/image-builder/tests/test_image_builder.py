@@ -59,6 +59,9 @@ def test_gradle_command_arm64_uses_custom_builder():
     )
     assert ":control-plane:bootBuildImage" in cmd
     assert "-PcontrolPlaneImage=ghcr.io/miciav/nanofaas/control-plane:v0.10.0-arm64" in cmd
+    assert "NATIVE_IMAGE_BUILD_ARGS=" in cmd
+    assert "-J-Xmx8g" in cmd
+    assert "-J-XX:ActiveProcessorCount=" in cmd
     assert "-PimagePlatform=linux/arm64" in cmd
     assert "-PimageBuilder=dashaun/builder:tiny" in cmd
     assert "-PimageRunImage=paketobuildpacks/run-jammy-tiny:latest" in cmd
@@ -70,6 +73,9 @@ def test_gradle_command_amd64_uses_default_builder():
         "ghcr.io/miciav/nanofaas/control-plane:v0.10.0-amd64",
         "amd64",
     )
+    assert "NATIVE_IMAGE_BUILD_ARGS=" in cmd
+    assert "-J-Xmx8g" in cmd
+    assert "-J-XX:ActiveProcessorCount=" in cmd
     assert "-PimagePlatform=linux/amd64" in cmd
     assert "-PimageBuilder=" not in cmd
     assert "-PimageRunImage=" not in cmd

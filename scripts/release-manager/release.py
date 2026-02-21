@@ -4,6 +4,7 @@ import subprocess
 import shutil
 import re
 import argparse
+import shlex
 from pathlib import Path
 import questionary
 from rich.console import Console
@@ -102,6 +103,28 @@ def run_with_disk_retry(cmd, retries=1):
         console.print("[dim]--- stderr ---[/dim]")
         console.print(f"[dim]{err.rstrip()}[/dim]")
     sys.exit(1)
+
+def resolve_native_active_processors():
+    value = os.getenv("NATIVE_ACTIVE_PROCESSORS", "").strip()
+    if value:
+        try:
+            parsed = int(value)
+            if parsed >= 1:
+                return str(parsed)
+        except ValueError:
+            pass
+    detected = os.cpu_count() or 4
+    if detected < 1:
+        detected = 4
+    return str(detected)
+
+def resolve_native_image_build_args():
+    explicit = os.getenv("NATIVE_IMAGE_BUILD_ARGS", "").strip()
+    if explicit:
+        return explicit
+    xmx = os.getenv("NATIVE_IMAGE_XMX", "8g").strip() or "8g"
+    active_processors = resolve_native_active_processors()
+    return f"-H:+AddAllCharsets -J-Xmx{xmx} -J-XX:ActiveProcessorCount={active_processors}"
 
 def smoke_test_service_image(image, component, timeout_seconds=25, allowed_error_patterns=None):
     """
@@ -214,12 +237,13 @@ def build_and_push_arm64(version):
     # Paketo "builder-jammy-*" images are amd64-only; use a multi-arch builder for real ARM64 native images.
     builder_image = "dashaun/builder:tiny"
     run_image = "paketobuildpacks/run-jammy-tiny:latest"
+    native_image_build_args = shlex.quote(resolve_native_image_build_args())
 
     # 1. Control Plane
     cp_image = f"{base_image}/control-plane:{tag}-arm64"
     console.print(f"[blue]Building {cp_image}...[/blue]")
     run_with_disk_retry(
-        f"BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage "
+        f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage "
         f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform} "
         f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
     )
@@ -238,7 +262,7 @@ def build_and_push_arm64(version):
     console.print(f"[blue]Building {jr_image}...[/blue]")
     try:
         run_with_disk_retry(
-            f"BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage "
+            f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage "
             f"-PfunctionRuntimeImage={jr_image} -PimagePlatform={platform} "
             f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
         )
@@ -268,7 +292,7 @@ def build_and_push_arm64(version):
         img = f"{base_image}/java-{example}:{tag}-arm64"
         console.print(f"[blue]Building Java {example} ({img})...[/blue]")
         run_with_disk_retry(
-            f"BP_OCI_SOURCE={oci_source} ./gradlew {gradle_task} "
+            f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./gradlew {gradle_task} "
             f"-PfunctionImage={img} -PimagePlatform={platform} "
             f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
         )
