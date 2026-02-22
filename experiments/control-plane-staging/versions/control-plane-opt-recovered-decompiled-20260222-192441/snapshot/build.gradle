@@ -1,0 +1,115 @@
+plugins {
+    id 'java'
+    // Declare plugin versions once to avoid Gradle classloader/build-service issues across sibling projects.
+    id 'org.springframework.boot' version "${springBootVersion}" apply false
+    id 'io.spring.dependency-management' version "${springDependencyManagementVersion}" apply false
+    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}" apply false
+}
+
+allprojects {
+    group = 'com.nanofaas'
+    version = '0.15.1'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'jacoco'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(Integer.parseInt(project.findProperty('javaVersion') ?: '21'))
+        }
+    }
+
+    jacoco {
+        toolVersion = '0.8.12'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform {
+            if (!project.hasProperty('runE2e')) {
+                excludeTags 'inter_e2e'
+            }
+        }
+        finalizedBy jacocoTestReport
+    }
+
+    jacocoTestReport {
+        dependsOn test
+        reports {
+            xml.required = true
+            html.required = true
+            csv.required = false
+        }
+    }
+
+    jacocoTestCoverageVerification {
+        violationRules {
+            rule {
+                limit {
+                    minimum = 0.85
+                }
+            }
+        }
+    }
+}
+
+tasks.register('k8sE2e') {
+    group = 'verification'
+    description = 'Run K8sE2eTest in a Multipass VM with k3s.'
+    dependsOn ':control-plane:k8sE2eTest'
+}
+
+tasks.register('k8sE2eVm', Exec) {
+    group = 'verification'
+    description = 'Run K8sE2eTest in an ephemeral Multipass VM with k3s.'
+    commandLine 'bash', 'scripts/e2e-k8s-vm.sh'
+}
+
+tasks.register('verifyHelmVersionSync') {
+    group = 'verification'
+    description = 'Verify Helm chart/image versions are aligned with the Gradle project version.'
+    doLast {
+        def expectedVersion = version.toString()
+        def expectedTag = "v${expectedVersion}"
+        def chartFile = file('helm/nanofaas/Chart.yaml')
+        def valuesFile = file('helm/nanofaas/values.yaml')
+
+        if (!chartFile.exists() || !valuesFile.exists()) {
+            throw new GradleException("Helm chart files not found under helm/nanofaas")
+        }
+
+        def chart = chartFile.text
+        def values = valuesFile.text
+        def errors = []
+
+        if (!(chart =~ /(?m)^version:\s*${java.util.regex.Pattern.quote(expectedVersion)}\s*$/)) {
+            errors << "helm/nanofaas/Chart.yaml version is not ${expectedVersion}"
+        }
+        if (!(chart =~ /(?m)^appVersion:\s*\"${java.util.regex.Pattern.quote(expectedVersion)}\"\s*$/)) {
+            errors << "helm/nanofaas/Chart.yaml appVersion is not ${expectedVersion}"
+        }
+        if (!(values =~ /(?m)^\s*tag:\s*${java.util.regex.Pattern.quote(expectedTag)}\s*$/)) {
+            errors << "helm/nanofaas/values.yaml controlPlane.image.tag is not ${expectedTag}"
+        }
+
+        def imageTagMatcher = (values =~ /ghcr\.io\/miciav\/nanofaas\/[a-z0-9-]+:(v[0-9]+\.[0-9]+\.[0-9]+)/)
+        imageTagMatcher.each { match ->
+            if (match[1] != expectedTag) {
+                errors << "helm/nanofaas/values.yaml image tag mismatch: found ${match[1]}, expected ${expectedTag}"
+            }
+        }
+
+        if (!errors.isEmpty()) {
+            throw new GradleException("Helm/Gradle version mismatch:\n - " + errors.unique().join("\n - "))
+        }
+    }
+}
+
+tasks.named('build') {
+    dependsOn 'verifyHelmVersionSync'
+}

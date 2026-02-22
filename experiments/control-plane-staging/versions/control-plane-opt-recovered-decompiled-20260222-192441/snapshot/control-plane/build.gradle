@@ -1,0 +1,191 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+    id 'org.graalvm.buildtools.native'
+}
+
+def parseCsvModules = { String raw ->
+    if (raw == null || raw.trim().isEmpty()) {
+        return [] as List<String>
+    }
+    return raw.split(',')
+            .collect { it.trim() }
+            .findAll { !it.isEmpty() }
+}
+
+def availableOptionalControlPlaneModuleProjects = rootProject.subprojects
+        .findAll { it.path.startsWith(':control-plane-modules:') }
+def availableOptionalControlPlaneModuleNames = availableOptionalControlPlaneModuleProjects.collect { it.name }
+
+def requestedTaskNames = gradle.startParameter.taskNames.collect { it.toLowerCase() }
+def invocationBuildsRuntimeArtifact = requestedTaskNames.any { taskName ->
+    taskName == 'bootrun' || taskName.endsWith(':bootrun') ||
+            taskName == 'bootjar' || taskName.endsWith(':bootjar') ||
+            taskName == 'bootbuildimage' || taskName.endsWith(':bootbuildimage') ||
+            taskName == 'build' || taskName.endsWith(':build') ||
+            taskName == 'assemble' || taskName.endsWith(':assemble')
+}
+
+def requestedModulesRaw = (project.findProperty('controlPlaneModules') ?: System.getenv('NANOFAAS_CONTROL_PLANE_MODULES'))?.toString()
+if (requestedModulesRaw == null || requestedModulesRaw.trim().isEmpty()) {
+    // Keep tests core-only by default while preserving historical runtime behavior.
+    // Exception: E2E tests (runE2e flag) need the full fat-jar with all modules.
+    def isE2eBuild = project.hasProperty('runE2e')
+    requestedModulesRaw = (invocationBuildsRuntimeArtifact || isE2eBuild) ? 'all' : ''
+}
+def requestedControlPlaneModuleNames = new LinkedHashSet<String>(parseCsvModules(requestedModulesRaw))
+if (requestedControlPlaneModuleNames.contains('none')) {
+    if (requestedControlPlaneModuleNames.size() > 1) {
+        throw new GradleException("Module selector 'none' cannot be combined with other values: ${requestedControlPlaneModuleNames}")
+    }
+    requestedControlPlaneModuleNames.clear()
+}
+if (requestedControlPlaneModuleNames.contains('all')) {
+    requestedControlPlaneModuleNames = new LinkedHashSet<String>(availableOptionalControlPlaneModuleNames)
+}
+def unknownControlPlaneModules = requestedControlPlaneModuleNames.findAll { !availableOptionalControlPlaneModuleNames.contains(it) }
+if (!unknownControlPlaneModules.isEmpty()) {
+    throw new GradleException("Unknown control-plane modules: ${unknownControlPlaneModules}. Available: ${availableOptionalControlPlaneModuleNames}")
+}
+def selectedOptionalControlPlaneModuleProjects = availableOptionalControlPlaneModuleProjects
+        .findAll { requestedControlPlaneModuleNames.contains(it.name) }
+
+dependencies {
+    implementation project(':common')
+    selectedOptionalControlPlaneModuleProjects.each { moduleProject ->
+        runtimeOnly project(moduleProject.path)
+    }
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'io.fabric8:kubernetes-client:7.5.2'
+    // Needed at compile time to instantiate a concrete HttpClient.Factory (avoids reflection in native image).
+    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'io.projectreactor:reactor-test'
+    testImplementation 'io.fabric8:kubernetes-server-mock:7.5.2'
+    testImplementation 'org.yaml:snakeyaml:2.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter:2.0.3'
+    testImplementation 'org.testcontainers:testcontainers:2.0.3'
+    testImplementation 'org.awaitility:awaitility:4.2.1'
+    testImplementation 'io.rest-assured:rest-assured:5.4.0'
+}
+
+tasks.register('printSelectedControlPlaneModules') {
+    group = 'help'
+    description = 'Print the control-plane modules included in this build.'
+    doLast {
+        def names = selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort()
+        if (names.isEmpty()) {
+            println 'No optional control-plane modules selected.'
+        } else {
+            println "Selected control-plane modules: ${names.join(', ')}"
+        }
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty 'project.version', project.version.toString()
+    systemProperty 'nanofaas.selectedControlPlaneModules', selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort().join(',')
+    dependsOn 'bootJar'
+    dependsOn ':function-runtime:bootJar'
+    dependsOn ':examples:java:word-stats:bootJar'
+    dependsOn ':examples:java:json-transform:bootJar'
+}
+
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
+
+tasks.named('jar') {
+    // Keep a plain JAR consumable so optional modules can compile against control-plane types.
+    enabled = true
+}
+
+graalvmNative {
+    binaries {
+        main {
+            // Fabric8's kubeconfig parsing (SnakeYAML engine) may probe UTF-32* charsets.
+            buildArgs.add('-H:+AddAllCharsets')
+        }
+    }
+}
+
+def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-k3s-e2e').toString()
+def k8sNamespace = (project.findProperty('k8sNamespace') ?: System.getenv('NANOFAAS_E2E_NAMESPACE') ?: 'nanofaas-e2e').toString()
+def k8sKeepVm = (project.findProperty('k8sKeepVm') ?: System.getenv('KEEP_VM') ?: 'false').toString()
+def k8sCpus = project.findProperty('k8sCpus') ?: System.getenv('CPUS')
+def k8sMemory = project.findProperty('k8sMemory') ?: System.getenv('MEMORY')
+def k8sDisk = project.findProperty('k8sDisk') ?: System.getenv('DISK')
+def k8sRemoteDir = project.findProperty('k8sRemoteDir') ?: System.getenv('REMOTE_DIR')
+
+def k8sEnv = [
+        VM_NAME: k8sVmName,
+        NANOFAAS_E2E_NAMESPACE: k8sNamespace,
+        KEEP_VM: k8sKeepVm
+]
+if (k8sCpus) {
+    k8sEnv.CPUS = k8sCpus.toString()
+}
+if (k8sMemory) {
+    k8sEnv.MEMORY = k8sMemory.toString()
+}
+if (k8sDisk) {
+    k8sEnv.DISK = k8sDisk.toString()
+}
+if (k8sRemoteDir) {
+    k8sEnv.REMOTE_DIR = k8sRemoteDir.toString()
+}
+
+tasks.register('k8sE2eTest', Exec) {
+    group = 'verification'
+    description = 'Run K8sE2eTest in a Multipass VM with k3s.'
+    workingDir = rootProject.projectDir
+    commandLine 'bash', 'scripts/e2e-k8s-vm.sh'
+    environment k8sEnv
+}
+
+// Disable AOT processing unless a native-oriented task is requested.
+// bootBuildImage is used for release images with BP_NATIVE_IMAGE=true.
+def nativeBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains('nativeCompile') || it.contains('nativeTest') || it.contains('bootBuildImage')
+}
+if (!nativeBuildRequested) {
+    // Main AOT - not needed for regular builds
+    tasks.named('processAot') { enabled = false }
+    tasks.named('compileAotJava') { enabled = false }
+    tasks.named('processAotResources') { enabled = false }
+    tasks.named('aotClasses') { enabled = false }
+}
+// Test AOT - @MockBean is incompatible with AOT, always disable
+tasks.named('processTestAot') { enabled = false }
+tasks.named('compileAotTestJava') { enabled = false }
+tasks.named('processAotTestResources') { enabled = false }
+tasks.named('aotTestClasses') { enabled = false }
+
+tasks.named('bootBuildImage') {
+    imageName = project.findProperty('controlPlaneImage') ?: (System.getenv('CONTROL_PLANE_IMAGE') ?: 'nanofaas/control-plane:buildpack')
+    // Builder/run image are overrideable to support multi-arch native builds (e.g., ARM64 on Apple Silicon).
+    def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
+            ?: 'paketobuildpacks/builder-jammy-tiny:latest').toString()
+    def runImageName = (project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
+            ?: 'paketobuildpacks/run-jammy-tiny:latest').toString()
+    builder = builderImage
+    runImage = runImageName
+    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64)
+    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM')
+    if (targetPlatform) {
+        imagePlatform = targetPlatform
+    }
+    def nativeImageBuildArguments = (project.findProperty('nativeImageBuildArgs')
+            ?: System.getenv('NATIVE_IMAGE_BUILD_ARGS')
+            ?: '-H:+AddAllCharsets').toString()
+    environment = [
+            'BP_NATIVE_IMAGE': 'true',
+            'BP_NATIVE_IMAGE_BUILD_ARGUMENTS': nativeImageBuildArguments
+    ]
+}

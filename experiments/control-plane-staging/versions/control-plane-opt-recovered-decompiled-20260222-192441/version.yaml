@@ -1,0 +1,6 @@
+slug: control-plane-opt-recovered-decompiled-20260222-192441
+kind: generic-service
+status: staging
+parent: decompiled:docker-image:nanofaas/control-plane:host-jvm-c93f3d075df7
+created_at: '2026-02-22T18:24:42.185768Z'
+notes: Recovered from decompiled app.jar; verify against behavior/tests before promotion.

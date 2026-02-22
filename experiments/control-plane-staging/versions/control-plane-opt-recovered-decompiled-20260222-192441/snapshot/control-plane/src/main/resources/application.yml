@@ -1,0 +1,56 @@
+server:
+  port: 8080
+
+management:
+  server:
+    port: 8081
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      enabled: true
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+nanofaas:
+  admin:
+    runtime-config:
+      enabled: false
+  defaults:
+    timeoutMs: 30000
+    concurrency: 4
+    queueSize: 100
+    maxRetries: 3
+  rate:
+    maxPerSecond: 1000
+  k8s:
+    namespace: ""
+    callbackUrl: "http://control-plane.default.svc.cluster.local:8080/v1/internal/executions"
+  scaling:
+    poll-interval-ms: 5000
+    default-min-replicas: 1
+    default-max-replicas: 10
+
+sync-queue:
+  enabled: true
+  admission-enabled: true
+  max-depth: 200
+  max-estimated-wait: 2s
+  max-queue-wait: 2s
+  retry-after-seconds: 2
+  throughput-window: 30s
+  per-function-min-samples: 50
