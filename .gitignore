@@ -23,3 +23,5 @@ k6/results/
 experiments/k6/results/
 experiments/loadtest/results/
 experiments/.image-cache/
+experiments/control-plane-staging/versions/
+recovery/
