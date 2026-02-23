@@ -1,0 +1,61 @@
+# Java -> Rust Parity Status (M3)
+
+- Total Java test methods inventoried: 252
+- Implemented in Rust (non-placeholder): 252
+- Remaining placeholders/ignored: 0
+- Total Java test classes inventoried: 47
+- Classes completed in Rust: 47
+- Classes still pending: 0
+
+## Completed class blocks
+- ExecutionRecordLegacyAccessorsTest
+- ExecutionRecordStateTransitionTest
+- ExecutionStoreEvictionTest
+- FunctionControllerReplicaTest
+- FunctionControllerTest
+- FunctionNotFoundExceptionTest
+- FunctionServiceConcurrencyTest
+- FunctionServiceTest
+- FunctionSpecResolverTest
+- GlobalExceptionHandlerTest
+- HttpClientPropertiesTest
+- KubernetesClientConfigTest
+- KubernetesDeploymentBuilderTest
+- KubernetesMetricsTranslatorTest
+- KubernetesResourceManagerTest
+- IdempotencyStorePutIfAbsentTest
+- IdempotencyStoreTest
+- InvocationControllerTest
+- NoOpInvocationEnqueuerTest
+- NoOpScalingMetricsSourceTest
+- PoolDispatcherColdStartTest
+- PoolDispatcherTest
+- PoolDispatcherTimeoutTest
+- CommonModelTest
+- CoreDefaultsTest
+- CoreOnlyApiTest
+- ControlPlaneApiTest
+- ControlPlaneApplicationMainTest
+- ControlPlaneApplicationModulesTest
+- E2eApiSupportTest
+- E2eFlowTest
+- BuildpackE2eTest
+- K8sE2eTest
+- SdkExamplesE2eTest
+- InvocationServiceRetryQueueFullTest
+- InvocationServiceRetryTest
+- ExecutionCompletionHandlerTest
+- InvocationServiceDispatchTest
+- E2eTestSupportTest
+- IssueCoverageTest
+- MetricsTest
+- PrometheusEndpointTest
+- RateLimiterTest (service)
+- SyncQueueBackpressureApiTest
+- ValidationTest
+- VertxRuntimeHintsBranchTest
+- VertxRuntimeHintsTest
+
+## Notes
+- Remaining placeholders are tracked in tests/java_parity_generated_test.rs (now zero).
+- Completion criterion for each class block: no placeholder entry left for that class and dedicated Rust parity tests passing.

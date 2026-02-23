@@ -1,0 +1,6 @@
+slug: control-plane-rust-m3-20260222-200159
+kind: generic-service
+status: staging
+parent: version:control-plane-rust-m1-20260222-193928
+created_at: '2026-02-22T20:01:59Z'
+notes: 'Rust control-plane M3 in staging: deepen execution semantics parity (ExecutionRecord transitions, legacy accessors, snapshot fields) while preserving M2 API behavior.'
