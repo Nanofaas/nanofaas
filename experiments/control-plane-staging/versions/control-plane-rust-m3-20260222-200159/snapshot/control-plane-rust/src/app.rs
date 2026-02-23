@@ -377,6 +377,7 @@ async fn invoke_function(
     })
 }
 
+#[allow(clippy::result_large_err)]
 fn enqueue_function(
     name: &str,
     state: AppState,
@@ -604,6 +605,7 @@ fn validation_error(details: Vec<String>) -> Response {
         .into_response()
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_function_spec(spec: &FunctionSpec) -> Result<(), Response> {
     let mut details = Vec::new();
     if spec.name.trim().is_empty() {
@@ -625,6 +627,7 @@ fn validate_function_spec(spec: &FunctionSpec) -> Result<(), Response> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_invocation_request(request: &InvocationRequest) -> Result<(), Response> {
     if request.input.is_null() {
         return Err(validation_error(vec!["input must not be null".to_string()]));

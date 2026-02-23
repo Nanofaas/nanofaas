@@ -12,6 +12,12 @@ pub struct FunctionNotFoundError {
     message: Option<String>,
 }
 
+impl Default for FunctionNotFoundError {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FunctionNotFoundError {
     pub fn new() -> Self {
         Self { message: None }

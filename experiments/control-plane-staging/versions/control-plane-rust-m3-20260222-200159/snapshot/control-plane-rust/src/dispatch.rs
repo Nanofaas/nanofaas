@@ -38,6 +38,12 @@ pub struct PoolDispatcher {
     client: Client,
 }
 
+impl Default for PoolDispatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PoolDispatcher {
     pub fn new() -> Self {
         Self {
@@ -247,7 +253,7 @@ impl KubernetesMetricsTranslator {
     }
 
     fn to_k8s_metric_spec(
-        &self,
+        self,
         metric: &ScalingMetric,
         function_name: &str,
     ) -> Option<MetricSpec> {
