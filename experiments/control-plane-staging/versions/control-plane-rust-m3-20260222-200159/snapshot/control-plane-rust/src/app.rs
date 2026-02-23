@@ -1,4 +1,4 @@
-use crate::dispatch::{DispatcherRouter, LocalDispatcher, PoolDispatcher};
+use crate::dispatch::{DispatchResult, DispatcherRouter, LocalDispatcher, PoolDispatcher};
 use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
 use crate::metrics::Metrics;
@@ -36,6 +36,14 @@ struct CompletionRequest {
     status: String,
     #[serde(default)]
     output: Option<Value>,
+    #[serde(default)]
+    error: Option<ErrorInfoRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ErrorInfoRequest {
+    code: String,
+    message: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -208,7 +216,7 @@ async fn post_internal_execution_action(
     if action != "complete" {
         return Err(StatusCode::NOT_FOUND);
     }
-    complete_execution(&execution_id, request, state)?;
+    complete_execution(&execution_id, request, state).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -295,6 +303,8 @@ async fn invoke_function(
 
     let trace_id = header_value(&headers, "X-Trace-Id");
     let idempotency_key_fwd = header_value(&headers, "Idempotency-Key");
+    state.metrics.dispatch(name);
+
     let dispatch = state
         .dispatcher_router
         .dispatch(
@@ -305,21 +315,39 @@ async fn invoke_function(
             idempotency_key_fwd.as_deref(),
         )
         .await;
-    state.metrics.dispatch(name);
-    state.metrics.latency(name).record_ms(1);
 
+    let result = finish_invocation(&execution_id, name, dispatch, &state, now);
+
+    if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
+        let _ = state
+            .idempotency_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .put_if_absent(name, &idem_key, &execution_id, now);
+    }
+
+    result
+}
+
+fn finish_invocation(
+    execution_id: &str,
+    name: &str,
+    dispatch: DispatchResult,
+    state: &AppState,
+    created_at: u64,
+) -> Result<InvocationResponse, Response> {
     let finished_at = now_millis();
     let mut record = state
         .execution_store
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .get(&execution_id)
-        .unwrap_or_else(|| ExecutionRecord::new(&execution_id, name, ExecutionState::Running));
+        .get(execution_id)
+        .unwrap_or_else(|| ExecutionRecord::new(execution_id, name, ExecutionState::Running));
 
     match dispatch.status.as_str() {
         "SUCCESS" => {
             record.mark_success_at(
-                dispatch.output.clone().unwrap_or(serde_json::Value::Null),
+                dispatch.output.clone().unwrap_or(Value::Null),
                 finished_at,
             );
             state.metrics.success(name);
@@ -359,18 +387,12 @@ async fn invoke_function(
         .execution_store
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .put_with_timestamp(record, now);
+        .put_with_timestamp(record, created_at);
 
-    if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
-        let _ = state
-            .idempotency_store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .put_if_absent(name, &idem_key, &execution_id, now);
-    }
+    state.metrics.latency(name).record_ms(1);
 
     Ok(InvocationResponse {
-        execution_id,
+        execution_id: execution_id.to_string(),
         status: response_status,
         output: response_output,
         error: None,
@@ -530,16 +552,58 @@ async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
         .await
 }
 
-fn complete_execution(
+async fn complete_execution(
     execution_id: &str,
     request: CompletionRequest,
     state: AppState,
 ) -> Result<(), StatusCode> {
-    let mut store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
-    let mut record = store.get(execution_id).ok_or(StatusCode::NOT_FOUND)?;
-    record.status = parse_execution_state(&request.status).ok_or(StatusCode::BAD_REQUEST)?;
-    record.output = request.output;
-    store.put_now(record);
+    // Read the record (short lock)
+    let record = {
+        let store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
+        store.get(execution_id).ok_or(StatusCode::NOT_FOUND)?
+    };
+
+    let status = parse_execution_state(&request.status).ok_or(StatusCode::BAD_REQUEST)?;
+    let error_info = request
+        .error
+        .as_ref()
+        .map(|e| ErrorInfo::new(&e.code, &e.message));
+
+    let dispatch_result = DispatchResult {
+        status: request.status.clone(),
+        output: request.output.clone(),
+        dispatcher: "callback".to_string(),
+        cold_start: false,
+        init_duration_ms: None,
+    };
+
+    // Send on completion channel if present (sync invoke waiting)
+    if record.completion_tx.is_some() {
+        record.complete(dispatch_result).await;
+    } else {
+        // No waiter (async enqueue) — update store directly
+        let mut store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut r) = store.get(execution_id) {
+            let now = now_millis();
+            match status {
+                ExecutionState::Success => {
+                    r.mark_success_at(request.output.unwrap_or(Value::Null), now)
+                }
+                ExecutionState::Error => {
+                    r.mark_error_at(
+                        error_info.unwrap_or_else(|| ErrorInfo::new("ERROR", "unknown")),
+                        now,
+                    );
+                    // Preserve output even on error (callback may provide output data)
+                    r.set_output(request.output);
+                }
+                ExecutionState::Timeout => r.mark_timeout_at(now),
+                _ => r.set_state(status),
+            }
+            store.put_now(r);
+        }
+    }
+
     Ok(())
 }
 
