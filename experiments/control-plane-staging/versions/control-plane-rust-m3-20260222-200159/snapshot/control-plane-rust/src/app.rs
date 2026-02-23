@@ -1,5 +1,6 @@
 use crate::dispatch::{DispatchResult, DispatcherRouter, LocalDispatcher, PoolDispatcher};
 use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
+use crate::sync::{NoOpSyncQueueGateway, SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason};
 use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
 use crate::metrics::Metrics;
@@ -31,6 +32,7 @@ pub struct AppState {
     rate_limiter: Arc<Mutex<RateLimiter>>,
     metrics: Arc<Metrics>,
     enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync>,
+    sync_queue: Arc<dyn SyncQueueGateway + Send + Sync>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -92,6 +94,20 @@ pub fn build_app() -> Router {
         ))),
         metrics: Arc::new(Metrics::new()),
         enqueuer,
+        sync_queue: {
+            let sync_enabled = std::env::var("NANOFAAS_SYNC_QUEUE_ENABLED")
+                .map(|v| v == "true")
+                .unwrap_or(false);
+            if sync_enabled {
+                let max_concurrency = std::env::var("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(100);
+                Arc::new(SyncAdmissionQueue::new(max_concurrency))
+            } else {
+                Arc::new(NoOpSyncQueueGateway)
+            }
+        },
     };
 
     Router::new()
@@ -284,6 +300,24 @@ async fn invoke_function(
         return Err(StatusCode::TOO_MANY_REQUESTS.into_response());
     }
 
+    // Sync queue admission check (when sync-queue module is enabled)
+    if state.sync_queue.enabled() {
+        if let Err(rejection) = state.sync_queue.try_admit(name) {
+            state.metrics.sync_queue_rejected(name);
+            state.metrics.sync_queue_depth(name);
+            state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+            let reason = match rejection.reason {
+                SyncQueueRejectReason::EstWait => "est_wait",
+                SyncQueueRejectReason::Depth => "depth",
+            };
+            let retry_after = rejection
+                .est_wait_ms
+                .map(|ms| (ms / 1000).max(1))
+                .unwrap_or(2);
+            return Err(queue_rejected_response(&retry_after.to_string(), reason));
+        }
+    }
+
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         if let Some(existing_id) = state
             .idempotency_store
@@ -334,6 +368,11 @@ async fn invoke_function(
             idempotency_key_fwd.as_deref(),
         )
         .await;
+
+    // Release sync queue slot after dispatch
+    if state.sync_queue.enabled() {
+        state.sync_queue.release(name);
+    }
 
     let result = finish_invocation(&execution_id, name, dispatch, &state, now);
 
