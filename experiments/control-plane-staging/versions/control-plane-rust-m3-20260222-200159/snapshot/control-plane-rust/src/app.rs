@@ -5,6 +5,7 @@ use crate::metrics::Metrics;
 use crate::model::{FunctionSpec, InvocationRequest, InvocationResponse};
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
+use crate::registry::AppFunctionRegistry;
 use crate::scheduler::Scheduler;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -20,7 +21,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
-    functions: Arc<Mutex<HashMap<String, FunctionSpec>>>,
+    function_registry: Arc<AppFunctionRegistry>,
     function_replicas: Arc<Mutex<HashMap<String, u32>>>,
     seen_sync_invocations: Arc<Mutex<HashSet<String>>>,
     execution_store: Arc<Mutex<ExecutionStore>>,
@@ -46,7 +47,7 @@ struct ReplicaRequest {
 pub fn build_app() -> Router {
     let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
     let state = AppState {
-        functions: Arc::new(Mutex::new(HashMap::new())),
+        function_registry: Arc::new(AppFunctionRegistry::new()),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
         seen_sync_invocations: Arc::new(Mutex::new(HashSet::new())),
         execution_store: Arc::new(Mutex::new(ExecutionStore::new_with_durations(
@@ -107,12 +108,9 @@ async fn create_function(
         return resp;
     }
 
-    let mut functions = state.functions.lock().unwrap_or_else(|e| e.into_inner());
-    if functions.contains_key(&spec.name) {
+    if !state.function_registry.register(spec.clone()) {
         return StatusCode::CONFLICT.into_response();
     }
-    functions.insert(spec.name.clone(), spec.clone());
-    drop(functions);
 
     state
         .function_replicas
@@ -125,14 +123,7 @@ async fn create_function(
 }
 
 async fn list_functions(State(state): State<AppState>) -> Json<Vec<FunctionSpec>> {
-    let values = state
-        .functions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .values()
-        .cloned()
-        .collect::<Vec<_>>();
-    Json(values)
+    Json(state.function_registry.list())
 }
 
 async fn get_function(
@@ -140,21 +131,14 @@ async fn get_function(
     State(state): State<AppState>,
 ) -> Result<Json<FunctionSpec>, StatusCode> {
     state
-        .functions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .function_registry
         .get(&name)
-        .cloned()
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
 }
 
 async fn delete_function(Path(name): Path<String>, State(state): State<AppState>) -> StatusCode {
-    let removed = state
-        .functions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(&name);
+    let removed = state.function_registry.remove(&name);
     state
         .function_replicas
         .lock()
@@ -237,11 +221,8 @@ async fn invoke_function(
     request: InvocationRequest,
 ) -> Result<InvocationResponse, Response> {
     let function_spec = state
-        .functions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .function_registry
         .get(name)
-        .cloned()
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
 
     if let Some(image) = function_spec.image.as_deref() {
@@ -366,11 +347,8 @@ fn enqueue_function(
     _request: InvocationRequest,
 ) -> Result<InvocationResponse, Response> {
     let function_spec = state
-        .functions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .function_registry
         .get(name)
-        .cloned()
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
 
     if function_spec
@@ -494,7 +472,7 @@ fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode>
 }
 
 async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
-    let functions_snapshot = state.functions.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let functions_snapshot = state.function_registry.as_map();
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
     scheduler
         .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store)
@@ -530,13 +508,7 @@ async fn set_replicas(
     State(state): State<AppState>,
     Json(request): Json<ReplicaRequest>,
 ) -> Response {
-    let function = match state
-        .functions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(&name)
-        .cloned()
-    {
+    let function = match state.function_registry.get(&name) {
         Some(spec) => spec,
         None => return StatusCode::NOT_FOUND.into_response(),
     };
