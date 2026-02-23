@@ -90,6 +90,18 @@ impl Metrics {
         self.inc_counter("function_enqueue_total", function);
     }
 
+    pub fn error(&self, function: &str) {
+        self.inc_counter("function_error_total", function);
+    }
+
+    pub fn retry(&self, function: &str) {
+        self.inc_counter("function_retry_total", function);
+    }
+
+    pub fn timeout(&self, function: &str) {
+        self.inc_counter("function_timeout_total", function);
+    }
+
     pub fn sync_queue_admitted(&self, function: &str) {
         self.inc_counter("sync_queue_admitted_total", function);
     }

@@ -329,12 +329,15 @@ async fn invoke_function(
                 ErrorInfo::new("TIMEOUT", "dispatch timed out"),
                 finished_at,
             );
+            state.metrics.timeout(name);
+            state.metrics.error(name);
         }
         _ => {
             record.mark_error_at(
                 ErrorInfo::new("DISPATCH_ERROR", "dispatch failed"),
                 finished_at,
             );
+            state.metrics.error(name);
         }
     }
 
@@ -522,7 +525,7 @@ async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
     let functions_snapshot = state.function_registry.as_map();
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
     scheduler
-        .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store)
+        .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store, &state.metrics)
         .await
 }
 

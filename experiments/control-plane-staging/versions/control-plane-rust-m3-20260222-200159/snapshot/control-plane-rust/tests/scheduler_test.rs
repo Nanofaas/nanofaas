@@ -1,5 +1,6 @@
 use control_plane_rust::dispatch::{DispatcherRouter, LocalDispatcher, PoolDispatcher};
 use control_plane_rust::execution::{ExecutionRecord, ExecutionState, ExecutionStore};
+use control_plane_rust::metrics::Metrics;
 use control_plane_rust::model::{ExecutionMode, FunctionSpec, RuntimeMode};
 use control_plane_rust::queue::{InvocationTask, QueueManager};
 use control_plane_rust::scheduler::Scheduler;
@@ -61,7 +62,7 @@ async fn scheduler_dispatches_queued_execution_and_updates_store() {
 
     let scheduler = Scheduler::new(router);
     let dispatched = scheduler
-        .tick_once("fn-a", &functions, &queue, &store)
+        .tick_once("fn-a", &functions, &queue, &store, &Metrics::new())
         .await
         .unwrap();
     assert!(dispatched);

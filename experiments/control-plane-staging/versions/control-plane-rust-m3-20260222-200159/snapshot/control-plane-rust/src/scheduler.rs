@@ -1,5 +1,6 @@
 use crate::dispatch::DispatcherRouter;
 use crate::execution::{ErrorInfo, ExecutionStore};
+use crate::metrics::Metrics;
 use crate::model::FunctionSpec;
 use crate::queue::QueueManager;
 use std::collections::HashMap;
@@ -32,6 +33,7 @@ impl Scheduler {
         functions: &HashMap<String, FunctionSpec>,
         queue: &Arc<Mutex<QueueManager>>,
         store: &Arc<Mutex<ExecutionStore>>,
+        metrics: &Metrics,
     ) -> Result<bool, String> {
         // 1. Take next task — release queue lock immediately.
         let task = {
@@ -105,6 +107,7 @@ impl Scheduler {
                     r.reset_for_retry(execution_task);
                     s.put_now(r);
                 }
+                metrics.retry(function_name);
                 return Ok(true);
             }
         }
@@ -118,6 +121,7 @@ impl Scheduler {
             );
             s.put_now(record);
         }
+        metrics.error(function_name);
         Ok(true)
     }
 }
