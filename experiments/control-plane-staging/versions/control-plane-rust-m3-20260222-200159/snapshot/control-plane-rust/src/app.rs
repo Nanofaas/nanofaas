@@ -57,7 +57,7 @@ pub fn build_app() -> Router {
         idempotency_store: Arc::new(Mutex::new(IdempotencyStore::new_with_ttl(
             Duration::from_secs(300),
         ))),
-        queue_manager: Arc::new(Mutex::new(QueueManager::new(1024))),
+        queue_manager: Arc::new(Mutex::new(QueueManager::new(100))),
         dispatcher_router: Arc::new(dispatcher_router),
         rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
             std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
@@ -413,17 +413,19 @@ fn enqueue_function(
         .lock()
         .expect("execution store lock")
         .put_now(record);
+    let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
     state
         .queue_manager
         .lock()
         .expect("queue manager lock")
-        .enqueue(
+        .enqueue_with_capacity(
             name,
             InvocationTask {
                 execution_id: execution_id.clone(),
                 payload: _request.input,
                 attempt: 1,
             },
+            queue_capacity,
         )
         .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
     state.metrics.enqueue(name);

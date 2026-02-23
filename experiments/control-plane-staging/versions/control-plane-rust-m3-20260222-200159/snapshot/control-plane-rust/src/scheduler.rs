@@ -63,10 +63,11 @@ impl Scheduler {
                 payload: task.payload,
                 attempt: task.attempt + 1,
             };
+            let queue_capacity = function.queue_size.unwrap_or(100).max(1) as usize;
             if queue
                 .lock()
                 .expect("queue lock")
-                .enqueue(function_name, retry_task)
+                .enqueue_with_capacity(function_name, retry_task, queue_capacity)
                 .is_ok()
             {
                 let mut s = store.lock().expect("store lock");
