@@ -293,9 +293,17 @@ async fn invoke_function(
         .unwrap_or_else(|e| e.into_inner())
         .put_with_timestamp(record, now);
 
+    let trace_id = header_value(&headers, "X-Trace-Id");
+    let idempotency_key_fwd = header_value(&headers, "Idempotency-Key");
     let dispatch = state
         .dispatcher_router
-        .dispatch(&function_spec, &request.input, &execution_id)
+        .dispatch(
+            &function_spec,
+            &request.input,
+            &execution_id,
+            trace_id.as_deref(),
+            idempotency_key_fwd.as_deref(),
+        )
         .await;
     state.metrics.dispatch(name);
     state.metrics.latency(name).record_ms(1);

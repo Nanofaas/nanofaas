@@ -50,6 +50,8 @@ impl PoolDispatcher {
         function: &FunctionSpec,
         payload: &Value,
         execution_id: &str,
+        trace_id: Option<&str>,
+        idempotency_key: Option<&str>,
     ) -> DispatchResult {
         let endpoint = match function
             .url
@@ -72,11 +74,18 @@ impl PoolDispatcher {
         let timeout_ms = function.timeout_millis.unwrap_or(30_000);
         let runtime_request = json!({ "input": payload });
 
-        let response = match self
+        let mut req = self
             .client
             .post(&endpoint)
             .timeout(Duration::from_millis(timeout_ms))
-            .header("X-Execution-Id", execution_id)
+            .header("X-Execution-Id", execution_id);
+        if let Some(tid) = trace_id {
+            req = req.header("X-Trace-Id", tid);
+        }
+        if let Some(ikey) = idempotency_key {
+            req = req.header("Idempotency-Key", ikey);
+        }
+        let response = match req
             .json(&runtime_request)
             .send()
             .await
@@ -167,11 +176,15 @@ impl DispatcherRouter {
         function: &FunctionSpec,
         payload: &Value,
         execution_id: &str,
+        trace_id: Option<&str>,
+        idempotency_key: Option<&str>,
     ) -> DispatchResult {
         match function.execution_mode {
             ExecutionMode::Local => self.local.dispatch(function, payload, execution_id).await,
             ExecutionMode::Deployment | ExecutionMode::Pool => {
-                self.pool.dispatch(function, payload, execution_id).await
+                self.pool
+                    .dispatch(function, payload, execution_id, trace_id, idempotency_key)
+                    .await
             }
         }
     }

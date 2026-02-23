@@ -59,7 +59,7 @@ impl Scheduler {
         // 3. Dispatch — no lock held across this await point.
         let dispatch = self
             .router
-            .dispatch(function, &task.payload, &task.execution_id)
+            .dispatch(function, &task.payload, &task.execution_id, None, None)
             .await;
 
         let finished_at = now_millis();

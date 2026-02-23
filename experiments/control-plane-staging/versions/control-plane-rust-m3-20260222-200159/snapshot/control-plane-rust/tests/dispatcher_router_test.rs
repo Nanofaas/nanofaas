@@ -23,7 +23,7 @@ async fn dispatcher_router_uses_local_dispatcher_for_local_mode() {
         runtime_command: None,
     };
 
-    let result = router.dispatch(&spec, &json!({"x": 1}), "exec-local").await;
+    let result = router.dispatch(&spec, &json!({"x": 1}), "exec-local", None, None).await;
     assert_eq!(result.dispatcher, "local");
     assert_eq!(result.status, "SUCCESS");
 }
@@ -49,7 +49,7 @@ async fn dispatcher_router_uses_pool_dispatcher_for_deployment_mode() {
         runtime_command: None,
     };
 
-    let result = router.dispatch(&spec, &json!({"x": 2}), "exec-deploy").await;
+    let result = router.dispatch(&spec, &json!({"x": 2}), "exec-deploy", None, None).await;
     assert_eq!(result.dispatcher, "pool");
     assert_eq!(result.status, "SUCCESS");
 }
