@@ -42,6 +42,7 @@ fn pool_spec(endpoint: &str, timeout_millis: u64) -> FunctionSpec {
         timeout_millis: Some(timeout_millis),
         url: Some(endpoint.to_string()),
         image_pull_secrets: None,
+        runtime_command: None,
     }
 }
 

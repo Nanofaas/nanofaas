@@ -41,6 +41,7 @@ fn task() -> PoolInvocationTask {
             timeout_millis: Some(5_000),
             url: Some("http://mock/invoke".to_string()),
             image_pull_secrets: None,
+            runtime_command: None,
         },
         payload: json!("payload"),
     }

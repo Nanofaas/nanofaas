@@ -286,6 +286,17 @@ impl KubernetesDeploymentBuilder {
             name: "EXECUTION_MODE".to_string(),
             value: runtime_mode_name(spec).to_string(),
         });
+        if let Some(watchdog_cmd) = spec
+            .runtime_command
+            .as_deref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            env.push(EnvVar {
+                name: "WATCHDOG_CMD".to_string(),
+                value: watchdog_cmd.to_string(),
+            });
+        }
         if let Some(callback_url) = self
             .properties
             .callback_url

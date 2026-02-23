@@ -36,6 +36,7 @@ async fn scheduler_dispatches_queued_execution_and_updates_store() {
             timeout_millis: None,
             url: None,
             image_pull_secrets: None,
+            runtime_command: None,
         },
     );
 

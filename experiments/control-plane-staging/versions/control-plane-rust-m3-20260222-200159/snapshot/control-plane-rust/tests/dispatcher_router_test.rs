@@ -20,6 +20,7 @@ async fn dispatcher_router_uses_local_dispatcher_for_local_mode() {
         timeout_millis: None,
         url: None,
         image_pull_secrets: None,
+        runtime_command: None,
     };
 
     let result = router.dispatch(&spec, &json!({"x": 1}), "exec-local").await;
@@ -45,6 +46,7 @@ async fn dispatcher_router_uses_pool_dispatcher_for_deployment_mode() {
         timeout_millis: None,
         url: None,
         image_pull_secrets: None,
+        runtime_command: None,
     };
 
     let result = router.dispatch(&spec, &json!({"x": 2}), "exec-deploy").await;

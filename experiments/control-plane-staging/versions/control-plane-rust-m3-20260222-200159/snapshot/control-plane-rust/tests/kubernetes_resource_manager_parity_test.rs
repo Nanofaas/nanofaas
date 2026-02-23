@@ -33,6 +33,7 @@ fn spec(scaling: ScalingConfig) -> FunctionSpec {
         timeout_millis: Some(30_000),
         url: None,
         image_pull_secrets: None,
+        runtime_command: None,
     }
 }
 
