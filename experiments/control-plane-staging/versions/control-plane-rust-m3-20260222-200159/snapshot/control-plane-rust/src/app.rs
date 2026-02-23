@@ -1,5 +1,5 @@
 use crate::dispatch::{DispatcherRouter, LocalDispatcher, PoolDispatcher};
-use crate::execution::{ExecutionRecord, ExecutionState, ExecutionStore};
+use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
 use crate::metrics::Metrics;
 use crate::model::{FunctionSpec, InvocationRequest, InvocationResponse};
@@ -283,29 +283,55 @@ async fn invoke_function(
     let execution_id = Uuid::new_v4().to_string();
     state.metrics.sync_queue_admitted(name);
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+
+    // Create record as RUNNING immediately so polling sees the in-flight state.
+    let mut record = ExecutionRecord::new(&execution_id, name, ExecutionState::Running);
+    record.mark_running_at(now);
+    state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .put_with_timestamp(record, now);
+
     let dispatch = state
         .dispatcher_router
         .dispatch(&function_spec, &request.input, &execution_id)
         .await;
     state.metrics.dispatch(name);
     state.metrics.latency(name).record_ms(1);
-    let mut record = ExecutionRecord::new(
-        &execution_id,
-        name,
-        match dispatch.status.as_str() {
-            "SUCCESS" => ExecutionState::Success,
-            "ERROR" => ExecutionState::Error,
-            "TIMEOUT" => ExecutionState::Timeout,
-            _ => ExecutionState::Error,
-        },
-    );
-    let response_status = state_to_status(&record.status).to_string();
-    record.output = dispatch.output.clone();
 
-    if dispatch.status == "SUCCESS" {
-        state.metrics.success(name);
+    let finished_at = now_millis();
+    let mut record = state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&execution_id)
+        .unwrap_or_else(|| ExecutionRecord::new(&execution_id, name, ExecutionState::Running));
+
+    match dispatch.status.as_str() {
+        "SUCCESS" => {
+            record.mark_success_at(
+                dispatch.output.clone().unwrap_or(serde_json::Value::Null),
+                finished_at,
+            );
+            state.metrics.success(name);
+        }
+        "TIMEOUT" => {
+            record.mark_error_at(
+                ErrorInfo::new("TIMEOUT", "dispatch timed out"),
+                finished_at,
+            );
+        }
+        _ => {
+            record.mark_error_at(
+                ErrorInfo::new("DISPATCH_ERROR", "dispatch failed"),
+                finished_at,
+            );
+        }
     }
+
     if dispatch.cold_start {
+        record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
         state.metrics.cold_start(name);
         state
             .metrics
@@ -314,6 +340,10 @@ async fn invoke_function(
     } else {
         state.metrics.warm_start(name);
     }
+
+    let response_status = state_to_status(&record.status).to_string();
+    let response_output = record.output().clone();
+
     state
         .execution_store
         .lock()
@@ -331,7 +361,7 @@ async fn invoke_function(
     Ok(InvocationResponse {
         execution_id,
         status: response_status,
-        output: dispatch.output,
+        output: response_output,
         error: None,
     })
 }
