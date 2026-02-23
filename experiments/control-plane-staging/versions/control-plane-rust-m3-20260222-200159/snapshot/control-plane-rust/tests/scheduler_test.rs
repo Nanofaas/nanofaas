@@ -1,21 +1,23 @@
 use control_plane_rust::dispatch::{DispatcherRouter, LocalDispatcher, PoolDispatcher};
 use control_plane_rust::execution::{ExecutionRecord, ExecutionState, ExecutionStore};
+use control_plane_rust::metrics::Metrics;
 use control_plane_rust::model::{ExecutionMode, FunctionSpec, RuntimeMode};
 use control_plane_rust::queue::{InvocationTask, QueueManager};
 use control_plane_rust::scheduler::Scheduler;
 use serde_json::json;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-#[test]
-fn scheduler_dispatches_queued_execution_and_updates_store() {
-    let mut queue = QueueManager::new(10);
-    let mut store = ExecutionStore::new_with_durations(
+#[tokio::test]
+async fn scheduler_dispatches_queued_execution_and_updates_store() {
+    let queue = Arc::new(Mutex::new(QueueManager::new(10)));
+    let store = Arc::new(Mutex::new(ExecutionStore::new_with_durations(
         Duration::from_secs(300),
         Duration::from_secs(120),
         Duration::from_secs(600),
-    );
-    let router = DispatcherRouter::new(Box::new(LocalDispatcher), Box::new(PoolDispatcher));
+    )));
+    let router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
 
     let mut functions = HashMap::new();
     functions.insert(
@@ -35,13 +37,19 @@ fn scheduler_dispatches_queued_execution_and_updates_store() {
             timeout_millis: None,
             url: None,
             image_pull_secrets: None,
+            runtime_command: None,
         },
     );
 
-    let mut record = ExecutionRecord::new("exec-1", "fn-a", ExecutionState::Queued);
-    record.output = None;
-    store.put_with_timestamp(record, 100);
+    {
+        let mut s = store.lock().unwrap();
+        let mut record = ExecutionRecord::new("exec-1", "fn-a", ExecutionState::Queued);
+        record.output = None;
+        s.put_with_timestamp(record, 100);
+    }
     queue
+        .lock()
+        .unwrap()
         .enqueue(
             "fn-a",
             InvocationTask {
@@ -54,11 +62,12 @@ fn scheduler_dispatches_queued_execution_and_updates_store() {
 
     let scheduler = Scheduler::new(router);
     let dispatched = scheduler
-        .tick_once("fn-a", &functions, &mut queue, &mut store)
+        .tick_once("fn-a", &functions, &queue, &store, &Metrics::new())
+        .await
         .unwrap();
     assert!(dispatched);
 
-    let updated = store.get("exec-1").unwrap();
+    let updated = store.lock().unwrap().get("exec-1").unwrap();
     assert_eq!(updated.status, ExecutionState::Success);
     assert!(updated.output.is_some());
 }

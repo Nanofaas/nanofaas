@@ -119,6 +119,8 @@ pub struct FunctionSpec {
     pub url: Option<String>,
     #[serde(default, rename = "imagePullSecrets")]
     pub image_pull_secrets: Option<Vec<String>>,
+    #[serde(default, rename = "runtimeCommand")]
+    pub runtime_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

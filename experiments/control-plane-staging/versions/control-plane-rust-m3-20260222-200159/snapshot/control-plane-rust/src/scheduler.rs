@@ -1,8 +1,18 @@
 use crate::dispatch::DispatcherRouter;
-use crate::execution::{ExecutionState, ExecutionStore};
+use crate::execution::{ErrorInfo, ExecutionStore};
+use crate::metrics::Metrics;
 use crate::model::FunctionSpec;
 use crate::queue::QueueManager;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 pub struct Scheduler {
     router: DispatcherRouter,
@@ -13,56 +23,105 @@ impl Scheduler {
         Self { router }
     }
 
-    pub fn tick_once(
+    /// Dequeues and dispatches one task for `function_name`.
+    ///
+    /// Locks are released before the async dispatch so Tokio worker threads
+    /// are never blocked while holding a `std::sync::Mutex` guard (BUG-3).
+    pub async fn tick_once(
         &self,
         function_name: &str,
         functions: &HashMap<String, FunctionSpec>,
-        queue: &mut QueueManager,
-        store: &mut ExecutionStore,
+        queue: &Arc<Mutex<QueueManager>>,
+        store: &Arc<Mutex<ExecutionStore>>,
+        metrics: &Metrics,
     ) -> Result<bool, String> {
-        let task = match queue.take_next(function_name) {
-            Some(task) => task,
-            None => return Ok(false),
+        // 1. Take next task — release queue lock immediately.
+        let task = {
+            let mut q = queue.lock().unwrap_or_else(|e| e.into_inner());
+            q.take_next(function_name)
+        };
+        let Some(task) = task else {
+            return Ok(false);
         };
 
         let function = functions
             .get(function_name)
             .ok_or_else(|| format!("function not found: {function_name}"))?;
 
+        // 2. Mark running before dispatch — visible to status-polling clients.
+        let started_at = now_millis();
+        {
+            let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut r) = s.get(&task.execution_id) {
+                r.mark_running_at(started_at);
+                s.put_now(r);
+            }
+        }
+
+        // 3. Dispatch — no lock held across this await point.
         let dispatch = self
             .router
-            .dispatch(function, &task.payload, &task.execution_id);
-        let mut record = store
-            .get(&task.execution_id)
-            .ok_or_else(|| format!("execution not found: {}", task.execution_id))?;
+            .dispatch(function, &task.payload, &task.execution_id, None, None)
+            .await;
+
+        let finished_at = now_millis();
 
         if dispatch.status == "SUCCESS" {
-            record.status = ExecutionState::Success;
-            record.output = dispatch.output;
-            store.put_now(record);
+            let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+            let mut record = s
+                .get(&task.execution_id)
+                .ok_or_else(|| format!("execution not found: {}", task.execution_id))?;
+            record.mark_success_at(
+                dispatch.output.unwrap_or(serde_json::Value::Null),
+                finished_at,
+            );
+            if dispatch.cold_start {
+                record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
+            }
+            s.put_now(record);
             return Ok(true);
         }
 
+        // 4. Retry logic — locks acquired and released individually.
         let max_retries = function.max_retries.unwrap_or(1).max(1) as u32;
         if task.attempt < max_retries {
             let retry_task = crate::queue::InvocationTask {
-                execution_id: task.execution_id,
+                execution_id: task.execution_id.clone(),
                 payload: task.payload,
                 attempt: task.attempt + 1,
             };
-
-            if queue.enqueue(function_name, retry_task).is_ok() {
-                record.status = ExecutionState::Queued;
-                record.output = None;
-                store.put_now(record);
+            let queue_capacity = function.queue_size.unwrap_or(100).max(1) as usize;
+            if queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .enqueue_with_capacity(function_name, retry_task.clone(), queue_capacity)
+                .is_ok()
+            {
+                let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(mut r) = s.get(&task.execution_id) {
+                    let execution_task = crate::execution::InvocationTask::new(
+                        &retry_task.execution_id,
+                        function_name,
+                        retry_task.attempt,
+                    );
+                    r.reset_for_retry(execution_task);
+                    s.put_now(r);
+                }
+                metrics.retry(function_name);
                 return Ok(true);
             }
         }
 
-        record.status = ExecutionState::Error;
-        record.output = dispatch.output;
-        store.put_now(record);
-
+        // 5. Record final error state.
+        let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut record) = s.get(&task.execution_id) {
+            record.mark_error_at(
+                ErrorInfo::new("DISPATCH_ERROR", "dispatch failed"),
+                finished_at,
+            );
+            s.put_now(record);
+        }
+        metrics.error(function_name);
         Ok(true)
     }
 }

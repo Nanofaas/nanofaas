@@ -12,6 +12,12 @@ pub struct FunctionNotFoundError {
     message: Option<String>,
 }
 
+impl Default for FunctionNotFoundError {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FunctionNotFoundError {
     pub fn new() -> Self {
         Self { message: None }
@@ -308,6 +314,61 @@ impl FunctionSpecResolver {
     }
 }
 
+/// Thin thread-safe store for `FunctionSpec` (the API model type).
+/// Uses `RwLock` so concurrent reads never block each other.
+#[derive(Debug, Default)]
+pub struct AppFunctionRegistry {
+    specs: std::sync::RwLock<HashMap<String, AppFunctionSpec>>,
+}
+
+impl AppFunctionRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert `spec` if no entry with the same name exists.
+    /// Returns `true` on success, `false` if the name was already taken.
+    pub fn register(&self, spec: AppFunctionSpec) -> bool {
+        let mut map = self.specs.write().unwrap_or_else(|e| e.into_inner());
+        if map.contains_key(&spec.name) {
+            return false;
+        }
+        map.insert(spec.name.clone(), spec);
+        true
+    }
+
+    pub fn get(&self, name: &str) -> Option<AppFunctionSpec> {
+        self.specs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(name)
+            .cloned()
+    }
+
+    pub fn remove(&self, name: &str) -> Option<AppFunctionSpec> {
+        self.specs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(name)
+    }
+
+    pub fn list(&self) -> Vec<AppFunctionSpec> {
+        self.specs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    pub fn as_map(&self) -> HashMap<String, AppFunctionSpec> {
+        self.specs
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+}
+
 pub trait KubernetesResourceManager: Send + Sync {
     fn provision(&self, spec: &ResolverFunctionSpec) -> String;
     fn deprovision(&self, name: &str);
@@ -345,7 +406,7 @@ impl FunctionRegistry {
     pub fn get(&self, name: &str) -> Option<ResolverFunctionSpec> {
         self.functions
             .lock()
-            .expect("functions lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get(name)
             .cloned()
     }
@@ -353,18 +414,18 @@ impl FunctionRegistry {
     pub fn insert(&self, name: String, spec: ResolverFunctionSpec) {
         self.functions
             .lock()
-            .expect("functions lock")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(name, spec);
     }
 
     pub fn remove(&self, name: &str) -> Option<ResolverFunctionSpec> {
-        self.functions.lock().expect("functions lock").remove(name)
+        self.functions.lock().unwrap_or_else(|e| e.into_inner()).remove(name)
     }
 
     pub fn list(&self) -> Vec<ResolverFunctionSpec> {
         self.functions
             .lock()
-            .expect("functions lock")
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .cloned()
             .collect()
@@ -471,7 +532,7 @@ impl FunctionService {
                 .or_insert_with(|| Arc::new(Mutex::new(())))
                 .clone()
         };
-        let _guard = lock.lock().expect("per-function lock");
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
         let result = action();
         drop(_guard);
 

@@ -122,6 +122,7 @@ fn functionSpec_recordAccessors() {
         timeout_millis: Some(30_000),
         url: Some("http://svc".to_string()),
         image_pull_secrets: None,
+        runtime_command: None,
     };
     assert_eq!(spec.name, "echo");
     assert_eq!(spec.image.as_deref(), Some("img:latest"));

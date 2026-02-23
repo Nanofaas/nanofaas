@@ -286,6 +286,17 @@ impl KubernetesDeploymentBuilder {
             name: "EXECUTION_MODE".to_string(),
             value: runtime_mode_name(spec).to_string(),
         });
+        if let Some(watchdog_cmd) = spec
+            .runtime_command
+            .as_deref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            env.push(EnvVar {
+                name: "WATCHDOG_CMD".to_string(),
+                value: watchdog_cmd.to_string(),
+            });
+        }
         if let Some(callback_url) = self
             .properties
             .callback_url
@@ -392,24 +403,24 @@ impl InMemoryKubernetesClient {
     }
 
     pub fn delete_deployment(&self, namespace: &str, name: &str) {
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.deployments.remove(&Self::key(namespace, name));
     }
 
     pub fn create_deployment(&self, namespace: &str, deployment: Deployment) {
         let key = Self::key(namespace, &deployment.metadata.name);
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.deployments.insert(key, deployment);
     }
 
     pub fn get_deployment(&self, namespace: &str, name: &str) -> Option<Deployment> {
-        let state = self.state.lock().expect("k8s state lock");
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.deployments.get(&Self::key(namespace, name)).cloned()
     }
 
     pub fn list_deployments(&self, namespace: &str) -> Vec<Deployment> {
         let prefix = format!("{namespace}/");
-        let state = self.state.lock().expect("k8s state lock");
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state
             .deployments
             .iter()
@@ -424,48 +435,48 @@ impl InMemoryKubernetesClient {
     }
 
     pub fn scale_deployment(&self, namespace: &str, name: &str, replicas: i32) {
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(deployment) = state.deployments.get_mut(&Self::key(namespace, name)) {
             deployment.spec.replicas = replicas;
         }
     }
 
     pub fn set_ready_replicas(&self, namespace: &str, name: &str, ready_replicas: i32) {
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(deployment) = state.deployments.get_mut(&Self::key(namespace, name)) {
             deployment.status.ready_replicas = Some(ready_replicas);
         }
     }
 
     pub fn delete_service(&self, namespace: &str, name: &str) {
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.services.remove(&Self::key(namespace, name));
     }
 
     pub fn create_service(&self, namespace: &str, service: Service) {
         let key = Self::key(namespace, &service.metadata.name);
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.services.insert(key, service);
     }
 
     pub fn get_service(&self, namespace: &str, name: &str) -> Option<Service> {
-        let state = self.state.lock().expect("k8s state lock");
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.services.get(&Self::key(namespace, name)).cloned()
     }
 
     pub fn delete_hpa(&self, namespace: &str, name: &str) {
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.hpas.remove(&Self::key(namespace, name));
     }
 
     pub fn create_hpa(&self, namespace: &str, hpa: HorizontalPodAutoscaler) {
         let key = Self::key(namespace, &hpa.metadata.name);
-        let mut state = self.state.lock().expect("k8s state lock");
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.hpas.insert(key, hpa);
     }
 
     pub fn get_hpa(&self, namespace: &str, name: &str) -> Option<HorizontalPodAutoscaler> {
-        let state = self.state.lock().expect("k8s state lock");
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.hpas.get(&Self::key(namespace, name)).cloned()
     }
 }

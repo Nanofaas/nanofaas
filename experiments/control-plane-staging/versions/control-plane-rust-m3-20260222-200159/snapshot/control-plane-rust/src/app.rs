@@ -1,10 +1,13 @@
-use crate::dispatch::{DispatcherRouter, LocalDispatcher, PoolDispatcher};
-use crate::execution::{ExecutionRecord, ExecutionState, ExecutionStore};
+use crate::dispatch::{DispatchResult, DispatcherRouter, LocalDispatcher, PoolDispatcher};
+use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
+use crate::sync::{NoOpSyncQueueGateway, SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason};
+use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
 use crate::metrics::Metrics;
-use crate::model::{FunctionSpec, InvocationRequest, InvocationResponse};
+use crate::model::{ExecutionStatus, FunctionSpec, InvocationRequest, InvocationResponse};
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
+use crate::registry::AppFunctionRegistry;
 use crate::scheduler::Scheduler;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -13,22 +16,23 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
-    functions: Arc<Mutex<HashMap<String, FunctionSpec>>>,
+    function_registry: Arc<AppFunctionRegistry>,
     function_replicas: Arc<Mutex<HashMap<String, u32>>>,
-    seen_sync_invocations: Arc<Mutex<HashSet<String>>>,
     execution_store: Arc<Mutex<ExecutionStore>>,
     idempotency_store: Arc<Mutex<IdempotencyStore>>,
     queue_manager: Arc<Mutex<QueueManager>>,
     dispatcher_router: Arc<DispatcherRouter>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
     metrics: Arc<Metrics>,
+    enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync>,
+    sync_queue: Arc<dyn SyncQueueGateway + Send + Sync>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -36,6 +40,14 @@ struct CompletionRequest {
     status: String,
     #[serde(default)]
     output: Option<Value>,
+    #[serde(default)]
+    error: Option<ErrorInfoRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ErrorInfoRequest {
+    code: String,
+    message: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,24 +56,58 @@ struct ReplicaRequest {
 }
 
 pub fn build_app() -> Router {
-    let dispatcher_router =
-        DispatcherRouter::new(Box::new(LocalDispatcher), Box::new(PoolDispatcher));
+    let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
+    let execution_store = Arc::new(Mutex::new(ExecutionStore::new_with_durations(
+        Duration::from_secs(300),
+        Duration::from_secs(120),
+        Duration::from_secs(600),
+    )));
+    let queue_manager = Arc::new(Mutex::new(QueueManager::new(100)));
+
+    let async_queue_enabled = std::env::var("NANOFAAS_ASYNC_QUEUE_ENABLED")
+        .map(|v| v == "true")
+        .unwrap_or(true); // enabled by default for backward compat with tests
+
+    let enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync> = if async_queue_enabled {
+        Arc::new(AsyncQueueEnqueuer {
+            queue_manager: Arc::clone(&queue_manager),
+            execution_store: Arc::clone(&execution_store),
+        })
+    } else {
+        Arc::new(NoOpInvocationEnqueuer)
+    };
+
     let state = AppState {
-        functions: Arc::new(Mutex::new(HashMap::new())),
+        function_registry: Arc::new(AppFunctionRegistry::new()),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
-        seen_sync_invocations: Arc::new(Mutex::new(HashSet::new())),
-        execution_store: Arc::new(Mutex::new(ExecutionStore::new_with_durations(
-            Duration::from_secs(300),
-            Duration::from_secs(120),
-            Duration::from_secs(600),
-        ))),
+        execution_store,
         idempotency_store: Arc::new(Mutex::new(IdempotencyStore::new_with_ttl(
             Duration::from_secs(300),
         ))),
-        queue_manager: Arc::new(Mutex::new(QueueManager::new(1024))),
+        queue_manager,
         dispatcher_router: Arc::new(dispatcher_router),
-        rate_limiter: Arc::new(Mutex::new(RateLimiter::new(10_000))),
+        rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
+            std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(1_000),
+        ))),
         metrics: Arc::new(Metrics::new()),
+        enqueuer,
+        sync_queue: {
+            let sync_enabled = std::env::var("NANOFAAS_SYNC_QUEUE_ENABLED")
+                .map(|v| v == "true")
+                .unwrap_or(false);
+            if sync_enabled {
+                let max_concurrency = std::env::var("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(100);
+                Arc::new(SyncAdmissionQueue::new(max_concurrency))
+            } else {
+                Arc::new(NoOpSyncQueueGateway)
+            }
+        },
     };
 
     Router::new()
@@ -103,17 +149,14 @@ async fn create_function(
         return resp;
     }
 
-    let mut functions = state.functions.lock().expect("functions lock");
-    if functions.contains_key(&spec.name) {
+    if !state.function_registry.register(spec.clone()) {
         return StatusCode::CONFLICT.into_response();
     }
-    functions.insert(spec.name.clone(), spec.clone());
-    drop(functions);
 
     state
         .function_replicas
         .lock()
-        .expect("function replicas lock")
+        .unwrap_or_else(|e| e.into_inner())
         .entry(spec.name.clone())
         .or_insert(1);
 
@@ -121,14 +164,7 @@ async fn create_function(
 }
 
 async fn list_functions(State(state): State<AppState>) -> Json<Vec<FunctionSpec>> {
-    let values = state
-        .functions
-        .lock()
-        .expect("functions lock")
-        .values()
-        .cloned()
-        .collect::<Vec<_>>();
-    Json(values)
+    Json(state.function_registry.list())
 }
 
 async fn get_function(
@@ -136,25 +172,18 @@ async fn get_function(
     State(state): State<AppState>,
 ) -> Result<Json<FunctionSpec>, StatusCode> {
     state
-        .functions
-        .lock()
-        .expect("functions lock")
+        .function_registry
         .get(&name)
-        .cloned()
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
 }
 
 async fn delete_function(Path(name): Path<String>, State(state): State<AppState>) -> StatusCode {
-    let removed = state
-        .functions
-        .lock()
-        .expect("functions lock")
-        .remove(&name);
+    let removed = state.function_registry.remove(&name);
     state
         .function_replicas
         .lock()
-        .expect("function replicas lock")
+        .unwrap_or_else(|e| e.into_inner())
         .remove(&name);
     if removed.is_some() {
         StatusCode::NO_CONTENT
@@ -178,7 +207,7 @@ async fn post_function_action(
     }
 
     match action {
-        "invoke" => match invoke_function(&name, state, headers, request) {
+        "invoke" => match invoke_function(&name, state, headers, request).await {
             Ok(response_body) => response_with_execution_id(
                 StatusCode::OK,
                 response_body.execution_id.clone(),
@@ -206,7 +235,7 @@ async fn post_internal_function_action(
     match action {
         "drain-once" => {
             let dispatched =
-                drain_once(&name, state).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                drain_once(&name, state).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             Ok((StatusCode::OK, Json(json!({ "dispatched": dispatched }))))
         }
         _ => Err(StatusCode::NOT_FOUND),
@@ -222,22 +251,19 @@ async fn post_internal_execution_action(
     if action != "complete" {
         return Err(StatusCode::NOT_FOUND);
     }
-    complete_execution(&execution_id, request, state)?;
+    complete_execution(&execution_id, request, state).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn invoke_function(
+async fn invoke_function(
     name: &str,
     state: AppState,
     headers: HeaderMap,
     request: InvocationRequest,
 ) -> Result<InvocationResponse, Response> {
     let function_spec = state
-        .functions
-        .lock()
-        .expect("functions lock")
+        .function_registry
         .get(name)
-        .cloned()
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
 
     if let Some(image) = function_spec.image.as_deref() {
@@ -265,7 +291,7 @@ fn invoke_function(
     if !state
         .rate_limiter
         .lock()
-        .expect("rate limiter lock")
+        .unwrap_or_else(|e| e.into_inner())
         .try_acquire_at(now)
     {
         state.metrics.sync_queue_rejected(name);
@@ -274,17 +300,35 @@ fn invoke_function(
         return Err(StatusCode::TOO_MANY_REQUESTS.into_response());
     }
 
+    // Sync queue admission check (when sync-queue module is enabled)
+    if state.sync_queue.enabled() {
+        if let Err(rejection) = state.sync_queue.try_admit(name) {
+            state.metrics.sync_queue_rejected(name);
+            state.metrics.sync_queue_depth(name);
+            state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+            let reason = match rejection.reason {
+                SyncQueueRejectReason::EstWait => "est_wait",
+                SyncQueueRejectReason::Depth => "depth",
+            };
+            let retry_after = rejection
+                .est_wait_ms
+                .map(|ms| (ms / 1000).max(1))
+                .unwrap_or(2);
+            return Err(queue_rejected_response(&retry_after.to_string(), reason));
+        }
+    }
+
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         if let Some(existing_id) = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get_execution_id(name, &idem_key, now)
         {
             if let Some(existing) = state
                 .execution_store
                 .lock()
-                .expect("execution store lock")
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&existing_id)
             {
                 return Ok(InvocationResponse {
@@ -300,60 +344,121 @@ fn invoke_function(
     let execution_id = Uuid::new_v4().to_string();
     state.metrics.sync_queue_admitted(name);
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
-    let dispatch = state
-        .dispatcher_router
-        .dispatch(&function_spec, &request.input, &execution_id);
-    state.metrics.dispatch(name);
-    state.metrics.latency(name).record_ms(1);
-    let mut record = ExecutionRecord::new(
-        &execution_id,
-        name,
-        match dispatch.status.as_str() {
-            "SUCCESS" => ExecutionState::Success,
-            "ERROR" => ExecutionState::Error,
-            "TIMEOUT" => ExecutionState::Timeout,
-            _ => ExecutionState::Error,
-        },
-    );
-    let response_status = state_to_status(&record.status).to_string();
-    record.output = dispatch.output.clone();
 
-    if dispatch.status == "SUCCESS" {
-        state.metrics.success(name);
-    }
-    let is_cold_start = state
-        .seen_sync_invocations
-        .lock()
-        .expect("seen sync invocations lock")
-        .insert(name.to_string());
-    if is_cold_start {
-        state.metrics.cold_start(name);
-        state.metrics.init_duration(name).record_ms(1);
-    } else {
-        state.metrics.warm_start(name);
-    }
+    // Create record as RUNNING immediately so polling sees the in-flight state.
+    let mut record = ExecutionRecord::new(&execution_id, name, ExecutionState::Running);
+    record.mark_running_at(now);
     state
         .execution_store
         .lock()
-        .expect("execution store lock")
+        .unwrap_or_else(|e| e.into_inner())
         .put_with_timestamp(record, now);
+
+    let trace_id = header_value(&headers, "X-Trace-Id");
+    let idempotency_key_fwd = header_value(&headers, "Idempotency-Key");
+    state.metrics.dispatch(name);
+
+    let dispatch = state
+        .dispatcher_router
+        .dispatch(
+            &function_spec,
+            &request.input,
+            &execution_id,
+            trace_id.as_deref(),
+            idempotency_key_fwd.as_deref(),
+        )
+        .await;
+
+    // Release sync queue slot after dispatch
+    if state.sync_queue.enabled() {
+        state.sync_queue.release(name);
+    }
+
+    let result = finish_invocation(&execution_id, name, dispatch, &state, now);
 
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         let _ = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .put_if_absent(name, &idem_key, &execution_id, now);
     }
 
+    result
+}
+
+#[allow(clippy::result_large_err)]
+fn finish_invocation(
+    execution_id: &str,
+    name: &str,
+    dispatch: DispatchResult,
+    state: &AppState,
+    created_at: u64,
+) -> Result<InvocationResponse, Response> {
+    let finished_at = now_millis();
+    let mut record = state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(execution_id)
+        .unwrap_or_else(|| ExecutionRecord::new(execution_id, name, ExecutionState::Running));
+
+    match dispatch.status.as_str() {
+        "SUCCESS" => {
+            record.mark_success_at(
+                dispatch.output.clone().unwrap_or(Value::Null),
+                finished_at,
+            );
+            state.metrics.success(name);
+        }
+        "TIMEOUT" => {
+            record.mark_error_at(
+                ErrorInfo::new("TIMEOUT", "dispatch timed out"),
+                finished_at,
+            );
+            state.metrics.timeout(name);
+            state.metrics.error(name);
+        }
+        _ => {
+            record.mark_error_at(
+                ErrorInfo::new("DISPATCH_ERROR", "dispatch failed"),
+                finished_at,
+            );
+            state.metrics.error(name);
+        }
+    }
+
+    if dispatch.cold_start {
+        record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
+        state.metrics.cold_start(name);
+        state
+            .metrics
+            .init_duration(name)
+            .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+    } else {
+        state.metrics.warm_start(name);
+    }
+
+    let response_status = state_to_status(&record.status).to_string();
+    let response_output = record.output().clone();
+
+    state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .put_with_timestamp(record, created_at);
+
+    state.metrics.latency(name).record_ms(1);
+
     Ok(InvocationResponse {
-        execution_id,
+        execution_id: execution_id.to_string(),
         status: response_status,
-        output: dispatch.output,
+        output: response_output,
         error: None,
     })
 }
 
+#[allow(clippy::result_large_err)]
 fn enqueue_function(
     name: &str,
     state: AppState,
@@ -361,12 +466,14 @@ fn enqueue_function(
     _request: InvocationRequest,
 ) -> Result<InvocationResponse, Response> {
     let function_spec = state
-        .functions
-        .lock()
-        .expect("functions lock")
+        .function_registry
         .get(name)
-        .cloned()
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
+
+    // Check if async queue is available
+    if !state.enqueuer.enabled() {
+        return Err(StatusCode::NOT_IMPLEMENTED.into_response());
+    }
 
     if function_spec
         .image
@@ -382,13 +489,13 @@ fn enqueue_function(
         if let Some(existing_id) = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get_execution_id(name, &idem_key, now)
         {
             if let Some(existing) = state
                 .execution_store
                 .lock()
-                .expect("execution store lock")
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&existing_id)
             {
                 return Ok(InvocationResponse {
@@ -402,32 +509,34 @@ fn enqueue_function(
     }
 
     let execution_id = Uuid::new_v4().to_string();
-    let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
-    state
-        .execution_store
-        .lock()
-        .expect("execution store lock")
-        .put_now(record);
+    let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
     state
         .queue_manager
         .lock()
-        .expect("queue manager lock")
-        .enqueue(
+        .unwrap_or_else(|e| e.into_inner())
+        .enqueue_with_capacity(
             name,
             InvocationTask {
                 execution_id: execution_id.clone(),
                 payload: _request.input,
                 attempt: 1,
             },
+            queue_capacity,
         )
         .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
+    let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
+    state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .put_now(record);
     state.metrics.enqueue(name);
 
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         let _ = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .put_if_absent(name, &idem_key, &execution_id, now);
     }
     Ok(InvocationResponse {
@@ -441,14 +550,27 @@ fn enqueue_function(
 async fn get_execution(
     Path(id): Path<String>,
     State(state): State<AppState>,
-) -> Result<Json<ExecutionRecord>, StatusCode> {
-    state
+) -> Result<Json<ExecutionStatus>, StatusCode> {
+    let record = state
         .execution_store
         .lock()
-        .expect("execution store lock")
+        .unwrap_or_else(|e| e.into_inner())
         .get(&id)
-        .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let snap = record.snapshot();
+    Ok(Json(ExecutionStatus {
+        execution_id: snap.execution_id,
+        status: state_to_status(&snap.state).to_string(),
+        started_at_millis: snap.started_at_millis,
+        finished_at_millis: snap.finished_at_millis,
+        output: snap.output,
+        error: snap.last_error.map(|e| crate::model::ErrorInfo {
+            code: e.code,
+            message: e.message,
+        }),
+        cold_start: snap.cold_start,
+        init_duration_ms: snap.init_duration_ms,
+    }))
 }
 
 fn state_to_status(state: &ExecutionState) -> &'static str {
@@ -486,24 +608,66 @@ fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode>
     Err(StatusCode::NOT_FOUND)
 }
 
-fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
-    let functions_snapshot = state.functions.lock().expect("functions lock").clone();
-    let mut queue = state.queue_manager.lock().expect("queue manager lock");
-    let mut store = state.execution_store.lock().expect("execution store lock");
+async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
+    let functions_snapshot = state.function_registry.as_map();
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
-    scheduler.tick_once(name, &functions_snapshot, &mut queue, &mut store)
+    scheduler
+        .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store, &state.metrics)
+        .await
 }
 
-fn complete_execution(
+async fn complete_execution(
     execution_id: &str,
     request: CompletionRequest,
     state: AppState,
 ) -> Result<(), StatusCode> {
-    let mut store = state.execution_store.lock().expect("execution store lock");
-    let mut record = store.get(execution_id).ok_or(StatusCode::NOT_FOUND)?;
-    record.status = parse_execution_state(&request.status).ok_or(StatusCode::BAD_REQUEST)?;
-    record.output = request.output;
-    store.put_now(record);
+    // Read the record (short lock)
+    let record = {
+        let store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
+        store.get(execution_id).ok_or(StatusCode::NOT_FOUND)?
+    };
+
+    let status = parse_execution_state(&request.status).ok_or(StatusCode::BAD_REQUEST)?;
+    let error_info = request
+        .error
+        .as_ref()
+        .map(|e| ErrorInfo::new(&e.code, &e.message));
+
+    let dispatch_result = DispatchResult {
+        status: request.status.clone(),
+        output: request.output.clone(),
+        dispatcher: "callback".to_string(),
+        cold_start: false,
+        init_duration_ms: None,
+    };
+
+    // Send on completion channel if present (sync invoke waiting)
+    if record.completion_tx.is_some() {
+        record.complete(dispatch_result).await;
+    } else {
+        // No waiter (async enqueue) — update store directly
+        let mut store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut r) = store.get(execution_id) {
+            let now = now_millis();
+            match status {
+                ExecutionState::Success => {
+                    r.mark_success_at(request.output.unwrap_or(Value::Null), now)
+                }
+                ExecutionState::Error => {
+                    r.mark_error_at(
+                        error_info.unwrap_or_else(|| ErrorInfo::new("ERROR", "unknown")),
+                        now,
+                    );
+                    // Preserve output even on error (callback may provide output data)
+                    r.set_output(request.output);
+                }
+                ExecutionState::Timeout => r.mark_timeout_at(now),
+                _ => r.set_state(status),
+            }
+            store.put_now(r);
+        }
+    }
+
     Ok(())
 }
 
@@ -523,13 +687,7 @@ async fn set_replicas(
     State(state): State<AppState>,
     Json(request): Json<ReplicaRequest>,
 ) -> Response {
-    let function = match state
-        .functions
-        .lock()
-        .expect("functions lock")
-        .get(&name)
-        .cloned()
-    {
+    let function = match state.function_registry.get(&name) {
         Some(spec) => spec,
         None => return StatusCode::NOT_FOUND.into_response(),
     };
@@ -550,7 +708,7 @@ async fn set_replicas(
     state
         .function_replicas
         .lock()
-        .expect("function replicas lock")
+        .unwrap_or_else(|e| e.into_inner())
         .insert(name.clone(), request.replicas);
 
     (
@@ -575,6 +733,7 @@ fn validation_error(details: Vec<String>) -> Response {
         .into_response()
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_function_spec(spec: &FunctionSpec) -> Result<(), Response> {
     let mut details = Vec::new();
     if spec.name.trim().is_empty() {
@@ -596,6 +755,7 @@ fn validate_function_spec(spec: &FunctionSpec) -> Result<(), Response> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_invocation_request(request: &InvocationRequest) -> Result<(), Response> {
     if request.input.is_null() {
         return Err(validation_error(vec!["input must not be null".to_string()]));

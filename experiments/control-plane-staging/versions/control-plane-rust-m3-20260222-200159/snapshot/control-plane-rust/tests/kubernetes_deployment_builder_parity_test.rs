@@ -34,6 +34,7 @@ fn spec(scaling: Option<ScalingConfig>) -> FunctionSpec {
         timeout_millis: Some(30_000),
         url: None,
         image_pull_secrets: None,
+        runtime_command: None,
     }
 }
 
@@ -121,6 +122,7 @@ fn buildDeployment_filtersReservedEnvVars() {
         timeout_millis: Some(30_000),
         url: None,
         image_pull_secrets: None,
+        runtime_command: None,
     };
 
     let deployment = builder().build_deployment(&spec_with_reserved);
@@ -331,6 +333,25 @@ fn buildDeployment_setsImagePullSecrets() {
         "ghcr-creds",
         deployment.spec.template.spec.image_pull_secrets[1]
     );
+}
+
+#[test]
+fn buildDeployment_setsWatchdogCmdEnvVar() {
+    let mut with_runtime_cmd = spec(None);
+    with_runtime_cmd.runtime_command = Some("fwatchdog".to_string());
+
+    let deployment = builder().build_deployment(&with_runtime_cmd);
+    let env = &deployment.spec.template.spec.containers[0].env;
+    assert!(env
+        .iter()
+        .any(|e| e.name == "WATCHDOG_CMD" && e.value == "fwatchdog"));
+}
+
+#[test]
+fn buildDeployment_omitsWatchdogCmdWhenNotSet() {
+    let deployment = builder().build_deployment(&spec(None));
+    let env = &deployment.spec.template.spec.containers[0].env;
+    assert!(!env.iter().any(|e| e.name == "WATCHDOG_CMD"));
 }
 
 #[test]

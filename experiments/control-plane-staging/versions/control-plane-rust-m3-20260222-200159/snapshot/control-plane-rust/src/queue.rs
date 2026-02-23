@@ -32,8 +32,17 @@ impl QueueManager {
         function_name: &str,
         task: InvocationTask,
     ) -> Result<(), QueueOverflowError> {
+        self.enqueue_with_capacity(function_name, task, self.capacity_per_function)
+    }
+
+    pub fn enqueue_with_capacity(
+        &mut self,
+        function_name: &str,
+        task: InvocationTask,
+        capacity: usize,
+    ) -> Result<(), QueueOverflowError> {
         let queue = self.queues.entry(function_name.to_string()).or_default();
-        if queue.len() >= self.capacity_per_function {
+        if queue.len() >= capacity {
             return Err(QueueOverflowError {
                 function_name: function_name.to_string(),
             });

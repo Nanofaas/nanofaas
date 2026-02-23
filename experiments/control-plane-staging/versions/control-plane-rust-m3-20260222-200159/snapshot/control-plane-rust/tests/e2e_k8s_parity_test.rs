@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 const IMAGE_TAG: &str = "nanofaas/control-plane-rust-m3:e2e-k8s-parity";
 const MOCK_RUNTIME_IMAGE: &str = "hashicorp/http-echo:1.0";
+const COLD_MOCK_IMAGE: &str = "nanofaas/cold-mock:e2e";
 
 fn docker_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -85,6 +86,15 @@ fn ensure_image_built() -> Result<(), String> {
     .map(|_| ())
 }
 
+fn ensure_cold_mock_image_built() -> Result<(), String> {
+    let cold_mock_dir = crate_root().join("tests").join("cold-mock");
+    docker_cmd(
+        &["build", "-t", COLD_MOCK_IMAGE, "."],
+        Some(&cold_mock_dir),
+    )
+    .map(|_| ())
+}
+
 fn reserve_host_port() -> Result<u16, String> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .map_err(|err| format!("failed to reserve host port: {err}"))?;
@@ -98,6 +108,7 @@ fn reserve_host_port() -> Result<u16, String> {
 
 fn start_environment() -> Result<(DockerContext, String), String> {
     ensure_image_built()?;
+    ensure_cold_mock_image_built()?;
 
     let suffix = Uuid::new_v4().simple().to_string();
     let network_name = format!("cp-rust-k8s-e2e-net-{suffix}");
@@ -124,6 +135,24 @@ fn start_environment() -> Result<(DockerContext, String), String> {
         None,
     )?;
     ctx.register_container(runtime_name);
+
+    // Cold-start mock: always returns X-Cold-Start: true so cold-start metrics can be tested.
+    let cold_runtime_name = format!("cp-rust-k8s-cold-runtime-{suffix}");
+    docker_cmd(
+        &[
+            "run",
+            "-d",
+            "--name",
+            &cold_runtime_name,
+            "--network",
+            &network_name,
+            "--network-alias",
+            "cold-function-runtime",
+            COLD_MOCK_IMAGE,
+        ],
+        None,
+    )?;
+    ctx.register_container(cold_runtime_name);
 
     let host_port = reserve_host_port()?;
     let cp_name = format!("cp-rust-k8s-cp-{suffix}");
@@ -173,6 +202,33 @@ async fn register_pool_function(
             "executionMode": "POOL",
             "runtimeMode": "HTTP",
             "endpointUrl": "http://function-runtime:8080/invoke"
+        }))
+        .send()
+        .await
+        .map_err(|err| format!("register request failed: {err}"))?;
+    if resp.status().as_u16() != 201 {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("register failed with status {status}: {body}"));
+    }
+    Ok(())
+}
+
+async fn register_pool_function_with_endpoint(
+    client: &Client,
+    base_url: &str,
+    name: &str,
+    image: &str,
+    endpoint_url: &str,
+) -> Result<(), String> {
+    let resp = client
+        .post(format!("{base_url}/v1/functions"))
+        .json(&json!({
+            "name": name,
+            "image": image,
+            "executionMode": "POOL",
+            "runtimeMode": "HTTP",
+            "endpointUrl": endpoint_url
         }))
         .send()
         .await
@@ -389,22 +445,42 @@ async fn k8sColdStartMetrics_areRecorded() {
         .await
         .expect("wait for health");
 
+    // cold-function-runtime always returns X-Cold-Start:true so cold-start metrics are recorded.
+    register_pool_function_with_endpoint(
+        &client,
+        &base_url,
+        "k8s-cold-fn",
+        "nanofaas/function-runtime:e2e",
+        "http://cold-function-runtime:8080",
+    )
+    .await
+    .expect("register cold function");
+
+    // function-runtime returns no cold-start headers, so warm-start metrics are recorded.
     register_pool_function(
         &client,
         &base_url,
-        "k8s-cold-metrics",
+        "k8s-warm-fn",
         "nanofaas/function-runtime:e2e",
     )
     .await
-    .expect("register pool function");
+    .expect("register warm function");
 
-    for payload in ["cold", "warm-1", "warm-2"] {
+    let cold_invoke = client
+        .post(format!("{base_url}/v1/functions/k8s-cold-fn:invoke"))
+        .json(&json!({"input": "cold"}))
+        .send()
+        .await
+        .expect("cold invoke");
+    assert_eq!(200, cold_invoke.status().as_u16());
+
+    for payload in ["warm-1", "warm-2"] {
         let invoke = client
-            .post(format!("{base_url}/v1/functions/k8s-cold-metrics:invoke"))
-            .json(&json!({"input":payload}))
+            .post(format!("{base_url}/v1/functions/k8s-warm-fn:invoke"))
+            .json(&json!({"input": payload}))
             .send()
             .await
-            .expect("invoke");
+            .expect("warm invoke");
         assert_eq!(200, invoke.status().as_u16());
     }
 
@@ -415,7 +491,7 @@ async fn k8sColdStartMetrics_areRecorded() {
         .expect("scrape request");
     assert_eq!(200, scrape.status().as_u16());
     let text = scrape.text().await.expect("prometheus text");
-    assert!(text.contains("function_cold_start_total{function=\"k8s-cold-metrics\"}"));
-    assert!(text.contains("function_warm_start_total{function=\"k8s-cold-metrics\"}"));
-    assert!(text.contains("function_init_duration_ms_count{function=\"k8s-cold-metrics\"}"));
+    assert!(text.contains("function_cold_start_total{function=\"k8s-cold-fn\"}"));
+    assert!(text.contains("function_warm_start_total{function=\"k8s-warm-fn\"}"));
+    assert!(text.contains("function_init_duration_ms_count{function=\"k8s-cold-fn\"}"));
 }

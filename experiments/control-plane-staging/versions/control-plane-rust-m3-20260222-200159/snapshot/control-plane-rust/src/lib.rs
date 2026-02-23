@@ -1,6 +1,4 @@
 pub mod app;
-pub mod application;
-pub mod config;
 pub mod core_defaults;
 pub mod dispatch;
 pub mod e2e_support;
