@@ -60,7 +60,12 @@ pub fn build_app() -> Router {
         ))),
         queue_manager: Arc::new(Mutex::new(QueueManager::new(1024))),
         dispatcher_router: Arc::new(dispatcher_router),
-        rate_limiter: Arc::new(Mutex::new(RateLimiter::new(10_000))),
+        rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
+            std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(1_000),
+        ))),
         metrics: Arc::new(Metrics::new()),
     };
 
