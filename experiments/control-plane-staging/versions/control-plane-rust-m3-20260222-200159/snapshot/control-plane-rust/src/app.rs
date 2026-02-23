@@ -14,7 +14,7 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
@@ -23,7 +23,6 @@ use uuid::Uuid;
 pub struct AppState {
     function_registry: Arc<AppFunctionRegistry>,
     function_replicas: Arc<Mutex<HashMap<String, u32>>>,
-    seen_sync_invocations: Arc<Mutex<HashSet<String>>>,
     execution_store: Arc<Mutex<ExecutionStore>>,
     idempotency_store: Arc<Mutex<IdempotencyStore>>,
     queue_manager: Arc<Mutex<QueueManager>>,
@@ -49,7 +48,6 @@ pub fn build_app() -> Router {
     let state = AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
-        seen_sync_invocations: Arc::new(Mutex::new(HashSet::new())),
         execution_store: Arc::new(Mutex::new(ExecutionStore::new_with_durations(
             Duration::from_secs(300),
             Duration::from_secs(120),
@@ -307,14 +305,12 @@ async fn invoke_function(
     if dispatch.status == "SUCCESS" {
         state.metrics.success(name);
     }
-    let is_cold_start = state
-        .seen_sync_invocations
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(name.to_string());
-    if is_cold_start {
+    if dispatch.cold_start {
         state.metrics.cold_start(name);
-        state.metrics.init_duration(name).record_ms(1);
+        state
+            .metrics
+            .init_duration(name)
+            .record_ms(dispatch.init_duration_ms.unwrap_or(0));
     } else {
         state.metrics.warm_start(name);
     }

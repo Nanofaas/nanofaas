@@ -9,6 +9,8 @@ pub struct DispatchResult {
     pub status: String,
     pub output: Option<Value>,
     pub dispatcher: String,
+    pub cold_start: bool,
+    pub init_duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -25,6 +27,8 @@ impl LocalDispatcher {
             status: "SUCCESS".to_string(),
             output: Some(payload.clone()),
             dispatcher: "local".to_string(),
+            cold_start: false,
+            init_duration_ms: None,
         }
     }
 }
@@ -59,6 +63,8 @@ impl PoolDispatcher {
                     status: "SUCCESS".to_string(),
                     output: Some(payload.clone()),
                     dispatcher: "pool".to_string(),
+                    cold_start: false,
+                    init_duration_ms: None,
                 };
             }
         };
@@ -81,6 +87,8 @@ impl PoolDispatcher {
                     status: "ERROR".to_string(),
                     output: None,
                     dispatcher: "pool".to_string(),
+                    cold_start: false,
+                    init_duration_ms: None,
                 };
             }
         };
@@ -90,8 +98,23 @@ impl PoolDispatcher {
                 status: "ERROR".to_string(),
                 output: None,
                 dispatcher: "pool".to_string(),
+                cold_start: false,
+                init_duration_ms: None,
             };
         }
+
+        // Read cold-start headers before consuming the response body.
+        let cold_start = response
+            .headers()
+            .get("X-Cold-Start")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let init_duration_ms = response
+            .headers()
+            .get("X-Init-Duration-Ms")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
 
         let content_type = response
             .headers()
@@ -107,6 +130,8 @@ impl PoolDispatcher {
                     status: "ERROR".to_string(),
                     output: None,
                     dispatcher: "pool".to_string(),
+                    cold_start: false,
+                    init_duration_ms: None,
                 };
             }
         };
@@ -121,6 +146,8 @@ impl PoolDispatcher {
             status: "SUCCESS".to_string(),
             output: Some(output),
             dispatcher: "pool".to_string(),
+            cold_start,
+            init_duration_ms,
         }
     }
 }
