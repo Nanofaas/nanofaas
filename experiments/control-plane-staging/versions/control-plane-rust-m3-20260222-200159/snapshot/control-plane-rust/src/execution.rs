@@ -1,7 +1,11 @@
+use crate::dispatch::DispatchResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::oneshot;
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -78,6 +82,8 @@ pub struct ExecutionRecord {
     cold_start: bool,
     #[serde(skip_serializing)]
     init_duration_ms: Option<u64>,
+    #[serde(skip)]
+    pub completion_tx: Option<Arc<TokioMutex<Option<oneshot::Sender<DispatchResult>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +118,26 @@ impl ExecutionRecord {
             last_error: None,
             cold_start: false,
             init_duration_ms: None,
+            completion_tx: None,
+        }
+    }
+
+    pub fn new_with_completion(
+        execution_id: &str,
+        function_name: &str,
+    ) -> (Self, oneshot::Receiver<DispatchResult>) {
+        let (tx, rx) = oneshot::channel();
+        let mut record = Self::new(execution_id, function_name, ExecutionState::Queued);
+        record.completion_tx = Some(Arc::new(TokioMutex::new(Some(tx))));
+        (record, rx)
+    }
+
+    pub async fn complete(&self, result: DispatchResult) {
+        if let Some(tx_mutex) = &self.completion_tx {
+            let mut guard = tx_mutex.lock().await;
+            if let Some(tx) = guard.take() {
+                let _ = tx.send(result);
+            }
         }
     }
 
@@ -131,6 +157,7 @@ impl ExecutionRecord {
             last_error: None,
             cold_start: false,
             init_duration_ms: None,
+            completion_tx: None,
         }
     }
 
