@@ -387,6 +387,7 @@ async fn invoke_function(
     result
 }
 
+#[allow(clippy::result_large_err)]
 fn finish_invocation(
     execution_id: &str,
     name: &str,
