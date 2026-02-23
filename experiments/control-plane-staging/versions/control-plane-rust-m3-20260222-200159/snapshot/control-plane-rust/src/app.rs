@@ -2,7 +2,7 @@ use crate::dispatch::{DispatcherRouter, LocalDispatcher, PoolDispatcher};
 use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
 use crate::metrics::Metrics;
-use crate::model::{FunctionSpec, InvocationRequest, InvocationResponse};
+use crate::model::{ExecutionStatus, FunctionSpec, InvocationRequest, InvocationResponse};
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
 use crate::registry::AppFunctionRegistry;
@@ -452,14 +452,27 @@ fn enqueue_function(
 async fn get_execution(
     Path(id): Path<String>,
     State(state): State<AppState>,
-) -> Result<Json<ExecutionRecord>, StatusCode> {
-    state
+) -> Result<Json<ExecutionStatus>, StatusCode> {
+    let record = state
         .execution_store
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get(&id)
-        .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let snap = record.snapshot();
+    Ok(Json(ExecutionStatus {
+        execution_id: snap.execution_id,
+        status: state_to_status(&snap.state).to_string(),
+        started_at_millis: snap.started_at_millis,
+        finished_at_millis: snap.finished_at_millis,
+        output: snap.output,
+        error: snap.last_error.map(|e| crate::model::ErrorInfo {
+            code: e.code,
+            message: e.message,
+        }),
+        cold_start: snap.cold_start,
+        init_duration_ms: snap.init_duration_ms,
+    }))
 }
 
 fn state_to_status(state: &ExecutionState) -> &'static str {
