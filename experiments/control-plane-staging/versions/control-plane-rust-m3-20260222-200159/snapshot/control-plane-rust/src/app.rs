@@ -1,4 +1,5 @@
 use crate::dispatch::{DispatchResult, DispatcherRouter, LocalDispatcher, PoolDispatcher};
+use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
 use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
 use crate::metrics::Metrics;
@@ -29,6 +30,7 @@ pub struct AppState {
     dispatcher_router: Arc<DispatcherRouter>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
     metrics: Arc<Metrics>,
+    enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -53,18 +55,34 @@ struct ReplicaRequest {
 
 pub fn build_app() -> Router {
     let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
+    let execution_store = Arc::new(Mutex::new(ExecutionStore::new_with_durations(
+        Duration::from_secs(300),
+        Duration::from_secs(120),
+        Duration::from_secs(600),
+    )));
+    let queue_manager = Arc::new(Mutex::new(QueueManager::new(100)));
+
+    let async_queue_enabled = std::env::var("NANOFAAS_ASYNC_QUEUE_ENABLED")
+        .map(|v| v == "true")
+        .unwrap_or(true); // enabled by default for backward compat with tests
+
+    let enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync> = if async_queue_enabled {
+        Arc::new(AsyncQueueEnqueuer {
+            queue_manager: Arc::clone(&queue_manager),
+            execution_store: Arc::clone(&execution_store),
+        })
+    } else {
+        Arc::new(NoOpInvocationEnqueuer)
+    };
+
     let state = AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
-        execution_store: Arc::new(Mutex::new(ExecutionStore::new_with_durations(
-            Duration::from_secs(300),
-            Duration::from_secs(120),
-            Duration::from_secs(600),
-        ))),
+        execution_store,
         idempotency_store: Arc::new(Mutex::new(IdempotencyStore::new_with_ttl(
             Duration::from_secs(300),
         ))),
-        queue_manager: Arc::new(Mutex::new(QueueManager::new(100))),
+        queue_manager,
         dispatcher_router: Arc::new(dispatcher_router),
         rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
             std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
@@ -73,6 +91,7 @@ pub fn build_app() -> Router {
                 .unwrap_or(1_000),
         ))),
         metrics: Arc::new(Metrics::new()),
+        enqueuer,
     };
 
     Router::new()
@@ -410,6 +429,11 @@ fn enqueue_function(
         .function_registry
         .get(name)
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
+
+    // Check if async queue is available
+    if !state.enqueuer.enabled() {
+        return Err(StatusCode::NOT_IMPLEMENTED.into_response());
+    }
 
     if function_spec
         .image
