@@ -27,7 +27,7 @@ impl Scheduler {
     ) -> Result<bool, String> {
         // 1. Take next task — release queue lock immediately.
         let task = {
-            let mut q = queue.lock().expect("queue lock");
+            let mut q = queue.lock().unwrap_or_else(|e| e.into_inner());
             q.take_next(function_name)
         };
         let Some(task) = task else {
@@ -45,7 +45,7 @@ impl Scheduler {
             .await;
 
         if dispatch.status == "SUCCESS" {
-            let mut s = store.lock().expect("store lock");
+            let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
             let mut record = s
                 .get(&task.execution_id)
                 .ok_or_else(|| format!("execution not found: {}", task.execution_id))?;
@@ -66,11 +66,11 @@ impl Scheduler {
             let queue_capacity = function.queue_size.unwrap_or(100).max(1) as usize;
             if queue
                 .lock()
-                .expect("queue lock")
+                .unwrap_or_else(|e| e.into_inner())
                 .enqueue_with_capacity(function_name, retry_task, queue_capacity)
                 .is_ok()
             {
-                let mut s = store.lock().expect("store lock");
+                let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(mut r) = s.get(&task.execution_id) {
                     r.status = ExecutionState::Queued;
                     r.output = None;
@@ -81,7 +81,7 @@ impl Scheduler {
         }
 
         // 4. Record final error state.
-        let mut s = store.lock().expect("store lock");
+        let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(mut record) = s.get(&task.execution_id) {
             record.status = ExecutionState::Error;
             record.output = dispatch.output;

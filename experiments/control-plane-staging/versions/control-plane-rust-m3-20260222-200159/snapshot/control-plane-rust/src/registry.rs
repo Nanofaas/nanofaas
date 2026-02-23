@@ -345,7 +345,7 @@ impl FunctionRegistry {
     pub fn get(&self, name: &str) -> Option<ResolverFunctionSpec> {
         self.functions
             .lock()
-            .expect("functions lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get(name)
             .cloned()
     }
@@ -353,18 +353,18 @@ impl FunctionRegistry {
     pub fn insert(&self, name: String, spec: ResolverFunctionSpec) {
         self.functions
             .lock()
-            .expect("functions lock")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(name, spec);
     }
 
     pub fn remove(&self, name: &str) -> Option<ResolverFunctionSpec> {
-        self.functions.lock().expect("functions lock").remove(name)
+        self.functions.lock().unwrap_or_else(|e| e.into_inner()).remove(name)
     }
 
     pub fn list(&self) -> Vec<ResolverFunctionSpec> {
         self.functions
             .lock()
-            .expect("functions lock")
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .cloned()
             .collect()
@@ -471,7 +471,7 @@ impl FunctionService {
                 .or_insert_with(|| Arc::new(Mutex::new(())))
                 .clone()
         };
-        let _guard = lock.lock().expect("per-function lock");
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
         let result = action();
         drop(_guard);
 

@@ -35,7 +35,7 @@ impl Eq for TimerHandle {}
 
 impl TimerHandle {
     pub fn record_ms(&self, duration_ms: u64) {
-        let mut inner = self.inner.lock().expect("metrics lock");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let timer = inner.timers.entry(self.key.clone()).or_default();
         timer.count += 1;
         timer.sum_ms += duration_ms;
@@ -44,7 +44,7 @@ impl TimerHandle {
     pub fn count(&self) -> u64 {
         self.inner
             .lock()
-            .expect("metrics lock")
+            .unwrap_or_else(|e| e.into_inner())
             .timers
             .get(&self.key)
             .map(|t| t.count)
@@ -125,7 +125,7 @@ impl Metrics {
     pub fn counter_value(&self, metric_name: &str, function: &str) -> f64 {
         self.inner
             .lock()
-            .expect("metrics lock")
+            .unwrap_or_else(|e| e.into_inner())
             .counters
             .get(&MetricKey {
                 name: metric_name.to_string(),
@@ -136,7 +136,7 @@ impl Metrics {
     }
 
     pub fn to_prometheus_text(&self) -> String {
-        let inner = self.inner.lock().expect("metrics lock");
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let mut lines = Vec::new();
 
         for (key, value) in &inner.counters {
@@ -162,7 +162,7 @@ impl Metrics {
     }
 
     fn inc_counter(&self, metric_name: &str, function: &str) {
-        let mut inner = self.inner.lock().expect("metrics lock");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let key = MetricKey {
             name: metric_name.to_string(),
             function: function.to_string(),
@@ -177,7 +177,7 @@ impl Metrics {
         };
         self.inner
             .lock()
-            .expect("metrics lock")
+            .unwrap_or_else(|e| e.into_inner())
             .timers
             .entry(key.clone())
             .or_default();

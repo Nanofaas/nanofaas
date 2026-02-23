@@ -107,7 +107,7 @@ async fn create_function(
         return resp;
     }
 
-    let mut functions = state.functions.lock().expect("functions lock");
+    let mut functions = state.functions.lock().unwrap_or_else(|e| e.into_inner());
     if functions.contains_key(&spec.name) {
         return StatusCode::CONFLICT.into_response();
     }
@@ -117,7 +117,7 @@ async fn create_function(
     state
         .function_replicas
         .lock()
-        .expect("function replicas lock")
+        .unwrap_or_else(|e| e.into_inner())
         .entry(spec.name.clone())
         .or_insert(1);
 
@@ -128,7 +128,7 @@ async fn list_functions(State(state): State<AppState>) -> Json<Vec<FunctionSpec>
     let values = state
         .functions
         .lock()
-        .expect("functions lock")
+        .unwrap_or_else(|e| e.into_inner())
         .values()
         .cloned()
         .collect::<Vec<_>>();
@@ -142,7 +142,7 @@ async fn get_function(
     state
         .functions
         .lock()
-        .expect("functions lock")
+        .unwrap_or_else(|e| e.into_inner())
         .get(&name)
         .cloned()
         .map(Json)
@@ -153,12 +153,12 @@ async fn delete_function(Path(name): Path<String>, State(state): State<AppState>
     let removed = state
         .functions
         .lock()
-        .expect("functions lock")
+        .unwrap_or_else(|e| e.into_inner())
         .remove(&name);
     state
         .function_replicas
         .lock()
-        .expect("function replicas lock")
+        .unwrap_or_else(|e| e.into_inner())
         .remove(&name);
     if removed.is_some() {
         StatusCode::NO_CONTENT
@@ -239,7 +239,7 @@ async fn invoke_function(
     let function_spec = state
         .functions
         .lock()
-        .expect("functions lock")
+        .unwrap_or_else(|e| e.into_inner())
         .get(name)
         .cloned()
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
@@ -269,7 +269,7 @@ async fn invoke_function(
     if !state
         .rate_limiter
         .lock()
-        .expect("rate limiter lock")
+        .unwrap_or_else(|e| e.into_inner())
         .try_acquire_at(now)
     {
         state.metrics.sync_queue_rejected(name);
@@ -282,13 +282,13 @@ async fn invoke_function(
         if let Some(existing_id) = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get_execution_id(name, &idem_key, now)
         {
             if let Some(existing) = state
                 .execution_store
                 .lock()
-                .expect("execution store lock")
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&existing_id)
             {
                 return Ok(InvocationResponse {
@@ -329,7 +329,7 @@ async fn invoke_function(
     let is_cold_start = state
         .seen_sync_invocations
         .lock()
-        .expect("seen sync invocations lock")
+        .unwrap_or_else(|e| e.into_inner())
         .insert(name.to_string());
     if is_cold_start {
         state.metrics.cold_start(name);
@@ -340,14 +340,14 @@ async fn invoke_function(
     state
         .execution_store
         .lock()
-        .expect("execution store lock")
+        .unwrap_or_else(|e| e.into_inner())
         .put_with_timestamp(record, now);
 
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         let _ = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .put_if_absent(name, &idem_key, &execution_id, now);
     }
 
@@ -368,7 +368,7 @@ fn enqueue_function(
     let function_spec = state
         .functions
         .lock()
-        .expect("functions lock")
+        .unwrap_or_else(|e| e.into_inner())
         .get(name)
         .cloned()
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
@@ -387,13 +387,13 @@ fn enqueue_function(
         if let Some(existing_id) = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get_execution_id(name, &idem_key, now)
         {
             if let Some(existing) = state
                 .execution_store
                 .lock()
-                .expect("execution store lock")
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&existing_id)
             {
                 return Ok(InvocationResponse {
@@ -411,13 +411,13 @@ fn enqueue_function(
     state
         .execution_store
         .lock()
-        .expect("execution store lock")
+        .unwrap_or_else(|e| e.into_inner())
         .put_now(record);
     let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
     state
         .queue_manager
         .lock()
-        .expect("queue manager lock")
+        .unwrap_or_else(|e| e.into_inner())
         .enqueue_with_capacity(
             name,
             InvocationTask {
@@ -434,7 +434,7 @@ fn enqueue_function(
         let _ = state
             .idempotency_store
             .lock()
-            .expect("idempotency store lock")
+            .unwrap_or_else(|e| e.into_inner())
             .put_if_absent(name, &idem_key, &execution_id, now);
     }
     Ok(InvocationResponse {
@@ -452,7 +452,7 @@ async fn get_execution(
     state
         .execution_store
         .lock()
-        .expect("execution store lock")
+        .unwrap_or_else(|e| e.into_inner())
         .get(&id)
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
@@ -494,7 +494,7 @@ fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode>
 }
 
 async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
-    let functions_snapshot = state.functions.lock().expect("functions lock").clone();
+    let functions_snapshot = state.functions.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
     scheduler
         .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store)
@@ -506,7 +506,7 @@ fn complete_execution(
     request: CompletionRequest,
     state: AppState,
 ) -> Result<(), StatusCode> {
-    let mut store = state.execution_store.lock().expect("execution store lock");
+    let mut store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
     let mut record = store.get(execution_id).ok_or(StatusCode::NOT_FOUND)?;
     record.status = parse_execution_state(&request.status).ok_or(StatusCode::BAD_REQUEST)?;
     record.output = request.output;
@@ -533,7 +533,7 @@ async fn set_replicas(
     let function = match state
         .functions
         .lock()
-        .expect("functions lock")
+        .unwrap_or_else(|e| e.into_inner())
         .get(&name)
         .cloned()
     {
@@ -557,7 +557,7 @@ async fn set_replicas(
     state
         .function_replicas
         .lock()
-        .expect("function replicas lock")
+        .unwrap_or_else(|e| e.into_inner())
         .insert(name.clone(), request.replicas);
 
     (
