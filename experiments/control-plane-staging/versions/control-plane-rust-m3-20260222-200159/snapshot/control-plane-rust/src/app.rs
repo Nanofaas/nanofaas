@@ -44,8 +44,7 @@ struct ReplicaRequest {
 }
 
 pub fn build_app() -> Router {
-    let dispatcher_router =
-        DispatcherRouter::new(Box::new(LocalDispatcher), Box::new(PoolDispatcher));
+    let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
     let state = AppState {
         functions: Arc::new(Mutex::new(HashMap::new())),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
@@ -183,7 +182,7 @@ async fn post_function_action(
     }
 
     match action {
-        "invoke" => match invoke_function(&name, state, headers, request) {
+        "invoke" => match invoke_function(&name, state, headers, request).await {
             Ok(response_body) => response_with_execution_id(
                 StatusCode::OK,
                 response_body.execution_id.clone(),
@@ -211,7 +210,7 @@ async fn post_internal_function_action(
     match action {
         "drain-once" => {
             let dispatched =
-                drain_once(&name, state).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                drain_once(&name, state).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             Ok((StatusCode::OK, Json(json!({ "dispatched": dispatched }))))
         }
         _ => Err(StatusCode::NOT_FOUND),
@@ -231,7 +230,7 @@ async fn post_internal_execution_action(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn invoke_function(
+async fn invoke_function(
     name: &str,
     state: AppState,
     headers: HeaderMap,
@@ -307,7 +306,8 @@ fn invoke_function(
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
     let dispatch = state
         .dispatcher_router
-        .dispatch(&function_spec, &request.input, &execution_id);
+        .dispatch(&function_spec, &request.input, &execution_id)
+        .await;
     state.metrics.dispatch(name);
     state.metrics.latency(name).record_ms(1);
     let mut record = ExecutionRecord::new(
@@ -491,12 +491,12 @@ fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode>
     Err(StatusCode::NOT_FOUND)
 }
 
-fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
+async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
     let functions_snapshot = state.functions.lock().expect("functions lock").clone();
-    let mut queue = state.queue_manager.lock().expect("queue manager lock");
-    let mut store = state.execution_store.lock().expect("execution store lock");
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
-    scheduler.tick_once(name, &functions_snapshot, &mut queue, &mut store)
+    scheduler
+        .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store)
+        .await
 }
 
 fn complete_execution(
