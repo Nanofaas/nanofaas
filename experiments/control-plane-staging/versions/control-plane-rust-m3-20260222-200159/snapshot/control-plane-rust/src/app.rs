@@ -422,12 +422,6 @@ fn enqueue_function(
     }
 
     let execution_id = Uuid::new_v4().to_string();
-    let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
-    state
-        .execution_store
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .put_now(record);
     let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
     state
         .queue_manager
@@ -443,6 +437,12 @@ fn enqueue_function(
             queue_capacity,
         )
         .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
+    let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
+    state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .put_now(record);
     state.metrics.enqueue(name);
 
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {

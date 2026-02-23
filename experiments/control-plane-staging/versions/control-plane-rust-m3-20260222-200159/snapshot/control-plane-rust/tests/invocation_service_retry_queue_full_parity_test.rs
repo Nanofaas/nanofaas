@@ -67,6 +67,56 @@ async fn execution_status(app: &axum::Router, execution_id: &str) -> String {
     payload["status"].as_str().unwrap_or_default().to_string()
 }
 
+/// BUG-8: a failed enqueue (429) must not leave an execution record in the store.
+/// Observable proxy: the 429 response has no executionId, and after the queue is
+/// drained a subsequent enqueue always produces a fresh execution.
+#[tokio::test]
+async fn enqueue_queueFull_does_not_create_execution_record() {
+    let app = control_plane_rust::app::build_app();
+
+    // Register with queueSize=1 so the second enqueue overflows.
+    let create = axum::http::Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "name": "bug8-fn",
+                "image": "nanofaas/function-runtime:test",
+                "executionMode": "POOL",
+                "runtimeMode": "HTTP",
+                "endpointUrl": "http://127.0.0.1:9/invoke",
+                "queueSize": 1
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let create_res = app.clone().oneshot(create).await.unwrap();
+    assert_eq!(create_res.status(), StatusCode::CREATED);
+
+    // First enqueue fills the queue.
+    let exec_id_first = enqueue(&app, "bug8-fn").await;
+
+    // Second enqueue must be rejected with 429 and no executionId in the body.
+    let overflow = axum::http::Request::builder()
+        .method("POST")
+        .uri("/v1/functions/bug8-fn:enqueue")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::json!({"input":"overflow"}).to_string()))
+        .unwrap();
+    let overflow_res = app.clone().oneshot(overflow).await.unwrap();
+    assert_eq!(overflow_res.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body_bytes = axum::body::to_bytes(overflow_res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    // 429 body must be empty (no executionId — no record was created).
+    assert!(body_bytes.is_empty(), "429 body should be empty: {:?}", body_bytes);
+
+    // First execution must still be retrievable (it was correctly stored).
+    let status = execution_status(&app, &exec_id_first).await;
+    assert_eq!("QUEUED", status);
+}
+
 #[tokio::test]
 async fn retryWithQueueFull_completesFutureWithError() {
     let app = control_plane_rust::app::build_app();
