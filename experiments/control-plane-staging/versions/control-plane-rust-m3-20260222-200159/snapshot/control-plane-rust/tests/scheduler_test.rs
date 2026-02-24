@@ -67,7 +67,7 @@ async fn scheduler_dispatches_queued_execution_and_updates_store() {
         .unwrap();
     assert!(handle.is_some());
     if let Some(h) = handle {
-        let _ = h.await;
+        h.await.expect("dispatch task should not panic");
     }
 
     let updated = store.lock().unwrap().get("exec-1").unwrap();
@@ -152,7 +152,7 @@ async fn scheduler_releases_dispatch_slot_after_error_and_continues() {
         .unwrap();
     assert!(h1.is_some());
     if let Some(h) = h1 {
-        let _ = h.await;
+        h.await.expect("dispatch task should not panic");
     }
     assert_eq!(queue.lock().unwrap().in_flight("fn-a"), 0);
     let h2 = scheduler
@@ -161,7 +161,7 @@ async fn scheduler_releases_dispatch_slot_after_error_and_continues() {
         .unwrap();
     assert!(h2.is_some());
     if let Some(h) = h2 {
-        let _ = h.await;
+        h.await.expect("dispatch task should not panic");
     }
     assert_eq!(queue.lock().unwrap().in_flight("fn-a"), 0);
 

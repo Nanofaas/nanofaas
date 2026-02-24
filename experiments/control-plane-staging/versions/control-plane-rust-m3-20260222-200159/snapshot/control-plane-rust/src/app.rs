@@ -259,7 +259,7 @@ fn build_state_with_options(
             std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(1_000_000),
+                .unwrap_or(1_000_000), // default: 1_000_000 (effectively unlimited; set via NANOFAAS_RATE_MAX_PER_SECOND)
         ))),
         runtime_config_state: Arc::new(Mutex::new(RuntimeConfigState { revision: 0 })),
         runtime_config_admin_enabled,
@@ -394,7 +394,7 @@ fn start_background_scheduler(state: AppState) {
                 {
                     Ok(handle) => {
                         processed_any |= handle.is_some();
-                        // handle dropped: fire-and-forget, behavior invariato
+                        // handle dropped: fire-and-forget, behavior unchanged
                     }
                     Err(err) => {
                         // Keep the loop alive even if a single function dispatch fails.
@@ -1350,7 +1350,9 @@ async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
         .await?;
     let dispatched = handle.is_some();
     if let Some(h) = handle {
-        let _ = h.await;
+        if let Err(e) = h.await {
+            eprintln!("dispatch task panicked: {e}");
+        }
     }
     Ok(dispatched)
 }
