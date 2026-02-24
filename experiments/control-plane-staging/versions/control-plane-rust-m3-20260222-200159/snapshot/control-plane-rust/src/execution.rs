@@ -17,6 +17,18 @@ pub enum ExecutionState {
     Timeout,
 }
 
+const ALLOWED_TRANSITIONS: &[(ExecutionState, ExecutionState)] = &[
+    (ExecutionState::Queued, ExecutionState::Running),
+    (ExecutionState::Running, ExecutionState::Success),
+    (ExecutionState::Running, ExecutionState::Error),
+    (ExecutionState::Running, ExecutionState::Timeout),
+    (ExecutionState::Error, ExecutionState::Queued), // retry
+];
+
+fn is_valid_transition(from: &ExecutionState, to: &ExecutionState) -> bool {
+    ALLOWED_TRANSITIONS.iter().any(|(f, t)| f == from && t == to)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorInfo {
     pub code: String,
@@ -177,11 +189,19 @@ impl ExecutionRecord {
     }
 
     pub fn mark_running_at(&mut self, at_millis: u64) {
+        if !is_valid_transition(&self.status, &ExecutionState::Running) {
+            eprintln!("invalid transition: {:?} -> Running", self.status);
+            return;
+        }
         self.status = ExecutionState::Running;
         self.started_at_millis = Some(at_millis);
     }
 
     pub fn mark_success_at(&mut self, output: Value, at_millis: u64) {
+        if !is_valid_transition(&self.status, &ExecutionState::Success) {
+            eprintln!("invalid transition: {:?} -> Success", self.status);
+            return;
+        }
         self.status = ExecutionState::Success;
         self.finished_at_millis = Some(at_millis);
         self.output = Some(output);
@@ -189,6 +209,10 @@ impl ExecutionRecord {
     }
 
     pub fn mark_error_at(&mut self, error: ErrorInfo, at_millis: u64) {
+        if !is_valid_transition(&self.status, &ExecutionState::Error) {
+            eprintln!("invalid transition: {:?} -> Error", self.status);
+            return;
+        }
         self.status = ExecutionState::Error;
         self.finished_at_millis = Some(at_millis);
         self.last_error = Some(error);
@@ -196,6 +220,10 @@ impl ExecutionRecord {
     }
 
     pub fn mark_timeout_at(&mut self, at_millis: u64) {
+        if !is_valid_transition(&self.status, &ExecutionState::Timeout) {
+            eprintln!("invalid transition: {:?} -> Timeout", self.status);
+            return;
+        }
         self.status = ExecutionState::Timeout;
         self.finished_at_millis = Some(at_millis);
     }

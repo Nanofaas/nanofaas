@@ -58,8 +58,10 @@ fn invalidTransition_queued_to_success_logsWarning() {
     let mut record = create_record("exec-1");
     assert_eq!(record.state(), ExecutionState::Queued);
 
+    // Invalid transition: Queued -> Success is not allowed; must be a no-op
     record.mark_success_at(serde_json::json!("output"), 10);
-    assert_eq!(record.state(), ExecutionState::Success);
+    assert_eq!(record.state(), ExecutionState::Queued);
+    assert_eq!(record.output(), None);
 }
 
 #[test]
@@ -68,8 +70,9 @@ fn invalidTransition_success_to_running_logsWarning() {
     record.mark_running_at(10);
     record.mark_success_at(serde_json::json!("output"), 20);
 
+    // Invalid transition: Success -> Running is not allowed; must be a no-op
     record.mark_running_at(30);
-    assert_eq!(record.state(), ExecutionState::Running);
+    assert_eq!(record.state(), ExecutionState::Success);
 }
 
 #[test]
@@ -78,8 +81,10 @@ fn invalidTransition_error_to_success_logsWarning() {
     record.mark_running_at(10);
     record.mark_error_at(ErrorInfo::new("ERR", "failed"), 20);
 
+    // Invalid transition: Error -> Success is not allowed; must be a no-op
     record.mark_success_at(serde_json::json!("output"), 30);
-    assert_eq!(record.state(), ExecutionState::Success);
+    assert_eq!(record.state(), ExecutionState::Error);
+    assert_eq!(record.output(), None);
 }
 
 #[test]

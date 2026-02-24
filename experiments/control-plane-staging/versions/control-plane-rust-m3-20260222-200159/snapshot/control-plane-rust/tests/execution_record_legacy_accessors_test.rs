@@ -26,22 +26,26 @@ fn legacyMutators_updateFieldsConsistently() {
 
 #[test]
 fn markSuccess_clearsError_andMarkError_clearsOutput() {
+    // Test that mark_success_at clears last_error (valid path: Queued -> Running -> Success)
     let mut record =
         ExecutionRecord::new_with_task("exec-2", InvocationTask::new("exec-2", "fn", 1));
-
     record.mark_running_at(10);
-    record.mark_error_at(ErrorInfo::new("ERR", "first"), 20);
+    record.set_last_error(Some(ErrorInfo::new("ERR", "first")));
     assert!(record.last_error().is_some());
-    assert!(record.output().is_none());
-
     record.mark_success_at(serde_json::json!("ok"), 30);
     assert_eq!(record.output(), Some(serde_json::json!("ok")));
     assert!(record.last_error().is_none());
 
-    record.mark_error_at(ErrorInfo::new("ERR2", "second"), 40);
-    assert!(record.output().is_none());
+    // Test that mark_error_at clears output (valid path: Queued -> Running -> Error)
+    let mut record2 =
+        ExecutionRecord::new_with_task("exec-2b", InvocationTask::new("exec-2b", "fn", 1));
+    record2.mark_running_at(10);
+    record2.set_output(Some(serde_json::json!("previous")));
+    assert!(record2.output().is_some());
+    record2.mark_error_at(ErrorInfo::new("ERR2", "second"), 40);
+    assert!(record2.output().is_none());
     assert_eq!(
-        record.last_error().map(|e| e.code),
+        record2.last_error().map(|e| e.code),
         Some("ERR2".to_string())
     );
 }

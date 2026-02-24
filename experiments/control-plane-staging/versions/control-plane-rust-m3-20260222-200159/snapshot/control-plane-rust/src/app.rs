@@ -986,7 +986,8 @@ async fn invoke_function(
     }
 
     // Direct sync path (sync-queue admission or queue module disabled).
-    let mut record = ExecutionRecord::new(&execution_id, name, ExecutionState::Running);
+    // Create as Queued so mark_running_at() is a valid Queued -> Running transition.
+    let mut record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
     record.mark_running_at(now);
     state
         .execution_store
@@ -1396,6 +1397,13 @@ async fn complete_execution(
             .unwrap_or_else(|e| e.into_inner());
         if let Some(mut r) = store.get(execution_id) {
             let now = now_millis();
+            // Ensure record is Running before applying terminal transition.
+            // The dispatcher normally calls mark_running_at before dispatch; in
+            // callback scenarios (e.g. async enqueue + external callback) the
+            // record may still be Queued if the scheduler hasn't fired yet.
+            if r.state() == ExecutionState::Queued {
+                r.mark_running_at(now);
+            }
             match status {
                 ExecutionState::Success => {
                     r.mark_success_at(request.output.unwrap_or(Value::Null), now)
