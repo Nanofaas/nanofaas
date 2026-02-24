@@ -1,7 +1,0 @@
-slug: control-plane-rust-m1-20260222-193928
-kind: generic-service
-status: staging
-parent: version:control-plane-opt-recovered-decompiled-20260222-192441
-created_at: '2026-02-22T18:39:28.826049Z'
-notes: 'Rust control-plane M2 parity in staging: core API/stores + dispatcher/queue/scheduler
-  skeleton with tests.'
