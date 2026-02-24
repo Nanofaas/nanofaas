@@ -50,6 +50,36 @@ This is the M3 Rust port of the Java control-plane, implemented only under
 cargo test -q
 ```
 
+## Prerequisites
+
+- Rust toolchain (`cargo`, tested on stable channel)
+- Docker (for containerized parity tests and rust control-plane image build)
+- Java/Gradle only if you execute mixed Java E2E suites from repository root
+
+## Repository E2E With Rust Control-Plane
+
+From repository root (`mcFaas`), use runtime selector `CONTROL_PLANE_RUNTIME=rust`.
+
+Build/deploy k3s stack with rust control-plane:
+
+```bash
+CONTROL_PLANE_RUNTIME=rust E2E_K3S_HELM_NONINTERACTIVE=true ./scripts/e2e-k3s-helm.sh
+```
+
+Run full runner in dry-run mode to inspect suite eligibility:
+
+```bash
+CONTROL_PLANE_RUNTIME=rust DRY_RUN=true ./scripts/e2e-all.sh
+```
+
+Run a supported subset:
+
+```bash
+CONTROL_PLANE_RUNTIME=rust ./scripts/e2e-all.sh --only k3s-curl k8s-vm cli helm-stack cli-host
+```
+
+`e2e-all.sh` marks Java-only flows as `SKIP (unsupported for runtime)` when `CONTROL_PLANE_RUNTIME=rust`.
+
 ## Dockerized E2E
 
 The Rust staging control-plane now exposes a runnable binary (`src/main.rs`) and
