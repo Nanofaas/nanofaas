@@ -11,6 +11,8 @@ LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:e2e}
 RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runtime:e2e}
 KEEP_VM=${KEEP_VM:-false}
+# Set to "rust" to build the Rust control-plane instead of the Java one.
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
@@ -47,11 +49,20 @@ sync_project() {
 }
 
 build_jars() {
-    e2e_build_core_jars "/home/ubuntu/nanofaas"
+    if [[ "${CONTROL_PLANE_RUNTIME}" == "rust" ]]; then
+        e2e_build_function_runtime_jar "/home/ubuntu/nanofaas"
+    else
+        e2e_build_core_jars "/home/ubuntu/nanofaas"
+    fi
 }
 
 build_images() {
-    e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+    if [[ "${CONTROL_PLANE_RUNTIME}" == "rust" ]]; then
+        e2e_build_rust_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
+        e2e_build_function_runtime_image "/home/ubuntu/nanofaas" "${RUNTIME_IMAGE}"
+    else
+        e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+    fi
 }
 
 push_images_to_registry() {
@@ -248,6 +259,7 @@ main() {
     log "  CPUS=${CPUS}, MEMORY=${MEMORY}, DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE}"
     log "  LOCAL_REGISTRY=${LOCAL_REGISTRY}"
+    log "  CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME}"
     log "  KEEP_VM=${KEEP_VM}"
     log ""
 

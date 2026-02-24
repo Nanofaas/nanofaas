@@ -590,6 +590,48 @@ e2e_build_core_images() {
     e2e_log "Core images built"
 }
 
+# Builds only the function-runtime boot JAR (used when the control-plane is built separately, e.g. Rust).
+e2e_build_function_runtime_jar() {
+    e2e_require_vm_exec || return 1
+    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local quiet=${2:-true}
+    local quiet_flag=""
+    if [[ "${quiet}" == "true" ]]; then
+        quiet_flag="-q"
+    fi
+
+    e2e_log "Cleaning stale function-runtime build output..."
+    vm_exec "cd ${remote_dir} && rm -rf function-runtime/build"
+
+    e2e_log "Building function-runtime boot jar..."
+    vm_exec "cd ${remote_dir} && ./gradlew :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
+    e2e_log "Function-runtime boot jar built"
+}
+
+# Builds the function-runtime Docker image from its Java Dockerfile.
+e2e_build_function_runtime_image() {
+    e2e_require_vm_exec || return 1
+    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local runtime_image=${2:?runtime_image is required}
+
+    e2e_log "Building function-runtime image..."
+    vm_exec "cd ${remote_dir} && sudo docker build -t ${runtime_image} -f function-runtime/Dockerfile function-runtime/"
+    e2e_log "Function-runtime image built"
+}
+
+# Builds the Rust control-plane Docker image.
+# CONTROL_PLANE_RUST_DIR (env var) overrides the default path relative to remote_dir.
+e2e_build_rust_control_plane_image() {
+    e2e_require_vm_exec || return 1
+    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local control_image=${2:?control_image is required}
+    local rust_cp_dir="${CONTROL_PLANE_RUST_DIR:-experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust}"
+
+    e2e_log "Building Rust control-plane image from ${rust_cp_dir}..."
+    vm_exec "cd ${remote_dir} && sudo docker build -t ${control_image} -f ${rust_cp_dir}/Dockerfile ${rust_cp_dir}/"
+    e2e_log "Rust control-plane image built"
+}
+
 e2e_create_namespace() {
     e2e_require_vm_exec || return 1
     local namespace=${1:?namespace is required}
