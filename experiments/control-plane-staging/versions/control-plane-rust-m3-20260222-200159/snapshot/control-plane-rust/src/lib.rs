@@ -6,6 +6,7 @@ pub mod errors;
 pub mod execution;
 pub mod idempotency;
 pub mod kubernetes;
+pub mod kubernetes_live;
 pub mod metrics;
 pub mod model;
 pub mod queue;

@@ -337,6 +337,13 @@ impl AppFunctionRegistry {
         true
     }
 
+    pub fn put(&self, spec: AppFunctionSpec) {
+        self.specs
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(spec.name.clone(), spec);
+    }
+
     pub fn get(&self, name: &str) -> Option<AppFunctionSpec> {
         self.specs
             .read()
@@ -362,10 +369,7 @@ impl AppFunctionRegistry {
     }
 
     pub fn as_map(&self) -> HashMap<String, AppFunctionSpec> {
-        self.specs
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        self.specs.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -419,7 +423,10 @@ impl FunctionRegistry {
     }
 
     pub fn remove(&self, name: &str) -> Option<ResolverFunctionSpec> {
-        self.functions.lock().unwrap_or_else(|e| e.into_inner()).remove(name)
+        self.functions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(name)
     }
 
     pub fn list(&self) -> Vec<ResolverFunctionSpec> {

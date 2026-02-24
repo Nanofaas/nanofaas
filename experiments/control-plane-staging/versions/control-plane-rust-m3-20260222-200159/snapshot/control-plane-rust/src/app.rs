@@ -1,14 +1,20 @@
 use crate::dispatch::{DispatchResult, DispatcherRouter, LocalDispatcher, PoolDispatcher};
-use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
-use crate::sync::{NoOpSyncQueueGateway, SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason};
 use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
 use crate::idempotency::IdempotencyStore;
+use crate::kubernetes::{
+    InMemoryKubernetesClient, KubernetesProperties, KubernetesResourceManager,
+};
+use crate::kubernetes_live::InClusterKubernetesManager;
 use crate::metrics::Metrics;
 use crate::model::{ExecutionStatus, FunctionSpec, InvocationRequest, InvocationResponse};
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
 use crate::registry::AppFunctionRegistry;
 use crate::scheduler::Scheduler;
+use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
+use crate::sync::{
+    NoOpSyncQueueGateway, SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason,
+};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -25,6 +31,7 @@ use uuid::Uuid;
 pub struct AppState {
     function_registry: Arc<AppFunctionRegistry>,
     function_replicas: Arc<Mutex<HashMap<String, u32>>>,
+    provisioner: Arc<FunctionProvisioner>,
     execution_store: Arc<Mutex<ExecutionStore>>,
     idempotency_store: Arc<Mutex<IdempotencyStore>>,
     queue_manager: Arc<Mutex<QueueManager>>,
@@ -33,6 +40,47 @@ pub struct AppState {
     metrics: Arc<Metrics>,
     enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync>,
     sync_queue: Arc<dyn SyncQueueGateway + Send + Sync>,
+}
+
+#[derive(Clone)]
+enum FunctionProvisioner {
+    Disabled,
+    InMemory(Arc<KubernetesResourceManager>),
+    Live(Arc<InClusterKubernetesManager>),
+}
+
+impl FunctionProvisioner {
+    async fn provision(&self, spec: &FunctionSpec) -> Result<Option<String>, String> {
+        match self {
+            FunctionProvisioner::Disabled => Ok(None),
+            FunctionProvisioner::InMemory(manager) => Ok(Some(manager.provision(spec))),
+            FunctionProvisioner::Live(manager) => manager.provision(spec).await.map(Some),
+        }
+    }
+
+    async fn deprovision(&self, function_name: &str) -> Result<(), String> {
+        match self {
+            FunctionProvisioner::Disabled => Ok(()),
+            FunctionProvisioner::InMemory(manager) => {
+                manager.deprovision(function_name);
+                Ok(())
+            }
+            FunctionProvisioner::Live(manager) => manager.deprovision(function_name).await,
+        }
+    }
+
+    async fn set_replicas(&self, function_name: &str, replicas: i32) -> Result<(), String> {
+        match self {
+            FunctionProvisioner::Disabled => Ok(()),
+            FunctionProvisioner::InMemory(manager) => {
+                manager.set_replicas(function_name, replicas);
+                Ok(())
+            }
+            FunctionProvisioner::Live(manager) => {
+                manager.set_replicas(function_name, replicas).await
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,11 +107,32 @@ pub fn build_app() -> Router {
     build_app_pair().0
 }
 
+pub fn build_app_with_provisioning_mode(mode: Option<&str>) -> Router {
+    let metrics = Arc::new(Metrics::new());
+    let state = build_state_with_provisioning_mode(
+        Arc::clone(&metrics),
+        mode.map(|value| value.to_string()),
+    );
+    build_api_router(state)
+}
+
 /// Returns (api_router, management_router) sharing the same Metrics instance.
 /// Used in production: API on port 8080, management on port 8081.
 pub fn build_app_pair() -> (Router, Router) {
     let metrics = Arc::new(Metrics::new());
     let state = build_state(Arc::clone(&metrics));
+    let api = build_api_router(state);
+    let mgmt = build_management_app(metrics);
+    (api, mgmt)
+}
+
+/// Builds routers and starts the async queue scheduler loop in background.
+/// This is the production wiring used by `main`.
+pub fn build_app_pair_with_background_scheduler() -> (Router, Router) {
+    let metrics = Arc::new(Metrics::new());
+    let state = build_state(Arc::clone(&metrics));
+    start_execution_store_janitor(Arc::clone(&state.execution_store));
+    start_background_scheduler(state.clone());
     let api = build_api_router(state);
     let mgmt = build_management_app(metrics);
     (api, mgmt)
@@ -80,6 +149,13 @@ pub fn build_management_app(metrics: Arc<Metrics>) -> Router {
 }
 
 fn build_state(metrics: Arc<Metrics>) -> AppState {
+    build_state_with_provisioning_mode(metrics, None)
+}
+
+fn build_state_with_provisioning_mode(
+    metrics: Arc<Metrics>,
+    override_mode: Option<String>,
+) -> AppState {
     let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
     let execution_store = Arc::new(Mutex::new(ExecutionStore::new_with_durations(
         Duration::from_secs(300),
@@ -101,9 +177,12 @@ fn build_state(metrics: Arc<Metrics>) -> AppState {
         Arc::new(NoOpInvocationEnqueuer)
     };
 
+    let provisioner = resolve_function_provisioner(override_mode);
+
     AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
+        provisioner: Arc::new(provisioner),
         execution_store,
         idempotency_store: Arc::new(Mutex::new(IdempotencyStore::new_with_ttl(
             Duration::from_secs(300),
@@ -135,6 +214,37 @@ fn build_state(metrics: Arc<Metrics>) -> AppState {
     }
 }
 
+fn resolve_function_provisioner(override_mode: Option<String>) -> FunctionProvisioner {
+    let mode = override_mode
+        .or_else(|| std::env::var("NANOFAAS_PROVISIONING_MODE").ok())
+        .unwrap_or_else(|| "auto".to_string())
+        .to_ascii_lowercase();
+
+    if mode == "disabled" || mode == "off" {
+        return FunctionProvisioner::Disabled;
+    }
+
+    if mode == "inmemory" {
+        let properties = KubernetesProperties::new(
+            std::env::var("POD_NAMESPACE").ok(),
+            std::env::var("NANOFAAS_CALLBACK_URL").ok(),
+        );
+        return FunctionProvisioner::InMemory(Arc::new(KubernetesResourceManager::new(
+            InMemoryKubernetesClient::default(),
+            properties,
+        )));
+    }
+
+    match InClusterKubernetesManager::from_env() {
+        Ok(Some(manager)) => FunctionProvisioner::Live(Arc::new(manager)),
+        Ok(None) => FunctionProvisioner::Disabled,
+        Err(err) => {
+            eprintln!("Kubernetes provisioning disabled: {err}");
+            FunctionProvisioner::Disabled
+        }
+    }
+}
+
 fn build_api_router(state: AppState) -> Router {
     Router::new()
         .route("/actuator/health", get(health))
@@ -159,6 +269,83 @@ fn build_api_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+fn start_background_scheduler(state: AppState) {
+    if !state.enqueuer.enabled() {
+        return;
+    }
+
+    let idle_sleep_ms = std::env::var("NANOFAAS_ASYNC_SCHEDULER_IDLE_SLEEP_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(50);
+
+    tokio::spawn(async move {
+        let scheduler = Scheduler::new((*state.dispatcher_router).clone());
+        let idle_sleep = Duration::from_millis(idle_sleep_ms);
+        loop {
+            let queued_functions = {
+                let mut queue = state
+                    .queue_manager
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let signaled = queue.take_signaled_functions();
+                if signaled.is_empty() {
+                    queue.queued_functions()
+                } else {
+                    signaled
+                }
+            };
+
+            if queued_functions.is_empty() {
+                tokio::time::sleep(idle_sleep).await;
+                continue;
+            }
+
+            let functions_snapshot = state.function_registry.as_map();
+            let mut processed_any = false;
+
+            for function_name in queued_functions {
+                match scheduler
+                    .tick_once(
+                        &function_name,
+                        &functions_snapshot,
+                        &state.queue_manager,
+                        &state.execution_store,
+                        &state.metrics,
+                    )
+                    .await
+                {
+                    Ok(processed) => {
+                        processed_any |= processed;
+                    }
+                    Err(err) => {
+                        // Keep the loop alive even if a single function dispatch fails.
+                        eprintln!("background scheduler tick error for {function_name}: {err}");
+                    }
+                }
+            }
+
+            if !processed_any {
+                tokio::time::sleep(idle_sleep).await;
+            } else {
+                tokio::task::yield_now().await;
+            }
+        }
+    });
+}
+
+fn start_execution_store_janitor(execution_store: Arc<Mutex<ExecutionStore>>) {
+    let interval_ms = std::env::var("NANOFAAS_EXECUTION_JANITOR_INTERVAL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(60_000)
+        .max(1);
+    crate::execution::spawn_execution_store_janitor(
+        execution_store,
+        Duration::from_millis(interval_ms),
+    );
+}
+
 async fn health() -> Json<Value> {
     Json(json!({ "status": "UP" }))
 }
@@ -179,18 +366,49 @@ async fn create_function(
         return resp;
     }
 
-    if !state.function_registry.register(spec.clone()) {
+    let mut resolved_spec = spec.clone();
+    if !state.function_registry.register(resolved_spec.clone()) {
         return StatusCode::CONFLICT.into_response();
+    }
+
+    if resolved_spec.execution_mode == crate::model::ExecutionMode::Deployment {
+        match state.provisioner.provision(&resolved_spec).await {
+            Ok(Some(endpoint_url)) => {
+                resolved_spec.url = Some(endpoint_url);
+                state.function_registry.put(resolved_spec.clone());
+            }
+            Ok(None) => {}
+            Err(err) => {
+                state.function_registry.remove(&resolved_spec.name);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "PROVISIONING_ERROR",
+                        "message": err
+                    })),
+                )
+                    .into_response();
+            }
+        }
     }
 
     state
         .function_replicas
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .entry(spec.name.clone())
+        .entry(resolved_spec.name.clone())
         .or_insert(1);
+    state
+        .queue_manager
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .configure_function(
+            &resolved_spec.name,
+            resolved_spec.queue_size.unwrap_or(100).max(1) as usize,
+            resolved_spec.concurrency.unwrap_or(1).max(1) as usize,
+        );
 
-    (StatusCode::CREATED, Json(spec)).into_response()
+    (StatusCode::CREATED, Json(resolved_spec)).into_response()
 }
 
 async fn list_functions(State(state): State<AppState>) -> Json<Vec<FunctionSpec>> {
@@ -215,10 +433,21 @@ async fn delete_function(Path(name): Path<String>, State(state): State<AppState>
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&name);
-    if removed.is_some() {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::NOT_FOUND
+    state
+        .queue_manager
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove_function(&name);
+    match removed {
+        Some(spec) => {
+            if spec.execution_mode == crate::model::ExecutionMode::Deployment {
+                if let Err(err) = state.provisioner.deprovision(&name).await {
+                    eprintln!("deprovision failed for {name}: {err}");
+                }
+            }
+            StatusCode::NO_CONTENT
+        }
+        None => StatusCode::NOT_FOUND,
     }
 }
 
@@ -264,8 +493,9 @@ async fn post_internal_function_action(
     let (name, action) = parse_name_action(&name_or_action)?;
     match action {
         "drain-once" => {
-            let dispatched =
-                drain_once(&name, state).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let dispatched = drain_once(&name, state)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             Ok((StatusCode::OK, Json(json!({ "dispatched": dispatched }))))
         }
         _ => Err(StatusCode::NOT_FOUND),
@@ -436,17 +666,11 @@ fn finish_invocation(
 
     match dispatch.status.as_str() {
         "SUCCESS" => {
-            record.mark_success_at(
-                dispatch.output.clone().unwrap_or(Value::Null),
-                finished_at,
-            );
+            record.mark_success_at(dispatch.output.clone().unwrap_or(Value::Null), finished_at);
             state.metrics.success(name);
         }
         "TIMEOUT" => {
-            record.mark_error_at(
-                ErrorInfo::new("TIMEOUT", "dispatch timed out"),
-                finished_at,
-            );
+            record.mark_error_at(ErrorInfo::new("TIMEOUT", "dispatch timed out"), finished_at);
             state.metrics.timeout(name);
             state.metrics.error(name);
         }
@@ -479,7 +703,26 @@ fn finish_invocation(
         .unwrap_or_else(|e| e.into_inner())
         .put_with_timestamp(record, created_at);
 
-    state.metrics.latency(name).record_ms(1);
+    if let Some(started_at) = state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(execution_id)
+        .and_then(|r| r.started_at_millis())
+    {
+        state
+            .metrics
+            .latency(name)
+            .record_ms(finished_at.saturating_sub(started_at));
+        state
+            .metrics
+            .queue_wait(name)
+            .record_ms(started_at.saturating_sub(created_at));
+    }
+    state
+        .metrics
+        .e2e_latency(name)
+        .record_ms(finished_at.saturating_sub(created_at));
 
     Ok(InvocationResponse {
         execution_id: execution_id.to_string(),
@@ -541,11 +784,12 @@ fn enqueue_function(
 
     let execution_id = Uuid::new_v4().to_string();
     let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
+    let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
     state
         .queue_manager
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .enqueue_with_capacity(
+        .enqueue_with_capacity_and_concurrency(
             name,
             InvocationTask {
                 execution_id: execution_id.clone(),
@@ -553,6 +797,7 @@ fn enqueue_function(
                 attempt: 1,
             },
             queue_capacity,
+            concurrency,
         )
         .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
     let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
@@ -573,7 +818,7 @@ fn enqueue_function(
     }
     Ok(InvocationResponse {
         execution_id,
-        status: "QUEUED".to_string(),
+        status: "queued".to_string(),
         output: None,
         error: None,
     })
@@ -607,11 +852,11 @@ async fn get_execution(
 
 fn state_to_status(state: &ExecutionState) -> &'static str {
     match state {
-        ExecutionState::Queued => "QUEUED",
-        ExecutionState::Running => "RUNNING",
-        ExecutionState::Success => "SUCCESS",
-        ExecutionState::Error => "ERROR",
-        ExecutionState::Timeout => "TIMEOUT",
+        ExecutionState::Queued => "queued",
+        ExecutionState::Running => "running",
+        ExecutionState::Success => "success",
+        ExecutionState::Error => "error",
+        ExecutionState::Timeout => "timeout",
     }
 }
 
@@ -644,7 +889,13 @@ async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
     let functions_snapshot = state.function_registry.as_map();
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
     scheduler
-        .tick_once(name, &functions_snapshot, &state.queue_manager, &state.execution_store, &state.metrics)
+        .tick_once(
+            name,
+            &functions_snapshot,
+            &state.queue_manager,
+            &state.execution_store,
+            &state.metrics,
+        )
         .await
 }
 
@@ -655,7 +906,10 @@ async fn complete_execution(
 ) -> Result<(), StatusCode> {
     // Read the record (short lock)
     let record = {
-        let store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
+        let store = state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         store.get(execution_id).ok_or(StatusCode::NOT_FOUND)?
     };
 
@@ -678,7 +932,10 @@ async fn complete_execution(
         record.complete(dispatch_result).await;
     } else {
         // No waiter (async enqueue) — update store directly
-        let mut store = state.execution_store.lock().unwrap_or_else(|e| e.into_inner());
+        let mut store = state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(mut r) = store.get(execution_id) {
             let now = now_millis();
             match status {
@@ -704,12 +961,12 @@ async fn complete_execution(
 }
 
 fn parse_execution_state(value: &str) -> Option<ExecutionState> {
-    match value {
-        "QUEUED" => Some(ExecutionState::Queued),
-        "RUNNING" => Some(ExecutionState::Running),
-        "SUCCESS" => Some(ExecutionState::Success),
-        "ERROR" => Some(ExecutionState::Error),
-        "TIMEOUT" => Some(ExecutionState::Timeout),
+    match value.to_ascii_lowercase().as_str() {
+        "queued" => Some(ExecutionState::Queued),
+        "running" => Some(ExecutionState::Running),
+        "success" => Some(ExecutionState::Success),
+        "error" => Some(ExecutionState::Error),
+        "timeout" => Some(ExecutionState::Timeout),
         _ => None,
     }
 }
@@ -742,6 +999,15 @@ async fn set_replicas(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(name.clone(), request.replicas);
+
+    let replicas = match i32::try_from(request.replicas) {
+        Ok(value) => value,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+
+    if let Err(err) = state.provisioner.set_replicas(&name, replicas).await {
+        return (StatusCode::SERVICE_UNAVAILABLE, err).into_response();
+    }
 
     (
         StatusCode::OK,

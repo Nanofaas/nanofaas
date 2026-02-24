@@ -218,3 +218,46 @@ async fn register_withConcurrencyControl_returnsResolvedSpec() {
         6
     );
 }
+
+#[tokio::test]
+async fn register_deployment_withInMemoryProvisioning_setsEndpointUrl() {
+    let app = control_plane_rust::app::build_app_with_provisioning_mode(Some("inmemory"));
+
+    let create = register(
+        &app,
+        json!({"name":"echo-provisioned","image":"img1","executionMode":"DEPLOYMENT","runtimeMode":"HTTP"}),
+    )
+    .await;
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let create_body = axum::body::to_bytes(create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created_json: Value = serde_json::from_slice(&create_body).unwrap();
+
+    assert_eq!(created_json["name"], "echo-provisioned");
+    assert_eq!(
+        created_json["endpointUrl"],
+        "http://fn-echo-provisioned.default.svc.cluster.local:8080/invoke"
+    );
+
+    let get = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/functions/echo-provisioned")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let get_body = axum::body::to_bytes(get.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let get_json: Value = serde_json::from_slice(&get_body).unwrap();
+    assert_eq!(
+        get_json["endpointUrl"],
+        "http://fn-echo-provisioned.default.svc.cluster.local:8080/invoke"
+    );
+}
