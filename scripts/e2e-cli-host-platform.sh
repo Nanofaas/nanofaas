@@ -12,6 +12,7 @@ SKIP_BUILD=${SKIP_BUILD:-false}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 TAG=${TAG:-e2e}
 CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:${TAG}}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
@@ -57,9 +58,9 @@ build_control_plane_image() {
         return
     fi
 
-    log "Building control-plane image in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar --no-daemon -q"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
+    log "Building control-plane image in VM (runtime=${CONTROL_PLANE_RUNTIME})..."
+    e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
+    e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
     e2e_push_images_to_registry "${CONTROL_IMAGE}"
 }
 
@@ -137,7 +138,7 @@ test_platform_lifecycle_from_host() {
 
 main() {
     log "Scenario: host CLI executes Helm against k3s in VM"
-    log "VM=${VM_NAME} NAMESPACE=${NAMESPACE} RELEASE=${RELEASE} LOCAL_REGISTRY=${LOCAL_REGISTRY}"
+    log "VM=${VM_NAME} NAMESPACE=${NAMESPACE} RELEASE=${RELEASE} LOCAL_REGISTRY=${LOCAL_REGISTRY} CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME}"
 
     check_prerequisites
     create_vm

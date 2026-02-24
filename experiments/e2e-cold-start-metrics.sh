@@ -12,6 +12,7 @@ NAMESPACE=${NAMESPACE:-nanofaas-e2e}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:e2e}
 RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runtime:e2e}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 KEEP_VM=${KEEP_VM:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -52,11 +53,14 @@ sync_project() {
 }
 
 build_jars() {
-    e2e_build_core_jars "/home/ubuntu/nanofaas"
+    log "Building runtime-aware control-plane artifacts in VM (runtime=${CONTROL_PLANE_RUNTIME})..."
+    e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
 }
 
 build_images() {
-    e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+    log "Building container images in VM..."
+    e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
+    e2e_build_function_runtime_image "/home/ubuntu/nanofaas" "${RUNTIME_IMAGE}"
 }
 
 push_images_to_registry() {
@@ -149,20 +153,39 @@ invoke_sync() {
     fi
 }
 
+metric_value_for_any_name() {
+    local metrics=$1
+    local metric_names_csv=$2
+    local label_filter=${3:-'function="echo-test"'}
+    local metric_name value
+    IFS='|' read -r -a metric_names <<< "${metric_names_csv}"
+    for metric_name in "${metric_names[@]}"; do
+        value=$(echo "${metrics}" | grep "${metric_name}" | grep "${label_filter}" | grep -v '^#' | head -1 | awk '{print $NF}')
+        if [[ -n "${value}" ]]; then
+            echo "${metric_name}|${value}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 assert_metric_gte() {
     local metrics=$1
-    local metric_name=$2
+    local metric_names_csv=$2
     local min_value=$3
     local description=$4
 
-    local value
-    value=$(echo "${metrics}" | grep "${metric_name}" | grep 'function="echo-test"' | grep -v '^#' | head -1 | awk '{print $NF}')
+    local matched
+    local metric_name value
+    matched=$(metric_value_for_any_name "${metrics}" "${metric_names_csv}" || true)
 
-    if [[ -z "${value}" ]]; then
-        error "FAIL: ${description} — metric '${metric_name}' not found"
+    if [[ -z "${matched}" ]]; then
+        error "FAIL: ${description} — none of metrics '${metric_names_csv}' found"
         E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
+    metric_name=${matched%%|*}
+    value=${matched#*|}
 
     # Compare as floats: value >= min_value
     if awk "BEGIN {exit !(${value} >= ${min_value})}"; then
@@ -178,15 +201,19 @@ assert_metric_gte() {
 
 assert_metric_exists() {
     local metrics=$1
-    local metric_name=$2
+    local metric_names_csv=$2
     local description=$3
+    local matched
 
-    if echo "${metrics}" | grep -q "${metric_name}"; then
+    matched=$(metric_value_for_any_name "${metrics}" "${metric_names_csv}" ".*" || true)
+
+    if [[ -n "${matched}" ]]; then
+        local metric_name=${matched%%|*}
         log "  PASS: ${description} (${metric_name} present)"
         E2E_PASS=$((E2E_PASS + 1))
         return 0
     else
-        error "FAIL: ${description} (${metric_name} not found)"
+        error "FAIL: ${description} (none of '${metric_names_csv}' found)"
         E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
@@ -194,18 +221,21 @@ assert_metric_exists() {
 
 assert_metric_gt() {
     local metrics=$1
-    local metric_name=$2
+    local metric_names_csv=$2
     local min_exclusive=$3
     local description=$4
 
-    local value
-    value=$(echo "${metrics}" | grep "${metric_name}" | grep 'function="echo-test"' | grep -v '^#' | head -1 | awk '{print $NF}')
+    local matched
+    local metric_name value
+    matched=$(metric_value_for_any_name "${metrics}" "${metric_names_csv}" || true)
 
-    if [[ -z "${value}" ]]; then
-        error "FAIL: ${description} — metric '${metric_name}' not found"
+    if [[ -z "${matched}" ]]; then
+        error "FAIL: ${description} — none of metrics '${metric_names_csv}' found"
         E2E_FAIL=$((E2E_FAIL + 1))
         return 1
     fi
+    metric_name=${matched%%|*}
+    value=${matched#*|}
 
     if awk "BEGIN {exit !(${value} > ${min_exclusive})}"; then
         log "  PASS: ${description} (${metric_name} = ${value}, expected > ${min_exclusive})"
@@ -236,23 +266,23 @@ verify_cold_start_metrics() {
 
     # Init duration timer count: at least 1 recording
     # Micrometer Timer "function_init_duration_ms" → Prometheus "function_init_duration_ms_seconds_count"
-    assert_metric_gte "${metrics}" "function_init_duration_ms_seconds_count" 1 \
+    assert_metric_gte "${metrics}" "function_init_duration_ms_seconds_count|function_init_duration_ms_count" 1 \
         "Init duration timer count >= 1" || true
 
     # Init duration timer sum: should be > 0
-    assert_metric_gt "${metrics}" "function_init_duration_ms_seconds_sum" 0 \
+    assert_metric_gt "${metrics}" "function_init_duration_ms_seconds_sum|function_init_duration_ms_sum" 0 \
         "Init duration timer sum > 0" || true
 
     # Queue wait timer count: at least 1
-    assert_metric_gte "${metrics}" "function_queue_wait_ms_seconds_count" 1 \
+    assert_metric_gte "${metrics}" "function_queue_wait_ms_seconds_count|function_queue_wait_ms_count" 1 \
         "Queue wait timer count >= 1" || true
 
     # E2E latency timer count: at least 1
-    assert_metric_gte "${metrics}" "function_e2e_latency_ms_seconds_count" 1 \
+    assert_metric_gte "${metrics}" "function_e2e_latency_ms_seconds_count|function_e2e_latency_ms_count" 1 \
         "E2E latency timer count >= 1" || true
 
     # Backward compat: function_latency_ms timer exists
-    assert_metric_exists "${metrics}" "function_latency_ms_seconds_count" \
+    assert_metric_exists "${metrics}" "function_latency_ms_seconds_count|function_latency_ms_count" \
         "Legacy latency timer exists" || true
 
     # Print a summary of timing values for visibility
@@ -260,20 +290,20 @@ verify_cold_start_metrics() {
     log "Timing summary from Prometheus metrics:"
     local init_sum init_count queue_sum queue_count e2e_sum e2e_count
 
-    init_sum=$(echo "${metrics}" | grep 'function_init_duration_ms_seconds_sum' | grep 'function="echo-test"' | grep -v '^#' | awk '{print $NF}')
-    init_count=$(echo "${metrics}" | grep 'function_init_duration_ms_seconds_count' | grep 'function="echo-test"' | grep -v '^#' | awk '{print $NF}')
+    init_sum=$(metric_value_for_any_name "${metrics}" "function_init_duration_ms_seconds_sum|function_init_duration_ms_sum" | awk -F'|' '{print $2}' || true)
+    init_count=$(metric_value_for_any_name "${metrics}" "function_init_duration_ms_seconds_count|function_init_duration_ms_count" | awk -F'|' '{print $2}' || true)
     if [[ -n "${init_sum}" && -n "${init_count}" ]]; then
         log "  Init duration:  sum=${init_sum}s  count=${init_count}"
     fi
 
-    queue_sum=$(echo "${metrics}" | grep 'function_queue_wait_ms_seconds_sum' | grep 'function="echo-test"' | grep -v '^#' | awk '{print $NF}')
-    queue_count=$(echo "${metrics}" | grep 'function_queue_wait_ms_seconds_count' | grep 'function="echo-test"' | grep -v '^#' | awk '{print $NF}')
+    queue_sum=$(metric_value_for_any_name "${metrics}" "function_queue_wait_ms_seconds_sum|function_queue_wait_ms_sum" | awk -F'|' '{print $2}' || true)
+    queue_count=$(metric_value_for_any_name "${metrics}" "function_queue_wait_ms_seconds_count|function_queue_wait_ms_count" | awk -F'|' '{print $2}' || true)
     if [[ -n "${queue_sum}" && -n "${queue_count}" ]]; then
         log "  Queue wait:     sum=${queue_sum}s  count=${queue_count}"
     fi
 
-    e2e_sum=$(echo "${metrics}" | grep 'function_e2e_latency_ms_seconds_sum' | grep 'function="echo-test"' | grep -v '^#' | awk '{print $NF}')
-    e2e_count=$(echo "${metrics}" | grep 'function_e2e_latency_ms_seconds_count' | grep 'function="echo-test"' | grep -v '^#' | awk '{print $NF}')
+    e2e_sum=$(metric_value_for_any_name "${metrics}" "function_e2e_latency_ms_seconds_sum|function_e2e_latency_ms_sum" | awk -F'|' '{print $2}' || true)
+    e2e_count=$(metric_value_for_any_name "${metrics}" "function_e2e_latency_ms_seconds_count|function_e2e_latency_ms_count" | awk -F'|' '{print $2}' || true)
     if [[ -n "${e2e_sum}" && -n "${e2e_count}" ]]; then
         log "  E2E latency:    sum=${e2e_sum}s  count=${e2e_count}"
     fi
@@ -312,6 +342,7 @@ main() {
     log "  CPUS=${CPUS}, MEMORY=${MEMORY}, DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE}"
     log "  LOCAL_REGISTRY=${LOCAL_REGISTRY}"
+    log "  CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME}"
     log "  KEEP_VM=${KEEP_VM}"
     log ""
 

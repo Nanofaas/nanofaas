@@ -120,7 +120,7 @@ async fn issue009_schedulerCompletesLocalInvocation() {
         .await
         .unwrap();
     let get_json: Value = serde_json::from_slice(&get_body).unwrap();
-    assert_eq!(get_json["status"], "SUCCESS");
+    assert_eq!(get_json["status"], "success");
 }
 
 #[tokio::test]
@@ -134,7 +134,7 @@ async fn issue013_syncWaitReturnsOutput() {
         .await
         .unwrap();
     let json: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["status"], "SUCCESS");
+    assert_eq!(json["status"], "success");
     assert_eq!(json["output"], "payload");
 }
 

@@ -147,10 +147,17 @@ final class E2eApiSupport {
     }
 
     static void assertMetricPresent(String metrics, String metric) {
-        MetricAggregate aggregate = aggregateMetric(metrics, metric, Map.of());
-        if (aggregate.matches() == 0) {
-            throw new AssertionError("expected metric " + metric + " to be present");
+        assertMetricPresentAny(metrics, metric);
+    }
+
+    static void assertMetricPresentAny(String metrics, String... metricCandidates) {
+        for (String metric : metricCandidates) {
+            MetricAggregate aggregate = aggregateMetric(metrics, metric, Map.of());
+            if (aggregate.matches() > 0) {
+                return;
+            }
         }
+        throw new AssertionError("expected one of metrics " + List.of(metricCandidates) + " to be present");
     }
 
     static double metricSum(String metrics, String metric, Map<String, String> labelFilter) {
@@ -158,13 +165,30 @@ final class E2eApiSupport {
     }
 
     static void assertMetricSumAtLeast(String metrics, String metric, Map<String, String> labelFilter, double min) {
-        MetricAggregate aggregate = aggregateMetric(metrics, metric, labelFilter);
-        if (aggregate.matches() == 0) {
-            throw new AssertionError(
-                    "expected metric " + metric + " with labels " + labelFilter + " to be present");
+        assertMetricSumAtLeastAny(metrics, labelFilter, min, metric);
+    }
+
+    static void assertMetricSumAtLeastAny(
+            String metrics,
+            Map<String, String> labelFilter,
+            double min,
+            String... metricCandidates) {
+        MetricAggregate firstMatched = null;
+        String matchedMetric = null;
+        for (String metric : metricCandidates) {
+            MetricAggregate aggregate = aggregateMetric(metrics, metric, labelFilter);
+            if (aggregate.matches() > 0) {
+                firstMatched = aggregate;
+                matchedMetric = metric;
+                break;
+            }
         }
-        if (aggregate.sum() < min) {
-            throw new AssertionError("expected " + metric + " sum >= " + min + " but was " + aggregate.sum());
+        if (firstMatched == null || matchedMetric == null) {
+            throw new AssertionError(
+                    "expected one of metrics " + List.of(metricCandidates) + " with labels " + labelFilter + " to be present");
+        }
+        if (firstMatched.sum() < min) {
+            throw new AssertionError("expected " + matchedMetric + " sum >= " + min + " but was " + firstMatched.sum());
         }
     }
 

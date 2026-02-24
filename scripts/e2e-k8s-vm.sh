@@ -16,6 +16,7 @@ KEEP_VM=${KEEP_VM:-false}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:e2e}
 RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runtime:e2e}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 
 # Note: e2e-k8s-vm.sh uses vm_exec without KUBECONFIG (the common helper sets it)
 vm_exec() { e2e_vm_exec "$@"; }
@@ -39,11 +40,12 @@ e2e_install_vm_dependencies
 log "Syncing repository to VM"
 e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 
-log "Building JARs in VM"
-e2e_build_core_jars "${REMOTE_DIR}" false
+log "Building runtime-aware control-plane artifacts in VM (runtime=${CONTROL_PLANE_RUNTIME})"
+e2e_build_control_plane_artifacts "${REMOTE_DIR}"
 
 log "Building container images in VM"
-e2e_build_core_images "${REMOTE_DIR}" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+e2e_build_control_plane_image "${REMOTE_DIR}" "${CONTROL_IMAGE}"
+e2e_build_function_runtime_image "${REMOTE_DIR}" "${RUNTIME_IMAGE}"
 
 log "Installing k3s"
 e2e_install_k3s

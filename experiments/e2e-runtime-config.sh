@@ -26,6 +26,7 @@ API_PORT=18080
 MGMT_PORT=18081
 BASE_URL="http://localhost:${API_PORT}"
 METRICS_URL="http://localhost:${MGMT_PORT}/actuator/prometheus"
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 CP_PID=""
 
 cleanup() {
@@ -36,6 +37,24 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+runtime_kind() {
+    local raw=${CONTROL_PLANE_RUNTIME:-java}
+    raw=$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')
+    case "${raw}" in
+        rust)
+            echo "rust"
+            ;;
+        *)
+            echo "java"
+            ;;
+    esac
+}
+
+if [[ "$(runtime_kind)" == "rust" ]]; then
+    echo "SKIP: e2e-runtime-config exercises Java admin runtime-config endpoints and is not supported for CONTROL_PLANE_RUNTIME=rust."
+    exit 0
+fi
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 echo "Building control-plane..."

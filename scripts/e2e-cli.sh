@@ -11,6 +11,7 @@ LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:e2e}
 RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runtime:e2e}
 KEEP_VM=${KEEP_VM:-false}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 CONTROL_IMAGE_REPOSITORY=${CONTROL_IMAGE%:*}
 CONTROL_IMAGE_TAG=${CONTROL_IMAGE##*:}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,15 +96,15 @@ sync_project() {
 }
 
 build_jars() {
-    log "Building JARs in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon -q"
+    log "Building runtime-aware control-plane artifacts in VM (runtime=${CONTROL_PLANE_RUNTIME})..."
+    e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
     log "JARs built"
 }
 
 build_images() {
     log "Building Docker images in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
+    e2e_build_function_runtime_image "/home/ubuntu/nanofaas" "${RUNTIME_IMAGE}"
     log "Docker images built"
 }
 
@@ -962,6 +963,7 @@ main() {
     log "  CPUS=${CPUS}, MEMORY=${MEMORY}, DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE}"
     log "  LOCAL_REGISTRY=${LOCAL_REGISTRY}"
+    log "  CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME}"
     log "  KEEP_VM=${KEEP_VM}"
     log ""
 

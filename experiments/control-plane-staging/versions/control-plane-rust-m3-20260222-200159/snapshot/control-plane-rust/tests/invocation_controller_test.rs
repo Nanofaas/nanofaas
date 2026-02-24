@@ -41,7 +41,7 @@ async fn invoke_and_enqueue_and_execution_lookup() {
         .unwrap();
     let invoke_json: Value = serde_json::from_slice(&invoke_body).unwrap();
     let first_id = invoke_json["executionId"].as_str().unwrap().to_string();
-    assert_eq!(invoke_json["status"], "SUCCESS");
+    assert_eq!(invoke_json["status"], "success");
 
     let invoke_again = Request::builder()
         .method("POST")

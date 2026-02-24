@@ -49,4 +49,6 @@ async fn actuatorPrometheus_exposesFunctionCountersAndLatencyTimer() {
 
     assert!(text.contains("function_dispatch_total{function=\"echo\"}"));
     assert!(text.contains("function_latency_ms_count{function=\"echo\"}"));
+    assert!(text.contains("function_queue_wait_ms_count{function=\"echo\"}"));
+    assert!(text.contains("function_e2e_latency_ms_count{function=\"echo\"}"));
 }

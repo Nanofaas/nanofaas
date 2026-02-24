@@ -561,20 +561,42 @@ e2e_sync_project_to_vm() {
     e2e_log "Project synced"
 }
 
+e2e_runtime_kind() {
+    local runtime=${CONTROL_PLANE_RUNTIME:-java}
+    runtime=$(echo "${runtime}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    case "${runtime}" in
+        rust)
+            echo "rust"
+            ;;
+        java|"")
+            echo "java"
+            ;;
+        *)
+            echo "java"
+            ;;
+    esac
+}
+
+e2e_is_rust_runtime() {
+    [[ "$(e2e_runtime_kind)" == "rust" ]]
+}
+
 e2e_build_core_jars() {
     e2e_require_vm_exec || return 1
     local remote_dir=${1:-/home/ubuntu/nanofaas}
     local quiet=${2:-true}
     local quiet_flag=""
+    local q_remote_dir
+    q_remote_dir=$(printf '%q' "${remote_dir}")
     if [[ "${quiet}" == "true" ]]; then
         quiet_flag="-q"
     fi
 
     e2e_log "Cleaning stale core build outputs..."
-    vm_exec "cd ${remote_dir} && rm -rf control-plane/build function-runtime/build"
+    vm_exec "cd ${q_remote_dir} && rm -rf control-plane/build function-runtime/build"
 
     e2e_log "Building core boot jars..."
-    vm_exec "cd ${remote_dir} && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
+    vm_exec "cd ${q_remote_dir} && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
     e2e_log "Core boot jars built"
 }
 
@@ -583,10 +605,14 @@ e2e_build_core_images() {
     local remote_dir=${1:-/home/ubuntu/nanofaas}
     local control_image=${2:?control_image is required}
     local runtime_image=${3:?runtime_image is required}
+    local q_remote_dir q_control_image q_runtime_image
+    q_remote_dir=$(printf '%q' "${remote_dir}")
+    q_control_image=$(printf '%q' "${control_image}")
+    q_runtime_image=$(printf '%q' "${runtime_image}")
 
     e2e_log "Building core images..."
-    vm_exec "cd ${remote_dir} && sudo docker build -t ${control_image} -f control-plane/Dockerfile control-plane/"
-    vm_exec "cd ${remote_dir} && sudo docker build -t ${runtime_image} -f function-runtime/Dockerfile function-runtime/"
+    vm_exec "cd ${q_remote_dir} && sudo docker build -t ${q_control_image} -f control-plane/Dockerfile control-plane/"
+    vm_exec "cd ${q_remote_dir} && sudo docker build -t ${q_runtime_image} -f function-runtime/Dockerfile function-runtime/"
     e2e_log "Core images built"
 }
 
@@ -596,15 +622,17 @@ e2e_build_function_runtime_jar() {
     local remote_dir=${1:-/home/ubuntu/nanofaas}
     local quiet=${2:-true}
     local quiet_flag=""
+    local q_remote_dir
+    q_remote_dir=$(printf '%q' "${remote_dir}")
     if [[ "${quiet}" == "true" ]]; then
         quiet_flag="-q"
     fi
 
     e2e_log "Cleaning stale function-runtime build output..."
-    vm_exec "cd ${remote_dir} && rm -rf function-runtime/build"
+    vm_exec "cd ${q_remote_dir} && rm -rf function-runtime/build"
 
     e2e_log "Building function-runtime boot jar..."
-    vm_exec "cd ${remote_dir} && ./gradlew :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
+    vm_exec "cd ${q_remote_dir} && ./gradlew :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
     e2e_log "Function-runtime boot jar built"
 }
 
@@ -613,9 +641,12 @@ e2e_build_function_runtime_image() {
     e2e_require_vm_exec || return 1
     local remote_dir=${1:-/home/ubuntu/nanofaas}
     local runtime_image=${2:?runtime_image is required}
+    local q_remote_dir q_runtime_image
+    q_remote_dir=$(printf '%q' "${remote_dir}")
+    q_runtime_image=$(printf '%q' "${runtime_image}")
 
     e2e_log "Building function-runtime image..."
-    vm_exec "cd ${remote_dir} && sudo docker build -t ${runtime_image} -f function-runtime/Dockerfile function-runtime/"
+    vm_exec "cd ${q_remote_dir} && sudo docker build -t ${q_runtime_image} -f function-runtime/Dockerfile function-runtime/"
     e2e_log "Function-runtime image built"
 }
 
@@ -626,10 +657,55 @@ e2e_build_rust_control_plane_image() {
     local remote_dir=${1:-/home/ubuntu/nanofaas}
     local control_image=${2:?control_image is required}
     local rust_cp_dir="${CONTROL_PLANE_RUST_DIR:-experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust}"
+    local q_remote_dir q_control_image q_rust_cp_dir
+    q_remote_dir=$(printf '%q' "${remote_dir}")
+    q_control_image=$(printf '%q' "${control_image}")
+    q_rust_cp_dir=$(printf '%q' "${rust_cp_dir}")
 
     e2e_log "Building Rust control-plane image from ${rust_cp_dir}..."
-    vm_exec "cd ${remote_dir} && sudo docker build -t ${control_image} -f ${rust_cp_dir}/Dockerfile ${rust_cp_dir}/"
+    vm_exec "cd ${q_remote_dir} && sudo docker build -t ${q_control_image} -f ${q_rust_cp_dir}/Dockerfile ${q_rust_cp_dir}/"
     e2e_log "Rust control-plane image built"
+}
+
+e2e_build_control_plane_artifacts() {
+    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    if e2e_is_rust_runtime; then
+        e2e_build_function_runtime_jar "${remote_dir}"
+        return
+    fi
+    e2e_build_core_jars "${remote_dir}"
+}
+
+e2e_build_control_plane_image() {
+    e2e_require_vm_exec || return 1
+    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local control_image=${2:?control_image is required}
+    local q_remote_dir q_control_image
+    q_remote_dir=$(printf '%q' "${remote_dir}")
+    q_control_image=$(printf '%q' "${control_image}")
+
+    if e2e_is_rust_runtime; then
+        e2e_build_rust_control_plane_image "${remote_dir}" "${control_image}"
+        return
+    fi
+
+    e2e_log "Building Java control-plane image..."
+    vm_exec "cd ${q_remote_dir} && sudo docker build -t ${q_control_image} -f control-plane/Dockerfile control-plane/"
+    e2e_log "Java control-plane image built"
+}
+
+e2e_render_control_plane_sync_env() {
+    local enabled=${1:-}
+    if [[ -z "${enabled}" ]]; then
+        return 0
+    fi
+
+    cat <<EOF
+        - name: SYNC_QUEUE_ENABLED
+          value: "${enabled}"
+        - name: NANOFAAS_SYNC_QUEUE_ENABLED
+          value: "${enabled}"
+EOF
 }
 
 e2e_create_namespace() {
@@ -646,9 +722,11 @@ e2e_deploy_control_plane() {
     local image=${2:?image is required}
     local pod_namespace=${3:-${namespace}}
     local sync_queue_enabled=${4:-}
+    local sync_env
 
     e2e_log "Deploying control-plane in namespace ${namespace}..."
     if [[ -n "${sync_queue_enabled}" ]]; then
+        sync_env=$(e2e_render_control_plane_sync_env "${sync_queue_enabled}")
         vm_exec "cat <<'EOF' | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -679,8 +757,7 @@ spec:
         env:
         - name: POD_NAMESPACE
           value: \"${pod_namespace}\"
-        - name: SYNC_QUEUE_ENABLED
-          value: \"${sync_queue_enabled}\"
+${sync_env}
         readinessProbe:
           httpGet:
             path: /actuator/health/readiness
@@ -855,18 +932,18 @@ e2e_verify_core_pods_running() {
     local namespace=${1:?namespace is required}
 
     e2e_log "Verifying control-plane/function-runtime pods are running..."
-    local cp_status
-    cp_status=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane -o jsonpath='{.items[0].status.phase}'")
-    if [[ "${cp_status}" != "Running" ]]; then
-        e2e_error "control-plane pod is not Running (status: ${cp_status})"
+    local cp_running
+    cp_running=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' '")
+    if [[ -z "${cp_running}" || "${cp_running}" -lt 1 ]]; then
+        e2e_error "no Running control-plane pod found"
         vm_exec "kubectl describe pod -n ${namespace} -l app=control-plane"
         return 1
     fi
 
-    local fr_status
-    fr_status=$(vm_exec "kubectl get pods -n ${namespace} -l app=function-runtime -o jsonpath='{.items[0].status.phase}'")
-    if [[ "${fr_status}" != "Running" ]]; then
-        e2e_error "function-runtime pod is not Running (status: ${fr_status})"
+    local fr_running
+    fr_running=$(vm_exec "kubectl get pods -n ${namespace} -l app=function-runtime --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' '")
+    if [[ -z "${fr_running}" || "${fr_running}" -lt 1 ]]; then
+        e2e_error "no Running function-runtime pod found"
         vm_exec "kubectl describe pod -n ${namespace} -l app=function-runtime"
         return 1
     fi
@@ -876,13 +953,13 @@ e2e_verify_core_pods_running() {
 e2e_verify_control_plane_health() {
     e2e_require_vm_exec || return 1
     local namespace=${1:?namespace is required}
-    local pod_ip
-    pod_ip=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane -o jsonpath='{.items[0].status.podIP}'")
+    local service_ip
+    service_ip=$(vm_exec "kubectl get svc -n ${namespace} control-plane -o jsonpath='{.spec.clusterIP}'")
 
-    e2e_log "Verifying control-plane health endpoints (pod IP: ${pod_ip})..."
-    vm_exec "curl -sf http://${pod_ip}:8081/actuator/health" | grep -q '"status":"UP"'
-    vm_exec "curl -sf http://${pod_ip}:8081/actuator/health/liveness" | grep -q '"status":"UP"'
-    vm_exec "curl -sf http://${pod_ip}:8081/actuator/health/readiness" | grep -q '"status":"UP"'
+    e2e_log "Verifying control-plane health endpoints (service IP: ${service_ip})..."
+    vm_exec "curl -sf http://${service_ip}:8081/actuator/health" | grep -q '"status":"UP"'
+    vm_exec "curl -sf http://${service_ip}:8081/actuator/health/liveness" | grep -q '"status":"UP"'
+    vm_exec "curl -sf http://${service_ip}:8081/actuator/health/readiness" | grep -q '"status":"UP"'
     e2e_log "Control-plane health endpoints are UP"
 }
 
@@ -1177,7 +1254,7 @@ e2e_wait_execution_success() {
         if [[ "${status}" == "success" ]]; then
             return 0
         fi
-        if [[ "${status}" == "failed" ]]; then
+        if [[ "${status}" == "failed" || "${status}" == "error" || "${status}" == "timeout" ]]; then
             return 1
         fi
         sleep "${sleep_seconds}"
@@ -1212,9 +1289,9 @@ e2e_get_control_plane_pod_name() {
 e2e_fetch_control_plane_prometheus() {
     e2e_require_vm_exec || return 1
     local namespace=${1:?namespace is required}
-    local pod_ip
-    pod_ip=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane -o jsonpath='{.items[0].status.podIP}'")
-    vm_exec "curl -sf http://${pod_ip}:8081/actuator/prometheus"
+    local service_ip
+    service_ip=$(vm_exec "kubectl get svc -n ${namespace} control-plane -o jsonpath='{.spec.clusterIP}'")
+    vm_exec "curl -sf http://${service_ip}:8081/actuator/prometheus"
 }
 
 e2e_install_k3s() {

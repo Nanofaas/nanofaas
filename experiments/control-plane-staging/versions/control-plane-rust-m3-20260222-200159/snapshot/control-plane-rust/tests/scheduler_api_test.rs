@@ -60,7 +60,7 @@ async fn drain_once_transitions_queued_execution_to_success() {
         .await
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(payload["status"], "SUCCESS");
+    assert_eq!(payload["status"], "success");
 }
 
 #[tokio::test]
@@ -88,7 +88,7 @@ async fn internal_complete_overrides_execution_status_and_output() {
         .header("content-type", "application/json")
         .body(Body::from(
             json!({
-                "status": "ERROR",
+                "status": "error",
                 "output": { "message": "forced" }
             })
             .to_string(),
@@ -107,6 +107,6 @@ async fn internal_complete_overrides_execution_status_and_output() {
         .await
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(payload["status"], "ERROR");
+    assert_eq!(payload["status"], "error");
     assert_eq!(payload["output"]["message"], "forced");
 }

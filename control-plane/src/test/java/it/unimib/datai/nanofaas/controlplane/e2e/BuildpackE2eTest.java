@@ -47,11 +47,7 @@ class BuildpackE2eTest {
                 .withNetworkAliases("function-runtime")
                 .waitingFor(Wait.forListeningPort());
 
-        controlPlane = new GenericContainer<>(CONTROL_IMAGE)
-                .withExposedPorts(8080, 8081)
-                .withNetwork(network)
-                .withNetworkAliases("control-plane")
-                .waitingFor(Wait.forHttp("/actuator/health").forPort(8081).withStartupTimeout(Duration.ofSeconds(60)));
+        controlPlane = E2eTestSupport.createControlPlaneContainer(network, Duration.ofSeconds(60));
 
         functionRuntime.start();
         controlPlane.start();
@@ -78,10 +74,14 @@ class BuildpackE2eTest {
     private static void runGradleBuild() throws Exception {
         // Test runs from control-plane/ directory, so project root is ..
         File projectRoot = new File("..").getAbsoluteFile().getCanonicalFile();
-        ProcessBuilder builder = new ProcessBuilder()
-                .directory(projectRoot)
-                .command("./gradlew", ":control-plane:bootBuildImage", ":function-runtime:bootBuildImage",
-                        "-PcontrolPlaneImage=" + CONTROL_IMAGE, "-PfunctionRuntimeImage=" + RUNTIME_IMAGE, "--no-daemon");
+        ProcessBuilder builder = new ProcessBuilder().directory(projectRoot);
+        if (E2eTestSupport.resolveControlPlaneContainerPlan().isImageOverride()) {
+            builder.command("./gradlew", ":function-runtime:bootBuildImage",
+                    "-PfunctionRuntimeImage=" + RUNTIME_IMAGE, "--no-daemon");
+        } else {
+            builder.command("./gradlew", ":control-plane:bootBuildImage", ":function-runtime:bootBuildImage",
+                    "-PcontrolPlaneImage=" + CONTROL_IMAGE, "-PfunctionRuntimeImage=" + RUNTIME_IMAGE, "--no-daemon");
+        }
         builder.environment().putIfAbsent("JAVA_HOME", System.getProperty("java.home"));
         builder.redirectErrorStream(true);
         Process process = builder.start();

@@ -27,6 +27,7 @@ def test_loadtest_help_mentions_mode_and_selection_env_vars():
     assert "RESULTS_DIR_OVERRIDE" in proc.stdout
     assert "K6_PAYLOAD_MODE" in proc.stdout
     assert "K6_PAYLOAD_POOL_SIZE" in proc.stdout
+    assert "CONTROL_PLANE_RUNTIME" in proc.stdout
 
 
 def test_loadtest_selection_works_on_bash3_without_unbound_array_error():

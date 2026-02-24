@@ -125,8 +125,7 @@ impl AsyncQueueEnqueuer {
             .unwrap_or_else(|e| e.into_inner())
             .enqueue_with_capacity(function_name, task, queue_capacity)
             .map_err(|_| format!("Queue full for function {function_name}"))?;
-        let record =
-            ExecutionRecord::new(execution_id, function_name, ExecutionState::Queued);
+        let record = ExecutionRecord::new(execution_id, function_name, ExecutionState::Queued);
         self.execution_store
             .lock()
             .unwrap_or_else(|e| e.into_inner())

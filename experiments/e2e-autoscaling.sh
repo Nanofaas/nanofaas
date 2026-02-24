@@ -21,6 +21,7 @@ e2e_test_init
 K6_DIR="${PROJECT_ROOT}/experiments/k6"
 FUNCTION_NAME=${FUNCTION_NAME:-word-stats-java}
 NAMESPACE=${NAMESPACE:-nanofaas}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 
 # Auto-detect VM name
 VM_NAME=$(e2e_auto_detect_vm)
@@ -56,6 +57,7 @@ preflight() {
     fi
 
     info "API reachable at ${nanofaas_url}"
+    info "Runtime: $(e2e_runtime_kind) (CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME})"
 }
 
 # ─── Phase A: Register function with scaling config ──────────────────────────

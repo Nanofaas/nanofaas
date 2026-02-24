@@ -109,7 +109,7 @@ async fn completeExecution_withRetry_doesNotCompleteTheFuture() {
     let execution_id = body["executionId"].as_str().unwrap().to_string();
 
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-flow").await);
-    assert_eq!("QUEUED", execution_status(&app, &execution_id).await);
+    assert_eq!("queued", execution_status(&app, &execution_id).await);
 }
 
 #[tokio::test]
@@ -123,7 +123,7 @@ async fn completeExecution_afterMaxRetries_completesTheFuture() {
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-max").await);
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-max").await);
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-max").await);
-    assert_eq!("ERROR", execution_status(&app, &execution_id).await);
+    assert_eq!("error", execution_status(&app, &execution_id).await);
 }
 
 #[tokio::test]
@@ -135,7 +135,7 @@ async fn completeExecution_withSuccess_completesImmediately() {
     let execution_id = body["executionId"].as_str().unwrap().to_string();
 
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-success").await);
-    assert_eq!("SUCCESS", execution_status(&app, &execution_id).await);
+    assert_eq!("success", execution_status(&app, &execution_id).await);
 }
 
 #[tokio::test]
@@ -154,10 +154,10 @@ async fn retry_preservesExecutionId() {
     let execution_id = body["executionId"].as_str().unwrap().to_string();
 
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-preserve-id").await);
-    assert_eq!("QUEUED", execution_status(&app, &execution_id).await);
+    assert_eq!("queued", execution_status(&app, &execution_id).await);
 
     assert_eq!(StatusCode::OK, drain_once(&app, "retry-preserve-id").await);
-    assert_eq!("ERROR", execution_status(&app, &execution_id).await);
+    assert_eq!("error", execution_status(&app, &execution_id).await);
 }
 
 #[tokio::test]
@@ -246,5 +246,5 @@ async fn invokeSync_waitsForRetryToComplete() {
         .await
         .unwrap();
     let invoke_json: Value = serde_json::from_slice(&invoke_body).unwrap();
-    assert_eq!("ERROR", invoke_json["status"]);
+    assert_eq!("error", invoke_json["status"]);
 }

@@ -206,7 +206,7 @@ async fn buildpackRegisterInvokeAndPoll() {
         .expect("invoke request");
     assert_eq!(200, invoke.status().as_u16());
     let invoke_json: Value = invoke.json().await.expect("invoke json");
-    assert_eq!("SUCCESS", invoke_json["status"]);
+    assert_eq!("success", invoke_json["status"]);
 
     let enqueue = client
         .post(format!("{base_url}/v1/functions/bp-echo:enqueue"))
@@ -238,7 +238,7 @@ async fn buildpackRegisterInvokeAndPoll() {
             .expect("execution status");
         assert_eq!(200, status.status().as_u16());
         let status_json: Value = status.json().await.expect("status json");
-        if status_json["status"] == "SUCCESS" {
+        if status_json["status"] == "success" {
             break;
         }
         sleep(Duration::from_millis(100)).await;

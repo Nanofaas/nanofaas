@@ -2,7 +2,7 @@ use crate::dispatch::DispatchResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex as TokioMutex;
@@ -354,6 +354,21 @@ impl ExecutionStore {
             true
         });
     }
+}
+
+pub fn spawn_execution_store_janitor(store: Arc<Mutex<ExecutionStore>>, interval: Duration) {
+    let interval = if interval.is_zero() {
+        Duration::from_millis(1)
+    } else {
+        interval
+    };
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+            let mut guard = store.lock().unwrap_or_else(|e| e.into_inner());
+            guard.evict_expired(now_millis());
+        }
+    });
 }
 
 fn now_millis() -> u64 {

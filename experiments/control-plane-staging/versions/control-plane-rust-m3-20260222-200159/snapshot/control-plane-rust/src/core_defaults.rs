@@ -1,5 +1,7 @@
 use crate::registry::{ImageValidator, NoOpImageValidator};
-use crate::service::{InvocationEnqueuer, NoOpInvocationEnqueuer, NoOpScalingMetricsSource, ScalingMetricsSource};
+use crate::service::{
+    InvocationEnqueuer, NoOpInvocationEnqueuer, NoOpScalingMetricsSource, ScalingMetricsSource,
+};
 use crate::sync::{NoOpSyncQueueGateway, SyncQueueGateway};
 use std::sync::Arc;
 

@@ -33,8 +33,9 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "Reusing existing host-built function/runtime/demo images" in script
     assert "HOST_REBUILD_IMAGES=false but one or more host images are missing" in script
     assert "HOST_CONTROL_IMAGE=\"$(resolve_host_control_image_ref)\"" in script
-    assert "echo \"nanofaas/control-plane:host-${build_mode}-${fingerprint}\"" in script
-    assert "echo \"${CONTROL_PLANE_CACHE_ROOT}/${build_mode}/${modules_hash}\"" in script
+    assert "echo \"nanofaas/control-plane:host-${runtime_kind}-${build_mode}-${fingerprint}\"" in script
+    assert "echo \"${CONTROL_PLANE_CACHE_ROOT}/${runtime_kind}/${build_mode}/${modules_hash}\"" in script
+    assert "\"runtime_kind\": runtime_kind" in script
     assert "ensure_host_image_available_from_local_cache" in script
     assert "retagging from" in script
     assert ":control-plane:bootBuildImage" in script

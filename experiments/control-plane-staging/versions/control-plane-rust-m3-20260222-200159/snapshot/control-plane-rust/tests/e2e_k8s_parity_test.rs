@@ -88,11 +88,7 @@ fn ensure_image_built() -> Result<(), String> {
 
 fn ensure_cold_mock_image_built() -> Result<(), String> {
     let cold_mock_dir = crate_root().join("tests").join("cold-mock");
-    docker_cmd(
-        &["build", "-t", COLD_MOCK_IMAGE, "."],
-        Some(&cold_mock_dir),
-    )
-    .map(|_| ())
+    docker_cmd(&["build", "-t", COLD_MOCK_IMAGE, "."], Some(&cold_mock_dir)).map(|_| ())
 }
 
 fn reserve_host_port() -> Result<u16, String> {
@@ -338,7 +334,7 @@ async fn k8sRegisterInvokeAndPoll() {
             .expect("execution status");
         assert_eq!(200, status.status().as_u16());
         let status_json: Value = status.json().await.expect("status json");
-        if status_json["status"] == "SUCCESS" {
+        if status_json["status"] == "success" {
             break;
         }
         sleep(Duration::from_millis(100)).await;

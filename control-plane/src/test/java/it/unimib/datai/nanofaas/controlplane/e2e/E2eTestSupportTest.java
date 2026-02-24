@@ -7,6 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class E2eTestSupportTest {
 
@@ -28,6 +30,43 @@ class E2eTestSupportTest {
                 System.clearProperty("project.version");
             } else {
                 System.setProperty("project.version", previousVersion);
+            }
+        }
+    }
+
+    @Test
+    void resolveControlPlaneContainerPlan_usesImageOverrideWhenConfigured() {
+        String previousOverride = System.getProperty("control.plane.image.override");
+        System.setProperty("control.plane.image.override", "nanofaas/control-plane:rust-e2e");
+        try {
+            E2eTestSupport.ControlPlaneContainerPlan plan = E2eTestSupport.resolveControlPlaneContainerPlan();
+
+            assertTrue(plan.isImageOverride());
+            assertEquals("nanofaas/control-plane:rust-e2e", plan.imageOverride());
+        } finally {
+            if (previousOverride == null) {
+                System.clearProperty("control.plane.image.override");
+            } else {
+                System.setProperty("control.plane.image.override", previousOverride);
+            }
+        }
+    }
+
+    @Test
+    void resolveControlPlaneContainerPlan_defaultsToDockerfilePlanWithoutOverride() {
+        String previousOverride = System.getProperty("control.plane.image.override");
+        try {
+            System.clearProperty("control.plane.image.override");
+
+            E2eTestSupport.ControlPlaneContainerPlan plan = E2eTestSupport.resolveControlPlaneContainerPlan();
+
+            assertFalse(plan.isImageOverride());
+            assertEquals("control-plane-", plan.jarPrefix());
+            assertEquals(E2eTestSupport.PROJECT_ROOT.resolve("control-plane/Dockerfile"), plan.dockerfilePath());
+            assertEquals(E2eTestSupport.PROJECT_ROOT.resolve("control-plane/build/libs"), plan.moduleBuildLibsDir());
+        } finally {
+            if (previousOverride != null) {
+                System.setProperty("control.plane.image.override", previousOverride);
             }
         }
     }

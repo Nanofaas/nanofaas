@@ -15,7 +15,7 @@ fn window_boundary_does_not_allow_burst() {
     assert!(rl.try_acquire_at(0));
     assert!(rl.try_acquire_at(500));
     assert!(!rl.try_acquire_at(999)); // full
-    // New second starts at ms 1000
+                                      // New second starts at ms 1000
     assert!(rl.try_acquire_at(1000));
     assert!(rl.try_acquire_at(1001));
     assert!(!rl.try_acquire_at(1002)); // must be full
@@ -29,7 +29,7 @@ fn window_resets_on_new_epoch_second() {
     assert!(rl.try_acquire_at(500));
     assert!(rl.try_acquire_at(999));
     assert!(!rl.try_acquire_at(999)); // full
-    // epoch-second 1: fresh window
+                                      // epoch-second 1: fresh window
     assert!(rl.try_acquire_at(1000));
     assert!(rl.try_acquire_at(1500));
     assert!(rl.try_acquire_at(1999));

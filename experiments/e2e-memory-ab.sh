@@ -37,6 +37,7 @@ HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES:-false}
 LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java}
 INVOCATION_MODE=${INVOCATION_MODE:-sync}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-20s:86,60s:171,60s:300,60s:300,20s:0}
 K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE:-pool-sequential}
 K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE:-5000}
@@ -57,8 +58,8 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 RESULTS_BASE_DIR=${RESULTS_BASE_DIR:-${PROJECT_ROOT}/experiments/k6/results/memory-ab-${TIMESTAMP}}
 
 ab_log() { e2e_log "$@"; }
-ab_warn() { e2e_warn "$@"; }
-ab_err() { e2e_err "$@"; }
+ab_warn() { warn "$@"; }
+ab_err() { err "$@"; }
 
 cleanup_vm_if_needed() {
     if [[ "${KEEP_VM_AFTER}" == "true" ]]; then
@@ -179,6 +180,7 @@ run_deploy_case() {
         NAMESPACE="${NAMESPACE}" \
         KEEP_VM=true \
         TAG="${tag}" \
+        CONTROL_PLANE_RUNTIME="${CONTROL_PLANE_RUNTIME}" \
         CONTROL_PLANE_NATIVE_BUILD="${CONTROL_PLANE_NATIVE_BUILD}" \
         CONTROL_PLANE_BUILD_ON_HOST=true \
         CONTROL_PLANE_ONLY=false \
@@ -204,6 +206,7 @@ run_loadtest_case() {
     (
         VM_NAME="${VM_NAME}" \
         SKIP_GRAFANA="${SKIP_GRAFANA}" \
+        CONTROL_PLANE_RUNTIME="${CONTROL_PLANE_RUNTIME}" \
         VERIFY_OUTPUT_PARITY="${VERIFY_OUTPUT_PARITY}" \
         LOADTEST_WORKLOADS="${LOADTEST_WORKLOADS}" \
         LOADTEST_RUNTIMES="${LOADTEST_RUNTIMES}" \
@@ -480,15 +483,27 @@ Runs baseline and epoch-enabled scenarios, captures JVM samples, and writes:
 EOF
 }
 
+guard_runtime_support() {
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
+    if [[ "${runtime_kind}" == "rust" ]]; then
+        ab_warn "SKIP: e2e-memory-ab targets Java control-plane JVM memory profiling and is not supported for CONTROL_PLANE_RUNTIME=rust."
+        exit 0
+    fi
+}
+
 main() {
     if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
         print_usage
         exit 0
     fi
 
+    guard_runtime_support
+
     mkdir -p "${RESULTS_BASE_DIR}"
     ab_log "Results directory: ${RESULTS_BASE_DIR}"
     ab_log "Loadtest selection: workloads=${LOADTEST_WORKLOADS} runtimes=${LOADTEST_RUNTIMES} mode=${INVOCATION_MODE}"
+    ab_log "Control-plane runtime: ${CONTROL_PLANE_RUNTIME} (kind=$(e2e_runtime_kind))"
     ab_log "K6 stages: ${K6_STAGE_SEQUENCE}"
     ab_log "Control-plane: native=${CONTROL_PLANE_NATIVE_BUILD} modules=${CONTROL_PLANE_MODULES}"
 

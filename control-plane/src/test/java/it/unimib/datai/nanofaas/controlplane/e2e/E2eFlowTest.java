@@ -24,9 +24,6 @@ class E2eFlowTest {
     private static final java.nio.file.Path FUNCTION_RUNTIME_JAR = E2eTestSupport.resolveBootJar(
             E2eTestSupport.PROJECT_ROOT.resolve("function-runtime/build/libs"),
             "function-runtime-");
-    private static final java.nio.file.Path CONTROL_PLANE_JAR = E2eTestSupport.resolveBootJar(
-            E2eTestSupport.PROJECT_ROOT.resolve("control-plane/build/libs"),
-            "control-plane-");
 
     private static final GenericContainer<?> functionRuntime = new GenericContainer<>(
             new ImageFromDockerfile()
@@ -38,16 +35,9 @@ class E2eFlowTest {
             .withNetworkAliases("function-runtime")
             .waitingFor(Wait.forListeningPort());
 
-    private static final GenericContainer<?> controlPlane = new GenericContainer<>(
-            new ImageFromDockerfile()
-                    .withFileFromPath("Dockerfile", E2eTestSupport.PROJECT_ROOT.resolve("control-plane/Dockerfile"))
-                    .withFileFromPath("build/libs/" + CONTROL_PLANE_JAR.getFileName(), CONTROL_PLANE_JAR)
-    )
-            .withExposedPorts(8080, 8081)
-            .withNetwork(network)
-            .withNetworkAliases("control-plane")
-            .withEnv("SYNC_QUEUE_ENABLED", "false")
-            .waitingFor(Wait.forHttp("/actuator/health").forPort(8081).withStartupTimeout(Duration.ofSeconds(60)));
+    private static final GenericContainer<?> controlPlane = E2eTestSupport.createControlPlaneContainer(
+            network,
+            Duration.ofSeconds(60));
 
     @BeforeAll
     static void startContainers() {

@@ -25,6 +25,7 @@ KEEP_VM=${KEEP_VM:-true}
 SKIP_BUILD=${SKIP_BUILD:-false}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 TAG=${TAG:-e2e}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD:-false}
 CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST:-false}
 CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY:-false}
@@ -138,14 +139,16 @@ compute_sha256_12() {
 }
 
 resolve_host_control_image_ref() {
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
     local build_mode="jvm"
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         build_mode="native"
     fi
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
     local fingerprint
-    fingerprint="$(compute_sha256_12 "${build_mode}|${modules_selector}")"
-    echo "nanofaas/control-plane:host-${build_mode}-${fingerprint}"
+    fingerprint="$(compute_sha256_12 "${runtime_kind}|${build_mode}|${modules_selector}")"
+    echo "nanofaas/control-plane:host-${runtime_kind}-${build_mode}-${fingerprint}"
 }
 
 array_contains() {
@@ -254,19 +257,22 @@ resolve_control_plane_compatible_image_ref() {
         return 1
     fi
 
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
     local build_mode="jvm"
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         build_mode="native"
     fi
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
-    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${build_mode}" "${modules_selector}" <<'PYEOF'
+    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${runtime_kind}" "${build_mode}" "${modules_selector}" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 
 manifest_path = Path(sys.argv[1])
-expected_mode = sys.argv[2]
-expected_selector = sys.argv[3]
+expected_runtime = sys.argv[2]
+expected_mode = sys.argv[3]
+expected_selector = sys.argv[4]
 
 try:
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -279,6 +285,8 @@ if not isinstance(manifest_modules, list):
 expected_modules = [] if expected_selector in {"", "none"} else [item for item in expected_selector.split(",") if item]
 if sorted(str(item).strip() for item in manifest_modules if str(item).strip()) != sorted(expected_modules):
     raise SystemExit(1)
+if payload.get("runtime_kind") != expected_runtime:
+    raise SystemExit(1)
 if payload.get("build_mode") != expected_mode:
     raise SystemExit(1)
 image_ref = payload.get("image_ref")
@@ -289,6 +297,8 @@ PYEOF
 }
 
 resolve_control_plane_cache_dir() {
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
     local build_mode="jvm"
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         build_mode="native"
@@ -296,7 +306,7 @@ resolve_control_plane_cache_dir() {
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
     local modules_hash
     modules_hash="$(compute_sha256_12 "${modules_selector}")"
-    echo "${CONTROL_PLANE_CACHE_ROOT}/${build_mode}/${modules_hash}"
+    echo "${CONTROL_PLANE_CACHE_ROOT}/${runtime_kind}/${build_mode}/${modules_hash}"
 }
 
 control_plane_cache_manifest_is_valid() {
@@ -317,9 +327,11 @@ control_plane_cache_manifest_is_valid() {
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         build_mode="native"
     fi
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
 
-    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${HOST_CONTROL_IMAGE}" "${image_id}" "${build_mode}" "${modules_selector}" <<'PYEOF'
+    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${HOST_CONTROL_IMAGE}" "${image_id}" "${runtime_kind}" "${build_mode}" "${modules_selector}" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
@@ -327,8 +339,9 @@ from pathlib import Path
 manifest_path = Path(sys.argv[1])
 expected_ref = sys.argv[2]
 expected_id = sys.argv[3]
-expected_mode = sys.argv[4]
-expected_selector = sys.argv[5]
+expected_runtime = sys.argv[4]
+expected_mode = sys.argv[5]
+expected_selector = sys.argv[6]
 
 try:
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -340,6 +353,8 @@ manifest_modules = payload.get("selected_modules")
 if not isinstance(manifest_modules, list):
     raise SystemExit(1)
 
+if payload.get("runtime_kind") != expected_runtime:
+    raise SystemExit(1)
 if payload.get("build_mode") != expected_mode:
     raise SystemExit(1)
 if payload.get("image_ref") != expected_ref:
@@ -366,10 +381,12 @@ write_control_plane_cache_manifest() {
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         build_mode="native"
     fi
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
 
     mkdir -p "${CONTROL_PLANE_CACHE_DIR}"
-    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${HOST_CONTROL_IMAGE}" "${image_id}" "${build_mode}" "${modules_selector}" <<'PYEOF'
+    python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${HOST_CONTROL_IMAGE}" "${image_id}" "${runtime_kind}" "${build_mode}" "${modules_selector}" <<'PYEOF'
 import json
 import sys
 from datetime import datetime, timezone
@@ -378,11 +395,13 @@ from pathlib import Path
 manifest_path = Path(sys.argv[1])
 image_ref = sys.argv[2]
 image_id = sys.argv[3]
-build_mode = sys.argv[4]
-modules_selector = sys.argv[5]
+runtime_kind = sys.argv[4]
+build_mode = sys.argv[5]
+modules_selector = sys.argv[6]
 
 selected_modules = [] if modules_selector in {"", "none"} else [item for item in modules_selector.split(",") if item]
 payload = {
+    "runtime_kind": runtime_kind,
     "build_mode": build_mode,
     "selected_modules": sorted(selected_modules),
     "image_ref": image_ref,
@@ -525,6 +544,10 @@ build_control_plane_image_on_host() {
         fi
         log "Building control-plane image on host (native, modules=${CONTROL_PLANE_MODULES}, imagePlatform=${RESOLVED_CP_IMAGE_PLATFORM:-auto}, builder=${RESOLVED_CP_IMAGE_BUILDER:-default})..."
         /bin/bash -lc "${native_cmd}"
+    elif [[ "$(e2e_runtime_kind)" == "rust" ]]; then
+        local rust_cp_dir="${CONTROL_PLANE_RUST_DIR:-experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust}"
+        log "Building control-plane image on host (Rust Dockerfile)..."
+        (cd "${PROJECT_ROOT}" && docker build -t "${HOST_CONTROL_IMAGE}" -f "${rust_cp_dir}/Dockerfile" "${rust_cp_dir}/")
     else
         log "Building control-plane image on host (JVM Dockerfile)..."
         (cd "${PROJECT_ROOT}" && ./gradlew :control-plane:bootJar -PcontrolPlaneModules="${CONTROL_PLANE_MODULES}" --no-daemon -q)
@@ -707,6 +730,12 @@ build_control_plane_image_on_vm() {
         return
     fi
 
+    if [[ "$(e2e_runtime_kind)" == "rust" ]]; then
+        log "Building control-plane image (runtime=rust)..."
+        e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
+        return
+    fi
+
     log "Building control-plane image (JVM Dockerfile)..."
     vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
     vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
@@ -789,6 +818,9 @@ sync_and_build() {
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" || "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
         # Native control-plane image is built via bootBuildImage below with explicit module selector.
         vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
+    elif [[ "$(e2e_runtime_kind)" == "rust" ]]; then
+        e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
+        vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
     else
         vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
     fi
@@ -800,6 +832,10 @@ sync_and_build() {
         log "Building function-runtime Docker image..."
         vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
     elif [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        build_control_plane_image_on_vm
+        log "Building function-runtime Docker image..."
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+    elif [[ "$(e2e_runtime_kind)" == "rust" ]]; then
         build_control_plane_image_on_vm
         log "Building function-runtime Docker image..."
         vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
@@ -1078,6 +1114,7 @@ main() {
     log "Starting nanofaas E2E setup..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE} LOCAL_REGISTRY=${LOCAL_REGISTRY} SKIP_BUILD=${SKIP_BUILD}"
+    log "  CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME}"
     log "  TAG=${TAG} CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD} CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST} CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY} HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES} CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES}"
     log "  VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS} VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS}"
     if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" && "${CONTROL_PLANE_ONLY}" != "true" ]]; then

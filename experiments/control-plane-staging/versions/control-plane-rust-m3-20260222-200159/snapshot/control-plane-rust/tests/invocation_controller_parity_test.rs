@@ -71,7 +71,7 @@ async fn invokeSync_success_returnsExecutionHeaderAndBody() {
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(header_exec.as_deref(), payload["executionId"].as_str());
-    assert_eq!(payload["status"], "SUCCESS");
+    assert_eq!(payload["status"], "success");
 }
 
 #[tokio::test]
@@ -146,7 +146,7 @@ async fn invokeAsync_success_returns202AndDelegatesHeaders() {
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
     assert!(payload["executionId"].as_str().is_some());
-    assert_eq!(payload["status"], "QUEUED");
+    assert_eq!(payload["status"], "queued");
 }
 
 #[tokio::test]
@@ -212,7 +212,7 @@ async fn getExecution_found_returns200() {
         .unwrap();
     let payload: Value = serde_json::from_slice(&get_body).unwrap();
     assert_eq!(payload["executionId"], execution_id);
-    assert_eq!(payload["status"], "QUEUED");
+    assert_eq!(payload["status"], "queued");
 }
 
 #[tokio::test]
@@ -236,7 +236,7 @@ async fn completeExecution_returns204AndCallsService() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "status": "SUCCESS",
+                        "status": "success",
                         "output": "ok"
                     })
                     .to_string(),
@@ -262,6 +262,6 @@ async fn completeExecution_returns204AndCallsService() {
         .await
         .unwrap();
     let payload: Value = serde_json::from_slice(&get_body).unwrap();
-    assert_eq!(payload["status"], "SUCCESS");
+    assert_eq!(payload["status"], "success");
     assert_eq!(payload["output"], "ok");
 }

@@ -498,7 +498,7 @@ async fn wordStats_syncInvoke_returnsCorrectStatistics() {
     assert_eq!(200, response.status().as_u16());
 
     let body: Value = response.json().await.expect("word-stats json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!(11, body["output"]["wordCount"]);
     assert_eq!(8, body["output"]["uniqueWords"]);
     assert_eq!("the", body["output"]["topWords"][0]["word"]);
@@ -524,7 +524,7 @@ async fn wordStats_stringInput_treatedAsText() {
     assert_eq!(200, response.status().as_u16());
 
     let body: Value = response.json().await.expect("word-stats string json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!(3, body["output"]["wordCount"]);
     assert_eq!(2, body["output"]["uniqueWords"]);
 }
@@ -548,7 +548,7 @@ async fn jsonTransform_syncInvoke_groupAndCount() {
     assert_eq!(200, response.status().as_u16());
 
     let body: Value = response.json().await.expect("json-transform count json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!("dept", body["output"]["groupBy"]);
     assert_eq!("count", body["output"]["operation"]);
     assert_eq!(3, body["output"]["groups"]["eng"]);
@@ -586,7 +586,7 @@ async fn jsonTransform_syncInvoke_groupAndAvg() {
     assert_eq!(200, response.status().as_u16());
 
     let body: Value = response.json().await.expect("json-transform avg json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!(Some(85_000.0), body["output"]["groups"]["eng"].as_f64());
 }
 
@@ -644,7 +644,7 @@ async fn jsonTransform_asyncInvoke_pollForResult() {
         assert_eq!(200, status.status().as_u16());
 
         let body: Value = status.json().await.expect("execution body");
-        if body["status"] == "SUCCESS" {
+        if body["status"] == "success" {
             assert_eq!(Some(40.0), body["output"]["groups"]["A"].as_f64(), "{body}");
             assert_eq!(Some(20.0), body["output"]["groups"]["B"].as_f64(), "{body}");
             return;
@@ -674,7 +674,7 @@ async fn wordStatsLite_syncInvoke_returnsCorrectStatistics() {
     assert_eq!(200, response.status().as_u16());
 
     let body: Value = response.json().await.expect("word-stats-lite json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!(11, body["output"]["wordCount"]);
     assert_eq!(8, body["output"]["uniqueWords"]);
     assert_eq!(3, body["output"]["topWords"].as_array().unwrap().len());
@@ -704,7 +704,7 @@ async fn jsonTransformLite_syncInvoke_groupAndCount() {
         .json()
         .await
         .expect("json-transform-lite count json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!("dept", body["output"]["groupBy"]);
     assert_eq!("count", body["output"]["operation"]);
     assert_eq!(3, body["output"]["groups"]["eng"]);
@@ -744,6 +744,6 @@ async fn jsonTransformLite_syncInvoke_groupAndAvg() {
     assert_eq!(200, response.status().as_u16());
 
     let body: Value = response.json().await.expect("json-transform-lite avg json");
-    assert_eq!("SUCCESS", body["status"], "{body}");
+    assert_eq!("success", body["status"], "{body}");
     assert_eq!(Some(85_000.0), body["output"]["groups"]["eng"].as_f64());
 }

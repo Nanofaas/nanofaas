@@ -21,6 +21,7 @@ PARITY_TIMEOUT_SECONDS=${PARITY_TIMEOUT_SECONDS:-20}
 LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
 INVOCATION_MODE=${INVOCATION_MODE:-sync}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-}
 K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE:-legacy-random}
 K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE:-5000}
@@ -29,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "loadtest"
+E2E_RUNTIME_KIND="$(e2e_runtime_kind)"
 K6_DIR="${PROJECT_ROOT}/experiments/k6"
 RESULTS_ROOT_DIR="${K6_DIR}/results"
 RESULTS_DIR=""
@@ -61,6 +63,7 @@ Environment variables:
   LOADTEST_RUNTIMES       CSV runtimes: java,java-lite,python,exec
                           (default: java,java-lite,python,exec)
   INVOCATION_MODE         Invocation mode: sync|async (default: sync)
+  CONTROL_PLANE_RUNTIME   Control-plane runtime selector: java|rust (default: java)
   K6_STAGE_SEQUENCE       Override stages CSV, e.g. 5s:3,15s:8,15s:12,5s:0
   K6_PAYLOAD_MODE         Payload selection mode: legacy-random|pool-sequential|pool-random
                           (default: legacy-random)
@@ -527,6 +530,7 @@ run_tests() {
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log "  Target: ${nanofaas_url}"
     log "  Invocation mode: ${INVOCATION_MODE}"
+    log "  Control-plane runtime: ${E2E_RUNTIME_KIND} (CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME})"
     log "  Workloads: ${LOADTEST_WORKLOADS}"
     log "  Runtimes: ${LOADTEST_RUNTIMES}"
     log "  Tests:  ${#tests[@]} functions"

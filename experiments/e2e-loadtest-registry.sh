@@ -107,6 +107,7 @@ RESULTS_DIR_OVERRIDE=${RESULTS_DIR_OVERRIDE:-}
 LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
 INVOCATION_MODE=${INVOCATION_MODE:-sync}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-}
 K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE:-legacy-random}
 K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE:-5000}
@@ -702,6 +703,7 @@ run_loadtest() {
     local rc=0
     VM_NAME="${VM_NAME}" \
     SKIP_GRAFANA="${SKIP_GRAFANA}" \
+    CONTROL_PLANE_RUNTIME="${CONTROL_PLANE_RUNTIME}" \
     LOADTEST_WORKLOADS="${LOADTEST_WORKLOADS}" \
     LOADTEST_RUNTIMES="${LOADTEST_RUNTIMES}" \
     INVOCATION_MODE="${INVOCATION_MODE}" \
@@ -717,6 +719,15 @@ run_loadtest() {
 
     if [[ ${rc} -ne 0 ]]; then
         return ${rc}
+    fi
+}
+
+guard_runtime_support() {
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
+    if [[ "${runtime_kind}" == "rust" ]]; then
+        warn "SKIP: e2e-loadtest-registry is Java-image specific and is not supported with CONTROL_PLANE_RUNTIME=rust."
+        exit 0
     fi
 }
 
@@ -1567,6 +1578,7 @@ main() {
     log "  CURL_IMAGE=${CURL_IMAGE}"
     log "  HELM_TIMEOUT=${HELM_TIMEOUT}"
     log "  LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS} LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES}"
+    log "  CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME} (kind=$(e2e_runtime_kind))"
     log "  INVOCATION_MODE=${INVOCATION_MODE} K6_STAGE_SEQUENCE=${K6_STAGE_SEQUENCE:-<default>}"
     log "  K6_PAYLOAD_MODE=${K6_PAYLOAD_MODE} K6_PAYLOAD_POOL_SIZE=${K6_PAYLOAD_POOL_SIZE}"
     log "  SUMMARY_ONLY=${SUMMARY_ONLY} REFRESH_SUMMARY_METRICS=${REFRESH_SUMMARY_METRICS}"
@@ -1578,6 +1590,8 @@ main() {
         print_summary
         return
     fi
+
+    guard_runtime_support
 
     trap cleanup EXIT
 

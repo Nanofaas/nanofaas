@@ -91,11 +91,7 @@ impl PoolDispatcher {
         if let Some(ikey) = idempotency_key {
             req = req.header("Idempotency-Key", ikey);
         }
-        let response = match req
-            .json(&runtime_request)
-            .send()
-            .await
-        {
+        let response = match req.json(&runtime_request).send().await {
             Ok(r) => r,
             Err(_) => {
                 return DispatchResult {
@@ -252,11 +248,7 @@ impl KubernetesMetricsTranslator {
             .collect()
     }
 
-    fn to_k8s_metric_spec(
-        self,
-        metric: &ScalingMetric,
-        function_name: &str,
-    ) -> Option<MetricSpec> {
+    fn to_k8s_metric_spec(self, metric: &ScalingMetric, function_name: &str) -> Option<MetricSpec> {
         let target_value = parse_target(&metric.target);
         match metric.metric_type.as_str() {
             "cpu" | "memory" => Some(MetricSpec {

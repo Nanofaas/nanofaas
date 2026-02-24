@@ -136,7 +136,7 @@ async fn dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() {
 
     let execution_id = enqueue(&app, "dispatch-error").await;
     let _ = drain_once(&app, "dispatch-error").await;
-    assert_eq!("ERROR", execution_status(&app, &execution_id).await);
+    assert_eq!("error", execution_status(&app, &execution_id).await);
 }
 
 #[tokio::test]
@@ -146,7 +146,7 @@ async fn dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() {
     register_function(&app, "dispatch-pool-ok", "img", "POOL", Some(&endpoint)).await;
     let execution_id = enqueue(&app, "dispatch-pool-ok").await;
     let _ = drain_once(&app, "dispatch-pool-ok").await;
-    assert_eq!("SUCCESS", execution_status(&app, &execution_id).await);
+    assert_eq!("success", execution_status(&app, &execution_id).await);
 }
 
 #[tokio::test]
@@ -160,7 +160,7 @@ async fn invokeSync_whenSyncQueueAndEnqueuerDisabled_dispatchesInline() {
         .await
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(payload["status"], "SUCCESS");
+    assert_eq!(payload["status"], "success");
 }
 
 #[tokio::test]
@@ -174,7 +174,7 @@ async fn invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInl
         .await
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(payload["status"], "SUCCESS");
+    assert_eq!(payload["status"], "success");
 }
 
 #[tokio::test]
@@ -210,7 +210,7 @@ async fn invokeSync_whenSyncQueueEnabled_usesSyncQueueOnlyAndReturnsSuccess() {
         .await
         .unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(payload["status"], "SUCCESS");
+    assert_eq!(payload["status"], "success");
 }
 
 #[tokio::test]

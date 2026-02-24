@@ -42,7 +42,7 @@ async fn e2eRegisterInvokeAndPoll() {
         .await
         .unwrap();
     let invoke_json: Value = serde_json::from_slice(&invoke_body).unwrap();
-    assert_eq!(invoke_json["status"], "SUCCESS");
+    assert_eq!(invoke_json["status"], "success");
     assert_eq!(invoke_json["output"]["message"], "hi");
 
     let enqueue = Request::builder()
@@ -97,12 +97,12 @@ async fn e2eRegisterInvokeAndPoll() {
             .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         final_status = payload["status"].as_str().unwrap_or_default().to_string();
-        if final_status == "SUCCESS" {
+        if final_status == "success" {
             break;
         }
         sleep(Duration::from_millis(10)).await;
     }
-    assert_eq!(final_status, "SUCCESS");
+    assert_eq!(final_status, "success");
 }
 
 #[tokio::test]

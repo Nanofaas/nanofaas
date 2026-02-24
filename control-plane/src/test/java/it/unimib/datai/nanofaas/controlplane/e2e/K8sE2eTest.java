@@ -166,7 +166,12 @@ class K8sE2eTest {
 
                 E2eApiSupport.assertMetricSumAtLeast(metrics, "sync_queue_admitted_total", Map.of(), 1.0);
                 E2eApiSupport.assertMetricSumAtLeast(metrics, "sync_queue_rejected_total", Map.of(), 1.0);
-                E2eApiSupport.assertMetricSumAtLeast(metrics, "sync_queue_wait_seconds_count", Map.of(), 1.0);
+                E2eApiSupport.assertMetricSumAtLeastAny(
+                        metrics,
+                        Map.of(),
+                        1.0,
+                        "sync_queue_wait_seconds_count",
+                        "sync_queue_wait_count");
                 E2eApiSupport.assertMetricPresent(metrics, "sync_queue_depth");
             });
         }
@@ -198,8 +203,12 @@ class K8sE2eTest {
                     metrics, "function_cold_start_total", Map.of("function", functionName), 1.0);
             E2eApiSupport.assertMetricSumAtLeast(
                     metrics, "function_warm_start_total", Map.of("function", functionName), 1.0);
-            E2eApiSupport.assertMetricSumAtLeast(
-                    metrics, "function_init_duration_ms_seconds_count", Map.of("function", functionName), 1.0);
+            E2eApiSupport.assertMetricSumAtLeastAny(
+                    metrics,
+                    Map.of("function", functionName),
+                    1.0,
+                    "function_init_duration_ms_seconds_count",
+                    "function_init_duration_ms_count");
         }
     }
 
@@ -230,8 +239,10 @@ class K8sE2eTest {
                 .addNewPort().withContainerPort(8081).endPort()
                 .addNewEnv().withName("POD_NAMESPACE").withValue(NS).endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_ENABLED").withValue("true").endEnv()
+                .addNewEnv().withName("NANOFAAS_SYNC_QUEUE_ENABLED").withValue("true").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_ADMISSION_ENABLED").withValue("false").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_MAX_DEPTH").withValue("1").endEnv()
+                .addNewEnv().withName("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY").withValue("1").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_MAX_ESTIMATED_WAIT").withValue("2s").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_MAX_QUEUE_WAIT").withValue("5s").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_RETRY_AFTER_SECONDS").withValue("2").endEnv()

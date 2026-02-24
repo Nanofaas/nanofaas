@@ -42,6 +42,8 @@ source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "e2e-all"
 
 DRY_RUN=${DRY_RUN:-false}
+CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
+E2E_RUNTIME_KIND=$(e2e_runtime_kind)
 
 # ─── Suite definitions ───────────────────────────────────────────────────────
 # Each entry: suite_name|description|script path
@@ -106,18 +108,54 @@ should_run() {
     return 0
 }
 
+suite_runtime_skip_reason() {
+    local name=$1
+    if [[ "${E2E_RUNTIME_KIND}" != "rust" ]]; then
+        return 1
+    fi
+
+    case "${name}" in
+        docker)
+            echo "rust runtime skip: suite uses Java-only local Docker flow."
+            ;;
+        buildpack)
+            echo "rust runtime skip: suite uses Java buildpack E2E flow."
+            ;;
+        cold-start)
+            echo "rust runtime skip: cold-start metrics suite is not parameterized for rust runtime."
+            ;;
+        deploy-host)
+            echo "rust runtime skip: host deploy suite is not yet runtime-parameterized."
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # ─── Execution ───────────────────────────────────────────────────────────────
 PASSED_SUITES=()
 FAILED_SUITES=()
 SKIPPED_SUITES=()
+SKIPPED_SUITE_NOTES=()
 TOTAL_START=$(date +%s)
 
 run_suite() {
     local name=$1 desc=$2 cmd=$3
     local start elapsed
+    local runtime_skip_reason=""
+
+    runtime_skip_reason=$(suite_runtime_skip_reason "${name}" || true)
+    if [[ -n "${runtime_skip_reason}" ]]; then
+        SKIPPED_SUITES+=("${name}")
+        SKIPPED_SUITE_NOTES+=("unsupported for runtime")
+        warn "SKIP: ${name} (${desc}) - ${runtime_skip_reason}"
+        return 0
+    fi
 
     if ! should_run "${name}"; then
         SKIPPED_SUITES+=("${name}")
+        SKIPPED_SUITE_NOTES+=("filtered by --skip/--only")
         info "SKIP: ${name} (${desc})"
         return 0
     fi
@@ -148,9 +186,19 @@ run_suite() {
 
 run_helm_stack() {
     local name="helm-stack" desc="Helm + loadtest + autoscaling"
+    local runtime_skip_reason=""
+
+    runtime_skip_reason=$(suite_runtime_skip_reason "${name}" || true)
+    if [[ -n "${runtime_skip_reason}" ]]; then
+        SKIPPED_SUITES+=("${name}")
+        SKIPPED_SUITE_NOTES+=("unsupported for runtime")
+        warn "SKIP: ${name} (${desc}) - ${runtime_skip_reason}"
+        return 0
+    fi
 
     if ! should_run "${name}"; then
         SKIPPED_SUITES+=("${name}")
+        SKIPPED_SUITE_NOTES+=("filtered by --skip/--only")
         info "SKIP: ${name} (${desc})"
         return 0
     fi
@@ -214,6 +262,7 @@ run_helm_stack() {
 # ─── Main ────────────────────────────────────────────────────────────────────
 main() {
     log "nanofaas E2E test runner"
+    log "Runtime=${E2E_RUNTIME_KIND} (CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME})"
     log ""
 
     if [[ ${#ONLY_SUITES[@]} -gt 0 ]]; then
@@ -251,7 +300,12 @@ main() {
 
     if [[ ${#SKIPPED_SUITES[@]} -gt 0 ]]; then
         warn "  Skipped (${#SKIPPED_SUITES[@]}):"
-        for s in "${SKIPPED_SUITES[@]}"; do warn "    [SKIP] ${s}"; done
+        local idx s note
+        for idx in "${!SKIPPED_SUITES[@]}"; do
+            s="${SKIPPED_SUITES[$idx]}"
+            note="${SKIPPED_SUITE_NOTES[$idx]:-skip}"
+            warn "    [SKIP] ${s} (${note})"
+        done
     fi
 
     if [[ ${#FAILED_SUITES[@]} -gt 0 ]]; then

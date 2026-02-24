@@ -147,7 +147,7 @@ async fn dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() {
         .as_str()
         .unwrap_or_default()
         .to_string();
-    assert_eq!(status, "ERROR");
+    assert_eq!(status, "error");
 }
 
 #[tokio::test]
@@ -161,7 +161,7 @@ async fn dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() {
     let _ = drain_once(&app, "pool-success").await;
 
     let record = execution(&app, &execution_id).await;
-    assert_eq!(record["status"], "SUCCESS");
+    assert_eq!(record["status"], "success");
     assert_eq!(record["output"]["ok"], "pool");
 }
 
@@ -173,7 +173,7 @@ async fn completeExecution_withRetry_doesNotCompleteTheFuture() {
     let execution_id = body["executionId"].as_str().unwrap().to_string();
 
     let _ = drain_once(&app, "retry-flow").await;
-    assert_eq!(execution(&app, &execution_id).await["status"], "QUEUED");
+    assert_eq!(execution(&app, &execution_id).await["status"], "queued");
 }
 
 #[tokio::test]
@@ -186,7 +186,7 @@ async fn completeExecution_afterMaxRetries_completesTheFuture() {
     let _ = drain_once(&app, "retry-max").await;
     let _ = drain_once(&app, "retry-max").await;
     let _ = drain_once(&app, "retry-max").await;
-    assert_eq!(execution(&app, &execution_id).await["status"], "ERROR");
+    assert_eq!(execution(&app, &execution_id).await["status"], "error");
 }
 
 #[tokio::test]
@@ -197,7 +197,7 @@ async fn completeExecution_withSuccess_completesImmediately() {
     let (_, body) = enqueue(&app, "retry-success", None).await;
     let execution_id = body["executionId"].as_str().unwrap().to_string();
     let _ = drain_once(&app, "retry-success").await;
-    assert_eq!(execution(&app, &execution_id).await["status"], "SUCCESS");
+    assert_eq!(execution(&app, &execution_id).await["status"], "success");
 }
 
 #[tokio::test]
@@ -210,12 +210,12 @@ async fn retry_preservesExecutionId() {
     let _ = drain_once(&app, "retry-id").await;
     let first = execution(&app, &execution_id).await;
     assert_eq!(first["executionId"], execution_id);
-    assert_eq!(first["status"], "QUEUED");
+    assert_eq!(first["status"], "queued");
 
     let _ = drain_once(&app, "retry-id").await;
     let second = execution(&app, &execution_id).await;
     assert_eq!(second["executionId"], execution_id);
-    assert_eq!(second["status"], "ERROR");
+    assert_eq!(second["status"], "error");
 }
 
 #[tokio::test]
@@ -237,7 +237,7 @@ async fn retryWithQueueFull_completesFutureWithError() {
     let (_, body) = enqueue(&app, "retry-qfull", None).await;
     let execution_id = body["executionId"].as_str().unwrap().to_string();
     let _ = drain_once(&app, "retry-qfull").await;
-    assert_eq!(execution(&app, &execution_id).await["status"], "ERROR");
+    assert_eq!(execution(&app, &execution_id).await["status"], "error");
 }
 
 #[tokio::test]
@@ -248,7 +248,7 @@ async fn retryWithQueueFull_afterSuccessfulRetries_completesFuture() {
     let execution_id = body["executionId"].as_str().unwrap().to_string();
 
     let _ = drain_once(&app, "retry-qfull-2").await;
-    assert_eq!(execution(&app, &execution_id).await["status"], "QUEUED");
+    assert_eq!(execution(&app, &execution_id).await["status"], "queued");
     let _ = drain_once(&app, "retry-qfull-2").await;
-    assert_eq!(execution(&app, &execution_id).await["status"], "ERROR");
+    assert_eq!(execution(&app, &execution_id).await["status"], "error");
 }

@@ -102,7 +102,9 @@ async fn enqueue_queueFull_does_not_create_execution_record() {
         .method("POST")
         .uri("/v1/functions/bug8-fn:enqueue")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::json!({"input":"overflow"}).to_string()))
+        .body(Body::from(
+            serde_json::json!({"input":"overflow"}).to_string(),
+        ))
         .unwrap();
     let overflow_res = app.clone().oneshot(overflow).await.unwrap();
     assert_eq!(overflow_res.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -110,11 +112,15 @@ async fn enqueue_queueFull_does_not_create_execution_record() {
         .await
         .unwrap();
     // 429 body must be empty (no executionId — no record was created).
-    assert!(body_bytes.is_empty(), "429 body should be empty: {:?}", body_bytes);
+    assert!(
+        body_bytes.is_empty(),
+        "429 body should be empty: {:?}",
+        body_bytes
+    );
 
     // First execution must still be retrievable (it was correctly stored).
     let status = execution_status(&app, &exec_id_first).await;
-    assert_eq!("QUEUED", status);
+    assert_eq!("queued", status);
 }
 
 #[tokio::test]
@@ -126,7 +132,7 @@ async fn retryWithQueueFull_completesFutureWithError() {
     drain_once(&app, "retry-err").await;
 
     let status = execution_status(&app, &execution_id).await;
-    assert_eq!("ERROR", status);
+    assert_eq!("error", status);
 }
 
 #[tokio::test]
@@ -138,9 +144,9 @@ async fn retryWithQueueFull_afterSuccessfulRetries_completesFuture() {
 
     drain_once(&app, "retry-after-success").await;
     let status_after_first = execution_status(&app, &execution_id).await;
-    assert_eq!("QUEUED", status_after_first);
+    assert_eq!("queued", status_after_first);
 
     drain_once(&app, "retry-after-success").await;
     let final_status = execution_status(&app, &execution_id).await;
-    assert_eq!("ERROR", final_status);
+    assert_eq!("error", final_status);
 }
