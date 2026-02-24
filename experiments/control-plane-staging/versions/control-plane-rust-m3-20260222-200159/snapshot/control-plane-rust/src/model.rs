@@ -10,9 +10,10 @@ pub enum ExecutionMode {
     Pool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RuntimeMode {
+    #[default]
     Http,
     Stdio,
     File,
@@ -97,7 +98,7 @@ pub struct FunctionSpec {
     pub image: Option<String>,
     #[serde(rename = "executionMode")]
     pub execution_mode: ExecutionMode,
-    #[serde(rename = "runtimeMode")]
+    #[serde(default, rename = "runtimeMode")]
     pub runtime_mode: RuntimeMode,
     #[serde(default)]
     pub concurrency: Option<i32>,
