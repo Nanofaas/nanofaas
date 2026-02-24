@@ -70,11 +70,11 @@ pub struct ExecutionRecord {
 
     #[serde(skip_serializing)]
     task: InvocationTask,
-    #[serde(skip_serializing)]
+    #[serde(rename = "startedAtMillis", skip_serializing_if = "Option::is_none")]
     started_at_millis: Option<u64>,
-    #[serde(skip_serializing)]
+    #[serde(rename = "finishedAtMillis", skip_serializing_if = "Option::is_none")]
     finished_at_millis: Option<u64>,
-    #[serde(skip_serializing)]
+    #[serde(rename = "dispatchedAtMillis", skip_serializing_if = "Option::is_none")]
     dispatched_at_millis: Option<u64>,
     #[serde(skip_serializing)]
     last_error: Option<ErrorInfo>,
@@ -323,6 +323,16 @@ impl ExecutionStore {
 
     pub fn remove(&mut self, execution_id: &str) {
         self.entries.remove(execution_id);
+    }
+
+    pub fn running_count_for_function(&self, function_name: &str) -> usize {
+        self.entries
+            .values()
+            .filter(|stored| {
+                stored.record.function_name == function_name
+                    && stored.record.status == ExecutionState::Running
+            })
+            .count()
     }
 
     pub fn evict_expired(&mut self, now_millis: u64) {
