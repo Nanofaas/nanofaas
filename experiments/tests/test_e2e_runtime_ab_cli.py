@@ -33,3 +33,9 @@ def test_runtime_ab_summary_uses_passes_for_http_req_failed_rate_metric():
     content = SCRIPT.read_text(encoding="utf-8")
     assert 'if "passes" in failed' in content
     assert 'fails = int(failed.get("passes", 0))' in content
+
+
+def test_runtime_ab_report_renders_single_side_metrics_when_one_case_missing():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert "if baseline or candidate:" in content
+    assert "Delta values are `n/a` when only one side (baseline or candidate) is available." in content

@@ -354,11 +354,11 @@ lines.append("|---|---:|---:|---:|")
 def row(label, b, c, digits=2):
     lines.append(f"| {label} | {fmt(b, digits)} | {fmt(c, digits)} | {fmt(delta(c, b), digits)} |")
 
-if baseline and candidate:
-    b = baseline["loadtest"]
-    c = candidate["loadtest"]
-    br = baseline["resources"]
-    cr = candidate["resources"]
+if baseline or candidate:
+    b = baseline["loadtest"] if baseline else {}
+    c = candidate["loadtest"] if candidate else {}
+    br = baseline["resources"] if baseline else {}
+    cr = candidate["resources"] if candidate else {}
     row("Latency avg (ms)", b.get("avg_ms_weighted"), c.get("avg_ms_weighted"))
     row("Latency p95 (ms)", b.get("p95_ms_weighted"), c.get("p95_ms_weighted"))
     row("Fail rate (%)", b.get("fail_pct"), c.get("fail_pct"), 4)
@@ -375,6 +375,8 @@ lines.append("## Notes")
 lines.append("- Loadtest metrics are aggregated from k6 JSON summaries produced by `experiments/e2e-loadtest.sh`.")
 lines.append("- Resource metrics come from `kubectl top` sampling of control-plane pods during loadtest.")
 lines.append("- Positive delta means candidate is larger/slower for that metric.")
+if not (baseline and candidate):
+    lines.append("- Delta values are `n/a` when only one side (baseline or candidate) is available.")
 
 out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PYEOF
