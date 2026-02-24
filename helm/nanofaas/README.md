@@ -38,6 +38,32 @@ If you are using Prometheus Operator, you can enable a `ServiceMonitor` (require
 helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas --set prometheus.serviceMonitor.enabled=true
 ```
 
+### Container Metrics (cAdvisor)
+
+Per-function CPU/RAM comparisons (for example in runtime A/B experiments) should use container metrics.
+The chart exposes an optional `prometheus.containerMetrics` block with two modes:
+
+- `mode=kubelet` (recommended on k3s): scrape kubelet `/metrics/cadvisor` via apiserver proxy.
+- `mode=daemonset`: deploy a dedicated `nanofaas-cadvisor` DaemonSet and scrape it.
+
+Enable kubelet mode:
+
+```bash
+helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas \
+  --set prometheus.containerMetrics.enabled=true \
+  --set prometheus.containerMetrics.mode=kubelet
+```
+
+Enable daemonset mode:
+
+```bash
+helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas \
+  --set prometheus.containerMetrics.enabled=true \
+  --set prometheus.containerMetrics.mode=daemonset
+```
+
+Legacy key `prometheus.kubeletResourceMetrics.*` is still supported for backward compatibility, but deprecated.
+
 ## Demo Functions (DEPLOYMENT mode)
 
 When `demos.enabled=true`, a Helm hook Job runs after install/upgrade and registers demo functions via:

@@ -54,6 +54,27 @@ prometheus:
     storageClassName: ""
   rbac:
     create: true
+  containerMetrics:
+    enabled: false
+    # Allowed values: kubelet, daemonset
+    mode: kubelet
+    kubelet:
+      # Kubelet scrape typically uses the apiserver proxy and may need TLS verification disabled in dev clusters.
+      insecureSkipVerify: true
+    daemonset:
+      image: gcr.io/cadvisor/cadvisor:v0.49.1
+      port: 8080
+      hostNetwork: false
+      privileged: true
+      tolerations: []
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+  # DEPRECATED: use prometheus.containerMetrics.* instead.
   kubeletResourceMetrics:
     enabled: false
     # Resource metrics scrape uses the apiserver proxy and typically needs skipping TLS verification in dev clusters.

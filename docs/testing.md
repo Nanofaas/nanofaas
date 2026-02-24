@@ -218,6 +218,9 @@ Key load-test parameters:
 - `K6_PAYLOAD_MODE=pool-sequential|pool-random|legacy-random` for payload model
 - `K6_PAYLOAD_POOL_SIZE=<n>` for pool size in pool modes
 - `./scripts/e2e-loadtest-registry.sh --summary-only` to regenerate Section 1..9 from existing `k6/results`
+- `PROM_CONTAINER_METRICS_ENABLED=true` to enable institutional container CPU/RAM metrics in bundled Prometheus
+- `PROM_CONTAINER_METRICS_MODE=kubelet|daemonset` (`kubelet` recommended on k3s)
+- `PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY=true|false` for kubelet TLS policy in dev/staging
 
 Payload-specific tests and metrics:
 

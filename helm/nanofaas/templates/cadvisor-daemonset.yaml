@@ -1,0 +1,72 @@
+{{- $containerMetricsMode := default "kubelet" .Values.prometheus.containerMetrics.mode -}}
+{{- if and .Values.prometheus.create .Values.prometheus.containerMetrics.enabled (eq $containerMetricsMode "daemonset") -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nanofaas-cadvisor
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+  labels:
+    app: nanofaas-cadvisor
+spec:
+  selector:
+    matchLabels:
+      app: nanofaas-cadvisor
+  template:
+    metadata:
+      labels:
+        app: nanofaas-cadvisor
+    spec:
+      hostNetwork: {{ .Values.prometheus.containerMetrics.daemonset.hostNetwork }}
+      containers:
+        - name: cadvisor
+          image: {{ .Values.prometheus.containerMetrics.daemonset.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.prometheus.containerMetrics.daemonset.port }}
+          securityContext:
+            privileged: {{ .Values.prometheus.containerMetrics.daemonset.privileged }}
+          resources:
+            {{- toYaml .Values.prometheus.containerMetrics.daemonset.resources | nindent 12 }}
+          volumeMounts:
+            - name: rootfs
+              mountPath: /rootfs
+              readOnly: true
+            - name: var-run
+              mountPath: /var/run
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: docker
+              mountPath: /var/lib/docker
+              readOnly: true
+            - name: containerd
+              mountPath: /var/lib/containerd
+              readOnly: true
+      volumes:
+        - name: rootfs
+          hostPath:
+            path: /
+            type: Directory
+        - name: var-run
+          hostPath:
+            path: /var/run
+            type: Directory
+        - name: sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: docker
+          hostPath:
+            path: /var/lib/docker
+            type: DirectoryOrCreate
+        - name: containerd
+          hostPath:
+            path: /var/lib/containerd
+            type: DirectoryOrCreate
+      {{- with .Values.prometheus.containerMetrics.daemonset.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end -}}

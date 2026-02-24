@@ -32,6 +32,9 @@ CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY:-false}
 HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES:-true}
 LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
+PROM_CONTAINER_METRICS_ENABLED=${PROM_CONTAINER_METRICS_ENABLED:-true}
+PROM_CONTAINER_METRICS_MODE=${PROM_CONTAINER_METRICS_MODE:-kubelet}
+PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY=${PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY:-true}
 CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES:-all}
 CONTROL_PLANE_IMAGE_BUILDER=${CONTROL_PLANE_IMAGE_BUILDER:-}
 CONTROL_PLANE_IMAGE_RUN_IMAGE=${CONTROL_PLANE_IMAGE_RUN_IMAGE:-}
@@ -51,6 +54,12 @@ fi
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "e2e"
 vm_exec() { e2e_vm_exec "$@"; }
+
+# k3s path: enforce kubelet cAdvisor scraping and avoid cAdvisor DaemonSet installation.
+if [[ "${PROM_CONTAINER_METRICS_MODE}" != "kubelet" ]]; then
+    warn "PROM_CONTAINER_METRICS_MODE=${PROM_CONTAINER_METRICS_MODE} is not supported in k3s flow; forcing kubelet."
+    PROM_CONTAINER_METRICS_MODE="kubelet"
+fi
 
 # Image tags for local build
 CONTROL_IMAGE="${LOCAL_REGISTRY}/nanofaas/control-plane:${TAG}"
@@ -969,6 +978,11 @@ controlPlane:
 
 prometheus:
   create: true
+  containerMetrics:
+    enabled: ${PROM_CONTAINER_METRICS_ENABLED}
+    mode: ${PROM_CONTAINER_METRICS_MODE}
+    kubelet:
+      insecureSkipVerify: ${PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY}
   service:
     type: NodePort
     port: 9090

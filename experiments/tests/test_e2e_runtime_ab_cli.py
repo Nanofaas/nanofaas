@@ -39,3 +39,21 @@ def test_runtime_ab_report_renders_single_side_metrics_when_one_case_missing():
     content = SCRIPT.read_text(encoding="utf-8")
     assert "if baseline or candidate:" in content
     assert "Delta values are `n/a` when only one side (baseline or candidate) is available." in content
+
+
+def test_runtime_ab_summary_collects_per_function_data():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert 'window_file = case_dir / "loadtest-window.json"' in content
+    assert "prom_query_range(" in content
+    assert "container_cpu_usage_seconds_total" in content
+    assert "container_memory_working_set_bytes" in content
+    assert '"by_function": loadtest_by_function' in content
+    assert '"function_resources": function_resources' in content
+
+
+def test_runtime_ab_report_contains_per_function_tables():
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert "## Per-function Loadtest Metrics" in content
+    assert "## Per-function CPU/RAM" in content
+    assert "all_functions = sorted(" in content
+    assert "Prometheus/cAdvisor query_range" in content

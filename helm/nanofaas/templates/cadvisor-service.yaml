@@ -1,0 +1,17 @@
+{{- $containerMetricsMode := default "kubelet" .Values.prometheus.containerMetrics.mode -}}
+{{- if and .Values.prometheus.create .Values.prometheus.containerMetrics.enabled (eq $containerMetricsMode "daemonset") -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanofaas-cadvisor
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+  labels:
+    app: nanofaas-cadvisor
+spec:
+  selector:
+    app: nanofaas-cadvisor
+  ports:
+    - name: http
+      port: {{ .Values.prometheus.containerMetrics.daemonset.port }}
+      targetPort: http
+{{- end -}}

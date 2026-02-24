@@ -3,6 +3,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "e2e-k3s-helm.sh"
+PROM_CONFIG_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "prometheus-configmap.yaml"
+PROM_RBAC_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "prometheus-rbac.yaml"
+CADVISOR_DAEMONSET_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "cadvisor-daemonset.yaml"
+CADVISOR_SERVICE_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "cadvisor-service.yaml"
 
 
 def test_k3s_helm_script_supports_native_control_plane_build_knobs():
@@ -24,6 +28,8 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "control_plane_cache_manifest_is_valid" in script
     assert "LOADTEST_WORKLOADS" in script
     assert "LOADTEST_RUNTIMES" in script
+    assert "PROM_CONTAINER_METRICS_ENABLED" in script
+    assert "PROM_CONTAINER_METRICS_MODE" in script
     assert "resolve_selected_demo_targets" in script
     assert "should_include_demo" in script
     assert "build_non_control_plane_images_on_host" in script
@@ -57,6 +63,8 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "sudo docker load -i" in script
     assert "demos_enabled" in script
     assert "Control-plane-only mode" in script
+    assert "PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY" in script
+    assert "forcing kubelet" in script
     assert "E2E_K3S_HELM_NONINTERACTIVE" in script
     assert "exec bash \"${PROJECT_ROOT}/experiments/run.sh\"" in script
     assert "VM cleanup is enabled (KEEP_VM=false)" in script
@@ -65,3 +73,29 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "./experiments/e2e-loadtest.sh" in script
     assert "register functions before running load tests" in script
     assert "for fn in word-stats-java word-stats-python word-stats-exec word-stats-java-lite;" not in script
+
+
+def test_prometheus_templates_support_container_metrics_modes():
+    prom_cfg = PROM_CONFIG_TEMPLATE.read_text(encoding="utf-8")
+    prom_rbac = PROM_RBAC_TEMPLATE.read_text(encoding="utf-8")
+    cadvisor_ds = CADVISOR_DAEMONSET_TEMPLATE.read_text(encoding="utf-8")
+    cadvisor_svc = CADVISOR_SERVICE_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "/metrics/cadvisor" in prom_cfg
+    assert "container_cpu_usage_seconds_total" in prom_cfg
+    assert "container_memory_working_set_bytes" in prom_cfg
+    assert ".Values.prometheus.containerMetrics.enabled" in prom_cfg
+    assert "eq $containerMetricsMode \"kubelet\"" in prom_cfg
+    assert "eq $containerMetricsMode \"daemonset\"" in prom_cfg
+    assert "job_name: kubernetes-cadvisor" in prom_cfg
+    assert "job_name: nanofaas-cadvisor" in prom_cfg
+
+    assert "$containerMetricsKubeletEnabled" in prom_rbac
+    assert "nodes/proxy" in prom_rbac
+
+    assert "kind: DaemonSet" in cadvisor_ds
+    assert "name: nanofaas-cadvisor" in cadvisor_ds
+    assert ".Values.prometheus.containerMetrics.daemonset.image" in cadvisor_ds
+
+    assert "kind: Service" in cadvisor_svc
+    assert "name: nanofaas-cadvisor" in cadvisor_svc

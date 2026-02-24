@@ -90,23 +90,6 @@ cleanup_vm_if_needed() {
     KEEP_VM=false VM_NAME="${VM_NAME}" e2e_cleanup_vm
 }
 
-start_control_plane_sampler() {
-    local samples_file="$1"
-    local loadtest_pid="$2"
-    (
-        while kill -0 "${loadtest_pid}" >/dev/null 2>&1; do
-            local sample=""
-            sample=$(VM_NAME="${VM_NAME}" e2e_vm_exec \
-                "sudo kubectl top pods -n ${NAMESPACE} -l app=nanofaas-control-plane --no-headers 2>/dev/null | head -n 1" || true)
-            if [[ -n "${sample}" ]]; then
-                echo "$(date +%s) ${sample}" >> "${samples_file}"
-            fi
-            sleep "${SAMPLE_INTERVAL_SECONDS}"
-        done
-    ) &
-    echo $!
-}
-
 run_deploy_case() {
     local case_name="$1"
     local runtime="$2"
@@ -144,11 +127,13 @@ run_loadtest_case() {
     local case_dir="$3"
     local loadtest_dir="${case_dir}/loadtest"
     local loadtest_log="${case_dir}/loadtest.log"
-    local samples_file="${case_dir}/control-plane-top-samples.txt"
-    : > "${samples_file}"
+    local window_file="${case_dir}/loadtest-window.json"
+    local loadtest_start_epoch=""
+    local loadtest_end_epoch=""
     mkdir -p "${loadtest_dir}"
 
     ab_log "Running loadtest for case '${case_name}'..."
+    loadtest_start_epoch="$(date +%s)"
     (
         VM_NAME="${VM_NAME}" \
         CONTROL_PLANE_RUNTIME="${runtime}" \
@@ -165,14 +150,10 @@ run_loadtest_case() {
     ) > "${loadtest_log}" 2>&1 &
     local loadtest_pid=$!
 
-    local sampler_pid
-    sampler_pid="$(start_control_plane_sampler "${samples_file}" "${loadtest_pid}")"
-
     local rc=0
     wait "${loadtest_pid}" || rc=$?
-    if kill -0 "${sampler_pid}" >/dev/null 2>&1; then
-        wait "${sampler_pid}" || true
-    fi
+    loadtest_end_epoch="$(date +%s)"
+    printf '{"start_epoch": %s, "end_epoch": %s}\n' "${loadtest_start_epoch}" "${loadtest_end_epoch}" > "${window_file}"
     if [[ ${rc} -ne 0 ]]; then
         ab_err "Loadtest case '${case_name}' failed (exit=${rc}). See ${loadtest_log}."
         exit "${rc}"
@@ -184,18 +165,28 @@ summarize_case() {
     local runtime="$2"
     local case_dir="$3"
     local out_json="${case_dir}/summary.json"
-    python3 - "${case_name}" "${runtime}" "${case_dir}" "${out_json}" <<'PYEOF'
+    local prom_url="${PROM_URL:-}"
+    if [[ -z "${prom_url}" ]]; then
+        prom_url="$(VM_NAME="${VM_NAME}" e2e_resolve_nanofaas_url 30090 || true)"
+    fi
+    python3 - "${case_name}" "${runtime}" "${case_dir}" "${out_json}" "${prom_url}" "${NAMESPACE}" <<'PYEOF'
 import json
 import re
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 case_name = sys.argv[1]
 runtime = sys.argv[2]
 case_dir = Path(sys.argv[3])
 out_json = Path(sys.argv[4])
+prom_url = sys.argv[5].strip()
+namespace = sys.argv[6].strip()
 loadtest_dir = case_dir / "loadtest"
-samples_file = case_dir / "control-plane-top-samples.txt"
+window_file = case_dir / "loadtest-window.json"
+legacy_cp_samples_file = case_dir / "control-plane-top-samples.txt"
+legacy_fn_samples_file = case_dir / "function-top-samples.txt"
 
 json_files = sorted(p for p in loadtest_dir.glob("*.json") if p.name != "summary.json")
 total_reqs = 0
@@ -203,6 +194,7 @@ total_fails = 0
 weighted_avg_sum = 0.0
 weighted_p95_sum = 0.0
 weighted_rate_sum = 0.0
+loadtest_by_function = {}
 
 for jf in json_files:
     data = json.loads(jf.read_text(encoding="utf-8"))
@@ -228,6 +220,14 @@ for jf in json_files:
     weighted_avg_sum += avg * reqs
     weighted_p95_sum += p95 * reqs
     weighted_rate_sum += rate
+    loadtest_by_function[jf.stem] = {
+        "requests": reqs,
+        "fails": fails,
+        "fail_pct": (fails / reqs * 100.0) if reqs else 0.0,
+        "avg_ms": avg,
+        "p95_ms": p95,
+        "iterations_rate": rate,
+    }
 
 def parse_cpu_m(cpu: str) -> float:
     cpu = cpu.strip()
@@ -249,20 +249,212 @@ def parse_mem_mi(mem: str) -> float:
     value = float(m.group(1))
     return value * unit_scale[m.group(2)]
 
-cpu_samples = []
-mem_samples = []
-if samples_file.is_file():
-    for raw in samples_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-        parts = raw.split()
-        if len(parts) < 4:
-            continue
-        cpu = parts[2]
-        mem = parts[3]
-        try:
-            cpu_samples.append(parse_cpu_m(cpu))
-            mem_samples.append(parse_mem_mi(mem))
-        except Exception:
-            continue
+def prom_query_range(expr: str, start_epoch: int, end_epoch: int, step_seconds: int = 15):
+    if not prom_url or start_epoch <= 0 or end_epoch <= 0:
+        return []
+    if end_epoch < start_epoch:
+        start_epoch, end_epoch = end_epoch, start_epoch
+    if end_epoch == start_epoch:
+        end_epoch += 1
+    params = urllib.parse.urlencode(
+        {
+            "query": expr,
+            "start": str(start_epoch),
+            "end": str(end_epoch),
+            "step": f"{step_seconds}s",
+        }
+    )
+    url = f"{prom_url}/api/v1/query_range?{params}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            body = json.loads(resp.read())
+        if body.get("status") != "success":
+            return []
+        return body.get("data", {}).get("result", [])
+    except Exception:
+        return []
+
+def summarize_grouped_resources(cpu_rows, mem_rows, pod_to_group):
+    grouped = {}
+    pods_seen = {}
+
+    def merge_rows(rows, key):
+        for row in rows:
+            pod = row.get("metric", {}).get("pod", "")
+            group = pod_to_group(pod)
+            if not group:
+                continue
+            for sample in row.get("values", []):
+                if len(sample) < 2:
+                    continue
+                try:
+                    ts = int(float(sample[0]))
+                    val = float(sample[1])
+                except Exception:
+                    continue
+                point = grouped.setdefault(group, {}).setdefault(
+                    ts, {"cpu_m_total": 0.0, "mem_mi_total": 0.0, "pods": set()}
+                )
+                if key == "cpu":
+                    point["cpu_m_total"] += val
+                else:
+                    point["mem_mi_total"] += val
+                point["pods"].add(pod)
+                pods_seen.setdefault(group, set()).add(pod)
+
+    merge_rows(cpu_rows, "cpu")
+    merge_rows(mem_rows, "mem")
+
+    out = {}
+    for group, by_ts in grouped.items():
+        points = list(by_ts.values())
+        cpu_totals = [p["cpu_m_total"] for p in points]
+        mem_totals = [p["mem_mi_total"] for p in points]
+        pod_counts = [len(p["pods"]) for p in points]
+        out[group] = {
+            "sample_count": len(points),
+            "pods_seen": len(pods_seen.get(group, set())),
+            "pods_avg": (sum(pod_counts) / len(pod_counts)) if pod_counts else 0.0,
+            "pods_peak": max(pod_counts) if pod_counts else 0.0,
+            "cpu_m_avg": (sum(cpu_totals) / len(cpu_totals)) if cpu_totals else 0.0,
+            "cpu_m_peak": max(cpu_totals) if cpu_totals else 0.0,
+            "mem_mi_avg": (sum(mem_totals) / len(mem_totals)) if mem_totals else 0.0,
+            "mem_mi_peak": max(mem_totals) if mem_totals else 0.0,
+        }
+    return out
+
+def load_window():
+    if not window_file.is_file():
+        return 0, 0
+    try:
+        payload = json.loads(window_file.read_text(encoding="utf-8"))
+        start = int(payload.get("start_epoch", 0))
+        end = int(payload.get("end_epoch", 0))
+        return start, end
+    except Exception:
+        return 0, 0
+
+def legacy_parse_samples():
+    cpu_samples = []
+    mem_samples = []
+    if legacy_cp_samples_file.is_file():
+        for raw in legacy_cp_samples_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            parts = raw.split()
+            if len(parts) < 4:
+                continue
+            try:
+                cpu_samples.append(parse_cpu_m(parts[2]))
+                mem_samples.append(parse_mem_mi(parts[3]))
+            except Exception:
+                continue
+
+    fn_by_ts = {}
+    fn_pods_seen = {}
+    if legacy_fn_samples_file.is_file():
+        for raw in legacy_fn_samples_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            parts = raw.split()
+            if len(parts) < 4:
+                continue
+            ts, pod, cpu, mem = parts[0], parts[1], parts[2], parts[3]
+            pod_match = re.match(r"^fn-(.+?)-[a-f0-9]+-[a-z0-9]+$", pod)
+            if not pod_match:
+                continue
+            fn_name = pod_match.group(1)
+            try:
+                cpu_m = parse_cpu_m(cpu)
+                mem_mi = parse_mem_mi(mem)
+            except Exception:
+                continue
+            point = fn_by_ts.setdefault(fn_name, {}).setdefault(
+                ts, {"cpu_m_total": 0.0, "mem_mi_total": 0.0, "pod_count": 0}
+            )
+            point["cpu_m_total"] += cpu_m
+            point["mem_mi_total"] += mem_mi
+            point["pod_count"] += 1
+            fn_pods_seen.setdefault(fn_name, set()).add(pod)
+
+    function_resources = {}
+    for fn_name, points_by_ts in fn_by_ts.items():
+        points = list(points_by_ts.values())
+        cpu_totals = [p["cpu_m_total"] for p in points]
+        mem_totals = [p["mem_mi_total"] for p in points]
+        pod_counts = [p["pod_count"] for p in points]
+        function_resources[fn_name] = {
+            "sample_count": len(points),
+            "pods_seen": len(fn_pods_seen.get(fn_name, set())),
+            "pods_avg": (sum(pod_counts) / len(pod_counts)) if pod_counts else 0.0,
+            "pods_peak": max(pod_counts) if pod_counts else 0.0,
+            "cpu_m_avg": (sum(cpu_totals) / len(cpu_totals)) if cpu_totals else 0.0,
+            "cpu_m_peak": max(cpu_totals) if cpu_totals else 0.0,
+            "mem_mi_avg": (sum(mem_totals) / len(mem_totals)) if mem_totals else 0.0,
+            "mem_mi_peak": max(mem_totals) if mem_totals else 0.0,
+        }
+
+    control_plane = {
+        "sample_count": len(cpu_samples),
+        "cpu_m_avg": (sum(cpu_samples) / len(cpu_samples)) if cpu_samples else 0.0,
+        "cpu_m_peak": max(cpu_samples) if cpu_samples else 0.0,
+        "mem_mi_avg": (sum(mem_samples) / len(mem_samples)) if mem_samples else 0.0,
+        "mem_mi_peak": max(mem_samples) if mem_samples else 0.0,
+    }
+    return control_plane, function_resources
+
+start_epoch, end_epoch = load_window()
+resource_source = "prometheus-cadvisor"
+
+fn_cpu_expr = (
+    f'sum by (pod) (rate(container_cpu_usage_seconds_total{{namespace="{namespace}",'
+    f'pod=~"fn-.*",container!="",container!="POD"}}[1m])) * 1000'
+)
+fn_mem_expr_working_set = (
+    f'sum by (pod) (container_memory_working_set_bytes{{namespace="{namespace}",'
+    f'pod=~"fn-.*",container!="",container!="POD"}}) / 1048576'
+)
+fn_mem_expr_usage = (
+    f'sum by (pod) (container_memory_usage_bytes{{namespace="{namespace}",'
+    f'pod=~"fn-.*",container!="",container!="POD"}}) / 1048576'
+)
+cp_cpu_expr = (
+    f'sum by (pod) (rate(container_cpu_usage_seconds_total{{namespace="{namespace}",'
+    f'pod=~"nanofaas-control-plane-.*",container!="",container!="POD"}}[1m])) * 1000'
+)
+cp_mem_expr_working_set = (
+    f'sum by (pod) (container_memory_working_set_bytes{{namespace="{namespace}",'
+    f'pod=~"nanofaas-control-plane-.*",container!="",container!="POD"}}) / 1048576'
+)
+cp_mem_expr_usage = (
+    f'sum by (pod) (container_memory_usage_bytes{{namespace="{namespace}",'
+    f'pod=~"nanofaas-control-plane-.*",container!="",container!="POD"}}) / 1048576'
+)
+
+fn_cpu_rows = prom_query_range(fn_cpu_expr, start_epoch, end_epoch)
+fn_mem_rows = prom_query_range(fn_mem_expr_working_set, start_epoch, end_epoch)
+if not fn_mem_rows:
+    fn_mem_rows = prom_query_range(fn_mem_expr_usage, start_epoch, end_epoch)
+
+cp_cpu_rows = prom_query_range(cp_cpu_expr, start_epoch, end_epoch)
+cp_mem_rows = prom_query_range(cp_mem_expr_working_set, start_epoch, end_epoch)
+if not cp_mem_rows:
+    cp_mem_rows = prom_query_range(cp_mem_expr_usage, start_epoch, end_epoch)
+
+fn_regex = re.compile(r"^fn-(.+?)-[a-f0-9]+-[a-z0-9]+$")
+def function_from_pod(pod: str):
+    m = fn_regex.match(pod)
+    return m.group(1) if m else None
+
+def control_plane_group_from_pod(pod: str):
+    if pod.startswith("nanofaas-control-plane-"):
+        return "_control_plane"
+    return None
+
+function_resources = summarize_grouped_resources(fn_cpu_rows, fn_mem_rows, function_from_pod)
+control_plane_resources = summarize_grouped_resources(cp_cpu_rows, cp_mem_rows, control_plane_group_from_pod).get(
+    "_control_plane", {}
+)
+
+if not function_resources and not control_plane_resources:
+    resource_source = "kubectl-top-fallback"
+    control_plane_resources, function_resources = legacy_parse_samples()
 
 summary = {
     "case": case_name,
@@ -275,14 +467,19 @@ summary = {
         "avg_ms_weighted": (weighted_avg_sum / total_reqs) if total_reqs else 0.0,
         "p95_ms_weighted": (weighted_p95_sum / total_reqs) if total_reqs else 0.0,
         "avg_iterations_rate": (weighted_rate_sum / len(json_files)) if json_files else 0.0,
+        "by_function": loadtest_by_function,
     },
     "resources": {
-        "sample_count": len(cpu_samples),
-        "cpu_m_avg": (sum(cpu_samples) / len(cpu_samples)) if cpu_samples else 0.0,
-        "cpu_m_peak": max(cpu_samples) if cpu_samples else 0.0,
-        "mem_mi_avg": (sum(mem_samples) / len(mem_samples)) if mem_samples else 0.0,
-        "mem_mi_peak": max(mem_samples) if mem_samples else 0.0,
+        "source": resource_source,
+        "window_start_epoch": start_epoch,
+        "window_end_epoch": end_epoch,
+        "sample_count": int(control_plane_resources.get("sample_count", 0)),
+        "cpu_m_avg": float(control_plane_resources.get("cpu_m_avg", 0.0)),
+        "cpu_m_peak": float(control_plane_resources.get("cpu_m_peak", 0.0)),
+        "mem_mi_avg": float(control_plane_resources.get("mem_mi_avg", 0.0)),
+        "mem_mi_peak": float(control_plane_resources.get("mem_mi_peak", 0.0)),
     },
+    "function_resources": function_resources,
 }
 out_json.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PYEOF
@@ -320,6 +517,45 @@ def fmt(v, digits=2):
     return f"{v:.{digits}f}"
 
 comparison = {"baseline": baseline, "candidate": candidate, "deltas": {}}
+
+def fn_load(case):
+    if not case:
+        return {}
+    return case.get("loadtest", {}).get("by_function", {})
+
+def fn_resources(case):
+    if not case:
+        return {}
+    return case.get("function_resources", {})
+
+WORKLOAD_ORDER = {"word-stats": 0, "json-transform": 1}
+RUNTIME_ORDER = {"java": 0, "java-lite": 1, "python": 2, "exec": 3}
+RUNTIME_SUFFIXES = ("java-lite", "java", "python", "exec")
+
+def function_sort_key(name: str):
+    workload = None
+    runtime = None
+    for rt in RUNTIME_SUFFIXES:
+        suffix = f"-{rt}"
+        if name.endswith(suffix):
+            workload = name[: -len(suffix)]
+            runtime = rt
+            break
+    if workload is None or runtime is None:
+        if "-" not in name:
+            return (99, 99, name)
+        workload, runtime = name.rsplit("-", 1)
+    return (
+        WORKLOAD_ORDER.get(workload, 99),
+        RUNTIME_ORDER.get(runtime, 99),
+        name,
+    )
+
+all_functions = sorted(
+    set(fn_load(baseline)) | set(fn_load(candidate)) | set(fn_resources(baseline)) | set(fn_resources(candidate)),
+    key=function_sort_key,
+)
+
 if baseline and candidate:
     b = baseline["loadtest"]
     c = candidate["loadtest"]
@@ -335,6 +571,26 @@ if baseline and candidate:
         "mem_mi_avg": delta(cr.get("mem_mi_avg"), br.get("mem_mi_avg")),
         "mem_mi_peak": delta(cr.get("mem_mi_peak"), br.get("mem_mi_peak")),
     }
+    if all_functions:
+        by_function_delta = {}
+        for fn in all_functions:
+            b_load = fn_load(baseline).get(fn, {})
+            c_load = fn_load(candidate).get(fn, {})
+            b_res = fn_resources(baseline).get(fn, {})
+            c_res = fn_resources(candidate).get(fn, {})
+            by_function_delta[fn] = {
+                "avg_ms": delta(c_load.get("avg_ms"), b_load.get("avg_ms")),
+                "p95_ms": delta(c_load.get("p95_ms"), b_load.get("p95_ms")),
+                "fail_pct": delta(c_load.get("fail_pct"), b_load.get("fail_pct")),
+                "iterations_rate": delta(c_load.get("iterations_rate"), b_load.get("iterations_rate")),
+                "cpu_m_avg": delta(c_res.get("cpu_m_avg"), b_res.get("cpu_m_avg")),
+                "cpu_m_peak": delta(c_res.get("cpu_m_peak"), b_res.get("cpu_m_peak")),
+                "mem_mi_avg": delta(c_res.get("mem_mi_avg"), b_res.get("mem_mi_avg")),
+                "mem_mi_peak": delta(c_res.get("mem_mi_peak"), b_res.get("mem_mi_peak")),
+                "pods_avg": delta(c_res.get("pods_avg"), b_res.get("pods_avg")),
+                "pods_peak": delta(c_res.get("pods_peak"), b_res.get("pods_peak")),
+            }
+        comparison["deltas"]["by_function"] = by_function_delta
 
 out_json.write_text(json.dumps(comparison, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -370,10 +626,70 @@ if baseline or candidate:
 else:
     lines.append("| n/a | n/a | n/a | n/a |")
 
+if all_functions:
+    lines.append("")
+    lines.append("## Per-function Loadtest Metrics")
+    lines.append("")
+    lines.append("### Latency")
+    lines.append("| Function | Base avg (ms) | Cand avg (ms) | Δ avg (ms) | Base p95 (ms) | Cand p95 (ms) | Δ p95 (ms) |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    base_fn_load = fn_load(baseline)
+    cand_fn_load = fn_load(candidate)
+    for fn in all_functions:
+        b = base_fn_load.get(fn, {})
+        c = cand_fn_load.get(fn, {})
+        lines.append(
+            f"| {fn} | {fmt(b.get('avg_ms'))} | {fmt(c.get('avg_ms'))} | {fmt(delta(c.get('avg_ms'), b.get('avg_ms')))} | "
+            f"{fmt(b.get('p95_ms'))} | {fmt(c.get('p95_ms'))} | {fmt(delta(c.get('p95_ms'), b.get('p95_ms')))} |"
+        )
+
+    lines.append("")
+    lines.append("### Reliability & Throughput")
+    lines.append("| Function | Base fail (%) | Cand fail (%) | Δ fail (%) | Base iter/s | Cand iter/s | Δ iter/s |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    for fn in all_functions:
+        b = base_fn_load.get(fn, {})
+        c = cand_fn_load.get(fn, {})
+        lines.append(
+            f"| {fn} | {fmt(b.get('fail_pct'), 4)} | {fmt(c.get('fail_pct'), 4)} | {fmt(delta(c.get('fail_pct'), b.get('fail_pct')), 4)} | "
+            f"{fmt(b.get('iterations_rate'))} | {fmt(c.get('iterations_rate'))} | {fmt(delta(c.get('iterations_rate'), b.get('iterations_rate')))} |"
+        )
+
+    lines.append("")
+    lines.append("## Per-function CPU/RAM")
+    lines.append("")
+    lines.append("### CPU")
+    lines.append("| Function | Base CPU avg (m) | Cand CPU avg (m) | Δ CPU avg (m) | Base CPU peak (m) | Cand CPU peak (m) | Δ CPU peak (m) |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    base_fn_res = fn_resources(baseline)
+    cand_fn_res = fn_resources(candidate)
+    for fn in all_functions:
+        b = base_fn_res.get(fn, {})
+        c = cand_fn_res.get(fn, {})
+        lines.append(
+            f"| {fn} | {fmt(b.get('cpu_m_avg'))} | {fmt(c.get('cpu_m_avg'))} | {fmt(delta(c.get('cpu_m_avg'), b.get('cpu_m_avg')))} | "
+            f"{fmt(b.get('cpu_m_peak'))} | {fmt(c.get('cpu_m_peak'))} | {fmt(delta(c.get('cpu_m_peak'), b.get('cpu_m_peak')))} |"
+        )
+
+    lines.append("")
+    lines.append("### Memory & Replicas")
+    lines.append("| Function | Base RAM avg (Mi) | Cand RAM avg (Mi) | Δ RAM avg (Mi) | Base RAM peak (Mi) | Cand RAM peak (Mi) | Δ RAM peak (Mi) | Base pods avg | Cand pods avg | Δ pods avg |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for fn in all_functions:
+        b = base_fn_res.get(fn, {})
+        c = cand_fn_res.get(fn, {})
+        lines.append(
+            f"| {fn} | {fmt(b.get('mem_mi_avg'))} | {fmt(c.get('mem_mi_avg'))} | {fmt(delta(c.get('mem_mi_avg'), b.get('mem_mi_avg')))} | "
+            f"{fmt(b.get('mem_mi_peak'))} | {fmt(c.get('mem_mi_peak'))} | {fmt(delta(c.get('mem_mi_peak'), b.get('mem_mi_peak')))} | "
+            f"{fmt(b.get('pods_avg'))} | {fmt(c.get('pods_avg'))} | {fmt(delta(c.get('pods_avg'), b.get('pods_avg')))} |"
+        )
+
 lines.append("")
 lines.append("## Notes")
 lines.append("- Loadtest metrics are aggregated from k6 JSON summaries produced by `experiments/e2e-loadtest.sh`.")
-lines.append("- Resource metrics come from `kubectl top` sampling of control-plane pods during loadtest.")
+lines.append("- Per-function loadtest metrics are keyed by the k6 summary filename stem (for example `word-stats-java`).")
+lines.append("- Resource metrics come from Prometheus/cAdvisor query_range over the loadtest window (`container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`).")
+lines.append("- If Prometheus/cAdvisor data is unavailable, a legacy `kubectl top` fallback is used.")
 lines.append("- Positive delta means candidate is larger/slower for that metric.")
 if not (baseline and candidate):
     lines.append("- Delta values are `n/a` when only one side (baseline or candidate) is available.")
