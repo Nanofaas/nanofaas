@@ -6,7 +6,10 @@ use crate::kubernetes::{
 };
 use crate::kubernetes_live::InClusterKubernetesManager;
 use crate::metrics::Metrics;
-use crate::model::{ExecutionStatus, FunctionSpec, InvocationRequest, InvocationResponse};
+use crate::model::{
+    ExecutionStatus, FunctionSpec, InvocationRequest, InvocationResponse, ScalingConfig,
+    ScalingMetric, ScalingStrategy,
+};
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
 use crate::registry::AppFunctionRegistry;
@@ -20,7 +23,8 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use serde::Deserialize;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -37,9 +41,17 @@ pub struct AppState {
     queue_manager: Arc<Mutex<QueueManager>>,
     dispatcher_router: Arc<DispatcherRouter>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
+    runtime_config_state: Arc<Mutex<RuntimeConfigState>>,
+    runtime_config_admin_enabled: bool,
     metrics: Arc<Metrics>,
     enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync>,
     sync_queue: Arc<dyn SyncQueueGateway + Send + Sync>,
+    background_scheduler_enabled: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeConfigState {
+    revision: u64,
 }
 
 #[derive(Clone)]
@@ -81,6 +93,18 @@ impl FunctionProvisioner {
             }
         }
     }
+
+    async fn ready_replicas(&self, function_name: &str) -> Option<i32> {
+        match self {
+            FunctionProvisioner::Disabled => None,
+            FunctionProvisioner::InMemory(manager) => Some(manager.get_ready_replicas(function_name)),
+            FunctionProvisioner::Live(manager) => manager.get_ready_replicas(function_name).await.ok(),
+        }
+    }
+
+    fn supports_internal_scaling(&self) -> bool {
+        !matches!(self, FunctionProvisioner::Disabled)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -103,16 +127,50 @@ struct ReplicaRequest {
     replicas: u32,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeConfigPatchRequest {
+    #[serde(default)]
+    expected_revision: Option<u64>,
+    #[serde(default)]
+    rate_max_per_second: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeConfigSnapshotResponse {
+    revision: u64,
+    rate_max_per_second: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeConfigPatchResponse {
+    revision: u64,
+    effective_config: RuntimeConfigSnapshotResponse,
+    applied_at: String,
+    change_id: String,
+    warnings: Vec<String>,
+}
+
 pub fn build_app() -> Router {
     build_app_pair().0
 }
 
 pub fn build_app_with_provisioning_mode(mode: Option<&str>) -> Router {
     let metrics = Arc::new(Metrics::new());
-    let state = build_state_with_provisioning_mode(
+    let state = build_state_with_options(
         Arc::clone(&metrics),
         mode.map(|value| value.to_string()),
+        None,
+        false,
     );
+    build_api_router(state)
+}
+
+pub fn build_app_with_runtime_config_admin(enabled: bool) -> Router {
+    let metrics = Arc::new(Metrics::new());
+    let state = build_state_with_options(Arc::clone(&metrics), None, Some(enabled), false);
     build_api_router(state)
 }
 
@@ -130,9 +188,10 @@ pub fn build_app_pair() -> (Router, Router) {
 /// This is the production wiring used by `main`.
 pub fn build_app_pair_with_background_scheduler() -> (Router, Router) {
     let metrics = Arc::new(Metrics::new());
-    let state = build_state(Arc::clone(&metrics));
+    let state = build_state_with_options(Arc::clone(&metrics), None, None, true);
     start_execution_store_janitor(Arc::clone(&state.execution_store));
     start_background_scheduler(state.clone());
+    start_internal_scaler(state.clone());
     let api = build_api_router(state);
     let mgmt = build_management_app(metrics);
     (api, mgmt)
@@ -149,12 +208,14 @@ pub fn build_management_app(metrics: Arc<Metrics>) -> Router {
 }
 
 fn build_state(metrics: Arc<Metrics>) -> AppState {
-    build_state_with_provisioning_mode(metrics, None)
+    build_state_with_options(metrics, None, None, false)
 }
 
-fn build_state_with_provisioning_mode(
+fn build_state_with_options(
     metrics: Arc<Metrics>,
     override_mode: Option<String>,
+    override_runtime_config_admin_enabled: Option<bool>,
+    background_scheduler_enabled: bool,
 ) -> AppState {
     let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
     let execution_store = Arc::new(Mutex::new(ExecutionStore::new_with_durations(
@@ -178,6 +239,11 @@ fn build_state_with_provisioning_mode(
     };
 
     let provisioner = resolve_function_provisioner(override_mode);
+    let runtime_config_admin_enabled = override_runtime_config_admin_enabled.unwrap_or_else(|| {
+        std::env::var("NANOFAAS_ADMIN_RUNTIME_CONFIG_ENABLED")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+    });
 
     AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
@@ -193,8 +259,10 @@ fn build_state_with_provisioning_mode(
             std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(1_000),
+                .unwrap_or(1_000_000),
         ))),
+        runtime_config_state: Arc::new(Mutex::new(RuntimeConfigState { revision: 0 })),
+        runtime_config_admin_enabled,
         metrics,
         enqueuer,
         sync_queue: {
@@ -211,6 +279,7 @@ fn build_state_with_provisioning_mode(
                 Arc::new(NoOpSyncQueueGateway)
             }
         },
+        background_scheduler_enabled,
     }
 }
 
@@ -249,6 +318,14 @@ fn build_api_router(state: AppState) -> Router {
     Router::new()
         .route("/actuator/health", get(health))
         .route("/actuator/prometheus", get(prometheus))
+        .route(
+            "/v1/admin/runtime-config",
+            get(get_runtime_config).patch(patch_runtime_config),
+        )
+        .route(
+            "/v1/admin/runtime-config/validate",
+            post(validate_runtime_config),
+        )
         .route("/v1/functions", post(create_function).get(list_functions))
         .route(
             "/v1/functions/{name}",
@@ -315,8 +392,9 @@ fn start_background_scheduler(state: AppState) {
                     )
                     .await
                 {
-                    Ok(processed) => {
-                        processed_any |= processed;
+                    Ok(handle) => {
+                        processed_any |= handle.is_some();
+                        // handle dropped: fire-and-forget, behavior invariato
                     }
                     Err(err) => {
                         // Keep the loop alive even if a single function dispatch fails.
@@ -332,6 +410,153 @@ fn start_background_scheduler(state: AppState) {
             }
         }
     });
+}
+
+fn start_internal_scaler(state: AppState) {
+    if !state.provisioner.supports_internal_scaling() {
+        return;
+    }
+
+    let poll_interval_ms = std::env::var("NANOFAAS_INTERNAL_SCALER_POLL_INTERVAL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(500)
+        .max(1);
+
+    tokio::spawn(async move {
+        let mut last_scale_up: HashMap<String, u64> = HashMap::new();
+        let mut last_scale_down: HashMap<String, u64> = HashMap::new();
+        let poll_interval = Duration::from_millis(poll_interval_ms);
+
+        loop {
+            let now = now_millis();
+            let specs = state.function_registry.list();
+            for spec in specs {
+                if spec.execution_mode != crate::model::ExecutionMode::Deployment {
+                    continue;
+                }
+
+                let Some(scaling) = parse_internal_scaling(&spec) else {
+                    continue;
+                };
+
+                let current_ready = state.provisioner.ready_replicas(&spec.name).await.unwrap_or(0);
+                let current_replicas = if current_ready <= 0 {
+                    std::cmp::max(1, scaling.min_replicas)
+                } else {
+                    current_ready
+                };
+
+                let max_ratio = max_metric_ratio(&state, &spec.name, &scaling);
+                let mut desired = (max_ratio * current_replicas as f64).ceil() as i32;
+                desired = desired.clamp(scaling.min_replicas, scaling.max_replicas);
+
+                if desired > current_ready {
+                    let cooldown_ms = 30_000_u64;
+                    let can_scale = last_scale_up
+                        .get(&spec.name)
+                        .map(|last| now.saturating_sub(*last) >= cooldown_ms)
+                        .unwrap_or(true);
+                    if can_scale {
+                        if let Err(err) = state.provisioner.set_replicas(&spec.name, desired).await {
+                            eprintln!("internal scaler scale-up failed for {}: {}", spec.name, err);
+                        } else {
+                            last_scale_up.insert(spec.name.clone(), now);
+                            if let Ok(next) = u32::try_from(desired) {
+                                state
+                                    .function_replicas
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .insert(spec.name.clone(), next);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                if desired < current_ready {
+                    let cooldown_ms = 60_000_u64;
+                    let can_scale = last_scale_down
+                        .get(&spec.name)
+                        .map(|last| now.saturating_sub(*last) >= cooldown_ms)
+                        .unwrap_or(true);
+                    if can_scale {
+                        if let Err(err) = state.provisioner.set_replicas(&spec.name, desired).await {
+                            eprintln!("internal scaler scale-down failed for {}: {}", spec.name, err);
+                        } else {
+                            last_scale_down.insert(spec.name.clone(), now);
+                            if let Ok(next) = u32::try_from(desired) {
+                                state
+                                    .function_replicas
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .insert(spec.name.clone(), next);
+                            }
+                        }
+                    }
+                }
+            }
+
+            tokio::time::sleep(poll_interval).await;
+        }
+    });
+}
+
+fn parse_internal_scaling(spec: &FunctionSpec) -> Option<ScalingConfig> {
+    let scaling = spec
+        .scaling_config
+        .clone()
+        .and_then(|raw| serde_json::from_value::<ScalingConfig>(raw).ok())?;
+    if scaling.strategy != ScalingStrategy::Internal {
+        return None;
+    }
+    Some(scaling)
+}
+
+fn max_metric_ratio(state: &AppState, function_name: &str, scaling: &ScalingConfig) -> f64 {
+    let mut max_ratio = 0.0_f64;
+    let metrics = scaling.metrics.as_ref().map(Vec::as_slice).unwrap_or(&[]);
+    for metric in metrics {
+        let target = parse_metric_target(&metric.target);
+        if target <= 0.0 {
+            continue;
+        }
+        let current = metric_current_value(state, function_name, metric);
+        max_ratio = max_ratio.max(current / target);
+    }
+    max_ratio
+}
+
+fn parse_metric_target(target: &str) -> f64 {
+    if target.trim().is_empty() {
+        return 50.0;
+    }
+    target.parse::<f64>().unwrap_or(50.0)
+}
+
+fn metric_current_value(state: &AppState, function_name: &str, metric: &ScalingMetric) -> f64 {
+    match metric.metric_type.as_str() {
+        "queue_depth" => state
+            .queue_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .queue_depth(function_name) as f64,
+        "in_flight" => {
+            let queued_in_flight = state
+                .queue_manager
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .in_flight(function_name);
+            let running = state
+                .execution_store
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .running_count_for_function(function_name);
+            std::cmp::max(queued_in_flight, running) as f64
+        }
+        "rps" => 0.0,
+        _ => 0.0,
+    }
 }
 
 fn start_execution_store_janitor(execution_store: Arc<Mutex<ExecutionStore>>) {
@@ -356,6 +581,112 @@ async fn prometheus(State(state): State<AppState>) -> Response {
 
 async fn management_prometheus(State(metrics): State<Arc<Metrics>>) -> Response {
     (StatusCode::OK, metrics.to_prometheus_text()).into_response()
+}
+
+fn runtime_config_snapshot(state: &AppState, revision: u64) -> RuntimeConfigSnapshotResponse {
+    let rate_max_per_second = state
+        .rate_limiter
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .capacity_per_second();
+    RuntimeConfigSnapshotResponse {
+        revision,
+        rate_max_per_second,
+    }
+}
+
+fn runtime_config_validation_errors(request: &RuntimeConfigPatchRequest) -> Vec<String> {
+    let mut errors = Vec::new();
+    if let Some(rate) = request.rate_max_per_second {
+        if rate <= 0 {
+            errors.push("rateMaxPerSecond must be greater than 0".to_string());
+        }
+    }
+    errors
+}
+
+async fn get_runtime_config(State(state): State<AppState>) -> Response {
+    if !state.runtime_config_admin_enabled {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let revision = state
+        .runtime_config_state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .revision;
+    Json(runtime_config_snapshot(&state, revision)).into_response()
+}
+
+async fn validate_runtime_config(
+    State(state): State<AppState>,
+    Json(request): Json<RuntimeConfigPatchRequest>,
+) -> Response {
+    if !state.runtime_config_admin_enabled {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let errors = runtime_config_validation_errors(&request);
+    if errors.is_empty() {
+        return Json(json!({ "valid": true })).into_response();
+    }
+    (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "errors": errors }))).into_response()
+}
+
+async fn patch_runtime_config(
+    State(state): State<AppState>,
+    Json(request): Json<RuntimeConfigPatchRequest>,
+) -> Response {
+    if !state.runtime_config_admin_enabled {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let Some(expected_revision) = request.expected_revision else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "expectedRevision is required" })),
+        )
+            .into_response();
+    };
+
+    let errors = runtime_config_validation_errors(&request);
+    if !errors.is_empty() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "errors": errors }))).into_response();
+    }
+
+    let mut runtime_config = state
+        .runtime_config_state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if runtime_config.revision != expected_revision {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!(
+                    "Revision mismatch: expected {}, actual {}",
+                    expected_revision, runtime_config.revision
+                ),
+                "currentRevision": runtime_config.revision
+            })),
+        )
+            .into_response();
+    }
+
+    if let Some(next_rate) = request.rate_max_per_second {
+        let mut limiter = state.rate_limiter.lock().unwrap_or_else(|e| e.into_inner());
+        limiter.set_capacity_per_second(next_rate as usize);
+    }
+
+    runtime_config.revision += 1;
+    let revision = runtime_config.revision;
+    drop(runtime_config);
+
+    let effective_config = runtime_config_snapshot(&state, revision);
+    Json(RuntimeConfigPatchResponse {
+        revision,
+        effective_config,
+        applied_at: Utc::now().to_rfc3339(),
+        change_id: Uuid::new_v4().to_string(),
+        warnings: vec![],
+    })
+    .into_response()
 }
 
 async fn create_function(
@@ -521,6 +852,7 @@ async fn invoke_function(
     headers: HeaderMap,
     request: InvocationRequest,
 ) -> Result<InvocationResponse, Response> {
+    let request_input = request.input.clone();
     let function_spec = state
         .function_registry
         .get(name)
@@ -606,7 +938,54 @@ async fn invoke_function(
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
     state.metrics.in_flight(name);
 
-    // Create record as RUNNING immediately so polling sees the in-flight state.
+    // When async queue is enabled, sync invoke follows the same queue-backed path as Java:
+    // enqueue + wait for terminal state, so autoscaler can observe queue/in-flight pressure.
+    if state.background_scheduler_enabled && state.enqueuer.enabled() && !state.sync_queue.enabled()
+    {
+        let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
+        let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
+        let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
+        state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .put_with_timestamp(record, now);
+        state
+            .queue_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .enqueue_with_capacity_and_concurrency(
+                name,
+                InvocationTask {
+                    execution_id: execution_id.clone(),
+                    payload: request_input.clone(),
+                    attempt: 1,
+                },
+                queue_capacity,
+                concurrency,
+            )
+            .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
+        state.metrics.enqueue(name);
+        state.metrics.queue_depth(name);
+
+        if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
+            let _ = state
+                .idempotency_store
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .put_if_absent(name, &idem_key, &execution_id, now);
+        }
+
+        return wait_for_sync_completion(
+            &state,
+            name,
+            &execution_id,
+            function_spec.timeout_millis.unwrap_or(30_000),
+        )
+        .await;
+    }
+
+    // Direct sync path (sync-queue admission or queue module disabled).
     let mut record = ExecutionRecord::new(&execution_id, name, ExecutionState::Running);
     record.mark_running_at(now);
     state
@@ -623,7 +1002,7 @@ async fn invoke_function(
         .dispatcher_router
         .dispatch(
             &function_spec,
-            &request.input,
+            &request_input,
             &execution_id,
             trace_id.as_deref(),
             idempotency_key_fwd.as_deref(),
@@ -646,6 +1025,78 @@ async fn invoke_function(
     }
 
     result
+}
+
+async fn wait_for_sync_completion(
+    state: &AppState,
+    function_name: &str,
+    execution_id: &str,
+    timeout_ms: u64,
+) -> Result<InvocationResponse, Response> {
+    let started = now_millis();
+    let sleep_step = Duration::from_millis(5);
+    loop {
+        let record = state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(execution_id);
+
+        if let Some(record) = record {
+            match record.state() {
+                ExecutionState::Success => {
+                    return Ok(InvocationResponse {
+                        execution_id: execution_id.to_string(),
+                        status: "success".to_string(),
+                        output: record.output(),
+                        error: None,
+                    });
+                }
+                ExecutionState::Error => {
+                    return Ok(InvocationResponse {
+                        execution_id: execution_id.to_string(),
+                        status: "error".to_string(),
+                        output: record.output(),
+                        error: record.last_error().map(|err| crate::model::ErrorInfo {
+                            code: err.code,
+                            message: err.message,
+                        }),
+                    });
+                }
+                ExecutionState::Timeout => {
+                    return Ok(InvocationResponse {
+                        execution_id: execution_id.to_string(),
+                        status: "timeout".to_string(),
+                        output: None,
+                        error: None,
+                    });
+                }
+                ExecutionState::Queued | ExecutionState::Running => {}
+            }
+        }
+
+        if now_millis().saturating_sub(started) >= timeout_ms {
+            let finished_at = now_millis();
+            let mut store = state
+                .execution_store
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(mut record) = store.get(execution_id) {
+                let created_at = record.created_at_millis;
+                record.mark_timeout_at(finished_at);
+                store.put_with_timestamp(record, created_at);
+            }
+            state.metrics.timeout(function_name);
+            return Ok(InvocationResponse {
+                execution_id: execution_id.to_string(),
+                status: "timeout".to_string(),
+                output: None,
+                error: None,
+            });
+        }
+
+        tokio::time::sleep(sleep_step).await;
+    }
 }
 
 #[allow(clippy::result_large_err)]
@@ -888,7 +1339,7 @@ fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode>
 async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
     let functions_snapshot = state.function_registry.as_map();
     let scheduler = Scheduler::new((*state.dispatcher_router).clone());
-    scheduler
+    let handle = scheduler
         .tick_once(
             name,
             &functions_snapshot,
@@ -896,7 +1347,12 @@ async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
             &state.execution_store,
             &state.metrics,
         )
-        .await
+        .await?;
+    let dispatched = handle.is_some();
+    if let Some(h) = handle {
+        let _ = h.await;
+    }
+    Ok(dispatched)
 }
 
 async fn complete_execution(
@@ -1084,4 +1540,133 @@ fn queue_rejected_response(retry_after_seconds: &str, reason: &str) -> Response 
             .insert("X-Queue-Reject-Reason", reason);
     }
     response
+}
+
+#[cfg(test)]
+mod autoscaling_tests {
+    use super::*;
+    use crate::kubernetes::KubernetesDeploymentBuilder;
+    use crate::model::{ExecutionMode, RuntimeMode};
+    use serde_json::json;
+
+    async fn register_scaled_function(state: &AppState, function_name: &str) {
+        let spec = FunctionSpec {
+            name: function_name.to_string(),
+            image: Some("localhost:5000/nanofaas/java-word-stats:e2e".to_string()),
+            execution_mode: ExecutionMode::Deployment,
+            runtime_mode: RuntimeMode::Http,
+            concurrency: Some(4),
+            queue_size: Some(100),
+            max_retries: Some(3),
+            scaling_config: Some(json!({
+                "strategy": "INTERNAL",
+                "minReplicas": 0,
+                "maxReplicas": 5,
+                "metrics": [{"type": "in_flight", "target": "2"}]
+            })),
+            commands: None,
+            env: None,
+            resources: None,
+            timeout_millis: Some(30_000),
+            url: None,
+            image_pull_secrets: None,
+            runtime_command: None,
+        };
+
+        assert!(state.function_registry.register(spec.clone()));
+        let _ = state
+            .provisioner
+            .provision(&spec)
+            .await
+            .expect("provision should succeed");
+        state
+            .queue_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .configure_function(function_name, 100, 4);
+    }
+
+    fn with_inmemory_manager<R>(
+        state: &AppState,
+        callback: impl FnOnce(&Arc<KubernetesResourceManager>) -> R,
+    ) -> R {
+        match state.provisioner.as_ref() {
+            FunctionProvisioner::InMemory(manager) => callback(manager),
+            _ => panic!("expected in-memory provisioner"),
+        }
+    }
+
+    fn deployment_replicas(state: &AppState, function_name: &str) -> i32 {
+        with_inmemory_manager(state, |manager| {
+            let name = KubernetesDeploymentBuilder::deployment_name(function_name);
+            manager
+                .client()
+                .get_deployment(manager.resolved_namespace(), &name)
+                .expect("deployment should exist")
+                .spec
+                .replicas
+        })
+    }
+
+    #[tokio::test]
+    async fn internal_scaler_scales_up_from_zero_when_in_flight_present() {
+        let metrics = Arc::new(Metrics::new());
+        let state =
+            build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
+        register_scaled_function(&state, "autoscale-up").await;
+
+        let mut record = ExecutionRecord::new("exec-up", "autoscale-up", ExecutionState::Running);
+        record.mark_running_at(now_millis());
+        state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .put_now(record);
+
+        start_internal_scaler(state.clone());
+
+        let start = now_millis();
+        loop {
+            if deployment_replicas(&state, "autoscale-up") > 0 {
+                break;
+            }
+            assert!(
+                now_millis().saturating_sub(start) < 5_000,
+                "internal scaler did not scale up within timeout"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn internal_scaler_scales_down_to_zero_when_no_load() {
+        let metrics = Arc::new(Metrics::new());
+        let state =
+            build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
+        register_scaled_function(&state, "autoscale-down").await;
+
+        with_inmemory_manager(&state, |manager| {
+            let name = KubernetesDeploymentBuilder::deployment_name("autoscale-down");
+            manager
+                .client()
+                .scale_deployment(manager.resolved_namespace(), &name, 2);
+            manager
+                .client()
+                .set_ready_replicas(manager.resolved_namespace(), &name, 2);
+        });
+
+        start_internal_scaler(state.clone());
+
+        let start = now_millis();
+        loop {
+            if deployment_replicas(&state, "autoscale-down") == 0 {
+                break;
+            }
+            assert!(
+                now_millis().saturating_sub(start) < 5_000,
+                "internal scaler did not scale down within timeout"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
 }

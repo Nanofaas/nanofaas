@@ -61,11 +61,14 @@ async fn scheduler_dispatches_queued_execution_and_updates_store() {
         .unwrap();
 
     let scheduler = Scheduler::new(router);
-    let dispatched = scheduler
+    let handle = scheduler
         .tick_once("fn-a", &functions, &queue, &store, &Metrics::new())
         .await
         .unwrap();
-    assert!(dispatched);
+    assert!(handle.is_some());
+    if let Some(h) = handle {
+        let _ = h.await;
+    }
 
     let updated = store.lock().unwrap().get("exec-1").unwrap();
     assert_eq!(updated.status, ExecutionState::Success);
@@ -143,15 +146,23 @@ async fn scheduler_releases_dispatch_slot_after_error_and_continues() {
     }
 
     let scheduler = Scheduler::new(router);
-    assert!(scheduler
+    let h1 = scheduler
         .tick_once("fn-a", &functions, &queue, &store, &metrics)
         .await
-        .unwrap());
+        .unwrap();
+    assert!(h1.is_some());
+    if let Some(h) = h1 {
+        let _ = h.await;
+    }
     assert_eq!(queue.lock().unwrap().in_flight("fn-a"), 0);
-    assert!(scheduler
+    let h2 = scheduler
         .tick_once("fn-a", &functions, &queue, &store, &metrics)
         .await
-        .unwrap());
+        .unwrap();
+    assert!(h2.is_some());
+    if let Some(h) = h2 {
+        let _ = h.await;
+    }
     assert_eq!(queue.lock().unwrap().in_flight("fn-a"), 0);
 
     let first = store.lock().unwrap().get("exec-err-1").unwrap();
