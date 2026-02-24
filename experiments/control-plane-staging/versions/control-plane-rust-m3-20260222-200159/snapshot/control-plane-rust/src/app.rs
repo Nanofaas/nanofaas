@@ -56,6 +56,30 @@ struct ReplicaRequest {
 }
 
 pub fn build_app() -> Router {
+    build_app_pair().0
+}
+
+/// Returns (api_router, management_router) sharing the same Metrics instance.
+/// Used in production: API on port 8080, management on port 8081.
+pub fn build_app_pair() -> (Router, Router) {
+    let metrics = Arc::new(Metrics::new());
+    let state = build_state(Arc::clone(&metrics));
+    let api = build_api_router(state);
+    let mgmt = build_management_app(metrics);
+    (api, mgmt)
+}
+
+/// Builds the management router (port 8081) serving health and prometheus endpoints.
+pub fn build_management_app(metrics: Arc<Metrics>) -> Router {
+    Router::new()
+        .route("/actuator/health", get(health))
+        .route("/actuator/health/readiness", get(health))
+        .route("/actuator/health/liveness", get(health))
+        .route("/actuator/prometheus", get(management_prometheus))
+        .with_state(metrics)
+}
+
+fn build_state(metrics: Arc<Metrics>) -> AppState {
     let dispatcher_router = DispatcherRouter::new(LocalDispatcher, PoolDispatcher::new());
     let execution_store = Arc::new(Mutex::new(ExecutionStore::new_with_durations(
         Duration::from_secs(300),
@@ -77,7 +101,7 @@ pub fn build_app() -> Router {
         Arc::new(NoOpInvocationEnqueuer)
     };
 
-    let state = AppState {
+    AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
         execution_store,
@@ -92,7 +116,7 @@ pub fn build_app() -> Router {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(1_000),
         ))),
-        metrics: Arc::new(Metrics::new()),
+        metrics,
         enqueuer,
         sync_queue: {
             let sync_enabled = std::env::var("NANOFAAS_SYNC_QUEUE_ENABLED")
@@ -108,8 +132,10 @@ pub fn build_app() -> Router {
                 Arc::new(NoOpSyncQueueGateway)
             }
         },
-    };
+    }
+}
 
+fn build_api_router(state: AppState) -> Router {
     Router::new()
         .route("/actuator/health", get(health))
         .route("/actuator/prometheus", get(prometheus))
@@ -139,6 +165,10 @@ async fn health() -> Json<Value> {
 
 async fn prometheus(State(state): State<AppState>) -> Response {
     (StatusCode::OK, state.metrics.to_prometheus_text()).into_response()
+}
+
+async fn management_prometheus(State(metrics): State<Arc<Metrics>>) -> Response {
+    (StatusCode::OK, metrics.to_prometheus_text()).into_response()
 }
 
 async fn create_function(
@@ -344,6 +374,7 @@ async fn invoke_function(
     let execution_id = Uuid::new_v4().to_string();
     state.metrics.sync_queue_admitted(name);
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+    state.metrics.in_flight(name);
 
     // Create record as RUNNING immediately so polling sees the in-flight state.
     let mut record = ExecutionRecord::new(&execution_id, name, ExecutionState::Running);
@@ -531,6 +562,7 @@ fn enqueue_function(
         .unwrap_or_else(|e| e.into_inner())
         .put_now(record);
     state.metrics.enqueue(name);
+    state.metrics.queue_depth(name);
 
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         let _ = state

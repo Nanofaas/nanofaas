@@ -102,6 +102,14 @@ impl Metrics {
         self.inc_counter("function_timeout_total", function);
     }
 
+    pub fn queue_depth(&self, function: &str) {
+        self.inc_counter("function_queue_depth", function);
+    }
+
+    pub fn in_flight(&self, function: &str) {
+        self.inc_counter("function_inFlight", function);
+    }
+
     pub fn sync_queue_admitted(&self, function: &str) {
         self.inc_counter("sync_queue_admitted_total", function);
     }

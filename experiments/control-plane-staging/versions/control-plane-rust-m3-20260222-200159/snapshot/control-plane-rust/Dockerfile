@@ -16,5 +16,6 @@ RUN apt-get update \
 COPY --from=builder /app/target/release/control-plane-rust /usr/local/bin/control-plane-rust
 
 EXPOSE 8080
+EXPOSE 8081
 
 ENTRYPOINT ["/usr/local/bin/control-plane-rust"]
