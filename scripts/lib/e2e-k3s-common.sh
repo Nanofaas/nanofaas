@@ -872,13 +872,13 @@ e2e_verify_core_pods_running() {
 e2e_verify_control_plane_health() {
     e2e_require_vm_exec || return 1
     local namespace=${1:?namespace is required}
-    local pod_name
-    pod_name=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane -o jsonpath='{.items[0].metadata.name}'")
+    local pod_ip
+    pod_ip=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane -o jsonpath='{.items[0].status.podIP}'")
 
-    e2e_log "Verifying control-plane health endpoints..."
-    vm_exec "kubectl exec -n ${namespace} ${pod_name} -- curl -sf http://localhost:8081/actuator/health" | grep -q '"status":"UP"'
-    vm_exec "kubectl exec -n ${namespace} ${pod_name} -- curl -sf http://localhost:8081/actuator/health/liveness" | grep -q '"status":"UP"'
-    vm_exec "kubectl exec -n ${namespace} ${pod_name} -- curl -sf http://localhost:8081/actuator/health/readiness" | grep -q '"status":"UP"'
+    e2e_log "Verifying control-plane health endpoints (pod IP: ${pod_ip})..."
+    vm_exec "curl -sf http://${pod_ip}:8081/actuator/health" | grep -q '"status":"UP"'
+    vm_exec "curl -sf http://${pod_ip}:8081/actuator/health/liveness" | grep -q '"status":"UP"'
+    vm_exec "curl -sf http://${pod_ip}:8081/actuator/health/readiness" | grep -q '"status":"UP"'
     e2e_log "Control-plane health endpoints are UP"
 }
 
@@ -1208,9 +1208,9 @@ e2e_get_control_plane_pod_name() {
 e2e_fetch_control_plane_prometheus() {
     e2e_require_vm_exec || return 1
     local namespace=${1:?namespace is required}
-    local pod_name
-    pod_name=$(e2e_get_control_plane_pod_name "${namespace}")
-    vm_exec "kubectl exec -n ${namespace} ${pod_name} -- curl -sf http://localhost:8081/actuator/prometheus"
+    local pod_ip
+    pod_ip=$(vm_exec "kubectl get pods -n ${namespace} -l app=control-plane -o jsonpath='{.items[0].status.podIP}'")
+    vm_exec "curl -sf http://${pod_ip}:8081/actuator/prometheus"
 }
 
 e2e_install_k3s() {
