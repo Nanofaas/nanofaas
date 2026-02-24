@@ -779,6 +779,9 @@ spec:
     targetPort: 8081
 EOF"
     fi
+    # Force a rollout restart so the pod picks up the newly-pushed image
+    # even when the deployment spec hasn't changed (same image tag, re-pushed).
+    vm_exec "kubectl rollout restart deployment/control-plane -n ${namespace}" || true
     e2e_log "Control-plane deployed"
 }
 
@@ -832,6 +835,7 @@ spec:
     port: 8080
     targetPort: 8080
 EOF"
+    vm_exec "kubectl rollout restart deployment/function-runtime -n ${namespace}" || true
     e2e_log "Function-runtime deployed"
 }
 
