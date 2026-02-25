@@ -858,6 +858,12 @@ async fn invoke_function(
         .get(name)
         .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
 
+    let timeout_ms = headers
+        .get("X-Timeout-Ms")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or_else(|| function_spec.timeout_millis.unwrap_or(30_000));
+
     if let Some(image) = function_spec.image.as_deref() {
         if image.contains("sync-reject-est-wait") {
             state.metrics.sync_queue_rejected(name);
@@ -980,7 +986,7 @@ async fn invoke_function(
             &state,
             name,
             &execution_id,
-            function_spec.timeout_millis.unwrap_or(30_000),
+            timeout_ms,
         )
         .await;
     }
