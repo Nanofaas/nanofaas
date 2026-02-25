@@ -1154,6 +1154,10 @@ fn finish_invocation(
 
     let response_status = state_to_status(&record.status).to_string();
     let response_output = record.output().clone();
+    let response_error = record.last_error().map(|err| crate::model::ErrorInfo {
+        code: err.code,
+        message: err.message,
+    });
 
     state
         .execution_store
@@ -1186,7 +1190,7 @@ fn finish_invocation(
         execution_id: execution_id.to_string(),
         status: response_status,
         output: response_output,
-        error: None,
+        error: response_error,
     })
 }
 
