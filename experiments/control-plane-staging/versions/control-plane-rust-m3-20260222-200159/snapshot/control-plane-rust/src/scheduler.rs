@@ -1,4 +1,4 @@
-use crate::dispatch::DispatcherRouter;
+use crate::dispatch::{DispatchResult, DispatcherRouter};
 use crate::execution::{ErrorInfo, ExecutionStore};
 use crate::metrics::Metrics;
 use crate::model::FunctionSpec;
@@ -120,29 +120,41 @@ fn finalize_dispatch(
         .release_slot(function_name);
 
     if dispatch.status == "SUCCESS" {
-        let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(mut record) = s.get(&task.execution_id) {
-            let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
-            let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
-            let latency_ms = finished_at.saturating_sub(started_at);
-            record.mark_success_at(
-                dispatch.output.unwrap_or(serde_json::Value::Null),
-                finished_at,
-            );
-            if dispatch.cold_start {
-                record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
-                metrics.cold_start(function_name);
-                metrics
-                    .init_duration(function_name)
-                    .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+        let completion_tx = {
+            let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut record) = s.get(&task.execution_id) {
+                let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
+                let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
+                let latency_ms = finished_at.saturating_sub(started_at);
+                record.mark_success_at(
+                    dispatch.output.clone().unwrap_or(serde_json::Value::Null),
+                    finished_at,
+                );
+                if dispatch.cold_start {
+                    record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
+                    metrics.cold_start(function_name);
+                    metrics
+                        .init_duration(function_name)
+                        .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+                } else {
+                    metrics.warm_start(function_name);
+                }
+                let tx = record.completion_tx.clone();
+                s.put_now(record);
+                metrics.success(function_name);
+                metrics.latency(function_name).record_ms(latency_ms);
+                metrics.queue_wait(function_name).record_ms(queue_wait_ms);
+                metrics.e2e_latency(function_name).record_ms(e2e_latency_ms);
+                tx
             } else {
-                metrics.warm_start(function_name);
+                None
             }
-            s.put_now(record);
-            metrics.success(function_name);
-            metrics.latency(function_name).record_ms(latency_ms);
-            metrics.queue_wait(function_name).record_ms(queue_wait_ms);
-            metrics.e2e_latency(function_name).record_ms(e2e_latency_ms);
+        };
+        if let Some(tx_arc) = completion_tx {
+            let mut guard = tx_arc.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(tx) = guard.take() {
+                let _ = tx.send(dispatch);
+            }
         }
         return;
     }
@@ -182,28 +194,40 @@ fn finalize_dispatch(
         }
     }
 
-    let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(mut record) = s.get(&task.execution_id) {
-        let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
-        let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
-        let latency_ms = finished_at.saturating_sub(started_at);
-        record.mark_error_at(
-            ErrorInfo::new("DISPATCH_ERROR", "dispatch failed"),
-            finished_at,
-        );
-        if dispatch.cold_start {
-            record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
-            metrics.cold_start(function_name);
-            metrics
-                .init_duration(function_name)
-                .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+    let completion_tx = {
+        let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut record) = s.get(&task.execution_id) {
+            let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
+            let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
+            let latency_ms = finished_at.saturating_sub(started_at);
+            record.mark_error_at(
+                ErrorInfo::new("DISPATCH_ERROR", "dispatch failed"),
+                finished_at,
+            );
+            if dispatch.cold_start {
+                record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
+                metrics.cold_start(function_name);
+                metrics
+                    .init_duration(function_name)
+                    .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+            } else {
+                metrics.warm_start(function_name);
+            }
+            let tx = record.completion_tx.clone();
+            s.put_now(record);
+            metrics.latency(function_name).record_ms(latency_ms);
+            metrics.queue_wait(function_name).record_ms(queue_wait_ms);
+            metrics.e2e_latency(function_name).record_ms(e2e_latency_ms);
+            tx
         } else {
-            metrics.warm_start(function_name);
+            None
         }
-        s.put_now(record);
-        metrics.latency(function_name).record_ms(latency_ms);
-        metrics.queue_wait(function_name).record_ms(queue_wait_ms);
-        metrics.e2e_latency(function_name).record_ms(e2e_latency_ms);
-    }
+    };
     metrics.error(function_name);
+    if let Some(tx_arc) = completion_tx {
+        let mut guard = tx_arc.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(dispatch);
+        }
+    }
 }

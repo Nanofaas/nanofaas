@@ -950,7 +950,7 @@ async fn invoke_function(
     {
         let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
         let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
-        let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
+        let (record, rx) = ExecutionRecord::new_with_completion(&execution_id, name);
         state
             .execution_store
             .lock()
@@ -982,13 +982,53 @@ async fn invoke_function(
                 .put_if_absent(name, &idem_key, &execution_id, now);
         }
 
-        return wait_for_sync_completion(
-            &state,
-            name,
-            &execution_id,
-            timeout_ms,
-        )
-        .await;
+        return match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
+            Ok(Ok(_)) => {
+                // finalize_dispatch already wrote terminal state to store before signalling
+                let record = state
+                    .execution_store
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&execution_id);
+                match record {
+                    Some(r) => Ok(InvocationResponse {
+                        execution_id: execution_id.to_string(),
+                        status: state_to_status(&r.status).to_string(),
+                        output: r.output(),
+                        error: r.last_error().map(|e| crate::model::ErrorInfo {
+                            code: e.code,
+                            message: e.message,
+                        }),
+                    }),
+                    None => Err(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+                }
+            }
+            Ok(Err(_recv_error)) => {
+                // sender dropped without sending — internal error
+                Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+            }
+            Err(_elapsed) => {
+                let finished_at = now_millis();
+                {
+                    let mut store = state
+                        .execution_store
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if let Some(mut r) = store.get(&execution_id) {
+                        let created_at = r.created_at_millis;
+                        r.mark_timeout_at(finished_at);
+                        store.put_with_timestamp(r, created_at);
+                    }
+                }
+                state.metrics.timeout(name);
+                Ok(InvocationResponse {
+                    execution_id: execution_id.to_string(),
+                    status: "timeout".to_string(),
+                    output: None,
+                    error: None,
+                })
+            }
+        };
     }
 
     // Direct sync path (sync-queue admission or queue module disabled).
@@ -1034,77 +1074,6 @@ async fn invoke_function(
     result
 }
 
-async fn wait_for_sync_completion(
-    state: &AppState,
-    function_name: &str,
-    execution_id: &str,
-    timeout_ms: u64,
-) -> Result<InvocationResponse, Response> {
-    let started = now_millis();
-    let sleep_step = Duration::from_millis(5);
-    loop {
-        let record = state
-            .execution_store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(execution_id);
-
-        if let Some(record) = record {
-            match record.state() {
-                ExecutionState::Success => {
-                    return Ok(InvocationResponse {
-                        execution_id: execution_id.to_string(),
-                        status: "success".to_string(),
-                        output: record.output(),
-                        error: None,
-                    });
-                }
-                ExecutionState::Error => {
-                    return Ok(InvocationResponse {
-                        execution_id: execution_id.to_string(),
-                        status: "error".to_string(),
-                        output: record.output(),
-                        error: record.last_error().map(|err| crate::model::ErrorInfo {
-                            code: err.code,
-                            message: err.message,
-                        }),
-                    });
-                }
-                ExecutionState::Timeout => {
-                    return Ok(InvocationResponse {
-                        execution_id: execution_id.to_string(),
-                        status: "timeout".to_string(),
-                        output: None,
-                        error: None,
-                    });
-                }
-                ExecutionState::Queued | ExecutionState::Running => {}
-            }
-        }
-
-        if now_millis().saturating_sub(started) >= timeout_ms {
-            let finished_at = now_millis();
-            let mut store = state
-                .execution_store
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            if let Some(mut record) = store.get(execution_id) {
-                let created_at = record.created_at_millis;
-                record.mark_timeout_at(finished_at);
-                store.put_with_timestamp(record, created_at);
-            }
-            state.metrics.timeout(function_name);
-            return Ok(InvocationResponse {
-                execution_id: execution_id.to_string(),
-                status: "timeout".to_string(),
-                output: None,
-                error: None,
-            });
-        }
-
-        tokio::time::sleep(sleep_step).await;
-    }
-}
 
 #[allow(clippy::result_large_err)]
 fn finish_invocation(
@@ -1398,7 +1367,7 @@ async fn complete_execution(
 
     // Send on completion channel if present (sync invoke waiting)
     if record.completion_tx.is_some() {
-        record.complete(dispatch_result).await;
+        record.complete(dispatch_result);
     } else {
         // No waiter (async enqueue) — update store directly
         let mut store = state
