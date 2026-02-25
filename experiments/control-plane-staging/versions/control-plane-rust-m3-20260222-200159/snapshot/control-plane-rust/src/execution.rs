@@ -22,7 +22,8 @@ const ALLOWED_TRANSITIONS: &[(ExecutionState, ExecutionState)] = &[
     (ExecutionState::Running, ExecutionState::Success),
     (ExecutionState::Running, ExecutionState::Error),
     (ExecutionState::Running, ExecutionState::Timeout),
-    (ExecutionState::Error, ExecutionState::Queued), // retry
+    (ExecutionState::Error, ExecutionState::Queued),   // retry after error
+    (ExecutionState::Running, ExecutionState::Queued), // retry on dispatch failure (no error state)
 ];
 
 fn is_valid_transition(from: &ExecutionState, to: &ExecutionState) -> bool {
@@ -238,6 +239,10 @@ impl ExecutionRecord {
     }
 
     pub fn reset_for_retry(&mut self, retry_task: InvocationTask) {
+        if !is_valid_transition(&self.status, &ExecutionState::Queued) {
+            eprintln!("invalid transition for retry: {:?} -> Queued", self.status);
+            return;
+        }
         self.task = retry_task;
         self.function_name = self.task.function_name.clone();
         self.status = ExecutionState::Queued;

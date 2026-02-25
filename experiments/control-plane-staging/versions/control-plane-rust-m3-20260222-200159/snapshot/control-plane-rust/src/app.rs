@@ -1417,7 +1417,12 @@ async fn complete_execution(
                     r.set_output(request.output);
                 }
                 ExecutionState::Timeout => r.mark_timeout_at(now),
-                _ => r.set_state(status),
+                _ => {
+                    eprintln!(
+                        "complete_execution: unexpected completion status {:?} for {}, ignoring",
+                        status, execution_id
+                    );
+                }
             }
             store.put_now(r);
         }
@@ -1625,7 +1630,7 @@ mod autoscaling_tests {
             build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
         register_scaled_function(&state, "autoscale-up").await;
 
-        let mut record = ExecutionRecord::new("exec-up", "autoscale-up", ExecutionState::Running);
+        let mut record = ExecutionRecord::new("exec-up", "autoscale-up", ExecutionState::Queued);
         record.mark_running_at(now_millis());
         state
             .execution_store
