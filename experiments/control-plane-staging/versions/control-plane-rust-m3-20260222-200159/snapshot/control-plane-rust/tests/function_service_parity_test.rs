@@ -295,7 +295,7 @@ fn setReplicas_success() {
 }
 
 #[test]
-fn setReplicas_nonDeployment_throws() {
+fn setReplicas_nonDeployment_returnsNone() {
     let service = FunctionService::new(
         FunctionRegistry::new(),
         FunctionDefaults::new(30_000, 4, 100, 3),
@@ -305,10 +305,8 @@ fn setReplicas_nonDeployment_throws() {
     );
     service.register(spec("fn", "img:latest", ExecutionMode::Local));
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        service.set_replicas("fn", 2);
-    }));
-    assert!(result.is_err());
+    let result = service.set_replicas("fn", 2);
+    assert!(result.is_none());
 }
 
 #[test]

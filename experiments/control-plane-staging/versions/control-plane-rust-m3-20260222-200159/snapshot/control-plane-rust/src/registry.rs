@@ -510,7 +510,11 @@ impl FunctionService {
         self.with_function_lock(name, || {
             let current = self.registry.get(name)?;
             if current.execution_mode != Some(ExecutionMode::Deployment) {
-                panic!("Only DEPLOYMENT mode supports manual replica updates");
+                eprintln!(
+                    "set_replicas: function '{}' is not in DEPLOYMENT mode, ignoring",
+                    name
+                );
+                return None;
             }
             if let Some(resource_manager) = &self.resource_manager {
                 resource_manager.set_replicas(name, replicas);
