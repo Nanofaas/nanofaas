@@ -1396,6 +1396,15 @@ async fn complete_execution(
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if let Some(mut r) = store.get(execution_id) {
+            // Guard: reject double-completion for already-terminal executions
+            if matches!(r.state(), ExecutionState::Success | ExecutionState::Error | ExecutionState::Timeout) {
+                eprintln!(
+                    "complete_execution: ignoring completion for {} (state={:?}, already terminal)",
+                    execution_id,
+                    r.state()
+                );
+                return Ok(());
+            }
             let now = now_millis();
             // Ensure record is Running before applying terminal transition.
             // The dispatcher normally calls mark_running_at before dispatch; in
