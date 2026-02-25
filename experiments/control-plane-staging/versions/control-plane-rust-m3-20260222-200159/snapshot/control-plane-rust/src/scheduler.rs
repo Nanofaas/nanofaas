@@ -107,7 +107,7 @@ fn finalize_dispatch(
     function_name: &str,
     function: &FunctionSpec,
     task: crate::queue::InvocationTask,
-    dispatch: crate::dispatch::DispatchResult,
+    dispatch: DispatchResult,
     started_at: u64,
     queue: Arc<Mutex<QueueManager>>,
     store: Arc<Mutex<ExecutionStore>>,
