@@ -650,21 +650,57 @@ e2e_build_function_runtime_image() {
     e2e_log "Function-runtime image built"
 }
 
-# Builds the Rust control-plane Docker image.
-# CONTROL_PLANE_RUST_DIR (env var) overrides the default path relative to remote_dir.
+# Builds the Rust control-plane Docker image on the HOST and transfers it into the VM.
+#
+# Building on the host avoids two problems that occur when building inside a fresh
+# ephemeral Multipass VM:
+#   1. No Docker layer cache → every run re-downloads the rust-std musl target (~50 MB)
+#      via `rustup target add`, which causes SSH connection drops mid-download.
+#   2. The rust:bookworm base image (~1.5 GB) must be pulled from scratch every time.
+#
+# On the host, Docker layer cache persists across runs so only changed source layers
+# are rebuilt.  The final image (~10 MB) is then exported with `docker save`, copied
+# into the VM via SCP, and loaded with `docker load`.
+#
+# CONTROL_PLANE_RUST_DIR (env var) overrides the default path relative to PROJECT_ROOT.
 e2e_build_rust_control_plane_image() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-/home/ubuntu/nanofaas}    # kept for API compat; unused for host build
     local control_image=${2:?control_image is required}
     local rust_cp_dir="${CONTROL_PLANE_RUST_DIR:-experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust}"
-    local q_remote_dir q_control_image q_rust_cp_dir
-    q_remote_dir=$(printf '%q' "${remote_dir}")
-    q_control_image=$(printf '%q' "${control_image}")
-    q_rust_cp_dir=$(printf '%q' "${rust_cp_dir}")
+    local host_rust_cp_dir="${PROJECT_ROOT:-$(pwd)}/${rust_cp_dir}"
 
-    e2e_log "Building Rust control-plane image from ${rust_cp_dir}..."
-    vm_exec "cd ${q_remote_dir} && sudo docker build -t ${q_control_image} -f ${q_rust_cp_dir}/Dockerfile ${q_rust_cp_dir}/"
-    e2e_log "Rust control-plane image built"
+    if [[ ! -f "${host_rust_cp_dir}/Dockerfile" ]]; then
+        e2e_error "Rust control-plane Dockerfile not found at ${host_rust_cp_dir}/Dockerfile"
+        return 1
+    fi
+    if ! command -v docker >/dev/null 2>&1; then
+        e2e_error "docker not found on host; install Docker Desktop and retry."
+        return 1
+    fi
+
+    local host_tag="nanofaas/control-plane-rust:e2e-host"
+    local tmp_tar
+    tmp_tar=$(mktemp "/tmp/nanofaas-rust-cp.XXXXXX.tar")
+
+    e2e_log "Building Rust control-plane image on host (${rust_cp_dir})..."
+    if ! docker build -t "${host_tag}" -f "${host_rust_cp_dir}/Dockerfile" "${host_rust_cp_dir}/"; then
+        rm -f "${tmp_tar}"
+        e2e_error "Host docker build failed for Rust control-plane"
+        return 1
+    fi
+
+    e2e_log "Exporting image and transferring to VM..."
+    docker save "${host_tag}" > "${tmp_tar}"
+    e2e_copy_to_vm "${tmp_tar}" "${VM_NAME}" "/tmp/nanofaas-rust-cp.tar"
+    rm -f "${tmp_tar}"
+    docker rmi "${host_tag}" >/dev/null 2>&1 || true
+
+    vm_exec "sudo docker load -i /tmp/nanofaas-rust-cp.tar \
+        && sudo docker tag ${host_tag} ${control_image} \
+        && sudo docker rmi ${host_tag} >/dev/null 2>&1 || true \
+        && rm -f /tmp/nanofaas-rust-cp.tar"
+    e2e_log "Rust control-plane image built and loaded into VM"
 }
 
 e2e_build_control_plane_artifacts() {
