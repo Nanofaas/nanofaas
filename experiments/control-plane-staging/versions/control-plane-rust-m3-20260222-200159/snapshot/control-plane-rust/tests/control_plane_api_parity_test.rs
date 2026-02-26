@@ -42,9 +42,13 @@ async fn invoke(
         .unwrap()
 }
 
+fn app_with_scheduler() -> axum::Router {
+    control_plane_rust::app::build_app_pair_with_background_scheduler().0
+}
+
 #[tokio::test]
 async fn issue006_rateLimitAndRouting() {
-    let app = control_plane_rust::app::build_app();
+    let app = app_with_scheduler();
     register(&app, "echo-rate-limited", "rate-limited").await;
     register(&app, "echo-ok", "local").await;
 
@@ -57,7 +61,7 @@ async fn issue006_rateLimitAndRouting() {
 
 #[tokio::test]
 async fn issue007_idempotencyReturnsSameExecutionId() {
-    let app = control_plane_rust::app::build_app();
+    let app = app_with_scheduler();
     register(&app, "echo", "local").await;
 
     let req1 = Request::builder()
@@ -93,7 +97,7 @@ async fn issue007_idempotencyReturnsSameExecutionId() {
 
 #[tokio::test]
 async fn issue009_schedulerCompletesLocalInvocation() {
-    let app = control_plane_rust::app::build_app();
+    let app = app_with_scheduler();
     register(&app, "echo", "local").await;
 
     let invoke_res = invoke(&app, "echo", json!("payload")).await;
@@ -125,7 +129,7 @@ async fn issue009_schedulerCompletesLocalInvocation() {
 
 #[tokio::test]
 async fn issue013_syncWaitReturnsOutput() {
-    let app = control_plane_rust::app::build_app();
+    let app = app_with_scheduler();
     register(&app, "echo", "local").await;
 
     let res = invoke(&app, "echo", json!("payload")).await;
@@ -140,7 +144,7 @@ async fn issue013_syncWaitReturnsOutput() {
 
 #[tokio::test]
 async fn issue017_prometheusMetricsExposed() {
-    let app = control_plane_rust::app::build_app();
+    let app = app_with_scheduler();
     register(&app, "echo", "local").await;
 
     let res = invoke(&app, "echo", json!("payload")).await;
@@ -167,7 +171,7 @@ async fn issue017_prometheusMetricsExposed() {
 
 #[tokio::test]
 async fn issue018_healthEndpointIsUp() {
-    let app = control_plane_rust::app::build_app();
+    let app = app_with_scheduler();
     let res = app
         .clone()
         .oneshot(

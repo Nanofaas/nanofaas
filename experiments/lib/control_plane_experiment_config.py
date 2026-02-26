@@ -94,13 +94,22 @@ def build_deploy_env(
     namespace: str,
     keep_vm: bool,
     tag: str,
+    control_plane_runtime: str,
     control_plane_native_build: bool,
     control_plane_only: bool,
     host_rebuild_images: bool,
+    host_rebuild_image_refs: list[str] | None = None,
+    host_java_native_image_refs: list[str] | None = None,
     loadtest_workloads: str,
     loadtest_runtimes: str,
     selected_modules: list[str],
 ) -> dict[str, str]:
+    runtime = control_plane_runtime.strip().lower()
+    if runtime not in {"java", "rust"}:
+        raise ValueError("control_plane_runtime must be 'java' or 'rust'")
+    native_build_enabled = bool(control_plane_native_build) and runtime == "java"
+    rebuild_refs = [item.strip() for item in (host_rebuild_image_refs or []) if item.strip()]
+    java_native_refs = [item.strip() for item in (host_java_native_image_refs or []) if item.strip()]
     return {
         "VM_NAME": vm_name,
         "CPUS": cpus,
@@ -109,10 +118,13 @@ def build_deploy_env(
         "NAMESPACE": namespace,
         "KEEP_VM": "true" if keep_vm else "false",
         "TAG": tag,
-        "CONTROL_PLANE_NATIVE_BUILD": "true" if control_plane_native_build else "false",
+        "CONTROL_PLANE_RUNTIME": runtime,
+        "CONTROL_PLANE_NATIVE_BUILD": "true" if native_build_enabled else "false",
         "CONTROL_PLANE_BUILD_ON_HOST": "true",
         "CONTROL_PLANE_ONLY": "true" if control_plane_only else "false",
         "HOST_REBUILD_IMAGES": "true" if host_rebuild_images else "false",
+        "HOST_REBUILD_IMAGE_REFS": ",".join(rebuild_refs),
+        "HOST_JAVA_NATIVE_IMAGE_REFS": ",".join(java_native_refs),
         "LOADTEST_WORKLOADS": loadtest_workloads,
         "LOADTEST_RUNTIMES": loadtest_runtimes,
         "E2E_K3S_HELM_NONINTERACTIVE": "true",

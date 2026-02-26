@@ -151,7 +151,7 @@ start_jvm_sampler() {
             local ts_epoch
             ts_epoch="$(date +%s)"
             local scrape_file
-            scrape_file="$(mktemp /tmp/nanofaas-jvm-prom.XXXXXX.txt)"
+            scrape_file="$(e2e_mktemp_file "nanofaas-jvm-prom" ".txt")"
             if curl -fsS --max-time 5 "http://${vm_ip}:30081/actuator/prometheus" > "${scrape_file}" 2>/dev/null; then
                 sample_prometheus_text_to_jsonl "${ts_epoch}" "${scrape_file}" "${out_file}" || true
             fi
@@ -243,7 +243,7 @@ summarize_case() {
     local case_name="$1"
     local case_dir="$2"
     local out_json="${case_dir}/summary.json"
-    python3 - "${case_name}" "${case_dir}" "${out_json}" <<'PYEOF'
+    python3 - "${case_name}" "${case_dir}" "${out_json}" "${PROJECT_ROOT}" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
@@ -251,6 +251,9 @@ from pathlib import Path
 case_name = sys.argv[1]
 case_dir = Path(sys.argv[2])
 out_json = Path(sys.argv[3])
+project_root = Path(sys.argv[4]).resolve()
+sys.path.insert(0, str(project_root / "experiments" / "lib"))
+from k6_summary import resolve_http_req_failed_count, resolve_http_req_failed_ratio
 loadtest_dir = case_dir / "loadtest"
 jvm_samples_file = case_dir / "jvm-samples.jsonl"
 prom_snaps_file = loadtest_dir / "prom-snapshots.jsonl"
@@ -270,17 +273,8 @@ for jf in json_files:
     m = data.get("metrics", {})
     reqs = int(m.get("http_reqs", {}).get("count", 0))
     failed = m.get("http_req_failed", {})
-    if "value" in failed:
-        fail_ratio = float(failed.get("value", 0.0))
-    else:
-        if "fails" in failed:
-            fails = int(failed.get("fails", 0))
-        elif "passes" in failed:
-            fails = max(0, reqs - int(failed.get("passes", 0)))
-        else:
-            fails = 0
-        fail_ratio = (fails / reqs) if reqs else 0.0
-    fails = int(round(fail_ratio * reqs))
+    fail_ratio = resolve_http_req_failed_ratio(failed, reqs)
+    fails = resolve_http_req_failed_count(failed, reqs)
     dur = m.get("http_req_duration", {})
     avg = float(dur.get("avg", 0.0))
     p95 = float(dur.get("p(95)", 0.0))

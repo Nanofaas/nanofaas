@@ -36,7 +36,7 @@ nanofaas:
     queueSize: 100
     maxRetries: 3
   rate:
-    maxPerSecond: 1000
+    maxPerSecond: 1000000
   k8s:
     namespace: ""
     callbackUrl: "http://control-plane.default.svc.cluster.local:8080/v1/internal/executions"

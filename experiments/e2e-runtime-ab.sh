@@ -169,7 +169,7 @@ summarize_case() {
     if [[ -z "${prom_url}" ]]; then
         prom_url="$(VM_NAME="${VM_NAME}" e2e_resolve_nanofaas_url 30090 || true)"
     fi
-    python3 - "${case_name}" "${runtime}" "${case_dir}" "${out_json}" "${prom_url}" "${NAMESPACE}" <<'PYEOF'
+    python3 - "${case_name}" "${runtime}" "${case_dir}" "${out_json}" "${prom_url}" "${NAMESPACE}" "${PROJECT_ROOT}" <<'PYEOF'
 import json
 import re
 import sys
@@ -183,6 +183,9 @@ case_dir = Path(sys.argv[3])
 out_json = Path(sys.argv[4])
 prom_url = sys.argv[5].strip()
 namespace = sys.argv[6].strip()
+project_root = Path(sys.argv[7]).resolve()
+sys.path.insert(0, str(project_root / "experiments" / "lib"))
+from k6_summary import resolve_http_req_failed_count
 loadtest_dir = case_dir / "loadtest"
 window_file = case_dir / "loadtest-window.json"
 legacy_cp_samples_file = case_dir / "control-plane-top-samples.txt"
@@ -201,15 +204,7 @@ for jf in json_files:
     m = data.get("metrics", {})
     reqs = int(m.get("http_reqs", {}).get("count", 0))
     failed = m.get("http_req_failed", {})
-    if "passes" in failed:
-        # k6 Rate summaries encode "passes" as samples where the metric is true.
-        # For http_req_failed, "true" means request failed.
-        fails = int(failed.get("passes", 0))
-    elif "fails" in failed:
-        # Fallback for legacy/non-standard summaries where false samples are not separated.
-        fails = int(failed.get("fails", 0))
-    else:
-        fails = int(round(float(failed.get("value", 0.0)) * reqs))
+    fails = resolve_http_req_failed_count(failed, reqs)
     dur = m.get("http_req_duration", {})
     avg = float(dur.get("avg", 0.0))
     p95 = float(dur.get("p(95)", 0.0))

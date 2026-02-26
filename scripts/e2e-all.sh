@@ -40,9 +40,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "e2e-all"
+PROJECT_VERSION=${PROJECT_VERSION:-$(sed -n "s/^[[:space:]]*version = '\\([^']\\+\\)'.*/\\1/p" "${PROJECT_ROOT}/build.gradle" | head -n1)}
+PROJECT_VERSION=${PROJECT_VERSION:-0.0.0}
 
 DRY_RUN=${DRY_RUN:-false}
 CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
+E2E_K3S_HELM_NONINTERACTIVE=${E2E_K3S_HELM_NONINTERACTIVE:-true}
 E2E_RUNTIME_KIND=$(e2e_runtime_kind)
 
 # ─── Suite definitions ───────────────────────────────────────────────────────
@@ -133,6 +136,15 @@ suite_runtime_skip_reason() {
     esac
 }
 
+read_context_value() {
+    local context_file=$1
+    local key=$2
+    if [[ ! -s "${context_file}" ]]; then
+        return 0
+    fi
+    sed -n "s/^${key}=//p" "${context_file}" | tail -n1
+}
+
 # ─── Execution ───────────────────────────────────────────────────────────────
 PASSED_SUITES=()
 FAILED_SUITES=()
@@ -217,29 +229,124 @@ run_helm_stack() {
 
     local start elapsed
     local helm_vm_name="nanofaas-e2e-all-$(date +%s)"
+    local helm_tag="${TAG:-v${PROJECT_VERSION}}"
+    local helm_runtime="${CONTROL_PLANE_RUNTIME}"
+    local helm_run_loadtest="true"
+    local helm_skip_grafana=""
+    local helm_loadtest_workloads=""
+    local helm_loadtest_runtimes=""
+    local helm_invocation_mode=""
+    local helm_stage_sequence=""
+    local helm_payload_mode=""
+    local helm_payload_pool_size=""
+    local helm_context_file
+    helm_context_file="$(e2e_mktemp_file "nanofaas-helm-stack-context" ".env")"
     local suite_ok=true
     start=$(date +%s)
 
     # Phase 1: Helm setup (VM kept alive)
     log "Phase 1/3: Helm setup (VM=${helm_vm_name})..."
-    if ! KEEP_VM=true VM_NAME="${helm_vm_name}" "${SCRIPT_DIR}/e2e-k3s-helm.sh"; then
+    if ! KEEP_VM=true \
+        VM_NAME="${helm_vm_name}" \
+        CONTROL_PLANE_RUNTIME="${CONTROL_PLANE_RUNTIME}" \
+        E2E_HELM_STACK_CONTEXT_FILE="${helm_context_file}" \
+        E2E_HELM_STACK_FORCE_KEEP_VM=true \
+        E2E_WIZARD_FORCE_RUN_LOADTEST=false \
+        E2E_WIZARD_CAPTURE_LOADTEST_CONFIG=true \
+        E2E_WIZARD_DEFER_LOADTEST_EXECUTION=true \
+        E2E_K3S_HELM_NONINTERACTIVE="${E2E_K3S_HELM_NONINTERACTIVE}" \
+        "${SCRIPT_DIR}/e2e-k3s-helm.sh"; then
         error "Helm setup failed"
         suite_ok=false
+    elif [[ -s "${helm_context_file}" ]]; then
+        local context_vm context_tag context_runtime context_run_loadtest context_skip_grafana
+        local context_loadtest_workloads context_loadtest_runtimes context_invocation_mode
+        local context_stage_sequence context_payload_mode context_payload_pool_size
+        context_vm="$(read_context_value "${helm_context_file}" "VM_NAME" || true)"
+        context_tag="$(read_context_value "${helm_context_file}" "TAG" || true)"
+        context_runtime="$(read_context_value "${helm_context_file}" "CONTROL_PLANE_RUNTIME" || true)"
+        context_run_loadtest="$(read_context_value "${helm_context_file}" "RUN_LOADTEST" || true)"
+        context_skip_grafana="$(read_context_value "${helm_context_file}" "SKIP_GRAFANA" || true)"
+        context_loadtest_workloads="$(read_context_value "${helm_context_file}" "LOADTEST_WORKLOADS" || true)"
+        context_loadtest_runtimes="$(read_context_value "${helm_context_file}" "LOADTEST_RUNTIMES" || true)"
+        context_invocation_mode="$(read_context_value "${helm_context_file}" "INVOCATION_MODE" || true)"
+        context_stage_sequence="$(read_context_value "${helm_context_file}" "K6_STAGE_SEQUENCE" || true)"
+        context_payload_mode="$(read_context_value "${helm_context_file}" "K6_PAYLOAD_MODE" || true)"
+        context_payload_pool_size="$(read_context_value "${helm_context_file}" "K6_PAYLOAD_POOL_SIZE" || true)"
+        if [[ -n "${context_vm}" ]]; then
+            helm_vm_name="${context_vm}"
+        fi
+        if [[ -n "${context_tag}" ]]; then
+            helm_tag="${context_tag}"
+        fi
+        if [[ -n "${context_runtime}" ]]; then
+            helm_runtime="${context_runtime}"
+        fi
+        if [[ -n "${context_run_loadtest}" ]]; then
+            helm_run_loadtest="${context_run_loadtest}"
+        fi
+        helm_skip_grafana="${context_skip_grafana}"
+        helm_loadtest_workloads="${context_loadtest_workloads}"
+        helm_loadtest_runtimes="${context_loadtest_runtimes}"
+        helm_invocation_mode="${context_invocation_mode}"
+        helm_stage_sequence="${context_stage_sequence}"
+        helm_payload_mode="${context_payload_mode}"
+        helm_payload_pool_size="${context_payload_pool_size}"
+        log "Phase 1 context: VM=${helm_vm_name} tag=${helm_tag} runtime=${helm_runtime}"
     fi
 
     # Phase 2: Load test (reuses helm VM)
     if [[ "${suite_ok}" == "true" ]]; then
-        log "Phase 2/3: Load test..."
-        if ! VM_NAME="${helm_vm_name}" "${PROJECT_ROOT}/experiments/e2e-loadtest.sh"; then
-            error "Load test failed"
-            suite_ok=false
+        if [[ "${helm_run_loadtest}" != "true" ]]; then
+            warn "Phase 2/3: Load test skipped by wizard configuration (RUN_LOADTEST=${helm_run_loadtest})."
+        else
+            local loadtest_mode
+            local loadtest_modes=("sync")
+            loadtest_mode="$(printf '%s' "${helm_invocation_mode}" | tr '[:upper:]' '[:lower:]')"
+            case "${loadtest_mode}" in
+                both)
+                    loadtest_modes=("sync" "async")
+                    ;;
+                sync|async)
+                    loadtest_modes=("${loadtest_mode}")
+                    ;;
+                "")
+                    loadtest_modes=("sync")
+                    ;;
+                *)
+                    warn "Unknown invocation mode '${helm_invocation_mode}' from context, defaulting to sync."
+                    loadtest_modes=("sync")
+                    ;;
+            esac
+
+            local mode
+            for mode in "${loadtest_modes[@]}"; do
+                log "Phase 2/3: Load test (${mode})..."
+                if ! VM_NAME="${helm_vm_name}" \
+                    CONTROL_PLANE_RUNTIME="${helm_runtime}" \
+                    SKIP_GRAFANA="${helm_skip_grafana}" \
+                    LOADTEST_WORKLOADS="${helm_loadtest_workloads}" \
+                    LOADTEST_RUNTIMES="${helm_loadtest_runtimes}" \
+                    INVOCATION_MODE="${mode}" \
+                    K6_STAGE_SEQUENCE="${helm_stage_sequence}" \
+                    K6_PAYLOAD_MODE="${helm_payload_mode}" \
+                    K6_PAYLOAD_POOL_SIZE="${helm_payload_pool_size}" \
+                    "${PROJECT_ROOT}/experiments/e2e-loadtest.sh"; then
+                    error "Load test failed (${mode})"
+                    suite_ok=false
+                    break
+                fi
+            done
         fi
     fi
 
     # Phase 3: Autoscaling test (reuses helm VM)
     if [[ "${suite_ok}" == "true" ]]; then
         log "Phase 3/3: Autoscaling test..."
-        if ! VM_NAME="${helm_vm_name}" "${PROJECT_ROOT}/experiments/e2e-autoscaling.sh"; then
+        if ! VM_NAME="${helm_vm_name}" \
+            CONTROL_PLANE_RUNTIME="${helm_runtime}" \
+            FUNCTION_IMAGE_TAG="${helm_tag}" \
+            "${PROJECT_ROOT}/experiments/e2e-autoscaling.sh"; then
             error "Autoscaling test failed"
             suite_ok=false
         fi
@@ -248,6 +355,7 @@ run_helm_stack() {
     # Cleanup the shared VM
     log "Cleaning up helm-stack VM ${helm_vm_name}..."
     KEEP_VM=false VM_NAME="${helm_vm_name}" e2e_cleanup_vm
+    rm -f "${helm_context_file}"
 
     elapsed=$(( $(date +%s) - start ))
     if [[ "${suite_ok}" == "true" ]]; then

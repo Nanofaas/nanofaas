@@ -35,11 +35,16 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "build_non_control_plane_images_on_host" in script
     assert "push_host_non_control_plane_images_to_registry" in script
     assert "Reusing existing host-built control-plane image" in script
-    assert "HOST_REBUILD_IMAGES=false but missing host control-plane image" in script
+    assert "Control-plane image '${HOST_CONTROL_IMAGE}' requested from cache but missing" in script
     assert "Reusing existing host-built function/runtime/demo images" in script
-    assert "HOST_REBUILD_IMAGES=false but one or more host images are missing" in script
+    assert "should_rebuild_host_image" in script
+    assert "HOST_REBUILD_IMAGE_REFS" in script
+    assert "HOST_JAVA_NATIVE_IMAGE_REFS" in script
+    assert "should_build_java_image_native" in script
     assert "HOST_CONTROL_IMAGE=\"$(resolve_host_control_image_ref)\"" in script
-    assert "echo \"nanofaas/control-plane:host-${runtime_kind}-${build_mode}-${fingerprint}\"" in script
+    assert "echo \"nanofaas/control-plane:host-java-v${PROJECT_VERSION}-${build_mode}-${fingerprint}\"" in script
+    assert "echo \"nanofaas/control-plane:host-${runtime_kind}-v${PROJECT_VERSION}-${fingerprint}\"" in script
+    assert "modules_hash=\"$(compute_sha256_12 \"${runtime_kind}|${build_mode}|v${PROJECT_VERSION}|${modules_selector}\")\"" in script
     assert "echo \"${CONTROL_PLANE_CACHE_ROOT}/${runtime_kind}/${build_mode}/${modules_hash}\"" in script
     assert "\"runtime_kind\": runtime_kind" in script
     assert "ensure_host_image_available_from_local_cache" in script

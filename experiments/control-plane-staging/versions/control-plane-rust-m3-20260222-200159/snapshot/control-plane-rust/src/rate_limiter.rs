@@ -26,4 +26,12 @@ impl RateLimiter {
         self.used_in_window += 1;
         true
     }
+
+    pub fn capacity_per_second(&self) -> usize {
+        self.capacity_per_second
+    }
+
+    pub fn set_capacity_per_second(&mut self, capacity_per_second: usize) {
+        self.capacity_per_second = capacity_per_second.max(1);
+    }
 }

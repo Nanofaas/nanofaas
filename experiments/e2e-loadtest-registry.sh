@@ -959,6 +959,7 @@ from loadtest_registry_metrics import (
     summarize_control_plane_samples,
     summarize_control_plane_samples_by_windows,
 )
+from k6_summary import resolve_http_req_failed_count
 
 results_dir = sys.argv[1]
 prom_path = sys.argv[2]
@@ -1030,7 +1031,7 @@ def load_result(name):
         d = json.load(f)
     m = d.get("metrics", {})
     reqs = int(m.get("http_reqs", {}).get("count", 0))
-    fails = int(m.get("http_req_failed", {}).get("passes", 0))
+    fails = resolve_http_req_failed_count(m.get("http_req_failed", {}), reqs)
     dur = m.get("http_req_duration", {})
     iters = m.get("iterations", {})
     payload_size = m.get("payload_size_bytes", {})

@@ -11,6 +11,7 @@ set -euo pipefail
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXPERIMENTS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 NANOFAAS_URL="${NANOFAAS_URL:?Set NANOFAAS_URL to the nanofaas API endpoint (e.g. http://192.168.64.5:30080)}"
 
@@ -86,18 +87,27 @@ printf "%-25s %10s %10s %10s %10s %10s\n" "--------" "--------" "------" "------
 for test in "${TESTS[@]}"; do
     json="${RESULTS_DIR}/${test}.json"
     if [[ -f "${json}" ]]; then
-        python3 -c "
-import json, sys
-with open('${json}') as f:
+        python3 - "${json}" "${EXPERIMENTS_ROOT}" "${test}" <<'PYEOF' 2>/dev/null || echo "${test}: parse error"
+import json
+import sys
+from pathlib import Path
+
+json_path = Path(sys.argv[1])
+experiments_root = Path(sys.argv[2]).resolve()
+test = sys.argv[3]
+sys.path.insert(0, str(experiments_root / "lib"))
+from k6_summary import resolve_http_req_failed_count
+
+with json_path.open(encoding="utf-8") as f:
     d = json.load(f)
-m = d.get('metrics', {})
-reqs = int(m.get('http_reqs', {}).get('count', 0))
-fails = int(m.get('http_req_failed', {}).get('passes', 0))
-dur = m.get('http_req_duration', {})
-p95 = dur.get('p(95)', 0)
-p99 = dur.get('p(99)', 0)
-avg = dur.get('avg', 0)
-print(f'${test:25s} {reqs:10d} {fails:10d} {p95:10.1f} {p99:10.1f} {avg:10.1f}')
-" 2>/dev/null || echo "${test}: parse error"
+m = d.get("metrics", {})
+reqs = int(m.get("http_reqs", {}).get("count", 0))
+fails = resolve_http_req_failed_count(m.get("http_req_failed", {}), reqs)
+dur = m.get("http_req_duration", {})
+p95 = float(dur.get("p(95)", 0))
+p99 = float(dur.get("p(99)", 0))
+avg = float(dur.get("avg", 0))
+print(f"{test:25s} {reqs:10d} {fails:10d} {p95:10.1f} {p99:10.1f} {avg:10.1f}")
+PYEOF
     fi
 done

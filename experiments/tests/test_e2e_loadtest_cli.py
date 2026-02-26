@@ -70,11 +70,12 @@ def test_loadtest_preflight_uses_dynamic_required_functions_and_guidance():
     assert "if len(case_functions) < 2:" in content
 
 
-def test_loadtest_results_default_dir_is_mode_scoped_and_fail_rate_uses_fails():
+def test_loadtest_results_default_dir_is_mode_scoped_and_fail_rate_uses_rate_metric_value():
     content = SCRIPT.read_text(encoding="utf-8")
     assert "RESULTS_ROOT_DIR" in content
     assert "RESULTS_DIR=\"${RESULTS_ROOT_DIR}/${INVOCATION_MODE}\"" in content
-    assert "failed.get(\"fails\", 0)" in content
+    assert "from k6_summary import resolve_http_req_failed_count" in content
+    assert "fails = resolve_http_req_failed_count(failed, reqs)" in content
 
 
 def test_loadtest_single_selected_function_reaches_final_report(tmp_path: Path):

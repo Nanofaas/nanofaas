@@ -214,6 +214,37 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
+    void invokeSync_whenSyncQueueDisabledAndEnqueuerEnabled_enqueuesAndWaitsForCompletion() throws Exception {
+        FunctionSpec spec = functionSpec("queued-sync-fn", ExecutionMode.LOCAL);
+        when(functionService.get("queued-sync-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(true);
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            invocationService.completeExecution(
+                    task.executionId(),
+                    DispatchResult.warm(InvocationResult.success("queued-ok"))
+            );
+            return true;
+        }).when(enqueuer).enqueue(any());
+
+        InvocationResponse response = invocationService.invokeSync(
+                "queued-sync-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        );
+
+        assertThat(response.status()).isEqualTo("success");
+        assertThat(response.output()).isEqualTo("queued-ok");
+        verify(enqueuer).enqueue(any());
+        verify(syncQueueGateway, never()).enqueueOrThrow(any());
+        verify(dispatcherRouter, never()).dispatchLocal(any());
+        verify(enqueuer).releaseDispatchSlot("queued-sync-fn");
+    }
+
+    @Test
     void invokeSyncReactive_whenSyncQueueEnabled_usesSyncQueueOnly() {
         FunctionSpec spec = functionSpec("sync-queued-fn", ExecutionMode.LOCAL);
         when(functionService.get("sync-queued-fn")).thenReturn(Optional.of(spec));

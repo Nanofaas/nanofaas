@@ -227,6 +227,13 @@ impl QueueManager {
             .unwrap_or(0)
     }
 
+    pub fn queue_depth(&self, function_name: &str) -> usize {
+        self.queues
+            .get(function_name)
+            .map(|state| state.queued())
+            .unwrap_or(0)
+    }
+
     pub fn configure_function(
         &mut self,
         function_name: &str,

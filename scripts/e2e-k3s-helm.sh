@@ -24,12 +24,18 @@ NAMESPACE=${NAMESPACE:-nanofaas}
 KEEP_VM=${KEEP_VM:-true}
 SKIP_BUILD=${SKIP_BUILD:-false}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
-TAG=${TAG:-e2e}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_VERSION=${PROJECT_VERSION:-$(sed -n "s/^[[:space:]]*version = '\\([^']\\+\\)'.*/\\1/p" "${PROJECT_ROOT}/build.gradle" | head -n1)}
+PROJECT_VERSION=${PROJECT_VERSION:-0.0.0}
+TAG=${TAG:-v${PROJECT_VERSION}}
 CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD:-false}
 CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST:-false}
 CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY:-false}
 HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES:-true}
+HOST_REBUILD_IMAGE_REFS=${HOST_REBUILD_IMAGE_REFS:-}
+HOST_JAVA_NATIVE_IMAGE_REFS=${HOST_JAVA_NATIVE_IMAGE_REFS:-}
 LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
 LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
 PROM_CONTAINER_METRICS_ENABLED=${PROM_CONTAINER_METRICS_ENABLED:-true}
@@ -43,17 +49,29 @@ CONTROL_PLANE_NATIVE_IMAGE_BUILD_ARGS=${CONTROL_PLANE_NATIVE_IMAGE_BUILD_ARGS:-}
 CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS=${CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS:-}
 VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS:-900}
 VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS:-30}
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+E2E_HELM_STACK_CONTEXT_FILE=${E2E_HELM_STACK_CONTEXT_FILE:-}
+E2E_HELM_STACK_FORCE_KEEP_VM=${E2E_HELM_STACK_FORCE_KEEP_VM:-false}
+
+if [[ "${E2E_HELM_STACK_FORCE_KEEP_VM}" == "true" ]]; then
+    KEEP_VM="true"
+fi
 
 if [[ "${E2E_K3S_HELM_NONINTERACTIVE:-false}" != "true" ]]; then
     echo "[e2e] Modalita interattiva obbligatoria: avvio configuratore..."
+    E2E_WIZARD_CONTEXT_FILE="${E2E_HELM_STACK_CONTEXT_FILE}" \
+    E2E_WIZARD_FORCE_KEEP_VM="${E2E_HELM_STACK_FORCE_KEEP_VM}" \
     exec bash "${PROJECT_ROOT}/experiments/run.sh"
 fi
 
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "e2e"
 vm_exec() { e2e_vm_exec "$@"; }
+
+# Rust runtime does not support JVM/native toggle: ignore native flag defensively.
+if [[ "$(e2e_runtime_kind)" == "rust" && "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+    warn "CONTROL_PLANE_NATIVE_BUILD=true is ignored for rust runtime; forcing false."
+    CONTROL_PLANE_NATIVE_BUILD="false"
+fi
 
 # k3s path: enforce kubelet cAdvisor scraping and avoid cAdvisor DaemonSet installation.
 if [[ "${PROM_CONTAINER_METRICS_MODE}" != "kubelet" ]]; then
@@ -150,14 +168,30 @@ compute_sha256_12() {
 resolve_host_control_image_ref() {
     local runtime_kind
     runtime_kind="$(e2e_runtime_kind)"
-    local build_mode="jvm"
-    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
-        build_mode="native"
-    fi
+    local build_mode
+    build_mode="$(resolve_control_plane_build_mode)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
     local fingerprint
-    fingerprint="$(compute_sha256_12 "${runtime_kind}|${build_mode}|${modules_selector}")"
-    echo "nanofaas/control-plane:host-${runtime_kind}-${build_mode}-${fingerprint}"
+    fingerprint="$(compute_sha256_12 "${runtime_kind}|${build_mode}|v${PROJECT_VERSION}|${modules_selector}")"
+    if [[ "${runtime_kind}" == "java" ]]; then
+        echo "nanofaas/control-plane:host-java-v${PROJECT_VERSION}-${build_mode}-${fingerprint}"
+    else
+        echo "nanofaas/control-plane:host-${runtime_kind}-v${PROJECT_VERSION}-${fingerprint}"
+    fi
+}
+
+resolve_control_plane_build_mode() {
+    local runtime_kind
+    runtime_kind="$(e2e_runtime_kind)"
+    if [[ "${runtime_kind}" == "rust" ]]; then
+        echo "rust"
+        return
+    fi
+    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
+        echo "native"
+    else
+        echo "jvm"
+    fi
 }
 
 array_contains() {
@@ -258,6 +292,34 @@ ensure_host_image_available_from_local_cache() {
     host_image_exists "${target_ref}"
 }
 
+csv_contains_exact() {
+    local csv="${1:-}"
+    local needle="${2:-}"
+    [[ -z "${csv}" || -z "${needle}" ]] && return 1
+    local item
+    IFS=',' read -r -a items <<< "${csv}"
+    for item in "${items[@]}"; do
+        if [[ "${item}" == "${needle}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+should_rebuild_host_image() {
+    local image_ref=${1:?image_ref is required}
+    if [[ -n "${HOST_REBUILD_IMAGE_REFS}" ]]; then
+        csv_contains_exact "${HOST_REBUILD_IMAGE_REFS}" "${image_ref}"
+        return $?
+    fi
+    [[ "${HOST_REBUILD_IMAGES}" == "true" ]]
+}
+
+should_build_java_image_native() {
+    local image_ref=${1:?image_ref is required}
+    csv_contains_exact "${HOST_JAVA_NATIVE_IMAGE_REFS}" "${image_ref}"
+}
+
 resolve_control_plane_compatible_image_ref() {
     if [[ ! -f "${CONTROL_PLANE_CACHE_MANIFEST}" ]]; then
         return 1
@@ -268,10 +330,8 @@ resolve_control_plane_compatible_image_ref() {
 
     local runtime_kind
     runtime_kind="$(e2e_runtime_kind)"
-    local build_mode="jvm"
-    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
-        build_mode="native"
-    fi
+    local build_mode
+    build_mode="$(resolve_control_plane_build_mode)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
     python3 - "${CONTROL_PLANE_CACHE_MANIFEST}" "${runtime_kind}" "${build_mode}" "${modules_selector}" <<'PYEOF'
 import json
@@ -308,13 +368,11 @@ PYEOF
 resolve_control_plane_cache_dir() {
     local runtime_kind
     runtime_kind="$(e2e_runtime_kind)"
-    local build_mode="jvm"
-    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
-        build_mode="native"
-    fi
+    local build_mode
+    build_mode="$(resolve_control_plane_build_mode)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
     local modules_hash
-    modules_hash="$(compute_sha256_12 "${modules_selector}")"
+    modules_hash="$(compute_sha256_12 "${runtime_kind}|${build_mode}|v${PROJECT_VERSION}|${modules_selector}")"
     echo "${CONTROL_PLANE_CACHE_ROOT}/${runtime_kind}/${build_mode}/${modules_hash}"
 }
 
@@ -332,10 +390,8 @@ control_plane_cache_manifest_is_valid() {
         return 1
     fi
 
-    local build_mode="jvm"
-    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
-        build_mode="native"
-    fi
+    local build_mode
+    build_mode="$(resolve_control_plane_build_mode)"
     local runtime_kind
     runtime_kind="$(e2e_runtime_kind)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
@@ -386,10 +442,8 @@ write_control_plane_cache_manifest() {
         warn "Cannot determine control-plane image id for '${HOST_CONTROL_IMAGE}', skipping cache manifest write."
         return
     fi
-    local build_mode="jvm"
-    if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
-        build_mode="native"
-    fi
+    local build_mode
+    build_mode="$(resolve_control_plane_build_mode)"
     local runtime_kind
     runtime_kind="$(e2e_runtime_kind)"
     local modules_selector="${CONTROL_PLANE_MODULES:-none}"
@@ -457,8 +511,8 @@ append_demo_function_yaml() {
     DEMO_FUNCTIONS_YAML+="    - name: ${name}"$'\n'
     DEMO_FUNCTIONS_YAML+="      image: ${image}"$'\n'
     DEMO_FUNCTIONS_YAML+="      timeoutMs: 30000"$'\n'
-    DEMO_FUNCTIONS_YAML+="      concurrency: 4"$'\n'
-    DEMO_FUNCTIONS_YAML+="      queueSize: 100"$'\n'
+    DEMO_FUNCTIONS_YAML+="      concurrency: 8"$'\n'
+    DEMO_FUNCTIONS_YAML+="      queueSize: 1000"$'\n'
     DEMO_FUNCTIONS_YAML+="      maxRetries: 3"$'\n'
     DEMO_FUNCTIONS_YAML+="      executionMode: DEPLOYMENT"$'\n'
     if [[ -n "${runtime_mode}" ]]; then
@@ -508,7 +562,7 @@ build_control_plane_image_on_host() {
         err "docker non trovato sul host. Avvia Docker Desktop e riprova."
         exit 1
     fi
-    if [[ "${HOST_REBUILD_IMAGES}" != "true" ]]; then
+    if ! should_rebuild_host_image "${HOST_CONTROL_IMAGE}"; then
         if host_image_exists "${HOST_CONTROL_IMAGE}"; then
             if control_plane_cache_manifest_is_valid; then
                 log "Reusing existing host-built control-plane image: ${HOST_CONTROL_IMAGE}"
@@ -530,7 +584,7 @@ build_control_plane_image_on_host() {
             log "Reusing existing host-built control-plane image: ${HOST_CONTROL_IMAGE}"
             return
         fi
-        warn "HOST_REBUILD_IMAGES=false but missing host control-plane image '${HOST_CONTROL_IMAGE}'. Falling back to host build."
+        warn "Control-plane image '${HOST_CONTROL_IMAGE}' requested from cache but missing; falling back to host build."
     fi
 
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
@@ -579,74 +633,151 @@ build_non_control_plane_images_on_host() {
         err "docker non trovato sul host. Avvia Docker Desktop e riprova."
         exit 1
     fi
-    if [[ "${HOST_REBUILD_IMAGES}" != "true" ]]; then
-        local expected_images=("${RUNTIME_IMAGE}")
-        if should_include_demo "word-stats" "java"; then expected_images+=("${JAVA_WORD_STATS_IMAGE}"); fi
-        if should_include_demo "json-transform" "java"; then expected_images+=("${JAVA_JSON_TRANSFORM_IMAGE}"); fi
-        if should_include_demo "word-stats" "python"; then expected_images+=("${PYTHON_WORD_STATS_IMAGE}"); fi
-        if should_include_demo "json-transform" "python"; then expected_images+=("${PYTHON_JSON_TRANSFORM_IMAGE}"); fi
-        if should_include_demo "word-stats" "exec"; then expected_images+=("${BASH_WORD_STATS_IMAGE}"); fi
-        if should_include_demo "json-transform" "exec"; then expected_images+=("${BASH_JSON_TRANSFORM_IMAGE}"); fi
-        if should_include_demo "word-stats" "java-lite"; then expected_images+=("${JAVA_LITE_WORD_STATS_IMAGE}"); fi
-        if should_include_demo "json-transform" "java-lite"; then expected_images+=("${JAVA_LITE_JSON_TRANSFORM_IMAGE}"); fi
+    local need_runtime_image=false
+    local need_java_word_stats=false
+    local need_java_json_transform=false
+    local need_python_word_stats=false
+    local need_python_json_transform=false
+    local need_bash_word_stats=false
+    local need_bash_json_transform=false
+    local need_java_lite_word_stats=false
+    local need_java_lite_json_transform=false
+    local java_word_stats_mode="jvm"
+    local java_json_transform_mode="jvm"
 
-        local image_ref missing_image=false
-        for image_ref in "${expected_images[@]}"; do
-            if ! ensure_host_image_available_from_local_cache "${image_ref}"; then
-                missing_image=true
-                break
-            fi
-        done
-        if [[ "${missing_image}" == "false" ]]; then
-            log "Reusing existing host-built function/runtime/demo images."
-            return
-        fi
-        warn "HOST_REBUILD_IMAGES=false but one or more host images are missing. Falling back to host build."
+    if should_rebuild_host_image "${RUNTIME_IMAGE}" || !ensure_host_image_available_from_local_cache "${RUNTIME_IMAGE}"; then
+        need_runtime_image=true
     fi
 
-    local gradle_tasks=(":function-runtime:bootJar")
     if should_include_demo "word-stats" "java"; then
+        if should_build_java_image_native "${JAVA_WORD_STATS_IMAGE}"; then
+            java_word_stats_mode="native"
+        fi
+        if should_rebuild_host_image "${JAVA_WORD_STATS_IMAGE}" || !ensure_host_image_available_from_local_cache "${JAVA_WORD_STATS_IMAGE}"; then
+            need_java_word_stats=true
+        fi
+    fi
+
+    if should_include_demo "json-transform" "java"; then
+        if should_build_java_image_native "${JAVA_JSON_TRANSFORM_IMAGE}"; then
+            java_json_transform_mode="native"
+        fi
+        if should_rebuild_host_image "${JAVA_JSON_TRANSFORM_IMAGE}" || !ensure_host_image_available_from_local_cache "${JAVA_JSON_TRANSFORM_IMAGE}"; then
+            need_java_json_transform=true
+        fi
+    fi
+
+    if should_include_demo "word-stats" "python"; then
+        if should_rebuild_host_image "${PYTHON_WORD_STATS_IMAGE}" || !ensure_host_image_available_from_local_cache "${PYTHON_WORD_STATS_IMAGE}"; then
+            need_python_word_stats=true
+        fi
+    fi
+
+    if should_include_demo "json-transform" "python"; then
+        if should_rebuild_host_image "${PYTHON_JSON_TRANSFORM_IMAGE}" || !ensure_host_image_available_from_local_cache "${PYTHON_JSON_TRANSFORM_IMAGE}"; then
+            need_python_json_transform=true
+        fi
+    fi
+
+    if should_include_demo "word-stats" "exec"; then
+        if should_rebuild_host_image "${BASH_WORD_STATS_IMAGE}" || !ensure_host_image_available_from_local_cache "${BASH_WORD_STATS_IMAGE}"; then
+            need_bash_word_stats=true
+        fi
+    fi
+
+    if should_include_demo "json-transform" "exec"; then
+        if should_rebuild_host_image "${BASH_JSON_TRANSFORM_IMAGE}" || !ensure_host_image_available_from_local_cache "${BASH_JSON_TRANSFORM_IMAGE}"; then
+            need_bash_json_transform=true
+        fi
+    fi
+
+    if should_include_demo "word-stats" "java-lite"; then
+        if should_rebuild_host_image "${JAVA_LITE_WORD_STATS_IMAGE}" || !ensure_host_image_available_from_local_cache "${JAVA_LITE_WORD_STATS_IMAGE}"; then
+            need_java_lite_word_stats=true
+        fi
+    fi
+
+    if should_include_demo "json-transform" "java-lite"; then
+        if should_rebuild_host_image "${JAVA_LITE_JSON_TRANSFORM_IMAGE}" || !ensure_host_image_available_from_local_cache "${JAVA_LITE_JSON_TRANSFORM_IMAGE}"; then
+            need_java_lite_json_transform=true
+        fi
+    fi
+
+    if [[ "${need_runtime_image}" == "false" \
+        && "${need_java_word_stats}" == "false" \
+        && "${need_java_json_transform}" == "false" \
+        && "${need_python_word_stats}" == "false" \
+        && "${need_python_json_transform}" == "false" \
+        && "${need_bash_word_stats}" == "false" \
+        && "${need_bash_json_transform}" == "false" \
+        && "${need_java_lite_word_stats}" == "false" \
+        && "${need_java_lite_json_transform}" == "false" ]]; then
+        log "Reusing existing host-built function/runtime/demo images."
+        return
+    fi
+
+    local gradle_tasks=()
+    if [[ "${need_runtime_image}" == "true" ]]; then
+        gradle_tasks+=(":function-runtime:bootJar")
+    fi
+    if [[ "${need_java_word_stats}" == "true" && "${java_word_stats_mode}" != "native" ]]; then
         gradle_tasks+=(":examples:java:word-stats:bootJar")
     fi
-    if should_include_demo "json-transform" "java"; then
+    if [[ "${need_java_json_transform}" == "true" && "${java_json_transform_mode}" != "native" ]]; then
         gradle_tasks+=(":examples:java:json-transform:bootJar")
     fi
 
-    log "Building function/runtime JARs on host..."
-    (cd "${PROJECT_ROOT}" && ./gradlew "${gradle_tasks[@]}" --no-daemon -q)
-
-    log "Building function-runtime image on host..."
-    (cd "${PROJECT_ROOT}" && docker build -t "${RUNTIME_IMAGE}" -f function-runtime/Dockerfile function-runtime/)
-
-    if should_include_demo "word-stats" "java"; then
-        log "Building image on host: word-stats-java"
-        (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_WORD_STATS_IMAGE}" -f examples/java/word-stats/Dockerfile examples/java/word-stats/)
+    if [[ "${#gradle_tasks[@]}" -gt 0 ]]; then
+        log "Building function/runtime JARs on host..."
+        (cd "${PROJECT_ROOT}" && ./gradlew "${gradle_tasks[@]}" --no-daemon -q)
     fi
-    if should_include_demo "json-transform" "java"; then
-        log "Building image on host: json-transform-java"
-        (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_JSON_TRANSFORM_IMAGE}" -f examples/java/json-transform/Dockerfile examples/java/json-transform/)
+
+    if [[ "${need_runtime_image}" == "true" ]]; then
+        log "Building image on host: function-runtime"
+        (cd "${PROJECT_ROOT}" && docker build -t "${RUNTIME_IMAGE}" -f function-runtime/Dockerfile function-runtime/)
     fi
-    if should_include_demo "word-stats" "python"; then
+
+    if [[ "${need_java_word_stats}" == "true" ]]; then
+        if [[ "${java_word_stats_mode}" == "native" ]]; then
+            log "Building image on host: word-stats-java (native)"
+            (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_WORD_STATS_IMAGE}" -f examples/java/word-stats-lite/Dockerfile .)
+        else
+            log "Building image on host: word-stats-java (jvm)"
+            (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_WORD_STATS_IMAGE}" -f examples/java/word-stats/Dockerfile examples/java/word-stats/)
+        fi
+    fi
+
+    if [[ "${need_java_json_transform}" == "true" ]]; then
+        if [[ "${java_json_transform_mode}" == "native" ]]; then
+            log "Building image on host: json-transform-java (native)"
+            (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_JSON_TRANSFORM_IMAGE}" -f examples/java/json-transform-lite/Dockerfile .)
+        else
+            log "Building image on host: json-transform-java (jvm)"
+            (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_JSON_TRANSFORM_IMAGE}" -f examples/java/json-transform/Dockerfile examples/java/json-transform/)
+        fi
+    fi
+
+    if [[ "${need_python_word_stats}" == "true" ]]; then
         log "Building image on host: word-stats-python"
         (cd "${PROJECT_ROOT}" && docker build -t "${PYTHON_WORD_STATS_IMAGE}" -f examples/python/word-stats/Dockerfile .)
     fi
-    if should_include_demo "json-transform" "python"; then
+    if [[ "${need_python_json_transform}" == "true" ]]; then
         log "Building image on host: json-transform-python"
         (cd "${PROJECT_ROOT}" && docker build -t "${PYTHON_JSON_TRANSFORM_IMAGE}" -f examples/python/json-transform/Dockerfile .)
     fi
-    if should_include_demo "word-stats" "exec"; then
+    if [[ "${need_bash_word_stats}" == "true" ]]; then
         log "Building image on host: word-stats-exec"
         (cd "${PROJECT_ROOT}" && docker build -t "${BASH_WORD_STATS_IMAGE}" -f examples/bash/word-stats/Dockerfile .)
     fi
-    if should_include_demo "json-transform" "exec"; then
+    if [[ "${need_bash_json_transform}" == "true" ]]; then
         log "Building image on host: json-transform-exec"
         (cd "${PROJECT_ROOT}" && docker build -t "${BASH_JSON_TRANSFORM_IMAGE}" -f examples/bash/json-transform/Dockerfile .)
     fi
-    if should_include_demo "word-stats" "java-lite"; then
+    if [[ "${need_java_lite_word_stats}" == "true" ]]; then
         log "Building image on host: word-stats-java-lite"
         (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_LITE_WORD_STATS_IMAGE}" -f examples/java/word-stats-lite/Dockerfile .)
     fi
-    if should_include_demo "json-transform" "java-lite"; then
+    if [[ "${need_java_lite_json_transform}" == "true" ]]; then
         log "Building image on host: json-transform-java-lite"
         (cd "${PROJECT_ROOT}" && docker build -t "${JAVA_LITE_JSON_TRANSFORM_IMAGE}" -f examples/java/json-transform-lite/Dockerfile .)
     fi
@@ -661,7 +792,7 @@ push_host_control_plane_image_to_registry() {
     fi
 
     local host_tar
-    host_tar="$(mktemp /tmp/nanofaas-control-plane-host-image.XXXXXX.tar)"
+    host_tar="$(e2e_mktemp_file "nanofaas-control-plane-host-image" ".tar")"
     log "Exporting host control-plane image..."
     docker save "${HOST_CONTROL_IMAGE}" -o "${host_tar}"
 
@@ -698,7 +829,7 @@ push_host_non_control_plane_images_to_registry() {
     if should_include_demo "json-transform" "java-lite"; then images+=("${JAVA_LITE_JSON_TRANSFORM_IMAGE}"); fi
 
     local host_tar
-    host_tar="$(mktemp /tmp/nanofaas-host-function-images.XXXXXX.tar)"
+    host_tar="$(e2e_mktemp_file "nanofaas-host-function-images" ".tar")"
     log "Exporting host function/demo images..."
     docker save "${images[@]}" -o "${host_tar}"
 
@@ -936,6 +1067,10 @@ push_images() {
 helm_install() {
     log "Installing nanofaas via Helm..."
     local demos_enabled="true"
+    local sync_invoke_queue_enabled="false"
+    if [[ "$(e2e_runtime_kind)" == "rust" ]]; then
+        sync_invoke_queue_enabled="true"
+    fi
     if [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
         demos_enabled="false"
         log "Control-plane-only mode: disabling demo function deployment in Helm values."
@@ -975,6 +1110,10 @@ controlPlane:
       value: \"true\"
     - name: SYNC_QUEUE_ADMISSION_ENABLED
       value: \"false\"
+    - name: NANOFAAS_SYNC_INVOKE_QUEUE_ENABLED
+      value: \"${sync_invoke_queue_enabled}\"
+    - name: NANOFAAS_INTERNAL_SCALER_POLL_INTERVAL_MS
+      value: \"500\"
 
 prometheus:
   create: true
@@ -1124,12 +1263,26 @@ print_summary() {
     log ""
 }
 
+write_helm_stack_context() {
+    if [[ -z "${E2E_HELM_STACK_CONTEXT_FILE}" ]]; then
+        return
+    fi
+    mkdir -p "$(dirname "${E2E_HELM_STACK_CONTEXT_FILE}")"
+    cat > "${E2E_HELM_STACK_CONTEXT_FILE}" <<EOF
+VM_NAME=${VM_NAME}
+TAG=${TAG}
+CONTROL_PLANE_RUNTIME=$(e2e_runtime_kind)
+EOF
+    log "Helm stack context written: ${E2E_HELM_STACK_CONTEXT_FILE}"
+}
+
 main() {
     log "Starting nanofaas E2E setup..."
     log "  VM=${VM_NAME} CPUS=${CPUS} MEM=${MEMORY} DISK=${DISK}"
     log "  NAMESPACE=${NAMESPACE} LOCAL_REGISTRY=${LOCAL_REGISTRY} SKIP_BUILD=${SKIP_BUILD}"
     log "  CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME}"
     log "  TAG=${TAG} CONTROL_PLANE_NATIVE_BUILD=${CONTROL_PLANE_NATIVE_BUILD} CONTROL_PLANE_BUILD_ON_HOST=${CONTROL_PLANE_BUILD_ON_HOST} CONTROL_PLANE_ONLY=${CONTROL_PLANE_ONLY} HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES} CONTROL_PLANE_MODULES=${CONTROL_PLANE_MODULES}"
+    log "  HOST_REBUILD_IMAGE_REFS=${HOST_REBUILD_IMAGE_REFS:-<none>} HOST_JAVA_NATIVE_IMAGE_REFS=${HOST_JAVA_NATIVE_IMAGE_REFS:-<none>}"
     log "  VM_EXEC_TIMEOUT_SECONDS=${VM_EXEC_TIMEOUT_SECONDS} VM_EXEC_HEARTBEAT_SECONDS=${VM_EXEC_HEARTBEAT_SECONDS}"
     if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" && "${CONTROL_PLANE_ONLY}" != "true" ]]; then
         log "  Build strategy: control-plane/function-runtime/demo images on host"
@@ -1160,6 +1313,7 @@ main() {
     push_images
     helm_install
     verify
+    write_helm_stack_context
     print_summary
 }
 

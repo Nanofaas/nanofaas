@@ -29,10 +29,10 @@ def test_runtime_ab_script_propagates_runtime_to_deploy_and_loadtest():
     assert "comparison.json" in content
 
 
-def test_runtime_ab_summary_uses_passes_for_http_req_failed_rate_metric():
+def test_runtime_ab_summary_uses_shared_k6_fail_count_parser():
     content = SCRIPT.read_text(encoding="utf-8")
-    assert 'if "passes" in failed' in content
-    assert 'fails = int(failed.get("passes", 0))' in content
+    assert "from k6_summary import resolve_http_req_failed_count" in content
+    assert "fails = resolve_http_req_failed_count(failed, reqs)" in content
 
 
 def test_runtime_ab_report_renders_single_side_metrics_when_one_case_missing():

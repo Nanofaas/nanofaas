@@ -57,12 +57,33 @@ def test_k3s_helm_uses_runtime_aware_control_plane_image_paths():
     assert "e2e_build_control_plane_image \"/home/ubuntu/nanofaas\" \"${CONTROL_IMAGE}\"" in script
     assert "if [[ \"$(e2e_runtime_kind)\" == \"rust\" ]]; then" in script
     assert "Building control-plane image on host (Rust Dockerfile)" in script
+    assert "CONTROL_PLANE_NATIVE_BUILD=true is ignored for rust runtime; forcing false." in script
+    assert "E2E_HELM_STACK_CONTEXT_FILE=${E2E_HELM_STACK_CONTEXT_FILE:-}" in script
+    assert "E2E_HELM_STACK_FORCE_KEEP_VM=${E2E_HELM_STACK_FORCE_KEEP_VM:-false}" in script
+    assert "E2E_WIZARD_CONTEXT_FILE=\"${E2E_HELM_STACK_CONTEXT_FILE}\"" in script
+    assert "E2E_WIZARD_FORCE_KEEP_VM=\"${E2E_HELM_STACK_FORCE_KEEP_VM}\"" in script
+    assert "NANOFAAS_SYNC_INVOKE_QUEUE_ENABLED" in script
+    assert "NANOFAAS_INTERNAL_SCALER_POLL_INTERVAL_MS" in script
+    assert "write_helm_stack_context" in script
 
 
 def test_e2e_all_logs_runtime_and_skips_unsupported_rust_suites():
     script = read_script("e2e-all.sh")
     assert "E2E_RUNTIME_KIND=$(e2e_runtime_kind)" in script
     assert "Runtime=${E2E_RUNTIME_KIND}" in script
+    assert "E2E_K3S_HELM_NONINTERACTIVE=${E2E_K3S_HELM_NONINTERACTIVE:-true}" in script
+    assert "CONTROL_PLANE_RUNTIME=\"${CONTROL_PLANE_RUNTIME}\"" in script
+    assert "E2E_K3S_HELM_NONINTERACTIVE=\"${E2E_K3S_HELM_NONINTERACTIVE}\"" in script
+    assert "E2E_HELM_STACK_CONTEXT_FILE=\"${helm_context_file}\"" in script
+    assert "E2E_HELM_STACK_FORCE_KEEP_VM=true" in script
+    assert "E2E_WIZARD_FORCE_RUN_LOADTEST=false" in script
+    assert "E2E_WIZARD_CAPTURE_LOADTEST_CONFIG=true" in script
+    assert "E2E_WIZARD_DEFER_LOADTEST_EXECUTION=true" in script
+    assert "read_context_value()" in script
+    assert "RUN_LOADTEST" in script
+    assert "INVOCATION_MODE" in script
+    assert "loadtest_modes=(\"sync\" \"async\")" in script
+    assert "Phase 1 context: VM=${helm_vm_name} tag=${helm_tag} runtime=${helm_runtime}" in script
     assert "if [[ \"${E2E_RUNTIME_KIND}\" != \"rust\" ]]; then" in script
     assert "rust runtime skip:" in script
     assert "k3s-curl" in script

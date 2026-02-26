@@ -597,12 +597,17 @@ generate_report() {
     log ""
 
     # Generate the summary table
-    python3 - "${RESULTS_DIR}" "${INVOCATION_MODE}" "${tests[@]}" << 'PYEOF'
+    python3 - "${RESULTS_DIR}" "${INVOCATION_MODE}" "${PROJECT_ROOT}" "${tests[@]}" << 'PYEOF'
 import json, os, sys, glob
+from pathlib import Path
 
 results_dir = sys.argv[1]
 mode = sys.argv[2]
-tests = sys.argv[3:] or [
+project_root = Path(sys.argv[3]).resolve()
+sys.path.insert(0, str(project_root / "experiments" / "lib"))
+from k6_summary import resolve_http_req_failed_count
+
+tests = sys.argv[4:] or [
     "word-stats-java", "json-transform-java",
     "word-stats-python", "json-transform-python",
     "word-stats-exec", "json-transform-exec",
@@ -610,6 +615,7 @@ tests = sys.argv[3:] or [
 ]
 
 rows = []
+
 for test in tests:
     path = os.path.join(results_dir, f"{test}.json")
     if not os.path.exists(path):
@@ -619,12 +625,7 @@ for test in tests:
     m = d.get("metrics", {})
     reqs = int(m.get("http_reqs", {}).get("count", 0))
     failed = m.get("http_req_failed", {})
-    if "fails" in failed:
-        fails = int(failed.get("fails", 0))
-    elif "passes" in failed:
-        fails = max(0, reqs - int(failed.get("passes", 0)))
-    else:
-        fails = 0
+    fails = resolve_http_req_failed_count(failed, reqs)
     dur = m.get("http_req_duration", {})
     avg = dur.get("avg", 0)
     p90 = dur.get("p(90)", 0)

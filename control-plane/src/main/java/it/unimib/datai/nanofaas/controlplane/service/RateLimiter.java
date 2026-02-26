@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @Component
 @ConfigurationProperties(prefix = "nanofaas.rate")
 public class RateLimiter {
-    private volatile int maxPerSecond = 1000;
+    private volatile int maxPerSecond = 1_000_000;
     private final AtomicLong windowStartSecond = new AtomicLong(Instant.now().getEpochSecond());
     private final AtomicInteger windowCount = new AtomicInteger();
 

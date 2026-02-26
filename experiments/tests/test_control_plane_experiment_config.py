@@ -43,7 +43,7 @@ def test_normalize_module_selection_rejects_unknown_modules():
         raise AssertionError("Expected ValueError for unknown module name")
 
 
-def test_build_deploy_env_sets_native_and_module_selector():
+def test_build_deploy_env_forces_non_native_for_rust_and_sets_module_selector():
     env = build_deploy_env(
         vm_name="vm-x",
         cpus="6",
@@ -52,6 +52,7 @@ def test_build_deploy_env_sets_native_and_module_selector():
         namespace="nanofaas",
         keep_vm=True,
         tag="exp-123",
+        control_plane_runtime="rust",
         control_plane_native_build=True,
         control_plane_only=True,
         host_rebuild_images=True,
@@ -66,7 +67,8 @@ def test_build_deploy_env_sets_native_and_module_selector():
     assert env["NAMESPACE"] == "nanofaas"
     assert env["KEEP_VM"] == "true"
     assert env["TAG"] == "exp-123"
-    assert env["CONTROL_PLANE_NATIVE_BUILD"] == "true"
+    assert env["CONTROL_PLANE_RUNTIME"] == "rust"
+    assert env["CONTROL_PLANE_NATIVE_BUILD"] == "false"
     assert env["CONTROL_PLANE_BUILD_ON_HOST"] == "true"
     assert env["CONTROL_PLANE_ONLY"] == "true"
     assert env["HOST_REBUILD_IMAGES"] == "true"
@@ -85,6 +87,7 @@ def test_build_deploy_env_maps_empty_modules_to_none():
         namespace="nanofaas",
         keep_vm=False,
         tag="exp-core",
+        control_plane_runtime="java",
         control_plane_native_build=False,
         control_plane_only=False,
         host_rebuild_images=False,
@@ -96,6 +99,7 @@ def test_build_deploy_env_maps_empty_modules_to_none():
     assert env["CONTROL_PLANE_NATIVE_BUILD"] == "false"
     assert env["CONTROL_PLANE_ONLY"] == "false"
     assert env["HOST_REBUILD_IMAGES"] == "false"
+    assert env["CONTROL_PLANE_RUNTIME"] == "java"
     assert env["LOADTEST_WORKLOADS"] == "word-stats"
     assert env["LOADTEST_RUNTIMES"] == "java"
     assert env["CONTROL_PLANE_MODULES"] == "none"

@@ -3,6 +3,8 @@ use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tower::util::ServiceExt;
@@ -25,6 +27,63 @@ fn one_shot_json_runtime(body: &str) -> String {
         }
     });
     format!("http://127.0.0.1:{}/invoke", addr.port())
+}
+
+fn delayed_json_runtime(
+    body: &str,
+    delay: Duration,
+    max_requests: usize,
+) -> (String, Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed runtime");
+    let addr = listener.local_addr().expect("runtime local addr");
+    let response_body = body.to_string();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let max_in_flight = Arc::new(AtomicUsize::new(0));
+    let in_flight_for_loop = Arc::clone(&in_flight);
+    let max_for_loop = Arc::clone(&max_in_flight);
+    thread::spawn(move || {
+        for _ in 0..max_requests {
+            let accepted = listener.accept();
+            let Ok((mut socket, _)) = accepted else {
+                break;
+            };
+            let body = response_body.clone();
+            let in_flight = Arc::clone(&in_flight_for_loop);
+            let max_in_flight = Arc::clone(&max_for_loop);
+            thread::spawn(move || {
+                let current = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = max_in_flight.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if max_in_flight
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf);
+                thread::sleep(delay);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(reply.as_bytes());
+                let _ = socket.flush();
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+            });
+        }
+    });
+
+    (
+        format!("http://127.0.0.1:{}/invoke", addr.port()),
+        max_in_flight,
+    )
 }
 
 async fn register_pool_function(app: &axum::Router, name: &str, endpoint_url: &str) {
@@ -144,4 +203,37 @@ async fn background_scheduler_records_dispatch_and_completion_metrics() {
 
     let payload = execution_payload(&app, &execution_id).await;
     panic!("execution never completed to success: {payload}");
+}
+
+#[tokio::test]
+async fn background_scheduler_dispatches_multiple_tasks_concurrently() {
+    let (app, _mgmt) = control_plane_rust::app::build_app_pair_with_background_scheduler();
+    let (endpoint, max_in_flight) =
+        delayed_json_runtime(r#"{"message":"ok"}"#, Duration::from_millis(600), 24);
+    register_pool_function(&app, "bg-concurrency", &endpoint).await;
+
+    let mut execution_ids = Vec::new();
+    for _ in 0..8 {
+        execution_ids.push(enqueue(&app, "bg-concurrency").await);
+    }
+
+    for execution_id in &execution_ids {
+        for _ in 0..80 {
+            let payload = execution_payload(&app, execution_id).await;
+            let status = payload["status"].as_str().unwrap_or_default();
+            if status == "success" {
+                break;
+            }
+            if status == "error" || status == "timeout" {
+                panic!("execution reached terminal non-success status: {payload}");
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    assert!(
+        max_in_flight.load(Ordering::SeqCst) >= 2,
+        "scheduler dispatched requests sequentially (max in-flight = {})",
+        max_in_flight.load(Ordering::SeqCst)
+    );
 }

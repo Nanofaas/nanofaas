@@ -6,7 +6,7 @@ set -euo pipefail
 # and scales back down to 0 when load stops.
 #
 # Usage:
-#   ./scripts/e2e-autoscaling.sh
+#   ./experiments/e2e-autoscaling.sh
 #
 # Prerequisites:
 #   - nanofaas deployed via ./scripts/e2e-k3s-helm.sh (VM running)
@@ -20,6 +20,10 @@ e2e_set_log_prefix "autoscale"
 e2e_test_init
 K6_DIR="${PROJECT_ROOT}/experiments/k6"
 FUNCTION_NAME=${FUNCTION_NAME:-word-stats-java}
+PROJECT_VERSION=${PROJECT_VERSION:-$(sed -n "s/^[[:space:]]*version = '\\([^']\\+\\)'.*/\\1/p" "${PROJECT_ROOT}/build.gradle" | head -n1)}
+PROJECT_VERSION=${PROJECT_VERSION:-0.0.0}
+FUNCTION_IMAGE_TAG=${FUNCTION_IMAGE_TAG:-${TAG:-v${PROJECT_VERSION}}}
+FUNCTION_IMAGE=${FUNCTION_IMAGE:-localhost:5000/nanofaas/java-word-stats:${FUNCTION_IMAGE_TAG}}
 NAMESPACE=${NAMESPACE:-nanofaas}
 CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
 
@@ -74,13 +78,14 @@ phase_a_register() {
     sleep 2
 
     info "Registering ${FUNCTION_NAME} with INTERNAL scaling (minReplicas=0, maxReplicas=5)..."
+    info "  image: ${FUNCTION_IMAGE}"
     local http_code
     http_code=$(curl -sf -o /dev/null -w '%{http_code}' -X POST \
         "${nanofaas_url}/v1/functions" \
         -H 'Content-Type: application/json' \
         -d '{
             "name": "'"${FUNCTION_NAME}"'",
-            "image": "localhost:5000/nanofaas/java-word-stats:e2e",
+            "image": "'"${FUNCTION_IMAGE}"'",
             "timeoutMs": 30000,
             "concurrency": 4,
             "queueSize": 100,

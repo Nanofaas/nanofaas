@@ -133,6 +133,45 @@ impl InClusterKubernetesManager {
         .await
     }
 
+    pub async fn get_ready_replicas(&self, function_name: &str) -> Result<i32, String> {
+        let deployment_name = KubernetesDeploymentBuilder::deployment_name(function_name);
+        let url = format!(
+            "{}/apis/apps/v1/namespaces/{}/deployments/{}",
+            self.api_server_base, self.namespace, deployment_name
+        );
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|err| format!("get deployment failed for {deployment_name}: {err}"))?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(0);
+        }
+        if response.status() != StatusCode::OK {
+            let status = response.status().as_u16();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unreadable body>".to_string());
+            return Err(format!(
+                "get deployment failed for {deployment_name} with status {status}: {body}"
+            ));
+        }
+
+        let body: Value = response
+            .json()
+            .await
+            .map_err(|err| format!("invalid deployment response for {deployment_name}: {err}"))?;
+        let ready = body
+            .get("status")
+            .and_then(|status| status.get("readyReplicas"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        Ok(ready as i32)
+    }
+
     async fn create_deployment(&self, deployment: &Deployment) -> Result<(), String> {
         let url = format!(
             "{}/apis/apps/v1/namespaces/{}/deployments",

@@ -1,7 +1,7 @@
 {{- $legacyKubeletResourceMetricsEnabled := .Values.prometheus.kubeletResourceMetrics.enabled -}}
 {{- $containerMetricsMode := default "kubelet" .Values.prometheus.containerMetrics.mode -}}
 {{- $containerMetricsKubeletEnabled := or $legacyKubeletResourceMetricsEnabled (and .Values.prometheus.containerMetrics.enabled (eq $containerMetricsMode "kubelet")) -}}
-{{- if and .Values.prometheus.create .Values.prometheus.rbac.create -}}
+{{- if and .Values.prometheus.create .Values.prometheus.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -25,9 +25,9 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: nanofaas-prometheus
-{{- end -}}
+{{ end }}
 
-{{- if and .Values.prometheus.create .Values.prometheus.rbac.create $containerMetricsKubeletEnabled -}}
+{{- if and .Values.prometheus.create .Values.prometheus.rbac.create $containerMetricsKubeletEnabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -50,4 +50,4 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: nanofaas-prometheus-kubelet
-{{- end -}}
+{{ end }}
