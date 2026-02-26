@@ -235,6 +235,19 @@ uv run pytest scripts/tests/test_k6_payload_model_js.py -q
 uv run pytest scripts/tests -q
 ```
 
+### Control-plane local tooling tests (Python)
+
+The local TUI/build orchestration tool (`controlplane-tool`, project path `tooling/controlplane_tui`) is validated with `pytest`.
+
+```bash
+# Run all tooling tests
+uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests -v
+
+# Focused tests
+uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/test_pipeline.py -v
+uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/test_report.py -v
+```
+
 Additional reference:
 - [docs/loadtest-payload-profile.md](loadtest-payload-profile.md)
 

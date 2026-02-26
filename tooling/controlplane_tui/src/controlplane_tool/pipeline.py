@@ -146,13 +146,22 @@ class PipelineRunner:
             duration_ms=duration_ms,
         )
 
+    def _load_metric_series(self, run_dir: Path) -> dict[str, object]:
+        series_path = run_dir / "metrics" / "series.json"
+        if not series_path.exists():
+            return {}
+        try:
+            return json.loads(series_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+
     def _summary_payload(self, result: RunResult) -> dict[str, object]:
         return {
             "profile_name": result.profile_name,
             "run_dir": str(result.run_dir),
             "final_status": result.final_status,
             "steps": [asdict(step) for step in result.steps],
-            "metrics": {},
+            "metrics": self._load_metric_series(result.run_dir),
         }
 
     def _write_summary(self, result: RunResult) -> dict[str, object]:

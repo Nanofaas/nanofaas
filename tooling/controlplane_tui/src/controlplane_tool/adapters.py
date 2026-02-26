@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 import shutil
 import subprocess
 import time
 
+from controlplane_tool.metrics import discover_control_plane_metric_names, missing_required_metrics
+from controlplane_tool.mockk8s import default_mockk8s_test_selectors
 from controlplane_tool.models import Profile
 
 
@@ -140,28 +144,71 @@ class ShellCommandAdapter:
         return (result.ok, result.detail)
 
     def run_mockk8s_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:
-        command = [
-            str(self.repo_root / "gradlew"),
-            ":control-plane:test",
-            "--tests",
-            "*KubernetesResourceManagerTest",
-            "--tests",
-            "*KubernetesDeploymentBuilderTest",
-        ]
+        command = [str(self.repo_root / "gradlew"), ":control-plane:test"]
+        for selector in default_mockk8s_test_selectors():
+            command.extend(["--tests", selector])
         result = self._run(command, run_dir, "test.log")
         return (result.ok, result.detail)
 
     def run_metrics_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:
-        command = [str(self.repo_root / "gradlew"), ":control-plane:test", "--tests", "*PrometheusEndpointTest"]
+        command = [
+            str(self.repo_root / "gradlew"),
+            ":control-plane:test",
+            "--tests",
+            "*PrometheusEndpointTest",
+            "--tests",
+            "*MetricsTest",
+        ]
         result = self._run(command, run_dir, "test.log")
         if not result.ok:
             return (False, result.detail)
 
+        observed_metrics = discover_control_plane_metric_names(self.repo_root)
+        missing = missing_required_metrics(profile.metrics.required, observed_metrics)
+        metrics_dir = run_dir / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        (metrics_dir / "observed-metrics.json").write_text(
+            json.dumps(
+                {
+                    "observed": sorted(observed_metrics),
+                    "required": profile.metrics.required,
+                    "missing": missing,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        now = datetime.now(timezone.utc).isoformat()
+        synthetic_series = {
+            metric: [{"timestamp": now, "value": 1.0}] for metric in sorted(observed_metrics)
+        }
+        (metrics_dir / "series.json").write_text(
+            json.dumps(synthetic_series, indent=2), encoding="utf-8"
+        )
+
+        if missing:
+            return (
+                False,
+                "missing required metrics: "
+                + ", ".join(missing)
+                + " (see metrics/observed-metrics.json)",
+            )
+
         target_url = "http://localhost:8080/function/word-stats"
         k6_script = self.repo_root / "experiments" / "k6" / "word-stats-java.js"
         if k6_script.exists():
+            k6_summary = metrics_dir / "k6-summary.json"
             k6_result = self._run(
-                ["k6", "run", "-e", f"NANOFAAS_URL={target_url}", str(k6_script)],
+                [
+                    "k6",
+                    "run",
+                    "--summary-export",
+                    str(k6_summary),
+                    "-e",
+                    f"NANOFAAS_URL={target_url}",
+                    str(k6_script),
+                ],
                 run_dir,
                 "test.log",
             )

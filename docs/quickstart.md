@@ -33,6 +33,17 @@
 - Control plane API on `http://localhost:8080`
 - Metrics on `http://localhost:8081/actuator/prometheus`
 
+## Run control-plane tooling wizard locally
+
+- Open the interactive wizard and save a reusable profile:
+  - `scripts/controlplane-tool.sh --profile-name dev`
+- Re-run with an existing profile:
+  - `scripts/controlplane-tool.sh --profile-name dev --use-saved-profile`
+- Artifacts:
+  - `tooling/profiles/<profile>.toml`
+  - `tooling/runs/<timestamp>-<profile>/summary.json`
+  - `tooling/runs/<timestamp>-<profile>/report.html`
+
 ## Run function runtime locally
 
 - `./gradlew :function-runtime:bootRun`
