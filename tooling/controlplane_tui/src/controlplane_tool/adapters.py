@@ -3,12 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import time
+from urllib.error import URLError
+from urllib.request import urlopen
 
-from controlplane_tool.metrics import discover_control_plane_metric_names, missing_required_metrics
+from controlplane_tool.metrics import (
+    build_required_metric_series,
+    discover_control_plane_metric_names,
+    missing_required_metrics,
+    parse_prometheus_metric_names,
+)
 from controlplane_tool.mockk8s import default_mockk8s_test_selectors
 from controlplane_tool.models import Profile
 
@@ -51,6 +59,20 @@ class ShellCommandAdapter:
             ok=False,
             detail=f"exit={completed.returncode} ({duration_ms} ms), see {log_path.name}",
         )
+
+    def _resolve_prometheus_url(self, profile: Profile) -> str | None:
+        if profile.metrics.prometheus_url and profile.metrics.prometheus_url.strip():
+            return profile.metrics.prometheus_url.strip()
+        env_url = os.getenv("NANOFAAS_TOOL_PROMETHEUS_URL", "").strip()
+        return env_url or None
+
+    def _scrape_prometheus(self, url: str) -> tuple[bool, str]:
+        try:
+            with urlopen(url, timeout=2.5) as response:
+                payload = response.read().decode("utf-8")
+                return (True, payload)
+        except (OSError, URLError) as exc:
+            return (False, str(exc))
 
     def preflight(self, profile: Profile) -> list[str]:
         missing: list[str] = []
@@ -139,7 +161,12 @@ class ShellCommandAdapter:
         return (result.ok, f"{result.detail}; image={tag}")
 
     def run_api_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:
-        command = [str(self.repo_root / "gradlew"), ":control-plane:test", "--tests", "*ControlPlaneApiTest"]
+        command = [
+            str(self.repo_root / "gradlew"),
+            ":control-plane:test",
+            "--tests",
+            "*ControlPlaneApiTest",
+        ]
         result = self._run(command, run_dir, "test.log")
         return (result.ok, result.detail)
 
@@ -163,40 +190,26 @@ class ShellCommandAdapter:
         if not result.ok:
             return (False, result.detail)
 
+        required_metrics = profile.metrics.required
         observed_metrics = discover_control_plane_metric_names(self.repo_root)
-        missing = missing_required_metrics(profile.metrics.required, observed_metrics)
+        snapshots: list[tuple[str, str]] = []
+        scrape_errors: list[str] = []
         metrics_dir = run_dir / "metrics"
         metrics_dir.mkdir(parents=True, exist_ok=True)
-        (metrics_dir / "observed-metrics.json").write_text(
-            json.dumps(
-                {
-                    "observed": sorted(observed_metrics),
-                    "required": profile.metrics.required,
-                    "missing": missing,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
 
-        now = datetime.now(timezone.utc).isoformat()
-        synthetic_series = {
-            metric: [{"timestamp": now, "value": 1.0}] for metric in sorted(observed_metrics)
-        }
-        (metrics_dir / "series.json").write_text(
-            json.dumps(synthetic_series, indent=2), encoding="utf-8"
-        )
-
-        if missing:
-            return (
-                False,
-                "missing required metrics: "
-                + ", ".join(missing)
-                + " (see metrics/observed-metrics.json)",
-            )
+        prometheus_url = self._resolve_prometheus_url(profile)
+        if prometheus_url is not None:
+            ok, payload = self._scrape_prometheus(prometheus_url)
+            if ok:
+                snapshots.append((datetime.now(timezone.utc).isoformat(), payload))
+                observed_metrics.update(parse_prometheus_metric_names(payload))
+            else:
+                scrape_errors.append(payload)
 
         target_url = "http://localhost:8080/function/word-stats"
         k6_script = self.repo_root / "experiments" / "k6" / "word-stats-java.js"
+        k6_ok = True
+        k6_detail = "k6 skipped"
         if k6_script.exists():
             k6_summary = metrics_dir / "k6-summary.json"
             k6_result = self._run(
@@ -212,5 +225,51 @@ class ShellCommandAdapter:
                 run_dir,
                 "test.log",
             )
-            return (k6_result.ok, f"prometheus + k6: {k6_result.detail}")
-        return (True, "prometheus test passed; k6 script missing, skipped load")
+            k6_ok = k6_result.ok
+            k6_detail = k6_result.detail
+
+            if prometheus_url is not None:
+                ok, payload = self._scrape_prometheus(prometheus_url)
+                if ok:
+                    snapshots.append((datetime.now(timezone.utc).isoformat(), payload))
+                    observed_metrics.update(parse_prometheus_metric_names(payload))
+                else:
+                    scrape_errors.append(payload)
+
+        missing = missing_required_metrics(required_metrics, observed_metrics)
+        if snapshots:
+            series = build_required_metric_series(snapshots=snapshots, required=required_metrics)
+        else:
+            now = datetime.now(timezone.utc).isoformat()
+            series = {
+                metric: [{"timestamp": now, "value": 1.0}]
+                for metric in sorted(observed_metrics)
+            }
+
+        (metrics_dir / "series.json").write_text(json.dumps(series, indent=2), encoding="utf-8")
+        (metrics_dir / "observed-metrics.json").write_text(
+            json.dumps(
+                {
+                    "source": "prometheus-scrape" if snapshots else "control-plane-catalog",
+                    "observed": sorted(observed_metrics),
+                    "required": required_metrics,
+                    "missing": missing,
+                    "scrape_errors": scrape_errors,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        if missing:
+            return (
+                False,
+                "missing required metrics: "
+                + ", ".join(missing)
+                + " (see metrics/observed-metrics.json)",
+            )
+        if not k6_ok:
+            return (False, f"prometheus checks passed, k6 failed: {k6_detail}")
+        if k6_script.exists():
+            return (True, f"prometheus + k6: {k6_detail}")
+        return (True, "prometheus checks passed; k6 script missing, skipped load")

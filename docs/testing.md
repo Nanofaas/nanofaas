@@ -248,6 +248,13 @@ uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/
 uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/test_report.py -v
 ```
 
+For metric time-series collection during a tooling run, provide a Prometheus endpoint:
+
+```bash
+export NANOFAAS_TOOL_PROMETHEUS_URL=http://localhost:8081/actuator/prometheus
+scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
+```
+
 Additional reference:
 - [docs/loadtest-payload-profile.md](loadtest-payload-profile.md)
 

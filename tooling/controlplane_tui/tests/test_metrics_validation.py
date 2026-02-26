@@ -1,4 +1,8 @@
-from controlplane_tool.metrics import missing_required_metrics, parse_prometheus_metric_names
+from controlplane_tool.metrics import (
+    build_required_metric_series,
+    missing_required_metrics,
+    parse_prometheus_metric_names,
+)
 
 
 def test_parse_prometheus_metric_names_and_detect_missing() -> None:
@@ -19,3 +23,25 @@ process_cpu_usage 0.52
     assert "function_dispatch_total" in names
     assert "process_cpu_usage" in names
     assert missing == ["function_latency_ms"]
+
+
+def test_build_required_metric_series_from_prometheus_payloads() -> None:
+    snapshots = [
+        (
+            "2026-02-26T13:00:00Z",
+            "function_dispatch_total{function=\"echo\"} 1\nfunction_error_total{function=\"echo\"} 0\n",
+        ),
+        (
+            "2026-02-26T13:00:10Z",
+            "function_dispatch_total{function=\"echo\"} 3\nfunction_error_total{function=\"echo\"} 1\n",
+        ),
+    ]
+    series = build_required_metric_series(
+        snapshots=snapshots,
+        required=["function_dispatch_total", "function_error_total", "function_latency_ms"],
+    )
+
+    assert series["function_dispatch_total"][0]["value"] == 1.0
+    assert series["function_dispatch_total"][1]["value"] == 3.0
+    assert series["function_error_total"][1]["value"] == 1.0
+    assert series["function_latency_ms"][0]["value"] == 0.0

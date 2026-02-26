@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from controlplane_tool.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
+from controlplane_tool.models import (
+    ControlPlaneConfig,
+    MetricsConfig,
+    Profile,
+    ReportConfig,
+    TestsConfig,
+)
 from controlplane_tool.profiles import load_profile, save_profile
 
 
@@ -10,6 +16,10 @@ def test_profile_roundtrip(tmp_path: Path) -> None:
         control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
         modules=["sync-queue", "runtime-config"],
         tests=TestsConfig(enabled=True, api=True, e2e_mockk8s=True, metrics=True, load_profile="quick"),
+        metrics=MetricsConfig(
+            required=["function_dispatch_total", "function_latency_ms"],
+            prometheus_url="http://127.0.0.1:8081/actuator/prometheus",
+        ),
         report=ReportConfig(title="Dev run", include_baseline=True),
     )
 

@@ -39,6 +39,9 @@
   - `scripts/controlplane-tool.sh --profile-name dev`
 - Re-run with an existing profile:
   - `scripts/controlplane-tool.sh --profile-name dev --use-saved-profile`
+- Optional Prometheus scrape source for time-series in report:
+  - Set in profile (`metrics.prometheus_url`), or
+  - Export env var: `NANOFAAS_TOOL_PROMETHEUS_URL=http://localhost:8081/actuator/prometheus`
 - Artifacts:
   - `tooling/profiles/<profile>.toml`
   - `tooling/runs/<timestamp>-<profile>/summary.json`
