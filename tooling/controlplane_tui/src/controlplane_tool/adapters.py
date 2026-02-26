@@ -206,7 +206,7 @@ class ShellCommandAdapter:
             else:
                 scrape_errors.append(payload)
 
-        target_url = "http://localhost:8080/function/word-stats"
+        target_url = "http://localhost:8080"
         k6_script = self.repo_root / "experiments" / "k6" / "word-stats-java.js"
         k6_ok = True
         k6_detail = "k6 skipped"
