@@ -28,6 +28,22 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 `bootRun` includes all optional control-plane modules by default.
 Use `-PcontrolPlaneModules=none` to run a core-only control plane.
 
+## Control-plane local tooling (TUI)
+
+Interactive local orchestrator for profile-based control-plane builds, optional test phases, and HTML report generation.
+
+```bash
+scripts/controlplane-tool.sh --help
+scripts/controlplane-tool.sh --profile-name dev
+scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
+```
+
+Artifacts are written under:
+
+- `tooling/profiles/<profile>.toml`
+- `tooling/runs/<timestamp>-<profile>/summary.json`
+- `tooling/runs/<timestamp>-<profile>/report.html`
+
 ## Build images (buildpacks)
 
 ```bash
