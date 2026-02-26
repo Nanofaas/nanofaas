@@ -12,6 +12,22 @@ from controlplane_tool.models import (
 )
 from controlplane_tool.module_catalog import module_choices
 
+DEFAULT_REQUIRED_METRICS: tuple[str, ...] = (
+    "function_enqueue_total",
+    "function_dispatch_total",
+    "function_success_total",
+    "function_error_total",
+    "function_retry_total",
+    "function_timeout_total",
+    "function_queue_rejected_total",
+    "function_cold_start_total",
+    "function_warm_start_total",
+    "function_latency_ms",
+    "function_init_duration_ms",
+    "function_queue_wait_ms",
+    "function_e2e_latency_ms",
+)
+
 
 def build_profile_interactive(profile_name: str) -> Profile:
     runtime = questionary.select(
@@ -87,12 +103,6 @@ def build_profile_interactive(profile_name: str) -> Profile:
         control_plane=ControlPlaneConfig(implementation=runtime, build_mode=build_mode),
         modules=list(selected_modules),
         tests=tests,
-        metrics=MetricsConfig(
-            required=[
-                "http_server_requests_seconds_count",
-                "http_server_requests_seconds_sum",
-                "process_cpu_usage",
-            ]
-        ),
+        metrics=MetricsConfig(required=list(DEFAULT_REQUIRED_METRICS)),
         report=ReportConfig(title=f"Control Plane run ({profile_name})"),
     )
