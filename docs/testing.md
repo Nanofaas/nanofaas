@@ -255,6 +255,12 @@ export NANOFAAS_TOOL_PROMETHEUS_URL=http://localhost:8081/actuator/prometheus
 scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
 ```
 
+The metrics step invokes k6 with control-plane base URL semantics:
+
+```bash
+NANOFAAS_URL=http://localhost:8080
+```
+
 Additional reference:
 - [docs/loadtest-payload-profile.md](loadtest-payload-profile.md)
 

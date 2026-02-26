@@ -39,6 +39,10 @@
   - `scripts/controlplane-tool.sh --profile-name dev`
 - Re-run with an existing profile:
   - `scripts/controlplane-tool.sh --profile-name dev --use-saved-profile`
+- Exit codes:
+  - `0` when run final status is `passed`
+  - `1` when run final status is `failed`
+  - `2` when profile loading/validation fails
 - Optional Prometheus scrape source for time-series in report:
   - Set in profile (`metrics.prometheus_url`), or
   - Export env var: `NANOFAAS_TOOL_PROMETHEUS_URL=http://localhost:8081/actuator/prometheus`

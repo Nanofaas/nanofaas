@@ -9,4 +9,6 @@ def test_docs_reference_controlplane_tool() -> None:
     testing = (ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
 
     assert "scripts/controlplane-tool.sh" in quickstart
+    assert "exit code" in quickstart.lower()
     assert "controlplane-tool" in testing
+    assert "NANOFAAS_URL=http://localhost:8080" in testing
