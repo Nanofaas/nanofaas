@@ -511,8 +511,8 @@ append_demo_function_yaml() {
     DEMO_FUNCTIONS_YAML+="    - name: ${name}"$'\n'
     DEMO_FUNCTIONS_YAML+="      image: ${image}"$'\n'
     DEMO_FUNCTIONS_YAML+="      timeoutMs: 30000"$'\n'
-    DEMO_FUNCTIONS_YAML+="      concurrency: 8"$'\n'
-    DEMO_FUNCTIONS_YAML+="      queueSize: 1000"$'\n'
+    DEMO_FUNCTIONS_YAML+="      concurrency: 20"$'\n'
+    DEMO_FUNCTIONS_YAML+="      queueSize: 500"$'\n'
     DEMO_FUNCTIONS_YAML+="      maxRetries: 3"$'\n'
     DEMO_FUNCTIONS_YAML+="      executionMode: DEPLOYMENT"$'\n'
     if [[ -n "${runtime_mode}" ]]; then

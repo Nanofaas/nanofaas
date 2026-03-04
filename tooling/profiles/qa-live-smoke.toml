@@ -1,0 +1,20 @@
+name = "qa-live-smoke"
+modules = []
+
+[control_plane]
+implementation = "java"
+build_mode = "jvm"
+
+[tests]
+enabled = false
+api = false
+e2e_mockk8s = false
+metrics = false
+load_profile = "quick"
+
+[metrics]
+required = ["function_dispatch_total", "function_latency_ms", "function_e2e_latency_ms"]
+
+[report]
+title = "QA Live Smoke"
+include_baseline = false

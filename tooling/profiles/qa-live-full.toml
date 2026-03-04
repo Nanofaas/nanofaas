@@ -1,0 +1,34 @@
+name = "qa-live-full"
+modules = ["autoscaler"]
+
+[control_plane]
+implementation = "java"
+build_mode = "jvm"
+
+[tests]
+enabled = true
+api = true
+e2e_mockk8s = true
+metrics = true
+load_profile = "quick"
+
+[metrics]
+required = [
+  "function_enqueue_total",
+  "function_dispatch_total",
+  "function_success_total",
+  "function_error_total",
+  "function_retry_total",
+  "function_timeout_total",
+  "function_queue_rejected_total",
+  "function_cold_start_total",
+  "function_warm_start_total",
+  "function_latency_ms",
+  "function_init_duration_ms",
+  "function_queue_wait_ms",
+  "function_e2e_latency_ms"
+]
+
+[report]
+title = "QA Live Full"
+include_baseline = false

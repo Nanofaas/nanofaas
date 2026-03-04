@@ -1,7 +1,10 @@
+import pytest
+
 from controlplane_tool.metrics import (
     build_required_metric_series,
     missing_required_metrics,
     parse_prometheus_metric_names,
+    query_prometheus_metric_names,
 )
 
 
@@ -45,3 +48,43 @@ def test_build_required_metric_series_from_prometheus_payloads() -> None:
     assert series["function_dispatch_total"][1]["value"] == 3.0
     assert series["function_error_total"][1]["value"] == 1.0
     assert series["function_latency_ms"][0]["value"] == 0.0
+
+
+def test_query_prometheus_metric_names_wraps_transport_errors(monkeypatch) -> None:
+    def _raise(*args, **kwargs):  # noqa: ARG001
+        raise OSError("connection refused")
+
+    monkeypatch.setattr("controlplane_tool.metrics.urlopen", _raise)
+
+    with pytest.raises(RuntimeError, match="prometheus api request failed"):
+        query_prometheus_metric_names("http://127.0.0.1:9090")
+
+
+def test_query_prometheus_metric_names_accepts_list_data_payload(monkeypatch) -> None:
+    class _Response:
+        status = 200
+
+        def __init__(self, payload: str) -> None:
+            self._payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return None
+
+        def read(self) -> bytes:
+            return self._payload.encode("utf-8")
+
+    payload = (
+        '{"status":"success","data":["function_dispatch_total","function_latency_ms","up"]}'
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.metrics.urlopen",
+        lambda url, timeout=4.0: _Response(payload),  # noqa: ARG005
+    )
+
+    names = query_prometheus_metric_names("http://127.0.0.1:9090")
+
+    assert "function_dispatch_total" in names
+    assert "function_latency_ms" in names

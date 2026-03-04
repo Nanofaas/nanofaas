@@ -10,23 +10,10 @@ from controlplane_tool.models import (
     ReportConfig,
     TestsConfig,
 )
+from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
 from controlplane_tool.module_catalog import module_choices
 
-DEFAULT_REQUIRED_METRICS: tuple[str, ...] = (
-    "function_enqueue_total",
-    "function_dispatch_total",
-    "function_success_total",
-    "function_error_total",
-    "function_retry_total",
-    "function_timeout_total",
-    "function_queue_rejected_total",
-    "function_cold_start_total",
-    "function_warm_start_total",
-    "function_latency_ms",
-    "function_init_duration_ms",
-    "function_queue_wait_ms",
-    "function_e2e_latency_ms",
-)
+DEFAULT_REQUIRED_METRICS: tuple[str, ...] = CORE_REQUIRED_METRICS
 
 
 def build_profile_interactive(profile_name: str) -> Profile:
@@ -74,7 +61,6 @@ def build_profile_interactive(profile_name: str) -> Profile:
         raise typer.Exit(code=1)
 
     tests = TestsConfig(enabled=tests_enabled)
-    prometheus_url: str | None = None
     if tests_enabled:
         tests.api = bool(questionary.confirm("Run API tests?", default=True).ask())
         tests.e2e_mockk8s = bool(
@@ -98,15 +84,6 @@ def build_profile_interactive(profile_name: str) -> Profile:
         if load_profile is None:
             raise typer.Exit(code=1)
         tests.load_profile = load_profile
-        if tests.metrics:
-            prompt_value = questionary.text(
-                "Prometheus scrape URL (optional):",
-                default="",
-            ).ask()
-            if prompt_value is None:
-                raise typer.Exit(code=1)
-            stripped = prompt_value.strip()
-            prometheus_url = stripped or None
 
     return Profile(
         name=profile_name,
@@ -115,7 +92,8 @@ def build_profile_interactive(profile_name: str) -> Profile:
         tests=tests,
         metrics=MetricsConfig(
             required=list(DEFAULT_REQUIRED_METRICS),
-            prometheus_url=prometheus_url,
+            prometheus_url=None,
+            strict_required=False,
         ),
         report=ReportConfig(title=f"Control Plane run ({profile_name})"),
     )

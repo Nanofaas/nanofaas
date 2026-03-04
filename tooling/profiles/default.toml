@@ -1,0 +1,30 @@
+name = "default"
+modules = [
+    "sync-queue",
+]
+
+[control_plane]
+implementation = "java"
+build_mode = "native"
+
+[tests]
+enabled = true
+api = true
+e2e_mockk8s = true
+metrics = true
+load_profile = "stress"
+
+[metrics]
+required = [
+    "function_dispatch_total",
+    "function_success_total",
+    "function_warm_start_total",
+    "function_latency_ms",
+    "function_queue_wait_ms",
+    "function_e2e_latency_ms",
+]
+strict_required = false
+
+[report]
+title = "Control Plane run (default)"
+include_baseline = false

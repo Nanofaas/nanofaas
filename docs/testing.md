@@ -248,10 +248,20 @@ uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/
 uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/test_report.py -v
 ```
 
-For metric time-series collection during a tooling run, provide a Prometheus endpoint:
+For metric time-series collection during a tooling run, the tool now auto-manages Prometheus:
+- no interactive URL prompt is shown in the wizard,
+- if an endpoint is already reachable it is reused,
+- otherwise `prom/prometheus` is pulled (if missing) and started as a local Docker container for the run.
+- for metrics/k6 runs, a local mock Kubernetes API backend is auto-started,
+- for metrics/k6 runs, a tool-managed control-plane runtime is auto-started and wired to that mock backend,
+- before k6, a deterministic fixture function (`tool-metrics-echo`, `executionMode=LOCAL`) is ensured and warm-up invoked.
+- before k6, demo deployment function (`demo-word-stats-deployment`, `executionMode=DEPLOYMENT`) is ensured and verified via API lookup.
+- default gate checks scenario-compatible core metrics; enable strict full gate with `metrics.strict_required = true`.
+
+Optional override for an existing endpoint:
 
 ```bash
-export NANOFAAS_TOOL_PROMETHEUS_URL=http://localhost:8081/actuator/prometheus
+export NANOFAAS_TOOL_PROMETHEUS_URL=http://127.0.0.1:9090
 scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
 ```
 

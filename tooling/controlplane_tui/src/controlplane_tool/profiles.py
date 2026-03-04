@@ -22,7 +22,7 @@ def save_profile(profile: Profile, root: Path | None = None) -> Path:
     destination_dir = profiles_dir(root)
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = profile_path(profile.name, root)
-    payload = profile.model_dump(mode="python")
+    payload = profile.model_dump(mode="python", exclude_none=True)
     destination.write_text(tomli_w.dumps(payload), encoding="utf-8")
     return destination
 

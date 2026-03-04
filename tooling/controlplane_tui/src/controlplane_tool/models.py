@@ -27,6 +27,7 @@ class TestsConfig(BaseModel):
 class MetricsConfig(BaseModel):
     required: list[str] = Field(default_factory=list)
     prometheus_url: str | None = None
+    strict_required: bool = False
 
 
 class ReportConfig(BaseModel):

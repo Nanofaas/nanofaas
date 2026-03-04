@@ -43,9 +43,15 @@
   - `0` when run final status is `passed`
   - `1` when run final status is `failed`
   - `2` when profile loading/validation fails
-- Optional Prometheus scrape source for time-series in report:
-  - Set in profile (`metrics.prometheus_url`), or
-  - Export env var: `NANOFAAS_TOOL_PROMETHEUS_URL=http://localhost:8081/actuator/prometheus`
+- Prometheus metrics source is now zero-config:
+  - The wizard does not ask for a Prometheus URL.
+  - The metrics flow auto-registers a deterministic local fixture function (`tool-metrics-echo`) before k6.
+  - The metrics flow also registers/verifies demo deployment function (`demo-word-stats-deployment`, `executionMode=DEPLOYMENT`).
+  - The metrics flow auto-starts a mock Kubernetes API backend.
+  - The metrics flow auto-starts a tool-managed control-plane runtime wired to the mock backend.
+  - The metrics step reuses a reachable Prometheus endpoint when available.
+  - If no endpoint is reachable, the tool auto-pulls `prom/prometheus` (if needed) and starts a local Docker container.
+  - Default metric gating is scenario-compatible; strict full-gate can be enabled in profile with `metrics.strict_required = true`.
 - Artifacts:
   - `tooling/profiles/<profile>.toml`
   - `tooling/runs/<timestamp>-<profile>/summary.json`

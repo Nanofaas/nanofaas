@@ -27,3 +27,22 @@ def test_profile_roundtrip(tmp_path: Path) -> None:
     loaded = load_profile("dev", root=tmp_path)
 
     assert loaded == profile
+
+
+def test_profile_roundtrip_without_prometheus_url(tmp_path: Path) -> None:
+    profile = Profile(
+        name="dev-no-prom",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
+        modules=["autoscaler"],
+        tests=TestsConfig(enabled=True, api=True, e2e_mockk8s=True, metrics=True, load_profile="stress"),
+        metrics=MetricsConfig(
+            required=["function_dispatch_total", "function_latency_ms"],
+            prometheus_url=None,
+        ),
+        report=ReportConfig(title="Dev run (no prom)", include_baseline=False),
+    )
+
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("dev-no-prom", root=tmp_path)
+
+    assert loaded.metrics.prometheus_url is None
