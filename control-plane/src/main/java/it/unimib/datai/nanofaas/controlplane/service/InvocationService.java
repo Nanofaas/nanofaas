@@ -7,7 +7,6 @@ import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
@@ -15,16 +14,12 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.time.Duration;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class InvocationService {
@@ -34,10 +29,11 @@ public class InvocationService {
     private final ExecutionStore executionStore;
     private final RateLimiter rateLimiter;
     private final Metrics metrics;
-    private final SyncQueueGateway syncQueueGateway;
     private final ExecutionCompletionHandler completionHandler;
     private final InvocationExecutionFactory executionFactory;
     private final InvocationResponseMapper responseMapper;
+    private final SyncInvocationCoordinator syncCoordinator;
+    private final ReactiveInvocationCoordinator reactiveCoordinator;
 
     public InvocationService(FunctionService functionService,
                              @Nullable InvocationEnqueuer enqueuer,
@@ -53,10 +49,11 @@ public class InvocationService {
                 executionStore,
                 rateLimiter,
                 metrics,
-                syncQueueGateway,
                 completionHandler,
                 new InvocationExecutionFactory(executionStore, idempotencyStore),
-                new InvocationResponseMapper()
+                new InvocationResponseMapper(),
+                new SyncInvocationCoordinator(enqueuer, metrics, syncQueueGateway, completionHandler, new InvocationResponseMapper()),
+                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, completionHandler, new InvocationResponseMapper())
         );
     }
 
@@ -66,19 +63,21 @@ public class InvocationService {
                              ExecutionStore executionStore,
                              RateLimiter rateLimiter,
                              Metrics metrics,
-                             @Autowired(required = false) @Nullable SyncQueueGateway syncQueueGateway,
                              ExecutionCompletionHandler completionHandler,
                              InvocationExecutionFactory executionFactory,
-                             InvocationResponseMapper responseMapper) {
+                             InvocationResponseMapper responseMapper,
+                             SyncInvocationCoordinator syncCoordinator,
+                             ReactiveInvocationCoordinator reactiveCoordinator) {
         this.functionService = functionService;
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.executionStore = executionStore;
         this.rateLimiter = rateLimiter;
         this.metrics = metrics;
-        this.syncQueueGateway = syncQueueGateway == null ? SyncQueueGateway.noOp() : syncQueueGateway;
         this.completionHandler = completionHandler;
         this.executionFactory = executionFactory;
         this.responseMapper = responseMapper;
+        this.syncCoordinator = syncCoordinator;
+        this.reactiveCoordinator = reactiveCoordinator;
     }
 
     public InvocationResponse invokeSync(String functionName,
@@ -91,42 +90,7 @@ public class InvocationService {
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
         InvocationExecutionFactory.ExecutionLookup lookup =
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
-        ExecutionRecord record = lookup.record();
-
-        if (record.state() == ExecutionState.SUCCESS || record.state() == ExecutionState.ERROR) {
-            InvocationResult result = record.lastError() == null
-                    ? InvocationResult.success(record.output())
-                    : new InvocationResult(false, null, record.lastError());
-            return responseMapper.toResponse(record, result);
-        }
-        if (record.state() == ExecutionState.TIMEOUT) {
-            return responseMapper.timeoutResponse(record);
-        }
-
-        if (lookup.isNew()) {
-            if (syncQueueEnabled()) {
-                syncQueueGateway.enqueueOrThrow(record.task());
-            } else if (enqueuer.enabled()) {
-                enqueueOrThrow(record);
-            } else {
-                dispatch(record.task());
-            }
-        }
-
-        int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
-        try {
-            InvocationResult result = record.completion().get(timeoutMs, TimeUnit.MILLISECONDS);
-            if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
-                throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueRetryAfterSeconds());
-            }
-            return responseMapper.toResponse(record, result);
-        } catch (SyncQueueRejectedException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            record.markTimeout();
-            metrics.timeout(functionName);
-            return responseMapper.timeoutResponse(record);
-        }
+        return syncCoordinator.invoke(lookup, spec, timeoutOverrideMs);
     }
 
     public Mono<InvocationResponse> invokeSyncReactive(String functionName,
@@ -139,46 +103,7 @@ public class InvocationService {
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
         InvocationExecutionFactory.ExecutionLookup lookup =
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
-        ExecutionRecord record = lookup.record();
-
-        if (record.state() == ExecutionState.SUCCESS || record.state() == ExecutionState.ERROR) {
-            InvocationResult result = record.lastError() == null
-                    ? InvocationResult.success(record.output())
-                    : new InvocationResult(false, null, record.lastError());
-            return Mono.just(responseMapper.toResponse(record, result));
-        }
-        if (record.state() == ExecutionState.TIMEOUT) {
-            return Mono.just(responseMapper.timeoutResponse(record));
-        }
-
-        if (lookup.isNew()) {
-            try {
-                if (syncQueueEnabled()) {
-                    syncQueueGateway.enqueueOrThrow(record.task());
-                } else if (enqueuer.enabled()) {
-                    enqueueOrThrow(record);
-                } else {
-                    dispatch(record.task());
-                }
-            } catch (RuntimeException ex) {
-                return Mono.error(ex);
-            }
-        }
-
-        int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
-        return Mono.fromFuture(record.completion())
-                .timeout(Duration.ofMillis(timeoutMs))
-                .map(result -> {
-                    if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
-                        throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueRetryAfterSeconds());
-                    }
-                    return responseMapper.toResponse(record, result);
-                })
-                .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
-                    record.markTimeout();
-                    metrics.timeout(functionName);
-                    return Mono.just(responseMapper.timeoutResponse(record));
-                });
+        return reactiveCoordinator.invoke(lookup, spec, timeoutOverrideMs);
     }
 
     public InvocationResponse invokeAsync(String functionName,
@@ -233,11 +158,4 @@ public class InvocationService {
         metrics.enqueue(record.task().functionName());
     }
 
-    private boolean syncQueueEnabled() {
-        return syncQueueGateway.enabled();
-    }
-
-    private int syncQueueRetryAfterSeconds() {
-        return syncQueueGateway.retryAfterSeconds();
-    }
 }

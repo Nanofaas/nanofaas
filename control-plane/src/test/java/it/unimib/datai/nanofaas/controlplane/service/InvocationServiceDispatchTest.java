@@ -433,6 +433,44 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
+    void invokeSync_andReactiveQueueTimeoutSurfaceTheSameContract() {
+        FunctionSpec spec = functionSpec("queue-timeout-fn", ExecutionMode.LOCAL);
+        when(functionService.get("queue-timeout-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        when(syncQueueGateway.retryAfterSeconds()).thenReturn(9);
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            invocationService.completeExecution(
+                    task.executionId(),
+                    DispatchResult.warm(InvocationResult.error("QUEUE_TIMEOUT", "queue wait exceeded"))
+            );
+            return null;
+        }).when(syncQueueGateway).enqueueOrThrow(any());
+
+        assertThatThrownBy(() -> invocationService.invokeSync(
+                "queue-timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-sync-timeout",
+                null,
+                1_000
+        )).isInstanceOfSatisfying(SyncQueueRejectedException.class, ex -> {
+            assertThat(ex.reason()).isEqualTo(SyncQueueRejectReason.TIMEOUT);
+            assertThat(ex.retryAfterSeconds()).isEqualTo(9);
+        });
+
+        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
+                "queue-timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-reactive-timeout",
+                null,
+                1_000
+        ).block()).isInstanceOfSatisfying(SyncQueueRejectedException.class, ex -> {
+            assertThat(ex.reason()).isEqualTo(SyncQueueRejectReason.TIMEOUT);
+            assertThat(ex.retryAfterSeconds()).isEqualTo(9);
+        });
+    }
+
+    @Test
     void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() throws Exception {
         CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
         FunctionSpec spec = functionSpec("timeout-fn", ExecutionMode.LOCAL);

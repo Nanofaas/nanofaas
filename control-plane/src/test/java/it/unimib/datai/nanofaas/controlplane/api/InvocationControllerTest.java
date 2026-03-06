@@ -137,7 +137,7 @@ class InvocationControllerTest {
     }
 
     @Test
-    void invokeSync_queueFullFromMono_returns429() {
+    void invokeSync_queueFullFromReactiveCoordinator_returns429() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
                 .thenReturn(Mono.error(new QueueFullException()));
