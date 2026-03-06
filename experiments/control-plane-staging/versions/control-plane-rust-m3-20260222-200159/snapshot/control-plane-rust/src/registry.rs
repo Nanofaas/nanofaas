@@ -2,6 +2,7 @@ use crate::model::{
     ConcurrencyControlMode, ExecutionMode, FunctionSpec as AppFunctionSpec, RuntimeMode,
     ScalingStrategy,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -81,14 +82,16 @@ impl FunctionDefaults {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolverScalingMetric {
+    #[serde(rename = "type")]
     pub metric_type: String,
     pub target: String,
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResolverConcurrencyControlConfig {
     pub mode: Option<ConcurrencyControlMode>,
     pub target_in_flight_per_pod: Option<i32>,
@@ -100,7 +103,8 @@ pub struct ResolverConcurrencyControlConfig {
     pub low_load_threshold: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResolverScalingConfig {
     pub strategy: Option<ScalingStrategy>,
     pub min_replicas: Option<i32>,
@@ -159,12 +163,17 @@ impl FunctionSpecResolver {
     }
 
     pub fn resolve(&self, spec: ResolverFunctionSpec) -> ResolverFunctionSpec {
+        self.try_resolve(spec)
+            .unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    pub fn try_resolve(&self, spec: ResolverFunctionSpec) -> Result<ResolverFunctionSpec, String> {
         let mode = spec
             .execution_mode
             .clone()
             .unwrap_or(ExecutionMode::Deployment);
-        let scaling = self.resolve_scaling_config(spec.scaling_config.clone(), mode.clone());
-        ResolverFunctionSpec {
+        let scaling = self.resolve_scaling_config(spec.scaling_config.clone(), mode.clone())?;
+        Ok(ResolverFunctionSpec {
             name: spec.name,
             image: spec.image,
             command: Some(spec.command.unwrap_or_default()),
@@ -178,20 +187,20 @@ impl FunctionSpecResolver {
             runtime_mode: Some(spec.runtime_mode.unwrap_or(RuntimeMode::Http)),
             runtime_command: spec.runtime_command,
             scaling_config: scaling,
-        }
+        })
     }
 
     fn resolve_scaling_config(
         &self,
         config: Option<ResolverScalingConfig>,
         mode: ExecutionMode,
-    ) -> Option<ResolverScalingConfig> {
+    ) -> Result<Option<ResolverScalingConfig>, String> {
         if mode != ExecutionMode::Deployment {
-            return config;
+            return Ok(config);
         }
 
         let Some(config) = config else {
-            return Some(ResolverScalingConfig {
+            return Ok(Some(ResolverScalingConfig {
                 strategy: Some(ScalingStrategy::Internal),
                 min_replicas: Some(1),
                 max_replicas: Some(10),
@@ -201,7 +210,7 @@ impl FunctionSpecResolver {
                     name: None,
                 }]),
                 concurrency_control: self.normalize_concurrency_control(None),
-            });
+            }));
         };
 
         let strategy = config.strategy.unwrap_or(ScalingStrategy::Internal);
@@ -217,15 +226,15 @@ impl FunctionSpecResolver {
                 }]
             });
         if strategy == ScalingStrategy::Internal {
-            validate_internal_scaling_metrics(&metrics);
+            validate_internal_scaling_metrics(&metrics)?;
         }
-        Some(ResolverScalingConfig {
+        Ok(Some(ResolverScalingConfig {
             strategy: Some(strategy),
             min_replicas: Some(config.min_replicas.unwrap_or(1)),
             max_replicas: Some(config.max_replicas.unwrap_or(10)),
             metrics: Some(metrics),
             concurrency_control: self.normalize_concurrency_control(config.concurrency_control),
-        })
+        }))
     }
 
     fn normalize_concurrency_control(
@@ -558,13 +567,14 @@ impl FunctionService {
     }
 }
 
-fn validate_internal_scaling_metrics(metrics: &[ResolverScalingMetric]) {
+fn validate_internal_scaling_metrics(metrics: &[ResolverScalingMetric]) -> Result<(), String> {
     for metric in metrics {
         if !SUPPORTED_INTERNAL_SCALING_METRICS.contains(&metric.metric_type.as_str()) {
-            panic!(
+            return Err(format!(
                 "Unsupported INTERNAL scaling metric: {}",
                 metric.metric_type
-            );
+            ));
         }
     }
+    Ok(())
 }

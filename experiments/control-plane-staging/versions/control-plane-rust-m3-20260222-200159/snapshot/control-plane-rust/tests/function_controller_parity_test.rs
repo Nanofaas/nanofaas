@@ -3,6 +3,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 use tower::util::ServiceExt;
 
 async fn register(app: &axum::Router, payload: Value) -> axum::http::Response<Body> {
@@ -13,6 +14,11 @@ async fn register(app: &axum::Router, payload: Value) -> axum::http::Response<Bo
         .body(Body::from(payload.to_string()))
         .unwrap();
     app.clone().oneshot(req).await.unwrap()
+}
+
+fn env_test_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
 #[tokio::test]
@@ -260,4 +266,114 @@ async fn register_deployment_withInMemoryProvisioning_setsEndpointUrl() {
         get_json["endpointUrl"],
         "http://fn-echo-provisioned.default.svc.cluster.local:8080/invoke"
     );
+}
+
+#[tokio::test]
+async fn deployment_function_isNotVisibleBeforeProvisioningCompletes() {
+    let _env_guard = env_test_lock().lock().await;
+    std::env::set_var("NANOFAAS_TEST_INMEMORY_PROVISION_DELAY_MS", "250");
+
+    let app = control_plane_rust::app::build_app_with_provisioning_mode(Some("inmemory"));
+    let register_app = app.clone();
+    let register_handle = tokio::spawn(async move {
+        register(
+            &register_app,
+            json!({"name":"echo-delayed","image":"img1-test-provision-delay-ms-250","executionMode":"DEPLOYMENT","runtimeMode":"HTTP"}),
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let get = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/functions/echo-delayed")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get.status(), StatusCode::NOT_FOUND);
+    assert_eq!(register_handle.await.unwrap().status(), StatusCode::CREATED);
+    std::env::remove_var("NANOFAAS_TEST_INMEMORY_PROVISION_DELAY_MS");
+}
+
+#[tokio::test]
+async fn delete_hidesFunctionBeforeDeprovisionSideEffects() {
+    let _env_guard = env_test_lock().lock().await;
+    std::env::set_var("NANOFAAS_TEST_INMEMORY_DEPROVISION_DELAY_MS", "250");
+
+    let app = control_plane_rust::app::build_app_with_provisioning_mode(Some("inmemory"));
+    assert_eq!(
+        register(
+            &app,
+            json!({"name":"echo-delete-delayed","image":"img1","executionMode":"DEPLOYMENT","runtimeMode":"HTTP"})
+        )
+        .await
+        .status(),
+        StatusCode::CREATED
+    );
+
+    let delete_app = app.clone();
+    let delete_handle = tokio::spawn(async move {
+        delete_app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/functions/echo-delete-delayed")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let get = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/functions/echo-delete-delayed")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    std::env::remove_var("NANOFAAS_TEST_INMEMORY_DEPROVISION_DELAY_MS");
+
+    assert_eq!(get.status(), StatusCode::NOT_FOUND);
+    assert_eq!(delete_handle.await.unwrap().status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn register_rejectsUnsupportedInternalScalingMetric() {
+    let app = control_plane_rust::app::build_app();
+
+    let res = register(
+        &app,
+        json!({
+            "name":"echo-invalid-metric",
+            "image":"img1",
+            "executionMode":"DEPLOYMENT",
+            "runtimeMode":"HTTP",
+            "scalingConfig": {
+                "strategy": "INTERNAL",
+                "minReplicas": 1,
+                "maxReplicas": 5,
+                "metrics": [
+                    {"type":"bogus","target":"1"}
+                ]
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }

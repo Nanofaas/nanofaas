@@ -188,3 +188,26 @@ fn resolve_staticPerPod_clampsInvalidMinMaxAndTarget() {
     assert_eq!(Some(3), cc.max_target_in_flight_per_pod);
     assert_eq!(Some(3), cc.target_in_flight_per_pod);
 }
+
+#[test]
+fn tryResolve_internalScalingRejectsUnsupportedMetric() {
+    let defaults = FunctionDefaults::new(30_000, 4, 100, 3);
+    let resolver = FunctionSpecResolver::new(defaults);
+
+    let mut spec = ResolverFunctionSpec::new("fn", "img:latest");
+    spec.execution_mode = Some(ExecutionMode::Deployment);
+    spec.scaling_config = Some(ResolverScalingConfig {
+        strategy: Some(ScalingStrategy::Internal),
+        min_replicas: Some(1),
+        max_replicas: Some(5),
+        metrics: Some(vec![control_plane_rust::registry::ResolverScalingMetric {
+            metric_type: "bogus".to_string(),
+            target: "1".to_string(),
+            name: None,
+        }]),
+        concurrency_control: None,
+    });
+
+    let err = resolver.try_resolve(spec).expect_err("unsupported metric should fail");
+    assert!(err.contains("Unsupported INTERNAL scaling metric"));
+}

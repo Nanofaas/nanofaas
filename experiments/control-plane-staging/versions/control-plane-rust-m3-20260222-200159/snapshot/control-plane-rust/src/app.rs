@@ -12,7 +12,9 @@ use crate::model::{
 };
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
-use crate::registry::AppFunctionRegistry;
+use crate::registry::{
+    AppFunctionRegistry, FunctionDefaults, FunctionSpecResolver, ResolverFunctionSpec,
+};
 use crate::scheduler::Scheduler;
 use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
 use crate::sync::{
@@ -34,6 +36,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
     function_registry: Arc<AppFunctionRegistry>,
+    function_locks: Arc<tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     function_replicas: Arc<Mutex<HashMap<String, u32>>>,
     provisioner: Arc<FunctionProvisioner>,
     execution_store: Arc<Mutex<ExecutionStore>>,
@@ -65,7 +68,15 @@ impl FunctionProvisioner {
     async fn provision(&self, spec: &FunctionSpec) -> Result<Option<String>, String> {
         match self {
             FunctionProvisioner::Disabled => Ok(None),
-            FunctionProvisioner::InMemory(manager) => Ok(Some(manager.provision(spec))),
+            FunctionProvisioner::InMemory(manager) => {
+                maybe_test_delay(
+                    "NANOFAAS_TEST_INMEMORY_PROVISION_DELAY_MS",
+                    spec.image.as_deref(),
+                    "test-provision-delay-ms-",
+                )
+                .await;
+                Ok(Some(manager.provision(spec)))
+            }
             FunctionProvisioner::Live(manager) => manager.provision(spec).await.map(Some),
         }
     }
@@ -74,6 +85,12 @@ impl FunctionProvisioner {
         match self {
             FunctionProvisioner::Disabled => Ok(()),
             FunctionProvisioner::InMemory(manager) => {
+                maybe_test_delay(
+                    "NANOFAAS_TEST_INMEMORY_DEPROVISION_DELAY_MS",
+                    Some(function_name),
+                    "test-deprovision-delay-ms-",
+                )
+                .await;
                 manager.deprovision(function_name);
                 Ok(())
             }
@@ -105,6 +122,26 @@ impl FunctionProvisioner {
     fn supports_internal_scaling(&self) -> bool {
         !matches!(self, FunctionProvisioner::Disabled)
     }
+}
+
+async fn maybe_test_delay(env_name: &str, marker_source: Option<&str>, marker: &str) {
+    let delay_ms = std::env::var(env_name)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .or_else(|| marker_source.and_then(|value| extract_marker_delay_ms(value, marker)));
+    let Some(delay_ms) = delay_ms else {
+        return;
+    };
+    if delay_ms > 0 {
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+    }
+}
+
+fn extract_marker_delay_ms(value: &str, marker: &str) -> Option<u64> {
+    let index = value.find(marker)?;
+    let suffix = &value[index + marker.len()..];
+    let digits: String = suffix.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    digits.parse::<u64>().ok()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -253,6 +290,7 @@ fn build_state_with_options(
 
     AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
+        function_locks: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         function_replicas: Arc::new(Mutex::new(HashMap::new())),
         provisioner: Arc::new(provisioner),
         execution_store,
@@ -703,20 +741,33 @@ async fn create_function(
         return resp;
     }
 
-    let mut resolved_spec = spec.clone();
-    if !state.function_registry.register(resolved_spec.clone()) {
+    let function_lock = function_lock(&state, &spec.name).await;
+    let _guard = function_lock.lock().await;
+
+    if state.function_registry.get(&spec.name).is_some() {
+        drop(_guard);
+        cleanup_function_lock(&state, &spec.name, &function_lock).await;
         return StatusCode::CONFLICT.into_response();
     }
 
+    let resolver = FunctionSpecResolver::new(default_function_defaults());
+    let resolved = match resolver.try_resolve(to_resolver_spec(&spec)) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            drop(_guard);
+            cleanup_function_lock(&state, &spec.name, &function_lock).await;
+            return validation_error(vec![err]);
+        }
+    };
+
+    let mut resolved_spec = to_function_spec(&resolved);
     if resolved_spec.execution_mode == crate::model::ExecutionMode::Deployment {
         match state.provisioner.provision(&resolved_spec).await {
-            Ok(Some(endpoint_url)) => {
-                resolved_spec.url = Some(endpoint_url);
-                state.function_registry.put(resolved_spec.clone());
-            }
+            Ok(Some(endpoint_url)) => resolved_spec.url = Some(endpoint_url),
             Ok(None) => {}
             Err(err) => {
-                state.function_registry.remove(&resolved_spec.name);
+                drop(_guard);
+                cleanup_function_lock(&state, &spec.name, &function_lock).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -727,6 +778,12 @@ async fn create_function(
                     .into_response();
             }
         }
+    }
+
+    if !state.function_registry.register(resolved_spec.clone()) {
+        drop(_guard);
+        cleanup_function_lock(&state, &spec.name, &function_lock).await;
+        return StatusCode::CONFLICT.into_response();
     }
 
     state
@@ -745,6 +802,8 @@ async fn create_function(
             resolved_spec.concurrency.unwrap_or(1).max(1) as usize,
         );
 
+    drop(_guard);
+    cleanup_function_lock(&state, &resolved_spec.name, &function_lock).await;
     (StatusCode::CREATED, Json(resolved_spec)).into_response()
 }
 
@@ -764,6 +823,8 @@ async fn get_function(
 }
 
 async fn delete_function(Path(name): Path<String>, State(state): State<AppState>) -> StatusCode {
+    let function_lock = function_lock(&state, &name).await;
+    let _guard = function_lock.lock().await;
     let removed = state.function_registry.remove(&name);
     state
         .function_replicas
@@ -782,9 +843,15 @@ async fn delete_function(Path(name): Path<String>, State(state): State<AppState>
                     eprintln!("deprovision failed for {name}: {err}");
                 }
             }
+            drop(_guard);
+            cleanup_function_lock(&state, &name, &function_lock).await;
             StatusCode::NO_CONTENT
         }
-        None => StatusCode::NOT_FOUND,
+        None => {
+            drop(_guard);
+            cleanup_function_lock(&state, &name, &function_lock).await;
+            StatusCode::NOT_FOUND
+        }
     }
 }
 
@@ -1585,6 +1652,83 @@ fn validate_function_spec(spec: &FunctionSpec) -> Result<(), Response> {
         Ok(())
     } else {
         Err(validation_error(details))
+    }
+}
+
+fn default_function_defaults() -> FunctionDefaults {
+    FunctionDefaults::new(30_000, 4, 100, 3)
+}
+
+fn to_resolver_spec(spec: &FunctionSpec) -> ResolverFunctionSpec {
+    ResolverFunctionSpec {
+        name: spec.name.clone(),
+        image: spec.image.clone().unwrap_or_default(),
+        command: spec.commands.clone(),
+        env: spec.env.clone(),
+        timeout_ms: spec.timeout_millis.map(|value| value as i32),
+        concurrency: spec.concurrency,
+        queue_size: spec.queue_size,
+        max_retries: spec.max_retries,
+        endpoint_url: spec.url.clone(),
+        execution_mode: Some(spec.execution_mode.clone()),
+        runtime_mode: Some(spec.runtime_mode.clone()),
+        runtime_command: spec.runtime_command.clone(),
+        scaling_config: spec
+            .scaling_config
+            .clone()
+            .and_then(|value| serde_json::from_value(value).ok()),
+    }
+}
+
+fn to_function_spec(spec: &ResolverFunctionSpec) -> FunctionSpec {
+    FunctionSpec {
+        name: spec.name.clone(),
+        image: Some(spec.image.clone()),
+        execution_mode: spec
+            .execution_mode
+            .clone()
+            .unwrap_or(crate::model::ExecutionMode::Deployment),
+        runtime_mode: spec
+            .runtime_mode
+            .clone()
+            .unwrap_or(crate::model::RuntimeMode::Http),
+        concurrency: spec.concurrency,
+        queue_size: spec.queue_size,
+        max_retries: spec.max_retries,
+        scaling_config: spec
+            .scaling_config
+            .clone()
+            .map(|value| serde_json::to_value(value).expect("resolver scaling config should serialize")),
+        commands: spec.command.clone(),
+        env: spec.env.clone(),
+        resources: None,
+        timeout_millis: spec.timeout_ms.map(|value| value as u64),
+        url: spec.endpoint_url.clone(),
+        image_pull_secrets: None,
+        runtime_command: spec.runtime_command.clone(),
+    }
+}
+
+async fn function_lock(
+    state: &AppState,
+    name: &str,
+) -> Arc<tokio::sync::Mutex<()>> {
+    let mut locks = state.function_locks.lock().await;
+    locks.entry(name.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+async fn cleanup_function_lock(
+    state: &AppState,
+    name: &str,
+    function_lock: &Arc<tokio::sync::Mutex<()>>,
+) {
+    let mut locks = state.function_locks.lock().await;
+    if let Some(existing) = locks.get(name) {
+        if Arc::ptr_eq(existing, function_lock) && Arc::strong_count(existing) == 2 {
+            locks.remove(name);
+        }
     }
 }
 
