@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.runtime.core;
 
 import it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilter;
+import it.unimib.datai.nanofaas.sdk.runtime.RuntimeSettings;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class TraceLoggingFilterTest {
     @Test
     void issue016_traceIdStoredInMdc() throws ServletException, IOException {
-        TraceLoggingFilter filter = new TraceLoggingFilter();
+        TraceLoggingFilter filter = new TraceLoggingFilter(new RuntimeSettings(null, null, null, null));
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Trace-Id", "trace-123");
         MockHttpServletResponse response = new MockHttpServletResponse();

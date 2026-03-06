@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.runtime.core;
 
 import it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilter;
+import it.unimib.datai.nanofaas.sdk.runtime.RuntimeSettings;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;
@@ -15,9 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class TraceLoggingFilterHeaderPriorityTest {
 
+    private static final RuntimeSettings SETTINGS = new RuntimeSettings("env-exec-id", null, null, null);
+
     @Test
     void executionId_fromHeader_takesPriorityOverEnv() throws ServletException, IOException {
-        TraceLoggingFilter filter = new TraceLoggingFilter();
+        TraceLoggingFilter filter = new TraceLoggingFilter(SETTINGS);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Execution-Id", "header-exec-123");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -33,7 +36,7 @@ class TraceLoggingFilterHeaderPriorityTest {
 
     @Test
     void executionId_noHeader_fallsBackToEnv() throws ServletException, IOException {
-        TraceLoggingFilter filter = new TraceLoggingFilter();
+        TraceLoggingFilter filter = new TraceLoggingFilter(SETTINGS);
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<String> seen = new AtomicReference<>();
@@ -42,12 +45,12 @@ class TraceLoggingFilterHeaderPriorityTest {
 
         filter.doFilter(request, response, chain);
 
-        assertThat(seen.get()).isNull();
+        assertThat(seen.get()).isEqualTo("env-exec-id");
     }
 
     @Test
     void bothHeaders_setCorrectMdcEntries() throws ServletException, IOException {
-        TraceLoggingFilter filter = new TraceLoggingFilter();
+        TraceLoggingFilter filter = new TraceLoggingFilter(SETTINGS);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Trace-Id", "trace-abc");
         request.addHeader("X-Execution-Id", "exec-xyz");
@@ -70,7 +73,7 @@ class TraceLoggingFilterHeaderPriorityTest {
 
     @Test
     void mdcCleanedUp_evenOnException() throws ServletException, IOException {
-        TraceLoggingFilter filter = new TraceLoggingFilter();
+        TraceLoggingFilter filter = new TraceLoggingFilter(SETTINGS);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Trace-Id", "trace-err");
         request.addHeader("X-Execution-Id", "exec-err");

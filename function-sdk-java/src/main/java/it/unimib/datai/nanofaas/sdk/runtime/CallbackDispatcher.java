@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ArrayBlockingQueue;
@@ -23,6 +24,7 @@ public class CallbackDispatcher {
     private final CallbackClient callbackClient;
     private final ThreadPoolExecutor executor;
 
+    @Autowired
     public CallbackDispatcher(CallbackClient callbackClient) {
         this(callbackClient, new ThreadPoolExecutor(
                 WORKER_COUNT,
