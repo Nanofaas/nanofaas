@@ -147,7 +147,10 @@ final class E2eApiSupport {
     }
 
     static void assertMetricPresent(String metrics, String metric) {
-        assertMetricPresentAny(metrics, metric);
+        MetricAggregate aggregate = aggregateMetric(metrics, metric, Map.of());
+        if (aggregate.matches() == 0) {
+            throw new AssertionError("expected metric " + metric + " to be present");
+        }
     }
 
     static void assertMetricPresentAny(String metrics, String... metricCandidates) {
@@ -165,7 +168,14 @@ final class E2eApiSupport {
     }
 
     static void assertMetricSumAtLeast(String metrics, String metric, Map<String, String> labelFilter, double min) {
-        assertMetricSumAtLeastAny(metrics, labelFilter, min, metric);
+        MetricAggregate aggregate = aggregateMetric(metrics, metric, labelFilter);
+        if (aggregate.matches() == 0) {
+            throw new AssertionError(
+                    "expected metric " + metric + " with labels " + labelFilter + " to be present");
+        }
+        if (aggregate.sum() < min) {
+            throw new AssertionError("expected " + metric + " sum >= " + min + " but was " + aggregate.sum());
+        }
     }
 
     static void assertMetricSumAtLeastAny(
