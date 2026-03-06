@@ -91,4 +91,20 @@ class TraceLoggingFilterTest {
         assertNull(MDC.get("traceId"));
         assertNull(MDC.get("executionId"));
     }
+
+    @Test
+    void blankExecutionHeader_fallsBackToEnvExecutionId() throws ServletException, IOException {
+        TraceLoggingFilter filterWithEnv = new TraceLoggingFilter("env-exec-id");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("X-Execution-Id", "   ");
+
+        AtomicReference<String> capturedExec = new AtomicReference<>();
+
+        FilterChain chain = (req, res) -> capturedExec.set(MDC.get("executionId"));
+
+        filterWithEnv.doFilterInternal(request, new MockHttpServletResponse(), chain);
+
+        assertEquals("env-exec-id", capturedExec.get());
+        assertNull(MDC.get("executionId"));
+    }
 }

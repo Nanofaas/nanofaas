@@ -70,6 +70,25 @@ class InvokeControllerTest {
     }
 
     @Test
+    void invoke_handlerThrowsWithoutMessage_returnsStable500AndCallbackPayload() {
+        when(handler.handle(any())).thenThrow(new RuntimeException());
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, "t-2");
+
+        assertEquals(500, response.getStatusCode().value());
+        @SuppressWarnings("unchecked")
+        Map<String, String> body = (Map<String, String>) response.getBody();
+        assertEquals("Handler execution failed", body.get("error"));
+        verify(callbackClient, timeout(2000)).sendResult(
+                eq("env-exec-id"),
+                argThat(r -> !r.success() && r.error() != null
+                        && "HANDLER_ERROR".equals(r.error().code())
+                        && "Handler execution failed".equals(r.error().message())),
+                eq("t-2"));
+    }
+
+    @Test
     void invoke_callbackFails_stillReturnsOk() {
         when(handler.handle(any())).thenReturn("data");
         when(callbackClient.sendResult(anyString(), any(), any())).thenReturn(false);

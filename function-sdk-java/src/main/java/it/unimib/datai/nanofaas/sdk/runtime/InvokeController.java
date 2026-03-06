@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RestController
 public class InvokeController {
     private static final Logger log = LoggerFactory.getLogger(InvokeController.class);
+    private static final String DEFAULT_HANDLER_ERROR_MESSAGE = "Handler execution failed";
     private static final AtomicBoolean FIRST_INVOCATION = new AtomicBoolean(true);
     private static final Instant CONTAINER_START = Instant.now();
     private static final ExecutorService CALLBACK_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
@@ -70,16 +71,22 @@ public class InvokeController {
             }
             return responseBuilder.body(output);
         } catch (Exception ex) {
-            log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
+            String errorMessage = handlerErrorMessage(ex);
+            log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
 
             // Fire-and-forget: error callback must not block the error response
             final String cbExecId = effectiveExecutionId;
             final String cbTraceId = traceId;
-            final InvocationResult cbResult = InvocationResult.error("HANDLER_ERROR", ex.getMessage());
+            final InvocationResult cbResult = InvocationResult.error("HANDLER_ERROR", errorMessage);
             CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
 
             return ResponseEntity.status(500)
-                    .body(Map.of("error", ex.getMessage()));
+                    .body(Map.of("error", errorMessage));
         }
+    }
+
+    private static String handlerErrorMessage(Exception ex) {
+        String message = ex.getMessage();
+        return (message == null || message.isBlank()) ? DEFAULT_HANDLER_ERROR_MESSAGE : message;
     }
 }
