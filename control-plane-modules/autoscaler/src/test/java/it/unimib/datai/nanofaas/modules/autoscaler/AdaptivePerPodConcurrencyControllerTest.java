@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -124,5 +125,24 @@ class AdaptivePerPodConcurrencyControllerTest {
         removeFunctionState.invoke(controller, "fn-a");
 
         assertThat(controller.currentTargetInFlightPerPod("fn-a", 4)).isEqualTo(4);
+    }
+
+    @Test
+    void stateResetStillWorksThroughCoordinator() {
+        AdaptivePerPodConcurrencyController controller = new AdaptivePerPodConcurrencyController();
+        ConcurrencyControlCoordinator coordinator = new ConcurrencyControlCoordinator(
+                Mockito.mock(ScalingMetricsReader.class),
+                new ScalingProperties(5000L, 1, 10),
+                new StaticPerPodConcurrencyController(),
+                controller
+        );
+        FunctionSpec spec = spec("fn-z", 20, 4);
+
+        coordinator.apply(spec, spec.scalingConfig(), 0.95, 4, false, 4);
+        assertThat(controller.currentTargetInFlightPerPod("fn-z", 4)).isEqualTo(3);
+
+        coordinator.removeFunctionState("fn-z");
+
+        assertThat(controller.currentTargetInFlightPerPod("fn-z", 4)).isEqualTo(4);
     }
 }

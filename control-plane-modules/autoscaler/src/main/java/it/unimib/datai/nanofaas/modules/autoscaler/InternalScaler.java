@@ -29,6 +29,7 @@ public class InternalScaler implements SmartLifecycle {
     private final ScalingCooldownTracker cooldownTracker;
     private final StaticPerPodConcurrencyController staticConcurrencyController;
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
+    private final ConcurrencyControlCoordinator concurrencyControlCoordinator;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
 
@@ -46,6 +47,12 @@ public class InternalScaler implements SmartLifecycle {
         this.cooldownTracker = new ScalingCooldownTracker();
         this.staticConcurrencyController = new StaticPerPodConcurrencyController();
         this.adaptiveConcurrencyController = new AdaptivePerPodConcurrencyController();
+        this.concurrencyControlCoordinator = new ConcurrencyControlCoordinator(
+                metricsReader,
+                properties,
+                staticConcurrencyController,
+                adaptiveConcurrencyController
+        );
     }
 
     @Override
@@ -155,7 +162,7 @@ public class InternalScaler implements SmartLifecycle {
             }
         }
 
-        applyConcurrencyControl(
+        concurrencyControlCoordinator.apply(
                 spec,
                 scaling,
                 decision.maxRatio(),
@@ -165,53 +172,9 @@ public class InternalScaler implements SmartLifecycle {
         );
     }
 
-    private void applyConcurrencyControl(FunctionSpec spec,
-                                         ScalingConfig scaling,
-                                         double loadRatio,
-                                         int effectiveReplicas,
-                                         boolean downscaleSignal,
-                                         int currentReplicas) {
-        String functionName = spec.name();
-        int configuredConcurrency = spec.concurrency();
-        int effectiveConcurrency = configuredConcurrency;
-        ConcurrencyControlMode controllerMode = ConcurrencyControlMode.FIXED;
-        int targetInFlightPerPod = 0;
-
-        if (scaling.concurrencyControl() != null) {
-            ConcurrencyControlMode mode = scaling.concurrencyControl().mode();
-            if (mode == ConcurrencyControlMode.STATIC_PER_POD) {
-                controllerMode = ConcurrencyControlMode.STATIC_PER_POD;
-                targetInFlightPerPod = scaling.concurrencyControl().targetInFlightPerPod() == null
-                        ? 0
-                        : scaling.concurrencyControl().targetInFlightPerPod();
-                effectiveConcurrency = staticConcurrencyController.computeEffectiveConcurrency(spec, effectiveReplicas);
-            } else if (mode == ConcurrencyControlMode.ADAPTIVE_PER_POD) {
-                controllerMode = ConcurrencyControlMode.ADAPTIVE_PER_POD;
-                boolean atMaxReplicas = currentReplicas >= scaling.maxReplicas();
-                effectiveConcurrency = adaptiveConcurrencyController.computeEffectiveConcurrency(
-                        spec,
-                        effectiveReplicas,
-                        loadRatio,
-                        downscaleSignal,
-                        atMaxReplicas,
-                        Instant.now().toEpochMilli()
-                );
-                targetInFlightPerPod = adaptiveConcurrencyController.currentTargetInFlightPerPod(
-                        functionName,
-                        scaling.concurrencyControl().targetInFlightPerPod() == null
-                                ? properties.defaultTargetInFlightPerPodOrDefault()
-                                : scaling.concurrencyControl().targetInFlightPerPod()
-                );
-            }
-        }
-
-        metricsReader.setEffectiveConcurrency(functionName, effectiveConcurrency);
-        metricsReader.updateConcurrencyControllerState(functionName, controllerMode, targetInFlightPerPod);
-    }
-
     void removeFunctionState(String functionName) {
         cooldownTracker.clear(functionName);
-        adaptiveConcurrencyController.removeFunctionState(functionName);
+        concurrencyControlCoordinator.removeFunctionState(functionName);
         coldStartTracker.removeFunctionState(functionName);
     }
 }
