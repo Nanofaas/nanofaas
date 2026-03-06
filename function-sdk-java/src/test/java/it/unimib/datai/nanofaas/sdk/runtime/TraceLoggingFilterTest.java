@@ -43,6 +43,8 @@ class TraceLoggingFilterTest {
 
     @Test
     void noHeaders_mdcRemainsEmpty() throws ServletException, IOException {
+        TraceLoggingFilter filterWithoutDefaults = new TraceLoggingFilter(
+                new RuntimeSettings(null, null, "http://callback", "handler"));
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         AtomicReference<String> capturedTrace = new AtomicReference<>();
@@ -53,10 +55,11 @@ class TraceLoggingFilterTest {
             capturedExec.set(MDC.get("executionId"));
         };
 
-        filter.doFilterInternal(request, new MockHttpServletResponse(), chain);
+        filterWithoutDefaults.doFilterInternal(request, new MockHttpServletResponse(), chain);
 
         assertNull(capturedTrace.get());
-        // executionId may be set from env var - just verify it doesn't throw
+        assertNull(capturedExec.get());
+        assertNull(MDC.get("executionId"));
     }
 
     @Test
