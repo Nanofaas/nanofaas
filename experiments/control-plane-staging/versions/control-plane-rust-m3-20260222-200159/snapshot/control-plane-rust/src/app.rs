@@ -1210,7 +1210,6 @@ fn enqueue_function(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .put_now(record);
-    enqueue_publish_delay_for(name);
     if let Err(response) = state
         .queue_manager
         .lock()
@@ -1235,6 +1234,7 @@ fn enqueue_function(
         abandon_idempotency_claim(&state, name, idem_claim.as_ref());
         return Err(response);
     }
+    enqueue_publish_delay_for(name);
     state.metrics.enqueue(name);
     state.metrics.queue_depth(name);
     publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);

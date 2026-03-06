@@ -14,6 +14,26 @@ fn enqueue_publish_delay_guard() -> &'static Mutex<()> {
     GUARD.get_or_init(|| Mutex::new(()))
 }
 
+struct EnqueuePublishDelayEnvGuard;
+
+impl EnqueuePublishDelayEnvGuard {
+    fn install(function_name: &str, delay_ms: u64) -> Self {
+        std::env::set_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION", function_name);
+        std::env::set_var(
+            "NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS",
+            delay_ms.to_string(),
+        );
+        Self
+    }
+}
+
+impl Drop for EnqueuePublishDelayEnvGuard {
+    fn drop(&mut self) {
+        std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION");
+        std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS");
+    }
+}
+
 fn one_shot_json_runtime(body: &str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test runtime");
     let addr = listener.local_addr().expect("runtime local addr");
@@ -270,8 +290,7 @@ async fn background_scheduler_enqueue_publish_order_keeps_task_visible_to_schedu
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let function_name = "bg-enqueue-order";
-    std::env::set_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION", function_name);
-    std::env::set_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS", "150");
+    let _env_guard = EnqueuePublishDelayEnvGuard::install(function_name, 150);
 
     let (app, _mgmt) = control_plane_rust::app::build_app_pair_with_background_scheduler();
     register_local_function(&app, function_name).await;
@@ -286,17 +305,13 @@ async fn background_scheduler_enqueue_publish_order_keeps_task_visible_to_schedu
             break;
         }
         if status == "error" || status == "timeout" {
-            std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION");
-            std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS");
             panic!("execution reached terminal non-success status: {payload}");
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION");
-    std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS");
     assert!(
         saw_success,
-        "background scheduler lost the task before its execution record was visible"
+        "background scheduler lost the task in the enqueue-to-publish window"
     );
 }
