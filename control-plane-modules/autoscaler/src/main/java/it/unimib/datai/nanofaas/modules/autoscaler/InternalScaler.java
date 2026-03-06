@@ -241,4 +241,11 @@ public class InternalScaler implements SmartLifecycle {
             return 50.0;
         }
     }
+
+    void removeFunctionState(String functionName) {
+        lastScaleUp.remove(functionName);
+        lastScaleDown.remove(functionName);
+        adaptiveConcurrencyController.removeFunctionState(functionName);
+        coldStartTracker.removeFunctionState(functionName);
+    }
 }

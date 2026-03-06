@@ -135,4 +135,20 @@ class FunctionSpecResolverTest {
         assertEquals(3, normalized.maxTargetInFlightPerPod());
         assertEquals(3, normalized.targetInFlightPerPod());
     }
+
+    @Test
+    void resolve_internalScalingRejectsUnsupportedMetricTypes() {
+        ScalingConfig scaling = new ScalingConfig(
+                ScalingStrategy.INTERNAL,
+                1,
+                5,
+                List.of(new ScalingMetric("cpu", "80", null))
+        );
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, scaling);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> resolver.resolve(spec));
+
+        assertTrue(thrown.getMessage().contains("Unsupported INTERNAL scaling metric"));
+    }
 }

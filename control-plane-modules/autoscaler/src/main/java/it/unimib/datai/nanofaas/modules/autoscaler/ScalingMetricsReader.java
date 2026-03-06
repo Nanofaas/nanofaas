@@ -8,12 +8,16 @@ import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class ScalingMetricsReader {
     private static final Logger log = LoggerFactory.getLogger(ScalingMetricsReader.class);
 
     private final ScalingMetricsSource scalingMetricsSource;
     private final MeterRegistry meterRegistry;
-    private final java.util.Map<String, Counter> dispatchCounters = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, Counter> dispatchCounters = new ConcurrentHashMap<>();
+    private final Map<String, CounterSample> lastDispatchSamples = new ConcurrentHashMap<>();
 
     public ScalingMetricsReader(ScalingMetricsSource scalingMetricsSource, MeterRegistry meterRegistry) {
         this.scalingMetricsSource = scalingMetricsSource;
@@ -58,12 +62,30 @@ public class ScalingMetricsReader {
         scalingMetricsSource.updateConcurrencyController(functionName, mode, targetInFlightPerPod);
     }
 
+    void removeFunctionState(String functionName) {
+        dispatchCounters.remove(functionName);
+        lastDispatchSamples.remove(functionName);
+    }
+
     private double readRps(String functionName) {
         Counter counter = dispatchCounters.computeIfAbsent(functionName, fn ->
                 Counter.builder("function_dispatch_total")
                         .tag("function", fn)
                         .register(meterRegistry));
-        // Return cumulative count; scaler computes rate over its poll interval.
-        return counter.count();
+        CounterSample current = new CounterSample(counter.count(), System.currentTimeMillis());
+        CounterSample previous = lastDispatchSamples.put(functionName, current);
+        if (previous == null) {
+            return 0.0;
+        }
+
+        double deltaCount = current.count() - previous.count();
+        long deltaMs = current.epochMs() - previous.epochMs();
+        if (deltaCount <= 0.0 || deltaMs <= 0L) {
+            return 0.0;
+        }
+        return deltaCount / (deltaMs / 1000.0);
+    }
+
+    private record CounterSample(double count, long epochMs) {
     }
 }
