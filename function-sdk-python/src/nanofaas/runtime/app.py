@@ -4,6 +4,7 @@ import asyncio
 import logging
 import threading
 import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
@@ -15,7 +16,23 @@ from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTEN
 sdk_logging.configure_logging()
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="nanoFaaS Python Runtime")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if HANDLER_MODULE:
+        try:
+            logger.info(f"Loading handler module: {HANDLER_MODULE}")
+            importlib.import_module(HANDLER_MODULE)
+            if not decorator.get_registered_handler():
+                logger.warning(
+                    f"Module {HANDLER_MODULE} loaded but no function decorated with @nanofaas_function"
+                )
+            else:
+                logger.info("Successfully registered handler")
+        except Exception as e:
+            logger.error(f"Failed to load handler module {HANDLER_MODULE}: {e}", exc_info=True)
+    yield
+
+app = FastAPI(title="nanoFaaS Python Runtime", lifespan=lifespan)
 
 CALLBACK_URL = os.environ.get('CALLBACK_URL', '')
 DEFAULT_EXECUTION_ID = os.environ.get('EXECUTION_ID', '')
@@ -53,19 +70,6 @@ _first_invocation = True
 # threading.Lock is intentional: the critical section is a non-yielding boolean swap
 # (no awaits), so it is safe and avoids the overhead of an asyncio.Lock acquire.
 _cold_start_lock = threading.Lock()
-
-@app.on_event("startup")
-async def startup_event():
-    if HANDLER_MODULE:
-        try:
-            logger.info(f"Loading handler module: {HANDLER_MODULE}")
-            importlib.import_module(HANDLER_MODULE)
-            if not decorator.get_registered_handler():
-                logger.warning(f"Module {HANDLER_MODULE} loaded but no function decorated with @nanofaas_function")
-            else:
-                logger.info("Successfully registered handler")
-        except Exception as e:
-            logger.error(f"Failed to load handler module {HANDLER_MODULE}: {e}", exc_info=True)
 
 async def send_callback(callback_url: str, execution_id: str, trace_id: str | None, result: dict):
     if not callback_url:
