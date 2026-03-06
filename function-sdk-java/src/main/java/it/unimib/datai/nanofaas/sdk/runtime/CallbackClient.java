@@ -6,6 +6,7 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -91,8 +92,13 @@ public class CallbackClient {
     }
 
     private boolean isPermanentClientFailure(RestClientException ex) {
-        return ex instanceof RestClientResponseException responseException
-                && responseException.getStatusCode().is4xxClientError();
+        if (!(ex instanceof RestClientResponseException responseException)) {
+            return false;
+        }
+        HttpStatusCode statusCode = responseException.getStatusCode();
+        return statusCode.is4xxClientError()
+                && statusCode.value() != 408
+                && statusCode.value() != 429;
     }
 
     private String callbackUrl(String executionId) {

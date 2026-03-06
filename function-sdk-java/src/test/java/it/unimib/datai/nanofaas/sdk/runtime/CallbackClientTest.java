@@ -163,6 +163,17 @@ class CallbackClientTest {
     }
 
     @Test
+    void sendResult_retryable429Failure_isRetried() {
+        server.enqueue(new MockResponse().setResponseCode(429));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        boolean ok = client.sendResult("exec-9b", InvocationResult.success("retry-ok"));
+
+        assertTrue(ok);
+        assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
     void sendResult_usesInjectedCallbackSettings() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
         RestClient restClient = RestClient.builder()
