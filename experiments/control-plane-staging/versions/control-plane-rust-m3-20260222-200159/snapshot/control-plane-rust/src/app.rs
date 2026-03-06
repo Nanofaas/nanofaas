@@ -587,7 +587,9 @@ fn metric_current_value(state: &AppState, function_name: &str, metric: &ScalingM
                 .running_count_for_function(function_name);
             std::cmp::max(queued_in_flight, running) as f64
         }
-        "rps" => 0.0,
+        "rps" => state
+            .metrics
+            .dispatch_rate_per_second(function_name, Duration::from_secs(1)),
         _ => 0.0,
     }
 }
@@ -1846,6 +1848,43 @@ mod autoscaling_tests {
             .configure_function(function_name, 100, 4);
     }
 
+    async fn register_rps_scaled_function(state: &AppState, function_name: &str) {
+        let spec = FunctionSpec {
+            name: function_name.to_string(),
+            image: Some("localhost:5000/nanofaas/java-word-stats:e2e".to_string()),
+            execution_mode: ExecutionMode::Deployment,
+            runtime_mode: RuntimeMode::Http,
+            concurrency: Some(4),
+            queue_size: Some(100),
+            max_retries: Some(3),
+            scaling_config: Some(json!({
+                "strategy": "INTERNAL",
+                "minReplicas": 0,
+                "maxReplicas": 5,
+                "metrics": [{"type": "rps", "target": "1"}]
+            })),
+            commands: None,
+            env: None,
+            resources: None,
+            timeout_millis: Some(30_000),
+            url: None,
+            image_pull_secrets: None,
+            runtime_command: None,
+        };
+
+        assert!(state.function_registry.register(spec.clone()));
+        let _ = state
+            .provisioner
+            .provision(&spec)
+            .await
+            .expect("provision should succeed");
+        state
+            .queue_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .configure_function(function_name, 100, 4);
+    }
+
     fn with_inmemory_manager<R>(
         state: &AppState,
         callback: impl FnOnce(&Arc<KubernetesResourceManager>) -> R,
@@ -1923,6 +1962,31 @@ mod autoscaling_tests {
             assert!(
                 crate::now_millis().saturating_sub(start) < 5_000,
                 "internal scaler did not scale down within timeout"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn internal_scaler_scales_up_from_rps_load() {
+        let metrics = Arc::new(Metrics::new());
+        let state = build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
+        register_rps_scaled_function(&state, "autoscale-rps").await;
+
+        state.metrics.dispatch("autoscale-rps");
+        state.metrics.dispatch("autoscale-rps");
+        state.metrics.dispatch("autoscale-rps");
+
+        start_internal_scaler(state.clone());
+
+        let start = crate::now_millis();
+        loop {
+            if deployment_replicas(&state, "autoscale-rps") >= 3 {
+                break;
+            }
+            assert!(
+                crate::now_millis().saturating_sub(start) < 5_000,
+                "internal scaler did not scale up from rps within timeout"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }

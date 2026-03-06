@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct MetricKey {
@@ -17,6 +18,7 @@ struct TimerData {
 struct MetricsInner {
     counters: HashMap<MetricKey, f64>,
     timers: HashMap<MetricKey, TimerData>,
+    dispatch_events: HashMap<String, VecDeque<u64>>,
 }
 
 /// Bundle of all per-function timers, fetched once per invocation to avoid repeated map lookups.
@@ -88,7 +90,16 @@ impl Metrics {
     }
 
     pub fn dispatch(&self, function: &str) {
-        self.inc_counter("function_dispatch_total", function);
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let key = MetricKey {
+            name: "function_dispatch_total".to_string(),
+            function: function.to_string(),
+        };
+        *inner.counters.entry(key).or_insert(0.0) += 1.0;
+        let now = crate::now_millis();
+        let events = inner.dispatch_events.entry(function.to_string()).or_default();
+        events.push_back(now);
+        prune_dispatch_events(events, now, Duration::from_secs(1));
     }
 
     pub fn success(&self, function: &str) {
@@ -172,10 +183,22 @@ impl Metrics {
         }
         let [latency_key, init_key, queue_key, e2e_key] = keys;
         FunctionTimers {
-            latency: TimerHandle { inner: Arc::clone(&self.inner), key: latency_key },
-            init_duration: TimerHandle { inner: Arc::clone(&self.inner), key: init_key },
-            queue_wait: TimerHandle { inner: Arc::clone(&self.inner), key: queue_key },
-            e2e_latency: TimerHandle { inner: Arc::clone(&self.inner), key: e2e_key },
+            latency: TimerHandle {
+                inner: Arc::clone(&self.inner),
+                key: latency_key,
+            },
+            init_duration: TimerHandle {
+                inner: Arc::clone(&self.inner),
+                key: init_key,
+            },
+            queue_wait: TimerHandle {
+                inner: Arc::clone(&self.inner),
+                key: queue_key,
+            },
+            e2e_latency: TimerHandle {
+                inner: Arc::clone(&self.inner),
+                key: e2e_key,
+            },
         }
     }
 
@@ -190,6 +213,17 @@ impl Metrics {
             })
             .copied()
             .unwrap_or(0.0)
+    }
+
+    pub fn dispatch_rate_per_second(&self, function: &str, window: Duration) -> f64 {
+        let now = crate::now_millis();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let events = inner.dispatch_events.entry(function.to_string()).or_default();
+        prune_dispatch_events(events, now, window);
+        if events.is_empty() {
+            return 0.0;
+        }
+        events.len() as f64 / window.as_secs_f64().max(1.0)
     }
 
     pub fn to_prometheus_text(&self) -> String {
@@ -242,5 +276,15 @@ impl Metrics {
             inner: Arc::clone(&self.inner),
             key,
         }
+    }
+}
+
+fn prune_dispatch_events(events: &mut VecDeque<u64>, now: u64, window: Duration) {
+    let cutoff = now.saturating_sub(window.as_millis() as u64);
+    while let Some(first) = events.front().copied() {
+        if first >= cutoff {
+            break;
+        }
+        let _ = events.pop_front();
     }
 }
