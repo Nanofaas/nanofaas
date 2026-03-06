@@ -72,13 +72,14 @@ class InvocationServiceDispatchTest {
     private SyncQueueGateway syncQueueGateway;
 
     private ExecutionStore executionStore;
+    private IdempotencyStore idempotencyStore;
     private ExecutionCompletionHandler completionHandler;
     private InvocationService invocationService;
 
     @BeforeEach
     void setUp() {
         executionStore = new ExecutionStore();
-        IdempotencyStore idempotencyStore = new IdempotencyStore();
+        idempotencyStore = new IdempotencyStore();
         RateLimiter rateLimiter = new RateLimiter();
         rateLimiter.setMaxPerSecond(1000);
 
@@ -105,6 +106,114 @@ class InvocationServiceDispatchTest {
                 io.micrometer.core.instrument.Timer.builder("test-e2e").register(meterRegistry));
         when(metrics.initDuration(anyString())).thenReturn(
                 io.micrometer.core.instrument.Timer.builder("test-init").register(meterRegistry));
+    }
+
+    @Test
+    void invokeSync_existingSuccessfulExecution_returnsMappedResponseWithoutDispatch() throws InterruptedException {
+        FunctionSpec spec = functionSpec("replay-success-fn", ExecutionMode.LOCAL);
+        when(functionService.get("replay-success-fn")).thenReturn(Optional.of(spec));
+
+        InvocationTask task = task("exec-replay-success", "replay-success-fn", ExecutionMode.LOCAL);
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        record.markSuccess("replayed-ok");
+        executionStore.put(record);
+        idempotencyStore.put("replay-success-fn", "idem-1", record.executionId());
+
+        InvocationResponse response = invocationService.invokeSync(
+                "replay-success-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-1",
+                "trace-1",
+                1_000
+        );
+
+        assertThat(response.executionId()).isEqualTo("exec-replay-success");
+        assertThat(response.status()).isEqualTo("success");
+        assertThat(response.output()).isEqualTo("replayed-ok");
+        verify(syncQueueGateway, never()).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verifyNoInteractions(dispatcherRouter);
+    }
+
+    @Test
+    void invokeSyncReactive_existingSuccessfulExecution_returnsMappedResponseWithoutDispatch() {
+        FunctionSpec spec = functionSpec("replay-reactive-success-fn", ExecutionMode.LOCAL);
+        when(functionService.get("replay-reactive-success-fn")).thenReturn(Optional.of(spec));
+
+        InvocationTask task = task("exec-reactive-replay-success", "replay-reactive-success-fn", ExecutionMode.LOCAL);
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        record.markSuccess("reactive-replayed-ok");
+        executionStore.put(record);
+        idempotencyStore.put("replay-reactive-success-fn", "idem-reactive-success", record.executionId());
+
+        InvocationResponse response = invocationService.invokeSyncReactive(
+                "replay-reactive-success-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-reactive-success",
+                "trace-1",
+                1_000
+        ).block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.executionId()).isEqualTo("exec-reactive-replay-success");
+        assertThat(response.status()).isEqualTo("success");
+        assertThat(response.output()).isEqualTo("reactive-replayed-ok");
+        verify(syncQueueGateway, never()).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verifyNoInteractions(dispatcherRouter);
+    }
+
+    @Test
+    void invokeSync_existingTimeoutExecution_returnsTimeoutWithoutRedispatch() throws InterruptedException {
+        FunctionSpec spec = functionSpec("replay-sync-timeout-fn", ExecutionMode.LOCAL);
+        when(functionService.get("replay-sync-timeout-fn")).thenReturn(Optional.of(spec));
+
+        InvocationTask task = task("exec-sync-replay-timeout", "replay-sync-timeout-fn", ExecutionMode.LOCAL);
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        record.markTimeout();
+        executionStore.put(record);
+        idempotencyStore.put("replay-sync-timeout-fn", "idem-sync-timeout", record.executionId());
+
+        InvocationResponse response = invocationService.invokeSync(
+                "replay-sync-timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-sync-timeout",
+                "trace-1",
+                1_000
+        );
+
+        assertThat(response.executionId()).isEqualTo("exec-sync-replay-timeout");
+        assertThat(response.status()).isEqualTo("timeout");
+        verify(syncQueueGateway, never()).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verifyNoInteractions(dispatcherRouter);
+    }
+
+    @Test
+    void invokeSyncReactive_existingTimeoutExecution_returnsTimeoutWithoutRedispatch() {
+        FunctionSpec spec = functionSpec("replay-timeout-fn", ExecutionMode.LOCAL);
+        when(functionService.get("replay-timeout-fn")).thenReturn(Optional.of(spec));
+
+        InvocationTask task = task("exec-replay-timeout", "replay-timeout-fn", ExecutionMode.LOCAL);
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        record.markTimeout();
+        executionStore.put(record);
+        idempotencyStore.put("replay-timeout-fn", "idem-timeout", record.executionId());
+
+        InvocationResponse response = invocationService.invokeSyncReactive(
+                "replay-timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-timeout",
+                "trace-1",
+                1_000
+        ).block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.executionId()).isEqualTo("exec-replay-timeout");
+        assertThat(response.status()).isEqualTo("timeout");
+        verify(syncQueueGateway, never()).enqueueOrThrow(any());
+        verify(enqueuer, never()).enqueue(any());
+        verifyNoInteractions(dispatcherRouter);
     }
 
     @Test
@@ -321,6 +430,44 @@ class InvocationServiceDispatchTest {
 
         assertThatThrownBy(() -> monoRef.get().block())
                 .isInstanceOf(SyncQueueRejectedException.class);
+    }
+
+    @Test
+    void invokeSync_andReactiveQueueTimeoutSurfaceTheSameContract() {
+        FunctionSpec spec = functionSpec("queue-timeout-fn", ExecutionMode.LOCAL);
+        when(functionService.get("queue-timeout-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        when(syncQueueGateway.retryAfterSeconds()).thenReturn(9);
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            invocationService.completeExecution(
+                    task.executionId(),
+                    DispatchResult.warm(InvocationResult.error("QUEUE_TIMEOUT", "queue wait exceeded"))
+            );
+            return null;
+        }).when(syncQueueGateway).enqueueOrThrow(any());
+
+        assertThatThrownBy(() -> invocationService.invokeSync(
+                "queue-timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-sync-timeout",
+                null,
+                1_000
+        )).isInstanceOfSatisfying(SyncQueueRejectedException.class, ex -> {
+            assertThat(ex.reason()).isEqualTo(SyncQueueRejectReason.TIMEOUT);
+            assertThat(ex.retryAfterSeconds()).isEqualTo(9);
+        });
+
+        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
+                "queue-timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-reactive-timeout",
+                null,
+                1_000
+        ).block()).isInstanceOfSatisfying(SyncQueueRejectedException.class, ex -> {
+            assertThat(ex.reason()).isEqualTo(SyncQueueRejectReason.TIMEOUT);
+            assertThat(ex.retryAfterSeconds()).isEqualTo(9);
+        });
     }
 
     @Test

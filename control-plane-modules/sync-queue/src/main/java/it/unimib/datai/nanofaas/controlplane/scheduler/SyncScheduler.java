@@ -106,13 +106,12 @@ public class SyncScheduler implements SmartLifecycle {
             return;
         }
         queue.recordDispatched(polled.task().functionName(), now);
-        try {
-            dispatch.accept(polled.task());
-        } catch (Exception ex) {
-            enqueuer.releaseDispatchSlot(polled.task().functionName());
-            log.error("Dispatch failed for execution {}: {}",
-                    polled.task().executionId(), ex.getMessage(), ex);
-        }
+        SchedulerDispatchSupport.dispatchWithFailureCleanup(
+                polled.task(),
+                () -> dispatch.accept(polled.task()),
+                () -> enqueuer.releaseDispatchSlot(polled.task().functionName()),
+                log
+        );
     }
 
     private void loop() {

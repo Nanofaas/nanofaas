@@ -16,7 +16,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -110,6 +112,45 @@ class InternalScalerBranchTest {
         scaler.scalingLoop();
 
         verify(resourceManager, never()).setReplicas(anyString(), anyInt());
+    }
+
+    @Test
+    void scalingDecisionCalculator_usesMaxMetricRatioAndClampsReplicas() {
+        ScalingConfig scaling = new ScalingConfig(
+                ScalingStrategy.INTERNAL,
+                1,
+                5,
+                List.of(
+                        new ScalingMetric("queue_depth", "5", null),
+                        new ScalingMetric("cpu", "10", null)
+                )
+        );
+        FunctionSpec spec = spec("echo", 1, 5, scaling.metrics());
+        ScalingDecisionCalculator calculator = new ScalingDecisionCalculator(metricsReader);
+
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
+        when(metricsReader.readMetric("echo", scaling.metrics().get(1))).thenReturn(40.0);
+
+        ScalingDecision decision = calculator.calculate(spec, 2);
+
+        assertThat(decision.currentReplicas()).isEqualTo(2);
+        assertThat(decision.desiredReplicas()).isEqualTo(5);
+        assertThat(decision.maxRatio()).isEqualTo(4.0);
+        assertThat(decision.downscaleSignal()).isFalse();
+    }
+
+    @Test
+    void cooldownTracker_blocksImmediateRepeatScaleUpUntilReset() {
+        ScalingCooldownTracker tracker = new ScalingCooldownTracker();
+        Instant now = Instant.parse("2026-03-06T10:00:00Z");
+
+        assertThat(tracker.allowScaleUp("echo", now)).isTrue();
+        tracker.recordScaleUp("echo", now);
+        assertThat(tracker.allowScaleUp("echo", now.plusMillis(1_000))).isFalse();
+
+        tracker.clear("echo");
+
+        assertThat(tracker.allowScaleUp("echo", now.plusMillis(1_000))).isTrue();
     }
 
     private FunctionSpec spec(String name, int minReplicas, int maxReplicas, List<ScalingMetric> metrics) {

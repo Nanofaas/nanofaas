@@ -36,14 +36,7 @@ public class GlobalExceptionHandler {
                 .toList();
 
         log.debug("Validation failed: {}", errors);
-
-        Map<String, Object> body = Map.of(
-                "error", "VALIDATION_ERROR",
-                "message", "Request validation failed",
-                "details", errors
-        );
-
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(validationErrorBody(errors));
     }
 
     /**
@@ -59,14 +52,7 @@ public class GlobalExceptionHandler {
                 .toList();
 
         log.debug("Validation failed: {}", errors);
-
-        Map<String, Object> body = Map.of(
-                "error", "VALIDATION_ERROR",
-                "message", "Request validation failed",
-                "details", errors
-        );
-
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(validationErrorBody(errors));
     }
 
     /**
@@ -87,47 +73,34 @@ public class GlobalExceptionHandler {
                 .toList();
 
         log.debug("Constraint violation: {}", errors);
-
-        Map<String, Object> body = Map.of(
-                "error", "VALIDATION_ERROR",
-                "message", "Request validation failed",
-                "details", errors
-        );
-
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(validationErrorBody(errors));
     }
 
     @ExceptionHandler(ServerWebInputException.class)
     public ResponseEntity<Map<String, Object>> handleServerWebInputException(
             ServerWebInputException ex) {
         log.debug("Bad request: {}", ex.getMessage());
-        Map<String, Object> body = Map.of(
-                "error", "BAD_REQUEST",
-                "message", ex.getReason() != null ? ex.getReason() : "Invalid request"
-        );
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(errorBody(
+                "BAD_REQUEST",
+                ex.getReason() != null ? ex.getReason() : "Invalid request"
+        ));
     }
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleResponseStatusException(
             ResponseStatusException ex) {
         log.debug("Response status exception: {} {}", ex.getStatusCode(), ex.getReason());
-        Map<String, Object> body = Map.of(
-                "error", ex.getStatusCode().toString(),
-                "message", ex.getReason() != null ? ex.getReason() : "Request error"
-        );
-        return ResponseEntity.status(ex.getStatusCode()).body(body);
+        return ResponseEntity.status(ex.getStatusCode()).body(errorBody(
+                ex.getStatusCode().toString(),
+                ex.getReason() != null ? ex.getReason() : "Request error"
+        ));
     }
 
     @ExceptionHandler(ImageValidationException.class)
     public ResponseEntity<Map<String, Object>> handleImageValidationException(
             ImageValidationException ex) {
         log.debug("Image validation failed: {} {}", ex.errorCode(), ex.getMessage());
-        Map<String, Object> body = Map.of(
-                "error", ex.errorCode(),
-                "message", ex.getMessage()
-        );
-        return ResponseEntity.status(ex.status()).body(body);
+        return ResponseEntity.status(ex.status()).body(errorBody(ex.errorCode(), ex.getMessage()));
     }
 
     /**
@@ -136,12 +109,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
         log.error("Unexpected error: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(errorBody("INTERNAL_ERROR", "An unexpected error occurred"));
+    }
 
-        Map<String, Object> body = Map.of(
-                "error", "INTERNAL_ERROR",
-                "message", "An unexpected error occurred"
+    private static Map<String, Object> validationErrorBody(List<String> errors) {
+        return Map.of(
+                "error", "VALIDATION_ERROR",
+                "message", "Request validation failed",
+                "details", errors
         );
+    }
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    private static Map<String, Object> errorBody(String error, String message) {
+        return Map.of(
+                "error", error,
+                "message", message
+        );
     }
 }
