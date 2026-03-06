@@ -90,3 +90,30 @@ def test_callback_triggered(mock_post, client):
     assert "http://control-plane/callbacks/exec-cb:complete" in call_args[0][0]
     assert call_args[1]["json"]["success"] is True
     assert call_args[1]["json"]["output"] == "done"
+
+@patch("nanofaas.runtime.app.asyncio.to_thread")
+def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
+    """send_callback must offload requests.post to a thread, not call it directly."""
+    import asyncio as _asyncio
+
+    async def _noop():
+        pass
+
+    mock_to_thread.return_value = _noop()
+
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return "done"
+
+    response = client.post(
+        "/invoke",
+        json={"input": "test"},
+        headers={
+            "X-Execution-Id": "exec-async-cb",
+            "X-Callback-Url": "http://cp/callbacks",
+        },
+    )
+    assert response.status_code == 200
+    mock_to_thread.assert_called()
+    import requests as _requests
+    assert mock_to_thread.call_args[0][0] is _requests.post

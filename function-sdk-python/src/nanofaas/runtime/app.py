@@ -63,34 +63,33 @@ async def startup_event():
         except Exception as e:
             logger.error(f"Failed to load handler module {HANDLER_MODULE}: {e}", exc_info=True)
 
-def send_callback(callback_url: str, execution_id: str, trace_id: str | None, result: dict):
+async def send_callback(callback_url: str, execution_id: str, trace_id: str | None, result: dict):
     if not callback_url:
         return
-    
+
     url = f"{callback_url.rstrip('/')}/{execution_id}:complete"
     headers = {"Content-Type": "application/json"}
     if trace_id:
         headers["X-Trace-Id"] = trace_id
-        
+
     logger.info(f"Sending callback to {url}")
-    try:
-        # Simple retry logic for callback
-        for attempt in range(3):
-            try:
-                resp = requests.post(url, json=result, headers=headers, timeout=5)
-                if resp.status_code < 400:
-                    logger.info("Callback sent successfully")
-                    return
-                logger.warning(f"Callback failed with status {resp.status_code} (attempt {attempt+1})")
-            except Exception as e:
-                logger.warning(f"Callback error: {e} (attempt {attempt+1})")
-            
-            if attempt < 2:
-                time_sleep = [0.1, 0.5, 2.0][attempt]
-                import time
-                time.sleep(time_sleep)
-    except Exception:
-        logger.error("Callback failed after all retries")
+    delays = [0.1, 0.5]
+    for attempt in range(3):
+        try:
+            resp = await asyncio.to_thread(
+                requests.post, url, json=result, headers=headers, timeout=5
+            )
+            if resp.status_code < 400:
+                logger.info("Callback sent successfully")
+                return
+            logger.warning(f"Callback failed with status {resp.status_code} (attempt {attempt + 1})")
+        except Exception as e:
+            logger.warning(f"Callback error: {e} (attempt {attempt + 1})")
+
+        if attempt < len(delays):
+            await asyncio.sleep(delays[attempt])
+
+    logger.error("Callback failed after all retries")
 
 @app.post("/invoke")
 async def invoke(
