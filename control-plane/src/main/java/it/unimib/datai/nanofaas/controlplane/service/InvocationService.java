@@ -203,22 +203,39 @@ public class InvocationService {
                                                    InvocationRequest request,
                                                    String idempotencyKey,
                                                    String traceId) {
-        String executionId = UUID.randomUUID().toString();
-        boolean idempotencyStored = false;
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, executionId);
-            if (existingExecutionId != null) {
-                ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
-                if (existing != null) {
-                    return new ExecutionLookup(existing, false);
-                }
-                // Stale idempotency mapping pointing to an evicted execution.
-                idempotencyStore.put(functionName, idempotencyKey, executionId);
-            } else {
-                idempotencyStored = true;
-            }
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            ExecutionRecord record = newExecutionRecord(functionName, spec, request, null, traceId);
+            executionStore.put(record);
+            return new ExecutionLookup(record, true);
         }
 
+        while (true) {
+            ExecutionRecord record = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
+            executionStore.put(record);
+
+            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, record.executionId());
+            if (existingExecutionId == null) {
+                return new ExecutionLookup(record, true);
+            }
+            ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
+            if (existing != null) {
+                executionStore.remove(record.executionId());
+                return new ExecutionLookup(existing, false);
+            }
+            // Stale idempotency mapping pointing to an evicted or not-yet-published execution.
+            if (idempotencyStore.replaceExecutionId(functionName, idempotencyKey, existingExecutionId, record.executionId())) {
+                return new ExecutionLookup(record, true);
+            }
+            executionStore.remove(record.executionId());
+        }
+    }
+
+    private ExecutionRecord newExecutionRecord(String functionName,
+                                               FunctionSpec spec,
+                                               InvocationRequest request,
+                                               String idempotencyKey,
+                                               String traceId) {
+        String executionId = UUID.randomUUID().toString();
         InvocationTask task = new InvocationTask(
                 executionId,
                 functionName,
@@ -229,13 +246,7 @@ public class InvocationService {
                 Instant.now(),
                 1
         );
-        ExecutionRecord record = new ExecutionRecord(executionId, task);
-        executionStore.put(record);
-        if (!idempotencyStored && idempotencyKey != null && !idempotencyKey.isBlank()) {
-            // Keep mapping fresh for TTL semantics.
-            idempotencyStore.put(functionName, idempotencyKey, executionId);
-        }
-        return new ExecutionLookup(record, true);
+        return new ExecutionRecord(executionId, task);
     }
 
     private void enqueueOrThrow(ExecutionRecord record) {

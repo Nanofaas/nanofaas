@@ -25,10 +25,19 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -384,6 +393,156 @@ class InvocationServiceDispatchTest {
         assertThat(invocationService.getStatus(first.executionId())).get()
                 .extracting(status -> status.status())
                 .isEqualTo("timeout");
+    }
+
+    @Test
+    void invokeAsync_staleIdempotencyMapping_createsOnlyOneFreshExecutionUnderContention() throws Exception {
+        FunctionSpec spec = functionSpec("stale-idem-fn", ExecutionMode.LOCAL);
+        when(functionService.get("stale-idem-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.enqueue(any())).thenReturn(true);
+
+        IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
+        staleStore.put("stale-idem-fn", "same-key", "evicted-execution");
+        InvocationService racingService = new InvocationService(
+                functionService,
+                enqueuer,
+                executionStore,
+                staleStore,
+                new RateLimiter(),
+                metrics,
+                syncQueueGateway,
+                completionHandler
+        );
+
+        int contenders = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(contenders);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<InvocationResponse>> futures = new ArrayList<>();
+            for (int i = 0; i < contenders; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return racingService.invokeAsync(
+                            "stale-idem-fn",
+                            new InvocationRequest("payload", Map.of()),
+                            "same-key",
+                            null
+                    );
+                }));
+            }
+
+            start.countDown();
+
+            ArrayList<String> executionIds = new ArrayList<>();
+            for (Future<InvocationResponse> future : futures) {
+                executionIds.add(future.get().executionId());
+            }
+
+            assertThat(new HashSet<>(executionIds)).hasSize(1);
+        } finally {
+            executor.shutdownNow();
+            staleStore.shutdown();
+        }
+    }
+
+    @Test
+    void invokeAsync_staleIdempotencyMapping_doesNotAllowReplacementBeforeWinnerIsPublished() throws Exception {
+        FunctionSpec spec = functionSpec("stale-publication-fn", ExecutionMode.LOCAL);
+        when(functionService.get("stale-publication-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.enqueue(any())).thenReturn(true);
+
+        BlockingExecutionStore blockedStore = new BlockingExecutionStore();
+        IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
+        staleStore.put("stale-publication-fn", "same-key", "evicted-execution");
+        InvocationService racingService = new InvocationService(
+                functionService,
+                enqueuer,
+                blockedStore,
+                staleStore,
+                new RateLimiter(),
+                metrics,
+                syncQueueGateway,
+                new ExecutionCompletionHandler(blockedStore, enqueuer, dispatcherRouter, metrics)
+        );
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<InvocationResponse> first = executor.submit(() -> racingService.invokeAsync(
+                    "stale-publication-fn",
+                    new InvocationRequest("payload", Map.of()),
+                    "same-key",
+                    null
+            ));
+
+            blockedStore.awaitFirstPutStarted();
+
+            Future<InvocationResponse> second = executor.submit(() -> racingService.invokeAsync(
+                    "stale-publication-fn",
+                    new InvocationRequest("payload", Map.of()),
+                    "same-key",
+                    null
+            ));
+
+            blockedStore.waitForConcurrentLookupWindow();
+            blockedStore.allowFirstPutToComplete();
+
+            assertThat(new HashSet<>(List.of(
+                    first.get().executionId(),
+                    second.get().executionId()
+            ))).hasSize(1);
+        } finally {
+            executor.shutdownNow();
+            staleStore.shutdown();
+            blockedStore.shutdown();
+        }
+    }
+
+    private static final class BlockingExecutionStore extends ExecutionStore {
+        private final CountDownLatch firstPutStarted = new CountDownLatch(1);
+        private final CountDownLatch hiddenExecutionLookup = new CountDownLatch(1);
+        private final CountDownLatch allowFirstPutToComplete = new CountDownLatch(1);
+        private final AtomicBoolean blockNextPut = new AtomicBoolean(true);
+        private volatile String blockedExecutionId;
+
+        @Override
+        public void put(ExecutionRecord record) {
+            if (blockNextPut.compareAndSet(true, false)) {
+                blockedExecutionId = record.executionId();
+                firstPutStarted.countDown();
+                try {
+                    allowFirstPutToComplete.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            super.put(record);
+        }
+
+        @Override
+        public ExecutionRecord getOrNull(String executionId) {
+            if (executionId != null && executionId.equals(blockedExecutionId)
+                    && allowFirstPutToComplete.getCount() > 0) {
+                hiddenExecutionLookup.countDown();
+                return null;
+            }
+            return super.getOrNull(executionId);
+        }
+
+        void awaitFirstPutStarted() throws InterruptedException {
+            assertThat(firstPutStarted.await(5, TimeUnit.SECONDS)).isTrue();
+        }
+
+        void waitForConcurrentLookupWindow() throws InterruptedException {
+            hiddenExecutionLookup.await(200, TimeUnit.MILLISECONDS);
+        }
+
+        void allowFirstPutToComplete() {
+            allowFirstPutToComplete.countDown();
+        }
     }
 
     private InvocationTask task(String executionId, String functionName, ExecutionMode mode) {
