@@ -35,4 +35,30 @@ class ExecutionRecordLegacyAccessorsTest {
         assertThat(record.lastError()).isEqualTo(error);
     }
 
+    @Test
+    void terminalMutators_clearOppositePayloadOnValidTransitions() {
+        ExecutionRecord successRecord = new ExecutionRecord(
+                "exec-2",
+                new InvocationTask("exec-2", "fn", null, null, null, null, null, 1)
+        );
+        successRecord.markRunning();
+        successRecord.lastError(new ErrorInfo("ERR", "stale"));
+
+        successRecord.markSuccess("ok");
+
+        assertThat(successRecord.output()).isEqualTo("ok");
+        assertThat(successRecord.lastError()).isNull();
+
+        ExecutionRecord errorRecord = new ExecutionRecord(
+                "exec-3",
+                new InvocationTask("exec-3", "fn", null, null, null, null, null, 1)
+        );
+        errorRecord.markRunning();
+        errorRecord.output("stale");
+
+        errorRecord.markError(new ErrorInfo("ERR2", "second"));
+
+        assertThat(errorRecord.output()).isNull();
+        assertThat(errorRecord.lastError().code()).isEqualTo("ERR2");
+    }
 }
