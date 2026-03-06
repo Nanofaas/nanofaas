@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.SmartLifecycle;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -26,10 +25,10 @@ public class InternalScaler implements SmartLifecycle {
     private final KubernetesResourceManager resourceManager;
     private final ScalingProperties properties;
     private final ColdStartTracker coldStartTracker;
+    private final ScalingDecisionCalculator decisionCalculator;
+    private final ScalingCooldownTracker cooldownTracker;
     private final StaticPerPodConcurrencyController staticConcurrencyController;
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
-    private final Map<String, Instant> lastScaleUp = new ConcurrentHashMap<>();
-    private final Map<String, Instant> lastScaleDown = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
 
@@ -43,6 +42,8 @@ public class InternalScaler implements SmartLifecycle {
         this.resourceManager = resourceManager;
         this.properties = properties;
         this.coldStartTracker = coldStartTracker;
+        this.decisionCalculator = new ScalingDecisionCalculator(metricsReader);
+        this.cooldownTracker = new ScalingCooldownTracker();
         this.staticConcurrencyController = new StaticPerPodConcurrencyController();
         this.adaptiveConcurrencyController = new AdaptivePerPodConcurrencyController();
     }
@@ -124,67 +125,44 @@ public class InternalScaler implements SmartLifecycle {
     private void evaluateAndScale(FunctionSpec spec, ScalingConfig scaling) {
         String functionName = spec.name();
         int currentReplicas = resourceManager.getReadyReplicas(functionName);
-        if (currentReplicas <= 0) {
-            currentReplicas = Math.max(1, scaling.minReplicas());
-        }
-
-        double maxRatio = 0.0;
-        if (scaling.metrics() != null) {
-            for (ScalingMetric metric : scaling.metrics()) {
-                double currentValue = metricsReader.readMetric(functionName, metric);
-                double targetValue = parseTarget(metric.target());
-                if (targetValue > 0) {
-                    double ratio = currentValue / targetValue;
-                    maxRatio = Math.max(maxRatio, ratio);
-                }
-            }
-        }
-
-        int desiredReplicas = (int) Math.ceil(maxRatio * currentReplicas);
-        desiredReplicas = Math.max(scaling.minReplicas(), Math.min(scaling.maxReplicas(), desiredReplicas));
+        ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
 
         Instant now = Instant.now();
-        boolean downscaleSignal = desiredReplicas < currentReplicas;
         boolean scaled = false;
-        int effectiveReplicas = currentReplicas;
-        if (desiredReplicas > currentReplicas) {
-            // Scale up
-            Instant lastUp = lastScaleUp.get(functionName);
-            long cooldownMs = scaling.metrics() != null && !scaling.metrics().isEmpty() ? 30_000 : 30_000;
-            if (lastUp != null && now.toEpochMilli() - lastUp.toEpochMilli() < cooldownMs) {
+        int effectiveReplicas = decision.effectiveReplicas();
+        if (decision.desiredReplicas() > decision.currentReplicas()) {
+            if (!cooldownTracker.allowScaleUp(functionName, now)) {
                 log.debug("Skipping scale-up for {} (cooldown)", functionName);
             } else {
                 log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
-                        functionName, currentReplicas, desiredReplicas, maxRatio);
-                coldStartTracker.recordScaleUp(functionName, currentReplicas, desiredReplicas);
-                resourceManager.setReplicas(functionName, desiredReplicas);
-                lastScaleUp.put(functionName, now);
+                        functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
+                coldStartTracker.recordScaleUp(functionName, decision.currentReplicas(), decision.desiredReplicas());
+                resourceManager.setReplicas(functionName, decision.desiredReplicas());
+                cooldownTracker.recordScaleUp(functionName, now);
                 scaled = true;
-                effectiveReplicas = desiredReplicas;
+                effectiveReplicas = decision.desiredReplicas();
             }
-        } else {
-            if (desiredReplicas < currentReplicas) {
-                // Scale down
-                Instant lastDown = lastScaleDown.get(functionName);
-                long cooldownMs = 60_000;
-                if (lastDown != null && now.toEpochMilli() - lastDown.toEpochMilli() < cooldownMs) {
-                    log.debug("Skipping scale-down for {} (cooldown)", functionName);
-                } else {
-                    log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
-                            functionName, currentReplicas, desiredReplicas, maxRatio);
-                    resourceManager.setReplicas(functionName, desiredReplicas);
-                    lastScaleDown.put(functionName, now);
-                    scaled = true;
-                    effectiveReplicas = desiredReplicas;
-                }
+        } else if (decision.downscaleSignal()) {
+            if (!cooldownTracker.allowScaleDown(functionName, now)) {
+                log.debug("Skipping scale-down for {} (cooldown)", functionName);
+            } else {
+                log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
+                        functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
+                resourceManager.setReplicas(functionName, decision.desiredReplicas());
+                cooldownTracker.recordScaleDown(functionName, now);
+                scaled = true;
+                effectiveReplicas = decision.desiredReplicas();
             }
         }
 
-        if (!scaled && currentReplicas <= 0) {
-            effectiveReplicas = Math.max(1, scaling.minReplicas());
-        }
-
-        applyConcurrencyControl(spec, scaling, maxRatio, effectiveReplicas, downscaleSignal, currentReplicas);
+        applyConcurrencyControl(
+                spec,
+                scaling,
+                decision.maxRatio(),
+                effectiveReplicas,
+                decision.downscaleSignal(),
+                decision.currentReplicas()
+        );
     }
 
     private void applyConcurrencyControl(FunctionSpec spec,
@@ -231,20 +209,8 @@ public class InternalScaler implements SmartLifecycle {
         metricsReader.updateConcurrencyControllerState(functionName, controllerMode, targetInFlightPerPod);
     }
 
-    private double parseTarget(String target) {
-        try {
-            if (target == null || target.isBlank()) {
-                return 50.0;
-            }
-            return Double.parseDouble(target);
-        } catch (RuntimeException e) {
-            return 50.0;
-        }
-    }
-
     void removeFunctionState(String functionName) {
-        lastScaleUp.remove(functionName);
-        lastScaleDown.remove(functionName);
+        cooldownTracker.clear(functionName);
         adaptiveConcurrencyController.removeFunctionState(functionName);
         coldStartTracker.removeFunctionState(functionName);
     }
