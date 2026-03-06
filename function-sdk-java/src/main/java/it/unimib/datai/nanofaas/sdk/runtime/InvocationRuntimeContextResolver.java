@@ -1,22 +1,20 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class InvocationRuntimeContextResolver {
 
-    private final String executionId;
+    private final RuntimeSettings runtimeSettings;
 
-    public InvocationRuntimeContextResolver(
-            @Value("${EXECUTION_ID:#{systemEnvironment['EXECUTION_ID'] ?: 'test-execution'}}") String executionId) {
-        this.executionId = executionId;
+    public InvocationRuntimeContextResolver(RuntimeSettings runtimeSettings) {
+        this.runtimeSettings = runtimeSettings;
     }
 
     public InvocationRuntimeContext resolve(String headerExecutionId, String traceId) {
         String effectiveExecutionId = (headerExecutionId != null && !headerExecutionId.isBlank())
                 ? headerExecutionId
-                : executionId;
+                : runtimeSettings.executionId();
         return new InvocationRuntimeContext(effectiveExecutionId, traceId);
     }
 }

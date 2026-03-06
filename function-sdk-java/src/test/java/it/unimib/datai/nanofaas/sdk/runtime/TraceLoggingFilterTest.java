@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TraceLoggingFilterTest {
 
-    private final TraceLoggingFilter filter = new TraceLoggingFilter();
+    private final TraceLoggingFilter filter = new TraceLoggingFilter(
+            new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
 
     @Test
     void bothHeaders_populatesMDC() throws ServletException, IOException {
@@ -94,7 +95,8 @@ class TraceLoggingFilterTest {
 
     @Test
     void blankExecutionHeader_fallsBackToEnvExecutionId() throws ServletException, IOException {
-        TraceLoggingFilter filterWithEnv = new TraceLoggingFilter("env-exec-id");
+        TraceLoggingFilter filterWithEnv = new TraceLoggingFilter(
+                new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Execution-Id", "   ");
 

@@ -19,7 +19,9 @@ class HandlerRegistryTest {
         ApplicationContext ctx = mock(ApplicationContext.class);
         when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(Map.of("echo", handler));
 
-        HandlerRegistry registry = new HandlerRegistry(ctx);
+        HandlerRegistry registry = new HandlerRegistry(
+                ctx,
+                new RuntimeSettings("exec", "trace", "http://callback", null));
         assertSame(handler, registry.resolve());
     }
 
@@ -29,7 +31,9 @@ class HandlerRegistryTest {
         ApplicationContext ctx = mock(ApplicationContext.class);
         when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(Map.of("echo", handler));
 
-        HandlerRegistry registry = new HandlerRegistry(ctx);
+        HandlerRegistry registry = new HandlerRegistry(
+                ctx,
+                new RuntimeSettings("exec", "trace", "http://callback", null));
         registry.resolve();
         registry.resolve();
 
@@ -42,13 +46,15 @@ class HandlerRegistryTest {
         ApplicationContext ctx = mock(ApplicationContext.class);
         when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(Map.of());
 
-        HandlerRegistry registry = new HandlerRegistry(ctx);
+        HandlerRegistry registry = new HandlerRegistry(
+                ctx,
+                new RuntimeSettings("exec", "trace", "http://callback", null));
         IllegalStateException ex = assertThrows(IllegalStateException.class, registry::resolve);
         assertTrue(ex.getMessage().contains("No FunctionHandler beans"));
     }
 
     @Test
-    void resolve_multipleHandlersNoEnv_throws() {
+    void resolve_multipleHandlersWithoutInjectedHandler_throws() {
         FunctionHandler h1 = request -> "a";
         FunctionHandler h2 = request -> "b";
         Map<String, FunctionHandler> handlers = new LinkedHashMap<>();
@@ -58,9 +64,28 @@ class HandlerRegistryTest {
         ApplicationContext ctx = mock(ApplicationContext.class);
         when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(handlers);
 
-        HandlerRegistry registry = new HandlerRegistry(ctx);
-        // envFunctionHandler is null (FUNCTION_HANDLER env not set in test), so should throw
+        HandlerRegistry registry = new HandlerRegistry(
+                ctx,
+                new RuntimeSettings("exec", "trace", "http://callback", null));
         IllegalStateException ex = assertThrows(IllegalStateException.class, registry::resolve);
         assertTrue(ex.getMessage().contains("Multiple FunctionHandler beans"));
+    }
+
+    @Test
+    void resolve_prefersInjectedHandlerNameOverAmbientEnv() {
+        FunctionHandler h1 = request -> "a";
+        FunctionHandler h2 = request -> "b";
+        Map<String, FunctionHandler> handlers = new LinkedHashMap<>();
+        handlers.put("first", h1);
+        handlers.put("second", h2);
+
+        ApplicationContext ctx = mock(ApplicationContext.class);
+        when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(handlers);
+
+        HandlerRegistry registry = new HandlerRegistry(
+                ctx,
+                new RuntimeSettings("exec", "trace", "http://callback", "second"));
+
+        assertSame(h2, registry.resolve());
     }
 }

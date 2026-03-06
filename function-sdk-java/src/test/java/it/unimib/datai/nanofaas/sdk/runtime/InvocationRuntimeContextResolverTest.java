@@ -8,8 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class InvocationRuntimeContextResolverTest {
 
     @Test
-    void resolve_headerExecutionIdOverridesDefaultExecutionId() {
-        InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver("env-exec-id");
+    void resolve_headerExecutionIdOverridesInjectedExecutionId() {
+        InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver(
+                new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
 
         InvocationRuntimeContext context = resolver.resolve("header-exec-id", "trace-1");
 
@@ -18,8 +19,9 @@ class InvocationRuntimeContextResolverTest {
     }
 
     @Test
-    void resolve_blankHeaderExecutionIdFallsBackToDefaultExecutionId() {
-        InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver("env-exec-id");
+    void resolve_blankHeaderExecutionIdFallsBackToInjectedExecutionId() {
+        InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver(
+                new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
 
         InvocationRuntimeContext context = resolver.resolve("   ", "trace-2");
 
@@ -29,7 +31,8 @@ class InvocationRuntimeContextResolverTest {
 
     @Test
     void resolve_preservesNullTraceId() {
-        InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver("env-exec-id");
+        InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver(
+                new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
 
         InvocationRuntimeContext context = resolver.resolve(null, null);
 
