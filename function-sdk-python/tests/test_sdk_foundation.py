@@ -37,3 +37,16 @@ def test_json_logging(capsys):
     assert log_data["trace_id"] == "trace-000"
     assert "timestamp" in log_data
     assert log_data["level"] == "INFO"
+
+import asyncio
+
+def test_decorator_preserves_async_handler():
+    @decorator.nanofaas_function
+    async def async_handler(payload):
+        return {"async": True}
+
+    handler = decorator.get_registered_handler()
+    assert asyncio.iscoroutinefunction(handler), \
+        "async handler must remain a coroutine function after decoration"
+    result = asyncio.run(handler({"x": 1}))
+    assert result == {"async": True}
