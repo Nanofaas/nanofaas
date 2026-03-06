@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class CallbackClient {
@@ -48,6 +49,11 @@ public class CallbackClient {
             } catch (RestClientException ex) {
                 log.warn("Callback failed for execution {} (attempt {}): {}",
                         executionId, attempt + 1, ex.getMessage());
+                if (isPermanentClientFailure(ex)) {
+                    log.error("Permanent callback failure for execution {} with status {}",
+                            executionId, ((RestClientResponseException) ex).getStatusCode());
+                    return false;
+                }
 
                 if (attempt < MAX_RETRIES - 1) {
                     try {
@@ -69,11 +75,7 @@ public class CallbackClient {
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
                 : runtimeSettings.traceId();
-        String baseUrl = runtimeSettings.callbackUrl();
-
-        String url = baseUrl.endsWith(":complete")
-                ? baseUrl
-                : baseUrl + "/" + executionId + ":complete";
+        String url = callbackUrl(executionId);
 
         RestClient.RequestBodySpec request = restClient.post()
                 .uri(url)
@@ -86,5 +88,20 @@ public class CallbackClient {
         request.body(result)
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    private boolean isPermanentClientFailure(RestClientException ex) {
+        return ex instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().is4xxClientError();
+    }
+
+    private String callbackUrl(String executionId) {
+        String normalizedBaseUrl = runtimeSettings.callbackUrl().stripTrailing();
+        while (normalizedBaseUrl.endsWith("/")) {
+            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
+        }
+        return normalizedBaseUrl.endsWith(":complete")
+                ? normalizedBaseUrl
+                : normalizedBaseUrl + "/" + executionId + ":complete";
     }
 }

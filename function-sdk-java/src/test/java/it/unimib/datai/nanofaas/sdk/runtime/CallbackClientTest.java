@@ -153,6 +153,16 @@ class CallbackClientTest {
     }
 
     @Test
+    void sendResult_permanent4xxFailure_isNotRetried() {
+        server.enqueue(new MockResponse().setResponseCode(400));
+
+        boolean ok = client.sendResult("exec-9", InvocationResult.error("ERR", "fail"));
+
+        assertFalse(ok);
+        assertEquals(1, server.getRequestCount());
+    }
+
+    @Test
     void sendResult_usesInjectedCallbackSettings() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
         RestClient restClient = RestClient.builder()
@@ -172,5 +182,40 @@ class CallbackClientTest {
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getPath().contains("/v1/callbacks/exec-9:complete"));
         assertEquals("trace-from-settings", req.getHeader("X-Trace-Id"));
+    }
+
+    @Test
+    void sendResult_normalizesTrailingSlashAndCompleteSuffix() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200));
+        server.enqueue(new MockResponse().setResponseCode(200));
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        CallbackClient trailingSlashClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "exec-env",
+                        "trace-from-settings",
+                        server.url("/v1/executions/").toString(),
+                        "handler"));
+        CallbackClient completeSuffixClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "exec-env",
+                        "trace-from-settings",
+                        server.url("/v1/executions/exec-10:complete/").toString(),
+                        "handler"));
+
+        assertTrue(trailingSlashClient.sendResult("exec-10", InvocationResult.success("data")));
+        assertTrue(completeSuffixClient.sendResult("exec-10", InvocationResult.success("data")));
+
+        RecordedRequest trailingSlashRequest = server.takeRequest();
+        assertFalse(trailingSlashRequest.getPath().contains("//exec-10:complete"));
+        assertTrue(trailingSlashRequest.getPath().endsWith("/exec-10:complete"));
+
+        RecordedRequest completeSuffixRequest = server.takeRequest();
+        assertFalse(completeSuffixRequest.getPath().contains(":complete/exec-10:complete"));
+        assertFalse(completeSuffixRequest.getPath().endsWith(":complete/"));
+        assertTrue(completeSuffixRequest.getPath().endsWith("/exec-10:complete"));
     }
 }
