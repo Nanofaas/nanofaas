@@ -79,18 +79,25 @@ public class ExecutionRecord {
         );
     }
 
-    private void validateTransition(ExecutionState target) {
+    private boolean canTransition(ExecutionState target) {
+        if (state != ExecutionState.SUCCESS && state != ExecutionState.ERROR && state != ExecutionState.TIMEOUT) {
+            return true;
+        }
         EnumSet<ExecutionState> allowed = ALLOWED_TRANSITIONS.getOrDefault(state, EnumSet.noneOf(ExecutionState.class));
         if (!allowed.contains(target)) {
             log.warn("Invalid state transition {} -> {} for execution {}", state, target, executionId);
+            return false;
         }
+        return true;
     }
 
     /**
      * Marks the execution as running.
      */
     public synchronized void markRunning() {
-        validateTransition(ExecutionState.RUNNING);
+        if (!canTransition(ExecutionState.RUNNING)) {
+            return;
+        }
         this.state = ExecutionState.RUNNING;
         this.startedAt = Instant.now();
     }
@@ -99,7 +106,9 @@ public class ExecutionRecord {
      * Marks the execution as completed with success.
      */
     public synchronized void markSuccess(Object output) {
-        validateTransition(ExecutionState.SUCCESS);
+        if (!canTransition(ExecutionState.SUCCESS)) {
+            return;
+        }
         this.state = ExecutionState.SUCCESS;
         this.finishedAt = Instant.now();
         this.output = output;
@@ -110,7 +119,9 @@ public class ExecutionRecord {
      * Marks the execution as completed with error.
      */
     public synchronized void markError(ErrorInfo error) {
-        validateTransition(ExecutionState.ERROR);
+        if (!canTransition(ExecutionState.ERROR)) {
+            return;
+        }
         this.state = ExecutionState.ERROR;
         this.finishedAt = Instant.now();
         this.lastError = error;
@@ -121,7 +132,9 @@ public class ExecutionRecord {
      * Marks the execution as timed out.
      */
     public synchronized void markTimeout() {
-        validateTransition(ExecutionState.TIMEOUT);
+        if (!canTransition(ExecutionState.TIMEOUT)) {
+            return;
+        }
         this.state = ExecutionState.TIMEOUT;
         this.finishedAt = Instant.now();
     }
@@ -166,7 +179,9 @@ public class ExecutionRecord {
      * Resets the execution for a retry attempt.
      */
     public synchronized void resetForRetry(InvocationTask retryTask) {
-        validateTransition(ExecutionState.QUEUED);
+        if (!canTransition(ExecutionState.QUEUED)) {
+            return;
+        }
         this.task = retryTask;
         this.state = ExecutionState.QUEUED;
         this.startedAt = null;

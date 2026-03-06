@@ -314,6 +314,78 @@ class InvocationServiceDispatchTest {
                 .isInstanceOf(SyncQueueRejectedException.class);
     }
 
+    @Test
+    void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() throws Exception {
+        CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
+        FunctionSpec spec = functionSpec("timeout-fn", ExecutionMode.LOCAL);
+        when(functionService.get("timeout-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(false);
+        when(dispatcherRouter.dispatchLocal(any())).thenReturn(dispatchFuture);
+
+        InvocationResponse first = invocationService.invokeSync(
+                "timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-timeout",
+                null,
+                10
+        );
+
+        assertThat(first.status()).isEqualTo("timeout");
+
+        dispatchFuture.complete(DispatchResult.warm(InvocationResult.success("late-ok")));
+
+        InvocationResponse second = invocationService.invokeSync(
+                "timeout-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-timeout",
+                null,
+                10
+        );
+
+        assertThat(second.status()).isEqualTo("timeout");
+        assertThat(invocationService.getStatus(first.executionId())).get()
+                .extracting(status -> status.status())
+                .isEqualTo("timeout");
+    }
+
+    @Test
+    void invokeSyncReactive_timeoutRemainsTerminalWhenLateSuccessArrives() {
+        CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
+        FunctionSpec spec = functionSpec("timeout-reactive-fn", ExecutionMode.LOCAL);
+        when(functionService.get("timeout-reactive-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(false);
+        when(dispatcherRouter.dispatchLocal(any())).thenReturn(dispatchFuture);
+
+        InvocationResponse first = invocationService.invokeSyncReactive(
+                "timeout-reactive-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-timeout-reactive",
+                null,
+                10
+        ).block();
+
+        assertThat(first).isNotNull();
+        assertThat(first.status()).isEqualTo("timeout");
+
+        dispatchFuture.complete(DispatchResult.warm(InvocationResult.success("late-ok")));
+
+        InvocationResponse second = invocationService.invokeSyncReactive(
+                "timeout-reactive-fn",
+                new InvocationRequest("payload", Map.of()),
+                "idem-timeout-reactive",
+                null,
+                10
+        ).block();
+
+        assertThat(second).isNotNull();
+        assertThat(second.status()).isEqualTo("timeout");
+        assertThat(invocationService.getStatus(first.executionId())).get()
+                .extracting(status -> status.status())
+                .isEqualTo("timeout");
+    }
+
     private InvocationTask task(String executionId, String functionName, ExecutionMode mode) {
         FunctionSpec spec = functionSpec(functionName, mode);
         return new InvocationTask(

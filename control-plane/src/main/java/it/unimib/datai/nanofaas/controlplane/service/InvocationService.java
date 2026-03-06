@@ -75,6 +75,9 @@ public class InvocationService {
                     : new InvocationResult(false, null, record.lastError());
             return toResponse(record, result);
         }
+        if (record.state() == ExecutionState.TIMEOUT) {
+            return timeoutResponse(record);
+        }
 
         if (lookup.isNew()) {
             if (syncQueueEnabled()) {
@@ -98,7 +101,7 @@ public class InvocationService {
         } catch (Exception ex) {
             record.markTimeout();
             metrics.timeout(functionName);
-            return new InvocationResponse(record.executionId(), "timeout", null, null);
+            return timeoutResponse(record);
         }
     }
 
@@ -118,6 +121,9 @@ public class InvocationService {
                     ? InvocationResult.success(record.output())
                     : new InvocationResult(false, null, record.lastError());
             return Mono.just(toResponse(record, result));
+        }
+        if (record.state() == ExecutionState.TIMEOUT) {
+            return Mono.just(timeoutResponse(record));
         }
 
         if (lookup.isNew()) {
@@ -146,7 +152,7 @@ public class InvocationService {
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
                     record.markTimeout();
                     metrics.timeout(functionName);
-                    return Mono.just(new InvocationResponse(record.executionId(), "timeout", null, null));
+                    return Mono.just(timeoutResponse(record));
                 });
     }
 
@@ -244,6 +250,10 @@ public class InvocationService {
     private InvocationResponse toResponse(ExecutionRecord record, InvocationResult result) {
         String status = result.success() ? "success" : "error";
         return new InvocationResponse(record.executionId(), status, result.output(), result.error());
+    }
+
+    private InvocationResponse timeoutResponse(ExecutionRecord record) {
+        return new InvocationResponse(record.executionId(), "timeout", null, null);
     }
 
     private boolean syncQueueEnabled() {

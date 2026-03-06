@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -169,6 +170,20 @@ class ExecutionCompletionHandlerTest {
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(record.output()).isEqualTo("result");
         verify(enqueuer).releaseDispatchSlot("testFunc");
+    }
+
+    @Test
+    void completeExecution_afterTimeout_doesNotOverwriteTimeoutOrEmitSuccessMetrics() {
+        ExecutionRecord record = recordInStore("exec-timeout", testSpec, null);
+        record.markRunning();
+        record.markTimeout();
+
+        completionHandler.completeExecution("exec-timeout", InvocationResult.success("late-result"));
+
+        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
+        assertThat(record.output()).isNull();
+        verify(metrics, never()).success("testFunc");
+        verify(metrics, never()).error("testFunc");
     }
 
     @Test

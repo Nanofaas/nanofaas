@@ -85,6 +85,9 @@ public class ExecutionCompletionHandler {
 
         String functionName = record.task().functionName();
         releaseDispatchSlot(functionName);
+        if (isTerminal(record.state())) {
+            return;
+        }
 
         // Check if retry is needed BEFORE completing the future
         boolean shouldRetry = !result.success()
@@ -181,5 +184,11 @@ public class ExecutionCompletionHandler {
             throw new QueueFullException();
         }
         metrics.enqueue(record.task().functionName());
+    }
+
+    private static boolean isTerminal(it.unimib.datai.nanofaas.controlplane.execution.ExecutionState state) {
+        return state == it.unimib.datai.nanofaas.controlplane.execution.ExecutionState.SUCCESS
+                || state == it.unimib.datai.nanofaas.controlplane.execution.ExecutionState.ERROR
+                || state == it.unimib.datai.nanofaas.controlplane.execution.ExecutionState.TIMEOUT;
     }
 }
