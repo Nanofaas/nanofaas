@@ -21,6 +21,12 @@
 - sync_queue_rejected_total
 - sync_queue_timedout_total
 
+### Autoscaler Interpretation
+
+- `function_dispatch_total{function}` is a cumulative Prometheus counter.
+- Internal autoscaling for `rps` uses the delta between successive `function_dispatch_total` samples divided by elapsed sample time. The raw cumulative counter value is not used directly as load.
+- INTERNAL scaling specs accept only `queue_depth`, `in_flight`, and `rps` metric types. Unsupported metric names are rejected during function registration/spec resolution.
+
 ## Health
 
 - /actuator/health/liveness
