@@ -2,6 +2,7 @@ import os
 import importlib
 import asyncio
 import logging
+import threading
 import time
 from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -49,7 +50,8 @@ RUNTIME_COLD_START_TOTAL = Counter(
 
 CONTAINER_START_TIME = time.monotonic()
 _first_invocation = True
-import threading
+# threading.Lock is intentional: the critical section is a non-yielding boolean swap
+# (no awaits), so it is safe and avoids the overhead of an asyncio.Lock acquire.
 _cold_start_lock = threading.Lock()
 
 @app.on_event("startup")

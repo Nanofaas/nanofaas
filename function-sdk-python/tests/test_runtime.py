@@ -123,8 +123,13 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
 
 import threading as _threading
 
-def test_cold_start_counted_exactly_once_under_concurrency(client):
+def test_cold_start_counted_exactly_once_under_concurrency(client, monkeypatch):
     """Only the very first request must be flagged as a cold start."""
+    import nanofaas.runtime.app as _app
+
+    # Reset the cold-start flag so this test is independent of execution order.
+    monkeypatch.setattr(_app, "_first_invocation", True)
+
     @decorator.nanofaas_function
     def mock_handler(input_data):
         return {"ok": True}
@@ -151,5 +156,6 @@ def test_cold_start_counted_exactly_once_under_concurrency(client):
         t.join()
 
     assert not errors, f"Invocation errors: {errors}"
-    assert len(cold_starts) <= 1, \
-        f"Expected at most 1 cold-start, got {len(cold_starts)}: {cold_starts}"
+    # Exactly one request should be marked as a cold start.
+    assert len(cold_starts) == 1, \
+        f"Expected exactly 1 cold-start, got {len(cold_starts)}: {cold_starts}"
