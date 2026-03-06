@@ -6,6 +6,7 @@ import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.*;
 
 class SchedulerResilienceTest {
@@ -50,5 +51,22 @@ class SchedulerResilienceTest {
         }
 
         verify(state, atLeastOnce()).releaseSlot();
+    }
+
+    @Test
+    void startStopStart_restartsSchedulerWithoutRejectedExecution() {
+        QueueManager queueManager = mock(QueueManager.class);
+        InvocationService invocationService = mock(InvocationService.class);
+
+        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        scheduler.init();
+        scheduler.start();
+        scheduler.stop();
+
+        try {
+            assertThatCode(scheduler::start).doesNotThrowAnyException();
+        } finally {
+            scheduler.stop();
+        }
     }
 }

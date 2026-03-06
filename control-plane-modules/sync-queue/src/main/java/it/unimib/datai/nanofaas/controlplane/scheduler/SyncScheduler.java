@@ -12,8 +12,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -21,17 +19,15 @@ import java.util.function.Consumer;
 @ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
 public class SyncScheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(SyncScheduler.class);
+    private static final String COMPONENT_NAME = "Sync scheduler";
 
     private final InvocationEnqueuer enqueuer;
     private final SyncQueueService queue;
     private final Consumer<InvocationTask> dispatch;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "nanofaas-sync-scheduler");
-        t.setDaemon(false);
-        return t;
-    });
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final Object lifecycleMonitor = new Object();
     private volatile long tickMs = 2;
+    private volatile ExecutorService executor;
 
     @Autowired
     public SyncScheduler(InvocationEnqueuer enqueuer,
@@ -48,23 +44,34 @@ public class SyncScheduler implements SmartLifecycle {
 
     @Override
     public void start() {
-        if (running.compareAndSet(false, true)) {
-            executor.submit(this::loop);
+        synchronized (lifecycleMonitor) {
+            if (!running.compareAndSet(false, true)) {
+                return;
+            }
+            ExecutorService newExecutor = SchedulerLifecycleSupport.newSingleThreadExecutor("nanofaas-sync-scheduler");
+            executor = newExecutor;
+            try {
+                newExecutor.submit(this::loop);
+            } catch (RuntimeException e) {
+                executor = null;
+                running.set(false);
+                SchedulerLifecycleSupport.shutdownExecutor(newExecutor, log, COMPONENT_NAME);
+                throw e;
+            }
         }
     }
 
     @Override
     public void stop() {
-        running.set(false);
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
+        ExecutorService executorToStop;
+        synchronized (lifecycleMonitor) {
+            if (!running.getAndSet(false) && executor == null) {
+                return;
             }
-        } catch (InterruptedException ex) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
+            executorToStop = executor;
+            executor = null;
         }
+        SchedulerLifecycleSupport.shutdownExecutor(executorToStop, log, COMPONENT_NAME);
     }
 
     @Override
