@@ -19,6 +19,7 @@ use crate::scheduler::Scheduler;
 use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
 use crate::sync::{
     NoOpSyncQueueGateway, SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason,
+    SyncQueueSettings,
 };
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -114,8 +115,12 @@ impl FunctionProvisioner {
     async fn ready_replicas(&self, function_name: &str) -> Option<i32> {
         match self {
             FunctionProvisioner::Disabled => None,
-            FunctionProvisioner::InMemory(manager) => Some(manager.get_ready_replicas(function_name)),
-            FunctionProvisioner::Live(manager) => manager.get_ready_replicas(function_name).await.ok(),
+            FunctionProvisioner::InMemory(manager) => {
+                Some(manager.get_ready_replicas(function_name))
+            }
+            FunctionProvisioner::Live(manager) => {
+                manager.get_ready_replicas(function_name).await.ok()
+            }
         }
     }
 
@@ -140,7 +145,10 @@ async fn maybe_test_delay(env_name: &str, marker_source: Option<&str>, marker: &
 fn extract_marker_delay_ms(value: &str, marker: &str) -> Option<u64> {
     let index = value.find(marker)?;
     let suffix = &value[index + marker.len()..];
-    let digits: String = suffix.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    let digits: String = suffix
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
     digits.parse::<u64>().ok()
 }
 
@@ -314,11 +322,42 @@ fn build_state_with_options(
                 .map(|v| v == "true")
                 .unwrap_or(false);
             if sync_enabled {
-                let max_concurrency = std::env::var("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY")
+                let settings = SyncQueueSettings {
+                    max_concurrency: std::env::var("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(100),
+                    max_depth: std::env::var("NANOFAAS_SYNC_QUEUE_MAX_DEPTH")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(100),
+                    retry_after_seconds: std::env::var("NANOFAAS_SYNC_QUEUE_RETRY_AFTER_SECONDS")
+                        .ok()
+                        .and_then(|v| v.parse::<i32>().ok())
+                        .unwrap_or(2),
+                    max_estimated_wait: Duration::from_millis(
+                        std::env::var("NANOFAAS_SYNC_QUEUE_MAX_ESTIMATED_WAIT_MS")
+                            .ok()
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(2_000),
+                    ),
+                    admission_enabled: std::env::var("NANOFAAS_SYNC_QUEUE_ADMISSION_ENABLED")
+                        .map(|v| v == "true")
+                        .unwrap_or(true),
+                    throughput_window: Duration::from_millis(
+                        std::env::var("NANOFAAS_SYNC_QUEUE_THROUGHPUT_WINDOW_MS")
+                            .ok()
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(30_000),
+                    ),
+                    per_function_min_samples: std::env::var(
+                        "NANOFAAS_SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES",
+                    )
                     .ok()
                     .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(100);
-                Arc::new(SyncAdmissionQueue::new(max_concurrency))
+                    .unwrap_or(3),
+                };
+                Arc::new(SyncAdmissionQueue::new(settings))
             } else {
                 Arc::new(NoOpSyncQueueGateway)
             }
@@ -404,54 +443,30 @@ fn start_background_scheduler(state: AppState) {
         let scheduler = Scheduler::new((*state.dispatcher_router).clone());
         let idle_sleep = Duration::from_millis(idle_sleep_ms);
         loop {
-            let queued_functions = {
-                let mut queue = state
-                    .queue_manager
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                let signaled = queue.take_signaled_functions();
-                if signaled.is_empty() {
-                    queue.queued_functions()
-                } else {
-                    signaled
+            let functions_snapshot = state.function_registry.as_map();
+            let handles = match scheduler
+                .tick_ready_functions_once(
+                    &functions_snapshot,
+                    &state.queue_manager,
+                    &state.execution_store,
+                    &state.metrics,
+                )
+                .await
+            {
+                Ok(handles) => handles,
+                Err(err) => {
+                    eprintln!("background scheduler tick error: {err}");
+                    tokio::time::sleep(idle_sleep).await;
+                    continue;
                 }
             };
 
-            if queued_functions.is_empty() {
+            if handles.is_empty() {
                 tokio::time::sleep(idle_sleep).await;
                 continue;
             }
-
-            let functions_snapshot = state.function_registry.as_map();
-            let mut processed_any = false;
-
-            for function_name in queued_functions {
-                match scheduler
-                    .tick_once(
-                        &function_name,
-                        &functions_snapshot,
-                        &state.queue_manager,
-                        &state.execution_store,
-                        &state.metrics,
-                    )
-                    .await
-                {
-                    Ok(handle) => {
-                        processed_any |= handle.is_some();
-                        // handle dropped: fire-and-forget, behavior unchanged
-                    }
-                    Err(err) => {
-                        // Keep the loop alive even if a single function dispatch fails.
-                        eprintln!("background scheduler tick error for {function_name}: {err}");
-                    }
-                }
-            }
-
-            if !processed_any {
-                tokio::time::sleep(idle_sleep).await;
-            } else {
-                tokio::task::yield_now().await;
-            }
+            drop(handles);
+            tokio::task::yield_now().await;
         }
     });
 }
@@ -484,7 +499,11 @@ fn start_internal_scaler(state: AppState) {
                     continue;
                 };
 
-                let current_ready = state.provisioner.ready_replicas(&spec.name).await.unwrap_or(0);
+                let current_ready = state
+                    .provisioner
+                    .ready_replicas(&spec.name)
+                    .await
+                    .unwrap_or(0);
                 let current_replicas = if current_ready <= 0 {
                     std::cmp::max(1, scaling.min_replicas)
                 } else {
@@ -502,7 +521,8 @@ fn start_internal_scaler(state: AppState) {
                         .map(|last| now.saturating_sub(*last) >= cooldown_ms)
                         .unwrap_or(true);
                     if can_scale {
-                        if let Err(err) = state.provisioner.set_replicas(&spec.name, desired).await {
+                        if let Err(err) = state.provisioner.set_replicas(&spec.name, desired).await
+                        {
                             eprintln!("internal scaler scale-up failed for {}: {}", spec.name, err);
                         } else {
                             last_scale_up.insert(spec.name.clone(), now);
@@ -525,8 +545,12 @@ fn start_internal_scaler(state: AppState) {
                         .map(|last| now.saturating_sub(*last) >= cooldown_ms)
                         .unwrap_or(true);
                     if can_scale {
-                        if let Err(err) = state.provisioner.set_replicas(&spec.name, desired).await {
-                            eprintln!("internal scaler scale-down failed for {}: {}", spec.name, err);
+                        if let Err(err) = state.provisioner.set_replicas(&spec.name, desired).await
+                        {
+                            eprintln!(
+                                "internal scaler scale-down failed for {}: {}",
+                                spec.name, err
+                            );
                         } else {
                             last_scale_down.insert(spec.name.clone(), now);
                             if let Ok(next) = u32::try_from(desired) {
@@ -672,7 +696,11 @@ async fn validate_runtime_config(
     if errors.is_empty() {
         return Json(json!({ "valid": true })).into_response();
     }
-    (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "errors": errors }))).into_response()
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        Json(json!({ "errors": errors })),
+    )
+        .into_response()
 }
 
 async fn patch_runtime_config(
@@ -692,7 +720,11 @@ async fn patch_runtime_config(
 
     let errors = runtime_config_validation_errors(&request);
     if !errors.is_empty() {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "errors": errors }))).into_response();
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "errors": errors })),
+        )
+            .into_response();
     }
 
     let mut runtime_config = state
@@ -984,15 +1016,15 @@ async fn invoke_function(
         if let Err(rejection) = state.sync_queue.try_admit(name) {
             state.metrics.sync_queue_rejected(name);
             state.metrics.sync_queue_depth(name);
-            state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+            state
+                .metrics
+                .sync_queue_wait_seconds(name)
+                .record_ms(rejection.est_wait_ms.unwrap_or(1));
             let reason = match rejection.reason {
                 SyncQueueRejectReason::EstWait => "est_wait",
                 SyncQueueRejectReason::Depth => "depth",
             };
-            let retry_after = rejection
-                .est_wait_ms
-                .map(|ms| (ms / 1000).max(1))
-                .unwrap_or(2);
+            let retry_after = state.sync_queue.retry_after_seconds().max(1);
             return Err(queue_rejected_response(&retry_after.to_string(), reason));
         }
     }
@@ -1155,7 +1187,6 @@ async fn invoke_function(
     let result = finish_invocation(&execution_id, name, dispatch, &state, now);
     result
 }
-
 
 #[allow(clippy::result_large_err)]
 fn finish_invocation(
@@ -1415,7 +1446,9 @@ fn resolve_idempotency(
                     AcquireResult::Claimed(token) => {
                         return Ok(Some(IdempotencyClaim { key, token }));
                     }
-                    AcquireResult::Existing(_) | AcquireResult::Pending | AcquireResult::Missing => {
+                    AcquireResult::Existing(_)
+                    | AcquireResult::Pending
+                    | AcquireResult::Missing => {
                         std::thread::yield_now();
                     }
                 }
@@ -1439,7 +1472,13 @@ fn publish_idempotency_claim(
             .idempotency_store
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .publish_claim(function_name, &claim.key, &claim.token, execution_id, now_millis);
+            .publish_claim(
+                function_name,
+                &claim.key,
+                &claim.token,
+                execution_id,
+                now_millis,
+            );
     }
 }
 
@@ -1527,7 +1566,10 @@ async fn complete_execution(
             .unwrap_or_else(|e| e.into_inner());
         if let Some(mut r) = store.get(execution_id) {
             // Guard: reject double-completion for already-terminal executions
-            if matches!(r.state(), ExecutionState::Success | ExecutionState::Error | ExecutionState::Timeout) {
+            if matches!(
+                r.state(),
+                ExecutionState::Success | ExecutionState::Error | ExecutionState::Timeout
+            ) {
                 eprintln!(
                     "complete_execution: ignoring completion for {} (state={:?}, already terminal)",
                     execution_id,
@@ -1705,10 +1747,9 @@ fn to_function_spec(spec: &ResolverFunctionSpec) -> FunctionSpec {
         concurrency: spec.concurrency,
         queue_size: spec.queue_size,
         max_retries: spec.max_retries,
-        scaling_config: spec
-            .scaling_config
-            .clone()
-            .map(|value| serde_json::to_value(value).expect("resolver scaling config should serialize")),
+        scaling_config: spec.scaling_config.clone().map(|value| {
+            serde_json::to_value(value).expect("resolver scaling config should serialize")
+        }),
         commands: spec.command.clone(),
         env: spec.env.clone(),
         resources: None,
@@ -1719,12 +1760,10 @@ fn to_function_spec(spec: &ResolverFunctionSpec) -> FunctionSpec {
     }
 }
 
-async fn function_lock(
-    state: &AppState,
-    name: &str,
-) -> Arc<tokio::sync::Mutex<()>> {
+async fn function_lock(state: &AppState, name: &str) -> Arc<tokio::sync::Mutex<()>> {
     let mut locks = state.function_locks.lock().await;
-    locks.entry(name.to_string())
+    locks
+        .entry(name.to_string())
         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
         .clone()
 }
@@ -1864,8 +1903,7 @@ mod autoscaling_tests {
     #[tokio::test]
     async fn internal_scaler_scales_up_from_zero_when_in_flight_present() {
         let metrics = Arc::new(Metrics::new());
-        let state =
-            build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
+        let state = build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
         register_scaled_function(&state, "autoscale-up").await;
 
         let mut record = ExecutionRecord::new("exec-up", "autoscale-up", ExecutionState::Queued);
@@ -1894,8 +1932,7 @@ mod autoscaling_tests {
     #[tokio::test]
     async fn internal_scaler_scales_down_to_zero_when_no_load() {
         let metrics = Arc::new(Metrics::new());
-        let state =
-            build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
+        let state = build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
         register_scaled_function(&state, "autoscale-down").await;
 
         with_inmemory_manager(&state, |manager| {
