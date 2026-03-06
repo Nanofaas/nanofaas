@@ -16,17 +16,27 @@ pub enum ExecutionState {
     Timeout,
 }
 
-const ALLOWED_TRANSITIONS: &[(ExecutionState, ExecutionState)] = &[
-    (ExecutionState::Queued, ExecutionState::Running),
-    (ExecutionState::Running, ExecutionState::Success),
-    (ExecutionState::Running, ExecutionState::Error),
-    (ExecutionState::Running, ExecutionState::Timeout),
-    (ExecutionState::Error, ExecutionState::Queued),   // retry after error
-    (ExecutionState::Running, ExecutionState::Queued), // retry on dispatch failure (no error state)
+/// Terminal->terminal retry is the only allowed cross-terminal transition.
+const TERMINAL_ALLOWED_TRANSITIONS: &[(ExecutionState, ExecutionState)] = &[
+    (ExecutionState::Error, ExecutionState::Queued), // retry after error
 ];
 
-fn is_valid_transition(from: &ExecutionState, to: &ExecutionState) -> bool {
-    ALLOWED_TRANSITIONS.iter().any(|(f, t)| f == from && t == to)
+/// Non-terminal states always allow any transition (mirrors Java canTransition).
+/// Terminal states (SUCCESS/ERROR/TIMEOUT) only allow the listed transitions.
+fn can_transition(from: &ExecutionState, to: &ExecutionState) -> bool {
+    if !is_terminal_state(from) {
+        return true;
+    }
+    TERMINAL_ALLOWED_TRANSITIONS
+        .iter()
+        .any(|(f, t)| f == from && t == to)
+}
+
+fn is_terminal_state(state: &ExecutionState) -> bool {
+    matches!(
+        state,
+        ExecutionState::Success | ExecutionState::Error | ExecutionState::Timeout
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -189,7 +199,7 @@ impl ExecutionRecord {
     }
 
     pub fn mark_running_at(&mut self, at_millis: u64) {
-        if !is_valid_transition(&self.status, &ExecutionState::Running) {
+        if !can_transition(&self.status, &ExecutionState::Running) {
             eprintln!("invalid transition: {:?} -> Running", self.status);
             return;
         }
@@ -198,7 +208,7 @@ impl ExecutionRecord {
     }
 
     pub fn mark_success_at(&mut self, output: Value, at_millis: u64) {
-        if !is_valid_transition(&self.status, &ExecutionState::Success) {
+        if !can_transition(&self.status, &ExecutionState::Success) {
             eprintln!("invalid transition: {:?} -> Success", self.status);
             return;
         }
@@ -209,7 +219,7 @@ impl ExecutionRecord {
     }
 
     pub fn mark_error_at(&mut self, error: ErrorInfo, at_millis: u64) {
-        if !is_valid_transition(&self.status, &ExecutionState::Error) {
+        if !can_transition(&self.status, &ExecutionState::Error) {
             eprintln!("invalid transition: {:?} -> Error", self.status);
             return;
         }
@@ -220,12 +230,16 @@ impl ExecutionRecord {
     }
 
     pub fn mark_timeout_at(&mut self, at_millis: u64) {
-        if !is_valid_transition(&self.status, &ExecutionState::Timeout) {
+        if !can_transition(&self.status, &ExecutionState::Timeout) {
             eprintln!("invalid transition: {:?} -> Timeout", self.status);
             return;
         }
         self.status = ExecutionState::Timeout;
         self.finished_at_millis = Some(at_millis);
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        is_terminal_state(&self.status)
     }
 
     pub fn mark_dispatched_at(&mut self, at_millis: u64) {
@@ -238,7 +252,7 @@ impl ExecutionRecord {
     }
 
     pub fn reset_for_retry(&mut self, retry_task: InvocationTask) {
-        if !is_valid_transition(&self.status, &ExecutionState::Queued) {
+        if !can_transition(&self.status, &ExecutionState::Queued) {
             eprintln!("invalid transition for retry: {:?} -> Queued", self.status);
             return;
         }
@@ -373,26 +387,26 @@ impl ExecutionStore {
         let stale_ttl_ms = self.stale_ttl.as_millis() as u64;
 
         self.entries.retain(|_, stored| {
-            let age = now_millis.saturating_sub(stored.created_at_millis);
-            if age > stale_ttl_ms {
-                return false;
+            let record = &mut stored.record;
+            let created_at = stored.created_at_millis;
+
+            if !record.is_terminal() {
+                // Active executions: only force-evict after stale TTL to clear stuck records.
+                return now_millis.saturating_sub(created_at) <= stale_ttl_ms;
             }
 
-            if age > ttl_ms
-                && stored.record.status != ExecutionState::Running
-                && stored.record.status != ExecutionState::Queued
-            {
-                return false;
-            }
+            // Terminal executions: use finishedAt as the retention anchor so a long-running
+            // execution that just completed is not evicted immediately because createdAt is old.
+            let retention_anchor = record.finished_at_millis.unwrap_or(created_at);
+            let anchor_age = now_millis.saturating_sub(retention_anchor);
 
-            if age > cleanup_ttl_ms
-                && stored.record.status != ExecutionState::Running
-                && stored.record.status != ExecutionState::Queued
-            {
-                stored.record.cleanup();
-                stored.record.cleaned_up = true;
+            if anchor_age > ttl_ms {
+                return false; // evict
             }
-
+            if anchor_age > cleanup_ttl_ms {
+                record.cleanup();
+                record.cleaned_up = true;
+            }
             true
         });
     }

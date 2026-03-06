@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use control_plane_rust::metrics::Metrics;
+use control_plane_rust::metrics::{Metrics, FunctionTimers};
 
 #[test]
 fn coldStart_incrementsCounter() {
@@ -50,4 +50,18 @@ fn e2eLatency_registersTimer() {
     let found = metrics.e2e_latency("echo");
 
     assert_eq!(timer, found);
+}
+
+#[test]
+fn timers_reusesSameBundleOnWarmPath() {
+    let metrics = Metrics::new();
+    let first: FunctionTimers = metrics.timers("echo");
+    let second: FunctionTimers = metrics.timers("echo");
+
+    // Timer handles for the same metric key are equal (point to same entry).
+    assert_eq!(first, second);
+    assert_eq!(first.latency, metrics.latency("echo"));
+    assert_eq!(first.init_duration, metrics.init_duration("echo"));
+    assert_eq!(first.queue_wait, metrics.queue_wait("echo"));
+    assert_eq!(first.e2e_latency, metrics.e2e_latency("echo"));
 }

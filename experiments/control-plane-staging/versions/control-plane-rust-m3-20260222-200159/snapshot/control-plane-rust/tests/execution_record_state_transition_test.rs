@@ -54,14 +54,14 @@ fn validTransition_running_to_queued_viaResetForRetry() {
 }
 
 #[test]
-fn invalidTransition_queued_to_success_logsWarning() {
+fn validTransition_queued_to_success() {
+    // Non-terminal (QUEUED) allows any transition — mirrors Java canTransition semantics.
     let mut record = create_record("exec-1");
     assert_eq!(record.state(), ExecutionState::Queued);
 
-    // Invalid transition: Queued -> Success is not allowed; must be a no-op
     record.mark_success_at(serde_json::json!("output"), 10);
-    assert_eq!(record.state(), ExecutionState::Queued);
-    assert_eq!(record.output(), None);
+    assert_eq!(record.state(), ExecutionState::Success);
+    assert_eq!(record.output(), Some(serde_json::json!("output")));
 }
 
 #[test]
@@ -133,6 +133,56 @@ fn resetForRetry_clearsColdStartFields() {
     assert!(!snapshot.cold_start);
     assert_eq!(snapshot.init_duration_ms, None);
     assert_eq!(snapshot.dispatched_at_millis, None);
+}
+
+#[test]
+fn invalidTransition_timeout_to_success_isIgnored() {
+    // TIMEOUT is terminal — SUCCESS is not in TERMINAL_ALLOWED_TRANSITIONS for TIMEOUT.
+    let mut record = create_record("exec-1");
+    record.mark_running_at(10);
+    record.mark_timeout_at(20);
+
+    record.mark_success_at(serde_json::json!("late-output"), 30);
+
+    assert_eq!(record.state(), ExecutionState::Timeout);
+    assert_eq!(record.output(), None);
+}
+
+#[test]
+fn is_terminal_false_for_queued() {
+    let record = create_record("exec-1");
+    assert!(!record.is_terminal());
+}
+
+#[test]
+fn is_terminal_false_for_running() {
+    let mut record = create_record("exec-1");
+    record.mark_running_at(10);
+    assert!(!record.is_terminal());
+}
+
+#[test]
+fn is_terminal_true_for_success() {
+    let mut record = create_record("exec-1");
+    record.mark_running_at(10);
+    record.mark_success_at(serde_json::json!("ok"), 20);
+    assert!(record.is_terminal());
+}
+
+#[test]
+fn is_terminal_true_for_error() {
+    let mut record = create_record("exec-1");
+    record.mark_running_at(10);
+    record.mark_error_at(ErrorInfo::new("ERR", "oops"), 20);
+    assert!(record.is_terminal());
+}
+
+#[test]
+fn is_terminal_true_for_timeout() {
+    let mut record = create_record("exec-1");
+    record.mark_running_at(10);
+    record.mark_timeout_at(20);
+    assert!(record.is_terminal());
 }
 
 fn create_record(execution_id: &str) -> ExecutionRecord {

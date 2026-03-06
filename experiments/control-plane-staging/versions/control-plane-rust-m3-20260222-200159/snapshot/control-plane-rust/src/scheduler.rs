@@ -123,6 +123,12 @@ fn finalize_dispatch(
         let completion_tx = {
             let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(mut record) = s.get(&task.execution_id) {
+                // Early exit: execution already reached a terminal state (e.g. timed out by
+                // client) — don't overwrite state or record metrics for it.
+                if record.is_terminal() {
+                    return;
+                }
+                let timers = metrics.timers(function_name);
                 let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
                 let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
                 let latency_ms = finished_at.saturating_sub(started_at);
@@ -133,18 +139,16 @@ fn finalize_dispatch(
                 if dispatch.cold_start {
                     record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
                     metrics.cold_start(function_name);
-                    metrics
-                        .init_duration(function_name)
-                        .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+                    timers.init_duration.record_ms(dispatch.init_duration_ms.unwrap_or(0));
                 } else {
                     metrics.warm_start(function_name);
                 }
                 let tx = record.completion_tx.clone();
                 s.put_now(record);
                 metrics.success(function_name);
-                metrics.latency(function_name).record_ms(latency_ms);
-                metrics.queue_wait(function_name).record_ms(queue_wait_ms);
-                metrics.e2e_latency(function_name).record_ms(e2e_latency_ms);
+                timers.latency.record_ms(latency_ms);
+                timers.queue_wait.record_ms(queue_wait_ms);
+                timers.e2e_latency.record_ms(e2e_latency_ms);
                 tx
             } else {
                 None
@@ -161,6 +165,17 @@ fn finalize_dispatch(
 
     let max_retries = function.max_retries.unwrap_or(1).max(1) as u32;
     if task.attempt < max_retries {
+        // Check terminal before retrying — don't re-queue an already-timed-out execution.
+        let is_terminal = store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&task.execution_id)
+            .map(|r| r.is_terminal())
+            .unwrap_or(false);
+        if is_terminal {
+            return;
+        }
+
         let retry_task = crate::queue::InvocationTask {
             execution_id: task.execution_id.clone(),
             payload: task.payload,
@@ -197,6 +212,11 @@ fn finalize_dispatch(
     let completion_tx = {
         let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(mut record) = s.get(&task.execution_id) {
+            // Early exit: execution already terminal (e.g. timed out).
+            if record.is_terminal() {
+                return;
+            }
+            let timers = metrics.timers(function_name);
             let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
             let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
             let latency_ms = finished_at.saturating_sub(started_at);
@@ -207,17 +227,15 @@ fn finalize_dispatch(
             if dispatch.cold_start {
                 record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
                 metrics.cold_start(function_name);
-                metrics
-                    .init_duration(function_name)
-                    .record_ms(dispatch.init_duration_ms.unwrap_or(0));
+                timers.init_duration.record_ms(dispatch.init_duration_ms.unwrap_or(0));
             } else {
                 metrics.warm_start(function_name);
             }
             let tx = record.completion_tx.clone();
             s.put_now(record);
-            metrics.latency(function_name).record_ms(latency_ms);
-            metrics.queue_wait(function_name).record_ms(queue_wait_ms);
-            metrics.e2e_latency(function_name).record_ms(e2e_latency_ms);
+            timers.latency.record_ms(latency_ms);
+            timers.queue_wait.record_ms(queue_wait_ms);
+            timers.e2e_latency.record_ms(e2e_latency_ms);
             tx
         } else {
             None

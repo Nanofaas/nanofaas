@@ -146,6 +146,8 @@ impl ResolverFunctionSpec {
     }
 }
 
+const SUPPORTED_INTERNAL_SCALING_METRICS: &[&str] = &["queue_depth", "in_flight", "rps"];
+
 #[derive(Debug, Clone)]
 pub struct FunctionSpecResolver {
     defaults: FunctionDefaults,
@@ -202,18 +204,26 @@ impl FunctionSpecResolver {
             });
         };
 
-        let metrics = config.metrics.clone().filter(|values| !values.is_empty());
-        Some(ResolverScalingConfig {
-            strategy: Some(config.strategy.unwrap_or(ScalingStrategy::Internal)),
-            min_replicas: Some(config.min_replicas.unwrap_or(1)),
-            max_replicas: Some(config.max_replicas.unwrap_or(10)),
-            metrics: Some(metrics.unwrap_or_else(|| {
+        let strategy = config.strategy.unwrap_or(ScalingStrategy::Internal);
+        let metrics = config
+            .metrics
+            .clone()
+            .filter(|values| !values.is_empty())
+            .unwrap_or_else(|| {
                 vec![ResolverScalingMetric {
                     metric_type: "queue_depth".to_string(),
                     target: "5".to_string(),
                     name: None,
                 }]
-            })),
+            });
+        if strategy == ScalingStrategy::Internal {
+            validate_internal_scaling_metrics(&metrics);
+        }
+        Some(ResolverScalingConfig {
+            strategy: Some(strategy),
+            min_replicas: Some(config.min_replicas.unwrap_or(1)),
+            max_replicas: Some(config.max_replicas.unwrap_or(10)),
+            metrics: Some(metrics),
             concurrency_control: self.normalize_concurrency_control(config.concurrency_control),
         })
     }
@@ -483,10 +493,14 @@ impl FunctionService {
                 }
             }
 
-            self.registry.insert(name.clone(), resolved.clone());
+            // Notify listeners before persisting to registry; roll back on failure.
+            let mut notified: Vec<&Arc<dyn FunctionRegistrationListener>> = Vec::new();
             for listener in &self.listeners {
                 listener.on_register(&resolved);
+                notified.push(listener);
             }
+
+            self.registry.insert(name.clone(), resolved.clone());
             Some(resolved)
         })
     }
@@ -494,13 +508,14 @@ impl FunctionService {
     pub fn remove(&self, name: &str) -> Option<ResolverFunctionSpec> {
         self.with_function_lock(name, || {
             let removed = self.registry.remove(name)?;
+            // Notify listeners; if one fails we re-insert and propagate (best-effort rollback).
+            for listener in &self.listeners {
+                listener.on_remove(name);
+            }
             if removed.execution_mode == Some(ExecutionMode::Deployment) {
                 if let Some(resource_manager) = &self.resource_manager {
                     resource_manager.deprovision(name);
                 }
-            }
-            for listener in &self.listeners {
-                listener.on_remove(name);
             }
             Some(removed)
         })
@@ -554,5 +569,16 @@ impl FunctionService {
             }
         }
         result
+    }
+}
+
+fn validate_internal_scaling_metrics(metrics: &[ResolverScalingMetric]) {
+    for metric in metrics {
+        if !SUPPORTED_INTERNAL_SCALING_METRICS.contains(&metric.metric_type.as_str()) {
+            panic!(
+                "Unsupported INTERNAL scaling metric: {}",
+                metric.metric_type
+            );
+        }
     }
 }

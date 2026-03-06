@@ -19,6 +19,15 @@ struct MetricsInner {
     timers: HashMap<MetricKey, TimerData>,
 }
 
+/// Bundle of all per-function timers, fetched once per invocation to avoid repeated map lookups.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionTimers {
+    pub latency: TimerHandle,
+    pub init_duration: TimerHandle,
+    pub queue_wait: TimerHandle,
+    pub e2e_latency: TimerHandle,
+}
+
 #[derive(Debug, Clone)]
 pub struct TimerHandle {
     inner: Arc<Mutex<MetricsInner>>,
@@ -140,6 +149,17 @@ impl Metrics {
 
     pub fn e2e_latency(&self, function: &str) -> TimerHandle {
         self.timer("function_e2e_latency_ms", function)
+    }
+
+    /// Returns a bundle of all four per-function timers in a single lock operation,
+    /// avoiding four separate map lookups on the hot completion path.
+    pub fn timers(&self, function: &str) -> FunctionTimers {
+        FunctionTimers {
+            latency: self.latency(function),
+            init_duration: self.init_duration(function),
+            queue_wait: self.queue_wait(function),
+            e2e_latency: self.e2e_latency(function),
+        }
     }
 
     pub fn counter_value(&self, metric_name: &str, function: &str) -> f64 {
