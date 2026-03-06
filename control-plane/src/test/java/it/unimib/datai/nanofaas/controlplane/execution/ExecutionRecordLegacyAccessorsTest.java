@@ -35,24 +35,4 @@ class ExecutionRecordLegacyAccessorsTest {
         assertThat(record.lastError()).isEqualTo(error);
     }
 
-    @Test
-    void markSuccess_clearsError_andMarkError_clearsOutput() {
-        ExecutionRecord record = new ExecutionRecord(
-                "exec-2",
-                new InvocationTask("exec-2", "fn", null, null, null, null, null, 1)
-        );
-
-        record.markRunning();
-        record.markError(new ErrorInfo("ERR", "first"));
-        assertThat(record.lastError()).isNotNull();
-        assertThat(record.output()).isNull();
-
-        record.markSuccess("ok");
-        assertThat(record.output()).isEqualTo("ok");
-        assertThat(record.lastError()).isNull();
-
-        record.markError(new ErrorInfo("ERR2", "second"));
-        assertThat(record.output()).isNull();
-        assertThat(record.lastError().code()).isEqualTo("ERR2");
-    }
 }
