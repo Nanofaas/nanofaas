@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import jakarta.annotation.PostConstruct;
@@ -123,13 +124,12 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                 state.releaseSlot();
                 break;
             }
-            try {
-                invocationService.dispatch(task);
-            } catch (Exception ex) {
-                state.releaseSlot();
-                log.error("Dispatch failed for execution {}: {}",
-                        task.executionId(), ex.getMessage(), ex);
-            }
+            SchedulerDispatchSupport.dispatchWithFailureCleanup(
+                    task,
+                    () -> invocationService.dispatch(task),
+                    state::releaseSlot,
+                    log
+            );
         }
     }
 
