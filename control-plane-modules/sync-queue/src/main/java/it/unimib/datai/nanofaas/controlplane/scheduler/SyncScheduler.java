@@ -91,25 +91,20 @@ public class SyncScheduler implements SmartLifecycle {
 
     void tickOnce() {
         Instant now = Instant.now();
-        SyncQueueItem item = queue.peekReady(now);
+        SyncQueueItem item = queue.pollReadyMatching(now, task -> enqueuer.tryAcquireSlot(task.functionName()));
         if (item == null) {
-            queue.awaitWork(tickMs);
+            if (queue.peekReady(now) == null) {
+                queue.awaitWork(tickMs);
+            } else {
+                sleep(tickMs);
+            }
             return;
         }
-        if (!enqueuer.tryAcquireSlot(item.task().functionName())) {
-            sleep(tickMs);
-            return;
-        }
-        SyncQueueItem polled = queue.pollReady(now);
-        if (polled == null) {
-            enqueuer.releaseDispatchSlot(item.task().functionName());
-            return;
-        }
-        queue.recordDispatched(polled.task().functionName(), now);
+        queue.recordDispatched(item.task().functionName(), now);
         SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                polled.task(),
-                () -> dispatch.accept(polled.task()),
-                () -> enqueuer.releaseDispatchSlot(polled.task().functionName()),
+                item.task(),
+                () -> dispatch.accept(item.task()),
+                () -> enqueuer.releaseDispatchSlot(item.task().functionName()),
                 log
         );
     }
