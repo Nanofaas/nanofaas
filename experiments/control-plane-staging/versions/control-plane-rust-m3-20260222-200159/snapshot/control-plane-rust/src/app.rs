@@ -1234,7 +1234,7 @@ fn enqueue_function(
         abandon_idempotency_claim(&state, name, idem_claim.as_ref());
         return Err(response);
     }
-    enqueue_publish_delay_for(name);
+    assert_execution_visible_after_enqueue(&state, name, &execution_id);
     state.metrics.enqueue(name);
     state.metrics.queue_depth(name);
     publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
@@ -1621,16 +1621,23 @@ fn queue_rejected_response(retry_after_seconds: &str, reason: &str) -> Response 
     response
 }
 
-fn enqueue_publish_delay_for(function_name: &str) {
-    let target_function = std::env::var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION").ok();
-    let delay_ms = std::env::var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0);
+fn assert_execution_visible_after_enqueue(
+    state: &AppState,
+    function_name: &str,
+    execution_id: &str,
+) {
+    let target_function = std::env::var("NANOFAAS_TEST_ASSERT_ENQUEUE_VISIBLE_FUNCTION").ok();
     if target_function.as_deref() == Some(function_name) {
-        if let Some(delay_ms) = delay_ms {
-            std::thread::sleep(Duration::from_millis(delay_ms));
-        }
+        let visible = state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(execution_id)
+            .is_some();
+        assert!(
+            visible,
+            "execution record must exist before task becomes enqueue-visible: function={function_name} execution_id={execution_id}"
+        );
     }
 }
 

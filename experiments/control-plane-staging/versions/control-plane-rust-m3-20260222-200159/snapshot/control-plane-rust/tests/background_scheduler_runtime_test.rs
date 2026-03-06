@@ -9,28 +9,23 @@ use std::thread;
 use std::time::Duration;
 use tower::util::ServiceExt;
 
-fn enqueue_publish_delay_guard() -> &'static Mutex<()> {
+fn enqueue_visibility_assert_guard() -> &'static Mutex<()> {
     static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
     GUARD.get_or_init(|| Mutex::new(()))
 }
 
-struct EnqueuePublishDelayEnvGuard;
+struct EnqueueVisibilityAssertEnvGuard;
 
-impl EnqueuePublishDelayEnvGuard {
-    fn install(function_name: &str, delay_ms: u64) -> Self {
-        std::env::set_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION", function_name);
-        std::env::set_var(
-            "NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS",
-            delay_ms.to_string(),
-        );
+impl EnqueueVisibilityAssertEnvGuard {
+    fn install(function_name: &str) -> Self {
+        std::env::set_var("NANOFAAS_TEST_ASSERT_ENQUEUE_VISIBLE_FUNCTION", function_name);
         Self
     }
 }
 
-impl Drop for EnqueuePublishDelayEnvGuard {
+impl Drop for EnqueueVisibilityAssertEnvGuard {
     fn drop(&mut self) {
-        std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION");
-        std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS");
+        std::env::remove_var("NANOFAAS_TEST_ASSERT_ENQUEUE_VISIBLE_FUNCTION");
     }
 }
 
@@ -284,13 +279,13 @@ async fn background_scheduler_dispatches_multiple_tasks_concurrently() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn background_scheduler_enqueue_publish_order_keeps_task_visible_to_scheduler() {
-    let _guard = enqueue_publish_delay_guard()
+#[tokio::test]
+async fn background_scheduler_enqueue_visible_task_already_has_execution_record() {
+    let _guard = enqueue_visibility_assert_guard()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let function_name = "bg-enqueue-order";
-    let _env_guard = EnqueuePublishDelayEnvGuard::install(function_name, 150);
+    let _env_guard = EnqueueVisibilityAssertEnvGuard::install(function_name);
 
     let (app, _mgmt) = control_plane_rust::app::build_app_pair_with_background_scheduler();
     register_local_function(&app, function_name).await;
@@ -312,6 +307,6 @@ async fn background_scheduler_enqueue_publish_order_keeps_task_visible_to_schedu
 
     assert!(
         saw_success,
-        "background scheduler lost the task in the enqueue-to-publish window"
+        "execution should complete successfully when enqueue visibility invariant holds"
     );
 }
