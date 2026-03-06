@@ -151,14 +151,31 @@ impl Metrics {
         self.timer("function_e2e_latency_ms", function)
     }
 
-    /// Returns a bundle of all four per-function timers in a single lock operation,
-    /// avoiding four separate map lookups on the hot completion path.
+    /// Returns a bundle of all four per-function timers, initialised in a single lock
+    /// acquisition to minimise contention on the hot completion path.
     pub fn timers(&self, function: &str) -> FunctionTimers {
+        let keys = [
+            "function_latency_ms",
+            "function_init_duration_ms",
+            "function_queue_wait_ms",
+            "function_e2e_latency_ms",
+        ]
+        .map(|name| MetricKey {
+            name: name.to_string(),
+            function: function.to_string(),
+        });
+        {
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            for key in &keys {
+                inner.timers.entry(key.clone()).or_default();
+            }
+        }
+        let [latency_key, init_key, queue_key, e2e_key] = keys;
         FunctionTimers {
-            latency: self.latency(function),
-            init_duration: self.init_duration(function),
-            queue_wait: self.queue_wait(function),
-            e2e_latency: self.e2e_latency(function),
+            latency: TimerHandle { inner: Arc::clone(&self.inner), key: latency_key },
+            init_duration: TimerHandle { inner: Arc::clone(&self.inner), key: init_key },
+            queue_wait: TimerHandle { inner: Arc::clone(&self.inner), key: queue_key },
+            e2e_latency: TimerHandle { inner: Arc::clone(&self.inner), key: e2e_key },
         }
     }
 

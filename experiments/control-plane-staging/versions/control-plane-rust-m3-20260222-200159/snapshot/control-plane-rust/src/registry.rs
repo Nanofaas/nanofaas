@@ -240,8 +240,8 @@ impl FunctionSpecResolver {
         const DEFAULT_HIGH_LOAD_THRESHOLD: f64 = 0.85;
         const DEFAULT_LOW_LOAD_THRESHOLD: f64 = 0.35;
 
-        let Some(config) = config else {
-            return Some(ResolverConcurrencyControlConfig {
+        let fixed_mode = || {
+            Some(ResolverConcurrencyControlConfig {
                 mode: Some(ConcurrencyControlMode::Fixed),
                 target_in_flight_per_pod: None,
                 min_target_in_flight_per_pod: None,
@@ -250,32 +250,18 @@ impl FunctionSpecResolver {
                 downscale_cooldown_ms: None,
                 high_load_threshold: None,
                 low_load_threshold: None,
-            });
+            })
+        };
+
+        let Some(config) = config else {
+            return fixed_mode();
         };
 
         let Some(mode) = config.mode.clone() else {
-            return Some(ResolverConcurrencyControlConfig {
-                mode: Some(ConcurrencyControlMode::Fixed),
-                target_in_flight_per_pod: None,
-                min_target_in_flight_per_pod: None,
-                max_target_in_flight_per_pod: None,
-                upscale_cooldown_ms: None,
-                downscale_cooldown_ms: None,
-                high_load_threshold: None,
-                low_load_threshold: None,
-            });
+            return fixed_mode();
         };
         if mode == ConcurrencyControlMode::Fixed {
-            return Some(ResolverConcurrencyControlConfig {
-                mode: Some(ConcurrencyControlMode::Fixed),
-                target_in_flight_per_pod: None,
-                min_target_in_flight_per_pod: None,
-                max_target_in_flight_per_pod: None,
-                upscale_cooldown_ms: None,
-                downscale_cooldown_ms: None,
-                high_load_threshold: None,
-                low_load_threshold: None,
-            });
+            return fixed_mode();
         }
 
         let mut min = config

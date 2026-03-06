@@ -358,7 +358,7 @@ impl ExecutionStore {
     }
 
     pub fn put_now(&mut self, record: ExecutionRecord) {
-        self.put_with_timestamp(record, now_millis());
+        self.put_with_timestamp(record, crate::now_millis());
     }
 
     pub fn get(&self, execution_id: &str) -> Option<ExecutionRecord> {
@@ -422,15 +422,8 @@ pub fn spawn_execution_store_janitor(store: Arc<Mutex<ExecutionStore>>, interval
         loop {
             tokio::time::sleep(interval).await;
             let mut guard = store.lock().unwrap_or_else(|e| e.into_inner());
-            guard.evict_expired(now_millis());
+            guard.evict_expired(crate::now_millis());
         }
     });
 }
 
-fn now_millis() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
-}

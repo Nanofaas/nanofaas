@@ -429,7 +429,7 @@ fn start_internal_scaler(state: AppState) {
         let poll_interval = Duration::from_millis(poll_interval_ms);
 
         loop {
-            let now = now_millis();
+            let now = crate::now_millis();
             let specs = state.function_registry.list();
             for spec in specs {
                 if spec.execution_mode != crate::model::ExecutionMode::Deployment {
@@ -885,7 +885,7 @@ async fn invoke_function(
         }
     }
 
-    let now = now_millis();
+    let now = crate::now_millis();
     if !state
         .rate_limiter
         .lock()
@@ -1008,7 +1008,7 @@ async fn invoke_function(
                 Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
             }
             Err(_elapsed) => {
-                let finished_at = now_millis();
+                let finished_at = crate::now_millis();
                 {
                     let mut store = state
                         .execution_store
@@ -1083,7 +1083,7 @@ fn finish_invocation(
     state: &AppState,
     created_at: u64,
 ) -> Result<InvocationResponse, Response> {
-    let finished_at = now_millis();
+    let finished_at = crate::now_millis();
     let mut record = state
         .execution_store
         .lock()
@@ -1189,7 +1189,7 @@ fn enqueue_function(
         return Err(StatusCode::NOT_IMPLEMENTED.into_response());
     }
 
-    let now = now_millis();
+    let now = crate::now_millis();
     if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
         if let Some(existing_id) = state
             .idempotency_store
@@ -1298,14 +1298,6 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|value| value.to_string())
 }
 
-fn now_millis() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode> {
     if let Some((name, action)) = name_or_action.rsplit_once(':') {
         if name.is_empty() || action.is_empty() {
@@ -1384,7 +1376,7 @@ async fn complete_execution(
                 );
                 return Ok(());
             }
-            let now = now_millis();
+            let now = crate::now_millis();
             // Ensure record is Running before applying terminal transition.
             // The dispatcher normally calls mark_running_at before dispatch; in
             // callback scenarios (e.g. async enqueue + external callback) the
@@ -1619,7 +1611,7 @@ mod autoscaling_tests {
         register_scaled_function(&state, "autoscale-up").await;
 
         let mut record = ExecutionRecord::new("exec-up", "autoscale-up", ExecutionState::Queued);
-        record.mark_running_at(now_millis());
+        record.mark_running_at(crate::now_millis());
         state
             .execution_store
             .lock()
@@ -1628,13 +1620,13 @@ mod autoscaling_tests {
 
         start_internal_scaler(state.clone());
 
-        let start = now_millis();
+        let start = crate::now_millis();
         loop {
             if deployment_replicas(&state, "autoscale-up") > 0 {
                 break;
             }
             assert!(
-                now_millis().saturating_sub(start) < 5_000,
+                crate::now_millis().saturating_sub(start) < 5_000,
                 "internal scaler did not scale up within timeout"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1660,13 +1652,13 @@ mod autoscaling_tests {
 
         start_internal_scaler(state.clone());
 
-        let start = now_millis();
+        let start = crate::now_millis();
         loop {
             if deployment_replicas(&state, "autoscale-down") == 0 {
                 break;
             }
             assert!(
-                now_millis().saturating_sub(start) < 5_000,
+                crate::now_millis().saturating_sub(start) < 5_000,
                 "internal scaler did not scale down within timeout"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;

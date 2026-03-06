@@ -6,14 +6,6 @@ use crate::queue::QueueManager;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn now_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
 
 pub struct Scheduler {
     router: DispatcherRouter,
@@ -65,7 +57,7 @@ impl Scheduler {
         };
 
         // 2. Mark running before dispatch — visible to status-polling clients.
-        let started_at = now_millis();
+        let started_at = crate::now_millis();
         {
             let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(mut r) = s.get(&task.execution_id) {
@@ -113,11 +105,14 @@ fn finalize_dispatch(
     store: Arc<Mutex<ExecutionStore>>,
     metrics: Metrics,
 ) {
-    let finished_at = now_millis();
+    let finished_at = crate::now_millis();
     queue
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .release_slot(function_name);
+
+    // Fetch all four timer handles in one lock acquisition before branching.
+    let timers = metrics.timers(function_name);
 
     if dispatch.status == "SUCCESS" {
         let completion_tx = {
@@ -128,7 +123,6 @@ fn finalize_dispatch(
                 if record.is_terminal() {
                     return;
                 }
-                let timers = metrics.timers(function_name);
                 let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
                 let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
                 let latency_ms = finished_at.saturating_sub(started_at);
@@ -216,7 +210,6 @@ fn finalize_dispatch(
             if record.is_terminal() {
                 return;
             }
-            let timers = metrics.timers(function_name);
             let queue_wait_ms = started_at.saturating_sub(record.created_at_millis);
             let e2e_latency_ms = finished_at.saturating_sub(record.created_at_millis);
             let latency_ms = finished_at.saturating_sub(started_at);
