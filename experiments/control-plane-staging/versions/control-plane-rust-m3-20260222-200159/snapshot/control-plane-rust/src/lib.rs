@@ -12,6 +12,7 @@ pub mod model;
 pub mod queue;
 pub mod rate_limiter;
 pub mod registry;
+pub mod runtime_config;
 pub mod scheduler;
 pub mod service;
 pub mod sync;

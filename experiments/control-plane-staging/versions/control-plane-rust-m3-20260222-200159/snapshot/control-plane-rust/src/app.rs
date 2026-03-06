@@ -15,19 +15,21 @@ use crate::rate_limiter::RateLimiter;
 use crate::registry::{
     AppFunctionRegistry, FunctionDefaults, FunctionSpecResolver, ResolverFunctionSpec,
 };
+use crate::runtime_config::{
+    parse_request as parse_runtime_config_request,
+    validation_errors as runtime_config_validation_errors, RuntimeConfigPatchResponse,
+    RuntimeConfigSnapshot,
+};
 use crate::scheduler::Scheduler;
 use crate::service::{AsyncQueueEnqueuer, InvocationEnqueuer, NoOpInvocationEnqueuer};
-use crate::sync::{
-    NoOpSyncQueueGateway, SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason,
-    SyncQueueSettings,
-};
+use crate::sync::{SyncAdmissionQueue, SyncQueueGateway, SyncQueueRejectReason};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -45,17 +47,12 @@ pub struct AppState {
     queue_manager: Arc<Mutex<QueueManager>>,
     dispatcher_router: Arc<DispatcherRouter>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
-    runtime_config_state: Arc<Mutex<RuntimeConfigState>>,
+    runtime_config_state: Arc<Mutex<RuntimeConfigSnapshot>>,
     runtime_config_admin_enabled: bool,
     metrics: Arc<Metrics>,
     enqueuer: Arc<dyn InvocationEnqueuer + Send + Sync>,
     sync_queue: Arc<dyn SyncQueueGateway + Send + Sync>,
     background_scheduler_enabled: bool,
-}
-
-#[derive(Debug, Clone)]
-struct RuntimeConfigState {
-    revision: u64,
 }
 
 #[derive(Clone)]
@@ -172,32 +169,6 @@ struct ReplicaRequest {
     replicas: u32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimeConfigPatchRequest {
-    #[serde(default)]
-    expected_revision: Option<u64>,
-    #[serde(default)]
-    rate_max_per_second: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimeConfigSnapshotResponse {
-    revision: u64,
-    rate_max_per_second: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimeConfigPatchResponse {
-    revision: u64,
-    effective_config: RuntimeConfigSnapshotResponse,
-    applied_at: String,
-    change_id: String,
-    warnings: Vec<String>,
-}
-
 #[derive(Debug, Clone)]
 struct IdempotencyClaim {
     key: String,
@@ -295,6 +266,45 @@ fn build_state_with_options(
             .map(|v| v == "true")
             .unwrap_or(false)
     });
+    let rate_max_per_second = std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1_000_000);
+    let sync_queue_enabled = std::env::var("NANOFAAS_SYNC_QUEUE_ENABLED")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let sync_queue_max_concurrency = std::env::var("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(100);
+    let sync_queue_max_depth = std::env::var("NANOFAAS_SYNC_QUEUE_MAX_DEPTH")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(100);
+    let runtime_config_state = Arc::new(Mutex::new(RuntimeConfigSnapshot {
+        revision: 0,
+        rate_max_per_second,
+        sync_queue_enabled,
+        sync_queue_admission_enabled: std::env::var("NANOFAAS_SYNC_QUEUE_ADMISSION_ENABLED")
+            .map(|v| v == "true")
+            .unwrap_or(true),
+        sync_queue_max_estimated_wait: Duration::from_millis(
+            std::env::var("NANOFAAS_SYNC_QUEUE_MAX_ESTIMATED_WAIT_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(2_000),
+        ),
+        sync_queue_max_queue_wait: Duration::from_millis(
+            std::env::var("NANOFAAS_SYNC_QUEUE_MAX_QUEUE_WAIT_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(2_000),
+        ),
+        sync_queue_retry_after_seconds: std::env::var("NANOFAAS_SYNC_QUEUE_RETRY_AFTER_SECONDS")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(2),
+    }));
 
     AppState {
         function_registry: Arc::new(AppFunctionRegistry::new()),
@@ -307,61 +317,16 @@ fn build_state_with_options(
         ))),
         queue_manager,
         dispatcher_router: Arc::new(dispatcher_router),
-        rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
-            std::env::var("NANOFAAS_RATE_MAX_PER_SECOND")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(1_000_000), // default: 1_000_000 (effectively unlimited; set via NANOFAAS_RATE_MAX_PER_SECOND)
-        ))),
-        runtime_config_state: Arc::new(Mutex::new(RuntimeConfigState { revision: 0 })),
+        rate_limiter: Arc::new(Mutex::new(RateLimiter::new(rate_max_per_second))),
+        runtime_config_state: Arc::clone(&runtime_config_state),
         runtime_config_admin_enabled,
         metrics,
         enqueuer,
-        sync_queue: {
-            let sync_enabled = std::env::var("NANOFAAS_SYNC_QUEUE_ENABLED")
-                .map(|v| v == "true")
-                .unwrap_or(false);
-            if sync_enabled {
-                let settings = SyncQueueSettings {
-                    max_concurrency: std::env::var("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY")
-                        .ok()
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(100),
-                    max_depth: std::env::var("NANOFAAS_SYNC_QUEUE_MAX_DEPTH")
-                        .ok()
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(100),
-                    retry_after_seconds: std::env::var("NANOFAAS_SYNC_QUEUE_RETRY_AFTER_SECONDS")
-                        .ok()
-                        .and_then(|v| v.parse::<i32>().ok())
-                        .unwrap_or(2),
-                    max_estimated_wait: Duration::from_millis(
-                        std::env::var("NANOFAAS_SYNC_QUEUE_MAX_ESTIMATED_WAIT_MS")
-                            .ok()
-                            .and_then(|v| v.parse::<u64>().ok())
-                            .unwrap_or(2_000),
-                    ),
-                    admission_enabled: std::env::var("NANOFAAS_SYNC_QUEUE_ADMISSION_ENABLED")
-                        .map(|v| v == "true")
-                        .unwrap_or(true),
-                    throughput_window: Duration::from_millis(
-                        std::env::var("NANOFAAS_SYNC_QUEUE_THROUGHPUT_WINDOW_MS")
-                            .ok()
-                            .and_then(|v| v.parse::<u64>().ok())
-                            .unwrap_or(30_000),
-                    ),
-                    per_function_min_samples: std::env::var(
-                        "NANOFAAS_SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES",
-                    )
-                    .ok()
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(3),
-                };
-                Arc::new(SyncAdmissionQueue::new(settings))
-            } else {
-                Arc::new(NoOpSyncQueueGateway)
-            }
-        },
+        sync_queue: Arc::new(SyncAdmissionQueue::new(
+            Arc::clone(&runtime_config_state),
+            sync_queue_max_concurrency,
+            sync_queue_max_depth,
+        )),
         background_scheduler_enabled,
     }
 }
@@ -651,48 +616,38 @@ async fn management_prometheus(State(metrics): State<Arc<Metrics>>) -> Response 
     (StatusCode::OK, metrics.to_prometheus_text()).into_response()
 }
 
-fn runtime_config_snapshot(state: &AppState, revision: u64) -> RuntimeConfigSnapshotResponse {
-    let rate_max_per_second = state
-        .rate_limiter
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .capacity_per_second();
-    RuntimeConfigSnapshotResponse {
-        revision,
-        rate_max_per_second,
-    }
-}
-
-fn runtime_config_validation_errors(request: &RuntimeConfigPatchRequest) -> Vec<String> {
-    let mut errors = Vec::new();
-    if let Some(rate) = request.rate_max_per_second {
-        if rate <= 0 {
-            errors.push("rateMaxPerSecond must be greater than 0".to_string());
-        }
-    }
-    errors
-}
-
 async fn get_runtime_config(State(state): State<AppState>) -> Response {
     if !state.runtime_config_admin_enabled {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let revision = state
+    let snapshot = state
         .runtime_config_state
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .revision;
-    Json(runtime_config_snapshot(&state, revision)).into_response()
+        .clone();
+    Json(snapshot.to_response()).into_response()
 }
 
 async fn validate_runtime_config(
     State(state): State<AppState>,
-    Json(request): Json<RuntimeConfigPatchRequest>,
+    Json(request): Json<Value>,
 ) -> Response {
     if !state.runtime_config_admin_enabled {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let errors = runtime_config_validation_errors(&request);
+    let parsed = match parse_runtime_config_request(request) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": err }))).into_response();
+        }
+    };
+    let current = state
+        .runtime_config_state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let effective = current.apply_patch(&parsed.patch);
+    let errors = runtime_config_validation_errors(&effective);
     if errors.is_empty() {
         return Json(json!({ "valid": true })).into_response();
     }
@@ -705,12 +660,18 @@ async fn validate_runtime_config(
 
 async fn patch_runtime_config(
     State(state): State<AppState>,
-    Json(request): Json<RuntimeConfigPatchRequest>,
+    Json(request): Json<Value>,
 ) -> Response {
     if !state.runtime_config_admin_enabled {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let Some(expected_revision) = request.expected_revision else {
+    let parsed = match parse_runtime_config_request(request) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": err }))).into_response();
+        }
+    };
+    let Some(expected_revision) = parsed.expected_revision else {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": "expectedRevision is required" })),
@@ -718,7 +679,13 @@ async fn patch_runtime_config(
             .into_response();
     };
 
-    let errors = runtime_config_validation_errors(&request);
+    let current = state
+        .runtime_config_state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let next = current.apply_patch(&parsed.patch);
+    let errors = runtime_config_validation_errors(&next);
     if !errors.is_empty() {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -745,16 +712,17 @@ async fn patch_runtime_config(
             .into_response();
     }
 
-    if let Some(next_rate) = request.rate_max_per_second {
-        let mut limiter = state.rate_limiter.lock().unwrap_or_else(|e| e.into_inner());
-        limiter.set_capacity_per_second(next_rate as usize);
-    }
-
-    runtime_config.revision += 1;
+    *runtime_config = next.clone();
     let revision = runtime_config.revision;
     drop(runtime_config);
 
-    let effective_config = runtime_config_snapshot(&state, revision);
+    state
+        .rate_limiter
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .set_capacity_per_second(next.rate_max_per_second);
+
+    let effective_config = next.to_response();
     Json(RuntimeConfigPatchResponse {
         revision,
         effective_config,

@@ -1,6 +1,7 @@
 use crate::queue::InvocationTask;
+use crate::runtime_config::RuntimeConfigSnapshot;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub trait SyncQueueGateway {
@@ -56,31 +57,6 @@ pub fn no_op_sync_queue_gateway() -> &'static NoOpSyncQueueGateway {
     &NO_OP_SYNC_QUEUE_GATEWAY
 }
 
-#[derive(Debug, Clone)]
-pub struct SyncQueueSettings {
-    pub max_concurrency: usize,
-    pub max_depth: usize,
-    pub retry_after_seconds: i32,
-    pub max_estimated_wait: Duration,
-    pub admission_enabled: bool,
-    pub throughput_window: Duration,
-    pub per_function_min_samples: usize,
-}
-
-impl Default for SyncQueueSettings {
-    fn default() -> Self {
-        Self {
-            max_concurrency: 100,
-            max_depth: 100,
-            retry_after_seconds: 2,
-            max_estimated_wait: Duration::from_secs(2),
-            admission_enabled: true,
-            throughput_window: Duration::from_secs(30),
-            per_function_min_samples: 3,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 struct SyncQueueState {
     in_flight: usize,
@@ -91,14 +67,22 @@ struct SyncQueueState {
 
 #[derive(Debug)]
 pub struct SyncAdmissionQueue {
-    settings: SyncQueueSettings,
+    runtime_config: Arc<Mutex<RuntimeConfigSnapshot>>,
+    max_concurrency: usize,
+    max_depth: usize,
     state: Mutex<SyncQueueState>,
 }
 
 impl SyncAdmissionQueue {
-    pub fn new(settings: SyncQueueSettings) -> Self {
+    pub fn new(
+        runtime_config: Arc<Mutex<RuntimeConfigSnapshot>>,
+        max_concurrency: usize,
+        max_depth: usize,
+    ) -> Self {
         Self {
-            settings,
+            runtime_config,
+            max_concurrency: max_concurrency.max(1),
+            max_depth: max_depth.max(1),
             state: Mutex::new(SyncQueueState::default()),
         }
     }
@@ -125,19 +109,24 @@ impl SyncAdmissionQueue {
             return Some(0);
         }
 
+        let settings = self
+            .runtime_config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         Self::prune(
             &mut state.global_events,
             now,
-            self.settings.throughput_window,
+            settings.sync_queue_max_queue_wait,
         );
         if let Some(events) = state.per_function_events.get_mut(function_name) {
-            Self::prune(events, now, self.settings.throughput_window);
+            Self::prune(events, now, settings.sync_queue_max_queue_wait);
         }
 
         if let Some(events) = state.per_function_events.get(function_name) {
-            if events.len() >= self.settings.per_function_min_samples {
-                let seconds = self.settings.throughput_window.as_secs_f64().max(1.0);
+            if events.len() >= 3 {
+                let seconds = settings.sync_queue_max_queue_wait.as_secs_f64().max(1.0);
                 let throughput = events.len() as f64 / seconds;
                 if throughput > 0.0 {
                     return Some(((depth as f64 / throughput) * 1000.0).ceil() as u64);
@@ -145,16 +134,16 @@ impl SyncAdmissionQueue {
             }
         }
 
-        let seconds = self.settings.throughput_window.as_secs_f64().max(1.0);
+        let seconds = settings.sync_queue_max_queue_wait.as_secs_f64().max(1.0);
         let throughput = state.global_events.len() as f64 / seconds;
         if throughput > 0.0 {
             Some(((depth as f64 / throughput) * 1000.0).ceil() as u64)
         } else {
             Some(
-                self.settings
-                    .max_estimated_wait
+                settings
+                    .sync_queue_max_estimated_wait
                     .as_millis()
-                    .max((self.settings.retry_after_seconds.max(1) as u128) * 1000)
+                    .max((settings.sync_queue_retry_after_seconds.max(1) as u128) * 1000)
                     as u64,
             )
         }
@@ -167,25 +156,39 @@ impl SyncQueueGateway for SyncAdmissionQueue {
     }
 
     fn enabled(&self) -> bool {
-        true
+        self.runtime_config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .sync_queue_enabled
     }
 
     fn retry_after_seconds(&self) -> i32 {
-        self.settings.retry_after_seconds
+        self.runtime_config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .sync_queue_retry_after_seconds
     }
 
     fn try_admit(&self, function_name: &str) -> Result<(), SyncQueueRejection> {
         let now = Instant::now();
+        let settings = self
+            .runtime_config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if !settings.sync_queue_enabled {
+            return Ok(());
+        }
         let depth = {
             let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             state.in_flight
         };
 
-        if depth >= self.settings.max_depth.max(1) {
+        if depth >= self.max_depth {
             return Self::reject_for_depth(depth);
         }
 
-        if depth < self.settings.max_concurrency.max(1) {
+        if depth < self.max_concurrency {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             state.in_flight += 1;
             *state
@@ -196,8 +199,9 @@ impl SyncQueueGateway for SyncAdmissionQueue {
         }
 
         let est_wait_ms = self.estimate_wait_ms(function_name, depth.max(1), now);
-        if self.settings.admission_enabled
-            && est_wait_ms.unwrap_or(u64::MAX) > self.settings.max_estimated_wait.as_millis() as u64
+        if settings.sync_queue_admission_enabled
+            && est_wait_ms.unwrap_or(u64::MAX)
+                > settings.sync_queue_max_estimated_wait.as_millis() as u64
         {
             return Err(SyncQueueRejection {
                 reason: SyncQueueRejectReason::EstWait,
@@ -229,16 +233,17 @@ impl SyncQueueGateway for SyncAdmissionQueue {
         }
 
         state.global_events.push_back(now);
-        Self::prune(
-            &mut state.global_events,
-            now,
-            self.settings.throughput_window,
-        );
+        let queue_window = self
+            .runtime_config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .sync_queue_max_queue_wait;
+        Self::prune(&mut state.global_events, now, queue_window);
         let events = state
             .per_function_events
             .entry(function_name.to_string())
             .or_default();
         events.push_back(now);
-        Self::prune(events, now, self.settings.throughput_window);
+        Self::prune(events, now, queue_window);
     }
 }
