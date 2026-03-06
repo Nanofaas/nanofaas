@@ -211,6 +211,12 @@ public class ExecutionRecord {
         return finishedAt;
     }
 
+    public synchronized boolean isTerminal() {
+        return state == ExecutionState.SUCCESS
+                || state == ExecutionState.ERROR
+                || state == ExecutionState.TIMEOUT;
+    }
+
     public synchronized ErrorInfo lastError() {
         return lastError;
     }

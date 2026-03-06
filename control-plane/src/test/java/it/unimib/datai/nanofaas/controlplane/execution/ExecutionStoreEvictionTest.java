@@ -59,6 +59,7 @@ class ExecutionStoreEvictionTest {
         store.put(record);
 
         backdateEntry("exec-done", Instant.now().minus(Duration.ofMinutes(7)));
+        record.finishedAt(Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 
@@ -73,6 +74,7 @@ class ExecutionStoreEvictionTest {
         store.put(record);
 
         backdateEntry("exec-err", Instant.now().minus(Duration.ofMinutes(7)));
+        record.finishedAt(Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 
@@ -87,10 +89,54 @@ class ExecutionStoreEvictionTest {
         store.put(record);
 
         backdateEntry("exec-timeout", Instant.now().minus(Duration.ofMinutes(7)));
+        record.finishedAt(Instant.now().minus(Duration.ofMinutes(7)));
 
         invokeEvictExpired();
 
         assertThat(store.get("exec-timeout")).isEmpty();
+    }
+
+    @Test
+    void eviction_keepsLongRunningExecutionThatJustCompleted() throws Exception {
+        ExecutionRecord record = createRecord("exec-long-running");
+        record.markRunning();
+        store.put(record);
+
+        backdateEntry("exec-long-running", Instant.now().minus(Duration.ofMinutes(7)));
+        record.markSuccess("result");
+
+        invokeEvictExpired();
+
+        assertThat(store.get("exec-long-running")).isPresent();
+        assertThat(store.get("exec-long-running").orElseThrow().output()).isEqualTo("result");
+    }
+
+    @Test
+    void cleanup_usesCompletionTimeForTerminalExecution() throws Exception {
+        ExecutionRecord record = createRecord("exec-cleanup");
+        record.markRunning();
+        record.markSuccess("result");
+        store.put(record);
+
+        backdateEntry("exec-cleanup", Instant.now().minus(Duration.ofMinutes(3)));
+
+        invokeEvictExpired();
+
+        assertThat(store.get("exec-cleanup")).isPresent();
+        assertThat(store.get("exec-cleanup").orElseThrow().output()).isEqualTo("result");
+    }
+
+    @Test
+    void eviction_removesStaleRunningExecutionAfterStaleTtl() throws Exception {
+        ExecutionRecord record = createRecord("exec-stale-running");
+        record.markRunning();
+        store.put(record);
+
+        backdateEntry("exec-stale-running", Instant.now().minus(Duration.ofMinutes(11)));
+
+        invokeEvictExpired();
+
+        assertThat(store.get("exec-stale-running")).isEmpty();
     }
 
     @Test
