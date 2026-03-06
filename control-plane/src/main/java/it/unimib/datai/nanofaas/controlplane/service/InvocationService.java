@@ -23,9 +23,7 @@ import org.springframework.lang.Nullable;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -34,11 +32,12 @@ public class InvocationService {
     private final FunctionService functionService;
     private final InvocationEnqueuer enqueuer;
     private final ExecutionStore executionStore;
-    private final IdempotencyStore idempotencyStore;
     private final RateLimiter rateLimiter;
     private final Metrics metrics;
     private final SyncQueueGateway syncQueueGateway;
     private final ExecutionCompletionHandler completionHandler;
+    private final InvocationExecutionFactory executionFactory;
+    private final InvocationResponseMapper responseMapper;
 
     public InvocationService(FunctionService functionService,
                              @Nullable InvocationEnqueuer enqueuer,
@@ -48,14 +47,38 @@ public class InvocationService {
                              Metrics metrics,
                              @Autowired(required = false) @Nullable SyncQueueGateway syncQueueGateway,
                              ExecutionCompletionHandler completionHandler) {
+        this(
+                functionService,
+                enqueuer,
+                executionStore,
+                rateLimiter,
+                metrics,
+                syncQueueGateway,
+                completionHandler,
+                new InvocationExecutionFactory(executionStore, idempotencyStore),
+                new InvocationResponseMapper()
+        );
+    }
+
+    @Autowired
+    public InvocationService(FunctionService functionService,
+                             @Nullable InvocationEnqueuer enqueuer,
+                             ExecutionStore executionStore,
+                             RateLimiter rateLimiter,
+                             Metrics metrics,
+                             @Autowired(required = false) @Nullable SyncQueueGateway syncQueueGateway,
+                             ExecutionCompletionHandler completionHandler,
+                             InvocationExecutionFactory executionFactory,
+                             InvocationResponseMapper responseMapper) {
         this.functionService = functionService;
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.executionStore = executionStore;
-        this.idempotencyStore = idempotencyStore;
         this.rateLimiter = rateLimiter;
         this.metrics = metrics;
         this.syncQueueGateway = syncQueueGateway == null ? SyncQueueGateway.noOp() : syncQueueGateway;
         this.completionHandler = completionHandler;
+        this.executionFactory = executionFactory;
+        this.responseMapper = responseMapper;
     }
 
     public InvocationResponse invokeSync(String functionName,
@@ -66,17 +89,18 @@ public class InvocationService {
         enforceRateLimit();
 
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-        ExecutionLookup lookup = createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
+        InvocationExecutionFactory.ExecutionLookup lookup =
+                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
         ExecutionRecord record = lookup.record();
 
         if (record.state() == ExecutionState.SUCCESS || record.state() == ExecutionState.ERROR) {
             InvocationResult result = record.lastError() == null
                     ? InvocationResult.success(record.output())
                     : new InvocationResult(false, null, record.lastError());
-            return toResponse(record, result);
+            return responseMapper.toResponse(record, result);
         }
         if (record.state() == ExecutionState.TIMEOUT) {
-            return timeoutResponse(record);
+            return responseMapper.timeoutResponse(record);
         }
 
         if (lookup.isNew()) {
@@ -95,13 +119,13 @@ public class InvocationService {
             if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
                 throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueRetryAfterSeconds());
             }
-            return toResponse(record, result);
+            return responseMapper.toResponse(record, result);
         } catch (SyncQueueRejectedException ex) {
             throw ex;
         } catch (Exception ex) {
             record.markTimeout();
             metrics.timeout(functionName);
-            return timeoutResponse(record);
+            return responseMapper.timeoutResponse(record);
         }
     }
 
@@ -113,17 +137,18 @@ public class InvocationService {
         enforceRateLimit();
 
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-        ExecutionLookup lookup = createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
+        InvocationExecutionFactory.ExecutionLookup lookup =
+                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
         ExecutionRecord record = lookup.record();
 
         if (record.state() == ExecutionState.SUCCESS || record.state() == ExecutionState.ERROR) {
             InvocationResult result = record.lastError() == null
                     ? InvocationResult.success(record.output())
                     : new InvocationResult(false, null, record.lastError());
-            return Mono.just(toResponse(record, result));
+            return Mono.just(responseMapper.toResponse(record, result));
         }
         if (record.state() == ExecutionState.TIMEOUT) {
-            return Mono.just(timeoutResponse(record));
+            return Mono.just(responseMapper.timeoutResponse(record));
         }
 
         if (lookup.isNew()) {
@@ -147,12 +172,12 @@ public class InvocationService {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
                         throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueRetryAfterSeconds());
                     }
-                    return toResponse(record, result);
+                    return responseMapper.toResponse(record, result);
                 })
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
                     record.markTimeout();
                     metrics.timeout(functionName);
-                    return Mono.just(timeoutResponse(record));
+                    return Mono.just(responseMapper.timeoutResponse(record));
                 });
     }
 
@@ -167,7 +192,8 @@ public class InvocationService {
             throw new AsyncQueueUnavailableException();
         }
 
-        ExecutionLookup lookup = createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
+        InvocationExecutionFactory.ExecutionLookup lookup =
+                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
         ExecutionRecord record = lookup.record();
 
         if (lookup.isNew()) {
@@ -177,7 +203,7 @@ public class InvocationService {
     }
 
     public Optional<ExecutionStatus> getStatus(String executionId) {
-        return executionStore.get(executionId).map(this::toStatus);
+        return executionStore.get(executionId).map(responseMapper::toStatus);
     }
 
     public void dispatch(InvocationTask task) {
@@ -198,57 +224,6 @@ public class InvocationService {
         }
     }
 
-    private ExecutionLookup createOrReuseExecution(String functionName,
-                                                   FunctionSpec spec,
-                                                   InvocationRequest request,
-                                                   String idempotencyKey,
-                                                   String traceId) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            ExecutionRecord record = newExecutionRecord(functionName, spec, request, null, traceId);
-            executionStore.put(record);
-            return new ExecutionLookup(record, true);
-        }
-
-        while (true) {
-            ExecutionRecord record = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
-            executionStore.put(record);
-
-            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, record.executionId());
-            if (existingExecutionId == null) {
-                return new ExecutionLookup(record, true);
-            }
-            ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
-            if (existing != null) {
-                executionStore.remove(record.executionId());
-                return new ExecutionLookup(existing, false);
-            }
-            // Stale idempotency mapping pointing to an evicted or not-yet-published execution.
-            if (idempotencyStore.replaceExecutionId(functionName, idempotencyKey, existingExecutionId, record.executionId())) {
-                return new ExecutionLookup(record, true);
-            }
-            executionStore.remove(record.executionId());
-        }
-    }
-
-    private ExecutionRecord newExecutionRecord(String functionName,
-                                               FunctionSpec spec,
-                                               InvocationRequest request,
-                                               String idempotencyKey,
-                                               String traceId) {
-        String executionId = UUID.randomUUID().toString();
-        InvocationTask task = new InvocationTask(
-                executionId,
-                functionName,
-                spec,
-                request,
-                idempotencyKey,
-                traceId,
-                Instant.now(),
-                1
-        );
-        return new ExecutionRecord(executionId, task);
-    }
-
     private void enqueueOrThrow(ExecutionRecord record) {
         boolean enqueued = enqueuer.enqueue(record.task());
         if (!enqueued) {
@@ -258,39 +233,11 @@ public class InvocationService {
         metrics.enqueue(record.task().functionName());
     }
 
-    private InvocationResponse toResponse(ExecutionRecord record, InvocationResult result) {
-        String status = result.success() ? "success" : "error";
-        return new InvocationResponse(record.executionId(), status, result.output(), result.error());
-    }
-
-    private InvocationResponse timeoutResponse(ExecutionRecord record) {
-        return new InvocationResponse(record.executionId(), "timeout", null, null);
-    }
-
     private boolean syncQueueEnabled() {
         return syncQueueGateway.enabled();
     }
 
     private int syncQueueRetryAfterSeconds() {
         return syncQueueGateway.retryAfterSeconds();
-    }
-
-    private ExecutionStatus toStatus(ExecutionRecord record) {
-        // Use snapshot for consistent read of all fields
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
-        String status = snapshot.state().name().toLowerCase();
-        return new ExecutionStatus(
-                snapshot.executionId(),
-                status,
-                snapshot.startedAt(),
-                snapshot.finishedAt(),
-                snapshot.output(),
-                snapshot.lastError(),
-                snapshot.coldStart(),
-                snapshot.initDurationMs()
-        );
-    }
-
-    private record ExecutionLookup(ExecutionRecord record, boolean isNew) {
     }
 }

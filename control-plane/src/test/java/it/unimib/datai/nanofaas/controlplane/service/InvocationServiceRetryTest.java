@@ -296,6 +296,27 @@ class InvocationServiceRetryTest {
     }
 
     @Test
+    void invokeAsync_existingExecution_returnsQueuedWithoutReenqueue() {
+        InvocationResponse first = invocationService.invokeAsync(
+                "testFunc",
+                new InvocationRequest("payload", null),
+                "idem-replay",
+                null
+        );
+
+        InvocationResponse replay = invocationService.invokeAsync(
+                "testFunc",
+                new InvocationRequest("payload", null),
+                "idem-replay",
+                null
+        );
+
+        assertThat(replay.executionId()).isEqualTo(first.executionId());
+        assertThat(replay.status()).isEqualTo("queued");
+        verify(enqueuer, times(1)).enqueue(any());
+    }
+
+    @Test
     void invokeSync_waitsForRetryToComplete() throws Exception {
         AtomicInteger attemptCounter = new AtomicInteger(0);
 
