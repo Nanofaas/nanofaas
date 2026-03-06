@@ -49,6 +49,8 @@ RUNTIME_COLD_START_TOTAL = Counter(
 
 CONTAINER_START_TIME = time.monotonic()
 _first_invocation = True
+import threading
+_cold_start_lock = threading.Lock()
 
 @app.on_event("startup")
 async def startup_event():
@@ -114,8 +116,8 @@ async def invoke(
         raise HTTPException(status_code=500, detail="No function registered with @nanofaas_function")
 
     global _first_invocation
-    is_cold_start = _first_invocation
-    if _first_invocation:
+    with _cold_start_lock:
+        is_cold_start = _first_invocation
         _first_invocation = False
 
     start = time.perf_counter()

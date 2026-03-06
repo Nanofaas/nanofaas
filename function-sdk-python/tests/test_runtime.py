@@ -120,3 +120,36 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
     mock_to_thread.assert_called()
     import requests as _requests
     assert mock_to_thread.call_args[0][0] is _requests.post
+
+import threading as _threading
+
+def test_cold_start_counted_exactly_once_under_concurrency(client):
+    """Only the very first request must be flagged as a cold start."""
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return {"ok": True}
+
+    cold_starts = []
+    errors = []
+
+    def invoke(idx):
+        try:
+            r = client.post(
+                "/invoke",
+                json={"input": idx},
+                headers={"X-Execution-Id": f"exec-conc-{idx}"},
+            )
+            if r.headers.get("X-Cold-Start") == "true":
+                cold_starts.append(idx)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [_threading.Thread(target=invoke, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Invocation errors: {errors}"
+    assert len(cold_starts) <= 1, \
+        f"Expected at most 1 cold-start, got {len(cold_starts)}: {cold_starts}"
