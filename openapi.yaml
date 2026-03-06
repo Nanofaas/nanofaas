@@ -161,6 +161,7 @@ paths:
   /v1/admin/runtime-config:
     get:
       summary: Get the current runtime configuration snapshot
+      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
       operationId: getRuntimeConfig
       responses:
         '200':
@@ -169,8 +170,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeConfigSnapshot'
+        '404':
+          description: Admin runtime-config API is disabled
     patch:
       summary: Patch runtime configuration
+      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
       operationId: patchRuntimeConfig
       requestBody:
         required: true
@@ -191,6 +195,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeConfigParseError'
+        '404':
+          description: Admin runtime-config API is disabled
         '409':
           description: Revision mismatch
         '422':
@@ -205,6 +211,7 @@ paths:
   /v1/admin/runtime-config/validate:
     post:
       summary: Validate a runtime configuration patch
+      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
       operationId: validateRuntimeConfigPatch
       requestBody:
         required: true
@@ -221,6 +228,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeConfigParseError'
+        '404':
+          description: Admin runtime-config API is disabled
         '422':
           description: Validation failed for the effective runtime configuration after applying the patch.
           content:
