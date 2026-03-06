@@ -41,19 +41,17 @@ public class InvocationController {
                             .header("X-Execution-Id", response.executionId())
                             .body(response))
                     .onErrorResume(SyncQueueRejectedException.class, ex ->
-                            Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                                    .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
-                                    .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
-                                    .build()));
+                            Mono.just(tooManyRequests(ex)))
+                    .onErrorResume(RateLimitException.class, ex ->
+                            Mono.just(tooManyRequests()))
+                    .onErrorResume(QueueFullException.class, ex ->
+                            Mono.just(tooManyRequests()));
         } catch (FunctionNotFoundException ex) {
             return Mono.just(ResponseEntity.notFound().build());
         } catch (SyncQueueRejectedException ex) {
-            return Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
-                    .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
-                    .build());
+            return Mono.just(tooManyRequests(ex));
         } catch (RateLimitException | QueueFullException ex) {
-            return Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build());
+            return Mono.just(tooManyRequests());
         }
     }
 
@@ -89,5 +87,16 @@ public class InvocationController {
             @RequestBody @Valid InvocationResult result) {
         invocationService.completeExecution(executionId, result);
         return ResponseEntity.noContent().build();
+    }
+
+    private static ResponseEntity<InvocationResponse> tooManyRequests() {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+    }
+
+    private static ResponseEntity<InvocationResponse> tooManyRequests(SyncQueueRejectedException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
+                .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
+                .build();
     }
 }
