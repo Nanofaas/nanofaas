@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,8 +36,17 @@ public class AdminRuntimeConfigController {
 
     @PostMapping("/validate")
     public ResponseEntity<?> validate(@RequestBody PatchRequest request) {
-        RuntimeConfigPatch patch = request.toPatch();
-        List<String> errors = validator.validate(patch);
+        RuntimeConfigPatch patch;
+        try {
+            patch = request.toPatch();
+        } catch (InvalidPatchRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage(),
+                    "field", e.fieldName(),
+                    "value", e.value()
+            ));
+        }
+        List<String> errors = validator.validate(configService.getSnapshot().applyPatch(patch));
         if (!errors.isEmpty()) {
             return ResponseEntity.unprocessableEntity().body(Map.of("errors", errors));
         }
@@ -49,8 +59,17 @@ public class AdminRuntimeConfigController {
             return ResponseEntity.badRequest().body(Map.of("error", "expectedRevision is required"));
         }
 
-        RuntimeConfigPatch patch = request.toPatch();
-        List<String> errors = validator.validate(patch);
+        RuntimeConfigPatch patch;
+        try {
+            patch = request.toPatch();
+        } catch (InvalidPatchRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage(),
+                    "field", e.fieldName(),
+                    "value", e.value()
+            ));
+        }
+        List<String> errors = validator.validate(configService.getSnapshot().applyPatch(patch));
         if (!errors.isEmpty()) {
             return ResponseEntity.unprocessableEntity().body(Map.of("errors", errors));
         }
@@ -96,10 +115,21 @@ public class AdminRuntimeConfigController {
                     rateMaxPerSecond,
                     syncQueueEnabled,
                     syncQueueAdmissionEnabled,
-                    syncQueueMaxEstimatedWait != null ? Duration.parse(syncQueueMaxEstimatedWait) : null,
-                    syncQueueMaxQueueWait != null ? Duration.parse(syncQueueMaxQueueWait) : null,
+                    parseDuration(syncQueueMaxEstimatedWait, "syncQueueMaxEstimatedWait"),
+                    parseDuration(syncQueueMaxQueueWait, "syncQueueMaxQueueWait"),
                     syncQueueRetryAfterSeconds
             );
+        }
+
+        private static Duration parseDuration(String rawValue, String fieldName) {
+            if (rawValue == null) {
+                return null;
+            }
+            try {
+                return Duration.parse(rawValue);
+            } catch (DateTimeParseException e) {
+                throw new InvalidPatchRequestException(fieldName, rawValue);
+            }
         }
     }
 
@@ -132,5 +162,24 @@ public class AdminRuntimeConfigController {
             String changeId,
             List<String> warnings
     ) {
+    }
+
+    private static final class InvalidPatchRequestException extends RuntimeException {
+        private final String fieldName;
+        private final String value;
+
+        private InvalidPatchRequestException(String fieldName, String value) {
+            super("Invalid duration for " + fieldName);
+            this.fieldName = fieldName;
+            this.value = value;
+        }
+
+        private String fieldName() {
+            return fieldName;
+        }
+
+        private String value() {
+            return value;
+        }
     }
 }

@@ -118,14 +118,14 @@ class AdminRuntimeConfigIntegrationTest {
 
         webTestClient.patch().uri("/v1/admin/runtime-config")
                 .bodyValue("""
-                        {"expectedRevision": %d, "syncQueueMaxEstimatedWait": "PT10S", "syncQueueMaxQueueWait": "PT5S"}
+                        {"expectedRevision": %d, "syncQueueMaxEstimatedWait": "PT5S", "syncQueueMaxQueueWait": "PT10S"}
                         """.formatted(currentRevision))
                 .header("Content-Type", "application/json")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.effectiveConfig.syncQueueMaxEstimatedWait").isEqualTo("PT10S")
-                .jsonPath("$.effectiveConfig.syncQueueMaxQueueWait").isEqualTo("PT5S");
+                .jsonPath("$.effectiveConfig.syncQueueMaxEstimatedWait").isEqualTo("PT5S")
+                .jsonPath("$.effectiveConfig.syncQueueMaxQueueWait").isEqualTo("PT10S");
     }
 
     @Test
@@ -148,7 +148,7 @@ class AdminRuntimeConfigIntegrationTest {
     void validateWithDurationFields() {
         webTestClient.post().uri("/v1/admin/runtime-config/validate")
                 .bodyValue("""
-                        {"syncQueueMaxEstimatedWait": "PT10S", "syncQueueRetryAfterSeconds": 5}
+                        {"syncQueueMaxEstimatedWait": "PT5S", "syncQueueMaxQueueWait": "PT10S", "syncQueueRetryAfterSeconds": 5}
                         """)
                 .header("Content-Type", "application/json")
                 .exchange()

@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AdminRuntimeConfigControllerTest {
 
     private static final SyncQueueRuntimeDefaults DEFAULT_SYNC_QUEUE_DEFAULTS = new SyncQueueRuntimeDefaults(
-            true, true, Duration.ofSeconds(5), Duration.ofSeconds(2), 2
+            true, true, Duration.ofSeconds(2), Duration.ofSeconds(2), 2
     );
 
     @Test
@@ -49,5 +49,85 @@ class AdminRuntimeConfigControllerTest {
         RuntimeConfigSnapshot after = configService.getSnapshot();
         assertThat(after.revision()).isEqualTo(before.revision());
         assertThat(after.rateMaxPerSecond()).isEqualTo(before.rateMaxPerSecond());
+    }
+
+    @Test
+    void validateReturns400ForMalformedDuration() {
+        AdminRuntimeConfigController controller = controller();
+
+        ResponseEntity<?> response = controller.validate(new AdminRuntimeConfigController.PatchRequest(
+                null,
+                null,
+                null,
+                null,
+                "5s",
+                null,
+                null
+        ));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void patchReturns400ForMalformedDuration() {
+        RateLimiter rateLimiter = new RateLimiter();
+        rateLimiter.setMaxPerSecond(1000);
+        RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
+        AdminRuntimeConfigController controller = new AdminRuntimeConfigController(
+                configService,
+                new RuntimeConfigValidator(),
+                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry())
+        );
+        RuntimeConfigSnapshot before = configService.getSnapshot();
+
+        ResponseEntity<?> response = controller.patch(new AdminRuntimeConfigController.PatchRequest(
+                before.revision(),
+                null,
+                null,
+                null,
+                "5s",
+                null,
+                null
+        ));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(configService.getSnapshot().revision()).isEqualTo(before.revision());
+    }
+
+    @Test
+    void patchReturns422WhenPartialUpdateCreatesInvalidSyncQueueConfig() {
+        RateLimiter rateLimiter = new RateLimiter();
+        rateLimiter.setMaxPerSecond(1000);
+        RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
+        AdminRuntimeConfigController controller = new AdminRuntimeConfigController(
+                configService,
+                new RuntimeConfigValidator(),
+                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry())
+        );
+        RuntimeConfigSnapshot before = configService.getSnapshot();
+
+        ResponseEntity<?> response = controller.patch(new AdminRuntimeConfigController.PatchRequest(
+                before.revision(),
+                null,
+                null,
+                null,
+                "PT5S",
+                null,
+                null
+        ));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(configService.getSnapshot().revision()).isEqualTo(before.revision());
+    }
+
+    private AdminRuntimeConfigController controller() {
+        RateLimiter rateLimiter = new RateLimiter();
+        rateLimiter.setMaxPerSecond(1000);
+        RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
+        return new AdminRuntimeConfigController(
+                configService,
+                new RuntimeConfigValidator(),
+                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry())
+        );
     }
 }

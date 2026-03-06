@@ -14,19 +14,49 @@ import java.util.List;
 public class RuntimeConfigValidator {
 
     public List<String> validate(RuntimeConfigPatch patch) {
-        List<String> errors = new ArrayList<>();
+        return validate(
+                patch.rateMaxPerSecond(),
+                patch.syncQueueMaxEstimatedWait(),
+                patch.syncQueueMaxQueueWait(),
+                patch.syncQueueRetryAfterSeconds()
+        );
+    }
 
-        if (patch.rateMaxPerSecond() != null && patch.rateMaxPerSecond() <= 0) {
-            errors.add("rateMaxPerSecond must be > 0, got " + patch.rateMaxPerSecond());
+    public List<String> validate(RuntimeConfigSnapshot snapshot) {
+        return validate(
+                snapshot.rateMaxPerSecond(),
+                snapshot.syncQueueMaxEstimatedWait(),
+                snapshot.syncQueueMaxQueueWait(),
+                snapshot.syncQueueRetryAfterSeconds()
+        );
+    }
+
+    private List<String> validate(Integer rateMaxPerSecond,
+                                  Duration syncQueueMaxEstimatedWait,
+                                  Duration syncQueueMaxQueueWait,
+                                  Integer syncQueueRetryAfterSeconds) {
+        List<String> errors = new ArrayList<>();
+        boolean estimatedWaitValid = syncQueueMaxEstimatedWait == null || isPositiveDuration(syncQueueMaxEstimatedWait);
+        boolean queueWaitValid = syncQueueMaxQueueWait == null || isPositiveDuration(syncQueueMaxQueueWait);
+
+        if (rateMaxPerSecond != null && rateMaxPerSecond <= 0) {
+            errors.add("rateMaxPerSecond must be > 0, got " + rateMaxPerSecond);
         }
-        if (patch.syncQueueMaxEstimatedWait() != null && !isPositiveDuration(patch.syncQueueMaxEstimatedWait())) {
+        if (!estimatedWaitValid) {
             errors.add("syncQueueMaxEstimatedWait must be > 0");
         }
-        if (patch.syncQueueMaxQueueWait() != null && !isPositiveDuration(patch.syncQueueMaxQueueWait())) {
+        if (!queueWaitValid) {
             errors.add("syncQueueMaxQueueWait must be > 0");
         }
-        if (patch.syncQueueRetryAfterSeconds() != null && patch.syncQueueRetryAfterSeconds() < 1) {
-            errors.add("syncQueueRetryAfterSeconds must be >= 1, got " + patch.syncQueueRetryAfterSeconds());
+        if (estimatedWaitValid
+                && queueWaitValid
+                && syncQueueMaxEstimatedWait != null
+                && syncQueueMaxQueueWait != null
+                && syncQueueMaxEstimatedWait.compareTo(syncQueueMaxQueueWait) > 0) {
+            errors.add("syncQueueMaxEstimatedWait must be <= syncQueueMaxQueueWait");
+        }
+        if (syncQueueRetryAfterSeconds != null && syncQueueRetryAfterSeconds < 1) {
+            errors.add("syncQueueRetryAfterSeconds must be >= 1, got " + syncQueueRetryAfterSeconds);
         }
 
         return errors;

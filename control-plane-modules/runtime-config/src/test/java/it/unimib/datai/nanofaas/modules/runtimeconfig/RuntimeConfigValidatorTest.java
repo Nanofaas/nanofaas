@@ -14,7 +14,7 @@ class RuntimeConfigValidatorTest {
 
     @Test
     void acceptsValidPatch() {
-        RuntimeConfigPatch patch = new RuntimeConfigPatch(500, true, false, Duration.ofSeconds(5), Duration.ofSeconds(3), 2);
+        RuntimeConfigPatch patch = new RuntimeConfigPatch(500, true, false, Duration.ofSeconds(3), Duration.ofSeconds(5), 2);
         List<String> errors = validator.validate(patch);
         assertTrue(errors.isEmpty());
     }
@@ -59,6 +59,23 @@ class RuntimeConfigValidatorTest {
         List<String> errors = validator.validate(patch);
         assertEquals(1, errors.size());
         assertTrue(errors.get(0).contains("syncQueueRetryAfterSeconds"));
+    }
+
+    @Test
+    void rejectsEstimatedWaitGreaterThanMaxQueueWait() {
+        RuntimeConfigPatch patch = new RuntimeConfigPatch(
+                null,
+                null,
+                null,
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(2),
+                null
+        );
+
+        List<String> errors = validator.validate(patch);
+
+        assertEquals(1, errors.size());
+        assertTrue(errors.get(0).contains("syncQueueMaxEstimatedWait"));
     }
 
     @Test
