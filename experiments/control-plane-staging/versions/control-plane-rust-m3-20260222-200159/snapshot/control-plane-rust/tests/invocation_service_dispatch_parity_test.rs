@@ -5,7 +5,10 @@ use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::collections::HashSet;
 use std::thread;
+use std::time::Duration;
+use tokio::sync::Barrier;
 use tower::util::ServiceExt;
 
 async fn register_function(
@@ -112,6 +115,55 @@ fn one_shot_json_runtime(body: &str) -> String {
         }
     });
     format!("http://127.0.0.1:{}/invoke", addr.port())
+}
+
+fn delayed_json_runtime(body: &str, delay: Duration, accepts: usize) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed runtime");
+    let addr = listener.local_addr().expect("delayed runtime local addr");
+    let response_body = body.to_string();
+    thread::spawn(move || {
+        for _ in 0..accepts {
+            if let Ok((mut socket, _)) = listener.accept() {
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf);
+                thread::sleep(delay);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    response_body.len(),
+                    response_body
+                );
+                let _ = socket.write_all(reply.as_bytes());
+                let _ = socket.flush();
+            }
+        }
+    });
+    format!("http://127.0.0.1:{}/invoke", addr.port())
+}
+
+async fn invoke_sync_with_headers(
+    app: &axum::Router,
+    function_name: &str,
+    idem_key: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> axum::http::Response<Body> {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(format!("/v1/functions/{function_name}:invoke"))
+        .header("content-type", "application/json");
+    if let Some(idem) = idem_key {
+        builder = builder.header("Idempotency-Key", idem);
+    }
+    if let Some(timeout) = timeout_ms {
+        builder = builder.header("X-Timeout-Ms", timeout.to_string());
+    }
+    app.clone()
+        .oneshot(
+            builder
+                .body(Body::from(json!({"input":"payload"}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
@@ -232,5 +284,42 @@ async fn invokeSyncReactive_whenSyncQueueRejects_emitsReactiveError() {
             .get("X-Queue-Reject-Reason")
             .and_then(|v| v.to_str().ok()),
         Some("depth")
+    );
+}
+
+#[tokio::test]
+async fn invokeWithCompetingIdempotencyKey_allocatesOnce() {
+    let app = control_plane_rust::app::build_app();
+    let contenders = 8usize;
+    let endpoint = delayed_json_runtime("{\"result\":\"ok\"}", Duration::from_millis(120), contenders);
+    register_function(&app, "competing-idem", "img", "POOL", Some(&endpoint)).await;
+
+    let barrier = std::sync::Arc::new(Barrier::new(contenders + 1));
+    let mut handles = Vec::with_capacity(contenders);
+    for _ in 0..contenders {
+        let app_handle = app.clone();
+        let barrier_handle = barrier.clone();
+        handles.push(tokio::spawn(async move {
+            barrier_handle.wait().await;
+            let res =
+                invoke_sync_with_headers(&app_handle, "competing-idem", Some("idem-race"), None)
+                    .await;
+            assert_eq!(res.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            serde_json::from_slice::<Value>(&body).unwrap()
+        }));
+    }
+
+    barrier.wait().await;
+    let mut execution_ids = HashSet::new();
+    for handle in handles {
+        let payload = handle.await.unwrap();
+        execution_ids.insert(payload["executionId"].as_str().unwrap().to_string());
+    }
+
+    assert_eq!(
+        execution_ids.len(),
+        1,
+        "all competing requests should converge on the same execution id"
     );
 }

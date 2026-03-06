@@ -1,6 +1,6 @@
 use crate::dispatch::{DispatchResult, DispatcherRouter, LocalDispatcher, PoolDispatcher};
 use crate::execution::{ErrorInfo, ExecutionRecord, ExecutionState, ExecutionStore};
-use crate::idempotency::IdempotencyStore;
+use crate::idempotency::{AcquireResult, IdempotencyStore};
 use crate::kubernetes::{
     InMemoryKubernetesClient, KubernetesProperties, KubernetesResourceManager,
 };
@@ -151,6 +151,12 @@ struct RuntimeConfigPatchResponse {
     applied_at: String,
     change_id: String,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct IdempotencyClaim {
+    key: String,
+    token: String,
 }
 
 pub fn build_app() -> Router {
@@ -916,28 +922,10 @@ async fn invoke_function(
         }
     }
 
-    if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
-        if let Some(existing_id) = state
-            .idempotency_store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_execution_id(name, &idem_key, now)
-        {
-            if let Some(existing) = state
-                .execution_store
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .get(&existing_id)
-            {
-                return Ok(InvocationResponse {
-                    execution_id: existing.execution_id,
-                    status: state_to_status(&existing.status).to_string(),
-                    output: existing.output,
-                    error: None,
-                });
-            }
-        }
-    }
+    let idem_claim = match resolve_idempotency(name, &headers, &state) {
+        Ok(claim) => claim,
+        Err(existing) => return Ok(existing),
+    };
 
     let execution_id = Uuid::new_v4().to_string();
     state.metrics.sync_queue_admitted(name);
@@ -956,7 +944,7 @@ async fn invoke_function(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .put_with_timestamp(record, now);
-        state
+        if let Err(response) = state
             .queue_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -970,17 +958,19 @@ async fn invoke_function(
                 queue_capacity,
                 concurrency,
             )
-            .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
-        state.metrics.enqueue(name);
-        state.metrics.queue_depth(name);
-
-        if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
-            let _ = state
-                .idempotency_store
+            .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())
+        {
+            state
+                .execution_store
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .put_if_absent(name, &idem_key, &execution_id, now);
+                .remove(&execution_id);
+            abandon_idempotency_claim(&state, name, idem_claim.as_ref());
+            return Err(response);
         }
+        state.metrics.enqueue(name);
+        state.metrics.queue_depth(name);
+        publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
 
         return match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
             Ok(Ok(_)) => {
@@ -1040,21 +1030,47 @@ async fn invoke_function(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .put_with_timestamp(record, now);
+    publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
 
     let trace_id = header_value(&headers, "X-Trace-Id");
     let idempotency_key_fwd = header_value(&headers, "Idempotency-Key");
     state.metrics.dispatch(name);
 
-    let dispatch = state
-        .dispatcher_router
-        .dispatch(
+    let dispatch_started = std::time::Instant::now();
+    let dispatch = match tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        state.dispatcher_router.dispatch(
             &function_spec,
             &request_input,
             &execution_id,
             trace_id.as_deref(),
             idempotency_key_fwd.as_deref(),
-        )
-        .await;
+        ),
+    )
+    .await
+    {
+        Ok(dispatch) => dispatch,
+        Err(_) => DispatchResult {
+            status: "TIMEOUT".to_string(),
+            output: None,
+            dispatcher: "app-timeout".to_string(),
+            cold_start: false,
+            init_duration_ms: None,
+        },
+    };
+    let dispatch = if dispatch.status == "ERROR"
+        && dispatch_started.elapsed() >= Duration::from_millis(timeout_ms)
+    {
+        DispatchResult {
+            status: "TIMEOUT".to_string(),
+            output: None,
+            dispatcher: dispatch.dispatcher,
+            cold_start: dispatch.cold_start,
+            init_duration_ms: dispatch.init_duration_ms,
+        }
+    } else {
+        dispatch
+    };
 
     // Release sync queue slot after dispatch
     if state.sync_queue.enabled() {
@@ -1062,15 +1078,6 @@ async fn invoke_function(
     }
 
     let result = finish_invocation(&execution_id, name, dispatch, &state, now);
-
-    if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
-        let _ = state
-            .idempotency_store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .put_if_absent(name, &idem_key, &execution_id, now);
-    }
-
     result
 }
 
@@ -1097,9 +1104,8 @@ fn finish_invocation(
             state.metrics.success(name);
         }
         "TIMEOUT" => {
-            record.mark_error_at(ErrorInfo::new("TIMEOUT", "dispatch timed out"), finished_at);
+            record.mark_timeout_at(finished_at);
             state.metrics.timeout(name);
-            state.metrics.error(name);
         }
         _ => {
             record.mark_error_at(
@@ -1190,33 +1196,15 @@ fn enqueue_function(
     }
 
     let now = crate::now_millis();
-    if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
-        if let Some(existing_id) = state
-            .idempotency_store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_execution_id(name, &idem_key, now)
-        {
-            if let Some(existing) = state
-                .execution_store
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .get(&existing_id)
-            {
-                return Ok(InvocationResponse {
-                    execution_id: existing.execution_id,
-                    status: state_to_status(&existing.status).to_string(),
-                    output: existing.output,
-                    error: None,
-                });
-            }
-        }
-    }
+    let idem_claim = match resolve_idempotency(name, &headers, &state) {
+        Ok(claim) => claim,
+        Err(existing) => return Ok(existing),
+    };
 
     let execution_id = Uuid::new_v4().to_string();
     let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
     let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
-    state
+    if let Err(response) = state
         .queue_manager
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -1230,7 +1218,11 @@ fn enqueue_function(
             queue_capacity,
             concurrency,
         )
-        .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())?;
+        .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())
+    {
+        abandon_idempotency_claim(&state, name, idem_claim.as_ref());
+        return Err(response);
+    }
     let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
     state
         .execution_store
@@ -1239,14 +1231,7 @@ fn enqueue_function(
         .put_now(record);
     state.metrics.enqueue(name);
     state.metrics.queue_depth(name);
-
-    if let Some(idem_key) = header_value(&headers, "Idempotency-Key") {
-        let _ = state
-            .idempotency_store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .put_if_absent(name, &idem_key, &execution_id, now);
-    }
+    publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
     Ok(InvocationResponse {
         execution_id,
         status: "queued".to_string(),
@@ -1296,6 +1281,99 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .get(name)
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string())
+}
+
+fn resolve_idempotency(
+    function_name: &str,
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<Option<IdempotencyClaim>, InvocationResponse> {
+    let Some(key) = header_value(headers, "Idempotency-Key") else {
+        return Ok(None);
+    };
+
+    loop {
+        let now = crate::now_millis();
+        let acquire = state
+            .idempotency_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .acquire_or_get(function_name, &key, now);
+        match acquire {
+            AcquireResult::Claimed(token) => {
+                return Ok(Some(IdempotencyClaim { key, token }));
+            }
+            AcquireResult::Existing(existing_id) => {
+                if let Some(existing) = state
+                    .execution_store
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&existing_id)
+                {
+                    let execution_id = existing.execution_id.clone();
+                    let status = state_to_status(&existing.status).to_string();
+                    let output = existing.output();
+                    let error = existing.last_error().map(|err| crate::model::ErrorInfo {
+                        code: err.code,
+                        message: err.message,
+                    });
+                    return Err(InvocationResponse {
+                        execution_id,
+                        status,
+                        output,
+                        error,
+                    });
+                }
+
+                let reclaimed = state
+                    .idempotency_store
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .claim_if_matches(function_name, &key, &existing_id, now);
+                match reclaimed {
+                    AcquireResult::Claimed(token) => {
+                        return Ok(Some(IdempotencyClaim { key, token }));
+                    }
+                    AcquireResult::Existing(_) | AcquireResult::Pending | AcquireResult::Missing => {
+                        std::thread::yield_now();
+                    }
+                }
+            }
+            AcquireResult::Pending | AcquireResult::Missing => {
+                std::thread::yield_now();
+            }
+        }
+    }
+}
+
+fn publish_idempotency_claim(
+    state: &AppState,
+    function_name: &str,
+    claim: Option<&IdempotencyClaim>,
+    execution_id: &str,
+    now_millis: u64,
+) {
+    if let Some(claim) = claim {
+        state
+            .idempotency_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .publish_claim(function_name, &claim.key, &claim.token, execution_id, now_millis);
+    }
+}
+
+fn abandon_idempotency_claim(
+    state: &AppState,
+    function_name: &str,
+    claim: Option<&IdempotencyClaim>,
+) {
+    if let Some(claim) = claim {
+        state
+            .idempotency_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .abandon_claim(function_name, &claim.key, &claim.token);
+    }
 }
 
 fn parse_name_action(name_or_action: &str) -> Result<(String, &str), StatusCode> {
