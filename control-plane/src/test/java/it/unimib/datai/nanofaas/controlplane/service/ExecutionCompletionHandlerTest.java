@@ -20,6 +20,7 @@ import org.mockito.quality.Strictness;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -66,6 +67,12 @@ class ExecutionCompletionHandlerTest {
                 io.micrometer.core.instrument.Timer.builder("test-e2e").register(meterRegistry));
         when(metrics.initDuration(anyString())).thenReturn(
                 io.micrometer.core.instrument.Timer.builder("test-init").register(meterRegistry));
+        when(metrics.timers(anyString())).thenAnswer(invocation -> new Metrics.FunctionTimers(
+                metrics.latency(invocation.getArgument(0)),
+                metrics.initDuration(invocation.getArgument(0)),
+                metrics.queueWait(invocation.getArgument(0)),
+                metrics.e2eLatency(invocation.getArgument(0))
+        ));
     }
 
     // ─── dispatch tests ────────────────────────────────────────────────────────
@@ -170,6 +177,16 @@ class ExecutionCompletionHandlerTest {
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(record.output()).isEqualTo("result");
         verify(enqueuer).releaseDispatchSlot("testFunc");
+    }
+
+    @Test
+    void completeExecution_withSuccess_readsSinglePreCompletionSnapshot() {
+        CountingExecutionRecord record = countingRecordInStore("exec-count", testSpec);
+
+        completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
+
+        assertThat(record.snapshotReads()).isEqualTo(1);
+        assertThat(record.finishedAtReads()).isEqualTo(1);
     }
 
     @Test
@@ -278,5 +295,45 @@ class ExecutionCompletionHandlerTest {
                 functionName, "image", null, Map.of(), null,
                 1000, 1, 10, 1, null, mode, null, null, null
         );
+    }
+
+    private CountingExecutionRecord countingRecordInStore(String executionId, FunctionSpec spec) {
+        InvocationTask task = new InvocationTask(
+                executionId, spec.name(), spec,
+                new InvocationRequest("payload", null),
+                null, null, Instant.now(), 1
+        );
+        CountingExecutionRecord record = new CountingExecutionRecord(executionId, task);
+        executionStore.put(record);
+        return record;
+    }
+
+    private static final class CountingExecutionRecord extends ExecutionRecord {
+        private final AtomicInteger snapshotReads = new AtomicInteger();
+        private final AtomicInteger finishedAtReads = new AtomicInteger();
+
+        private CountingExecutionRecord(String executionId, InvocationTask task) {
+            super(executionId, task);
+        }
+
+        @Override
+        public synchronized Snapshot snapshot() {
+            snapshotReads.incrementAndGet();
+            return super.snapshot();
+        }
+
+        @Override
+        public synchronized Instant finishedAt() {
+            finishedAtReads.incrementAndGet();
+            return super.finishedAt();
+        }
+
+        int snapshotReads() {
+            return snapshotReads.get();
+        }
+
+        int finishedAtReads() {
+            return finishedAtReads.get();
+        }
     }
 }

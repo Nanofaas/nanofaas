@@ -106,6 +106,12 @@ class InvocationServiceDispatchTest {
                 io.micrometer.core.instrument.Timer.builder("test-e2e").register(meterRegistry));
         when(metrics.initDuration(anyString())).thenReturn(
                 io.micrometer.core.instrument.Timer.builder("test-init").register(meterRegistry));
+        when(metrics.timers(anyString())).thenAnswer(invocation -> new Metrics.FunctionTimers(
+                metrics.latency(invocation.getArgument(0)),
+                metrics.initDuration(invocation.getArgument(0)),
+                metrics.queueWait(invocation.getArgument(0)),
+                metrics.e2eLatency(invocation.getArgument(0))
+        ));
     }
 
     @Test

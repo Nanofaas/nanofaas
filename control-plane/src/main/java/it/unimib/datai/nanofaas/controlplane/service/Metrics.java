@@ -20,10 +20,7 @@ public class Metrics {
     private final Map<String, Counter> rejectedCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> coldStartCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> warmStartCounters = new ConcurrentHashMap<>();
-    private final Map<String, Timer> latencyTimers = new ConcurrentHashMap<>();
-    private final Map<String, Timer> initDurationTimers = new ConcurrentHashMap<>();
-    private final Map<String, Timer> queueWaitTimers = new ConcurrentHashMap<>();
-    private final Map<String, Timer> e2eLatencyTimers = new ConcurrentHashMap<>();
+    private final Map<String, FunctionTimers> functionTimers = new ConcurrentHashMap<>();
 
     public Metrics(MeterRegistry registry) {
         this.registry = registry;
@@ -66,36 +63,52 @@ public class Metrics {
     }
 
     public Timer latency(String function) {
-        return latencyTimers.computeIfAbsent(function, name -> Timer.builder("function_latency_ms")
-                .tag("function", name)
-                .publishPercentiles(0.5, 0.95, 0.99)
-                .register(registry));
+        return timers(function).latency();
     }
 
     public Timer initDuration(String function) {
-        return initDurationTimers.computeIfAbsent(function, name -> Timer.builder("function_init_duration_ms")
-                .tag("function", name)
-                .publishPercentiles(0.5, 0.95, 0.99)
-                .register(registry));
+        return timers(function).initDuration();
     }
 
     public Timer queueWait(String function) {
-        return queueWaitTimers.computeIfAbsent(function, name -> Timer.builder("function_queue_wait_ms")
-                .tag("function", name)
-                .publishPercentiles(0.5, 0.95, 0.99)
-                .register(registry));
+        return timers(function).queueWait();
     }
 
     public Timer e2eLatency(String function) {
-        return e2eLatencyTimers.computeIfAbsent(function, name -> Timer.builder("function_e2e_latency_ms")
-                .tag("function", name)
-                .publishPercentiles(0.5, 0.95, 0.99)
-                .register(registry));
+        return timers(function).e2eLatency();
     }
 
     private Counter counter(Map<String, Counter> map, String name, String function) {
         return map.computeIfAbsent(function, key -> Counter.builder(name)
                 .tag("function", function)
                 .register(registry));
+    }
+
+    FunctionTimers timers(String function) {
+        return functionTimers.computeIfAbsent(function, this::registerTimers);
+    }
+
+    private FunctionTimers registerTimers(String function) {
+        return new FunctionTimers(
+                Timer.builder("function_latency_ms")
+                        .tag("function", function)
+                        .publishPercentiles(0.5, 0.95, 0.99)
+                        .register(registry),
+                Timer.builder("function_init_duration_ms")
+                        .tag("function", function)
+                        .publishPercentiles(0.5, 0.95, 0.99)
+                        .register(registry),
+                Timer.builder("function_queue_wait_ms")
+                        .tag("function", function)
+                        .publishPercentiles(0.5, 0.95, 0.99)
+                        .register(registry),
+                Timer.builder("function_e2e_latency_ms")
+                        .tag("function", function)
+                        .publishPercentiles(0.5, 0.95, 0.99)
+                        .register(registry)
+        );
+    }
+
+    record FunctionTimers(Timer latency, Timer initDuration, Timer queueWait, Timer e2eLatency) {
     }
 }

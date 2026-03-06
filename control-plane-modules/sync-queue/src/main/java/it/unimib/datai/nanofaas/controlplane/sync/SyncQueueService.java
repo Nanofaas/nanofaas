@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Predicate;
 
 @Component
 public class SyncQueueService implements SyncQueueGateway {
@@ -98,6 +99,10 @@ public class SyncQueueService implements SyncQueueGateway {
         }
     }
 
+    public int queuedItems() {
+        return queue.size();
+    }
+
     public SyncQueueItem peekReady(Instant now) {
         while (true) {
             SyncQueueItem item = queue.peek();
@@ -116,11 +121,40 @@ public class SyncQueueService implements SyncQueueGateway {
     public SyncQueueItem pollReady(Instant now) {
         SyncQueueItem item = queue.poll();
         if (item != null) {
-            metrics.dequeued(item.task().functionName());
-            long waitMillis = Duration.between(item.enqueuedAt(), now).toMillis();
-            metrics.recordWait(item.task().functionName(), waitMillis);
+            recordDequeued(item, now);
         }
         return item;
+    }
+
+    public SyncQueueItem pollReadyMatching(Instant now, Predicate<InvocationTask> selector) {
+        for (SyncQueueItem item : queue) {
+            if (isTimedOut(item, now)) {
+                if (queue.remove(item)) {
+                    timeout(item);
+                }
+                continue;
+            }
+            if (!selector.test(item.task())) {
+                continue;
+            }
+            if (queue.remove(item)) {
+                recordDequeued(item, now);
+                return item;
+            }
+        }
+        return null;
+    }
+
+    public boolean rotateReadyHead(Instant now) {
+        SyncQueueItem item = queue.poll();
+        if (item == null) {
+            return false;
+        }
+        if (isTimedOut(item, now)) {
+            timeout(item);
+            return true;
+        }
+        return queue.offer(item);
     }
 
     public void recordDispatched(String functionName, Instant now) {
@@ -139,5 +173,11 @@ public class SyncQueueService implements SyncQueueGateway {
         }
         metrics.dequeued(item.task().functionName());
         metrics.timedOut(item.task().functionName());
+    }
+
+    private void recordDequeued(SyncQueueItem item, Instant now) {
+        metrics.dequeued(item.task().functionName());
+        long waitMillis = Duration.between(item.enqueuedAt(), now).toMillis();
+        metrics.recordWait(item.task().functionName(), waitMillis);
     }
 }

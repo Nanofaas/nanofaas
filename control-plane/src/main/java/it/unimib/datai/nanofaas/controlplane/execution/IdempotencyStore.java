@@ -42,11 +42,14 @@ public class IdempotencyStore {
             keys.remove(compose(functionName, key));
             return Optional.empty();
         }
+        if (stored.pending()) {
+            return Optional.empty();
+        }
         return Optional.of(stored.executionId());
     }
 
     public void put(String functionName, String key, String executionId) {
-        keys.put(compose(functionName, key), new StoredKey(executionId, Instant.now()));
+        keys.put(compose(functionName, key), StoredKey.published(executionId, Instant.now()));
     }
 
     /**
@@ -56,7 +59,7 @@ public class IdempotencyStore {
     public String putIfAbsent(String functionName, String key, String executionId) {
         String composed = compose(functionName, key);
         while (true) {
-            StoredKey newKey = new StoredKey(executionId, Instant.now());
+            StoredKey newKey = StoredKey.published(executionId, Instant.now());
             StoredKey existing = keys.putIfAbsent(composed, newKey);
             if (existing == null) {
                 return null; // Successfully stored
@@ -77,10 +80,90 @@ public class IdempotencyStore {
             if (existing == null || !existing.executionId().equals(expectedExecutionId)) {
                 return false;
             }
-            StoredKey newKey = new StoredKey(newExecutionId, Instant.now());
+            StoredKey newKey = StoredKey.published(newExecutionId, Instant.now());
             if (keys.replace(composed, existing, newKey)) {
                 return true;
             }
+        }
+    }
+
+    public AcquireResult acquireOrGet(String functionName, String key) {
+        String composed = compose(functionName, key);
+        while (true) {
+            Instant now = Instant.now();
+            StoredKey existing = keys.get(composed);
+            if (existing == null) {
+                String token = pendingToken();
+                StoredKey pending = StoredKey.pending(token, now);
+                if (keys.putIfAbsent(composed, pending) == null) {
+                    return AcquireResult.claimed(token);
+                }
+                continue;
+            }
+            if (isExpired(existing, now)) {
+                String token = pendingToken();
+                StoredKey pending = StoredKey.pending(token, now);
+                if (keys.replace(composed, existing, pending)) {
+                    return AcquireResult.claimed(token);
+                }
+                continue;
+            }
+            if (existing.pending()) {
+                return AcquireResult.pending();
+            }
+            return AcquireResult.existing(existing.executionId());
+        }
+    }
+
+    public AcquireResult claimIfMatches(String functionName, String key, String expectedExecutionId) {
+        String composed = compose(functionName, key);
+        while (true) {
+            Instant now = Instant.now();
+            StoredKey existing = keys.get(composed);
+            if (existing == null) {
+                return AcquireResult.missing();
+            }
+            if (isExpired(existing, now)) {
+                String token = pendingToken();
+                StoredKey pending = StoredKey.pending(token, now);
+                if (keys.replace(composed, existing, pending)) {
+                    return AcquireResult.claimed(token);
+                }
+                continue;
+            }
+            if (existing.pending()) {
+                return AcquireResult.pending();
+            }
+            if (!existing.executionId().equals(expectedExecutionId)) {
+                return AcquireResult.existing(existing.executionId());
+            }
+            String token = pendingToken();
+            StoredKey pending = StoredKey.pending(token, now);
+            if (keys.replace(composed, existing, pending)) {
+                return AcquireResult.claimed(token);
+            }
+        }
+    }
+
+    public void publishClaim(String functionName, String key, String claimToken, String executionId) {
+        String composed = compose(functionName, key);
+        while (true) {
+            StoredKey existing = keys.get(composed);
+            if (existing == null || !existing.pending() || !existing.executionId().equals(claimToken)) {
+                throw new IllegalStateException("Missing idempotency claim for " + composed);
+            }
+            StoredKey published = StoredKey.published(executionId, Instant.now());
+            if (keys.replace(composed, existing, published)) {
+                return;
+            }
+        }
+    }
+
+    public void abandonClaim(String functionName, String key, String claimToken) {
+        String composed = compose(functionName, key);
+        StoredKey existing = keys.get(composed);
+        if (existing != null && existing.pending() && existing.executionId().equals(claimToken)) {
+            keys.remove(composed, existing);
         }
     }
 
@@ -97,6 +180,10 @@ public class IdempotencyStore {
         return functionName + ":" + key;
     }
 
+    private String pendingToken() {
+        return "pending:" + Instant.now().toEpochMilli() + ":" + System.nanoTime();
+    }
+
     private boolean isExpired(StoredKey stored, Instant now) {
         return stored.storedAt().plus(ttl).isBefore(now);
     }
@@ -106,6 +193,38 @@ public class IdempotencyStore {
         janitor.shutdownNow();
     }
 
-    private record StoredKey(String executionId, Instant storedAt) {
+    public record AcquireResult(State state, String executionIdOrToken) {
+        static AcquireResult claimed(String token) {
+            return new AcquireResult(State.CLAIMED, token);
+        }
+
+        static AcquireResult existing(String executionId) {
+            return new AcquireResult(State.EXISTING, executionId);
+        }
+
+        static AcquireResult pending() {
+            return new AcquireResult(State.PENDING, null);
+        }
+
+        static AcquireResult missing() {
+            return new AcquireResult(State.MISSING, null);
+        }
+
+        public enum State {
+            CLAIMED,
+            EXISTING,
+            PENDING,
+            MISSING
+        }
+    }
+
+    private record StoredKey(String executionId, Instant storedAt, boolean pending) {
+        static StoredKey pending(String claimToken, Instant storedAt) {
+            return new StoredKey(claimToken, storedAt, true);
+        }
+
+        static StoredKey published(String executionId, Instant storedAt) {
+            return new StoredKey(executionId, storedAt, false);
+        }
     }
 }

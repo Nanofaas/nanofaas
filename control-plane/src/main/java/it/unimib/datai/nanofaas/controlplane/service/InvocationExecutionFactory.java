@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Service;
 
@@ -33,22 +34,60 @@ public final class InvocationExecutionFactory {
         }
 
         while (true) {
-            ExecutionRecord record = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
-            executionStore.put(record);
-
-            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, record.executionId());
-            if (existingExecutionId == null) {
-                return new ExecutionLookup(record, true);
+            AcquireResult acquire = idempotencyStore.acquireOrGet(functionName, idempotencyKey);
+            if (acquire.state() == AcquireResult.State.CLAIMED) {
+                return new ExecutionLookup(publishClaimedRecord(
+                        functionName,
+                        spec,
+                        request,
+                        idempotencyKey,
+                        traceId,
+                        acquire.executionIdOrToken()
+                ), true);
             }
+            if (acquire.state() == AcquireResult.State.PENDING) {
+                Thread.onSpinWait();
+                continue;
+            }
+
+            String existingExecutionId = acquire.executionIdOrToken();
             ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
             if (existing != null) {
-                executionStore.remove(record.executionId());
                 return new ExecutionLookup(existing, false);
             }
-            if (idempotencyStore.replaceExecutionId(functionName, idempotencyKey, existingExecutionId, record.executionId())) {
-                return new ExecutionLookup(record, true);
+
+            AcquireResult staleClaim = idempotencyStore.claimIfMatches(functionName, idempotencyKey, existingExecutionId);
+            if (staleClaim.state() == AcquireResult.State.CLAIMED) {
+                return new ExecutionLookup(publishClaimedRecord(
+                        functionName,
+                        spec,
+                        request,
+                        idempotencyKey,
+                        traceId,
+                        staleClaim.executionIdOrToken()
+                ), true);
             }
+            if (staleClaim.state() == AcquireResult.State.PENDING) {
+                Thread.onSpinWait();
+            }
+        }
+    }
+
+    private ExecutionRecord publishClaimedRecord(String functionName,
+                                                 FunctionSpec spec,
+                                                 InvocationRequest request,
+                                                 String idempotencyKey,
+                                                 String traceId,
+                                                 String claimToken) {
+        ExecutionRecord record = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
+        try {
+            executionStore.put(record);
+            idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, record.executionId());
+            return record;
+        } catch (RuntimeException ex) {
             executionStore.remove(record.executionId());
+            idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
+            throw ex;
         }
     }
 

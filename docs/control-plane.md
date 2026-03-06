@@ -57,6 +57,21 @@ When selector is omitted:
 - Dispatch completion is asynchronous via dispatcher futures/callbacks.
 - Optional modules add extra runtime loops where applicable (for example queue schedulers).
 
+## Performance Notes
+
+- `sync-queue` no longer has strict head-of-line blocking. The scheduler can skip over a blocked function and dispatch a later ready item for a different function, so one saturated function does not stall unrelated synchronous traffic.
+- When sync work exists but cannot advance immediately, the sync scheduler uses bounded backoff instead of a fixed 2 ms spin loop. This reduces CPU churn under contention while still retrying quickly once slots reopen.
+- The async scheduler dispatches a bounded batch per active function before re-enqueueing that function if backlog remains. This is a fairness guarantee, not a throughput cap on the whole control-plane: hot functions keep making progress, but they do not monopolize the single scheduler loop.
+- Idempotent replay now claims the key before allocating and publishing a fresh execution record. Replays and stale-key contention therefore avoid speculative `ExecutionStore.put/remove` churn on the hot path.
+- Completion metrics reuse a cached timer bundle per function, and completion accounting reads less synchronized execution state per result. This keeps the post-dispatch overhead smaller for very short-lived functions.
+
+## Throughput Tuning
+
+- `spec.concurrency` remains the main per-function throughput knob for async queueing and deployment execution modes.
+- `sync-queue.max-depth` and `sync-queue.max-estimated-wait` trade off admission aggressiveness versus tail latency. Lower values reject sooner; higher values admit more work but increase wait time under saturation.
+- Async queue fairness is intentionally bounded-batch, so very large single-function bursts scale best when combined with enough function concurrency or replicas rather than relying on one scheduler loop to drain the entire burst.
+- If a workload shows frequent internal retries, increasing queue depth alone is usually the wrong fix; inspect dispatch errors and retry counters before raising admission limits.
+
 ## Correctness Notes
 
 - Synchronous invoke timeouts are terminal. When `POST /v1/functions/{name}:invoke` returns `408`, the corresponding execution remains in `timeout` and late runtime callbacks do not rewrite it to `success` or `error`.

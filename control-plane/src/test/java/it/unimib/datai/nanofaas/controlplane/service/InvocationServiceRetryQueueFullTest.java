@@ -72,6 +72,12 @@ class InvocationServiceRetryQueueFullTest {
         when(metrics.queueWait(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(simpleMeterRegistry));
         when(metrics.e2eLatency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-e2e").register(simpleMeterRegistry));
         when(metrics.initDuration(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-init").register(simpleMeterRegistry));
+        when(metrics.timers(anyString())).thenAnswer(invocation -> new Metrics.FunctionTimers(
+                metrics.latency(invocation.getArgument(0)),
+                metrics.initDuration(invocation.getArgument(0)),
+                metrics.queueWait(invocation.getArgument(0)),
+                metrics.e2eLatency(invocation.getArgument(0))
+        ));
     }
 
     @Test

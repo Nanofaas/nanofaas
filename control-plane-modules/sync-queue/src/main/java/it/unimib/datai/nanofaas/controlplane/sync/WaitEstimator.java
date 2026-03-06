@@ -18,6 +18,17 @@ public class WaitEstimator {
         this.perFunctionMinSamples = perFunctionMinSamples;
     }
 
+    WaitEstimator(Duration window,
+                  int perFunctionMinSamples,
+                  Deque<Instant> globalEvents,
+                  Map<String, ? extends Deque<Instant>> perFunctionEvents) {
+        this.window = window;
+        this.perFunctionMinSamples = perFunctionMinSamples;
+        this.globalEvents.clear();
+        this.globalEvents.addAll(globalEvents);
+        perFunctionEvents.forEach((functionName, events) -> this.perFunctionEvents.put(functionName, events));
+    }
+
     public void recordDispatch(String functionName, Instant now) {
         globalEvents.addLast(now);
         perFunctionEvents
@@ -31,33 +42,25 @@ public class WaitEstimator {
         if (queueDepth <= 0) {
             return 0.0;
         }
-        double perFunctionThroughput = throughput(perFunctionEvents.get(functionName), now);
-        if (perFunctionSamples(functionName, now) >= perFunctionMinSamples && perFunctionThroughput > 0) {
-            return queueDepth / perFunctionThroughput;
+        ThroughputSnapshot perFunction = snapshot(perFunctionEvents.get(functionName), now);
+        if (perFunction.samples() >= perFunctionMinSamples && perFunction.throughput() > 0) {
+            return queueDepth / perFunction.throughput();
         }
-        double globalThroughput = throughput(globalEvents, now);
-        if (globalThroughput <= 0) {
+        ThroughputSnapshot global = snapshot(globalEvents, now);
+        if (global.throughput() <= 0) {
             return Double.POSITIVE_INFINITY;
         }
-        return queueDepth / globalThroughput;
+        return queueDepth / global.throughput();
     }
 
-    private int perFunctionSamples(String functionName, Instant now) {
-        Deque<Instant> events = perFunctionEvents.get(functionName);
+    private ThroughputSnapshot snapshot(Deque<Instant> events, Instant now) {
         if (events == null) {
-            return 0;
+            return new ThroughputSnapshot(0, 0.0);
         }
         prune(events, now);
-        return events.size();
-    }
-
-    private double throughput(Deque<Instant> events, Instant now) {
-        if (events == null) {
-            return 0.0;
-        }
-        prune(events, now);
+        int samples = events.size();
         double seconds = Math.max(1.0, window.toSeconds());
-        return events.size() / seconds;
+        return new ThroughputSnapshot(samples, samples / seconds);
     }
 
     private void prune(Deque<Instant> events, Instant now) {
@@ -72,5 +75,8 @@ public class WaitEstimator {
             }
             events.pollFirst();
         }
+    }
+
+    private record ThroughputSnapshot(int samples, double throughput) {
     }
 }
