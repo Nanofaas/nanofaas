@@ -1,11 +1,12 @@
-# Java -> Rust Parity Status (M3)
+# Java -> Rust Parity Status (M3 Baseline)
 
 - Total Java test methods inventoried: 252
-- Implemented in Rust (non-placeholder): 252
+- Java intent mapped into Rust test files: 252
 - Remaining placeholders/ignored: 0
 - Total Java test classes inventoried: 47
-- Classes completed in Rust: 47
-- Classes still pending: 0
+- Classes with Rust parity coverage files: 47
+- Current runtime parity verdict: not green
+- Current known live baseline gap: dockerized SDK examples still fail against the Rust snapshot, currently timing out on the `word-stats-java` health check; inventory completion does not mean behavioral parity
 
 ## Completed class blocks
 - ExecutionRecordLegacyAccessorsTest
@@ -57,5 +58,6 @@
 - VertxRuntimeHintsTest
 
 ## Notes
-- Remaining placeholders are tracked in tests/java_parity_generated_test.rs (now zero).
-- Completion criterion for each class block: no placeholder entry left for that class and dedicated Rust parity tests passing.
+- The inventory is complete, but the staging snapshot still has failing live-parity scenarios.
+- `tests/java_parity_generated_test.rs` no longer carries placeholder debt; the remaining work is semantic/runtime alignment.
+- Dockerized E2E should be read as a staging oracle: after harness hardening, remaining failures should be treated as real behavior gaps, not lock-poison cascades.

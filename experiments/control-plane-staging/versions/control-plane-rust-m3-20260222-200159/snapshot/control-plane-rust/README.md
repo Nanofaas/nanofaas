@@ -42,7 +42,7 @@ This is the M3 Rust port of the Java control-plane, implemented only under
 - Internal completion/scheduler API intent -> `tests/scheduler_api_test.rs`
 - `ExecutionRecordLegacyAccessorsTest` -> `tests/execution_record_legacy_accessors_test.rs`
 - `ExecutionRecordStateTransitionTest` -> `tests/execution_record_state_transition_test.rs`
-- Remaining Java tests inventory -> `tests/java_parity_generated_test.rs` (ignored placeholders)
+- Remaining Java tests inventory -> `tests/java_parity_generated_test.rs` (inventory only; not a green-runtime claim)
 
 ## Run
 
@@ -86,14 +86,22 @@ The Rust staging control-plane now exposes a runnable binary (`src/main.rs`) and
 a container build (`Dockerfile`). Dockerized E2E parity tests are available in:
 
 - `tests/e2e_dockerized_flow_test.rs`
+- `tests/e2e_dockerized_sdk_examples_test.rs`
 
-Run only dockerized flow tests:
+Run only dockerized SDK example parity tests:
 
 ```bash
-cargo test -q --test e2e_dockerized_flow_test
+cargo test -q --test e2e_dockerized_sdk_examples_test
 ```
 
 If Docker is not available, these tests are skipped.
+
+Important: this staging snapshot does not currently claim a green parity baseline.
+Inventory coverage is broad, but dockerized SDK examples may still expose real
+behavioral gaps in the Rust control-plane. The current observed baseline is a
+`word-stats-java` health timeout in the dockerized SDK examples harness. The
+harness is expected to isolate that real failure instead of cascading into
+`PoisonError` follow-up noise.
 
 ## Out of Scope after M3
 

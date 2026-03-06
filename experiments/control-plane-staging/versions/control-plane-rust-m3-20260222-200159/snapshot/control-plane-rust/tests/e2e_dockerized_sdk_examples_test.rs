@@ -6,7 +6,8 @@ use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Arc;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
@@ -19,6 +20,16 @@ const JSON_TRANSFORM_NATIVE_IMAGE: &str = "nanofaas/e2e-json-transform-native:e2
 fn docker_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn lock_unpoisoned(mutex: &Mutex<()>) -> MutexGuard<'_, ()> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("recovering poisoned docker e2e lock after previous failure");
+            poisoned.into_inner()
+        }
+    }
 }
 
 fn control_plane_image_ready() -> &'static OnceLock<()> {
@@ -479,9 +490,22 @@ fn json_transform_count_payload() -> Value {
     })
 }
 
+#[test]
+fn docker_e2e_lock_failure_does_not_poison_following_cases() {
+    let mutex = Arc::new(Mutex::new(()));
+    let poisoned = Arc::clone(&mutex);
+    let join = std::thread::spawn(move || {
+        let _guard = poisoned.lock().expect("poison setup lock");
+        panic!("poison docker test mutex");
+    });
+    assert!(join.join().is_err());
+
+    let _guard = lock_unpoisoned(mutex.as_ref());
+}
+
 #[tokio::test]
 async fn wordStats_syncInvoke_returnsCorrectStatistics() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -507,7 +531,7 @@ async fn wordStats_syncInvoke_returnsCorrectStatistics() {
 
 #[tokio::test]
 async fn wordStats_stringInput_treatedAsText() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -531,7 +555,7 @@ async fn wordStats_stringInput_treatedAsText() {
 
 #[tokio::test]
 async fn jsonTransform_syncInvoke_groupAndCount() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -557,7 +581,7 @@ async fn jsonTransform_syncInvoke_groupAndCount() {
 
 #[tokio::test]
 async fn jsonTransform_syncInvoke_groupAndAvg() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -592,7 +616,7 @@ async fn jsonTransform_syncInvoke_groupAndAvg() {
 
 #[tokio::test]
 async fn jsonTransform_asyncInvoke_pollForResult() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -657,7 +681,7 @@ async fn jsonTransform_asyncInvoke_pollForResult() {
 
 #[tokio::test]
 async fn wordStatsLite_syncInvoke_returnsCorrectStatistics() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -682,7 +706,7 @@ async fn wordStatsLite_syncInvoke_returnsCorrectStatistics() {
 
 #[tokio::test]
 async fn jsonTransformLite_syncInvoke_groupAndCount() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
@@ -713,7 +737,7 @@ async fn jsonTransformLite_syncInvoke_groupAndCount() {
 
 #[tokio::test]
 async fn jsonTransformLite_syncInvoke_groupAndAvg() {
-    let _guard = docker_test_lock().lock().expect("docker e2e lock");
+    let _guard = lock_unpoisoned(docker_test_lock());
     if !docker_available() {
         eprintln!("skipping dockerized sdk examples e2e: docker not available");
         return;
