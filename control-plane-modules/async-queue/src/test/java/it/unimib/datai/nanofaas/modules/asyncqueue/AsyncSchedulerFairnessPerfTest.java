@@ -38,6 +38,8 @@ class AsyncSchedulerFairnessPerfTest {
         when(coldState.tryAcquireSlot()).thenReturn(true, false);
         when(hotState.poll()).thenReturn(hotOne, hotTwo, hotThree, null);
         when(coldState.poll()).thenReturn(coldOne, (InvocationTask) null);
+        when(hotState.queued()).thenReturn(1, 0);
+        when(coldState.queued()).thenReturn(0);
 
         List<String> dispatchOrder = new CopyOnWriteArrayList<>();
         doAnswer(invocation -> {

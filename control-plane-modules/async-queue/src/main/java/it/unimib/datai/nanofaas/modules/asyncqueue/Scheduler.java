@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
     private static final String COMPONENT_NAME = "Scheduler";
+    private static final int MAX_BATCH_PER_FUNCTION = 2;
 
     private final QueueManager queueManager;
     private final InvocationService invocationService;
@@ -118,18 +119,24 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             return;
         }
 
-        while (running.get() && state.tryAcquireSlot()) {
+        int dispatched = 0;
+        while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION && state.tryAcquireSlot()) {
             InvocationTask task = state.poll();
             if (task == null) {
                 state.releaseSlot();
                 break;
             }
+            dispatched++;
             SchedulerDispatchSupport.dispatchWithFailureCleanup(
                     task,
                     () -> invocationService.dispatch(task),
                     state::releaseSlot,
                     log
             );
+        }
+
+        if (state.queued() > 0) {
+            signalWork(functionName);
         }
     }
 

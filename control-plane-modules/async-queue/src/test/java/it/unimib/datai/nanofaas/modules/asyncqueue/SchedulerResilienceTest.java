@@ -6,7 +6,10 @@ import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.List;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class SchedulerResilienceTest {
@@ -68,5 +71,42 @@ class SchedulerResilienceTest {
         } finally {
             scheduler.stop();
         }
+    }
+
+    @Test
+    void scheduler_requeuesFunctionAfterBoundedBatchInsteadOfDrainingWholeBurst() {
+        QueueManager queueManager = mock(QueueManager.class);
+        InvocationService invocationService = mock(InvocationService.class);
+        FunctionQueueState state = mock(FunctionQueueState.class);
+        InvocationTask task1 = mock(InvocationTask.class);
+        InvocationTask task2 = mock(InvocationTask.class);
+        InvocationTask task3 = mock(InvocationTask.class);
+
+        when(queueManager.get("hot")).thenReturn(state);
+        when(state.tryAcquireSlot()).thenReturn(true, true, false, true, false);
+        when(state.poll()).thenReturn(task1, task2, task3, null);
+        when(state.queued()).thenReturn(1, 1, 0);
+
+        List<InvocationTask> dispatched = new CopyOnWriteArrayList<>();
+        doAnswer(invocation -> {
+            dispatched.add(invocation.getArgument(0));
+            return null;
+        }).when(invocationService).dispatch(any(InvocationTask.class));
+
+        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        scheduler.init();
+        scheduler.start();
+        try {
+            scheduler.signalWork("hot");
+
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> assertThat(dispatched).containsExactly(task1, task2, task3));
+        } finally {
+            scheduler.stop();
+        }
+
+        verify(invocationService, times(3)).dispatch(any(InvocationTask.class));
+        verify(state, atLeastOnce()).queued();
     }
 }
