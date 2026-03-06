@@ -96,10 +96,13 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
     """send_callback must offload requests.post to a thread, not call it directly."""
     import asyncio as _asyncio
 
-    async def _noop():
-        pass
+    mock_response = MagicMock()
+    mock_response.status_code = 200
 
-    mock_to_thread.return_value = _noop()
+    async def _success():
+        return mock_response
+
+    mock_to_thread.side_effect = lambda *args, **kwargs: _success()
 
     @decorator.nanofaas_function
     def mock_handler(input_data):
