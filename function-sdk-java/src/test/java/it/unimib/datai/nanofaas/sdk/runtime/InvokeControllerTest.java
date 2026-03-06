@@ -1,6 +1,4 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
@@ -18,23 +16,31 @@ class InvokeControllerTest {
 
     private CallbackDispatcher callbackDispatcher;
     private HandlerRegistry handlerRegistry;
+    private InvocationRuntimeContextResolver runtimeContextResolver;
+    private ColdStartTracker coldStartTracker;
     private FunctionHandler handler;
     private InvokeController controller;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
         callbackDispatcher = mock(CallbackDispatcher.class);
         handlerRegistry = mock(HandlerRegistry.class);
+        runtimeContextResolver = mock(InvocationRuntimeContextResolver.class);
+        coldStartTracker = mock(ColdStartTracker.class);
         handler = mock(FunctionHandler.class);
         when(handlerRegistry.resolve()).thenReturn(handler);
         when(callbackDispatcher.submit(anyString(), any(), any())).thenReturn(true);
-        controller = new InvokeController(callbackDispatcher, handlerRegistry, "env-exec-id");
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
+        when(coldStartTracker.firstInvocation()).thenReturn(false);
+        controller = new InvokeController(callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker);
     }
 
     @Test
     void invoke_success_returnsOkWithOutput() {
         when(handler.handle(any())).thenReturn(Map.of("result", "hello"));
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("env-exec-id", "trace-1"));
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, "trace-1");
@@ -45,18 +51,24 @@ class InvokeControllerTest {
     }
 
     @Test
-    void invoke_headerExecutionIdOverridesEnv() {
+    void invokeController_delegatesExecutionIdAndTraceResolution() {
         when(handler.handle(any())).thenReturn("ok");
+        when(runtimeContextResolver.resolve("header-exec-id", "trace-9"))
+                .thenReturn(new InvocationRuntimeContext("resolved-exec-id", "resolved-trace"));
 
         InvocationRequest request = new InvocationRequest("input", null);
-        controller.invoke(request, "header-exec-id", null);
+        ResponseEntity<Object> response = controller.invoke(request, "header-exec-id", "trace-9");
 
-        verify(callbackDispatcher).submit(eq("header-exec-id"), any(), isNull());
+        assertEquals(200, response.getStatusCode().value());
+        verify(runtimeContextResolver).resolve("header-exec-id", "trace-9");
+        verify(callbackDispatcher).submit(eq("resolved-exec-id"), any(), eq("resolved-trace"));
     }
 
     @Test
     void invoke_handlerThrows_returns500AndSendsErrorCallback() {
         when(handler.handle(any())).thenThrow(new RuntimeException("boom"));
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("env-exec-id", "t-1"));
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, "t-1");
@@ -74,6 +86,8 @@ class InvokeControllerTest {
     @Test
     void invoke_handlerThrowsWithoutMessage_returnsStable500AndCallbackPayload() {
         when(handler.handle(any())).thenThrow(new RuntimeException());
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("env-exec-id", "t-2"));
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, "t-2");
@@ -94,6 +108,8 @@ class InvokeControllerTest {
     void invoke_callbackFails_stillReturnsOk() {
         when(handler.handle(any())).thenReturn("data");
         when(callbackDispatcher.submit(anyString(), any(), any())).thenReturn(false);
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, null);
@@ -104,21 +120,43 @@ class InvokeControllerTest {
 
     @Test
     void invoke_noExecutionId_returnsBadRequest() {
-        InvokeController noExecController = new InvokeController(callbackDispatcher, handlerRegistry, null);
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("  ", null));
 
         InvocationRequest request = new InvocationRequest("input", null);
-        ResponseEntity<Object> response = noExecController.invoke(request, null, null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
 
         assertEquals(400, response.getStatusCode().value());
     }
 
     @Test
     void invoke_blankHeaderAndBlankEnv_returnsBadRequest() {
-        InvokeController blankController = new InvokeController(callbackDispatcher, handlerRegistry, "  ");
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext(null, null));
 
         InvocationRequest request = new InvocationRequest("input", null);
-        ResponseEntity<Object> response = blankController.invoke(request, "  ", null);
+        ResponseEntity<Object> response = controller.invoke(request, "  ", null);
 
         assertEquals(400, response.getStatusCode().value());
+    }
+
+    @Test
+    void coldStartHeader_isReportedOnlyForFirstResolvedInvocation() {
+        when(handler.handle(any())).thenReturn("ok");
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("env-exec-id", "trace-1"));
+        when(coldStartTracker.firstInvocation()).thenReturn(true, false);
+        when(coldStartTracker.initDurationMs()).thenReturn(123L);
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> first = controller.invoke(request, null, "trace-1");
+        ResponseEntity<Object> second = controller.invoke(request, null, "trace-1");
+
+        assertEquals("true", first.getHeaders().getFirst("X-Cold-Start"));
+        assertEquals("123", first.getHeaders().getFirst("X-Init-Duration-Ms"));
+        assertNull(second.getHeaders().getFirst("X-Cold-Start"));
+        assertNull(second.getHeaders().getFirst("X-Init-Duration-Ms"));
+        verify(coldStartTracker, times(2)).firstInvocation();
+        verify(coldStartTracker).initDurationMs();
     }
 }
