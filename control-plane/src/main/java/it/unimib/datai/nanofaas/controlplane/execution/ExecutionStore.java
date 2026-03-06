@@ -57,24 +57,21 @@ public class ExecutionStore {
 
         executions.entrySet().removeIf(entry -> {
             StoredExecution stored = entry.getValue();
+            ExecutionRecord record = stored.record();
             Instant created = stored.createdAt();
-            if (created.isBefore(staleCutoff)) {
-                // Force-evict everything older than staleTtl, including stuck RUNNING/QUEUED
+            if (!record.isTerminal()) {
+                // Force-evict active executions that have been stuck too long.
+                return created.isBefore(staleCutoff);
+            }
+
+            Instant completedAt = record.finishedAt();
+            Instant retentionAnchor = completedAt == null ? created : completedAt;
+
+            if (retentionAnchor.isBefore(cutoff)) {
                 return true;
             }
-            if (created.isBefore(cutoff)) {
-                ExecutionState state = stored.record().state();
-                // Don't evict active executions until staleTtl
-                if (state != ExecutionState.RUNNING && state != ExecutionState.QUEUED) {
-                    return true;
-                }
-            }
-            if (created.isBefore(cleanupCutoff)) {
-                // Only cleanup if finished
-                ExecutionState state = stored.record().state();
-                if (state != ExecutionState.RUNNING && state != ExecutionState.QUEUED) {
-                    stored.record().cleanup();
-                }
+            if (retentionAnchor.isBefore(cleanupCutoff)) {
+                record.cleanup();
             }
             return false;
         });

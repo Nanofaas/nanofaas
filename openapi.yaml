@@ -106,9 +106,9 @@ paths:
                 type: string
                 format: binary
         '408':
-          description: Invocation timeout
+          description: Invocation timed out. The execution is terminal and will remain in `timeout` if later inspected via `GET /v1/executions/{executionId}`.
         '429':
-          description: Rate limited
+          description: Too many requests. Returned for rate limiting and queue/admission backpressure on the synchronous invoke path.
         '500':
           description: Invocation failed
 
@@ -138,7 +138,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnqueueResponse'
         '429':
-          description: Rate limited
+          description: Too many requests. Returned for rate limiting or async queue saturation.
         '500':
           description: Enqueue failed
 
@@ -150,13 +150,92 @@ paths:
         - $ref: '#/components/parameters/ExecutionId'
       responses:
         '200':
-          description: Execution status
+          description: Execution status. Terminal values (`success`, `error`, `timeout`) are stable and are not rewritten by late callbacks.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExecutionStatus'
         '404':
           description: Not found
+
+  /v1/admin/runtime-config:
+    get:
+      summary: Get the current runtime configuration snapshot
+      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
+      operationId: getRuntimeConfig
+      responses:
+        '200':
+          description: Current runtime configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigSnapshot'
+        '404':
+          description: Admin runtime-config API is disabled
+    patch:
+      summary: Patch runtime configuration
+      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
+      operationId: patchRuntimeConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeConfigPatchRequest'
+      responses:
+        '200':
+          description: Runtime configuration updated and applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigPatchResponse'
+        '400':
+          description: Malformed request. Duration fields must use ISO-8601 format such as `PT5S`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigParseError'
+        '404':
+          description: Admin runtime-config API is disabled
+        '409':
+          description: Revision mismatch
+        '422':
+          description: Validation failed for the effective runtime configuration after applying the patch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrors'
+        '503':
+          description: Configuration update was rolled back because applying it to live components failed
+
+  /v1/admin/runtime-config/validate:
+    post:
+      summary: Validate a runtime configuration patch
+      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
+      operationId: validateRuntimeConfigPatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeConfigPatchRequest'
+      responses:
+        '200':
+          description: Patch is valid against the current effective configuration
+        '400':
+          description: Malformed request. Duration fields must use ISO-8601 format such as `PT5S`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigParseError'
+        '404':
+          description: Admin runtime-config API is disabled
+        '422':
+          description: Validation failed for the effective runtime configuration after applying the patch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrors'
 
 components:
   parameters:
@@ -339,6 +418,9 @@ components:
         status:
           type: string
           enum: [queued, running, success, error, timeout]
+          description: |
+            Terminal states are `success`, `error`, and `timeout`.
+            Once an execution reaches `timeout`, later completion callbacks do not rewrite it.
         startedAt:
           type: string
           format: date-time
@@ -362,4 +444,86 @@ components:
         code:
           type: string
         message:
+          type: string
+    RuntimeConfigPatchRequest:
+      type: object
+      properties:
+        expectedRevision:
+          type: integer
+          format: int64
+          description: Required for `PATCH`; omitted for `/validate`.
+        rateMaxPerSecond:
+          type: integer
+          minimum: 1
+        syncQueueEnabled:
+          type: boolean
+        syncQueueAdmissionEnabled:
+          type: boolean
+        syncQueueMaxEstimatedWait:
+          type: string
+          format: duration
+          description: ISO-8601 duration string. Must be positive and must not exceed `syncQueueMaxQueueWait` in the effective configuration.
+        syncQueueMaxQueueWait:
+          type: string
+          format: duration
+          description: ISO-8601 duration string. Must be positive and must be greater than or equal to `syncQueueMaxEstimatedWait` in the effective configuration.
+        syncQueueRetryAfterSeconds:
+          type: integer
+          minimum: 1
+    RuntimeConfigSnapshot:
+      type: object
+      required: [revision, rateMaxPerSecond, syncQueueEnabled, syncQueueAdmissionEnabled, syncQueueMaxEstimatedWait, syncQueueMaxQueueWait, syncQueueRetryAfterSeconds]
+      properties:
+        revision:
+          type: integer
+          format: int64
+        rateMaxPerSecond:
+          type: integer
+        syncQueueEnabled:
+          type: boolean
+        syncQueueAdmissionEnabled:
+          type: boolean
+        syncQueueMaxEstimatedWait:
+          type: string
+          format: duration
+        syncQueueMaxQueueWait:
+          type: string
+          format: duration
+        syncQueueRetryAfterSeconds:
+          type: integer
+    RuntimeConfigPatchResponse:
+      type: object
+      required: [revision, effectiveConfig, appliedAt, changeId, warnings]
+      properties:
+        revision:
+          type: integer
+          format: int64
+        effectiveConfig:
+          $ref: '#/components/schemas/RuntimeConfigSnapshot'
+        appliedAt:
+          type: string
+          format: date-time
+        changeId:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+    ValidationErrors:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+    RuntimeConfigParseError:
+      type: object
+      required: [error, field, value]
+      properties:
+        error:
+          type: string
+        field:
+          type: string
+        value:
           type: string

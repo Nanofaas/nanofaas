@@ -91,6 +91,51 @@ class FunctionServiceTest {
     }
 
     @Test
+    void register_listenerFailure_rollsBackRegistryAndProvisionedResources() {
+        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        doThrow(new IllegalStateException("listener failure")).when(listener).onRegister(any());
+
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> service.register(spec));
+
+        assertEquals("listener failure", thrown.getMessage());
+        assertTrue(service.get("fn").isEmpty());
+        assertTrue(service.list().isEmpty());
+        verify(resourceManager).provision(any());
+        verify(resourceManager).deprovision("fn");
+    }
+
+    @Test
+    void register_multiListenerFailure_compensatesPreviouslyNotifiedListeners() {
+        FunctionRegistrationListener firstListener = mock(FunctionRegistrationListener.class);
+        FunctionRegistrationListener secondListener = mock(FunctionRegistrationListener.class);
+        FunctionService localService = new FunctionService(
+                registry,
+                defaults,
+                resourceManager,
+                imageValidator,
+                List.of(firstListener, secondListener)
+        );
+        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        doThrow(new IllegalStateException("listener failure")).when(secondListener).onRegister(any());
+
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> localService.register(spec));
+
+        assertEquals("listener failure", thrown.getMessage());
+        assertTrue(localService.get("fn").isEmpty());
+        verify(firstListener).onRegister(any());
+        verify(secondListener).onRegister(any());
+        verify(firstListener).onRemove("fn");
+        verify(secondListener, never()).onRemove("fn");
+        verify(resourceManager).deprovision("fn");
+    }
+
+    @Test
     void perFunctionLocksAreCleanedUpAfterOperations() throws Exception {
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.LOCAL, null, null, null);
@@ -150,6 +195,63 @@ class FunctionServiceTest {
         assertTrue(removed.isPresent());
         verify(resourceManager).deprovision("fn");
         verify(listener).onRemove("fn");
+    }
+
+    @Test
+    void remove_listenerFailure_keepsRegistryAndResourcesConsistent() {
+        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        doThrow(new IllegalStateException("listener failure")).when(listener).onRemove("fn");
+
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+        service.register(spec);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> service.remove("fn"));
+
+        assertEquals("listener failure", thrown.getMessage());
+        assertTrue(service.get("fn").isPresent());
+        assertEquals(1, service.list().size());
+        verify(resourceManager, never()).deprovision("fn");
+    }
+
+    @Test
+    void remove_multiListenerFailure_compensatesPreviouslyNotifiedListeners() {
+        FunctionRegistrationListener firstListener = mock(FunctionRegistrationListener.class);
+        FunctionRegistrationListener secondListener = mock(FunctionRegistrationListener.class);
+        FunctionService localService = new FunctionService(
+                registry,
+                defaults,
+                resourceManager,
+                imageValidator,
+                List.of(firstListener, secondListener)
+        );
+        doThrow(new IllegalStateException("listener failure")).when(secondListener).onRemove("fn");
+        registry.put(new FunctionSpec(
+                "fn", "img:latest",
+                List.of(),
+                java.util.Map.of(),
+                null,
+                30000,
+                4,
+                100,
+                3,
+                "http://fn-svc:8080",
+                ExecutionMode.DEPLOYMENT,
+                it.unimib.datai.nanofaas.common.model.RuntimeMode.HTTP,
+                null,
+                resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT).scalingConfig(),
+                null
+        ));
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> localService.remove("fn"));
+
+        assertEquals("listener failure", thrown.getMessage());
+        assertTrue(localService.get("fn").isPresent());
+        verify(firstListener).onRemove("fn");
+        verify(secondListener).onRemove("fn");
+        verify(firstListener).onRegister(any());
+        verify(secondListener, never()).onRegister(any());
+        verify(resourceManager, never()).deprovision("fn");
     }
 
     @Test

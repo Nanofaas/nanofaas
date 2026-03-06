@@ -34,5 +34,9 @@ public class ColdStartTracker {
         return event.fromReplicas() == 0;
     }
 
+    void removeFunctionState(String functionName) {
+        recentScaleUps.remove(functionName);
+    }
+
     private record ScaleUpEvent(int fromReplicas, int toReplicas, Instant timestamp) {}
 }

@@ -109,10 +109,38 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_rateLimitedFromMono_returns429() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+                .thenReturn(Mono.error(new RateLimitException()));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(429);
+    }
+
+    @Test
     void invokeSync_queueFull_returns429() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
                 .thenThrow(new QueueFullException());
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(429);
+    }
+
+    @Test
+    void invokeSync_queueFullFromMono_returns429() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+                .thenReturn(Mono.error(new QueueFullException()));
 
         webClient.post()
                 .uri("/v1/functions/echo:invoke")

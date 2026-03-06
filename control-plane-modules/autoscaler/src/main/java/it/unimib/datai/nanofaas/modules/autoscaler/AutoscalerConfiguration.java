@@ -48,7 +48,9 @@ public class AutoscalerConfiguration {
     }
 
     @Bean
-    FunctionRegistrationListener targetLoadMetricsLifecycleListener(TargetLoadMetrics targetLoadMetrics) {
+    FunctionRegistrationListener autoscalerLifecycleListener(TargetLoadMetrics targetLoadMetrics,
+                                                             ScalingMetricsReader scalingMetricsReader,
+                                                             InternalScaler internalScaler) {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
@@ -58,6 +60,8 @@ public class AutoscalerConfiguration {
             @Override
             public void onRemove(String functionName) {
                 targetLoadMetrics.remove(functionName);
+                scalingMetricsReader.removeFunctionState(functionName);
+                internalScaler.removeFunctionState(functionName);
             }
         };
     }

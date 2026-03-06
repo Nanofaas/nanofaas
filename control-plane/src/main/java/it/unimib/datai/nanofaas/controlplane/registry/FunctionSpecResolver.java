@@ -12,6 +12,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class FunctionSpecResolver {
     private static final int DEFAULT_TARGET_PER_POD = 2;
@@ -23,6 +24,7 @@ public class FunctionSpecResolver {
     private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.35;
 
     private final FunctionDefaults defaults;
+    private static final Set<String> SUPPORTED_INTERNAL_SCALING_METRICS = Set.of("queue_depth", "in_flight", "rps");
 
     public FunctionSpecResolver(FunctionDefaults defaults) {
         this.defaults = defaults;
@@ -63,14 +65,27 @@ public class FunctionSpecResolver {
                     normalizeConcurrencyControl(null)
             );
         }
+        ScalingStrategy strategy = Optional.ofNullable(config.strategy()).orElse(ScalingStrategy.INTERNAL);
+        List<ScalingMetric> metrics = Optional.ofNullable(config.metrics()).filter(m -> !m.isEmpty())
+                .orElseGet(() -> List.of(new ScalingMetric("queue_depth", "5", null)));
+        if (strategy == ScalingStrategy.INTERNAL) {
+            validateInternalScalingMetrics(metrics);
+        }
         return new ScalingConfig(
-                Optional.ofNullable(config.strategy()).orElse(ScalingStrategy.INTERNAL),
+                strategy,
                 Optional.ofNullable(config.minReplicas()).orElse(1),
                 Optional.ofNullable(config.maxReplicas()).orElse(10),
-                Optional.ofNullable(config.metrics()).filter(m -> !m.isEmpty())
-                        .orElseGet(() -> List.of(new ScalingMetric("queue_depth", "5", null))),
+                metrics,
                 normalizeConcurrencyControl(config.concurrencyControl())
         );
+    }
+
+    private void validateInternalScalingMetrics(List<ScalingMetric> metrics) {
+        for (ScalingMetric metric : metrics) {
+            if (metric == null || metric.type() == null || !SUPPORTED_INTERNAL_SCALING_METRICS.contains(metric.type())) {
+                throw new IllegalArgumentException("Unsupported INTERNAL scaling metric: " + (metric == null ? null : metric.type()));
+            }
+        }
     }
 
     private ConcurrencyControlConfig normalizeConcurrencyControl(ConcurrencyControlConfig config) {

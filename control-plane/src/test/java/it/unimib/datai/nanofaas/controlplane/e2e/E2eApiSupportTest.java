@@ -63,6 +63,18 @@ class E2eApiSupportTest {
     }
 
     @Test
+    void assertMetricPresent_failsWithSingleMetricMessage() {
+        String metrics = """
+                # TYPE function_warm_start_total counter
+                function_warm_start_total{function="echo"} 1.0
+                """;
+
+        assertThatThrownBy(() -> E2eApiSupport.assertMetricPresent(metrics, "function_cold_start_total"))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("expected metric function_cold_start_total");
+    }
+
+    @Test
     void assertMetricSumAtLeast_failsWhenBelowThreshold() {
         String metrics = """
                 function_cold_start_total{function="echo"} 0.5

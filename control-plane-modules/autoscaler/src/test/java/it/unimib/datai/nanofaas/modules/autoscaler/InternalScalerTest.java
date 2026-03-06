@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -219,5 +220,28 @@ class InternalScalerTest {
         InternalScaler noK8sScaler = new InternalScaler(registry, metricsReader, null, PROPS, coldStartTracker);
         noK8sScaler.start();
         assertFalse(noK8sScaler.isRunning());
+    }
+
+    @Test
+    void removeFunctionState_clearsScaleCooldownsForRecreatedFunction() throws Exception {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+        FunctionSpec spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
+
+        when(registry.list()).thenReturn(List.of(spec));
+        when(resourceManager.getReadyReplicas("echo")).thenReturn(1);
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
+
+        scaler.scalingLoop();
+        scaler.scalingLoop();
+        verify(resourceManager, times(1)).setReplicas("echo", 3);
+
+        Method removeFunctionState = InternalScaler.class.getDeclaredMethod("removeFunctionState", String.class);
+        removeFunctionState.setAccessible(true);
+        removeFunctionState.invoke(scaler, "echo");
+
+        scaler.scalingLoop();
+
+        verify(resourceManager, times(2)).setReplicas("echo", 3);
     }
 }

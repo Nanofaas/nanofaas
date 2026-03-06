@@ -60,36 +60,47 @@ class ExecutionRecordStateTransitionTest {
     }
 
     @Test
-    void invalidTransition_queued_to_success_logsWarning() {
-        // Should not throw but logs warning - transition still happens
+    void validTransition_queued_to_success() {
         ExecutionRecord record = createRecord("exec-1");
         assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
 
         record.markSuccess("output");
-        // State still changes (warn-only)
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(record.output()).isEqualTo("output");
     }
 
     @Test
-    void invalidTransition_success_to_running_logsWarning() {
+    void invalidTransition_success_to_running_isIgnored() {
         ExecutionRecord record = createRecord("exec-1");
         record.markRunning();
         record.markSuccess("output");
 
         record.markRunning();
-        // State still changes (warn-only), SUCCESS -> RUNNING is invalid
-        assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
+        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(record.output()).isEqualTo("output");
     }
 
     @Test
-    void invalidTransition_error_to_success_logsWarning() {
+    void invalidTransition_error_to_success_isIgnored() {
         ExecutionRecord record = createRecord("exec-1");
         record.markRunning();
         record.markError(new ErrorInfo("ERR", "failed"));
 
         record.markSuccess("output");
-        // State still changes (warn-only)
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(record.output()).isNull();
+    }
+
+    @Test
+    void invalidTransition_timeout_to_success_isIgnored() {
+        ExecutionRecord record = createRecord("exec-1");
+        record.markRunning();
+        record.markTimeout();
+
+        record.markSuccess("late-output");
+
+        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
+        assertThat(record.output()).isNull();
     }
 
     @Test

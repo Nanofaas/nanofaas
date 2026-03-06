@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -13,15 +14,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
+    private static final String COMPONENT_NAME = "Scheduler";
 
     private final QueueManager queueManager;
     private final InvocationService invocationService;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "nanofaas-scheduler");
-        t.setDaemon(false);
-        return t;
-    });
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final Object lifecycleMonitor = new Object();
+    private volatile ExecutorService executor;
 
     private final BlockingQueue<String> activeFunctions = new LinkedBlockingQueue<>();
     private final Set<String> enqueuedFunctions = ConcurrentHashMap.newKeySet();
@@ -46,28 +45,35 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
     @Override
     public void start() {
-        if (running.compareAndSet(false, true)) {
+        synchronized (lifecycleMonitor) {
+            if (!running.compareAndSet(false, true)) {
+                return;
+            }
             log.info("Scheduler starting");
-            executor.submit(this::loop);
+            ExecutorService newExecutor = SchedulerLifecycleSupport.newSingleThreadExecutor("nanofaas-scheduler");
+            executor = newExecutor;
+            try {
+                newExecutor.submit(this::loop);
+            } catch (RuntimeException e) {
+                executor = null;
+                running.set(false);
+                SchedulerLifecycleSupport.shutdownExecutor(newExecutor, log, COMPONENT_NAME);
+                throw e;
+            }
         }
     }
 
     @Override
     public void stop() {
-        log.info("Scheduler stopping...");
-        running.set(false);
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-                log.warn("Scheduler did not terminate in time, forcing shutdown");
-                executor.shutdownNow();
+        ExecutorService executorToStop;
+        synchronized (lifecycleMonitor) {
+            if (!running.getAndSet(false) && executor == null) {
+                return;
             }
-        } catch (InterruptedException ex) {
-            log.warn("Scheduler shutdown interrupted");
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
+            executorToStop = executor;
+            executor = null;
         }
-        log.info("Scheduler stopped");
+        SchedulerLifecycleSupport.shutdownExecutor(executorToStop, log, COMPONENT_NAME);
     }
 
     @Override

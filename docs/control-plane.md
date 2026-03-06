@@ -56,3 +56,11 @@ When selector is omitted:
 - Spring WebFlux handles HTTP I/O.
 - Dispatch completion is asynchronous via dispatcher futures/callbacks.
 - Optional modules add extra runtime loops where applicable (for example queue schedulers).
+
+## Correctness Notes
+
+- Synchronous invoke timeouts are terminal. When `POST /v1/functions/{name}:invoke` returns `408`, the corresponding execution remains in `timeout` and late runtime callbacks do not rewrite it to `success` or `error`.
+- Backpressure is consistently surfaced as `429 Too Many Requests` across both synchronous inline handling and reactive queue-backed invoke paths. Queue saturation is not reported as a generic `500`.
+- `DEPLOYMENT` functions become visible only after provisioning has produced the final resolved spec, including the endpoint URL. During removal they are hidden before teardown side effects run.
+- Execution retention is anchored to completion time for terminal states. Long-running executions that finish successfully are retained for the post-completion TTL instead of being cleaned up based on original creation time.
+- The runtime-config admin API validates the effective configuration snapshot, not just the incoming patch. Invalid duration strings are rejected as `400`, and sync-queue patches are rejected when `syncQueueMaxEstimatedWait > syncQueueMaxQueueWait`.

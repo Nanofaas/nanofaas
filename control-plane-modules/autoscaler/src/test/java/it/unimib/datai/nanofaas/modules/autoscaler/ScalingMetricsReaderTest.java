@@ -11,6 +11,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
@@ -61,13 +64,20 @@ class ScalingMetricsReaderTest {
     }
 
     @Test
-    void readMetric_rps_readsDispatchCounter() {
+    void readMetric_rps_usesPerIntervalDeltaInsteadOfCumulativeCounter() throws Exception {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        // Counter is stored as a double; using increment(3) is fine.
-        Counter.builder("function_dispatch_total").tag("function", "echo").register(registry).increment(3.0);
+        Counter counter = Counter.builder("function_dispatch_total").tag("function", "echo").register(registry);
+        counter.increment(3.0);
 
         ScalingMetricsReader r = new ScalingMetricsReader(scalingMetricsSource, registry);
-        double value = r.readMetric("echo", new ScalingMetric("rps", "1", null));
-        assertEquals(3.0, value);
+        double first = r.readMetric("echo", new ScalingMetric("rps", "1", null));
+
+        Thread.sleep(Duration.ofMillis(1100));
+        counter.increment(2.0);
+
+        double second = r.readMetric("echo", new ScalingMetric("rps", "1", null));
+
+        assertEquals(0.0, first);
+        assertThat(second).isBetween(1.5, 2.5);
     }
 }

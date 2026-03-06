@@ -55,17 +55,33 @@ public class IdempotencyStore {
      */
     public String putIfAbsent(String functionName, String key, String executionId) {
         String composed = compose(functionName, key);
-        StoredKey newKey = new StoredKey(executionId, Instant.now());
-        StoredKey existing = keys.putIfAbsent(composed, newKey);
-        if (existing == null) {
-            return null; // Successfully stored
+        while (true) {
+            StoredKey newKey = new StoredKey(executionId, Instant.now());
+            StoredKey existing = keys.putIfAbsent(composed, newKey);
+            if (existing == null) {
+                return null; // Successfully stored
+            }
+            if (!isExpired(existing, Instant.now())) {
+                return existing.executionId();
+            }
+            if (keys.replace(composed, existing, newKey)) {
+                return null;
+            }
         }
-        // Check if expired
-        if (existing.storedAt().plus(ttl).isBefore(Instant.now())) {
-            keys.replace(composed, existing, newKey);
-            return null;
+    }
+
+    public boolean replaceExecutionId(String functionName, String key, String expectedExecutionId, String newExecutionId) {
+        String composed = compose(functionName, key);
+        while (true) {
+            StoredKey existing = keys.get(composed);
+            if (existing == null || !existing.executionId().equals(expectedExecutionId)) {
+                return false;
+            }
+            StoredKey newKey = new StoredKey(newExecutionId, Instant.now());
+            if (keys.replace(composed, existing, newKey)) {
+                return true;
+            }
         }
-        return existing.executionId();
     }
 
     public int size() {
@@ -79,6 +95,10 @@ public class IdempotencyStore {
 
     private String compose(String functionName, String key) {
         return functionName + ":" + key;
+    }
+
+    private boolean isExpired(StoredKey stored, Instant now) {
+        return stored.storedAt().plus(ttl).isBefore(now);
     }
 
     @PreDestroy

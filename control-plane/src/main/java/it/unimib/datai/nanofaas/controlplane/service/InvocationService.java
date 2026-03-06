@@ -75,6 +75,9 @@ public class InvocationService {
                     : new InvocationResult(false, null, record.lastError());
             return toResponse(record, result);
         }
+        if (record.state() == ExecutionState.TIMEOUT) {
+            return timeoutResponse(record);
+        }
 
         if (lookup.isNew()) {
             if (syncQueueEnabled()) {
@@ -98,7 +101,7 @@ public class InvocationService {
         } catch (Exception ex) {
             record.markTimeout();
             metrics.timeout(functionName);
-            return new InvocationResponse(record.executionId(), "timeout", null, null);
+            return timeoutResponse(record);
         }
     }
 
@@ -118,6 +121,9 @@ public class InvocationService {
                     ? InvocationResult.success(record.output())
                     : new InvocationResult(false, null, record.lastError());
             return Mono.just(toResponse(record, result));
+        }
+        if (record.state() == ExecutionState.TIMEOUT) {
+            return Mono.just(timeoutResponse(record));
         }
 
         if (lookup.isNew()) {
@@ -146,7 +152,7 @@ public class InvocationService {
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
                     record.markTimeout();
                     metrics.timeout(functionName);
-                    return Mono.just(new InvocationResponse(record.executionId(), "timeout", null, null));
+                    return Mono.just(timeoutResponse(record));
                 });
     }
 
@@ -197,22 +203,39 @@ public class InvocationService {
                                                    InvocationRequest request,
                                                    String idempotencyKey,
                                                    String traceId) {
-        String executionId = UUID.randomUUID().toString();
-        boolean idempotencyStored = false;
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, executionId);
-            if (existingExecutionId != null) {
-                ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
-                if (existing != null) {
-                    return new ExecutionLookup(existing, false);
-                }
-                // Stale idempotency mapping pointing to an evicted execution.
-                idempotencyStore.put(functionName, idempotencyKey, executionId);
-            } else {
-                idempotencyStored = true;
-            }
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            ExecutionRecord record = newExecutionRecord(functionName, spec, request, null, traceId);
+            executionStore.put(record);
+            return new ExecutionLookup(record, true);
         }
 
+        while (true) {
+            ExecutionRecord record = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
+            executionStore.put(record);
+
+            String existingExecutionId = idempotencyStore.putIfAbsent(functionName, idempotencyKey, record.executionId());
+            if (existingExecutionId == null) {
+                return new ExecutionLookup(record, true);
+            }
+            ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
+            if (existing != null) {
+                executionStore.remove(record.executionId());
+                return new ExecutionLookup(existing, false);
+            }
+            // Stale idempotency mapping pointing to an evicted or not-yet-published execution.
+            if (idempotencyStore.replaceExecutionId(functionName, idempotencyKey, existingExecutionId, record.executionId())) {
+                return new ExecutionLookup(record, true);
+            }
+            executionStore.remove(record.executionId());
+        }
+    }
+
+    private ExecutionRecord newExecutionRecord(String functionName,
+                                               FunctionSpec spec,
+                                               InvocationRequest request,
+                                               String idempotencyKey,
+                                               String traceId) {
+        String executionId = UUID.randomUUID().toString();
         InvocationTask task = new InvocationTask(
                 executionId,
                 functionName,
@@ -223,13 +246,7 @@ public class InvocationService {
                 Instant.now(),
                 1
         );
-        ExecutionRecord record = new ExecutionRecord(executionId, task);
-        executionStore.put(record);
-        if (!idempotencyStored && idempotencyKey != null && !idempotencyKey.isBlank()) {
-            // Keep mapping fresh for TTL semantics.
-            idempotencyStore.put(functionName, idempotencyKey, executionId);
-        }
-        return new ExecutionLookup(record, true);
+        return new ExecutionRecord(executionId, task);
     }
 
     private void enqueueOrThrow(ExecutionRecord record) {
@@ -244,6 +261,10 @@ public class InvocationService {
     private InvocationResponse toResponse(ExecutionRecord record, InvocationResult result) {
         String status = result.success() ? "success" : "error";
         return new InvocationResponse(record.executionId(), status, result.output(), result.error());
+    }
+
+    private InvocationResponse timeoutResponse(ExecutionRecord record) {
+        return new InvocationResponse(record.executionId(), "timeout", null, null);
     }
 
     private boolean syncQueueEnabled() {

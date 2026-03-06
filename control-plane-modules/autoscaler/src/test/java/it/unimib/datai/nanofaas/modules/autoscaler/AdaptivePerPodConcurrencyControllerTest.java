@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -107,5 +108,21 @@ class AdaptivePerPodConcurrencyControllerTest {
 
         assertThat(controller.currentTargetInFlightPerPod("fn-a", 4)).isEqualTo(3);
         assertThat(controller.currentTargetInFlightPerPod("fn-b", 4)).isEqualTo(5);
+    }
+
+    @Test
+    void removeFunctionState_clearsRememberedAdaptiveTarget() throws Exception {
+        AdaptivePerPodConcurrencyController controller = new AdaptivePerPodConcurrencyController();
+        FunctionSpec spec = spec("fn-a", 20, 4);
+
+        controller.computeEffectiveConcurrency(spec, 4, 0.95, false, true, 3_000L);
+        assertThat(controller.currentTargetInFlightPerPod("fn-a", 4)).isEqualTo(3);
+
+        Method removeFunctionState = AdaptivePerPodConcurrencyController.class
+                .getDeclaredMethod("removeFunctionState", String.class);
+        removeFunctionState.setAccessible(true);
+        removeFunctionState.invoke(controller, "fn-a");
+
+        assertThat(controller.currentTargetInFlightPerPod("fn-a", 4)).isEqualTo(4);
     }
 }
