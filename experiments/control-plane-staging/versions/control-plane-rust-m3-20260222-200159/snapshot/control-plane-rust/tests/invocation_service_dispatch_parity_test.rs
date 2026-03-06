@@ -177,14 +177,24 @@ async fn dispatch_whenExecutionRecordMissing_releasesSlotAndSkipsRouter() {
 #[tokio::test]
 async fn dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() {
     let app = control_plane_rust::app::build_app();
-    register_function(
-        &app,
-        "dispatch-error",
-        "img",
-        "POOL",
-        Some("http://127.0.0.1:9/invoke"),
-    )
-    .await;
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "name": "dispatch-error",
+                "image": "img",
+                "executionMode": "POOL",
+                "runtimeMode": "HTTP",
+                "endpointUrl": "http://127.0.0.1:9/invoke",
+                "maxRetries": 1
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
 
     let execution_id = enqueue(&app, "dispatch-error").await;
     let _ = drain_once(&app, "dispatch-error").await;

@@ -1,4 +1,4 @@
-# Java -> Rust Parity Status (M3 Baseline)
+# Java -> Rust Parity Status (Staging Snapshot)
 
 - Total Java test methods inventoried: 252
 - Java intent mapped into Rust test files: 252
@@ -58,6 +58,7 @@
 - VertxRuntimeHintsTest
 
 ## Notes
-- The inventory is complete, but the staging snapshot still has failing live-parity scenarios.
-- `tests/java_parity_generated_test.rs` no longer carries placeholder debt; the remaining work is semantic/runtime alignment.
+- The inventory is complete, and the live Rust path is now aligned on invocation correctness, function lifecycle ordering, sync-queue admission, runtime-config admin semantics, and internal autoscaler `rps`.
+- `tests/java_parity_generated_test.rs` no longer carries placeholder debt; the remaining work is primarily end-to-end transport/runtime parity.
 - Dockerized E2E should be read as a staging oracle: after harness hardening, remaining failures should be treated as real behavior gaps, not lock-poison cascades.
+- Remaining notable gaps are full `PoolDispatcher` transport parity, build-metadata parity, and green dockerized SDK examples.
