@@ -15,8 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class CallbackDispatcher {
     private static final Logger log = LoggerFactory.getLogger(CallbackDispatcher.class);
-    private static final int WORKER_COUNT = 1;
+    private static final int WORKER_COUNT = Math.max(2, Runtime.getRuntime().availableProcessors());
     private static final int QUEUE_CAPACITY = 128;
+    private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
+    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
 
     private final CallbackClient callbackClient;
     private final ThreadPoolExecutor executor;
@@ -31,7 +33,7 @@ public class CallbackDispatcher {
                 runnable -> {
                     Thread thread = new Thread(runnable);
                     thread.setName("callback-dispatcher-" + THREAD_COUNTER.incrementAndGet());
-                    thread.setDaemon(true);
+                    thread.setDaemon(false);
                     return thread;
                 },
                 new ThreadPoolExecutor.AbortPolicy()));
@@ -41,8 +43,6 @@ public class CallbackDispatcher {
         this.callbackClient = callbackClient;
         this.executor = executor;
     }
-
-    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
 
     public boolean submit(String executionId, InvocationResult result, String traceId) {
         try {
@@ -57,5 +57,13 @@ public class CallbackDispatcher {
     @PreDestroy
     void shutdown() {
         executor.shutdown();
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            executor.shutdownNow();
+        }
     }
 }
