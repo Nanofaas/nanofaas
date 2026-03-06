@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TraceLoggingFilterTest {
 
-    private final TraceLoggingFilter filter = new TraceLoggingFilter();
+    private final TraceLoggingFilter filter = new TraceLoggingFilter(
+            new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
 
     @Test
     void bothHeaders_populatesMDC() throws ServletException, IOException {
@@ -42,6 +43,8 @@ class TraceLoggingFilterTest {
 
     @Test
     void noHeaders_mdcRemainsEmpty() throws ServletException, IOException {
+        TraceLoggingFilter filterWithoutDefaults = new TraceLoggingFilter(
+                new RuntimeSettings(null, null, "http://callback", "handler"));
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         AtomicReference<String> capturedTrace = new AtomicReference<>();
@@ -52,10 +55,11 @@ class TraceLoggingFilterTest {
             capturedExec.set(MDC.get("executionId"));
         };
 
-        filter.doFilterInternal(request, new MockHttpServletResponse(), chain);
+        filterWithoutDefaults.doFilterInternal(request, new MockHttpServletResponse(), chain);
 
         assertNull(capturedTrace.get());
-        // executionId may be set from env var - just verify it doesn't throw
+        assertNull(capturedExec.get());
+        assertNull(MDC.get("executionId"));
     }
 
     @Test
@@ -89,6 +93,23 @@ class TraceLoggingFilterTest {
                 () -> filter.doFilterInternal(request, new MockHttpServletResponse(), chain));
 
         assertNull(MDC.get("traceId"));
+        assertNull(MDC.get("executionId"));
+    }
+
+    @Test
+    void blankExecutionHeader_fallsBackToEnvExecutionId() throws ServletException, IOException {
+        TraceLoggingFilter filterWithEnv = new TraceLoggingFilter(
+                new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("X-Execution-Id", "   ");
+
+        AtomicReference<String> capturedExec = new AtomicReference<>();
+
+        FilterChain chain = (req, res) -> capturedExec.set(MDC.get("executionId"));
+
+        filterWithEnv.doFilterInternal(request, new MockHttpServletResponse(), chain);
+
+        assertEquals("env-exec-id", capturedExec.get());
         assertNull(MDC.get("executionId"));
     }
 }

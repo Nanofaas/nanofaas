@@ -55,6 +55,8 @@ When selector is omitted:
 
 - Spring WebFlux handles HTTP I/O.
 - Dispatch completion is asynchronous via dispatcher futures/callbacks.
+- Java function runtimes resolve `X-Execution-Id` per request before falling back to container-level `EXECUTION_ID`, so warm containers can safely serve multiple executions without relying on ambient process identity.
+- Java function runtimes deliver completion callbacks asynchronously through a bounded local dispatcher. Control-plane completion endpoints should therefore expect callbacks to arrive independently of the request/response thread that served `/invoke`.
 - Optional modules add extra runtime loops where applicable (for example queue schedulers).
 
 ## Performance Notes

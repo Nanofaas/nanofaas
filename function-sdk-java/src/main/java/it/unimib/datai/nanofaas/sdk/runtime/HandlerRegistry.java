@@ -9,11 +9,12 @@ import java.util.Map;
 @Component
 public class HandlerRegistry {
     private final ApplicationContext context;
-    private final String envFunctionHandler = System.getenv("FUNCTION_HANDLER");
+    private final RuntimeSettings runtimeSettings;
     private volatile FunctionHandler cached;
 
-    public HandlerRegistry(ApplicationContext context) {
+    public HandlerRegistry(ApplicationContext context, RuntimeSettings runtimeSettings) {
         this.context = context;
+        this.runtimeSettings = runtimeSettings;
     }
 
     public FunctionHandler resolve() {
@@ -33,8 +34,9 @@ public class HandlerRegistry {
                 cached = handlers.values().iterator().next();
                 return cached;
             }
-            if (envFunctionHandler != null && handlers.containsKey(envFunctionHandler)) {
-                cached = handlers.get(envFunctionHandler);
+            String functionHandler = runtimeSettings.functionHandler();
+            if (functionHandler != null && handlers.containsKey(functionHandler)) {
+                cached = handlers.get(functionHandler);
                 return cached;
             }
             throw new IllegalStateException("Multiple FunctionHandler beans found; set FUNCTION_HANDLER env");

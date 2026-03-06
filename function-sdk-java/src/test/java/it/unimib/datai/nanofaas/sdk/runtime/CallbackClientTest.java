@@ -25,7 +25,9 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        client = new CallbackClient(restClient, server.url("/v1/executions").toString());
+        client = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
     }
 
     @AfterEach
@@ -48,14 +50,14 @@ class CallbackClientTest {
     }
 
     @Test
-    void sendResult_successWithoutTraceId_noTraceHeader() throws Exception {
+    void sendResult_successWithoutTraceId_usesInjectedDefaultTraceHeader() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
         boolean ok = client.sendResult("exec-2", InvocationResult.success("data"));
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
-        assertNull(req.getHeader("X-Trace-Id"));
+        assertEquals("env-trace-id", req.getHeader("X-Trace-Id"));
     }
 
     @Test
@@ -63,8 +65,13 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient completeClient = new CallbackClient(restClient,
-                server.url("/v1/executions/exec-3:complete").toString());
+        CallbackClient completeClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "env-exec-id",
+                        "env-trace-id",
+                        server.url("/v1/executions/exec-3:complete").toString(),
+                        "handler"));
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
@@ -80,7 +87,9 @@ class CallbackClientTest {
     @Test
     void sendResult_nullBaseUrl_returnsFalse() {
         RestClient restClient = RestClient.create();
-        CallbackClient nullUrlClient = new CallbackClient(restClient, null);
+        CallbackClient nullUrlClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"));
 
         boolean ok = nullUrlClient.sendResult("exec-4", InvocationResult.success("data"));
         assertFalse(ok);
@@ -89,7 +98,9 @@ class CallbackClientTest {
     @Test
     void sendResult_blankBaseUrl_returnsFalse() {
         RestClient restClient = RestClient.create();
-        CallbackClient blankUrlClient = new CallbackClient(restClient, "  ");
+        CallbackClient blankUrlClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"));
 
         boolean ok = blankUrlClient.sendResult("exec-5", InvocationResult.success("data"));
         assertFalse(ok);
@@ -139,5 +150,94 @@ class CallbackClientTest {
         String body = req.getBody().readUtf8();
         assertTrue(body.contains("\"success\":false"));
         assertTrue(body.contains("TIMEOUT"));
+    }
+
+    @Test
+    void sendResult_permanent4xxFailure_isNotRetried() {
+        server.enqueue(new MockResponse().setResponseCode(400));
+
+        boolean ok = client.sendResult("exec-9", InvocationResult.error("ERR", "fail"));
+
+        assertFalse(ok);
+        assertEquals(1, server.getRequestCount());
+    }
+
+    @Test
+    void sendResult_retryable429Failure_isRetried() {
+        server.enqueue(new MockResponse().setResponseCode(429));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        boolean ok = client.sendResult("exec-9b", InvocationResult.success("retry-ok"));
+
+        assertTrue(ok);
+        assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
+    void sendResult_retryable408Failure_isRetried() {
+        server.enqueue(new MockResponse().setResponseCode(408));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        boolean ok = client.sendResult("exec-9c", InvocationResult.success("retry-ok"));
+
+        assertTrue(ok);
+        assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
+    void sendResult_usesInjectedCallbackSettings() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200));
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        CallbackClient configuredClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "exec-env",
+                        "trace-from-settings",
+                        server.url("/v1/callbacks").toString(),
+                        "handler"));
+
+        boolean ok = configuredClient.sendResult("exec-9", InvocationResult.success("data"));
+        assertTrue(ok);
+
+        RecordedRequest req = server.takeRequest();
+        assertTrue(req.getPath().contains("/v1/callbacks/exec-9:complete"));
+        assertEquals("trace-from-settings", req.getHeader("X-Trace-Id"));
+    }
+
+    @Test
+    void sendResult_normalizesTrailingSlashAndCompleteSuffix() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200));
+        server.enqueue(new MockResponse().setResponseCode(200));
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        CallbackClient trailingSlashClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "exec-env",
+                        "trace-from-settings",
+                        server.url("/v1/executions/").toString(),
+                        "handler"));
+        CallbackClient completeSuffixClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "exec-env",
+                        "trace-from-settings",
+                        server.url("/v1/executions/exec-10:complete/").toString(),
+                        "handler"));
+
+        assertTrue(trailingSlashClient.sendResult("exec-10", InvocationResult.success("data")));
+        assertTrue(completeSuffixClient.sendResult("exec-10", InvocationResult.success("data")));
+
+        RecordedRequest trailingSlashRequest = server.takeRequest();
+        assertFalse(trailingSlashRequest.getPath().contains("//exec-10:complete"));
+        assertTrue(trailingSlashRequest.getPath().endsWith("/exec-10:complete"));
+
+        RecordedRequest completeSuffixRequest = server.takeRequest();
+        assertFalse(completeSuffixRequest.getPath().contains(":complete/exec-10:complete"));
+        assertFalse(completeSuffixRequest.getPath().endsWith(":complete/"));
+        assertTrue(completeSuffixRequest.getPath().endsWith("/exec-10:complete"));
     }
 }

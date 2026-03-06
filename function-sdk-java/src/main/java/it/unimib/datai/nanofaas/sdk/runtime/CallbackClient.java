@@ -6,11 +6,12 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class CallbackClient {
@@ -19,18 +20,11 @@ public class CallbackClient {
     private static final int[] RETRY_DELAYS_MS = {100, 500, 2000};
 
     private final RestClient restClient;
-    private final String baseUrl;
+    private final RuntimeSettings runtimeSettings;
 
-    @Autowired
-    public CallbackClient(RestClient restClient) {
+    public CallbackClient(RestClient restClient, RuntimeSettings runtimeSettings) {
         this.restClient = restClient;
-        this.baseUrl = System.getenv("CALLBACK_URL");
-    }
-
-    // Constructor for testing with custom baseUrl
-    CallbackClient(RestClient restClient, String baseUrl) {
-        this.restClient = restClient;
-        this.baseUrl = baseUrl;
+        this.runtimeSettings = runtimeSettings;
     }
 
     public boolean sendResult(String executionId, InvocationResult result) {
@@ -38,6 +32,7 @@ public class CallbackClient {
     }
 
     public boolean sendResult(String executionId, InvocationResult result, String traceId) {
+        String baseUrl = runtimeSettings.callbackUrl();
         if (baseUrl == null || baseUrl.isBlank()) {
             log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);
             return false;
@@ -55,6 +50,11 @@ public class CallbackClient {
             } catch (RestClientException ex) {
                 log.warn("Callback failed for execution {} (attempt {}): {}",
                         executionId, attempt + 1, ex.getMessage());
+                if (isPermanentClientFailure(ex)) {
+                    log.error("Permanent callback failure for execution {} with status {}",
+                            executionId, ((RestClientResponseException) ex).getStatusCode());
+                    return false;
+                }
 
                 if (attempt < MAX_RETRIES - 1) {
                     try {
@@ -73,14 +73,10 @@ public class CallbackClient {
     }
 
     private void doSendResult(String executionId, InvocationResult result, String traceId) {
-        // Use provided traceId, fall back to environment variable
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
-                : System.getenv("TRACE_ID");
-
-        String url = baseUrl.endsWith(":complete")
-                ? baseUrl
-                : baseUrl + "/" + executionId + ":complete";
+                : runtimeSettings.traceId();
+        String url = callbackUrl(executionId);
 
         RestClient.RequestBodySpec request = restClient.post()
                 .uri(url)
@@ -93,5 +89,25 @@ public class CallbackClient {
         request.body(result)
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    private boolean isPermanentClientFailure(RestClientException ex) {
+        if (!(ex instanceof RestClientResponseException responseException)) {
+            return false;
+        }
+        HttpStatusCode statusCode = responseException.getStatusCode();
+        return statusCode.is4xxClientError()
+                && statusCode.value() != 408
+                && statusCode.value() != 429;
+    }
+
+    private String callbackUrl(String executionId) {
+        String normalizedBaseUrl = runtimeSettings.callbackUrl().stripTrailing();
+        while (normalizedBaseUrl.endsWith("/")) {
+            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
+        }
+        return normalizedBaseUrl.endsWith(":complete")
+                ? normalizedBaseUrl
+                : normalizedBaseUrl + "/" + executionId + ":complete";
     }
 }

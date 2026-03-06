@@ -12,7 +12,11 @@ import java.io.IOException;
 
 @Component
 public class TraceLoggingFilter extends OncePerRequestFilter {
-    private final String envExecutionId = System.getenv("EXECUTION_ID");
+    private final RuntimeSettings runtimeSettings;
+
+    public TraceLoggingFilter(RuntimeSettings runtimeSettings) {
+        this.runtimeSettings = runtimeSettings;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -20,13 +24,13 @@ public class TraceLoggingFilter extends OncePerRequestFilter {
         String traceId = request.getHeader("X-Trace-Id");
         // Prefer header (warm mode) over env (one-shot mode)
         String executionId = request.getHeader("X-Execution-Id");
-        if (executionId == null) {
-            executionId = envExecutionId;
+        if (executionId == null || executionId.isBlank()) {
+            executionId = runtimeSettings.executionId();
         }
         if (traceId != null) {
             MDC.put("traceId", traceId);
         }
-        if (executionId != null) {
+        if (executionId != null && !executionId.isBlank()) {
             MDC.put("executionId", executionId);
         }
         try {
