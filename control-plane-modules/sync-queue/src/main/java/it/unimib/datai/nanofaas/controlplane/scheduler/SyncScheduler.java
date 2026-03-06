@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 @Component
 @ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
@@ -24,22 +25,32 @@ public class SyncScheduler implements SmartLifecycle {
     private final InvocationEnqueuer enqueuer;
     private final SyncQueueService queue;
     private final Consumer<InvocationTask> dispatch;
+    private final LongConsumer pause;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
     private volatile long tickMs = 2;
+    private volatile long blockedBackoffMs = tickMs;
     private volatile ExecutorService executor;
 
     @Autowired
     public SyncScheduler(InvocationEnqueuer enqueuer,
                          SyncQueueService queue,
                          it.unimib.datai.nanofaas.controlplane.service.InvocationService invocationService) {
-        this(enqueuer, queue, invocationService::dispatch);
+        this(enqueuer, queue, invocationService::dispatch, null);
     }
 
     SyncScheduler(InvocationEnqueuer enqueuer, SyncQueueService queue, Consumer<InvocationTask> dispatch) {
+        this(enqueuer, queue, dispatch, null);
+    }
+
+    SyncScheduler(InvocationEnqueuer enqueuer,
+                  SyncQueueService queue,
+                  Consumer<InvocationTask> dispatch,
+                  LongConsumer pause) {
         this.enqueuer = enqueuer;
         this.queue = queue;
         this.dispatch = dispatch;
+        this.pause = pause != null ? pause : this::sleep;
     }
 
     @Override
@@ -48,6 +59,7 @@ public class SyncScheduler implements SmartLifecycle {
             if (!running.compareAndSet(false, true)) {
                 return;
             }
+            blockedBackoffMs = tickMs;
             ExecutorService newExecutor = SchedulerLifecycleSupport.newSingleThreadExecutor("nanofaas-sync-scheduler");
             executor = newExecutor;
             try {
@@ -94,12 +106,14 @@ public class SyncScheduler implements SmartLifecycle {
         SyncQueueItem item = queue.pollReadyMatching(now, task -> enqueuer.tryAcquireSlot(task.functionName()));
         if (item == null) {
             if (queue.peekReady(now) == null) {
+                blockedBackoffMs = tickMs;
                 queue.awaitWork(tickMs);
             } else {
-                sleep(tickMs);
+                pause.accept(currentBlockedBackoff());
             }
             return;
         }
+        blockedBackoffMs = tickMs;
         queue.recordDispatched(item.task().functionName(), now);
         SchedulerDispatchSupport.dispatchWithFailureCleanup(
                 item.task(),
@@ -113,6 +127,12 @@ public class SyncScheduler implements SmartLifecycle {
         while (running.get()) {
             tickOnce();
         }
+    }
+
+    private long currentBlockedBackoff() {
+        long current = blockedBackoffMs;
+        blockedBackoffMs = Math.min(current * 2, 50);
+        return current;
     }
 
     private void sleep(long ms) {
