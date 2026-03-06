@@ -377,3 +377,26 @@ async fn register_rejectsUnsupportedInternalScalingMetric() {
 
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn register_rejectsMalformedScalingConfig() {
+    let app = control_plane_rust::app::build_app();
+
+    let res = register(
+        &app,
+        json!({
+            "name":"echo-malformed-scaling",
+            "image":"img1",
+            "executionMode":"DEPLOYMENT",
+            "runtimeMode":"HTTP",
+            "scalingConfig": {
+                "strategy": "INTERNAL",
+                "minReplicas": "oops",
+                "maxReplicas": 5
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}

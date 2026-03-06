@@ -751,7 +751,15 @@ async fn create_function(
     }
 
     let resolver = FunctionSpecResolver::new(default_function_defaults());
-    let resolved = match resolver.try_resolve(to_resolver_spec(&spec)) {
+    let resolver_spec = match to_resolver_spec(&spec) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            drop(_guard);
+            cleanup_function_lock(&state, &spec.name, &function_lock).await;
+            return validation_error(vec![err]);
+        }
+    };
+    let resolved = match resolver.try_resolve(resolver_spec) {
         Ok(resolved) => resolved,
         Err(err) => {
             drop(_guard);
@@ -1659,8 +1667,8 @@ fn default_function_defaults() -> FunctionDefaults {
     FunctionDefaults::new(30_000, 4, 100, 3)
 }
 
-fn to_resolver_spec(spec: &FunctionSpec) -> ResolverFunctionSpec {
-    ResolverFunctionSpec {
+fn to_resolver_spec(spec: &FunctionSpec) -> Result<ResolverFunctionSpec, String> {
+    Ok(ResolverFunctionSpec {
         name: spec.name.clone(),
         image: spec.image.clone().unwrap_or_default(),
         command: spec.commands.clone(),
@@ -1676,8 +1684,10 @@ fn to_resolver_spec(spec: &FunctionSpec) -> ResolverFunctionSpec {
         scaling_config: spec
             .scaling_config
             .clone()
-            .and_then(|value| serde_json::from_value(value).ok()),
-    }
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|err| format!("Invalid scalingConfig: {err}"))?,
+    })
 }
 
 fn to_function_spec(spec: &ResolverFunctionSpec) -> FunctionSpec {
