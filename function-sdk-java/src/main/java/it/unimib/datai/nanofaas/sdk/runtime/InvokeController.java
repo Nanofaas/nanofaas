@@ -11,8 +11,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
@@ -21,15 +19,14 @@ public class InvokeController {
     private static final String DEFAULT_HANDLER_ERROR_MESSAGE = "Handler execution failed";
     private static final AtomicBoolean FIRST_INVOCATION = new AtomicBoolean(true);
     private static final Instant CONTAINER_START = Instant.now();
-    private static final ExecutorService CALLBACK_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
-    private final CallbackClient callbackClient;
+    private final CallbackDispatcher callbackDispatcher;
     private final HandlerRegistry handlerRegistry;
     private final String executionId;
 
-    public InvokeController(CallbackClient callbackClient, HandlerRegistry handlerRegistry,
+    public InvokeController(CallbackDispatcher callbackDispatcher, HandlerRegistry handlerRegistry,
                            @Value("${EXECUTION_ID:#{systemEnvironment['EXECUTION_ID'] ?: 'test-execution'}}") String executionId) {
-        this.callbackClient = callbackClient;
+        this.callbackDispatcher = callbackDispatcher;
         this.handlerRegistry = handlerRegistry;
         this.executionId = executionId;
     }
@@ -57,11 +54,7 @@ public class InvokeController {
             FunctionHandler handler = handlerRegistry.resolve();
             Object output = handler.handle(request);
 
-            // Fire-and-forget: callback must not block the response
-            final String cbExecId = effectiveExecutionId;
-            final String cbTraceId = traceId;
-            final InvocationResult cbResult = InvocationResult.success(output);
-            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
+            callbackDispatcher.submit(effectiveExecutionId, InvocationResult.success(output), traceId);
 
             ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
             if (isColdStart) {
@@ -74,11 +67,10 @@ public class InvokeController {
             String errorMessage = handlerErrorMessage(ex);
             log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
 
-            // Fire-and-forget: error callback must not block the error response
-            final String cbExecId = effectiveExecutionId;
-            final String cbTraceId = traceId;
-            final InvocationResult cbResult = InvocationResult.error("HANDLER_ERROR", errorMessage);
-            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
+            callbackDispatcher.submit(
+                    effectiveExecutionId,
+                    InvocationResult.error("HANDLER_ERROR", errorMessage),
+                    traceId);
 
             return ResponseEntity.status(500)
                     .body(Map.of("error", errorMessage));

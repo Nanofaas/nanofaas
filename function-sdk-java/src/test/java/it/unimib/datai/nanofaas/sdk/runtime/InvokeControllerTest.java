@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 
 class InvokeControllerTest {
 
-    private CallbackClient callbackClient;
+    private CallbackDispatcher callbackDispatcher;
     private HandlerRegistry handlerRegistry;
     private FunctionHandler handler;
     private InvokeController controller;
@@ -24,35 +24,34 @@ class InvokeControllerTest {
 
     @BeforeEach
     void setUp() {
-        callbackClient = mock(CallbackClient.class);
+        callbackDispatcher = mock(CallbackDispatcher.class);
         handlerRegistry = mock(HandlerRegistry.class);
         handler = mock(FunctionHandler.class);
         when(handlerRegistry.resolve()).thenReturn(handler);
-        controller = new InvokeController(callbackClient, handlerRegistry, "env-exec-id");
+        when(callbackDispatcher.submit(anyString(), any(), any())).thenReturn(true);
+        controller = new InvokeController(callbackDispatcher, handlerRegistry, "env-exec-id");
     }
 
     @Test
     void invoke_success_returnsOkWithOutput() {
         when(handler.handle(any())).thenReturn(Map.of("result", "hello"));
-        when(callbackClient.sendResult(anyString(), any(), anyString())).thenReturn(true);
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, "trace-1");
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(Map.of("result", "hello"), response.getBody());
-        verify(callbackClient, timeout(2000)).sendResult(eq("env-exec-id"), any(InvocationResult.class), eq("trace-1"));
+        verify(callbackDispatcher).submit(eq("env-exec-id"), any(InvocationResult.class), eq("trace-1"));
     }
 
     @Test
     void invoke_headerExecutionIdOverridesEnv() {
         when(handler.handle(any())).thenReturn("ok");
-        when(callbackClient.sendResult(anyString(), any(), any())).thenReturn(true);
 
         InvocationRequest request = new InvocationRequest("input", null);
         controller.invoke(request, "header-exec-id", null);
 
-        verify(callbackClient, timeout(2000)).sendResult(eq("header-exec-id"), any(), isNull());
+        verify(callbackDispatcher).submit(eq("header-exec-id"), any(), isNull());
     }
 
     @Test
@@ -66,7 +65,10 @@ class InvokeControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, String> body = (Map<String, String>) response.getBody();
         assertEquals("boom", body.get("error"));
-        verify(callbackClient, timeout(2000)).sendResult(eq("env-exec-id"), argThat(r -> !r.success()), eq("t-1"));
+        verify(callbackDispatcher).submit(
+                eq("env-exec-id"),
+                argThat((InvocationResult r) -> !r.success()),
+                eq("t-1"));
     }
 
     @Test
@@ -80,9 +82,9 @@ class InvokeControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, String> body = (Map<String, String>) response.getBody();
         assertEquals("Handler execution failed", body.get("error"));
-        verify(callbackClient, timeout(2000)).sendResult(
+        verify(callbackDispatcher).submit(
                 eq("env-exec-id"),
-                argThat(r -> !r.success() && r.error() != null
+                argThat((InvocationResult r) -> !r.success() && r.error() != null
                         && "HANDLER_ERROR".equals(r.error().code())
                         && "Handler execution failed".equals(r.error().message())),
                 eq("t-2"));
@@ -91,7 +93,7 @@ class InvokeControllerTest {
     @Test
     void invoke_callbackFails_stillReturnsOk() {
         when(handler.handle(any())).thenReturn("data");
-        when(callbackClient.sendResult(anyString(), any(), any())).thenReturn(false);
+        when(callbackDispatcher.submit(anyString(), any(), any())).thenReturn(false);
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, null);
@@ -102,7 +104,7 @@ class InvokeControllerTest {
 
     @Test
     void invoke_noExecutionId_returnsBadRequest() {
-        InvokeController noExecController = new InvokeController(callbackClient, handlerRegistry, null);
+        InvokeController noExecController = new InvokeController(callbackDispatcher, handlerRegistry, null);
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = noExecController.invoke(request, null, null);
@@ -112,7 +114,7 @@ class InvokeControllerTest {
 
     @Test
     void invoke_blankHeaderAndBlankEnv_returnsBadRequest() {
-        InvokeController blankController = new InvokeController(callbackClient, handlerRegistry, "  ");
+        InvokeController blankController = new InvokeController(callbackDispatcher, handlerRegistry, "  ");
 
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = blankController.invoke(request, "  ", null);
