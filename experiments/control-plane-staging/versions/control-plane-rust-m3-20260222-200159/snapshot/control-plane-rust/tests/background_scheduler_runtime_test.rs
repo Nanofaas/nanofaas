@@ -4,10 +4,15 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tower::util::ServiceExt;
+
+fn enqueue_publish_delay_guard() -> &'static Mutex<()> {
+    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+    GUARD.get_or_init(|| Mutex::new(()))
+}
 
 fn one_shot_json_runtime(body: &str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test runtime");
@@ -93,6 +98,27 @@ async fn register_pool_function(app: &axum::Router, name: &str, endpoint_url: &s
         "executionMode": "DEPLOYMENT",
         "runtimeMode": "HTTP",
         "endpointUrl": endpoint_url,
+        "timeoutMs": 5000,
+        "concurrency": 2,
+        "queueSize": 20,
+        "maxRetries": 1
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
+async fn register_local_function(app: &axum::Router, name: &str) {
+    let payload = json!({
+        "name": name,
+        "image": "img-ok",
+        "executionMode": "LOCAL",
+        "runtimeMode": "HTTP",
         "timeoutMs": 5000,
         "concurrency": 2,
         "queueSize": 20,
@@ -235,5 +261,42 @@ async fn background_scheduler_dispatches_multiple_tasks_concurrently() {
         max_in_flight.load(Ordering::SeqCst) >= 2,
         "scheduler dispatched requests sequentially (max in-flight = {})",
         max_in_flight.load(Ordering::SeqCst)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn background_scheduler_enqueue_publish_order_keeps_task_visible_to_scheduler() {
+    let _guard = enqueue_publish_delay_guard()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let function_name = "bg-enqueue-order";
+    std::env::set_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION", function_name);
+    std::env::set_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS", "150");
+
+    let (app, _mgmt) = control_plane_rust::app::build_app_pair_with_background_scheduler();
+    register_local_function(&app, function_name).await;
+    let execution_id = enqueue(&app, function_name).await;
+
+    let mut saw_success = false;
+    for _ in 0..40 {
+        let payload = execution_payload(&app, &execution_id).await;
+        let status = payload["status"].as_str().unwrap_or_default();
+        if status == "success" {
+            saw_success = true;
+            break;
+        }
+        if status == "error" || status == "timeout" {
+            std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION");
+            std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS");
+            panic!("execution reached terminal non-success status: {payload}");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION");
+    std::env::remove_var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS");
+    assert!(
+        saw_success,
+        "background scheduler lost the task before its execution record was visible"
     );
 }

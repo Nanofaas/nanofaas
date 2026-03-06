@@ -1204,6 +1204,13 @@ fn enqueue_function(
     let execution_id = Uuid::new_v4().to_string();
     let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
     let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
+    let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
+    state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .put_now(record);
+    enqueue_publish_delay_for(name);
     if let Err(response) = state
         .queue_manager
         .lock()
@@ -1220,15 +1227,14 @@ fn enqueue_function(
         )
         .map_err(|_| StatusCode::TOO_MANY_REQUESTS.into_response())
     {
+        state
+            .execution_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&execution_id);
         abandon_idempotency_claim(&state, name, idem_claim.as_ref());
         return Err(response);
     }
-    let record = ExecutionRecord::new(&execution_id, name, ExecutionState::Queued);
-    state
-        .execution_store
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .put_now(record);
     state.metrics.enqueue(name);
     state.metrics.queue_depth(name);
     publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
@@ -1613,6 +1619,19 @@ fn queue_rejected_response(retry_after_seconds: &str, reason: &str) -> Response 
             .insert("X-Queue-Reject-Reason", reason);
     }
     response
+}
+
+fn enqueue_publish_delay_for(function_name: &str) {
+    let target_function = std::env::var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_FUNCTION").ok();
+    let delay_ms = std::env::var("NANOFAAS_TEST_ENQUEUE_PUBLISH_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0);
+    if target_function.as_deref() == Some(function_name) {
+        if let Some(delay_ms) = delay_ms {
+            std::thread::sleep(Duration::from_millis(delay_ms));
+        }
+    }
 }
 
 #[cfg(test)]
