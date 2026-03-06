@@ -68,4 +68,16 @@ class MetricsTest {
                 .tag("function", "echo").timer();
         assertThat(found).isSameAs(timer);
     }
+
+    @Test
+    void timers_reusesSameBundleOnWarmPath() {
+        Metrics.FunctionTimers first = metrics.timers("echo");
+        Metrics.FunctionTimers second = metrics.timers("echo");
+
+        assertThat(second).isSameAs(first);
+        assertThat(first.latency()).isSameAs(metrics.latency("echo"));
+        assertThat(first.initDuration()).isSameAs(metrics.initDuration("echo"));
+        assertThat(first.queueWait()).isSameAs(metrics.queueWait("echo"));
+        assertThat(first.e2eLatency()).isSameAs(metrics.e2eLatency("echo"));
+    }
 }

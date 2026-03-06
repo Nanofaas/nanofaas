@@ -88,6 +88,7 @@ public class ExecutionCompletionHandler {
         if (isTerminal(record.state())) {
             return;
         }
+        Metrics.FunctionTimers timers = metrics.timers(functionName);
 
         // Check if retry is needed BEFORE completing the future
         boolean shouldRetry = !result.success()
@@ -124,7 +125,7 @@ public class ExecutionCompletionHandler {
             record.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
             metrics.coldStart(functionName);
             if (dispatchResult.initDurationMs() != null) {
-                metrics.initDuration(functionName).record(dispatchResult.initDurationMs(), TimeUnit.MILLISECONDS);
+                timers.initDuration().record(dispatchResult.initDurationMs(), TimeUnit.MILLISECONDS);
             }
         } else {
             metrics.warmStart(functionName);
@@ -132,6 +133,8 @@ public class ExecutionCompletionHandler {
 
         // No retry - complete the execution atomically
         ExecutionRecord.Snapshot beforeComplete = record.snapshot();
+        InvocationTask task = beforeComplete.task();
+        java.time.Instant startedAt = beforeComplete.startedAt();
         if (result.success()) {
             record.markSuccess(result.output());
             metrics.success(functionName);
@@ -140,26 +143,25 @@ public class ExecutionCompletionHandler {
             metrics.error(functionName);
         }
 
-        ExecutionRecord.Snapshot afterComplete = record.snapshot();
-        if (beforeComplete.startedAt() != null && afterComplete.finishedAt() != null) {
-            long durationMs = afterComplete.finishedAt().toEpochMilli() - beforeComplete.startedAt().toEpochMilli();
-            metrics.latency(functionName).record(durationMs, TimeUnit.MILLISECONDS);
+        java.time.Instant finishedAt = record.finishedAt();
+        if (startedAt != null && finishedAt != null) {
+            long durationMs = finishedAt.toEpochMilli() - startedAt.toEpochMilli();
+            timers.latency().record(durationMs, TimeUnit.MILLISECONDS);
         }
 
         // Queue wait time: startedAt - enqueuedAt
-        InvocationTask task = record.task();
-        if (task.enqueuedAt() != null && beforeComplete.startedAt() != null) {
-            long queueWaitMs = beforeComplete.startedAt().toEpochMilli() - task.enqueuedAt().toEpochMilli();
+        if (task.enqueuedAt() != null && startedAt != null) {
+            long queueWaitMs = startedAt.toEpochMilli() - task.enqueuedAt().toEpochMilli();
             if (queueWaitMs >= 0) {
-                metrics.queueWait(functionName).record(queueWaitMs, TimeUnit.MILLISECONDS);
+                timers.queueWait().record(queueWaitMs, TimeUnit.MILLISECONDS);
             }
         }
 
         // E2E latency: finishedAt - enqueuedAt
-        if (task.enqueuedAt() != null && afterComplete.finishedAt() != null) {
-            long e2eMs = afterComplete.finishedAt().toEpochMilli() - task.enqueuedAt().toEpochMilli();
+        if (task.enqueuedAt() != null && finishedAt != null) {
+            long e2eMs = finishedAt.toEpochMilli() - task.enqueuedAt().toEpochMilli();
             if (e2eMs >= 0) {
-                metrics.e2eLatency(functionName).record(e2eMs, TimeUnit.MILLISECONDS);
+                timers.e2eLatency().record(e2eMs, TimeUnit.MILLISECONDS);
             }
         }
 
