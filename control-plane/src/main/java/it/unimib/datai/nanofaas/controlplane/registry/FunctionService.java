@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -51,9 +52,7 @@ public class FunctionService {
         FunctionSpec initialResolved = resolver.resolve(spec);
 
         return withFunctionLock(initialResolved.name(), () -> {
-            // Atomic winner selection happens before any side effects.
-            FunctionSpec existing = registry.putIfAbsent(initialResolved);
-            if (existing != null) {
+            if (registry.get(initialResolved.name()).isPresent()) {
                 return Optional.empty();
             }
 
@@ -80,16 +79,20 @@ public class FunctionService {
                             initialResolved.scalingConfig(),
                             initialResolved.imagePullSecrets()
                     );
-                    registry.put(resolved);
                 }
             } catch (RuntimeException e) {
-                registry.remove(initialResolved.name());
                 throw e;
             }
 
             FunctionSpec registered = resolved;
-            listeners.forEach(l -> l.onRegister(registered));
-            return Optional.of(registered);
+            try {
+                notifyRegisterListeners(registered);
+                registry.put(registered);
+                return Optional.of(registered);
+            } catch (RuntimeException e) {
+                rollbackProvisionedRegistration(registered, e);
+                throw e;
+            }
         });
     }
 
@@ -100,33 +103,93 @@ public class FunctionService {
      * Throws IllegalStateException if KubernetesResourceManager is not available.
      */
     public Optional<Integer> setReplicas(String name, int replicas) {
-        FunctionSpec spec = registry.get(name).orElse(null);
-        if (spec == null) {
-            return Optional.empty();
-        }
-        if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
-            throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
-        }
-        if (resourceManager == null) {
-            throw new IllegalStateException("KubernetesResourceManager not available");
-        }
-        resourceManager.setReplicas(name, replicas);
-        log.info("Set replicas for function {} to {}", name, replicas);
-        return Optional.of(replicas);
+        return withFunctionLock(name, () -> {
+            FunctionSpec spec = registry.get(name).orElse(null);
+            if (spec == null) {
+                return Optional.empty();
+            }
+            if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
+                throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
+            }
+            if (resourceManager == null) {
+                throw new IllegalStateException("KubernetesResourceManager not available");
+            }
+            resourceManager.setReplicas(name, replicas);
+            log.info("Set replicas for function {} to {}", name, replicas);
+            return Optional.of(replicas);
+        });
     }
 
     public Optional<FunctionSpec> remove(String name) {
         return withFunctionLock(name, () -> {
-            FunctionSpec removed = registry.remove(name);
-            if (removed != null) {
-                listeners.forEach(l -> l.onRemove(name));
-                if (removed.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
-                    resourceManager.deprovision(name);
+            FunctionSpec existing = registry.remove(name);
+            if (existing != null) {
+                List<FunctionRegistrationListener> notified = new ArrayList<>();
+                try {
+                    for (FunctionRegistrationListener listener : listeners) {
+                        listener.onRemove(name);
+                        notified.add(listener);
+                    }
+                    if (existing.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
+                        resourceManager.deprovision(name);
+                    }
+                } catch (RuntimeException e) {
+                    rollbackRemovalListeners(existing, notified, e);
+                    registry.put(existing);
+                    throw e;
                 }
-                return Optional.of(removed);
+                return Optional.of(existing);
             }
             return Optional.empty();
         });
+    }
+
+    private void rollbackProvisionedRegistration(FunctionSpec spec, RuntimeException failure) {
+        if (spec.executionMode() != ExecutionMode.DEPLOYMENT || resourceManager == null) {
+            return;
+        }
+        try {
+            resourceManager.deprovision(spec.name());
+        } catch (RuntimeException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
+    }
+
+    private void notifyRegisterListeners(FunctionSpec spec) {
+        List<FunctionRegistrationListener> notified = new ArrayList<>();
+        try {
+            for (FunctionRegistrationListener listener : listeners) {
+                listener.onRegister(spec);
+                notified.add(listener);
+            }
+        } catch (RuntimeException e) {
+            rollbackRegistrationListeners(spec.name(), notified, e);
+            throw e;
+        }
+    }
+
+    private void rollbackRegistrationListeners(String functionName,
+                                               List<FunctionRegistrationListener> notified,
+                                               RuntimeException failure) {
+        for (int i = notified.size() - 1; i >= 0; i--) {
+            try {
+                notified.get(i).onRemove(functionName);
+            } catch (RuntimeException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+        }
+    }
+
+    private void rollbackRemovalListeners(FunctionSpec spec,
+                                          List<FunctionRegistrationListener> notified,
+                                          RuntimeException failure) {
+        for (int i = notified.size() - 1; i >= 0; i--) {
+            try {
+                notified.get(i).onRegister(spec);
+            } catch (RuntimeException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+        }
     }
 
     private <T> T withFunctionLock(String functionName, Supplier<T> action) {

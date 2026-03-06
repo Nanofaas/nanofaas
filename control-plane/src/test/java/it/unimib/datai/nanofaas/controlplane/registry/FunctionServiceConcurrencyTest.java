@@ -192,4 +192,162 @@ class FunctionServiceConcurrencyTest {
         verify(localResourceManager, times(1)).provision(any());
         verify(localResourceManager, times(1)).deprovision("race-fn");
     }
+
+    @Test
+    void register_deploymentNotVisibleUntilProvisioningProducesFinalSpec() throws Exception {
+        FunctionRegistry localRegistry = new FunctionRegistry();
+        FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
+        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        FunctionService localService = new FunctionService(
+                localRegistry,
+                defaults,
+                localResourceManager,
+                ImageValidator.noOp(),
+                List.of()
+        );
+
+        CountDownLatch provisionStarted = new CountDownLatch(1);
+        CountDownLatch allowProvision = new CountDownLatch(1);
+        when(localResourceManager.provision(any())).thenAnswer(invocation -> {
+            provisionStarted.countDown();
+            if (!allowProvision.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish provision");
+            }
+            return "http://fn-svc:8080";
+        });
+
+        FunctionSpec spec = new FunctionSpec(
+                "deploy-fn", "img:latest",
+                null, null, null, null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null
+        );
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Optional<FunctionSpec>> registerFuture = executor.submit(() -> localService.register(spec));
+
+            assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(150);
+
+            assertThat(localService.get("deploy-fn")).isEmpty();
+            assertThat(localService.list()).isEmpty();
+            assertThat(localRegistry.get("deploy-fn")).isEmpty();
+
+            allowProvision.countDown();
+
+            Optional<FunctionSpec> registered = registerFuture.get(5, TimeUnit.SECONDS);
+            assertThat(registered).isPresent();
+            assertThat(localService.get("deploy-fn")).hasValueSatisfying(fn ->
+                    assertThat(fn.endpointUrl()).isEqualTo("http://fn-svc:8080"));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void remove_hidesFunctionWhileTeardownIsInProgress() throws Exception {
+        FunctionRegistry localRegistry = new FunctionRegistry();
+        FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
+        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
+        FunctionService localService = new FunctionService(
+                localRegistry,
+                defaults,
+                localResourceManager,
+                ImageValidator.noOp(),
+                List.of(listener)
+        );
+        when(localResourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+
+        CountDownLatch removalStarted = new CountDownLatch(1);
+        CountDownLatch allowRemoval = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            removalStarted.countDown();
+            if (!allowRemoval.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish remove");
+            }
+            return null;
+        }).when(listener).onRemove("tear-fn");
+
+        FunctionSpec spec = new FunctionSpec(
+                "tear-fn", "img:latest",
+                null, null, null, null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null
+        );
+        assertThat(localService.register(spec)).isPresent();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> localService.remove("tear-fn"));
+
+            assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(150);
+
+            assertThat(localService.get("tear-fn")).isEmpty();
+            assertThat(localService.list()).isEmpty();
+            assertThat(localRegistry.get("tear-fn")).isEmpty();
+
+            allowRemoval.countDown();
+
+            assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(localService.get("tear-fn")).isEmpty();
+        verify(localResourceManager).deprovision("tear-fn");
+    }
+
+    @Test
+    void setReplicas_waitsForRemovalAndDoesNotScaleFunctionUnderTeardown() throws Exception {
+        FunctionRegistry localRegistry = new FunctionRegistry();
+        FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
+        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
+        FunctionService localService = new FunctionService(
+                localRegistry,
+                defaults,
+                localResourceManager,
+                ImageValidator.noOp(),
+                List.of(listener)
+        );
+        when(localResourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+
+        CountDownLatch removalStarted = new CountDownLatch(1);
+        CountDownLatch allowRemoval = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            removalStarted.countDown();
+            if (!allowRemoval.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish remove");
+            }
+            return null;
+        }).when(listener).onRemove("tear-fn");
+
+        FunctionSpec spec = new FunctionSpec(
+                "tear-fn", "img:latest",
+                null, null, null, null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null
+        );
+        assertThat(localService.register(spec)).isPresent();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> localService.remove("tear-fn"));
+
+            assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Optional<Integer>> scaleFuture = executor.submit(() -> localService.setReplicas("tear-fn", 2));
+            Thread.sleep(150);
+
+            assertThat(scaleFuture.isDone()).isFalse();
+            assertThat(localRegistry.get("tear-fn")).isEmpty();
+
+            allowRemoval.countDown();
+
+            assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
+            assertThat(scaleFuture.get(5, TimeUnit.SECONDS)).isEmpty();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        verify(localResourceManager, never()).setReplicas("tear-fn", 2);
+        verify(localResourceManager).deprovision("tear-fn");
+    }
 }
