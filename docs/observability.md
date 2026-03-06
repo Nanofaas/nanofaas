@@ -53,8 +53,14 @@
   - traceId
   - attempt
   - status
+- In the Java function runtime, `executionId` in logs comes from `X-Execution-Id` first and falls back to configured `EXECUTION_ID` only when the header is missing or blank.
+- The runtime does not synthesize placeholder execution IDs for logging. If neither the request header nor `EXECUTION_ID` is available, MDC stays empty for `executionId`.
 
 ## Tracing
 
 - Propagate X-Trace-Id header from gateway to function pod.
+- The Java function runtime forwards `X-Trace-Id` from `/invoke` to the async completion callback. If the request header is absent, callback delivery falls back to configured `TRACE_ID`.
+- Callback delivery from the Java function runtime is asynchronous and bounded. `/invoke` returns without waiting for callback completion; when the dispatcher is saturated, the callback is dropped and the runtime logs a warning.
+- Callback retries in the Java function runtime are limited to retryable failures only: network/transport errors, HTTP `408`, HTTP `429`, and `5xx` responses. Other `4xx` callback responses are treated as permanent failures and are not retried.
+- Successful `/invoke` responses from the Java function runtime can carry `X-Cold-Start: true` and `X-Init-Duration-Ms` only for the first invocation attempt handled by that runtime process.
 - Optional: OpenTelemetry export in later phase.
