@@ -39,7 +39,9 @@ public class HandlerRegistry {
                 cached = handlers.get(functionHandler);
                 return cached;
             }
-            throw new IllegalStateException("Multiple FunctionHandler beans found; set FUNCTION_HANDLER env");
+            throw new IllegalStateException(
+                    "Multiple FunctionHandler beans found: " + handlers.keySet()
+                    + ". Set FUNCTION_HANDLER env to one of these names.");
         }
     }
 }

@@ -72,6 +72,25 @@ class HandlerRegistryTest {
     }
 
     @Test
+    void resolve_multipleHandlers_errorMessageListsAvailableBeans() {
+        ApplicationContext ctx = mock(ApplicationContext.class);
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
+        FunctionHandler h1 = mock(FunctionHandler.class);
+        FunctionHandler h2 = mock(FunctionHandler.class);
+        when(ctx.getBeansOfType(FunctionHandler.class))
+                .thenReturn(Map.of("alphaHandler", h1, "betaHandler", h2));
+
+        HandlerRegistry registry = new HandlerRegistry(ctx, settings);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, registry::resolve);
+
+        String msg = ex.getMessage();
+        assertTrue(msg.contains("alphaHandler") || msg.contains("betaHandler"),
+                "Error message should list available bean names but was: " + msg);
+        assertTrue(msg.contains("FUNCTION_HANDLER"),
+                "Error message should mention FUNCTION_HANDLER env var");
+    }
+
+    @Test
     void resolve_prefersInjectedHandlerNameOverAmbientEnv() {
         FunctionHandler h1 = request -> "a";
         FunctionHandler h2 = request -> "b";
