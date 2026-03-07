@@ -5,6 +5,7 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ArrayBlockingQueue;
@@ -16,7 +17,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class CallbackDispatcher {
     private static final Logger log = LoggerFactory.getLogger(CallbackDispatcher.class);
-    private static final int WORKER_COUNT = Math.max(2, Runtime.getRuntime().availableProcessors());
     private static final int QUEUE_CAPACITY = 128;
     private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
     private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
@@ -25,17 +25,19 @@ public class CallbackDispatcher {
     private final ThreadPoolExecutor executor;
 
     @Autowired
-    public CallbackDispatcher(CallbackClient callbackClient) {
+    public CallbackDispatcher(
+            CallbackClient callbackClient,
+            @Value("${nanofaas.callback.worker-count:2}") int workerCount) {
         this(callbackClient, new ThreadPoolExecutor(
-                WORKER_COUNT,
-                WORKER_COUNT,
+                workerCount,
+                workerCount,
                 0L,
                 TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(QUEUE_CAPACITY),
                 runnable -> {
                     Thread thread = new Thread(runnable);
                     thread.setName("callback-dispatcher-" + THREAD_COUNTER.incrementAndGet());
-                    thread.setDaemon(false);
+                    thread.setDaemon(true);  // daemon: JVM can exit even if callbacks are in-flight
                     return thread;
                 },
                 new ThreadPoolExecutor.AbortPolicy()));

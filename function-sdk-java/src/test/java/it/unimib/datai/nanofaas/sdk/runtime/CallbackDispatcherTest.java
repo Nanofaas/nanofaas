@@ -12,6 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -107,7 +108,7 @@ class CallbackDispatcherTest {
             }
             return true;
         });
-        dispatcher = new CallbackDispatcher(callbackClient);
+        dispatcher = new CallbackDispatcher(callbackClient, 2);
 
         assertTrue(dispatcher.submit("exec-1", InvocationResult.success("one"), "trace-1"));
         assertTrue(dispatcher.submit("exec-2", InvocationResult.success("two"), "trace-2"));
@@ -115,7 +116,8 @@ class CallbackDispatcherTest {
         assertTrue(started.await(1, TimeUnit.SECONDS));
         release.countDown();
         verify(callbackClient, timeout(2000).times(2)).sendResult(anyString(), any(), any());
-        assertTrue(daemonWorkers.get() == 0);
+        assertEquals(maxActive.get(), daemonWorkers.get(),
+                "Callback worker threads should be daemon threads");
         assertTrue(maxActive.get() >= 2);
     }
 
@@ -129,7 +131,7 @@ class CallbackDispatcherTest {
             assertTrue(release.await(2, TimeUnit.SECONDS));
             return true;
         });
-        dispatcher = new CallbackDispatcher(callbackClient);
+        dispatcher = new CallbackDispatcher(callbackClient, 2);
         assertTrue(dispatcher.submit("exec-1", InvocationResult.success("one"), "trace-1"));
         assertTrue(running.await(1, TimeUnit.SECONDS));
 
