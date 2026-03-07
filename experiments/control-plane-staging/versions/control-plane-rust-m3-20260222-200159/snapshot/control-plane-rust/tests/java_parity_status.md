@@ -58,7 +58,10 @@
 - VertxRuntimeHintsTest
 
 ## Notes
-- The inventory is complete, and the live Rust path is now aligned on invocation correctness, function lifecycle ordering, sync-queue admission, runtime-config admin semantics, and internal autoscaler `rps`.
+- The inventory is complete, and the live Rust path is now aligned on invocation correctness, function lifecycle ordering, sync-queue admission and execution semantics, runtime-config admin semantics, and internal autoscaler `rps`.
+- Runtime-config parity is now contract-level, not only schema-level: malformed values return `400`, semantic validation returns `422`, and supported Java-style fractional ISO durations are accepted.
+- Accepted concurrency-control config is applied to live queue state; this area is no longer a documented no-op in the Rust snapshot.
+- Observability parity is stricter: sync queue wait is exported as `sync_queue_wait_ms`, and dispatch-rate accounting no longer shares the same hot lock as timer/counter mutation.
 - `tests/java_parity_generated_test.rs` no longer carries placeholder debt; the remaining work is primarily end-to-end transport/runtime parity.
 - Dockerized E2E should be read as a staging oracle: after harness hardening, remaining failures should be treated as real behavior gaps, not lock-poison cascades.
 - Remaining notable gaps are full `PoolDispatcher` transport parity, build-metadata parity, and green dockerized SDK examples.

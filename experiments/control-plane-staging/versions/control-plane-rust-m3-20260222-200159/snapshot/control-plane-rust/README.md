@@ -22,6 +22,8 @@ end-to-end parity.
   - execution store with TTL/stale eviction semantics aligned to completion
   - idempotency store with atomic claim/publish semantics on live paths
 - Core rate limiter + runtime-config admin snapshot/validation
+  - malformed admin inputs return `400`, semantic validation errors return `422`
+  - Java-style fractional ISO-8601 seconds such as `PT0.5S` are accepted
 - Dispatcher parity block:
   - `Dispatcher` trait
   - `LocalDispatcher`
@@ -30,14 +32,19 @@ end-to-end parity.
 - Queue/scheduler parity block:
   - async queue scheduling with ordered ready-function dispatch
   - sync queue admission with `depth` / `est_wait` rejection semantics
+  - sync invoke requests use the queue-backed live path when sync-queue support is enabled
   - bounded scheduler backoff and no ready-work stall behind blocked functions
 - Internal autoscaler parity block:
   - `queue_depth`, `in_flight`, and `rps` metric handling
   - runtime-config-backed sync-queue settings
+  - accepted concurrency-control config is applied to live queue state instead of being a no-op
 - Execution lifecycle parity block:
   - `ExecutionRecord` transition methods (`mark_running/success/error/timeout`, retry reset)
   - legacy mutator/accessor compatibility surface
   - snapshot metadata (`dispatched_at`, cold start, init duration)
+- Observability parity block:
+  - sync queue wait metric exported as `sync_queue_wait_ms`
+  - dispatch-rate tracking uses a dedicated hot-path lock separate from timer/counter storage
 
 ## Test Parity Map (Java intent -> Rust test)
 
@@ -107,11 +114,12 @@ cargo test -q --test e2e_dockerized_sdk_examples_test
 If Docker is not available, these tests are skipped.
 
 Important: this staging snapshot still does not claim a green parity baseline.
-Inventory coverage is broad and the live core is much closer to Java semantics,
-but dockerized SDK examples may still expose real behavioral gaps. The current
-known baseline failure remains the `word-stats-java` health timeout in the
-dockerized SDK examples flow; the harness should isolate that failure instead of
-cascading into `PoisonError` follow-up noise.
+Inventory coverage is broad and the live core now matches Java intent on the
+highest-risk control-plane paths, but dockerized SDK examples may still expose
+real behavioral gaps. The current known baseline failure remains the
+`word-stats-java` health timeout in the dockerized SDK examples flow; the
+harness should isolate that failure instead of cascading into `PoisonError`
+follow-up noise.
 
 ## Remaining Gaps
 
