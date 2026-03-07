@@ -247,3 +247,43 @@ async fn syncInvokeReturnsDepthRejectionWhenConfiguredDepthWouldBeExceeded() {
     let first_res = first_handle.await.unwrap();
     assert_eq!(first_res.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn syncInvokeWhenSyncQueueEnabled_recordsQueuedMetricsAndCompletesThroughQueuePath() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+        ("NANOFAAS_SYNC_QUEUE_RETRY_AFTER_SECONDS", "2"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_ESTIMATED_WAIT_MS", "1000"),
+    ]);
+    let app = control_plane_rust::app::build_app();
+    let runtime = delayed_json_runtime(r#"{"message":"ok"}"#, Duration::from_millis(50), 1);
+    register_function(&app, "echo-queued", &runtime, 1).await;
+
+    let invoke = Request::builder()
+        .method("POST")
+        .uri("/v1/functions/echo-queued:invoke")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"input":"payload"}).to_string()))
+        .unwrap();
+    let invoke_res = app.clone().oneshot(invoke).await.unwrap();
+    assert_eq!(invoke_res.status(), StatusCode::OK);
+
+    let scrape = Request::builder()
+        .method("GET")
+        .uri("/actuator/prometheus")
+        .body(Body::empty())
+        .unwrap();
+    let scrape_res = app.clone().oneshot(scrape).await.unwrap();
+    assert_eq!(scrape_res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(scrape_res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(text.contains("function_enqueue_total{function=\"echo-queued\"}"));
+}

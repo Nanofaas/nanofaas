@@ -1009,12 +1009,12 @@ async fn invoke_function(
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
     state.metrics.in_flight(name);
 
-    // When background scheduling is active, sync invoke should use the queue-backed
-    // path whenever either async queue orchestration or sync queue orchestration is enabled.
-    // This preserves function queue semantics and lets the caller wait on terminal state.
-    if state.background_scheduler_enabled
-        && (state.enqueuer.enabled() || state.sync_queue.enabled())
-    {
+    // Sync invoke should use the queue-backed path whenever either background queue
+    // orchestration is active or the sync queue module is enabled. When sync queue is
+    // active without the background scheduler, the request drains its queued task inline
+    // and still waits on the terminal execution record.
+    let background_queue_drives_dispatch = state.background_scheduler_enabled && state.enqueuer.enabled();
+    if background_queue_drives_dispatch || state.sync_queue.enabled() {
         let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
         let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
         let (record, rx) = ExecutionRecord::new_with_completion(&execution_id, name);
@@ -1053,6 +1053,24 @@ async fn invoke_function(
         state.metrics.enqueue(name);
         state.metrics.queue_depth(name);
         publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
+
+        if state.sync_queue.enabled() && !background_queue_drives_dispatch {
+            let dispatched = drain_once(name, state.clone())
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())?;
+            if !dispatched {
+                state
+                    .execution_store
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&execution_id);
+                if state.sync_queue.enabled() {
+                    state.sync_queue.release(name);
+                }
+                abandon_idempotency_claim(&state, name, idem_claim.as_ref());
+                return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            }
+        }
 
         let response = match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
             Ok(Ok(_)) => {
