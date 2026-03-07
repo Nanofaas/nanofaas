@@ -1055,21 +1055,23 @@ async fn invoke_function(
         publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
 
         if state.sync_queue.enabled() && !background_queue_drives_dispatch {
-            let dispatched = drain_once(name, state.clone())
+            let state_for_drive = state.clone();
+            let function_name = name.to_string();
+            let execution_id_for_drive = execution_id.clone();
+            tokio::spawn(async move {
+                if let Err(err) = drive_sync_queue_until_terminal(
+                    &function_name,
+                    &execution_id_for_drive,
+                    state_for_drive,
+                )
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())?;
-            if !dispatched {
-                state
-                    .execution_store
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&execution_id);
-                if state.sync_queue.enabled() {
-                    state.sync_queue.release(name);
+                {
+                    eprintln!(
+                        "sync queue inline driver failed for {} / {}: {}",
+                        function_name, execution_id_for_drive, err
+                    );
                 }
-                abandon_idempotency_claim(&state, name, idem_claim.as_ref());
-                return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
-            }
+            });
         }
 
         let response = match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
@@ -1522,6 +1524,35 @@ async fn drain_once(name: &str, state: AppState) -> Result<bool, String> {
         }
     }
     Ok(dispatched)
+}
+
+fn execution_reached_terminal_state(execution_id: &str, state: &AppState) -> bool {
+    state
+        .execution_store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(execution_id)
+        .map(|record| record.is_terminal())
+        .unwrap_or(true)
+}
+
+async fn drive_sync_queue_until_terminal(
+    function_name: &str,
+    execution_id: &str,
+    state: AppState,
+) -> Result<(), String> {
+    loop {
+        if execution_reached_terminal_state(execution_id, &state) {
+            return Ok(());
+        }
+        let dispatched = drain_once(function_name, state.clone()).await?;
+        if execution_reached_terminal_state(execution_id, &state) {
+            return Ok(());
+        }
+        if !dispatched {
+            tokio::task::yield_now().await;
+        }
+    }
 }
 
 async fn complete_execution(

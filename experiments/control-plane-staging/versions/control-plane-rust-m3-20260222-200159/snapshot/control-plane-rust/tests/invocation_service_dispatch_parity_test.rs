@@ -55,6 +55,39 @@ async fn register_function(
     register_function_with_config(app, name, image, execution_mode, endpoint_url, 1, 20).await;
 }
 
+async fn register_function_with_retry_config(
+    app: &axum::Router,
+    name: &str,
+    image: &str,
+    execution_mode: &str,
+    endpoint_url: Option<&str>,
+    concurrency: usize,
+    queue_size: usize,
+    max_retries: u32,
+) {
+    let mut payload = json!({
+        "name": name,
+        "image": image,
+        "executionMode": execution_mode,
+        "runtimeMode": "HTTP",
+        "concurrency": concurrency,
+        "queueSize": queue_size,
+        "maxRetries": max_retries
+    });
+    if let Some(endpoint) = endpoint_url {
+        payload["endpointUrl"] = Value::String(endpoint.to_string());
+    }
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
 async fn register_function_with_config(
     app: &axum::Router,
     name: &str,
@@ -438,6 +471,70 @@ async fn invokeSync_whenBackgroundSchedulerAndSyncQueueEnabled_usesQueueBackedDi
 }
 
 #[tokio::test]
+async fn invokeSync_whenSyncQueueEnabled_preservesTimeoutSemantics() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app();
+    let endpoint = delayed_json_runtime("{\"result\":\"slow\"}", Duration::from_millis(250), 1);
+    register_function_with_config(
+        &app,
+        "sync-timeout",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        1,
+        20,
+    )
+    .await;
+
+    let response = invoke_sync_with_headers(&app, "sync-timeout", None, Some(50)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["status"], "timeout");
+    let execution_id = payload["executionId"].as_str().unwrap();
+    assert_eq!(execution_status(&app, execution_id).await, "timeout");
+}
+
+#[tokio::test]
+async fn invokeSync_whenSyncQueueEnabled_waitsForRetryToReachTerminalState() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app();
+    register_function_with_retry_config(
+        &app,
+        "sync-retry-terminal",
+        "img",
+        "POOL",
+        Some("http://127.0.0.1:9/invoke"),
+        1,
+        20,
+        2,
+    )
+    .await;
+
+    let response = invoke_sync_with_headers(&app, "sync-retry-terminal", None, Some(250)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["status"], "error");
+    let execution_id = payload["executionId"].as_str().unwrap();
+    assert_eq!(execution_status(&app, execution_id).await, "error");
+}
+
+#[tokio::test]
 async fn invokeSyncReactive_whenSyncQueueRejects_emitsReactiveError() {
     let app = control_plane_rust::app::build_app();
     register_function(
@@ -461,6 +558,9 @@ async fn invokeSyncReactive_whenSyncQueueRejects_emitsReactiveError() {
 
 #[tokio::test]
 async fn invokeWithCompetingIdempotencyKey_allocatesOnce() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let app = control_plane_rust::app::build_app();
     let contenders = 8usize;
     let endpoint = delayed_json_runtime("{\"result\":\"ok\"}", Duration::from_millis(120), contenders);
