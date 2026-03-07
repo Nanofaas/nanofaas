@@ -1,8 +1,10 @@
+import asyncio
+import io
+import json
+import logging
+
 import pytest
 from nanofaas.sdk import context, decorator, logging as sdk_logging
-import logging
-import json
-import io
 
 def test_context_management():
     context.set_context("exec-123", "trace-456")
@@ -37,8 +39,6 @@ def test_json_logging(capsys):
     assert log_data["trace_id"] == "trace-000"
     assert "timestamp" in log_data
     assert log_data["level"] == "INFO"
-
-import asyncio
 
 def test_decorator_preserves_async_handler():
     @decorator.nanofaas_function

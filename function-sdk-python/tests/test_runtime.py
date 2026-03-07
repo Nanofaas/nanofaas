@@ -1,12 +1,16 @@
-import pytest
-from fastapi.testclient import TestClient
 import os
 import sys
+import threading
 from unittest.mock import patch, MagicMock
+
+import pytest
+import requests
+from fastapi.testclient import TestClient
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 
+import nanofaas.runtime.app as _app
 from nanofaas.runtime.app import app
 from nanofaas.sdk import decorator
 
@@ -94,8 +98,6 @@ def test_callback_triggered(mock_post, client):
 @patch("nanofaas.runtime.app.asyncio.to_thread")
 def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
     """send_callback must offload requests.post to a thread, not call it directly."""
-    import asyncio as _asyncio
-
     mock_response = MagicMock()
     mock_response.status_code = 200
 
@@ -118,15 +120,10 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
     )
     assert response.status_code == 200
     mock_to_thread.assert_called()
-    import requests as _requests
-    assert mock_to_thread.call_args[0][0] is _requests.post
-
-import threading as _threading
+    assert mock_to_thread.call_args[0][0] is requests.post
 
 def test_cold_start_counted_exactly_once_under_concurrency(client, monkeypatch):
     """Only the very first request must be flagged as a cold start."""
-    import nanofaas.runtime.app as _app
-
     # Reset the cold-start flag so this test is independent of execution order.
     monkeypatch.setattr(_app, "_first_invocation", True)
 
@@ -149,7 +146,7 @@ def test_cold_start_counted_exactly_once_under_concurrency(client, monkeypatch):
         except Exception as e:
             errors.append(e)
 
-    threads = [_threading.Thread(target=invoke, args=(i,)) for i in range(10)]
+    threads = [threading.Thread(target=invoke, args=(i,)) for i in range(10)]
     for t in threads:
         t.start()
     for t in threads:

@@ -82,7 +82,7 @@ async def send_callback(callback_url: str, execution_id: str, trace_id: str | No
 
     logger.info(f"Sending callback to {url}")
     delays = [0.1, 0.5]
-    for attempt in range(3):
+    for attempt, delay in enumerate(delays):
         try:
             resp = await asyncio.to_thread(
                 requests.post, url, json=result, headers=headers, timeout=5
@@ -93,9 +93,19 @@ async def send_callback(callback_url: str, execution_id: str, trace_id: str | No
             logger.warning(f"Callback failed with status {resp.status_code} (attempt {attempt + 1})")
         except Exception as e:
             logger.warning(f"Callback error: {e} (attempt {attempt + 1})")
+        await asyncio.sleep(delay)
 
-        if attempt < len(delays):
-            await asyncio.sleep(delays[attempt])
+    # Final attempt (no sleep after)
+    try:
+        resp = await asyncio.to_thread(
+            requests.post, url, json=result, headers=headers, timeout=5
+        )
+        if resp.status_code < 400:
+            logger.info("Callback sent successfully")
+            return
+        logger.warning(f"Callback failed with status {resp.status_code} (attempt {len(delays) + 1})")
+    except Exception as e:
+        logger.warning(f"Callback error: {e} (attempt {len(delays) + 1})")
 
     logger.error("Callback failed after all retries")
 
