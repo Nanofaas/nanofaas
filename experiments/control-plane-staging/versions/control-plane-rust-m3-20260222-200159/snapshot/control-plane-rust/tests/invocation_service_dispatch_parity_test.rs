@@ -88,6 +88,39 @@ async fn register_function_with_retry_config(
     assert_eq!(res.status(), StatusCode::CREATED);
 }
 
+async fn register_function_with_scaling_config(
+    app: &axum::Router,
+    name: &str,
+    image: &str,
+    execution_mode: &str,
+    endpoint_url: Option<&str>,
+    concurrency: usize,
+    queue_size: usize,
+    scaling_config: Value,
+) {
+    let mut payload = json!({
+        "name": name,
+        "image": image,
+        "executionMode": execution_mode,
+        "runtimeMode": "HTTP",
+        "concurrency": concurrency,
+        "queueSize": queue_size,
+        "scalingConfig": scaling_config
+    });
+    if let Some(endpoint) = endpoint_url {
+        payload["endpointUrl"] = Value::String(endpoint.to_string());
+    }
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
 async fn register_function_with_config(
     app: &axum::Router,
     name: &str,
@@ -505,6 +538,57 @@ async fn invokeSync_whenBackgroundSchedulerAndSyncQueueEnabled_usesQueueBackedDi
         max_in_flight.load(Ordering::SeqCst),
         1,
         "sync invoke should honor function queue concurrency when sync queue is enabled"
+    );
+}
+
+#[tokio::test]
+async fn invokeSync_whenStaticConcurrencyControlIsConfigured_limitsEffectiveDispatchConcurrency() {
+    let app = control_plane_rust::app::build_app_pair_with_background_scheduler().0;
+    let (endpoint, max_in_flight) = delayed_json_runtime_with_max_in_flight(
+        "{\"result\":\"ok\"}",
+        Duration::from_millis(250),
+        2,
+    );
+    register_function_with_scaling_config(
+        &app,
+        "static-cc",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        4,
+        20,
+        json!({
+            "strategy": "INTERNAL",
+            "minReplicas": 1,
+            "maxReplicas": 4,
+            "metrics": [{"type": "in_flight", "target": "2"}],
+            "concurrencyControl": {
+                "mode": "STATIC_PER_POD",
+                "targetInFlightPerPod": 1
+            }
+        }),
+    )
+    .await;
+
+    let first = tokio::spawn({
+        let app_for_first = app.clone();
+        async move { invoke_sync(&app_for_first, "static-cc").await }
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let second = tokio::spawn({
+        let app_for_second = app.clone();
+        async move { invoke_sync(&app_for_second, "static-cc").await }
+    });
+
+    let first_payload = response_json(first.await.unwrap()).await;
+    let second_payload = response_json(second.await.unwrap()).await;
+
+    assert_eq!(first_payload["status"], "success");
+    assert_eq!(second_payload["status"], "success");
+    assert_eq!(
+        max_in_flight.load(Ordering::SeqCst),
+        1,
+        "static concurrencyControl should cap the queue manager's effective concurrency"
     );
 }
 

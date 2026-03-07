@@ -7,8 +7,8 @@ use crate::kubernetes::{
 use crate::kubernetes_live::InClusterKubernetesManager;
 use crate::metrics::Metrics;
 use crate::model::{
-    ExecutionStatus, FunctionSpec, InvocationRequest, InvocationResponse, ScalingConfig,
-    ScalingMetric, ScalingStrategy,
+    ConcurrencyControlMode, ExecutionStatus, FunctionSpec, InvocationRequest,
+    InvocationResponse, ScalingConfig, ScalingMetric, ScalingStrategy,
 };
 use crate::queue::{InvocationTask, QueueManager};
 use crate::rate_limiter::RateLimiter;
@@ -829,6 +829,7 @@ async fn create_function(
             resolved_spec.queue_size.unwrap_or(100).max(1) as usize,
             resolved_spec.concurrency.unwrap_or(1).max(1) as usize,
         );
+    apply_concurrency_control_to_queue(&state, &resolved_spec);
 
     drop(_guard);
     cleanup_function_lock(&state, &resolved_spec.name, &function_lock).await;
@@ -969,19 +970,19 @@ async fn invoke_function(
         if image.contains("sync-reject-est-wait") {
             state.metrics.sync_queue_rejected(name);
             state.metrics.sync_queue_depth(name);
-            state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+            state.metrics.sync_queue_wait_ms(name).record_ms(1);
             return Err(queue_rejected_response("7", "est_wait"));
         }
         if image.contains("sync-reject-depth") {
             state.metrics.sync_queue_rejected(name);
             state.metrics.sync_queue_depth(name);
-            state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+            state.metrics.sync_queue_wait_ms(name).record_ms(1);
             return Err(queue_rejected_response("3", "depth"));
         }
         if image.contains("rate-limited") || image.contains("queue-full") {
             state.metrics.sync_queue_rejected(name);
             state.metrics.sync_queue_depth(name);
-            state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+            state.metrics.sync_queue_wait_ms(name).record_ms(1);
             return Err(StatusCode::TOO_MANY_REQUESTS.into_response());
         }
     }
@@ -995,7 +996,7 @@ async fn invoke_function(
     {
         state.metrics.sync_queue_rejected(name);
         state.metrics.sync_queue_depth(name);
-        state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+        state.metrics.sync_queue_wait_ms(name).record_ms(1);
         return Err(StatusCode::TOO_MANY_REQUESTS.into_response());
     }
 
@@ -1006,7 +1007,7 @@ async fn invoke_function(
             state.metrics.sync_queue_depth(name);
             state
                 .metrics
-                .sync_queue_wait_seconds(name)
+                .sync_queue_wait_ms(name)
                 .record_ms(rejection.est_wait_ms.unwrap_or(1));
             let reason = match rejection.reason {
                 SyncQueueRejectReason::EstWait => "est_wait",
@@ -1024,7 +1025,7 @@ async fn invoke_function(
 
     let execution_id = Uuid::new_v4().to_string();
     state.metrics.sync_queue_admitted(name);
-    state.metrics.sync_queue_wait_seconds(name).record_ms(1);
+    state.metrics.sync_queue_wait_ms(name).record_ms(1);
     state.metrics.in_flight(name);
 
     // Sync invoke should use the queue-backed path whenever either background queue
@@ -1813,6 +1814,28 @@ fn to_function_spec(spec: &ResolverFunctionSpec) -> FunctionSpec {
         image_pull_secrets: None,
         runtime_command: spec.runtime_command.clone(),
     }
+}
+
+fn apply_concurrency_control_to_queue(state: &AppState, spec: &FunctionSpec) {
+    let configured_concurrency = spec.concurrency.unwrap_or(1).max(1) as usize;
+    let effective_concurrency = spec
+        .scaling_config
+        .clone()
+        .and_then(|value| serde_json::from_value::<ScalingConfig>(value).ok())
+        .and_then(|config| config.concurrency_control)
+        .and_then(|control| match control.mode {
+            ConcurrencyControlMode::Fixed => None,
+            ConcurrencyControlMode::StaticPerPod | ConcurrencyControlMode::AdaptivePerPod => {
+                Some(control.target_in_flight_per_pod.max(1) as usize)
+            }
+        })
+        .unwrap_or(configured_concurrency);
+
+    state
+        .queue_manager
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .set_effective_concurrency(&spec.name, effective_concurrency);
 }
 
 async fn function_lock(state: &AppState, name: &str) -> Arc<tokio::sync::Mutex<()>> {

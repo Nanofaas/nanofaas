@@ -423,7 +423,7 @@ async fn k8sSyncQueueBackpressure() {
     let text = scrape.text().await.expect("prometheus text");
     assert!(text.contains("sync_queue_admitted_total"));
     assert!(text.contains("sync_queue_rejected_total"));
-    assert!(text.contains("sync_queue_wait_seconds_count"));
+    assert!(text.contains("sync_queue_wait_ms_count"));
     assert!(text.contains("sync_queue_depth"));
 }
 

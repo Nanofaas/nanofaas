@@ -286,4 +286,5 @@ async fn syncInvokeWhenSyncQueueEnabled_recordsQueuedMetricsAndCompletesThroughQ
     let text = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(text.contains("function_enqueue_total{function=\"echo-queued\"}"));
+    assert!(text.contains("sync_queue_wait_ms_count{function=\"echo-queued\"}"));
 }

@@ -142,8 +142,8 @@ impl Metrics {
         self.inc_counter("sync_queue_depth", function);
     }
 
-    pub fn sync_queue_wait_seconds(&self, function: &str) -> TimerHandle {
-        self.timer("sync_queue_wait_seconds", function)
+    pub fn sync_queue_wait_ms(&self, function: &str) -> TimerHandle {
+        self.timer("sync_queue_wait_ms", function)
     }
 
     pub fn latency(&self, function: &str) -> TimerHandle {
