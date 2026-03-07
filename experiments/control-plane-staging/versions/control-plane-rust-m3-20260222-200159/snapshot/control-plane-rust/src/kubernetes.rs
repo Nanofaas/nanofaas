@@ -2,6 +2,7 @@ use crate::dispatch::{KubernetesMetricsTranslator, MetricSpec};
 use crate::model::{FunctionSpec, ScalingConfig, ScalingStrategy};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 const PROM_SCRAPE: &str = "prometheus.io/scrape";
 const PROM_PATH: &str = "prometheus.io/path";
@@ -500,6 +501,8 @@ impl KubernetesResourceManager {
     }
 
     pub fn provision(&self, spec: &FunctionSpec) -> String {
+        maybe_sleep_for_test("NANOFAAS_TEST_INMEMORY_PROVISION_DELAY_MS");
+        maybe_sleep_for_image(spec.image.as_deref(), "test-provision-delay-ms-");
         let deployment = self.builder.build_deployment(spec);
         let service = self.builder.build_service(spec);
 
@@ -527,6 +530,7 @@ impl KubernetesResourceManager {
     }
 
     pub fn deprovision(&self, function_name: &str) {
+        maybe_sleep_for_test("NANOFAAS_TEST_INMEMORY_DEPROVISION_DELAY_MS");
         let deployment_name = KubernetesDeploymentBuilder::deployment_name(function_name);
         let service_name = KubernetesDeploymentBuilder::service_name(function_name);
         self.client
@@ -557,6 +561,35 @@ impl KubernetesResourceManager {
 
     pub fn client(&self) -> &InMemoryKubernetesClient {
         &self.client
+    }
+}
+
+fn maybe_sleep_for_test(env_name: &str) {
+    let Some(delay_ms) = std::env::var(env_name)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+    else {
+        return;
+    };
+    if delay_ms > 0 {
+        std::thread::sleep(Duration::from_millis(delay_ms));
+    }
+}
+
+fn maybe_sleep_for_image(image: Option<&str>, marker: &str) {
+    let Some(image) = image else {
+        return;
+    };
+    let Some(index) = image.find(marker) else {
+        return;
+    };
+    let value = &image[index + marker.len()..];
+    let digits: String = value.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    let Some(delay_ms) = digits.parse::<u64>().ok() else {
+        return;
+    };
+    if delay_ms > 0 {
+        std::thread::sleep(Duration::from_millis(delay_ms));
     }
 }
 

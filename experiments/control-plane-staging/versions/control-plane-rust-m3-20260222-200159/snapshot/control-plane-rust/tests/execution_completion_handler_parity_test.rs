@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
+use std::time::Duration;
 use tower::util::ServiceExt;
 
 async fn register_pool_function(
@@ -106,6 +107,27 @@ async fn execution(app: &axum::Router, execution_id: &str) -> Value {
     serde_json::from_slice(&body).unwrap()
 }
 
+async fn complete_execution(
+    app: &axum::Router,
+    execution_id: &str,
+    status: &str,
+    output: Option<Value>,
+) -> StatusCode {
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/v1/internal/executions/{execution_id}:complete"))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "status": status,
+                "output": output
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    app.clone().oneshot(request).await.unwrap().status()
+}
+
 fn one_shot_json_runtime(body: &str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test runtime");
     let addr = listener.local_addr().expect("runtime local addr");
@@ -124,6 +146,47 @@ fn one_shot_json_runtime(body: &str) -> String {
         }
     });
     format!("http://127.0.0.1:{}/invoke", addr.port())
+}
+
+fn delayed_json_runtime(body: &str, delay: Duration) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed runtime");
+    let addr = listener.local_addr().expect("delayed runtime local addr");
+    let response_body = body.to_string();
+    thread::spawn(move || {
+        if let Ok((mut socket, _)) = listener.accept() {
+            let mut buf = [0u8; 2048];
+            let _ = socket.read(&mut buf);
+            thread::sleep(delay);
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            let _ = socket.write_all(reply.as_bytes());
+            let _ = socket.flush();
+        }
+    });
+    format!("http://127.0.0.1:{}/invoke", addr.port())
+}
+
+async fn invoke_sync_with_timeout(
+    app: &axum::Router,
+    function_name: &str,
+    timeout_ms: u64,
+) -> Value {
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/v1/functions/{function_name}:invoke"))
+        .header("content-type", "application/json")
+        .header("X-Timeout-Ms", timeout_ms.to_string())
+        .body(Body::from(json!({"input":"payload"}).to_string()))
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&body).unwrap()
 }
 
 #[tokio::test]
@@ -238,6 +301,79 @@ async fn retryWithQueueFull_completesFutureWithError() {
     let execution_id = body["executionId"].as_str().unwrap().to_string();
     let _ = drain_once(&app, "retry-qfull").await;
     assert_eq!(execution(&app, &execution_id).await["status"], "error");
+}
+
+#[tokio::test]
+async fn invokeSync_timeoutReturnsTimeoutStatus() {
+    let app = control_plane_rust::app::build_app();
+    let endpoint = delayed_json_runtime("{\"ok\":\"late\"}", Duration::from_millis(80));
+
+    let create = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "name": "timeout-direct",
+                "image": "img",
+                "executionMode": "POOL",
+                "runtimeMode": "HTTP",
+                "endpointUrl": endpoint,
+                "timeoutMs": 10
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let create_res = app.clone().oneshot(create).await.unwrap();
+    assert_eq!(create_res.status(), StatusCode::CREATED);
+
+    let payload = invoke_sync_with_timeout(&app, "timeout-direct", 10).await;
+    let execution_id = payload["executionId"].as_str().unwrap().to_string();
+
+    assert_eq!(payload["status"], "timeout");
+    assert_eq!(execution(&app, &execution_id).await["status"], "timeout");
+}
+
+#[tokio::test]
+async fn timeout_isTerminal_andLateCompletionDoesNotRewriteExecution() {
+    let app = control_plane_rust::app::build_app();
+    let endpoint = delayed_json_runtime("{\"ok\":\"late\"}", Duration::from_millis(80));
+
+    let create = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "name": "timeout-terminal",
+                "image": "img",
+                "executionMode": "POOL",
+                "runtimeMode": "HTTP",
+                "endpointUrl": endpoint,
+                "timeoutMs": 10
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let create_res = app.clone().oneshot(create).await.unwrap();
+    assert_eq!(create_res.status(), StatusCode::CREATED);
+
+    let payload = invoke_sync_with_timeout(&app, "timeout-terminal", 10).await;
+    let execution_id = payload["executionId"].as_str().unwrap().to_string();
+    assert_eq!(payload["status"], "timeout");
+
+    let completion_status = complete_execution(
+        &app,
+        &execution_id,
+        "success",
+        Some(json!({"ok":"too-late"})),
+    )
+    .await;
+    assert_eq!(completion_status, StatusCode::NO_CONTENT);
+
+    let stored = execution(&app, &execution_id).await;
+    assert_eq!(stored["status"], "timeout");
+    assert!(stored["output"].is_null());
 }
 
 #[tokio::test]

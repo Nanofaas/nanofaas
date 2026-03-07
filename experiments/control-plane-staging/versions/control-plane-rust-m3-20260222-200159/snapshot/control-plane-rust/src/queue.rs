@@ -144,6 +144,7 @@ pub struct QueueManager {
     capacity_per_function: usize,
     queues: HashMap<String, std::sync::Arc<FunctionQueueState>>,
     signaled_functions: HashSet<String>,
+    signaled_order: VecDeque<String>,
 }
 
 impl QueueManager {
@@ -152,6 +153,7 @@ impl QueueManager {
             capacity_per_function,
             queues: HashMap::new(),
             signaled_functions: HashSet::new(),
+            signaled_order: VecDeque::new(),
         }
     }
 
@@ -246,10 +248,12 @@ impl QueueManager {
     pub fn remove_function(&mut self, function_name: &str) {
         self.queues.remove(function_name);
         self.signaled_functions.remove(function_name);
+        self.signaled_order.retain(|name| name != function_name);
     }
 
     pub fn queued_functions(&self) -> Vec<String> {
-        self.queues
+        let mut queued: Vec<_> = self
+            .queues
             .iter()
             .filter_map(|(name, state)| {
                 if state.queued() == 0 {
@@ -258,15 +262,25 @@ impl QueueManager {
                     Some(name.clone())
                 }
             })
-            .collect()
+            .collect();
+        queued.sort();
+        queued
     }
 
     pub fn signal_work(&mut self, function_name: &str) {
-        self.signaled_functions.insert(function_name.to_string());
+        if self.signaled_functions.insert(function_name.to_string()) {
+            self.signaled_order.push_back(function_name.to_string());
+        }
     }
 
     pub fn take_signaled_functions(&mut self) -> Vec<String> {
-        self.signaled_functions.drain().collect()
+        let mut drained = Vec::with_capacity(self.signaled_order.len());
+        while let Some(function_name) = self.signaled_order.pop_front() {
+            if self.signaled_functions.remove(&function_name) {
+                drained.push(function_name);
+            }
+        }
+        drained
     }
 
     fn get_or_create(

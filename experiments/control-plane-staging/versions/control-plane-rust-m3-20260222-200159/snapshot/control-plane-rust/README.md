@@ -1,9 +1,15 @@
-# Control-Plane Rust M3 (Staging Only)
+# Control-Plane Rust Staging Snapshot
 
-This is the M3 Rust port of the Java control-plane, implemented only under
+This is the staging Rust port of the Java control-plane, implemented only under
 `experiments/control-plane-staging/`.
 
-## M3 Scope
+The snapshot now aligns the live Rust path with the Java control-plane on the
+highest-risk areas: invocation correctness, function lifecycle visibility,
+sync-queue admission semantics, runtime-config admin APIs, and internal
+autoscaler `rps` handling. It is still a staging target, not a claim of full
+end-to-end parity.
+
+## Implemented Scope
 
 - Core HTTP API surface for:
   - function CRUD (`/v1/functions`, `/v1/functions/{name}`)
@@ -13,17 +19,21 @@ This is the M3 Rust port of the Java control-plane, implemented only under
   - internal queue drain (`/v1/internal/functions/{name}:drain-once`)
   - health (`/actuator/health`)
 - In-memory stores:
-  - execution store with TTL/stale eviction semantics
-  - idempotency store with `put_if_absent` semantics
-- Core rate limiter window logic
-- Dispatcher parity skeleton:
+  - execution store with TTL/stale eviction semantics aligned to completion
+  - idempotency store with atomic claim/publish semantics on live paths
+- Core rate limiter + runtime-config admin snapshot/validation
+- Dispatcher parity block:
   - `Dispatcher` trait
   - `LocalDispatcher`
   - `PoolDispatcher`
   - `DispatcherRouter`
-- Queue/scheduler parity skeleton:
-  - `QueueManager` + overflow behavior
-  - `Scheduler::tick_once` dispatch loop
+- Queue/scheduler parity block:
+  - async queue scheduling with ordered ready-function dispatch
+  - sync queue admission with `depth` / `est_wait` rejection semantics
+  - bounded scheduler backoff and no ready-work stall behind blocked functions
+- Internal autoscaler parity block:
+  - `queue_depth`, `in_flight`, and `rps` metric handling
+  - runtime-config-backed sync-queue settings
 - Execution lifecycle parity block:
   - `ExecutionRecord` transition methods (`mark_running/success/error/timeout`, retry reset)
   - legacy mutator/accessor compatibility surface
@@ -42,7 +52,7 @@ This is the M3 Rust port of the Java control-plane, implemented only under
 - Internal completion/scheduler API intent -> `tests/scheduler_api_test.rs`
 - `ExecutionRecordLegacyAccessorsTest` -> `tests/execution_record_legacy_accessors_test.rs`
 - `ExecutionRecordStateTransitionTest` -> `tests/execution_record_state_transition_test.rs`
-- Remaining Java tests inventory -> `tests/java_parity_generated_test.rs` (ignored placeholders)
+- Remaining Java tests inventory -> `tests/java_parity_generated_test.rs` (inventory only; not a green-runtime claim)
 
 ## Run
 
@@ -86,21 +96,29 @@ The Rust staging control-plane now exposes a runnable binary (`src/main.rs`) and
 a container build (`Dockerfile`). Dockerized E2E parity tests are available in:
 
 - `tests/e2e_dockerized_flow_test.rs`
+- `tests/e2e_dockerized_sdk_examples_test.rs`
 
-Run only dockerized flow tests:
+Run only dockerized SDK example parity tests:
 
 ```bash
-cargo test -q --test e2e_dockerized_flow_test
+cargo test -q --test e2e_dockerized_sdk_examples_test
 ```
 
 If Docker is not available, these tests are skipped.
 
-## Out of Scope after M3
+Important: this staging snapshot still does not claim a green parity baseline.
+Inventory coverage is broad and the live core is much closer to Java semantics,
+but dockerized SDK examples may still expose real behavioral gaps. The current
+known baseline failure remains the `word-stats-java` health timeout in the
+dockerized SDK examples flow; the harness should isolate that failure instead of
+cascading into `PoisonError` follow-up noise.
+
+## Remaining Gaps
 
 - Full Kubernetes/runtime transport parity in `PoolDispatcher`
-- Async/sync queue admission/backpressure algorithms 1:1
-- Autoscaler module parity
 - Full E2E parity against Java campaign matrix
+- Build metadata parity is still not implemented in this snapshot
+- Dockerized SDK examples are not yet green end-to-end
 
-These are planned for subsequent milestones while keeping this version inside
-the staging area.
+These are the main reasons the Rust control-plane should still be treated as a
+staging target rather than a drop-in replacement for the Java runtime.

@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use control_plane_rust::metrics::{Metrics, FunctionTimers};
+use std::time::Duration;
 
 #[test]
 fn coldStart_incrementsCounter() {
@@ -64,4 +65,16 @@ fn timers_reusesSameBundleOnWarmPath() {
     assert_eq!(first.init_duration, metrics.init_duration("echo"));
     assert_eq!(first.queue_wait, metrics.queue_wait("echo"));
     assert_eq!(first.e2e_latency, metrics.e2e_latency("echo"));
+}
+
+#[test]
+fn dispatchRatePerSecond_usesRecentDispatchWindow() {
+    let metrics = Metrics::new();
+
+    metrics.dispatch("echo");
+    metrics.dispatch("echo");
+    metrics.dispatch("echo");
+
+    let rate = metrics.dispatch_rate_per_second("echo", Duration::from_secs(1));
+    assert!(rate >= 3.0);
 }

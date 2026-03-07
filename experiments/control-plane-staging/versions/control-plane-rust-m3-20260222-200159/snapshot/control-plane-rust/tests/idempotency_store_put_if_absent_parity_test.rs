@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use control_plane_rust::idempotency::IdempotencyStore;
+use control_plane_rust::idempotency::AcquireResult;
 use std::time::Duration;
 
 #[test]
@@ -65,4 +66,39 @@ fn putIfAbsent_differentFunctions_areIndependent() {
         store.get_execution_id("fn2", "key1", 1),
         Some("exec-2".to_string())
     );
+}
+
+#[test]
+fn acquireOrGet_publishClaim_exposesStableExecutionId() {
+    let mut store = IdempotencyStore::new_with_ttl(Duration::from_secs(15 * 60));
+
+    let token = match store.acquire_or_get("fn", "key1", 0) {
+        AcquireResult::Claimed(token) => token,
+        other => panic!("expected claim, got {other:?}"),
+    };
+
+    assert_eq!(store.get_execution_id("fn", "key1", 1), None);
+
+    store.publish_claim("fn", "key1", &token, "exec-1", 2);
+
+    assert_eq!(
+        store.get_execution_id("fn", "key1", 3),
+        Some("exec-1".to_string())
+    );
+}
+
+#[test]
+fn acquireOrGet_abandonClaim_allowsFreshClaim() {
+    let mut store = IdempotencyStore::new_with_ttl(Duration::from_secs(15 * 60));
+
+    let token = match store.acquire_or_get("fn", "key1", 0) {
+        AcquireResult::Claimed(token) => token,
+        other => panic!("expected claim, got {other:?}"),
+    };
+    store.abandon_claim("fn", "key1", &token);
+
+    match store.acquire_or_get("fn", "key1", 1) {
+        AcquireResult::Claimed(_) => {}
+        other => panic!("expected a fresh claim after abandon, got {other:?}"),
+    }
 }

@@ -16,6 +16,41 @@ impl Scheduler {
         Self { router }
     }
 
+    pub async fn tick_ready_functions_once(
+        &self,
+        functions: &HashMap<String, FunctionSpec>,
+        queue: &Arc<Mutex<QueueManager>>,
+        store: &Arc<Mutex<ExecutionStore>>,
+        metrics: &Metrics,
+    ) -> Result<Vec<JoinHandle<()>>, String> {
+        let queued_functions = {
+            let mut guard = queue.lock().unwrap_or_else(|e| e.into_inner());
+            let signaled = guard.take_signaled_functions();
+            if signaled.is_empty() {
+                guard.queued_functions()
+            } else {
+                let mut queued = signaled;
+                for function_name in guard.queued_functions() {
+                    if !queued.iter().any(|candidate| candidate == &function_name) {
+                        queued.push(function_name);
+                    }
+                }
+                queued
+            }
+        };
+
+        let mut handles = Vec::new();
+        for function_name in queued_functions {
+            if let Some(handle) = self
+                .tick_once(&function_name, functions, queue, store, metrics)
+                .await?
+            {
+                handles.push(handle);
+            }
+        }
+        Ok(handles)
+    }
+
     /// Dequeues and dispatches one task for `function_name`.
     ///
     /// Locks are released before the async dispatch so Tokio worker threads
@@ -133,7 +168,9 @@ fn finalize_dispatch(
                 if dispatch.cold_start {
                     record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
                     metrics.cold_start(function_name);
-                    timers.init_duration.record_ms(dispatch.init_duration_ms.unwrap_or(0));
+                    timers
+                        .init_duration
+                        .record_ms(dispatch.init_duration_ms.unwrap_or(0));
                 } else {
                     metrics.warm_start(function_name);
                 }
@@ -220,7 +257,9 @@ fn finalize_dispatch(
             if dispatch.cold_start {
                 record.mark_cold_start(dispatch.init_duration_ms.unwrap_or(0));
                 metrics.cold_start(function_name);
-                timers.init_duration.record_ms(dispatch.init_duration_ms.unwrap_or(0));
+                timers
+                    .init_duration
+                    .record_ms(dispatch.init_duration_ms.unwrap_or(0));
             } else {
                 metrics.warm_start(function_name);
             }
