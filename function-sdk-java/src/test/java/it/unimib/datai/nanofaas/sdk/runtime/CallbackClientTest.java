@@ -264,4 +264,23 @@ class CallbackClientTest {
         assertFalse(completeSuffixRequest.getPath().endsWith(":complete/"));
         assertTrue(completeSuffixRequest.getPath().endsWith("/exec-10:complete"));
     }
+
+    @Test
+    void sendResult_urlWithTrailingWhitespaceAndSlash_isNormalized() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        String dirtyUrl = server.url("/v1/executions").toString() + "/ ";
+        CallbackClient dirtyClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env", "trace", dirtyUrl, "handler"));
+
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        dirtyClient.sendResult("exec-clean", InvocationResult.success("data"));
+
+        RecordedRequest req = server.takeRequest();
+        assertFalse(req.getPath().contains("//"), "Double slash in path: " + req.getPath());
+        assertTrue(req.getPath().endsWith("/exec-clean:complete"));
+    }
 }
