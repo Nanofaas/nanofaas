@@ -26,6 +26,7 @@ Designed for GraalVM native image with low cold-start.
   - EXECUTION_ID
   - TRACE_ID (optional)
   - INVOCATION_TIMEOUT_MS
+  - FUNCTION_HANDLER (optional; required only when multiple FunctionHandler beans are registered)
 
 ## Execution Model
 
@@ -36,9 +37,10 @@ Designed for GraalVM native image with low cold-start.
 
 ## Error Model
 
-- 400: input validation error
+- 400: missing or blank execution ID
 - 422: function domain error (optional)
-- 500: unhandled error
+- 500: handler threw an exception; response body is `{"error": "<message>"}` with a stable fallback of `"Handler execution failed"` when the exception carries no message
+- 504: handler exceeded `INVOCATION_TIMEOUT_MS`; response body is `{"error": "Handler timed out"}`
 
 ## Observability
 
