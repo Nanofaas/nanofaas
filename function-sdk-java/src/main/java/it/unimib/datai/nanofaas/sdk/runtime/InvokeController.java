@@ -47,9 +47,7 @@ public class InvokeController {
         }
 
         boolean isColdStart = coldStartTracker.firstInvocation();
-        if (isColdStart) {
-            coldStartTracker.markFirstRequestArrival();
-        }
+        coldStartTracker.markFirstRequestArrival(); // idempotente: solo la prima chiamata ha effetto
 
         try {
             FunctionHandler handler = handlerRegistry.resolve();

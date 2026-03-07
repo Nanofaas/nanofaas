@@ -26,17 +26,17 @@ class ColdStartTrackerTest {
     @Test
     void initDurationMs_doesNotIncludeHandlerTime() throws Exception {
         ColdStartTracker tracker = new ColdStartTracker();
-        Thread.sleep(10); // simula tempo di startup Spring
-
         tracker.markFirstRequestArrival();
+
+        long durationAtMark = tracker.initDurationMs();
 
         Thread.sleep(50); // simula esecuzione handler
 
-        long duration = tracker.initDurationMs();
-        // deve essere >= 10ms (startup simulato) ma NON includere i 50ms dell'handler
-        assertTrue(duration >= 0, "initDurationMs must not be negative: " + duration);
-        assertTrue(duration < 40,
-                "initDurationMs should not include handler time, but was: " + duration + "ms");
+        // Il valore deve essere congelato: non deve cambiare dopo il mark
+        long durationAfterHandler = tracker.initDurationMs();
+        assertEquals(durationAtMark, durationAfterHandler,
+                "initDurationMs should be frozen at request arrival, not grow with handler time");
+        assertTrue(durationAtMark >= 0, "initDurationMs must not be negative");
     }
 
     @Test
