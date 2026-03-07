@@ -648,7 +648,16 @@ async fn validate_runtime_config(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let effective = current.apply_patch(&parsed.patch);
+    let effective = match current.apply_patch(&parsed.patch) {
+        Ok(effective) => effective,
+        Err(errors) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "errors": errors })),
+            )
+                .into_response();
+        }
+    };
     let errors = runtime_config_validation_errors(&effective);
     if errors.is_empty() {
         return Json(json!({ "valid": true })).into_response();
@@ -686,7 +695,16 @@ async fn patch_runtime_config(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let next = current.apply_patch(&parsed.patch);
+    let next = match current.apply_patch(&parsed.patch) {
+        Ok(next) => next,
+        Err(errors) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "errors": errors })),
+            )
+                .into_response();
+        }
+    };
     let errors = runtime_config_validation_errors(&next);
     if !errors.is_empty() {
         return (
@@ -1099,12 +1117,17 @@ async fn invoke_function(
                 // sender dropped without sending — internal error
                 Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
             }
-            Err(_elapsed) => {
-                let finished_at = crate::now_millis();
-                {
-                    let mut store = state
-                        .execution_store
-                        .lock()
+        Err(_elapsed) => {
+            state
+                .queue_manager
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove_execution(name, &execution_id);
+            let finished_at = crate::now_millis();
+            {
+                let mut store = state
+                    .execution_store
+                    .lock()
                         .unwrap_or_else(|e| e.into_inner());
                     if let Some(mut r) = store.get(&execution_id) {
                         let created_at = r.created_at_millis;
@@ -1541,6 +1564,7 @@ async fn drive_sync_queue_until_terminal(
     execution_id: &str,
     state: AppState,
 ) -> Result<(), String> {
+    let mut idle_backoff = Duration::from_millis(1);
     loop {
         if execution_reached_terminal_state(execution_id, &state) {
             return Ok(());
@@ -1550,7 +1574,10 @@ async fn drive_sync_queue_until_terminal(
             return Ok(());
         }
         if !dispatched {
-            tokio::task::yield_now().await;
+            tokio::time::sleep(idle_backoff).await;
+            idle_backoff = (idle_backoff * 2).min(Duration::from_millis(10));
+        } else {
+            idle_backoff = Duration::from_millis(1);
         }
     }
 }

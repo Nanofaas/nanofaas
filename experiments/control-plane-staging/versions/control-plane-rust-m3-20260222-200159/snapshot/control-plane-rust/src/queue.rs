@@ -67,6 +67,13 @@ impl FunctionQueueState {
             .pop_front()
     }
 
+    pub fn remove_execution(&self, execution_id: &str) -> bool {
+        let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let before = queue.len();
+        queue.retain(|task| task.execution_id != execution_id);
+        before != queue.len()
+    }
+
     pub fn try_acquire_slot(&self) -> bool {
         loop {
             let current = self.in_flight.load(Ordering::SeqCst);
@@ -220,6 +227,13 @@ impl QueueManager {
         if let Some(state) = self.queues.get(function_name) {
             state.set_effective_concurrency(effective);
         }
+    }
+
+    pub fn remove_execution(&mut self, function_name: &str, execution_id: &str) -> bool {
+        self.queues
+            .get(function_name)
+            .map(|state| state.remove_execution(execution_id))
+            .unwrap_or(false)
     }
 
     pub fn in_flight(&self, function_name: &str) -> usize {

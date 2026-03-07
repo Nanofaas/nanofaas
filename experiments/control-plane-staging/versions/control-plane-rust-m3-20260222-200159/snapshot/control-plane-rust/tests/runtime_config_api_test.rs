@@ -145,6 +145,37 @@ async fn runtime_config_patch_rejects_invalid_rate() {
 }
 
 #[tokio::test]
+async fn runtime_config_patch_rejects_negative_rate_as_validation_error() {
+    let app = control_plane_rust::app::build_app_with_runtime_config_admin(true);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/v1/admin/runtime-config")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "expectedRevision": 0,
+                        "rateMaxPerSecond": -1
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = response_json(response).await;
+    assert!(body["errors"].as_array().unwrap().iter().any(|item| item
+        .as_str()
+        .unwrap_or_default()
+        .contains("rateMaxPerSecond")));
+}
+
+#[tokio::test]
 async fn runtime_config_patch_returns_conflict_on_revision_mismatch() {
     let app = control_plane_rust::app::build_app_with_runtime_config_admin(true);
 
@@ -287,4 +318,34 @@ async fn runtime_config_patch_returns_bad_request_for_malformed_duration() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn runtime_config_patch_accepts_fractional_second_duration() {
+    let app = control_plane_rust::app::build_app_with_runtime_config_admin(true);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/v1/admin/runtime-config")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "expectedRevision": 0,
+                        "syncQueueMaxEstimatedWait": "PT0.5S",
+                        "syncQueueMaxQueueWait": "PT1S"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["effectiveConfig"]["syncQueueMaxEstimatedWait"], "PT0.5S");
+    assert_eq!(body["effectiveConfig"]["syncQueueMaxQueueWait"], "PT1S");
 }

@@ -276,6 +276,44 @@ fn delayed_json_runtime_with_max_in_flight(
     )
 }
 
+fn delayed_json_runtime_with_request_count(
+    body: &str,
+    delay: Duration,
+    max_requests: usize,
+) -> (String, std::sync::Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed runtime");
+    let addr = listener.local_addr().expect("runtime local addr");
+    let response_body = body.to_string();
+    let request_count = std::sync::Arc::new(AtomicUsize::new(0));
+    let count_for_loop = std::sync::Arc::clone(&request_count);
+    thread::spawn(move || {
+        for _ in 0..max_requests {
+            let Ok((mut socket, _)) = listener.accept() else {
+                break;
+            };
+            let body = response_body.clone();
+            let request_count = std::sync::Arc::clone(&count_for_loop);
+            thread::spawn(move || {
+                request_count.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf);
+                thread::sleep(delay);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(reply.as_bytes());
+                let _ = socket.flush();
+            });
+        }
+    });
+    (
+        format!("http://127.0.0.1:{}/invoke", addr.port()),
+        request_count,
+    )
+}
+
 async fn invoke_sync_with_headers(
     app: &axum::Router,
     function_name: &str,
@@ -532,6 +570,53 @@ async fn invokeSync_whenSyncQueueEnabled_waitsForRetryToReachTerminalState() {
     assert_eq!(payload["status"], "error");
     let execution_id = payload["executionId"].as_str().unwrap();
     assert_eq!(execution_status(&app, execution_id).await, "error");
+}
+
+#[tokio::test]
+async fn invokeSync_whenQueuedRequestTimesOutBeforeDispatch_itDoesNotDispatchLater() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "8"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app_pair_with_background_scheduler().0;
+    let (endpoint, request_count) =
+        delayed_json_runtime_with_request_count("{\"result\":\"ok\"}", Duration::from_millis(250), 2);
+    register_function_with_config(
+        &app,
+        "sync-timeout-queued",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        1,
+        20,
+    )
+    .await;
+
+    let app_for_first = app.clone();
+    let first = tokio::spawn(async move { invoke_sync(&app_for_first, "sync-timeout-queued").await });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let second = invoke_sync_with_headers(&app, "sync-timeout-queued", None, Some(50)).await;
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_payload = response_json(second).await;
+    assert_eq!(second_payload["status"], "timeout");
+    let second_execution_id = second_payload["executionId"].as_str().unwrap().to_string();
+
+    let first_payload = response_json(first.await.unwrap()).await;
+    assert_eq!(first_payload["status"], "success");
+
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    assert_eq!(execution_status(&app, &second_execution_id).await, "timeout");
+    assert_eq!(
+        request_count.load(Ordering::SeqCst),
+        1,
+        "a timed-out queued invoke must be removed before it can dispatch later"
+    );
 }
 
 #[tokio::test]

@@ -14,12 +14,20 @@ pub struct RuntimeConfigSnapshot {
 }
 
 impl RuntimeConfigSnapshot {
-    pub fn apply_patch(&self, patch: &RuntimeConfigPatch) -> Self {
-        Self {
+    pub fn apply_patch(&self, patch: &RuntimeConfigPatch) -> Result<Self, Vec<String>> {
+        let mut errors = Vec::new();
+        let rate_max_per_second = match patch.rate_max_per_second {
+            Some(value) if value <= 0 => {
+                errors.push("rateMaxPerSecond must be greater than 0".to_string());
+                self.rate_max_per_second
+            }
+            Some(value) => usize::try_from(value).unwrap_or(self.rate_max_per_second),
+            None => self.rate_max_per_second,
+        };
+
+        let next = Self {
             revision: self.revision + 1,
-            rate_max_per_second: patch
-                .rate_max_per_second
-                .unwrap_or(self.rate_max_per_second),
+            rate_max_per_second,
             sync_queue_enabled: patch.sync_queue_enabled.unwrap_or(self.sync_queue_enabled),
             sync_queue_admission_enabled: patch
                 .sync_queue_admission_enabled
@@ -33,6 +41,12 @@ impl RuntimeConfigSnapshot {
             sync_queue_retry_after_seconds: patch
                 .sync_queue_retry_after_seconds
                 .unwrap_or(self.sync_queue_retry_after_seconds),
+        };
+        errors.extend(validation_errors(&next));
+        if errors.is_empty() {
+            Ok(next)
+        } else {
+            Err(errors)
         }
     }
 
@@ -51,7 +65,7 @@ impl RuntimeConfigSnapshot {
 
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeConfigPatch {
-    pub rate_max_per_second: Option<usize>,
+    pub rate_max_per_second: Option<i64>,
     pub sync_queue_enabled: Option<bool>,
     pub sync_queue_admission_enabled: Option<bool>,
     pub sync_queue_max_estimated_wait: Option<Duration>,
@@ -94,7 +108,7 @@ pub fn parse_request(value: Value) -> Result<ParsedRuntimeConfigRequest, String>
     Ok(ParsedRuntimeConfigRequest {
         expected_revision: optional_u64(object, "expectedRevision")?,
         patch: RuntimeConfigPatch {
-            rate_max_per_second: optional_usize(object, "rateMaxPerSecond")?,
+            rate_max_per_second: optional_i64(object, "rateMaxPerSecond")?,
             sync_queue_enabled: optional_bool(object, "syncQueueEnabled")?,
             sync_queue_admission_enabled: optional_bool(object, "syncQueueAdmissionEnabled")?,
             sync_queue_max_estimated_wait: optional_duration(object, "syncQueueMaxEstimatedWait")?,
@@ -161,18 +175,14 @@ fn optional_i32(object: &serde_json::Map<String, Value>, key: &str) -> Result<Op
     }
 }
 
-fn optional_usize(
-    object: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<Option<usize>, String> {
+fn optional_i64(object: &serde_json::Map<String, Value>, key: &str) -> Result<Option<i64>, String> {
     match object.get(key) {
         None => Ok(None),
         Some(Value::Number(value)) => value
-            .as_u64()
-            .and_then(|parsed| usize::try_from(parsed).ok())
+            .as_i64()
             .map(Some)
-            .ok_or_else(|| format!("{key} must be a positive integer")),
-        Some(_) => Err(format!("{key} must be a positive integer")),
+            .ok_or_else(|| format!("{key} must be an integer")),
+        Some(_) => Err(format!("{key} must be an integer")),
     }
 }
 
@@ -195,28 +205,50 @@ fn parse_duration_iso(value: &str) -> Result<Duration, ()> {
     if !value.starts_with("PT") {
         return Err(());
     }
-    let mut total_seconds: u64 = 0;
-    let mut current = String::new();
+    let mut total_nanos: u128 = 0;
+    let mut remainder = &value[2..];
     let mut consumed_unit = false;
-    for ch in value[2..].chars() {
-        if ch.is_ascii_digit() {
-            current.push(ch);
-            continue;
+    while !remainder.is_empty() {
+        let Some(unit_index) = remainder.find(|ch: char| ch.is_ascii_alphabetic()) else {
+            return Err(());
+        };
+        let (number, rest) = remainder.split_at(unit_index);
+        if number.is_empty() {
+            return Err(());
         }
-        let amount = current.parse::<u64>().map_err(|_| ())?;
-        current.clear();
+        let unit = rest.chars().next().ok_or(())?;
+        remainder = &rest[unit.len_utf8()..];
         consumed_unit = true;
-        match ch {
-            'H' => total_seconds = total_seconds.saturating_add(amount.saturating_mul(3600)),
-            'M' => total_seconds = total_seconds.saturating_add(amount.saturating_mul(60)),
-            'S' => total_seconds = total_seconds.saturating_add(amount),
+
+        match unit {
+            'H' => {
+                if number.contains('.') {
+                    return Err(());
+                }
+                let amount = number.parse::<u128>().map_err(|_| ())?;
+                total_nanos = total_nanos
+                    .saturating_add(amount.saturating_mul(3_600_000_000_000));
+            }
+            'M' => {
+                if number.contains('.') {
+                    return Err(());
+                }
+                let amount = number.parse::<u128>().map_err(|_| ())?;
+                total_nanos = total_nanos
+                    .saturating_add(amount.saturating_mul(60_000_000_000));
+            }
+            'S' => {
+                total_nanos = total_nanos.saturating_add(parse_seconds_component(number)?);
+            }
             _ => return Err(()),
         }
     }
-    if !current.is_empty() || !consumed_unit {
+    if !consumed_unit {
         return Err(());
     }
-    Ok(Duration::from_secs(total_seconds))
+    let secs = u64::try_from(total_nanos / 1_000_000_000).map_err(|_| ())?;
+    let nanos = u32::try_from(total_nanos % 1_000_000_000).map_err(|_| ())?;
+    Ok(Duration::new(secs, nanos))
 }
 
 fn format_duration_iso(duration: Duration) -> String {
@@ -224,6 +256,7 @@ fn format_duration_iso(duration: Duration) -> String {
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let seconds = total_seconds % 60;
+    let nanos = duration.subsec_nanos();
 
     let mut encoded = String::from("PT");
     if hours > 0 {
@@ -232,8 +265,37 @@ fn format_duration_iso(duration: Duration) -> String {
     if minutes > 0 {
         encoded.push_str(&format!("{minutes}M"));
     }
-    if seconds > 0 || encoded == "PT" {
+    if nanos > 0 {
+        let fractional = format!("{:09}", nanos);
+        let fractional = fractional.trim_end_matches('0');
+        encoded.push_str(&format!("{seconds}.{fractional}S"));
+    } else if seconds > 0 || encoded == "PT" {
         encoded.push_str(&format!("{seconds}S"));
     }
     encoded
+}
+
+fn parse_seconds_component(value: &str) -> Result<u128, ()> {
+    if let Some((whole, fraction)) = value.split_once('.') {
+        if whole.is_empty()
+            || fraction.is_empty()
+            || !whole.chars().all(|ch| ch.is_ascii_digit())
+            || !fraction.chars().all(|ch| ch.is_ascii_digit())
+            || fraction.len() > 9
+        {
+            return Err(());
+        }
+        let whole_seconds = whole.parse::<u128>().map_err(|_| ())?;
+        let mut nanos = fraction.to_string();
+        while nanos.len() < 9 {
+            nanos.push('0');
+        }
+        let nanos = nanos.parse::<u128>().map_err(|_| ())?;
+        Ok(whole_seconds.saturating_mul(1_000_000_000).saturating_add(nanos))
+    } else {
+        value
+            .parse::<u128>()
+            .map(|seconds| seconds.saturating_mul(1_000_000_000))
+            .map_err(|_| ())
+    }
 }
