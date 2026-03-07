@@ -528,7 +528,7 @@ fn parse_internal_scaling(spec: &FunctionSpec) -> Option<ScalingConfig> {
 
 fn max_metric_ratio(state: &AppState, function_name: &str, scaling: &ScalingConfig) -> f64 {
     let mut max_ratio = 0.0_f64;
-    let metrics = scaling.metrics.as_ref().map(Vec::as_slice).unwrap_or(&[]);
+    let metrics = scaling.metrics.as_deref().unwrap_or(&[]);
     for metric in metrics {
         let target = parse_metric_target(&metric.target);
         if target <= 0.0 {
@@ -1126,7 +1126,7 @@ mod autoscaling_tests {
         let state = build_state_with_options(metrics, Some("inmemory".to_string()), None, false);
         register_scaled_function(&state, "autoscale-up").await;
 
-        let mut record = ExecutionRecord::new(
+        let mut record = crate::execution::ExecutionRecord::new(
             "exec-up",
             "autoscale-up",
             crate::execution::ExecutionState::Queued,
