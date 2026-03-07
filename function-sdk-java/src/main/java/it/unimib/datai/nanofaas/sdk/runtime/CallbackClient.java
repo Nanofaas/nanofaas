@@ -58,7 +58,7 @@ public class CallbackClient {
 
                 if (attempt < MAX_RETRIES - 1) {
                     try {
-                        Thread.sleep(RETRY_DELAYS_MS[attempt]);
+                        sleepBeforeRetry(attempt);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         log.warn("Callback retry interrupted for execution {}", executionId);
@@ -89,6 +89,14 @@ public class CallbackClient {
         request.body(result)
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    /**
+     * Pauses before the next retry attempt. Protected for override in tests.
+     * @param attemptIndex zero-based index of the attempt just completed (0 = first retry delay)
+     */
+    protected void sleepBeforeRetry(int attemptIndex) throws InterruptedException {
+        Thread.sleep(RETRY_DELAYS_MS[attemptIndex]);
     }
 
     private boolean isPermanentClientFailure(RestClientException ex) {

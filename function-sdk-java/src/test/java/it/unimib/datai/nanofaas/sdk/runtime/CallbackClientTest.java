@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,7 +26,7 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        client = new CallbackClient(
+        client = new FastCallbackClient(
                 restClient,
                 new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
     }
@@ -282,5 +283,34 @@ class CallbackClientTest {
         RecordedRequest req = server.takeRequest();
         assertFalse(req.getPath().contains("//"), "Double slash in path: " + req.getPath());
         assertTrue(req.getPath().endsWith("/exec-clean:complete"));
+    }
+
+    @Test
+    void sendResult_interruptedDuringRetry_returnsFalseAndRestoresInterruptFlag() throws InterruptedException {
+        server.enqueue(new MockResponse().setResponseCode(500));
+
+        AtomicBoolean interruptedAfterCall = new AtomicBoolean(false);
+        Thread testThread = new Thread(() -> {
+            Thread.currentThread().interrupt(); // pre-interrupt before the call
+            client.sendResult("exec-interrupt", InvocationResult.success("x"), null);
+            interruptedAfterCall.set(Thread.currentThread().isInterrupted());
+        });
+        testThread.start();
+        testThread.join(3000);
+
+        assertTrue(interruptedAfterCall.get(),
+                "Interrupt flag should be restored after InterruptedException in retry sleep");
+    }
+
+    /** Removes retry delays for fast test execution. */
+    private static class FastCallbackClient extends CallbackClient {
+        FastCallbackClient(RestClient restClient, RuntimeSettings settings) {
+            super(restClient, settings);
+        }
+
+        @Override
+        protected void sleepBeforeRetry(int attemptIndex) {
+            // no-op: eliminate retry delays in tests
+        }
     }
 }
