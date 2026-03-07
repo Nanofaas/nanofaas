@@ -207,6 +207,30 @@ class CallbackClientTest {
     }
 
     @Test
+    void sendResult_urlEndsWithComplete_stillUsesCorrectExecutionId() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        CallbackClient client = new CallbackClient(
+                restClient,
+                new RuntimeSettings(
+                        "env-exec-id",
+                        "env-trace-id",
+                        server.url("/v1/executions/placeholder:complete").toString(),
+                        "handler"));
+
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        client.sendResult("real-exec-id", InvocationResult.success("ok"));
+
+        RecordedRequest req = server.takeRequest();
+        assertTrue(req.getPath().contains("real-exec-id:complete"),
+                "Expected real-exec-id in path but got: " + req.getPath());
+        assertFalse(req.getPath().contains("placeholder"),
+                "Should not use placeholder ID from base URL");
+    }
+
+    @Test
     void sendResult_normalizesTrailingSlashAndCompleteSuffix() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
         server.enqueue(new MockResponse().setResponseCode(200));

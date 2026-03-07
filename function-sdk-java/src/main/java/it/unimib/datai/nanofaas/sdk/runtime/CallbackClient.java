@@ -102,12 +102,18 @@ public class CallbackClient {
     }
 
     private String callbackUrl(String executionId) {
-        String normalizedBaseUrl = runtimeSettings.callbackUrl().stripTrailing();
-        while (normalizedBaseUrl.endsWith("/")) {
-            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
+        String base = runtimeSettings.callbackUrl().strip();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
         }
-        return normalizedBaseUrl.endsWith(":complete")
-                ? normalizedBaseUrl
-                : normalizedBaseUrl + "/" + executionId + ":complete";
+        // Remove any existing /<segment>:complete suffix so executionId is always authoritative
+        int completeSuffixIdx = base.lastIndexOf(":complete");
+        if (completeSuffixIdx >= 0) {
+            int slashIdx = base.lastIndexOf('/', completeSuffixIdx);
+            if (slashIdx >= 0) {
+                base = base.substring(0, slashIdx);
+            }
+        }
+        return base + "/" + executionId + ":complete";
     }
 }
