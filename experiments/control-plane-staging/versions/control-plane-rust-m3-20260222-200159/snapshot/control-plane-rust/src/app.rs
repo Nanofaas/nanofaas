@@ -1009,9 +1009,11 @@ async fn invoke_function(
     state.metrics.sync_queue_wait_seconds(name).record_ms(1);
     state.metrics.in_flight(name);
 
-    // When async queue is enabled, sync invoke follows the same queue-backed path as Java:
-    // enqueue + wait for terminal state, so autoscaler can observe queue/in-flight pressure.
-    if state.background_scheduler_enabled && state.enqueuer.enabled() && !state.sync_queue.enabled()
+    // When background scheduling is active, sync invoke should use the queue-backed
+    // path whenever either async queue orchestration or sync queue orchestration is enabled.
+    // This preserves function queue semantics and lets the caller wait on terminal state.
+    if state.background_scheduler_enabled
+        && (state.enqueuer.enabled() || state.sync_queue.enabled())
     {
         let queue_capacity = function_spec.queue_size.unwrap_or(100).max(1) as usize;
         let concurrency = function_spec.concurrency.unwrap_or(1).max(1) as usize;
@@ -1042,6 +1044,9 @@ async fn invoke_function(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(&execution_id);
+            if state.sync_queue.enabled() {
+                state.sync_queue.release(name);
+            }
             abandon_idempotency_claim(&state, name, idem_claim.as_ref());
             return Err(response);
         }
@@ -1049,7 +1054,7 @@ async fn invoke_function(
         state.metrics.queue_depth(name);
         publish_idempotency_claim(&state, name, idem_claim.as_ref(), &execution_id, now);
 
-        return match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
+        let response = match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
             Ok(Ok(_)) => {
                 // finalize_dispatch already wrote terminal state to store before signalling
                 let record = state
@@ -1096,6 +1101,10 @@ async fn invoke_function(
                 })
             }
         };
+        if state.sync_queue.enabled() {
+            state.sync_queue.release(name);
+        }
+        return response;
     }
 
     // Direct sync path (sync-queue admission or queue module disabled).
