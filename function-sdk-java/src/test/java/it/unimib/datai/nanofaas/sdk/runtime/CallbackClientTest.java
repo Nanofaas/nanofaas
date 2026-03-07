@@ -211,7 +211,7 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient client = new CallbackClient(
+        CallbackClient placeholderClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "env-exec-id",
@@ -221,7 +221,7 @@ class CallbackClientTest {
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        client.sendResult("real-exec-id", InvocationResult.success("ok"));
+        placeholderClient.sendResult("real-exec-id", InvocationResult.success("ok"));
 
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getPath().contains("real-exec-id:complete"),

@@ -106,7 +106,8 @@ public class CallbackClient {
         while (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
-        // Remove any existing /<segment>:complete suffix so executionId is always authoritative
+        // Remove any existing /<segment>:complete suffix so executionId is always authoritative.
+        // Assumption: the base URL path does not contain ':complete' in intermediate segments.
         int completeSuffixIdx = base.lastIndexOf(":complete");
         if (completeSuffixIdx >= 0) {
             int slashIdx = base.lastIndexOf('/', completeSuffixIdx);
