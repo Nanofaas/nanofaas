@@ -1,3 +1,4 @@
+mod admin_runtime_config;
 pub mod app;
 pub mod core_defaults;
 pub mod dispatch;
@@ -5,6 +6,7 @@ pub mod e2e_support;
 pub mod errors;
 pub mod execution;
 pub mod idempotency;
+mod invocation;
 pub mod kubernetes;
 pub mod kubernetes_live;
 pub mod metrics;

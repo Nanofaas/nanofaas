@@ -143,6 +143,27 @@ async fn issue013_syncWaitReturnsOutput() {
 }
 
 #[tokio::test]
+async fn issue014_syncInvokeReturnsExecutionIdHeaderMatchingBody() {
+    let app = app_with_scheduler();
+    register(&app, "echo", "local").await;
+
+    let res = invoke(&app, "echo", json!("payload")).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let header_execution_id = res
+        .headers()
+        .get("X-Execution-Id")
+        .and_then(|value| value.to_str().ok())
+        .unwrap()
+        .to_string();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["executionId"], header_execution_id);
+}
+
+#[tokio::test]
 async fn issue017_prometheusMetricsExposed() {
     let app = app_with_scheduler();
     register(&app, "echo", "local").await;

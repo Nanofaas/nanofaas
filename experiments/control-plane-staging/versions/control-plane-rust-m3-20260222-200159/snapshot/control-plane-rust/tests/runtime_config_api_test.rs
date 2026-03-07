@@ -28,6 +28,26 @@ async fn runtime_config_endpoint_is_disabled_by_default() {
 }
 
 #[tokio::test]
+async fn runtime_config_validate_endpoint_is_disabled_by_default() {
+    let app = control_plane_rust::app::build_app();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/admin/runtime-config/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"rateMaxPerSecond": 10}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn runtime_config_get_returns_rate_and_revision_when_enabled() {
     let app = control_plane_rust::app::build_app_with_runtime_config_admin(true);
 
@@ -346,6 +366,9 @@ async fn runtime_config_patch_accepts_fractional_second_duration() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_json(response).await;
-    assert_eq!(body["effectiveConfig"]["syncQueueMaxEstimatedWait"], "PT0.5S");
+    assert_eq!(
+        body["effectiveConfig"]["syncQueueMaxEstimatedWait"],
+        "PT0.5S"
+    );
     assert_eq!(body["effectiveConfig"]["syncQueueMaxQueueWait"], "PT1S");
 }

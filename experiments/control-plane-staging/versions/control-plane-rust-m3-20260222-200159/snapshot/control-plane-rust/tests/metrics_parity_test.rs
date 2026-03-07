@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use control_plane_rust::metrics::{Metrics, FunctionTimers};
+use control_plane_rust::metrics::{FunctionTimers, Metrics};
 use std::time::Duration;
 
 #[test]
@@ -77,4 +77,17 @@ fn dispatchRatePerSecond_usesRecentDispatchWindow() {
 
     let rate = metrics.dispatch_rate_per_second("echo", Duration::from_secs(1));
     assert!(rate >= 3.0);
+}
+
+#[test]
+fn prometheusExport_includesCountersAndTimersFromIndependentPaths() {
+    let metrics = Metrics::new();
+
+    metrics.dispatch("echo");
+    metrics.sync_queue_wait_ms("echo").record_ms(7);
+
+    let text = metrics.to_prometheus_text();
+    assert!(text.contains("function_dispatch_total{function=\"echo\"} 1"));
+    assert!(text.contains("sync_queue_wait_ms_count{function=\"echo\"} 1"));
+    assert!(text.contains("sync_queue_wait_ms_sum{function=\"echo\"} 7"));
 }
