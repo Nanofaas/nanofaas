@@ -47,6 +47,9 @@ public class InvokeController {
         }
 
         boolean isColdStart = coldStartTracker.firstInvocation();
+        if (isColdStart) {
+            coldStartTracker.markFirstRequestArrival();
+        }
 
         try {
             FunctionHandler handler = handlerRegistry.resolve();
