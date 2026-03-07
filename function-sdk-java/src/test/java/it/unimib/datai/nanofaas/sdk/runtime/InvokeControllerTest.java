@@ -33,7 +33,8 @@ class InvokeControllerTest {
         when(runtimeContextResolver.resolve(any(), any()))
                 .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
         when(coldStartTracker.firstInvocation()).thenReturn(false);
-        controller = new InvokeController(callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker);
+        controller = new InvokeController(callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker,
+                new HandlerExecutor(5000));
     }
 
     @Test
@@ -138,6 +139,22 @@ class InvokeControllerTest {
         ResponseEntity<Object> response = controller.invoke(request, "  ", null);
 
         assertEquals(400, response.getStatusCode().value());
+    }
+
+    @Test
+    void invoke_handlerTimesOut_returns504AndSendsErrorCallback() throws Exception {
+        when(handler.handle(any())).thenAnswer(inv -> { Thread.sleep(10_000); return null; });
+        controller = new InvokeController(
+            callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker,
+            new HandlerExecutor(50)); // 50ms timeout
+
+        ResponseEntity<Object> response = controller.invoke(new InvocationRequest("in", null), "exec-id", null);
+
+        assertEquals(504, response.getStatusCode().value());
+        verify(callbackDispatcher).submit(
+            eq("env-exec-id"),
+            argThat((InvocationResult r) -> !r.success() && "HANDLER_TIMEOUT".equals(r.error().code())),
+            any());
     }
 
     @Test

@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 @RestController
 public class InvokeController {
@@ -19,16 +20,19 @@ public class InvokeController {
     private final HandlerRegistry handlerRegistry;
     private final InvocationRuntimeContextResolver runtimeContextResolver;
     private final ColdStartTracker coldStartTracker;
+    private final HandlerExecutor handlerExecutor;
 
     public InvokeController(
             CallbackDispatcher callbackDispatcher,
             HandlerRegistry handlerRegistry,
             InvocationRuntimeContextResolver runtimeContextResolver,
-            ColdStartTracker coldStartTracker) {
+            ColdStartTracker coldStartTracker,
+            HandlerExecutor handlerExecutor) {
         this.callbackDispatcher = callbackDispatcher;
         this.handlerRegistry = handlerRegistry;
         this.runtimeContextResolver = runtimeContextResolver;
         this.coldStartTracker = coldStartTracker;
+        this.handlerExecutor = handlerExecutor;
     }
 
     @PostMapping("/invoke")
@@ -51,7 +55,7 @@ public class InvokeController {
 
         try {
             FunctionHandler handler = handlerRegistry.resolve();
-            Object output = handler.handle(request);
+            Object output = handlerExecutor.execute(handler, request);
 
             callbackDispatcher.submit(
                     effectiveExecutionId,
@@ -64,6 +68,13 @@ public class InvokeController {
                 responseBuilder.header("X-Init-Duration-Ms", String.valueOf(coldStartTracker.initDurationMs()));
             }
             return responseBuilder.body(output);
+        } catch (TimeoutException ex) {
+            log.error("Handler timed out for execution {}", effectiveExecutionId);
+            callbackDispatcher.submit(
+                    effectiveExecutionId,
+                    InvocationResult.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
+                    runtimeContext.traceId());
+            return ResponseEntity.status(504).body(Map.of("error", "Handler timed out"));
         } catch (Exception ex) {
             String errorMessage = handlerErrorMessage(ex);
             log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
