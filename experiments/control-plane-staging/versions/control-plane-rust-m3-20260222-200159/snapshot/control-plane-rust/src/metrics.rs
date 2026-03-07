@@ -15,9 +15,13 @@ struct TimerData {
 }
 
 #[derive(Debug, Default)]
-struct MetricsInner {
+struct MetricsData {
     counters: HashMap<MetricKey, f64>,
     timers: HashMap<MetricKey, TimerData>,
+}
+
+#[derive(Debug, Default)]
+struct DispatchEventStore {
     dispatch_events: HashMap<String, VecDeque<u64>>,
 }
 
@@ -32,7 +36,7 @@ pub struct FunctionTimers {
 
 #[derive(Debug, Clone)]
 pub struct TimerHandle {
-    inner: Arc<Mutex<MetricsInner>>,
+    data: Arc<Mutex<MetricsData>>,
     key: MetricKey,
 }
 
@@ -46,14 +50,14 @@ impl Eq for TimerHandle {}
 
 impl TimerHandle {
     pub fn record_ms(&self, duration_ms: u64) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let timer = inner.timers.entry(self.key.clone()).or_default();
+        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
+        let timer = data.timers.entry(self.key.clone()).or_default();
         timer.count += 1;
         timer.sum_ms += duration_ms;
     }
 
     pub fn count(&self) -> u64 {
-        self.inner
+        self.data
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .timers
@@ -65,7 +69,8 @@ impl TimerHandle {
 
 #[derive(Debug, Clone)]
 pub struct Metrics {
-    inner: Arc<Mutex<MetricsInner>>,
+    data: Arc<Mutex<MetricsData>>,
+    dispatch_events: Arc<Mutex<DispatchEventStore>>,
 }
 
 impl Default for Metrics {
@@ -77,7 +82,8 @@ impl Default for Metrics {
 impl Metrics {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(MetricsInner::default())),
+            data: Arc::new(Mutex::new(MetricsData::default())),
+            dispatch_events: Arc::new(Mutex::new(DispatchEventStore::default())),
         }
     }
 
@@ -90,14 +96,16 @@ impl Metrics {
     }
 
     pub fn dispatch(&self, function: &str) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let key = MetricKey {
-            name: "function_dispatch_total".to_string(),
-            function: function.to_string(),
-        };
-        *inner.counters.entry(key).or_insert(0.0) += 1.0;
+        self.inc_counter("function_dispatch_total", function);
         let now = crate::now_millis();
-        let events = inner.dispatch_events.entry(function.to_string()).or_default();
+        let mut dispatch_events = self
+            .dispatch_events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let events = dispatch_events
+            .dispatch_events
+            .entry(function.to_string())
+            .or_default();
         events.push_back(now);
         prune_dispatch_events(events, now, Duration::from_secs(1));
     }
@@ -142,8 +150,8 @@ impl Metrics {
         self.inc_counter("sync_queue_depth", function);
     }
 
-    pub fn sync_queue_wait_seconds(&self, function: &str) -> TimerHandle {
-        self.timer("sync_queue_wait_seconds", function)
+    pub fn sync_queue_wait_ms(&self, function: &str) -> TimerHandle {
+        self.timer("sync_queue_wait_ms", function)
     }
 
     pub fn latency(&self, function: &str) -> TimerHandle {
@@ -176,34 +184,34 @@ impl Metrics {
             function: function.to_string(),
         });
         {
-            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
             for key in &keys {
-                inner.timers.entry(key.clone()).or_default();
+                data.timers.entry(key.clone()).or_default();
             }
         }
         let [latency_key, init_key, queue_key, e2e_key] = keys;
         FunctionTimers {
             latency: TimerHandle {
-                inner: Arc::clone(&self.inner),
+                data: Arc::clone(&self.data),
                 key: latency_key,
             },
             init_duration: TimerHandle {
-                inner: Arc::clone(&self.inner),
+                data: Arc::clone(&self.data),
                 key: init_key,
             },
             queue_wait: TimerHandle {
-                inner: Arc::clone(&self.inner),
+                data: Arc::clone(&self.data),
                 key: queue_key,
             },
             e2e_latency: TimerHandle {
-                inner: Arc::clone(&self.inner),
+                data: Arc::clone(&self.data),
                 key: e2e_key,
             },
         }
     }
 
     pub fn counter_value(&self, metric_name: &str, function: &str) -> f64 {
-        self.inner
+        self.data
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .counters
@@ -217,8 +225,14 @@ impl Metrics {
 
     pub fn dispatch_rate_per_second(&self, function: &str, window: Duration) -> f64 {
         let now = crate::now_millis();
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let events = inner.dispatch_events.entry(function.to_string()).or_default();
+        let mut dispatch_events = self
+            .dispatch_events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let events = dispatch_events
+            .dispatch_events
+            .entry(function.to_string())
+            .or_default();
         prune_dispatch_events(events, now, window);
         if events.is_empty() {
             return 0.0;
@@ -227,17 +241,17 @@ impl Metrics {
     }
 
     pub fn to_prometheus_text(&self) -> String {
-        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
         let mut lines = Vec::new();
 
-        for (key, value) in &inner.counters {
+        for (key, value) in &data.counters {
             lines.push(format!(
                 "{}{{function=\"{}\"}} {}",
                 key.name, key.function, *value as u64
             ));
         }
 
-        for (key, timer) in &inner.timers {
+        for (key, timer) in &data.timers {
             lines.push(format!(
                 "{}_count{{function=\"{}\"}} {}",
                 key.name, key.function, timer.count
@@ -253,12 +267,12 @@ impl Metrics {
     }
 
     fn inc_counter(&self, metric_name: &str, function: &str) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
         let key = MetricKey {
             name: metric_name.to_string(),
             function: function.to_string(),
         };
-        *inner.counters.entry(key).or_insert(0.0) += 1.0;
+        *data.counters.entry(key).or_insert(0.0) += 1.0;
     }
 
     fn timer(&self, metric_name: &str, function: &str) -> TimerHandle {
@@ -266,14 +280,14 @@ impl Metrics {
             name: metric_name.to_string(),
             function: function.to_string(),
         };
-        self.inner
+        self.data
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .timers
             .entry(key.clone())
             .or_default();
         TimerHandle {
-            inner: Arc::clone(&self.inner),
+            data: Arc::clone(&self.data),
             key,
         }
     }

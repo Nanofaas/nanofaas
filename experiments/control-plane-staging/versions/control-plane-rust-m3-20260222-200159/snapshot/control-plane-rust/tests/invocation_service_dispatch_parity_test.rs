@@ -6,10 +6,44 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tokio::sync::Barrier;
 use tower::util::ServiceExt;
+
+fn sync_queue_env_guard() -> &'static Mutex<()> {
+    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+    GUARD.get_or_init(|| Mutex::new(()))
+}
+
+struct EnvGuard {
+    previous: std::collections::HashMap<&'static str, Option<String>>,
+}
+
+impl EnvGuard {
+    fn set(vars: &[(&'static str, &str)]) -> Self {
+        let mut previous = std::collections::HashMap::new();
+        for (key, value) in vars {
+            previous.insert(*key, std::env::var(key).ok());
+            std::env::set_var(key, value);
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in &self.previous {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
+}
 
 async fn register_function(
     app: &axum::Router,
@@ -18,11 +52,91 @@ async fn register_function(
     execution_mode: &str,
     endpoint_url: Option<&str>,
 ) {
+    register_function_with_config(app, name, image, execution_mode, endpoint_url, 1, 20).await;
+}
+
+async fn register_function_with_retry_config(
+    app: &axum::Router,
+    name: &str,
+    image: &str,
+    execution_mode: &str,
+    endpoint_url: Option<&str>,
+    concurrency: usize,
+    queue_size: usize,
+    max_retries: u32,
+) {
     let mut payload = json!({
         "name": name,
         "image": image,
         "executionMode": execution_mode,
-        "runtimeMode": "HTTP"
+        "runtimeMode": "HTTP",
+        "concurrency": concurrency,
+        "queueSize": queue_size,
+        "maxRetries": max_retries
+    });
+    if let Some(endpoint) = endpoint_url {
+        payload["endpointUrl"] = Value::String(endpoint.to_string());
+    }
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
+async fn register_function_with_scaling_config(
+    app: &axum::Router,
+    name: &str,
+    image: &str,
+    execution_mode: &str,
+    endpoint_url: Option<&str>,
+    concurrency: usize,
+    queue_size: usize,
+    scaling_config: Value,
+) {
+    let mut payload = json!({
+        "name": name,
+        "image": image,
+        "executionMode": execution_mode,
+        "runtimeMode": "HTTP",
+        "concurrency": concurrency,
+        "queueSize": queue_size,
+        "scalingConfig": scaling_config
+    });
+    if let Some(endpoint) = endpoint_url {
+        payload["endpointUrl"] = Value::String(endpoint.to_string());
+    }
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/functions")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
+async fn register_function_with_config(
+    app: &axum::Router,
+    name: &str,
+    image: &str,
+    execution_mode: &str,
+    endpoint_url: Option<&str>,
+    concurrency: usize,
+    queue_size: usize,
+) {
+    let mut payload = json!({
+        "name": name,
+        "image": image,
+        "executionMode": execution_mode,
+        "runtimeMode": "HTTP",
+        "concurrency": concurrency,
+        "queueSize": queue_size
     });
     if let Some(endpoint) = endpoint_url {
         payload["endpointUrl"] = Value::String(endpoint.to_string());
@@ -140,6 +254,99 @@ fn delayed_json_runtime(body: &str, delay: Duration, accepts: usize) -> String {
     format!("http://127.0.0.1:{}/invoke", addr.port())
 }
 
+fn delayed_json_runtime_with_max_in_flight(
+    body: &str,
+    delay: Duration,
+    max_requests: usize,
+) -> (String, std::sync::Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed runtime");
+    let addr = listener.local_addr().expect("runtime local addr");
+    let response_body = body.to_string();
+    let in_flight = std::sync::Arc::new(AtomicUsize::new(0));
+    let max_in_flight = std::sync::Arc::new(AtomicUsize::new(0));
+    let in_flight_for_loop = std::sync::Arc::clone(&in_flight);
+    let max_for_loop = std::sync::Arc::clone(&max_in_flight);
+    thread::spawn(move || {
+        for _ in 0..max_requests {
+            let Ok((mut socket, _)) = listener.accept() else {
+                break;
+            };
+            let body = response_body.clone();
+            let in_flight = std::sync::Arc::clone(&in_flight_for_loop);
+            let max_in_flight = std::sync::Arc::clone(&max_for_loop);
+            thread::spawn(move || {
+                let current = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = max_in_flight.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if max_in_flight
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf);
+                thread::sleep(delay);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(reply.as_bytes());
+                let _ = socket.flush();
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+            });
+        }
+    });
+    (
+        format!("http://127.0.0.1:{}/invoke", addr.port()),
+        max_in_flight,
+    )
+}
+
+fn delayed_json_runtime_with_request_count(
+    body: &str,
+    delay: Duration,
+    max_requests: usize,
+) -> (String, std::sync::Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed runtime");
+    let addr = listener.local_addr().expect("runtime local addr");
+    let response_body = body.to_string();
+    let request_count = std::sync::Arc::new(AtomicUsize::new(0));
+    let count_for_loop = std::sync::Arc::clone(&request_count);
+    thread::spawn(move || {
+        for _ in 0..max_requests {
+            let Ok((mut socket, _)) = listener.accept() else {
+                break;
+            };
+            let body = response_body.clone();
+            let request_count = std::sync::Arc::clone(&count_for_loop);
+            thread::spawn(move || {
+                request_count.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf);
+                thread::sleep(delay);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(reply.as_bytes());
+                let _ = socket.flush();
+            });
+        }
+    });
+    (
+        format!("http://127.0.0.1:{}/invoke", addr.port()),
+        request_count,
+    )
+}
+
 async fn invoke_sync_with_headers(
     app: &axum::Router,
     function_name: &str,
@@ -164,6 +371,13 @@ async fn invoke_sync_with_headers(
         )
         .await
         .unwrap()
+}
+
+async fn response_json(response: axum::http::Response<Body>) -> Value {
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&body).unwrap()
 }
 
 #[tokio::test]
@@ -276,6 +490,220 @@ async fn invokeSync_whenSyncQueueEnabled_usesSyncQueueOnlyAndReturnsSuccess() {
 }
 
 #[tokio::test]
+async fn invokeSync_whenBackgroundSchedulerAndSyncQueueEnabled_usesQueueBackedDispatch() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "8"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app_pair_with_background_scheduler().0;
+    let (endpoint, max_in_flight) = delayed_json_runtime_with_max_in_flight(
+        "{\"result\":\"ok\"}",
+        Duration::from_millis(250),
+        2,
+    );
+    register_function_with_config(
+        &app,
+        "sync-queued-bg",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        1,
+        20,
+    )
+    .await;
+
+    let app_for_first = app.clone();
+    let first = tokio::spawn(async move { invoke_sync(&app_for_first, "sync-queued-bg").await });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let second = tokio::spawn({
+        let app_for_second = app.clone();
+        async move { invoke_sync(&app_for_second, "sync-queued-bg").await }
+    });
+
+    let first_payload = response_json(first.await.unwrap()).await;
+    let second_payload = response_json(second.await.unwrap()).await;
+
+    assert_eq!(first_payload["status"], "success");
+    assert_eq!(second_payload["status"], "success");
+    let first_execution_id = first_payload["executionId"].as_str().unwrap();
+    let second_execution_id = second_payload["executionId"].as_str().unwrap();
+    assert_eq!(execution_status(&app, first_execution_id).await, "success");
+    assert_eq!(execution_status(&app, second_execution_id).await, "success");
+    assert_eq!(
+        max_in_flight.load(Ordering::SeqCst),
+        1,
+        "sync invoke should honor function queue concurrency when sync queue is enabled"
+    );
+}
+
+#[tokio::test]
+async fn invokeSync_whenStaticConcurrencyControlIsConfigured_limitsEffectiveDispatchConcurrency() {
+    let app = control_plane_rust::app::build_app_pair_with_background_scheduler().0;
+    let (endpoint, max_in_flight) = delayed_json_runtime_with_max_in_flight(
+        "{\"result\":\"ok\"}",
+        Duration::from_millis(250),
+        2,
+    );
+    register_function_with_scaling_config(
+        &app,
+        "static-cc",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        4,
+        20,
+        json!({
+            "strategy": "INTERNAL",
+            "minReplicas": 1,
+            "maxReplicas": 4,
+            "metrics": [{"type": "in_flight", "target": "2"}],
+            "concurrencyControl": {
+                "mode": "STATIC_PER_POD",
+                "targetInFlightPerPod": 1
+            }
+        }),
+    )
+    .await;
+
+    let first = tokio::spawn({
+        let app_for_first = app.clone();
+        async move { invoke_sync(&app_for_first, "static-cc").await }
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let second = tokio::spawn({
+        let app_for_second = app.clone();
+        async move { invoke_sync(&app_for_second, "static-cc").await }
+    });
+
+    let first_payload = response_json(first.await.unwrap()).await;
+    let second_payload = response_json(second.await.unwrap()).await;
+
+    assert_eq!(first_payload["status"], "success");
+    assert_eq!(second_payload["status"], "success");
+    assert_eq!(
+        max_in_flight.load(Ordering::SeqCst),
+        1,
+        "static concurrencyControl should cap the queue manager's effective concurrency"
+    );
+}
+
+#[tokio::test]
+async fn invokeSync_whenSyncQueueEnabled_preservesTimeoutSemantics() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app();
+    let endpoint = delayed_json_runtime("{\"result\":\"slow\"}", Duration::from_millis(250), 1);
+    register_function_with_config(
+        &app,
+        "sync-timeout",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        1,
+        20,
+    )
+    .await;
+
+    let response = invoke_sync_with_headers(&app, "sync-timeout", None, Some(50)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["status"], "timeout");
+    let execution_id = payload["executionId"].as_str().unwrap();
+    assert_eq!(execution_status(&app, execution_id).await, "timeout");
+}
+
+#[tokio::test]
+async fn invokeSync_whenSyncQueueEnabled_waitsForRetryToReachTerminalState() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app();
+    register_function_with_retry_config(
+        &app,
+        "sync-retry-terminal",
+        "img",
+        "POOL",
+        Some("http://127.0.0.1:9/invoke"),
+        1,
+        20,
+        2,
+    )
+    .await;
+
+    let response = invoke_sync_with_headers(&app, "sync-retry-terminal", None, Some(250)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["status"], "error");
+    let execution_id = payload["executionId"].as_str().unwrap();
+    assert_eq!(execution_status(&app, execution_id).await, "error");
+}
+
+#[tokio::test]
+async fn invokeSync_whenQueuedRequestTimesOutBeforeDispatch_itDoesNotDispatchLater() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _env = EnvGuard::set(&[
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "8"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_DEPTH", "8"),
+    ]);
+
+    let app = control_plane_rust::app::build_app_pair_with_background_scheduler().0;
+    let (endpoint, request_count) =
+        delayed_json_runtime_with_request_count("{\"result\":\"ok\"}", Duration::from_millis(250), 2);
+    register_function_with_config(
+        &app,
+        "sync-timeout-queued",
+        "img",
+        "DEPLOYMENT",
+        Some(&endpoint),
+        1,
+        20,
+    )
+    .await;
+
+    let app_for_first = app.clone();
+    let first = tokio::spawn(async move { invoke_sync(&app_for_first, "sync-timeout-queued").await });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    let second = invoke_sync_with_headers(&app, "sync-timeout-queued", None, Some(50)).await;
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_payload = response_json(second).await;
+    assert_eq!(second_payload["status"], "timeout");
+    let second_execution_id = second_payload["executionId"].as_str().unwrap().to_string();
+
+    let first_payload = response_json(first.await.unwrap()).await;
+    assert_eq!(first_payload["status"], "success");
+
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    assert_eq!(execution_status(&app, &second_execution_id).await, "timeout");
+    assert_eq!(
+        request_count.load(Ordering::SeqCst),
+        1,
+        "a timed-out queued invoke must be removed before it can dispatch later"
+    );
+}
+
+#[tokio::test]
 async fn invokeSyncReactive_whenSyncQueueRejects_emitsReactiveError() {
     let app = control_plane_rust::app::build_app();
     register_function(
@@ -299,6 +727,9 @@ async fn invokeSyncReactive_whenSyncQueueRejects_emitsReactiveError() {
 
 #[tokio::test]
 async fn invokeWithCompetingIdempotencyKey_allocatesOnce() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let app = control_plane_rust::app::build_app();
     let contenders = 8usize;
     let endpoint = delayed_json_runtime("{\"result\":\"ok\"}", Duration::from_millis(120), contenders);
@@ -332,4 +763,57 @@ async fn invokeWithCompetingIdempotencyKey_allocatesOnce() {
         1,
         "all competing requests should converge on the same execution id"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn invokeWithCompetingIdempotencyKey_onCurrentThreadRuntime_doesNotStarveExecutor() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let app = control_plane_rust::app::build_app();
+    let contenders = 4usize;
+    let endpoint =
+        delayed_json_runtime("{\"result\":\"ok\"}", Duration::from_millis(120), contenders);
+    register_function(
+        &app,
+        "competing-idem-current-thread",
+        "img",
+        "POOL",
+        Some(&endpoint),
+    )
+    .await;
+
+    let barrier = std::sync::Arc::new(Barrier::new(contenders + 1));
+    let completion = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut handles = Vec::with_capacity(contenders);
+        for _ in 0..contenders {
+            let app_handle = app.clone();
+            let barrier_handle = barrier.clone();
+            handles.push(tokio::spawn(async move {
+                barrier_handle.wait().await;
+                let res = invoke_sync_with_headers(
+                    &app_handle,
+                    "competing-idem-current-thread",
+                    Some("idem-current-thread"),
+                    None,
+                )
+                .await;
+                assert_eq!(res.status(), StatusCode::OK);
+                response_json(res).await
+            }));
+        }
+
+        barrier.wait().await;
+
+        let mut execution_ids = HashSet::new();
+        for handle in handles {
+            let payload = handle.await.unwrap();
+            execution_ids.insert(payload["executionId"].as_str().unwrap().to_string());
+        }
+        execution_ids
+    })
+    .await;
+
+    let execution_ids = completion.expect("idempotency contention should not starve the runtime");
+    assert_eq!(execution_ids.len(), 1);
 }
