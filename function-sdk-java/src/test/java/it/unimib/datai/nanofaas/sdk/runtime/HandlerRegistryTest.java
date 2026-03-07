@@ -1,11 +1,8 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationContext;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -15,73 +12,57 @@ class HandlerRegistryTest {
 
     @Test
     void resolve_singleHandler_returnsIt() {
-        FunctionHandler handler = request -> "ok";
-        ApplicationContext ctx = mock(ApplicationContext.class);
-        when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(Map.of("echo", handler));
+        FunctionHandler handler = mock(FunctionHandler.class);
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
+        HandlerRegistry registry = new HandlerRegistry(Map.of("myHandler", handler), settings);
 
-        HandlerRegistry registry = new HandlerRegistry(
-                ctx,
-                new RuntimeSettings("exec", "trace", "http://callback", null));
         assertSame(handler, registry.resolve());
     }
 
     @Test
-    void resolve_cachedOnSecondCall() {
-        FunctionHandler handler = request -> "ok";
-        ApplicationContext ctx = mock(ApplicationContext.class);
-        when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(Map.of("echo", handler));
+    void resolve_singleHandler_resolve_twice_returnsSameInstance() {
+        FunctionHandler handler = mock(FunctionHandler.class);
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
+        HandlerRegistry registry = new HandlerRegistry(Map.of("myHandler", handler), settings);
 
-        HandlerRegistry registry = new HandlerRegistry(
-                ctx,
-                new RuntimeSettings("exec", "trace", "http://callback", null));
-        registry.resolve();
-        registry.resolve();
-
-        // getBeansOfType is only called once due to caching
-        verify(ctx, times(1)).getBeansOfType(FunctionHandler.class);
+        assertSame(registry.resolve(), registry.resolve());
     }
 
     @Test
-    void resolve_noHandlers_throws() {
-        ApplicationContext ctx = mock(ApplicationContext.class);
-        when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(Map.of());
-
-        HandlerRegistry registry = new HandlerRegistry(
-                ctx,
-                new RuntimeSettings("exec", "trace", "http://callback", null));
-        IllegalStateException ex = assertThrows(IllegalStateException.class, registry::resolve);
-        assertTrue(ex.getMessage().contains("No FunctionHandler beans"));
+    void resolve_noHandlers_throwsIllegalState() {
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
+        assertThrows(IllegalStateException.class,
+                () -> new HandlerRegistry(Map.of(), settings));
     }
 
     @Test
-    void resolve_multipleHandlersWithoutInjectedHandler_throws() {
-        FunctionHandler h1 = request -> "a";
-        FunctionHandler h2 = request -> "b";
-        Map<String, FunctionHandler> handlers = new LinkedHashMap<>();
-        handlers.put("h1", h1);
-        handlers.put("h2", h2);
+    void resolve_multipleHandlers_withFunctionHandlerSet_returnsNamedBean() {
+        FunctionHandler h1 = mock(FunctionHandler.class);
+        FunctionHandler h2 = mock(FunctionHandler.class);
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, "betaHandler");
+        HandlerRegistry registry = new HandlerRegistry(Map.of("alphaHandler", h1, "betaHandler", h2), settings);
 
-        ApplicationContext ctx = mock(ApplicationContext.class);
-        when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(handlers);
+        assertSame(h2, registry.resolve());
+    }
 
-        HandlerRegistry registry = new HandlerRegistry(
-                ctx,
-                new RuntimeSettings("exec", "trace", "http://callback", null));
-        IllegalStateException ex = assertThrows(IllegalStateException.class, registry::resolve);
-        assertTrue(ex.getMessage().contains("Multiple FunctionHandler beans"));
+    @Test
+    void resolve_multipleHandlers_withoutFunctionHandlerSet_throwsIllegalState() {
+        FunctionHandler h1 = mock(FunctionHandler.class);
+        FunctionHandler h2 = mock(FunctionHandler.class);
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
+
+        assertThrows(IllegalStateException.class,
+                () -> new HandlerRegistry(Map.of("alphaHandler", h1, "betaHandler", h2), settings));
     }
 
     @Test
     void resolve_multipleHandlers_errorMessageListsAvailableBeans() {
-        ApplicationContext ctx = mock(ApplicationContext.class);
-        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
         FunctionHandler h1 = mock(FunctionHandler.class);
         FunctionHandler h2 = mock(FunctionHandler.class);
-        when(ctx.getBeansOfType(FunctionHandler.class))
-                .thenReturn(Map.of("alphaHandler", h1, "betaHandler", h2));
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
 
-        HandlerRegistry registry = new HandlerRegistry(ctx, settings);
-        IllegalStateException ex = assertThrows(IllegalStateException.class, registry::resolve);
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> new HandlerRegistry(Map.of("alphaHandler", h1, "betaHandler", h2), settings));
 
         String msg = ex.getMessage();
         assertTrue(msg.contains("alphaHandler") || msg.contains("betaHandler"),
@@ -91,20 +72,11 @@ class HandlerRegistryTest {
     }
 
     @Test
-    void resolve_prefersInjectedHandlerNameOverAmbientEnv() {
-        FunctionHandler h1 = request -> "a";
-        FunctionHandler h2 = request -> "b";
-        Map<String, FunctionHandler> handlers = new LinkedHashMap<>();
-        handlers.put("first", h1);
-        handlers.put("second", h2);
+    void resolve_multipleHandlers_unknownFunctionHandlerName_throwsIllegalState() {
+        FunctionHandler h1 = mock(FunctionHandler.class);
+        RuntimeSettings settings = new RuntimeSettings(null, null, null, "nonExistentHandler");
 
-        ApplicationContext ctx = mock(ApplicationContext.class);
-        when(ctx.getBeansOfType(FunctionHandler.class)).thenReturn(handlers);
-
-        HandlerRegistry registry = new HandlerRegistry(
-                ctx,
-                new RuntimeSettings("exec", "trace", "http://callback", "second"));
-
-        assertSame(h2, registry.resolve());
+        assertThrows(IllegalStateException.class,
+                () -> new HandlerRegistry(Map.of("myHandler", h1), settings));
     }
 }

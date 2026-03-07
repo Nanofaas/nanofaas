@@ -1,47 +1,39 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
 @Component
 public class HandlerRegistry {
-    private final ApplicationContext context;
-    private final RuntimeSettings runtimeSettings;
-    private volatile FunctionHandler cached;
 
-    public HandlerRegistry(ApplicationContext context, RuntimeSettings runtimeSettings) {
-        this.context = context;
-        this.runtimeSettings = runtimeSettings;
-    }
+    private final FunctionHandler resolved;
 
-    public FunctionHandler resolve() {
-        FunctionHandler h = cached;
-        if (h != null) {
-            return h;
+    public HandlerRegistry(Map<String, FunctionHandler> handlers, RuntimeSettings runtimeSettings) {
+        if (handlers.isEmpty()) {
+            throw new IllegalStateException("No FunctionHandler beans registered");
         }
-        synchronized (this) {
-            if (cached != null) {
-                return cached;
-            }
-            Map<String, FunctionHandler> handlers = context.getBeansOfType(FunctionHandler.class);
-            if (handlers.isEmpty()) {
-                throw new IllegalStateException("No FunctionHandler beans registered");
-            }
-            if (handlers.size() == 1) {
-                cached = handlers.values().iterator().next();
-                return cached;
-            }
-            String functionHandler = runtimeSettings.functionHandler();
-            if (functionHandler != null && handlers.containsKey(functionHandler)) {
-                cached = handlers.get(functionHandler);
-                return cached;
+        String name = runtimeSettings.functionHandler();
+        if (name != null) {
+            if (handlers.containsKey(name)) {
+                this.resolved = handlers.get(name);
+                return;
             }
             throw new IllegalStateException(
                     "Multiple FunctionHandler beans found: " + handlers.keySet()
                     + ". Set FUNCTION_HANDLER env to one of these names.");
         }
+        if (handlers.size() == 1) {
+            this.resolved = handlers.values().iterator().next();
+            return;
+        }
+        throw new IllegalStateException(
+                "Multiple FunctionHandler beans found: " + handlers.keySet()
+                + ". Set FUNCTION_HANDLER env to one of these names.");
+    }
+
+    public FunctionHandler resolve() {
+        return resolved;
     }
 }
