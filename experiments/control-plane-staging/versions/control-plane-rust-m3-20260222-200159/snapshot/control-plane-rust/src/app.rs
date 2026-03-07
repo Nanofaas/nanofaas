@@ -888,7 +888,7 @@ async fn post_function_action(
             ),
             Err(response) => response,
         },
-        "enqueue" => match enqueue_function(&name, state, headers, request) {
+        "enqueue" => match enqueue_function(&name, state, headers, request).await {
             Ok(response_body) => response_with_execution_id(
                 StatusCode::ACCEPTED,
                 response_body.execution_id.clone(),
@@ -999,7 +999,7 @@ async fn invoke_function(
         }
     }
 
-    let idem_claim = match resolve_idempotency(name, &headers, &state) {
+    let idem_claim = match resolve_idempotency(name, &headers, &state).await {
         Ok(claim) => claim,
         Err(existing) => return Ok(existing),
     };
@@ -1275,7 +1275,7 @@ fn finish_invocation(
 }
 
 #[allow(clippy::result_large_err)]
-fn enqueue_function(
+async fn enqueue_function(
     name: &str,
     state: AppState,
     headers: HeaderMap,
@@ -1301,7 +1301,7 @@ fn enqueue_function(
     }
 
     let now = crate::now_millis();
-    let idem_claim = match resolve_idempotency(name, &headers, &state) {
+    let idem_claim = match resolve_idempotency(name, &headers, &state).await {
         Ok(claim) => claim,
         Err(existing) => return Ok(existing),
     };
@@ -1394,7 +1394,7 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|value| value.to_string())
 }
 
-fn resolve_idempotency(
+async fn resolve_idempotency(
     function_name: &str,
     headers: &HeaderMap,
     state: &AppState,
@@ -1448,12 +1448,12 @@ fn resolve_idempotency(
                     AcquireResult::Existing(_)
                     | AcquireResult::Pending
                     | AcquireResult::Missing => {
-                        std::thread::yield_now();
+                        tokio::task::yield_now().await;
                     }
                 }
             }
             AcquireResult::Pending | AcquireResult::Missing => {
-                std::thread::yield_now();
+                tokio::task::yield_now().await;
             }
         }
     }

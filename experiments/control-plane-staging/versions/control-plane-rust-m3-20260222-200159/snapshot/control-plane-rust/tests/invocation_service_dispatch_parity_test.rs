@@ -595,3 +595,56 @@ async fn invokeWithCompetingIdempotencyKey_allocatesOnce() {
         "all competing requests should converge on the same execution id"
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn invokeWithCompetingIdempotencyKey_onCurrentThreadRuntime_doesNotStarveExecutor() {
+    let _guard = sync_queue_env_guard()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let app = control_plane_rust::app::build_app();
+    let contenders = 4usize;
+    let endpoint =
+        delayed_json_runtime("{\"result\":\"ok\"}", Duration::from_millis(120), contenders);
+    register_function(
+        &app,
+        "competing-idem-current-thread",
+        "img",
+        "POOL",
+        Some(&endpoint),
+    )
+    .await;
+
+    let barrier = std::sync::Arc::new(Barrier::new(contenders + 1));
+    let completion = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut handles = Vec::with_capacity(contenders);
+        for _ in 0..contenders {
+            let app_handle = app.clone();
+            let barrier_handle = barrier.clone();
+            handles.push(tokio::spawn(async move {
+                barrier_handle.wait().await;
+                let res = invoke_sync_with_headers(
+                    &app_handle,
+                    "competing-idem-current-thread",
+                    Some("idem-current-thread"),
+                    None,
+                )
+                .await;
+                assert_eq!(res.status(), StatusCode::OK);
+                response_json(res).await
+            }));
+        }
+
+        barrier.wait().await;
+
+        let mut execution_ids = HashSet::new();
+        for handle in handles {
+            let payload = handle.await.unwrap();
+            execution_ids.insert(payload["executionId"].as_str().unwrap().to_string());
+        }
+        execution_ids
+    })
+    .await;
+
+    let execution_ids = completion.expect("idempotency contention should not starve the runtime");
+    assert_eq!(execution_ids.len(), 1);
+}
