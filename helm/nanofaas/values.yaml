@@ -125,6 +125,34 @@ demos:
         metrics:
           - type: in_flight
             target: "2"
+    - name: word-stats-go
+      image: ghcr.io/miciav/nanofaas/go-word-stats:v0.16.1
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
+    - name: json-transform-go
+      image: ghcr.io/miciav/nanofaas/go-json-transform:v0.16.1
+      timeoutMs: 10000
+      concurrency: 2
+      queueSize: 50
+      maxRetries: 3
+      executionMode: DEPLOYMENT
+      scalingConfig:
+        strategy: INTERNAL
+        minReplicas: 1
+        maxReplicas: 5
+        metrics:
+          - type: in_flight
+            target: "2"
     - name: word-stats-python
       image: ghcr.io/miciav/nanofaas/python-word-stats:v0.16.1
       timeoutMs: 10000

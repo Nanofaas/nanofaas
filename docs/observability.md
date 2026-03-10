@@ -39,6 +39,7 @@
 
 - The repository includes structural hot-path regression tests instead of absolute microbenchmarks. They assert progress and allocation-sensitive behavior such as replay reuse, sync queue forward progress behind a blocked head, and async fairness between hot and cold functions.
 - When tuning queueing behavior, prefer preserving those structural guarantees over chasing a fixed local timing number. Absolute timings are environment-sensitive; fairness and reuse guarantees are not.
+- The Go function SDK exposes its own Prometheus endpoint at `/metrics`, including runtime-side counters for invocations, handler duration, cold starts, and dropped async callbacks.
 
 ## Health
 
@@ -54,13 +55,17 @@
   - attempt
   - status
 - In the Java function runtime, `executionId` in logs comes from `X-Execution-Id` first and falls back to configured `EXECUTION_ID` only when the header is missing or blank.
+- In the Go function runtime, request-scoped logging resolves `executionId` and `traceId` from request headers first and falls back to `EXECUTION_ID` / `TRACE_ID` only for cold-mode compatibility.
 - The runtime does not synthesize placeholder execution IDs for logging. If neither the request header nor `EXECUTION_ID` is available, MDC stays empty for `executionId`.
 
 ## Tracing
 
 - Propagate X-Trace-Id header from gateway to function pod.
 - The Java function runtime forwards `X-Trace-Id` from `/invoke` to the async completion callback. If the request header is absent, callback delivery falls back to configured `TRACE_ID`.
+- The Go function runtime mirrors the same behavior: `X-Trace-Id` is propagated from `/invoke` into the async completion callback, with environment fallback only when headers are absent.
 - Callback delivery from the Java function runtime is asynchronous and bounded. `/invoke` returns without waiting for callback completion; when the dispatcher is saturated, the callback is dropped and the runtime logs a warning.
+- Callback delivery from the Go function runtime is also asynchronous and bounded. When the callback queue is saturated the invocation still returns, and the runtime increments a callback-drop metric.
 - Callback retries in the Java function runtime are limited to retryable failures only: network/transport errors, HTTP `408`, HTTP `429`, and `5xx` responses. Other `4xx` callback responses are treated as permanent failures and are not retried.
 - Successful `/invoke` responses from the Java function runtime can carry `X-Cold-Start: true` and `X-Init-Duration-Ms` only for the first invocation attempt handled by that runtime process.
+- Successful `/invoke` responses from the Go function runtime also expose `X-Cold-Start: true` and `X-Init-Duration-Ms` only on the first handled invocation of that process.
 - Optional: OpenTelemetry export in later phase.

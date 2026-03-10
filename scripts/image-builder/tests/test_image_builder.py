@@ -13,6 +13,8 @@ def test_images_catalog_contains_all_expected_entries():
         "java-json-transform",
         "java-lite-word-stats",
         "java-lite-json-transform",
+        "go-word-stats",
+        "go-json-transform",
         "python-word-stats",
         "python-json-transform",
         "watchdog",
@@ -20,7 +22,7 @@ def test_images_catalog_contains_all_expected_entries():
         "bash-json-transform",
     }
     assert set(ib.IMAGES) == expected
-    assert len(ib.IMAGES) == 11
+    assert len(ib.IMAGES) == 13
 
 
 def test_resolve_selected_images_supports_all_option():

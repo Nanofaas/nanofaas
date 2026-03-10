@@ -6,7 +6,7 @@ Control-plane service:
 Port-forward (from your machine):
   kubectl -n {{ include "nanofaas.namespace" . }} port-forward svc/{{ .Values.controlPlane.service.name }} 8080:{{ .Values.controlPlane.service.ports.http }} 8081:{{ .Values.controlPlane.service.ports.actuator }}
 
-Invoke a function (example):
-  curl -X POST http://localhost:8080/v1/functions/word-stats-java:invoke \
+Invoke a function (example, replace the function name with any registered demo such as `word-stats-java` or `word-stats-go`):
+  curl -X POST http://localhost:8080/v1/functions/word-stats-go:invoke \
     -H 'Content-Type: application/json' \
     -d '{"input":{"text":"hello hello world"}}'

@@ -54,6 +54,10 @@ def test_vm_based_runners_use_runtime_aware_shared_helpers():
 
 def test_k3s_helm_uses_runtime_aware_control_plane_image_paths():
     script = read_script("e2e-k3s-helm.sh")
+    assert 'LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec,go}' in script
+    assert 'local allowed_runtimes=("java" "java-lite" "python" "exec" "go")' in script
+    assert 'word-stats-go' in script
+    assert 'json-transform-go' in script
     assert "e2e_build_control_plane_image \"/home/ubuntu/nanofaas\" \"${CONTROL_IMAGE}\"" in script
     assert "if [[ \"$(e2e_runtime_kind)\" == \"rust\" ]]; then" in script
     assert "Building control-plane image on host (Rust Dockerfile)" in script

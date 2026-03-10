@@ -37,7 +37,7 @@ HOST_REBUILD_IMAGES=${HOST_REBUILD_IMAGES:-true}
 HOST_REBUILD_IMAGE_REFS=${HOST_REBUILD_IMAGE_REFS:-}
 HOST_JAVA_NATIVE_IMAGE_REFS=${HOST_JAVA_NATIVE_IMAGE_REFS:-}
 LOADTEST_WORKLOADS=${LOADTEST_WORKLOADS:-word-stats,json-transform}
-LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec}
+LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec,go}
 PROM_CONTAINER_METRICS_ENABLED=${PROM_CONTAINER_METRICS_ENABLED:-true}
 PROM_CONTAINER_METRICS_MODE=${PROM_CONTAINER_METRICS_MODE:-kubelet}
 PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY=${PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY:-true}
@@ -84,6 +84,8 @@ CONTROL_IMAGE="${LOCAL_REGISTRY}/nanofaas/control-plane:${TAG}"
 RUNTIME_IMAGE="${LOCAL_REGISTRY}/nanofaas/function-runtime:${TAG}"
 JAVA_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-word-stats:${TAG}"
 JAVA_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/java-json-transform:${TAG}"
+GO_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/go-word-stats:${TAG}"
+GO_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/go-json-transform:${TAG}"
 PYTHON_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}"
 PYTHON_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/python-json-transform:${TAG}"
 BASH_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/bash-word-stats:${TAG}"
@@ -238,7 +240,7 @@ demo_function_name() {
     local workload="$1"
     local runtime="$2"
     case "${runtime}" in
-        java|java-lite|python|exec)
+        java|java-lite|python|exec|go)
             echo "${workload}-${runtime}"
             ;;
         *)
@@ -488,7 +490,7 @@ should_include_demo() {
 
 resolve_selected_demo_targets() {
     local allowed_workloads=("word-stats" "json-transform")
-    local allowed_runtimes=("java" "java-lite" "python" "exec")
+    local allowed_runtimes=("java" "java-lite" "python" "exec" "go")
     read -r -a SELECTED_WORKLOADS <<< "$(normalize_csv_selection "${LOADTEST_WORKLOADS}" "${allowed_workloads[@]}")"
     read -r -a SELECTED_RUNTIMES <<< "$(normalize_csv_selection "${LOADTEST_RUNTIMES}" "${allowed_runtimes[@]}")"
     SELECTED_DEMO_FUNCTIONS=()
@@ -527,6 +529,12 @@ build_demo_functions_yaml() {
     fi
     if should_include_demo "json-transform" "java"; then
         append_demo_function_yaml "json-transform-java" "${LOCAL_REGISTRY}/nanofaas/java-json-transform:${TAG}"
+    fi
+    if should_include_demo "word-stats" "go"; then
+        append_demo_function_yaml "word-stats-go" "${LOCAL_REGISTRY}/nanofaas/go-word-stats:${TAG}"
+    fi
+    if should_include_demo "json-transform" "go"; then
+        append_demo_function_yaml "json-transform-go" "${LOCAL_REGISTRY}/nanofaas/go-json-transform:${TAG}"
     fi
     if should_include_demo "word-stats" "python"; then
         append_demo_function_yaml "word-stats-python" "${LOCAL_REGISTRY}/nanofaas/python-word-stats:${TAG}"
@@ -636,6 +644,8 @@ build_non_control_plane_images_on_host() {
     local need_runtime_image=false
     local need_java_word_stats=false
     local need_java_json_transform=false
+    local need_go_word_stats=false
+    local need_go_json_transform=false
     local need_python_word_stats=false
     local need_python_json_transform=false
     local need_bash_word_stats=false
@@ -664,6 +674,18 @@ build_non_control_plane_images_on_host() {
         fi
         if should_rebuild_host_image "${JAVA_JSON_TRANSFORM_IMAGE}" || !ensure_host_image_available_from_local_cache "${JAVA_JSON_TRANSFORM_IMAGE}"; then
             need_java_json_transform=true
+        fi
+    fi
+
+    if should_include_demo "word-stats" "go"; then
+        if should_rebuild_host_image "${GO_WORD_STATS_IMAGE}" || !ensure_host_image_available_from_local_cache "${GO_WORD_STATS_IMAGE}"; then
+            need_go_word_stats=true
+        fi
+    fi
+
+    if should_include_demo "json-transform" "go"; then
+        if should_rebuild_host_image "${GO_JSON_TRANSFORM_IMAGE}" || !ensure_host_image_available_from_local_cache "${GO_JSON_TRANSFORM_IMAGE}"; then
+            need_go_json_transform=true
         fi
     fi
 
@@ -706,6 +728,8 @@ build_non_control_plane_images_on_host() {
     if [[ "${need_runtime_image}" == "false" \
         && "${need_java_word_stats}" == "false" \
         && "${need_java_json_transform}" == "false" \
+        && "${need_go_word_stats}" == "false" \
+        && "${need_go_json_transform}" == "false" \
         && "${need_python_word_stats}" == "false" \
         && "${need_python_json_transform}" == "false" \
         && "${need_bash_word_stats}" == "false" \
@@ -757,6 +781,14 @@ build_non_control_plane_images_on_host() {
         fi
     fi
 
+    if [[ "${need_go_word_stats}" == "true" ]]; then
+        log "Building image on host: word-stats-go"
+        (cd "${PROJECT_ROOT}" && docker build -t "${GO_WORD_STATS_IMAGE}" -f examples/go/word-stats/Dockerfile .)
+    fi
+    if [[ "${need_go_json_transform}" == "true" ]]; then
+        log "Building image on host: json-transform-go"
+        (cd "${PROJECT_ROOT}" && docker build -t "${GO_JSON_TRANSFORM_IMAGE}" -f examples/go/json-transform/Dockerfile .)
+    fi
     if [[ "${need_python_word_stats}" == "true" ]]; then
         log "Building image on host: word-stats-python"
         (cd "${PROJECT_ROOT}" && docker build -t "${PYTHON_WORD_STATS_IMAGE}" -f examples/python/word-stats/Dockerfile .)
@@ -821,6 +853,8 @@ push_host_non_control_plane_images_to_registry() {
     local images=("${RUNTIME_IMAGE}")
     if should_include_demo "word-stats" "java"; then images+=("${JAVA_WORD_STATS_IMAGE}"); fi
     if should_include_demo "json-transform" "java"; then images+=("${JAVA_JSON_TRANSFORM_IMAGE}"); fi
+    if should_include_demo "word-stats" "go"; then images+=("${GO_WORD_STATS_IMAGE}"); fi
+    if should_include_demo "json-transform" "go"; then images+=("${GO_JSON_TRANSFORM_IMAGE}"); fi
     if should_include_demo "word-stats" "python"; then images+=("${PYTHON_WORD_STATS_IMAGE}"); fi
     if should_include_demo "json-transform" "python"; then images+=("${PYTHON_JSON_TRANSFORM_IMAGE}"); fi
     if should_include_demo "word-stats" "exec"; then images+=("${BASH_WORD_STATS_IMAGE}"); fi
@@ -991,6 +1025,14 @@ sync_and_build() {
         vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform/Dockerfile examples/java/json-transform/"
     fi
 
+    # Go demo images (need repo root context for function-sdk-go)
+    if should_include_demo "word-stats" "go"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${GO_WORD_STATS_IMAGE} -f examples/go/word-stats/Dockerfile ."
+    fi
+    if should_include_demo "json-transform" "go"; then
+        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${GO_JSON_TRANSFORM_IMAGE} -f examples/go/json-transform/Dockerfile ."
+    fi
+
     # Python demo images (need repo root context for function-sdk-python)
     if should_include_demo "word-stats" "python"; then
         vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_WORD_STATS_IMAGE} -f examples/python/word-stats/Dockerfile ."
@@ -1035,6 +1077,8 @@ push_images() {
         images+=("${RUNTIME_IMAGE}")
         if should_include_demo "word-stats" "java"; then images+=("${JAVA_WORD_STATS_IMAGE}"); fi
         if should_include_demo "json-transform" "java"; then images+=("${JAVA_JSON_TRANSFORM_IMAGE}"); fi
+        if should_include_demo "word-stats" "go"; then images+=("${GO_WORD_STATS_IMAGE}"); fi
+        if should_include_demo "json-transform" "go"; then images+=("${GO_JSON_TRANSFORM_IMAGE}"); fi
         if should_include_demo "word-stats" "python"; then images+=("${PYTHON_WORD_STATS_IMAGE}"); fi
         if should_include_demo "json-transform" "python"; then images+=("${PYTHON_JSON_TRANSFORM_IMAGE}"); fi
         if should_include_demo "word-stats" "exec"; then images+=("${BASH_WORD_STATS_IMAGE}"); fi

@@ -10,6 +10,11 @@ It applies to:
 - `scripts/e2e-loadtest-registry.sh --interactive`
 - k6 workload scripts under `k6/word-stats-*.js` and `k6/json-transform-*.js`
 
+Current benchmark coverage does **not** include the Go demos yet. The deploy
+and Helm flows register `word-stats-go` and `json-transform-go`, but there are
+no dedicated `experiments/k6/*-go.js` workload scripts in the repository at the
+time of writing.
+
 ## Payload Modes
 
 Payload behavior is controlled with:

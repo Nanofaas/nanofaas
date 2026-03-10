@@ -38,7 +38,7 @@ Options:
   --suffix SUFFIX    Tag suffix, e.g. "-arm64" (default: none)
   --only TARGETS     Comma-separated list of targets to build:
                        control-plane, function-runtime, watchdog,
-                       java-demos, python-demos, all (default: all)
+                       java-demos, go-demos, python-demos, all (default: all)
   -h, --help         Show this help message
 EOF
     exit 0
@@ -164,6 +164,19 @@ if should_build "java-demos"; then
 fi
 
 # --- 5. Python Demo Functions -------------------------------------------------
+if should_build "go-demos"; then
+    for example in word-stats json-transform; do
+        IMG="${BASE}/go-${example}:${TAG}${TAG_SUFFIX}"
+        info "Building go/${example} → $IMG"
+        docker build $DOCKER_PLATFORM_FLAG \
+            --label "org.opencontainers.image.source=$OCI_SOURCE" \
+            -t "$IMG" -f "examples/go/${example}/Dockerfile" .
+        ok "Built $IMG"
+        push_image "$IMG"
+    done
+fi
+
+# --- 6. Python Demo Functions -------------------------------------------------
 if should_build "python-demos"; then
     for example in word-stats json-transform; do
         IMG="${BASE}/python-${example}:${TAG}${TAG_SUFFIX}"

@@ -1,8 +1,8 @@
 # nanofaas E2E Validation Tutorial
 
 This tutorial walks through deploying nanofaas on a local Kubernetes cluster,
-running load tests against all demo functions, and visualizing metrics with
-Grafana. The entire process is automated with two scripts.
+running load tests against the benchmarked demo functions, and visualizing
+metrics with Grafana. The entire process is automated with two scripts.
 
 ## Prerequisites
 
@@ -45,16 +45,18 @@ This script performs the following automatically:
 3. **Installs k3s** (lightweight Kubernetes, Traefik disabled)
 4. **Syncs the project** to the VM and **builds all artifacts**:
    - Gradle JARs: control-plane, function-runtime, Java demo functions
-   - Docker images: 2 core + 2 Java + 2 Python + 2 Bash = 8 images
+   - Docker images: 2 core + 2 Java + 2 Go + 2 Python + 2 Bash + 2 Java Lite = 12 images
 5. **Sets up a local registry** in the VM (`localhost:5000`) and **pushes images**
 6. **Deploys via Helm** with NodePort services:
    - Control-plane API on port **30080**
    - Actuator/metrics on port **30081**
    - Prometheus on port **30090**
-7. **Registers 6 demo functions** (via Helm post-install hook):
+7. **Registers 10 demo functions** (via Helm post-install hook):
    - `word-stats-java`, `json-transform-java` (Java/Spring Boot)
+   - `word-stats-go`, `json-transform-go` (Go SDK runtime)
    - `word-stats-python`, `json-transform-python` (Python/FastAPI)
    - `word-stats-exec`, `json-transform-exec` (Bash/Watchdog STDIO)
+   - `word-stats-java-lite`, `json-transform-java-lite` (Java native image)
 8. **Smoke-tests every function** with a real invocation
 
 On completion, you'll see:
@@ -100,15 +102,19 @@ dependencies, and performs a clean Helm install each time.
 
 This script:
 
-1. **Verifies** the nanofaas API is reachable and all 8 functions are registered
+1. **Verifies** the nanofaas API is reachable and all 10 functions are registered
 2. **Checks output parity** across runtimes (`word-stats`, `json-transform-*`) before load generation
 3. **Starts Grafana** locally via Docker (port 3000), auto-provisioned with:
    - Prometheus datasource pointing to the VM
    - Pre-built dashboard with function filter, queue-depth percentiles, and zero-filled error-rate panels
-4. **Runs k6 load tests** for each function sequentially:
+4. **Runs k6 load tests** for each benchmarked function sequentially:
    - Ramp-up profile: 0 → 5 → 10 → 20 → 20 → 0 VUs over ~2 minutes
    - 10-second cooldown between tests
 5. **Generates a performance report** with per-function and per-runtime analysis
+
+Go demo functions are deployed and smoke-tested by `./scripts/e2e-k3s-helm.sh`,
+but they are not yet included in the current k6 benchmark matrix because the
+repository does not yet ship `experiments/k6/*-go.js` workloads.
 
 For all supported parameters and examples:
 
@@ -191,7 +197,8 @@ multipass delete nanofaas-e2e && multipass purge
 
 ## Expected Results
 
-Typical results on a 4-core VM (ARM64, Apple Silicon host):
+Typical results on a 4-core VM (ARM64, Apple Silicon host) for the current
+benchmarked runtimes:
 
 | Function | Requests | Fail% | Avg (ms) | p95 (ms) | Req/s |
 |---|---|---|---|---|---|
@@ -216,6 +223,11 @@ dominated by the control-plane dispatcher overhead and the JVM-based function
 runtime. The ~8% failure rate comes from the sync queue's estimated-wait
 admission controller during the initial warm-up period before throughput
 stabilizes.
+
+**Go demo functions are currently deployable but not benchmarked in this
+table**. Add dedicated `experiments/k6/word-stats-go.js` and
+`experiments/k6/json-transform-go.js` workloads before comparing Go against the
+other runtimes here.
 
 ---
 
@@ -242,9 +254,11 @@ stabilizes.
 │  │  └─────────┬───────────┘                              │  │
 │  │            │ dispatches to                             │  │
 │  │  ┌─────────┴──────────────────────────────────────┐   │  │
-│  │  │  fn-word-stats-java   fn-json-transform-java   │   │  │
-│  │  │  fn-word-stats-python fn-json-transform-python │   │  │
-│  │  │  fn-word-stats-exec   fn-json-transform-exec   │   │  │
+│  │  │  fn-word-stats-java      fn-json-transform-java      │   │  │
+│  │  │  fn-word-stats-go        fn-json-transform-go        │   │  │
+│  │  │  fn-word-stats-python    fn-json-transform-python    │   │  │
+│  │  │  fn-word-stats-exec      fn-json-transform-exec      │   │  │
+│  │  │  fn-word-stats-java-lite fn-json-transform-java-lite │   │  │
 │  │  └────────────────────────────────────────────────┘   │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘

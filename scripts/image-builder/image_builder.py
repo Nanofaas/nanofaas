@@ -148,6 +148,18 @@ IMAGES = {
         "context": ".",
         "group": "Java Lite Functions",
     },
+    "go-word-stats": {
+        "type": "docker",
+        "dockerfile": "examples/go/word-stats/Dockerfile",
+        "context": ".",
+        "group": "Go Functions",
+    },
+    "go-json-transform": {
+        "type": "docker",
+        "dockerfile": "examples/go/json-transform/Dockerfile",
+        "context": ".",
+        "group": "Go Functions",
+    },
     "python-word-stats": {
         "type": "docker",
         "dockerfile": "examples/python/word-stats/Dockerfile",

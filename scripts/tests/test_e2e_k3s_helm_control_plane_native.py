@@ -77,6 +77,14 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "Selected demo functions:" in script
     assert "./experiments/e2e-loadtest.sh" in script
     assert "register functions before running load tests" in script
+    assert 'local allowed_runtimes=("java" "java-lite" "python" "exec" "go")' in script
+    assert 'LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec,go}' in script
+    assert 'GO_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/go-word-stats:${TAG}"' in script
+    assert 'GO_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/go-json-transform:${TAG}"' in script
+    assert 'append_demo_function_yaml "word-stats-go"' in script
+    assert 'append_demo_function_yaml "json-transform-go"' in script
+    assert 'docker build -t "${GO_WORD_STATS_IMAGE}" -f examples/go/word-stats/Dockerfile .' in script
+    assert 'docker build -t "${GO_JSON_TRANSFORM_IMAGE}" -f examples/go/json-transform/Dockerfile .' in script
     assert "for fn in word-stats-java word-stats-python word-stats-exec word-stats-java-lite;" not in script
 
 

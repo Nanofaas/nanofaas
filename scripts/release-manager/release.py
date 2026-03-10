@@ -308,7 +308,17 @@ def build_and_push_arm64(version):
         )
         run_command(f"docker push {img}")
 
-    # 6. Exec (Bash) Demo Functions
+    # 6. Go Demo Functions
+    for example in ["word-stats", "json-transform"]:
+        img = f"{base_image}/go-{example}:{tag}-arm64"
+        console.print(f"[blue]Building Go {example} ({img})...[/blue]")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {img} -f examples/go/{example}/Dockerfile ."
+        )
+        run_command(f"docker push {img}")
+
+    # 7. Exec (Bash) Demo Functions
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/exec-{example}:{tag}-arm64"
         console.print(f"[blue]Building Exec {example} ({img})...[/blue]")
@@ -318,7 +328,7 @@ def build_and_push_arm64(version):
         )
         run_command(f"docker push {img}")
 
-    # 7. Java Lite Demo Functions (native image via multi-stage Dockerfile)
+    # 8. Java Lite Demo Functions (native image via multi-stage Dockerfile)
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/java-lite-{example}:{tag}-arm64"
         console.print(f"[blue]Building Java Lite {example} native image ({img})...[/blue]")

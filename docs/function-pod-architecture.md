@@ -40,12 +40,18 @@ l'intero ciclo di vita del processo figlio.
 |  |    -> InvokeController espone POST /invoke             |  |
 |  |    -> HandlerRegistry carica handler via Spring scan   |  |
 |  |                                                        |  |
-|  |  Opzione B: Python (Flask + Gunicorn)                  |  |
+|  |  Opzione B: Go (function-sdk-go)                       |  |
+|  |    /app/function                                       |  |
+|  |    -> runtime HTTP embedded su :8080                   |  |
+|  |    -> espone /invoke, /health, /metrics               |  |
+|  |    -> callback async al control plane                  |  |
+|  |                                                        |  |
+|  |  Opzione C: Python (Flask + Gunicorn)                  |  |
 |  |    gunicorn nanofaas_runtime.app:app                   |  |
 |  |    -> Flask espone POST /invoke                        |  |
 |  |    -> importlib carica handle() da handler.py          |  |
 |  |                                                        |  |
-|  |  Opzione C: Qualsiasi eseguibile                       |  |
+|  |  Opzione D: Qualsiasi eseguibile                       |  |
 |  |    /app/mio-binario                                    |  |
 |  |    -> Deve esporre HTTP /invoke (mode HTTP)            |  |
 |  |    -> Oppure leggere stdin/stdout (mode STDIO)         |  |
@@ -262,7 +268,33 @@ al control plane e il timeout.
 +-------------------------------------------+
 ```
 
-### Caso 3: Funzione Python
+### Caso 3: Funzione Go con function-sdk-go
+
+```
++-------------------------------------------+
+|  Container                                |
+|                                           |
+|  ENTRYPOINT: /app/function                |
+|       |                                   |
+|       +-- runtime HTTP embedded           |
+|              |                            |
+|              POST /invoke                 |
+|              GET /health                  |
+|              GET /metrics                 |
+|              |                            |
+|              resolve X-Execution-Id       |
+|              resolve X-Trace-Id           |
+|              callback async al control    |
+|              plane quando configurato     |
++-------------------------------------------+
+```
+
+Lo SDK Go replica il modello warm-first dello SDK Java, ma con API Go
+esplicita invece di annotation Spring. Il processo resta vivo tra le
+invocazioni, espone direttamente gli endpoint HTTP runtime e propaga
+`executionId`/`traceId` nel contesto della request.
+
+### Caso 4: Funzione Python
 
 ```
 +-------------------------------------------+
@@ -279,7 +311,7 @@ al control plane e il timeout.
 +-------------------------------------------+
 ```
 
-### Caso 4: Eseguibile generico (STDIO mode)
+### Caso 5: Eseguibile generico (STDIO mode)
 
 ```
 +-------------------------------------------+
@@ -309,7 +341,8 @@ uno script Node.js, un programma compilato nativamente.
 ### Approccio 1: Eseguibile con server HTTP integrato
 
 L'eseguibile espone un server HTTP su porta 8080 con endpoint `/invoke`
-e `/health`. Non serve il watchdog in DEPLOYMENT mode.
+e `/health`. Un runtime Go costruito con `function-sdk-go` rientra
+naturalmente in questa categoria. Non serve il watchdog in DEPLOYMENT mode.
 
 ```
 FROM scratch
