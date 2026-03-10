@@ -22,6 +22,20 @@ curl -X POST http://localhost:8080/v1/functions/echo:invoke \
   -d '{"input": {"message": "hi"}}'
 ```
 
+## Go runtime example
+
+The Go SDK examples live under:
+
+- `examples/go/word-stats`
+- `examples/go/json-transform`
+
+Run one locally:
+
+```bash
+cd examples/go/word-stats
+go run .
+```
+
 ## Async invoke
 
 ```bash

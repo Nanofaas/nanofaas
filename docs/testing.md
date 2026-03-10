@@ -33,6 +33,17 @@ All modules use JUnit 5. Test classes follow the `*Test.java` naming convention.
 | control-plane | JUnit 5, Reactor Test, Fabric8 Mock Server, RestAssured (E2E) |
 | function-runtime | JUnit 5, Spring Boot Test |
 | nanofaas-cli | JUnit 5, OkHttp MockWebServer, Fabric8 Mock Client, AssertJ |
+| function-sdk-go | Go `testing`, `httptest` (planned) |
+
+### Go SDK tests
+
+The Go function SDK lives under `function-sdk-go/` and is tested with the Go toolchain.
+
+```bash
+cd function-sdk-go
+go mod tidy
+go test ./...
+```
 
 ### CLI unit tests
 
@@ -154,6 +165,9 @@ Testcontainers and RestAssured. No Kubernetes needed.
 ```bash
 ./scripts/e2e.sh
 ```
+
+The SDK parity suite `SdkExamplesE2eTest` now covers Java Spring SDK, Java lite SDK,
+and Go SDK example containers against the same control-plane flows.
 
 ### Buildpack E2E (`scripts/e2e-buildpack.sh`)
 

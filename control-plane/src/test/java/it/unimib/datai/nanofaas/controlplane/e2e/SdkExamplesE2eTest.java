@@ -22,8 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * E2E test that validates the Java SDK example functions (word-stats, json-transform)
- * and their lite SDK counterparts running as real containers through the control plane.
+ * E2E test that validates the Java SDK example functions (word-stats, json-transform),
+ * their lite SDK counterparts, and the Go SDK examples running as real containers through
+ * the control plane.
  */
 @Testcontainers
 @Tag("inter_e2e")
@@ -83,6 +84,28 @@ class SdkExamplesE2eTest {
             .withNetworkAliases("json-transform-lite")
             .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(300)));
 
+    // word-stats-go function container
+    private static final GenericContainer<?> wordStatsGo = new GenericContainer<>(
+            new ImageFromDockerfile()
+                    .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
+                    .withDockerfilePath("examples/go/word-stats/Dockerfile")
+    )
+            .withExposedPorts(8080)
+            .withNetwork(network)
+            .withNetworkAliases("word-stats-go")
+            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(300)));
+
+    // json-transform-go function container
+    private static final GenericContainer<?> jsonTransformGo = new GenericContainer<>(
+            new ImageFromDockerfile()
+                    .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
+                    .withDockerfilePath("examples/go/json-transform/Dockerfile")
+    )
+            .withExposedPorts(8080)
+            .withNetwork(network)
+            .withNetworkAliases("json-transform-go")
+            .waitingFor(Wait.forHttp("/health").forPort(8080).withStartupTimeout(Duration.ofSeconds(300)));
+
     // control plane
     private static final GenericContainer<?> controlPlane = E2eTestSupport.createControlPlaneContainer(
             network,
@@ -95,6 +118,8 @@ class SdkExamplesE2eTest {
         jsonTransform.start();
         wordStatsLite.start();
         jsonTransformLite.start();
+        wordStatsGo.start();
+        jsonTransformGo.start();
         controlPlane.start();
         RestAssured.baseURI = "http://" + controlPlane.getHost();
         RestAssured.port = controlPlane.getMappedPort(8080);
@@ -113,6 +138,14 @@ class SdkExamplesE2eTest {
                 10000, 4, 20, 3));
         E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
                 "json-transform-lite", "json-transform-lite:test", "http://json-transform-lite:8080/invoke",
+                10000, 4, 20, 3));
+
+        // Register Go SDK functions
+        E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
+                "word-stats-go", "word-stats-go:test", "http://word-stats-go:8080/invoke",
+                10000, 4, 20, 3));
+        E2eApiSupport.registerFunction(E2eApiSupport.poolFunctionSpec(
+                "json-transform-go", "json-transform-go:test", "http://json-transform-go:8080/invoke",
                 10000, 4, 20, 3));
     }
 
@@ -302,5 +335,89 @@ class SdkExamplesE2eTest {
                 .statusCode(200)
                 .body("status", equalTo("success"))
                 .body("output.groups.eng", equalTo(85000.0f));
+    }
+
+    // ── word-stats-go (Go SDK) ───────────────────────────────────────
+
+    @Test
+    void wordStatsGo_syncInvoke_returnsCorrectStatistics() {
+        RestAssured.given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("input", Map.of(
+                        "text", "the quick brown fox jumps over the lazy dog the dog",
+                        "topN", 3
+                )))
+                .post("/v1/functions/word-stats-go:invoke")
+                .then()
+                .statusCode(200)
+                .body("status", equalTo("success"))
+                .body("output.wordCount", equalTo(11))
+                .body("output.uniqueWords", equalTo(8))
+                .body("output.topWords", hasSize(3))
+                .body("output.topWords[0].word", equalTo("the"))
+                .body("output.topWords[0].count", equalTo(3));
+    }
+
+    // ── json-transform-go (Go SDK) ───────────────────────────────────
+
+    @Test
+    void jsonTransformGo_syncInvoke_groupAndCount() {
+        RestAssured.given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("input", Map.of(
+                        "data", List.of(
+                                Map.of("dept", "eng", "salary", 80000),
+                                Map.of("dept", "sales", "salary", 60000),
+                                Map.of("dept", "eng", "salary", 90000),
+                                Map.of("dept", "sales", "salary", 70000),
+                                Map.of("dept", "eng", "salary", 85000)
+                        ),
+                        "groupBy", "dept",
+                        "operation", "count"
+                )))
+                .post("/v1/functions/json-transform-go:invoke")
+                .then()
+                .statusCode(200)
+                .body("status", equalTo("success"))
+                .body("output.groupBy", equalTo("dept"))
+                .body("output.operation", equalTo("count"))
+                .body("output.groups.eng", equalTo(3))
+                .body("output.groups.sales", equalTo(2));
+    }
+
+    @Test
+    void jsonTransformGo_asyncInvoke_pollForResult() {
+        String executionId = RestAssured.given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("input", Map.of(
+                        "data", List.of(
+                                Map.of("category", "A", "value", 10),
+                                Map.of("category", "B", "value", 20),
+                                Map.of("category", "A", "value", 30)
+                        ),
+                        "groupBy", "category",
+                        "operation", "sum",
+                        "valueField", "value"
+                )))
+                .post("/v1/functions/json-transform-go:enqueue")
+                .then()
+                .statusCode(202)
+                .body("executionId", notNullValue())
+                .extract()
+                .path("executionId");
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(15))
+                .pollInterval(Duration.ofMillis(300))
+                .untilAsserted(() -> {
+                    var response = RestAssured.get("/v1/executions/{id}", executionId)
+                            .then()
+                            .statusCode(200)
+                            .extract()
+                            .response();
+                    assertEquals("success", response.path("status"));
+                    assertEquals(40.0f, ((Number) response.path("output.groups.A")).floatValue(), 0.01);
+                    assertEquals(20.0f, ((Number) response.path("output.groups.B")).floatValue(), 0.01);
+                });
     }
 }

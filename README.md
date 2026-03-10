@@ -5,6 +5,7 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 ## Modules
 
 - `control-plane/` API gateway, in-memory queueing, scheduler thread, and Kubernetes dispatch
+- `function-sdk-go/` Go SDK for authoring NanoFaaS functions with an embedded HTTP runtime
 - `function-runtime/` HTTP runtime for Java function handlers
 - `python-runtime/` HTTP runtime for Python function handlers
 - `common/` shared DTOs and runtime contracts
@@ -81,6 +82,7 @@ Module authoring details are in `docs/control-plane-modules.md`.
 
 ```bash
 ./gradlew test
+cd function-sdk-go && go test ./...
 ```
 
 E2E (local):
@@ -117,6 +119,7 @@ E2E/module matrix (control-plane optional modules compile):
 
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
 - `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
+- `function-sdk-go/README.md` documents the planned Go function authoring/runtime SDK.
 
 ## nanofaas-cli (CLI)
 
