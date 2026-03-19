@@ -117,6 +117,7 @@ E2E/module matrix (control-plane optional modules compile):
 
 ## Docs
 
+- `docs/tutorial-java-function.md` — step-by-step guide to writing, building, and invoking a Java function.
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
 - `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
 - `function-sdk-go/README.md` documents the planned Go function authoring/runtime SDK.
