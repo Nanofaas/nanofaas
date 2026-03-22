@@ -20,6 +20,7 @@ source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "cold-start-e2e"
 e2e_test_init
 vm_exec() { e2e_vm_exec "$@"; }
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
 
 cleanup() {
     local exit_code=$?
@@ -32,7 +33,7 @@ trap cleanup EXIT
 # --- Setup (reused pattern from e2e-k3s-curl.sh) ---
 
 check_prerequisites() {
-    e2e_require_multipass
+    e2e_require_vm_access
     log "Prerequisites check passed"
 }
 
@@ -49,18 +50,18 @@ install_k3s() {
 }
 
 sync_project() {
-    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 }
 
 build_jars() {
     log "Building runtime-aware control-plane artifacts in VM (runtime=${CONTROL_PLANE_RUNTIME})..."
-    e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
+    e2e_build_control_plane_artifacts "${REMOTE_DIR}"
 }
 
 build_images() {
     log "Building container images in VM..."
-    e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
-    e2e_build_function_runtime_image "/home/ubuntu/nanofaas" "${RUNTIME_IMAGE}"
+    e2e_build_control_plane_image "${REMOTE_DIR}" "${CONTROL_IMAGE}"
+    e2e_build_function_runtime_image "${REMOTE_DIR}" "${RUNTIME_IMAGE}"
 }
 
 push_images_to_registry() {

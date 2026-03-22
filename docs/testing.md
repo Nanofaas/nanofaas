@@ -63,8 +63,36 @@ use `@EnableKubernetesMockClient(crud = true)` from Fabric8.
 
 ## E2E Tests
 
-nanofaas provides several E2E test suites. Each creates a Multipass VM with k3s,
-deploys the platform, and runs tests against the live cluster.
+nanofaas provides several E2E test suites. VM-based suites can either create a
+Multipass VM or target an existing local/remote VM over SSH, then deploy the
+platform and run tests against the live cluster.
+
+### VM lifecycle modes
+
+- `E2E_VM_LIFECYCLE=multipass` keeps the existing default: scripts create/start/delete the VM with Multipass.
+- `E2E_VM_LIFECYCLE=external` targets an existing VM; command execution and file copy still go through SSH/SCP, but the scripts do not create or delete the machine.
+- SSH/SCP are always used for remote command execution and file transfer.
+- Multipass is used only for VM lifecycle operations when `E2E_VM_LIFECYCLE=multipass`.
+
+Supported external-VM environment variables:
+
+```bash
+E2E_VM_LIFECYCLE=external
+E2E_VM_HOST=<ip-or-dns>
+E2E_VM_USER=<ssh-user>
+E2E_VM_HOME=<optional-home>
+E2E_KUBECONFIG_PATH=<optional-remote-kubeconfig>
+E2E_REMOTE_PROJECT_DIR=<optional-remote-repo-path>
+E2E_PUBLIC_HOST=<optional-nodeport-host>
+E2E_KUBECONFIG_SERVER=<optional-https-server-url>
+```
+
+Examples:
+
+```bash
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
+```
 
 ### CLI E2E (`scripts/e2e-cli.sh`)
 
@@ -72,8 +100,8 @@ Tests the full `nanofaas` CLI against a real k3s cluster. This is the most
 comprehensive CLI validation — it exercises every command end-to-end.
 
 **Prerequisites:**
-- [Multipass](https://multipass.run) (`brew install multipass`)
-- SSH public key at `~/.ssh/id_rsa.pub` or `~/.ssh/id_ed25519.pub`
+- OpenSSH client and an SSH public key at `~/.ssh/id_rsa.pub` or `~/.ssh/id_ed25519.pub`
+- [Multipass](https://multipass.run) (`brew install multipass`) only if `E2E_VM_LIFECYCLE=multipass`
 - Internet connection (downloads k3s, Docker, JDK 21 inside the VM)
 
 **Run:**
@@ -111,7 +139,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VM_NAME` | `nanofaas-cli-e2e-<timestamp>` | Multipass VM name |
+| `VM_NAME` | `nanofaas-cli-e2e-<timestamp>` | VM name when `E2E_VM_LIFECYCLE=multipass` |
 | `CPUS` | `4` | VM CPU count |
 | `MEMORY` | `8G` | VM memory |
 | `DISK` | `30G` | VM disk size |
@@ -180,7 +208,7 @@ of Dockerfiles.
 
 ### Kubernetes E2E (JUnit on k3s)
 
-JUnit-based E2E that runs in a dedicated Multipass VM with k3s.
+JUnit-based E2E that runs in a dedicated VM with k3s.
 
 ```bash
 # Full run (provision VM, install k3s, build/push images to local registry, run test)
@@ -194,7 +222,7 @@ JUnit-based E2E that runs in a dedicated Multipass VM with k3s.
 
 End-to-end scenario where `nanofaas-cli` runs on the host machine and executes
 `platform install/status/uninstall` (Helm local to host) against a k3s cluster
-running in Multipass.
+running in a VM.
 
 ```bash
 ./scripts/e2e-cli-host-platform.sh
@@ -326,12 +354,12 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | Suite | Scope | Requires | Command |
 |-------|-------|----------|---------|
 | Unit tests | All modules | JDK 21 | `./gradlew test` |
-| CLI E2E | All CLI commands | Multipass + SSH key | `./scripts/e2e-cli.sh` |
-| Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | Multipass + Helm on host | `./scripts/e2e-cli-host-platform.sh` |
+| CLI E2E | All CLI commands | SSH key; Multipass optional for managed VM lifecycle | `./scripts/e2e-cli.sh` |
+| Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | SSH key + Helm on host; Multipass optional | `./scripts/e2e-cli-host-platform.sh` |
 | Host CLI Deploy E2E | Host-only deploy build+push+register | Docker + Python 3 | `./scripts/e2e-cli-deploy-host.sh` |
-| K3s Curl E2E | REST API | Multipass | `./scripts/e2e-k3s-curl.sh` |
+| K3s Curl E2E | REST API | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-curl.sh` |
 | Docker E2E | Core flow | Docker | `./scripts/e2e.sh` |
 | Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/e2e-buildpack.sh` |
-| K8s E2E (JUnit) | Control-plane on k3s | Multipass | `./scripts/e2e-k8s-vm.sh` or `./gradlew k8sE2e` |
-| Load test | Performance | Multipass + k6 | `./scripts/e2e-k3s-helm.sh && ./scripts/e2e-loadtest.sh` |
+| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k8s-vm.sh` or `./gradlew k8sE2e` |
+| Load test | Performance | SSH + k6; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-helm.sh && ./scripts/e2e-loadtest.sh` |
 | Control-plane module matrix | Compile-time module compatibility | JDK 21 | `./scripts/test-control-plane-module-combinations.sh` |

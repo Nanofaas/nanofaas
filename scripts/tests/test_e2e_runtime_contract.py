@@ -87,3 +87,166 @@ def test_sync_env_renderer_emits_both_aliases_and_can_be_empty():
         "if [ -n \"$(e2e_render_control_plane_sync_env '')\" ]; then echo non-empty; else echo empty; fi"
     )
     assert empty == "empty"
+
+
+def test_host_temp_files_live_under_home_for_snap_multipass_compatibility():
+    source = f"source '{SCRIPT}'"
+
+    out = run_shell(
+        f"{source}; "
+        "tmp=$(e2e_mktemp_file nanofaas-test .yaml); "
+        "printf '%s\\n' \"$tmp\"; "
+        "rm -f \"$tmp\""
+    )
+
+    assert Path(out).parent == Path.home() / "nanofaas-e2e-tmp"
+    assert Path(out).name.startswith("nanofaas-test.")
+    assert out.endswith(".yaml")
+
+
+def test_external_vm_helper_contract_resolves_expected_paths():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "E2E_VM_LIFECYCLE=external; "
+        "E2E_VM_HOST=vm.example.test; "
+        "E2E_VM_USER=dev; "
+        "E2E_VM_HOME=/srv/dev; "
+        "printf '%s|%s|%s|%s' "
+        "\"$(e2e_get_vm_lifecycle)\" "
+        "\"$(e2e_get_vm_host)\" "
+        "\"$(e2e_get_kubeconfig_path)\" "
+        "\"$(e2e_get_remote_project_dir)\""
+    )
+    assert out == "external|vm.example.test|/srv/dev/.kube/config|/srv/dev/nanofaas"
+
+
+def test_external_vm_lifecycle_checks_ssh_and_skips_multipass_prereq():
+    source = f"source '{SCRIPT}'"
+
+    out = run_shell(
+        f"{source}; "
+        "E2E_VM_LIFECYCLE=external; "
+        "E2E_VM_HOST=vm.example.test; "
+        "e2e_ssh_exec(){ printf '%s|%s' \"$1\" \"$2\"; }; "
+        "e2e_require_vm_access && e2e_ensure_vm_running nanofaas-e2e 4 8G 30G"
+    )
+
+    assert "Using externally managed VM host vm.example.test" in out
+    assert "vm.example.test|true" in out
+
+
+def test_external_vm_prerequisite_validation_fails_without_resolved_host():
+    source = f"source '{SCRIPT}'"
+
+    proc = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                f"source '{SCRIPT}'; "
+                "E2E_VM_LIFECYCLE=external; "
+                "e2e_require_vm_access"
+            ),
+        ],
+        text=True,
+        capture_output=True,
+        env=os.environ.copy(),
+    )
+
+    assert proc.returncode != 0
+    assert "E2E_VM_HOST is required when E2E_VM_LIFECYCLE=external" in proc.stderr or "Cannot determine VM host" in proc.stderr
+
+
+def test_external_vm_host_override_is_used_by_vm_exec_and_url_resolution():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "E2E_VM_HOST=vm.example.test; "
+        "VM_NAME=nanofaas-e2e; "
+        "multipass(){ return 1; }; "
+        "e2e_get_vm_backend(){ echo ssh; }; "
+        "e2e_ssh_exec(){ printf '%s' \"$1\"; }; "
+        "e2e_scp_to_vm(){ printf '%s' \"$2\"; }; "
+        "e2e_scp_from_vm(){ printf '%s' \"$1\"; }; "
+        "warn(){ printf '%s\\n' \"$*\"; }; "
+        "host=$(e2e_vm_exec 'echo ok'); "
+        "url=$(e2e_resolve_nanofaas_url 30080); "
+        "copy_to=$(e2e_copy_to_vm /tmp/src nanofaas-e2e /tmp/dest); "
+        "copy_from=$(e2e_copy_from_vm nanofaas-e2e /tmp/src /tmp/dest); "
+        "cleanup=$(KEEP_VM=true e2e_cleanup_vm | grep '^  SSH:' || true); "
+        "printf '%s|%s|%s|%s|%s' \"$host\" \"$url\" \"$copy_to\" \"$copy_from\" \"$cleanup\""
+    )
+    assert "vm.example.test|http://vm.example.test:30080|vm.example.test|vm.example.test" in out
+    assert "SSH:    ssh ubuntu@vm.example.test" in out
+
+
+def test_public_host_override_controls_nodeport_urls():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "E2E_VM_LIFECYCLE=external; "
+        "E2E_VM_HOST=vm.example.test; "
+        "E2E_PUBLIC_HOST=api.example.test; "
+        "printf '%s|%s' "
+        "\"$(e2e_get_public_host)\" "
+        "\"$(e2e_resolve_nanofaas_url 30080)\""
+    )
+    assert out == "api.example.test|http://api.example.test:30080"
+
+
+def test_export_kubeconfig_to_host_rewrites_server_using_override_when_provided():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "tmp_dir=$(mktemp -d); "
+        "src=${tmp_dir}/remote-config; "
+        "dest=${tmp_dir}/host-config; "
+        "cat > \"${src}\" <<'EOF'\n"
+        "apiVersion: v1\n"
+        "clusters:\n"
+        "- cluster:\n"
+        "    server: https://127.0.0.1:6443\n"
+        "  name: default\n"
+        "EOF\n"
+        "E2E_VM_LIFECYCLE=external; "
+        "E2E_VM_HOST=vm.example.test; "
+        "E2E_KUBECONFIG_SERVER=https://api.example.test:6443; "
+        "e2e_copy_from_vm(){ cp \"${src}\" \"$3\"; }; "
+        "e2e_export_kubeconfig_to_host nanofaas-e2e \"${dest}\"; "
+        "cat \"${dest}\"; "
+        "rm -rf \"${tmp_dir}\""
+    )
+    assert "https://api.example.test:6443" in out
+    assert "https://127.0.0.1:6443" not in out
+
+
+def test_vm_exec_shell_quotes_kubeconfig_path_with_spaces():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "E2E_VM_HOST=vm.example.test; "
+        "E2E_KUBECONFIG_PATH='/srv/dev/kube config/config'; "
+        "e2e_get_vm_backend(){ echo ssh; }; "
+        "e2e_ssh_exec(){ printf '%s' \"$2\"; }; "
+        "e2e_vm_exec 'printf \"%s\" \"$KUBECONFIG\"'"
+    )
+    assert "/srv/dev/kube\\\\\\ config/config" in out
+
+
+def test_install_k3s_creates_parent_dir_for_custom_kubeconfig_path():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "E2E_VM_HOME='/should/not/be/used'; "
+        "E2E_KUBECONFIG_PATH='/srv/dev/custom kube/config'; "
+        "e2e_require_vm_exec(){ return 0; }; "
+        "e2e_log(){ :; }; "
+        "vm_exec(){ printf '%s\\n' \"$*\"; }; "
+        "e2e_install_k3s"
+    )
+    lines = out.splitlines()
+
+    assert any("mkdir -p /srv/dev/custom\\ kube" in line for line in lines)
+    assert any("sudo cp /etc/rancher/k3s/k3s.yaml /srv/dev/custom\\ kube/config" in line for line in lines)
+    assert all("/should/not/be/used/.kube" not in line for line in lines)

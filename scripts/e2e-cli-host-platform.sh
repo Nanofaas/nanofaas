@@ -18,10 +18,14 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "host-cli-e2e"
 vm_exec() { e2e_vm_exec "$@"; }
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
+KUBECONFIG_PATH=$(e2e_get_kubeconfig_path)
+VM_HOME=$(e2e_get_vm_home)
+VM_USER=$(e2e_get_vm_user)
 
 KUBECONFIG_HOST=""
 CLI_CONFIG=""
-VM_IP=""
+PUBLIC_HOST=""
 CLI_BIN="${PROJECT_ROOT}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas"
 
 cleanup() {
@@ -34,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 
 check_prerequisites() {
-    e2e_require_multipass
+    e2e_require_vm_access
     command -v helm >/dev/null 2>&1 || { err "helm not found on host"; exit 1; }
     command -v python3 >/dev/null 2>&1 || { err "python3 not found on host"; exit 1; }
     [[ -f "${PROJECT_ROOT}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas" ]] || true
@@ -49,7 +53,7 @@ install_vm_dependencies() {
 }
 
 sync_project() {
-    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 }
 
 build_control_plane_image() {
@@ -59,15 +63,15 @@ build_control_plane_image() {
     fi
 
     log "Building control-plane image in VM (runtime=${CONTROL_PLANE_RUNTIME})..."
-    e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
-    e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
+    e2e_build_control_plane_artifacts "${REMOTE_DIR}"
+    e2e_build_control_plane_image "${REMOTE_DIR}" "${CONTROL_IMAGE}"
     e2e_push_images_to_registry "${CONTROL_IMAGE}"
 }
 
-extract_vm_ip() {
-    VM_IP=$(e2e_get_vm_ip)
-    if [[ -z "${VM_IP}" ]]; then
-        error "Failed to resolve VM IP"
+resolve_public_host() {
+    PUBLIC_HOST=$(e2e_get_public_host)
+    if [[ -z "${PUBLIC_HOST}" ]]; then
+        error "Failed to resolve public host"
         exit 1
     fi
 }
@@ -75,19 +79,7 @@ extract_vm_ip() {
 export_kubeconfig_to_host() {
     log "Exporting kubeconfig from VM to host..."
     KUBECONFIG_HOST="$(mktemp -t nanofaas-kubeconfig.XXXXXX)"
-    e2e_copy_from_vm "${VM_NAME}" "/home/ubuntu/.kube/config" "${KUBECONFIG_HOST}"
-
-    python3 - "${KUBECONFIG_HOST}" "${VM_IP}" <<'PY'
-import pathlib
-import sys
-
-cfg_path = pathlib.Path(sys.argv[1])
-vm_ip = sys.argv[2]
-text = cfg_path.read_text()
-text = text.replace("https://127.0.0.1:6443", f"https://{vm_ip}:6443")
-text = text.replace("https://localhost:6443", f"https://{vm_ip}:6443")
-cfg_path.write_text(text)
-PY
+    e2e_export_kubeconfig_to_host "${VM_NAME}" "${KUBECONFIG_HOST}"
 }
 
 build_cli_on_host() {
@@ -120,14 +112,14 @@ test_platform_lifecycle_from_host() {
 
     echo "${install_out}" | grep -q $'release\t'"${RELEASE}" || { err "Missing release in install output"; exit 1; }
     echo "${install_out}" | grep -q $'namespace\t'"${NAMESPACE}" || { err "Missing namespace in install output"; exit 1; }
-    echo "${install_out}" | grep -q "endpoint[[:space:]]http://${VM_IP}:30080" || { err "Unexpected endpoint in install output: ${install_out}"; exit 1; }
+    echo "${install_out}" | grep -q "endpoint[[:space:]]http://${PUBLIC_HOST}:30080" || { err "Unexpected endpoint in install output: ${install_out}"; exit 1; }
 
     local status_out
     status_out="$(cli platform status -n "${NAMESPACE}")"
     echo "${status_out}" | grep -q $'deployment\tnanofaas-control-plane\t1/1' || { err "Control-plane not ready: ${status_out}"; exit 1; }
     echo "${status_out}" | grep -q $'service\tcontrol-plane\tNodePort' || { err "Service type not NodePort: ${status_out}"; exit 1; }
 
-    curl -fsS "http://${VM_IP}:30081/actuator/health" >/dev/null
+    curl -fsS "http://${PUBLIC_HOST}:30081/actuator/health" >/dev/null
 
     cli platform uninstall --release "${RELEASE}" -n "${NAMESPACE}" >/dev/null
     if cli platform status -n "${NAMESPACE}" >/dev/null 2>&1; then
@@ -147,7 +139,7 @@ main() {
     e2e_setup_local_registry "${LOCAL_REGISTRY}"
     sync_project
     build_control_plane_image
-    extract_vm_ip
+    resolve_public_host
     export_kubeconfig_to_host
     build_cli_on_host
     test_platform_lifecycle_from_host

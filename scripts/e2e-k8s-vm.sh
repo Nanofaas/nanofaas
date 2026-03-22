@@ -5,12 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "k8s-e2e-vm"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
+KUBECONFIG_PATH=$(e2e_get_kubeconfig_path)
 
 VM_NAME=${VM_NAME:-nanofaas-e2e-$(date +%s)}
 CPUS=${CPUS:-4}
 MEMORY=${MEMORY:-8G}
 DISK=${DISK:-30G}
-REMOTE_DIR=${REMOTE_DIR:-/home/ubuntu/nanofaas}
 NAMESPACE=${NANOFAAS_E2E_NAMESPACE:-nanofaas-e2e}
 KEEP_VM=${KEEP_VM:-false}
 LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
@@ -29,7 +30,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-e2e_require_multipass
+e2e_require_vm_access
 
 log "Starting multipass VM ${VM_NAME} (cpus=${CPUS}, memory=${MEMORY}, disk=${DISK})"
 e2e_ensure_vm_running "${VM_NAME}" "${CPUS}" "${MEMORY}" "${DISK}"
@@ -57,4 +58,4 @@ log "Pushing images to local registry"
 e2e_push_images_to_registry "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 
 log "Running K8sE2eTest in VM"
-vm_exec "cd ${REMOTE_DIR} && KUBECONFIG=/home/ubuntu/.kube/config NANOFAAS_E2E_NAMESPACE=${NAMESPACE} CONTROL_PLANE_IMAGE=${CONTROL_IMAGE} FUNCTION_RUNTIME_IMAGE=${RUNTIME_IMAGE} ./gradlew -PrunE2e :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.e2e.K8sE2eTest --no-daemon"
+vm_exec "cd ${REMOTE_DIR} && KUBECONFIG=${KUBECONFIG_PATH} NANOFAAS_E2E_NAMESPACE=${NAMESPACE} CONTROL_PLANE_IMAGE=${CONTROL_IMAGE} FUNCTION_RUNTIME_IMAGE=${RUNTIME_IMAGE} ./gradlew -PrunE2e :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.e2e.K8sE2eTest --no-daemon"

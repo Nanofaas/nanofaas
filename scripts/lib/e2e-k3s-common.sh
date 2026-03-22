@@ -26,13 +26,107 @@ e2e_log() { log "$@"; }
 e2e_error() { error "$@"; }
 e2e_warn_stderr() { echo -e "${YELLOW}[${E2E_LOG_PREFIX}]${NC} $*" >&2; }
 
+# ─── VM identity/path helpers ────────────────────────────────────────────────
+e2e_get_vm_lifecycle() {
+    local lifecycle=${E2E_VM_LIFECYCLE:-multipass}
+    lifecycle=$(echo "${lifecycle}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
+    case "${lifecycle}" in
+        external)
+            echo "external"
+            ;;
+        multipass|"")
+            echo "multipass"
+            ;;
+        *)
+            echo "multipass"
+            ;;
+    esac
+}
+
+e2e_is_external_vm_lifecycle() {
+    [[ "$(e2e_get_vm_lifecycle)" == "external" ]]
+}
+
+e2e_get_vm_host() {
+    if [[ -n "${E2E_VM_HOST:-}" ]]; then
+        echo "${E2E_VM_HOST}"
+        return 0
+    fi
+
+    if [[ -n "${VM_IP:-}" ]]; then
+        echo "${VM_IP}"
+        return 0
+    fi
+
+    if e2e_is_external_vm_lifecycle; then
+        e2e_error "E2E_VM_HOST is required when E2E_VM_LIFECYCLE=external"
+        return 1
+    fi
+
+    multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3
+}
+
+e2e_get_public_host() {
+    if [[ -n "${E2E_PUBLIC_HOST:-}" ]]; then
+        echo "${E2E_PUBLIC_HOST}"
+        return 0
+    fi
+
+    e2e_get_vm_host
+}
+
+e2e_get_vm_user() {
+    echo "${E2E_VM_USER:-ubuntu}"
+}
+
+e2e_get_vm_home() {
+    if [[ -n "${E2E_VM_HOME:-}" ]]; then
+        echo "${E2E_VM_HOME}"
+        return 0
+    fi
+
+    local vm_user
+    vm_user=$(e2e_get_vm_user)
+    if [[ "${vm_user}" == "root" ]]; then
+        echo "/root"
+    else
+        echo "/home/${vm_user}"
+    fi
+}
+
+e2e_get_kubeconfig_path() {
+    local vm_home
+    vm_home=$(e2e_get_vm_home)
+    echo "${E2E_KUBECONFIG_PATH:-${vm_home}/.kube/config}"
+}
+
+e2e_get_remote_project_dir() {
+    local vm_home
+    vm_home=$(e2e_get_vm_home)
+    echo "${E2E_REMOTE_PROJECT_DIR:-${vm_home}/nanofaas}"
+}
+
 # ─── Temp file helpers ───────────────────────────────────────────────────────
+e2e_get_host_tmp_dir() {
+    # Snap-packaged multipass cannot reliably read host files from /tmp.
+    if [[ -n "${HOME:-}" ]]; then
+        echo "${HOME}/nanofaas-e2e-tmp"
+        return 0
+    fi
+
+    echo "${TMPDIR:-/tmp}"
+}
+
 e2e_mktemp_file() {
     local prefix=${1:?prefix is required}
     local suffix=${2:-}
+    local tmp_dir
     local tmp
 
-    tmp=$(mktemp "/tmp/${prefix}.XXXXXX")
+    tmp_dir=$(e2e_get_host_tmp_dir)
+    mkdir -p "${tmp_dir}"
+    tmp=$(mktemp "${tmp_dir}/${prefix}.XXXXXX")
     if [[ -n "${suffix}" ]]; then
         local with_suffix="${tmp}${suffix}"
         mv "${tmp}" "${with_suffix}"
@@ -147,7 +241,8 @@ e2e_get_host_pubkey() {
 e2e_ssh_exec() {
     local vm_ip=${1:?vm_ip is required}
     local remote_cmd=${2:?remote_cmd is required}
-    local user=${E2E_VM_USER:-ubuntu}
+    local user
+    user=$(e2e_get_vm_user)
     local connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
     # Commands like gradle test/image build can legitimately run for minutes.
     local cmd_timeout=${E2E_SSH_CMD_TIMEOUT:-900}
@@ -200,7 +295,8 @@ e2e_scp_to_vm() {
     local src=${1:?src is required}
     local vm_ip=${2:?vm_ip is required}
     local dest=${3:?dest is required}
-    local user=${E2E_VM_USER:-ubuntu}
+    local user
+    user=$(e2e_get_vm_user)
     local connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
     local identity_opt
     identity_opt=$(e2e_get_ssh_identity_opt || true)
@@ -218,7 +314,8 @@ e2e_scp_from_vm() {
     local vm_ip=${1:?vm_ip is required}
     local src=${2:?src is required}
     local dest=${3:?dest is required}
-    local user=${E2E_VM_USER:-ubuntu}
+    local user
+    user=$(e2e_get_vm_user)
     local connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
     local identity_opt
     identity_opt=$(e2e_get_ssh_identity_opt || true)
@@ -236,21 +333,25 @@ e2e_scp_from_vm() {
 e2e_vm_exec() {
     local backend
     backend=$(e2e_get_vm_backend) || return 1
-    local cmd_string="export KUBECONFIG=/home/ubuntu/.kube/config; $*"
+    local kubeconfig_path
+    kubeconfig_path=$(e2e_get_kubeconfig_path)
+    local q_kubeconfig_path
+    q_kubeconfig_path=$(printf '%q' "${kubeconfig_path}")
+    local cmd_string="export KUBECONFIG=${q_kubeconfig_path}; $*"
 
     if [[ "${backend}" != "ssh" ]]; then
         e2e_error "Unsupported vm backend '${backend}'"
         return 1
     fi
 
-    local vm_ip quoted
-    vm_ip=$(e2e_get_vm_ip) || true
-    if [[ -z "${vm_ip}" ]]; then
-        e2e_error "Cannot determine VM IP for '${VM_NAME}'"
+    local vm_host quoted
+    vm_host=$(e2e_get_vm_host) || true
+    if [[ -z "${vm_host}" ]]; then
+        e2e_error "Cannot determine VM host for '${VM_NAME}'"
         return 1
     fi
     quoted=$(printf '%q' "${cmd_string}")
-    if e2e_ssh_exec "${vm_ip}" "bash -lc ${quoted}"; then
+    if e2e_ssh_exec "${vm_host}" "bash -lc ${quoted}"; then
         return
     fi
     e2e_error "SSH exec failed for VM '${VM_NAME}'"
@@ -259,20 +360,45 @@ e2e_vm_exec() {
 
 # ─── VM IP resolution ────────────────────────────────────────────────────────
 e2e_get_vm_ip() {
-    if [[ -n "${VM_IP:-}" ]]; then
-        echo "${VM_IP}"
-        return 0
+    e2e_get_vm_host
+}
+
+e2e_export_kubeconfig_to_host() {
+    local vm_name=${1:?vm_name is required}
+    local dest=${2:?dest is required}
+    local kubeconfig_path server_url vm_host
+
+    kubeconfig_path=$(e2e_get_kubeconfig_path)
+    vm_host=$(e2e_get_vm_host) || return 1
+    server_url=${E2E_KUBECONFIG_SERVER:-https://${vm_host}:6443}
+
+    e2e_copy_from_vm "${vm_name}" "${kubeconfig_path}" "${dest}"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        e2e_error "python3 not found. Required to rewrite kubeconfig server endpoint."
+        return 1
     fi
-    multipass info "${VM_NAME}" --format csv 2>/dev/null | tail -1 | cut -d, -f3
+
+    python3 - "${dest}" "${server_url}" <<'PY'
+import pathlib
+import sys
+
+cfg_path = pathlib.Path(sys.argv[1])
+server_url = sys.argv[2]
+text = cfg_path.read_text()
+text = text.replace("https://127.0.0.1:6443", server_url)
+text = text.replace("https://localhost:6443", server_url)
+cfg_path.write_text(text)
+PY
 }
 
 e2e_resolve_nanofaas_url() {
     local port=${1:-30080}
     if [[ -n "${NANOFAAS_URL:-}" ]]; then echo "${NANOFAAS_URL}"; return; fi
-    local vm_ip
-    vm_ip=$(e2e_get_vm_ip) || true
-    if [[ -z "${vm_ip}" ]]; then error "Cannot determine VM IP for '${VM_NAME}'"; return 1; fi
-    echo "http://${vm_ip}:${port}"
+    local public_host
+    public_host=$(e2e_get_public_host) || true
+    if [[ -z "${public_host}" ]]; then error "Cannot determine public host for '${VM_NAME}'"; return 1; fi
+    echo "http://${public_host}:${port}"
 }
 
 # ─── VM auto-detect ──────────────────────────────────────────────────────────
@@ -313,12 +439,19 @@ e2e_get_desired_replicas() {
 
 # ─── Cleanup helper ──────────────────────────────────────────────────────────
 e2e_cleanup_vm() {
+    if e2e_is_external_vm_lifecycle; then
+        info "Skipping VM deletion: external VM lifecycle mode"
+        return 0
+    fi
+
     if [[ "${KEEP_VM:-false}" == "true" ]]; then
         warn "KEEP_VM=true — VM '${VM_NAME}' preserved"
-        local vm_ip
-        vm_ip=$(e2e_get_vm_ip || true)
-        if [[ -n "${vm_ip}" ]]; then
-            warn "  SSH:    ssh ${E2E_VM_USER:-ubuntu}@${vm_ip}"
+        local vm_host
+        vm_host=$(e2e_get_vm_host || true)
+        local vm_user
+        vm_user=$(e2e_get_vm_user)
+        if [[ -n "${vm_host}" ]]; then
+            warn "  SSH:    ssh ${vm_user}@${vm_host}"
         else
             warn "  Shell:  multipass shell ${VM_NAME}"
         fi
@@ -333,6 +466,20 @@ e2e_cleanup_vm() {
     else
         info "Skipping multipass purge (MULTIPASS_PURGE=${MULTIPASS_PURGE:-auto})"
     fi
+}
+
+e2e_require_vm_access() {
+    if ! command -v ssh >/dev/null 2>&1; then
+        e2e_error "ssh not found. Install OpenSSH client."
+        return 1
+    fi
+
+    if e2e_is_external_vm_lifecycle; then
+        e2e_get_vm_host >/dev/null || return 1
+        return 0
+    fi
+
+    e2e_require_multipass || return 1
 }
 
 e2e_require_multipass() {
@@ -394,6 +541,21 @@ e2e_ensure_vm_running() {
     local memory=${3:-8G}
     local disk=${4:-30G}
 
+    if e2e_is_external_vm_lifecycle; then
+        local vm_host
+        vm_host=$(e2e_get_vm_host) || return 1
+        if [[ -z "${vm_host}" ]]; then
+            e2e_error "Cannot determine VM host for '${vm_name}'"
+            return 1
+        fi
+        e2e_log "Using externally managed VM host ${vm_host}"
+        if ! e2e_ssh_exec "${vm_host}" "true"; then
+            e2e_error "SSH reachability check failed for external VM host '${vm_host}'"
+            return 1
+        fi
+        return 0
+    fi
+
     if multipass info "${vm_name}" &>/dev/null; then
         local state
         state=$(multipass info "${vm_name}" --format csv | tail -1 | cut -d, -f2)
@@ -428,6 +590,8 @@ e2e_install_vm_dependencies() {
     local helm_version=${HELM_VERSION:-3.16.4}
     helm_version=${helm_version#v}
     local helm_label=""
+    local vm_user
+    vm_user=$(e2e_get_vm_user)
     if [[ "${install_helm}" == "true" ]]; then
         helm_label=", helm"
     fi
@@ -436,7 +600,9 @@ e2e_install_vm_dependencies() {
     vm_exec "sudo apt-get update -y"
     vm_exec "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk-headless docker.io"
     vm_exec "sudo systemctl enable --now docker"
-    vm_exec "sudo usermod -aG docker ubuntu || true"
+    if [[ "${vm_user}" != "root" ]]; then
+        vm_exec "sudo usermod -aG docker ${vm_user} || true"
+    fi
 
     if [[ "${install_helm}" == "true" ]]; then
         vm_exec "if ! command -v helm >/dev/null 2>&1; then
@@ -467,13 +633,13 @@ e2e_copy_to_vm() {
         return 1
     fi
 
-    local vm_ip
-    vm_ip=$(e2e_get_vm_ip) || true
-    if [[ -z "${vm_ip}" ]]; then
-        e2e_error "Cannot determine VM IP for '${vm_name}'"
+    local vm_host
+    vm_host=$(e2e_get_vm_host) || true
+    if [[ -z "${vm_host}" ]]; then
+        e2e_error "Cannot determine VM host for '${vm_name}'"
         return 1
     fi
-    if e2e_scp_to_vm "${src}" "${vm_ip}" "${dest}"; then
+    if e2e_scp_to_vm "${src}" "${vm_host}" "${dest}"; then
         return
     fi
     e2e_error "SCP upload failed for VM '${vm_name}'"
@@ -491,13 +657,13 @@ e2e_copy_from_vm() {
         return 1
     fi
 
-    local vm_ip
-    vm_ip=$(e2e_get_vm_ip) || true
-    if [[ -z "${vm_ip}" ]]; then
-        e2e_error "Cannot determine VM IP for '${vm_name}'"
+    local vm_host
+    vm_host=$(e2e_get_vm_host) || true
+    if [[ -z "${vm_host}" ]]; then
+        e2e_error "Cannot determine VM host for '${vm_name}'"
         return 1
     fi
-    if e2e_scp_from_vm "${vm_ip}" "${src}" "${dest}"; then
+    if e2e_scp_from_vm "${vm_host}" "${src}" "${dest}"; then
         return
     fi
     e2e_error "SCP download failed for VM '${vm_name}'"
@@ -507,7 +673,7 @@ e2e_copy_from_vm() {
 e2e_sync_project_to_vm() {
     local project_root=${1:?project_root is required}
     local vm_name=${2:?vm_name is required}
-    local remote_dir=${3:-/home/ubuntu/nanofaas}
+    local remote_dir=${3:-$(e2e_get_remote_project_dir)}
     local sync_tar=/tmp/nanofaas-e2e-sync.tar
 
     e2e_log "Syncing project to VM (${remote_dir})..."
@@ -583,7 +749,7 @@ e2e_is_rust_runtime() {
 
 e2e_build_core_jars() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     local quiet=${2:-true}
     local quiet_flag=""
     local q_remote_dir
@@ -602,7 +768,7 @@ e2e_build_core_jars() {
 
 e2e_build_core_images() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     local control_image=${2:?control_image is required}
     local runtime_image=${3:?runtime_image is required}
     local q_remote_dir q_control_image q_runtime_image
@@ -619,7 +785,7 @@ e2e_build_core_images() {
 # Builds only the function-runtime boot JAR (used when the control-plane is built separately, e.g. Rust).
 e2e_build_function_runtime_jar() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     local quiet=${2:-true}
     local quiet_flag=""
     local q_remote_dir
@@ -639,7 +805,7 @@ e2e_build_function_runtime_jar() {
 # Builds the function-runtime Docker image from its Java Dockerfile.
 e2e_build_function_runtime_image() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     local runtime_image=${2:?runtime_image is required}
     local q_remote_dir q_runtime_image
     q_remote_dir=$(printf '%q' "${remote_dir}")
@@ -665,7 +831,7 @@ e2e_build_function_runtime_image() {
 # CONTROL_PLANE_RUST_DIR (env var) overrides the default path relative to PROJECT_ROOT.
 e2e_build_rust_control_plane_image() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}    # kept for API compat; unused for host build
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}    # kept for API compat; unused for host build
     local control_image=${2:?control_image is required}
     local rust_cp_dir="${CONTROL_PLANE_RUST_DIR:-experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust}"
     local host_rust_cp_dir="${PROJECT_ROOT:-$(pwd)}/${rust_cp_dir}"
@@ -704,7 +870,7 @@ e2e_build_rust_control_plane_image() {
 }
 
 e2e_build_control_plane_artifacts() {
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     if e2e_is_rust_runtime; then
         e2e_build_function_runtime_jar "${remote_dir}"
         return
@@ -714,7 +880,7 @@ e2e_build_control_plane_artifacts() {
 
 e2e_build_control_plane_image() {
     e2e_require_vm_exec || return 1
-    local remote_dir=${1:-/home/ubuntu/nanofaas}
+    local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     local control_image=${2:?control_image is required}
     local q_remote_dir q_control_image
     q_remote_dir=$(printf '%q' "${remote_dir}")
@@ -1333,6 +1499,13 @@ e2e_fetch_control_plane_prometheus() {
 e2e_install_k3s() {
     e2e_require_vm_exec || return 1
     local k3s_version=${K3S_VERSION:-v1.32.2+k3s1}
+    local vm_user kubeconfig_path kubeconfig_dir
+    vm_user=$(e2e_get_vm_user)
+    kubeconfig_path=$(e2e_get_kubeconfig_path)
+    kubeconfig_dir=$(dirname "${kubeconfig_path}")
+    local q_kubeconfig_path q_kubeconfig_dir
+    q_kubeconfig_path=$(printf '%q' "${kubeconfig_path}")
+    q_kubeconfig_dir=$(printf '%q' "${kubeconfig_dir}")
 
     e2e_log "Installing k3s (${k3s_version})..."
     vm_exec "curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='${k3s_version}' sh -s - --disable traefik"
@@ -1347,10 +1520,10 @@ e2e_install_k3s() {
     echo 'k3s node not ready after 120s' >&2
     exit 1"
 
-    vm_exec "mkdir -p /home/ubuntu/.kube"
-    vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config"
-    vm_exec "sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config"
-    vm_exec "chmod 600 /home/ubuntu/.kube/config"
+    vm_exec "mkdir -p ${q_kubeconfig_dir}"
+    vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml ${q_kubeconfig_path}"
+    vm_exec "sudo chown ${vm_user}:${vm_user} ${q_kubeconfig_path}"
+    vm_exec "chmod 600 ${q_kubeconfig_path}"
 
     e2e_log "k3s installed and ready"
 }

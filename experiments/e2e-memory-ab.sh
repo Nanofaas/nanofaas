@@ -70,14 +70,14 @@ cleanup_vm_if_needed() {
     KEEP_VM=false e2e_cleanup_vm
 }
 
-resolve_vm_ip_or_fail() {
-    local ip
-    ip="$(VM_NAME="${VM_NAME}" e2e_get_vm_ip || true)"
-    if [[ -z "${ip}" ]]; then
-        ab_err "Cannot resolve VM IP for '${VM_NAME}'."
+resolve_actuator_url_or_fail() {
+    local url
+    url="$(VM_NAME="${VM_NAME}" e2e_resolve_nanofaas_url 30081 || true)"
+    if [[ -z "${url}" ]]; then
+        ab_err "Cannot resolve actuator URL for '${VM_NAME}'."
         exit 1
     fi
-    printf "%s" "${ip}"
+    printf "%s" "${url}"
 }
 
 sample_prometheus_text_to_jsonl() {
@@ -143,7 +143,7 @@ PYEOF
 }
 
 start_jvm_sampler() {
-    local vm_ip="$1"
+    local actuator_url="$1"
     local out_file="$2"
     local watched_pid="$3"
     (
@@ -152,7 +152,7 @@ start_jvm_sampler() {
             ts_epoch="$(date +%s)"
             local scrape_file
             scrape_file="$(e2e_mktemp_file "nanofaas-jvm-prom" ".txt")"
-            if curl -fsS --max-time 5 "http://${vm_ip}:30081/actuator/prometheus" > "${scrape_file}" 2>/dev/null; then
+            if curl -fsS --max-time 5 "${actuator_url}/actuator/prometheus" > "${scrape_file}" 2>/dev/null; then
                 sample_prometheus_text_to_jsonl "${ts_epoch}" "${scrape_file}" "${out_file}" || true
             fi
             rm -f "${scrape_file}"
@@ -219,10 +219,10 @@ run_loadtest_case() {
     ) > "${loadtest_log}" 2>&1 &
     local loadtest_pid=$!
 
-    local vm_ip
-    vm_ip="$(resolve_vm_ip_or_fail)"
+    local actuator_url
+    actuator_url="$(resolve_actuator_url_or_fail)"
     local sampler_pid
-    sampler_pid="$(start_jvm_sampler "${vm_ip}" "${jvm_samples}" "${loadtest_pid}")"
+    sampler_pid="$(start_jvm_sampler "${actuator_url}" "${jvm_samples}" "${loadtest_pid}")"
 
     local rc=0
     wait "${loadtest_pid}" || rc=$?

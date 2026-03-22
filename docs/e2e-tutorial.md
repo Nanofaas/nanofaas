@@ -8,12 +8,15 @@ metrics with Grafana. The entire process is automated with two scripts.
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| **multipass** | Lightweight VM manager | `brew install multipass` or [multipass.run](https://multipass.run) |
+| **ssh** | Remote command execution and file copy | Included with macOS/Linux or install OpenSSH client |
+| **multipass** | Optional VM lifecycle manager | `brew install multipass` or [multipass.run](https://multipass.run) |
 | **Docker** | Build images + run Grafana | [docker.com](https://docs.docker.com/get-docker/) |
 | **k6** | Load testing | `brew install k6` or [k6 docs](https://grafana.com/docs/k6/latest/set-up/install-k6/) |
 
-> All other dependencies (k3s, Helm, JDK 21) are installed automatically
-> inside the VM.
+> SSH/SCP are always used for remote command execution and file transfer.
+> Multipass is used only when `E2E_VM_LIFECYCLE=multipass` and you want the
+> scripts to create/start/delete the VM for you. All other dependencies (k3s,
+> Helm, JDK 21) are installed automatically inside the VM.
 
 ## Quick Start (2 commands)
 
@@ -89,6 +92,31 @@ On completion, you'll see:
 | `SKIP_BUILD` | `false` | Skip build if images already exist |
 | `LOCAL_REGISTRY` | `localhost:5000` | Local in-VM registry used by k3s pulls |
 
+#### External/local or remote VM mode
+
+Use these variables when you want to reuse an existing VM instead of creating one with Multipass:
+
+```bash
+E2E_VM_LIFECYCLE=external
+E2E_VM_HOST=<ip-or-dns>
+E2E_VM_USER=<ssh-user>
+E2E_VM_HOME=<optional-home>
+E2E_KUBECONFIG_PATH=<optional-remote-kubeconfig>
+E2E_REMOTE_PROJECT_DIR=<optional-remote-repo-path>
+E2E_PUBLIC_HOST=<optional-nodeport-host>
+E2E_KUBECONFIG_SERVER=<optional-https-server-url>
+```
+
+Examples:
+
+```bash
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
+```
+
+`E2E_PUBLIC_HOST` is useful when the SSH host and the NodePort-reachable host differ.
+`E2E_KUBECONFIG_SERVER` is useful when the kube-apiserver is not reachable at `https://<ssh-host>:6443`.
+
 #### Idempotent re-runs
 
 The script is safe to re-run. It reuses an existing VM, skips installed
@@ -150,9 +178,9 @@ Each k6 test uses a 5-stage ramp pattern:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NANOFAAS_URL` | Auto-detected from VM | Override if not using multipass |
-| `PROM_URL` | Auto-detected from VM | Override Prometheus URL |
-| `VM_NAME` | `nanofaas-e2e` | VM name for IP detection |
+| `NANOFAAS_URL` | Auto-detected from public host | Override API base URL explicitly |
+| `PROM_URL` | Auto-detected from public host | Override Prometheus URL explicitly |
+| `VM_NAME` | `nanofaas-e2e` | VM name used when `E2E_VM_LIFECYCLE=multipass` |
 | `SKIP_GRAFANA` | `false` | Skip Grafana startup |
 | `VERIFY_OUTPUT_PARITY` | `true` | Run semantic output parity checks before k6 |
 | `PARITY_TIMEOUT_SECONDS` | `20` | Request timeout (seconds) for each parity invocation |
@@ -189,9 +217,11 @@ distribution (`Avg(B)`, `Q1(B)`, `Q2(B)`, `Q3(B)`).
 # Stop Grafana
 docker compose -f grafana/docker-compose.yml down
 
-# Delete the VM
+# Delete the VM if lifecycle=multipass
 multipass delete nanofaas-e2e && multipass purge
 ```
+
+If `E2E_VM_LIFECYCLE=external`, the scripts do not delete the VM. You manage its lifecycle yourself.
 
 ---
 

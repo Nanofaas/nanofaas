@@ -19,6 +19,11 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "cli-e2e"
 e2e_test_init
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
+VM_HOME=$(e2e_get_vm_home)
+VM_USER=$(e2e_get_vm_user)
+CLI_BIN_DIR="${REMOTE_DIR}/nanofaas-cli/build/install/nanofaas-cli/bin"
+REMOTE_HELM_DIR="${REMOTE_DIR}/helm/nanofaas"
 
 pass() {
     e2e_pass "$1"
@@ -57,7 +62,7 @@ cleanup() {
 trap cleanup EXIT
 
 check_prerequisites() {
-    e2e_require_multipass
+    e2e_require_vm_access
     log "Prerequisites check passed"
 }
 
@@ -79,8 +84,7 @@ vm_exec() {
     if [[ -n "${NANOFAAS_ENDPOINT:-}" ]]; then env_vars+="export NANOFAAS_ENDPOINT=${NANOFAAS_ENDPOINT}; "; fi
     if [[ -n "${NANOFAAS_NAMESPACE:-}" ]]; then env_vars+="export NANOFAAS_NAMESPACE=${NANOFAAS_NAMESPACE}; "; fi
 
-    local cli_path="/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin"
-    e2e_vm_exec "export PATH=\$PATH:${cli_path}; ${env_vars} $*"
+    e2e_vm_exec "export PATH=\$PATH:${CLI_BIN_DIR}; ${env_vars} $*"
 }
 
 install_dependencies() {
@@ -92,19 +96,19 @@ install_k3s() {
 }
 
 sync_project() {
-    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 }
 
 build_jars() {
     log "Building runtime-aware control-plane artifacts in VM (runtime=${CONTROL_PLANE_RUNTIME})..."
-    e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
+    e2e_build_control_plane_artifacts "${REMOTE_DIR}"
     log "JARs built"
 }
 
 build_images() {
     log "Building Docker images in VM..."
-    e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
-    e2e_build_function_runtime_image "/home/ubuntu/nanofaas" "${RUNTIME_IMAGE}"
+    e2e_build_control_plane_image "${REMOTE_DIR}" "${CONTROL_IMAGE}"
+    e2e_build_function_runtime_image "${REMOTE_DIR}" "${RUNTIME_IMAGE}"
     log "Docker images built"
 }
 
@@ -348,7 +352,7 @@ wait_for_deployment() {
 
 build_cli() {
     log "Building CLI in VM..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :nanofaas-cli:installDist --no-daemon -q"
+    vm_exec "cd ${REMOTE_DIR} && ./gradlew :nanofaas-cli:installDist --no-daemon -q"
     log "CLI built"
 }
 
@@ -356,7 +360,7 @@ setup_cli_env() {
     log "Setting up CLI environment..."
 
     # Add CLI to PATH in .bashrc for subsequent vm_exec calls
-    vm_exec "echo 'export PATH=\$PATH:/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin' >> /home/ubuntu/.bashrc"
+    vm_exec "echo 'export PATH=\$PATH:${CLI_BIN_DIR}' >> ${VM_HOME}/.bashrc"
 
     # Get the ClusterIP of the control-plane service
     log "  Retrieving control-plane ClusterIP..."
@@ -435,7 +439,7 @@ verify_pods_running() {
 test_cli_config() {
     log "Testing CLI config..."
 
-    vm_exec "ls -l /home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas" >/dev/null
+    vm_exec "ls -l ${CLI_BIN_DIR}/nanofaas" >/dev/null
     pass "CLI binary exists"
 
     local help_out
@@ -869,7 +873,7 @@ test_cli_platform_lifecycle() {
 
     local install_output
     if install_output=$(vm_exec "nanofaas platform install --release ${release} -n ${ns} \
-        --chart /home/ubuntu/nanofaas/helm/nanofaas \
+        --chart \"${REMOTE_HELM_DIR}\" \
         --control-plane-repository ${CONTROL_IMAGE_REPOSITORY} \
         --control-plane-tag ${CONTROL_IMAGE_TAG} \
         --control-plane-pull-policy Always \

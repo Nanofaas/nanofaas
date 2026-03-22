@@ -27,8 +27,10 @@ set -euo pipefail
 #
 # Prerequisites:
 #   - Docker
-#   - multipass (for k3s/VM suites)
+#   - ssh (for every VM-based suite)
+#   - multipass (only when E2E_VM_LIFECYCLE=multipass)
 #   - k6 (for loadtest/autoscaling)
+#   - set E2E_VM_LIFECYCLE=external to target an existing local or remote VM
 #
 # Multipass cleanup policy (handled by shared lib):
 #   - MULTIPASS_PURGE=auto   (default) purge only in CI

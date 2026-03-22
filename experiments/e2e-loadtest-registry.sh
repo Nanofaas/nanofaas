@@ -118,6 +118,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "loadtest-registry"
 vm_exec() { e2e_vm_exec "$@"; }
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
+REMOTE_HELM_DIR="${REMOTE_DIR}/helm/nanofaas"
 
 RESOLVED_TAG=""         # Computed in resolve_image_tag()
 RESOLVED_EXEC_PREFIX="" # Computed in resolve_exec_image_prefix()
@@ -266,7 +268,7 @@ PYEOF
 
 # ─── Stage 1: Pre-flight checks ───────────────────────────────────────────────
 check_prerequisites() {
-    e2e_require_multipass
+    e2e_require_vm_access
     if ! command -v k6 &>/dev/null; then
         err "k6 is not installed. Install it from https://grafana.com/docs/k6/latest/set-up/install-k6/"
         exit 1
@@ -308,7 +310,7 @@ install_deps() {
 
 # ─── Stage 5: Sync Helm chart and k6 scripts to VM ────────────────────────────
 sync_project() {
-    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 }
 
 # ─── Stage 6: Resolve image tag from VM architecture ──────────────────────────
@@ -586,7 +588,7 @@ demos:
     image: ${CURL_IMAGE}
 ENDVALUES"
 
-    if ! vm_exec "helm upgrade --install nanofaas /home/ubuntu/nanofaas/helm/nanofaas \
+    if ! vm_exec "helm upgrade --install nanofaas ${REMOTE_HELM_DIR} \
         -f /tmp/e2e-values-registry.yaml \
         --namespace ${NAMESPACE} \
         --create-namespace \
@@ -746,20 +748,18 @@ print_summary() {
 
     local prom_dump="${results_dir}/prometheus-dump.json"
     local k8s_dump="${results_dir}/k8s-resources.json"
-    local vm_ip="<VM_IP>"
+    local prom_url="${PROM_URL:-}"
     local should_refresh="${REFRESH_SUMMARY_METRICS}"
 
-    if [[ "${should_refresh}" == "true" ]]; then
-        vm_ip=$(e2e_get_vm_ip || true)
-        if [[ -z "${vm_ip}" ]]; then
-            warn "Cannot determine VM IP; using cached summary inputs from ${results_dir}"
+    if [[ "${should_refresh}" == "true" && -z "${prom_url}" ]]; then
+        prom_url="$(e2e_resolve_nanofaas_url 30090 || true)"
+        if [[ -z "${prom_url}" ]]; then
+            warn "Cannot determine Prometheus URL; using cached summary inputs from ${results_dir}"
             should_refresh="false"
-            vm_ip="<VM_IP>"
         fi
     fi
 
     if [[ "${should_refresh}" == "true" ]]; then
-        local prom_url="http://${vm_ip}:30090"
         log "Collecting Prometheus metrics..."
 python3 - "${prom_url}" "${prom_dump}" << 'PROM_DUMP'
 import json, sys, urllib.request, urllib.error, urllib.parse

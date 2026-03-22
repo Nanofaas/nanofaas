@@ -18,6 +18,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "k3s-e2e"
 vm_exec() { e2e_vm_exec "$@"; }
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
 
 cleanup() {
     local exit_code=$?
@@ -28,7 +29,7 @@ cleanup() {
 trap cleanup EXIT
 
 check_prerequisites() {
-    e2e_require_multipass
+    e2e_require_vm_access
     log "Prerequisites check passed"
 }
 
@@ -45,23 +46,23 @@ install_k3s() {
 }
 
 sync_project() {
-    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 }
 
 build_jars() {
     if [[ "${CONTROL_PLANE_RUNTIME}" == "rust" ]]; then
-        e2e_build_function_runtime_jar "/home/ubuntu/nanofaas"
+        e2e_build_function_runtime_jar "${REMOTE_DIR}"
     else
-        e2e_build_core_jars "/home/ubuntu/nanofaas"
+        e2e_build_core_jars "${REMOTE_DIR}"
     fi
 }
 
 build_images() {
     if [[ "${CONTROL_PLANE_RUNTIME}" == "rust" ]]; then
-        e2e_build_rust_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
-        e2e_build_function_runtime_image "/home/ubuntu/nanofaas" "${RUNTIME_IMAGE}"
+        e2e_build_rust_control_plane_image "${REMOTE_DIR}" "${CONTROL_IMAGE}"
+        e2e_build_function_runtime_image "${REMOTE_DIR}" "${RUNTIME_IMAGE}"
     else
-        e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+        e2e_build_core_images "${REMOTE_DIR}" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
     fi
 }
 

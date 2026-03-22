@@ -17,7 +17,8 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 
 - Java 21 (SDKMAN recommended)
 - Docker-compatible container runtime (Docker Desktop or equivalent)
-- For Kubernetes E2E: [Multipass](https://multipass.run) and internet access to install k3s in-VM
+- For Kubernetes E2E: OpenSSH client and internet access to install k3s in-VM
+- [Multipass](https://multipass.run) only if you want the scripts to create/manage the VM (`E2E_VM_LIFECYCLE=multipass`)
 
 ## Quickstart (local)
 
@@ -95,12 +96,23 @@ E2E (buildpacks):
 ./scripts/e2e-buildpack.sh
 ```
 
-E2E (Kubernetes via Multipass + k3s):
+E2E (Kubernetes VM + k3s):
 ```bash
 ./gradlew k8sE2e
 # or:
 ./scripts/e2e-k8s-vm.sh
 ```
+
+VM-based E2E can also target an existing local or remote VM over SSH/SCP:
+
+```bash
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
+```
+
+Supported external-VM variables:
+`E2E_VM_LIFECYCLE=external`, `E2E_VM_HOST`, `E2E_VM_USER`, `E2E_VM_HOME`, `E2E_KUBECONFIG_PATH`, `E2E_REMOTE_PROJECT_DIR`, `E2E_PUBLIC_HOST`, `E2E_KUBECONFIG_SERVER`.
+SSH/SCP are always used for remote command execution and file transfer. Multipass is used only for VM lifecycle when `E2E_VM_LIFECYCLE=multipass`.
 
 E2E/module matrix (control-plane optional modules compile):
 ```bash

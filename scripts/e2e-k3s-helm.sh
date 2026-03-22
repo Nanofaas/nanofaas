@@ -66,6 +66,8 @@ fi
 source "${SCRIPT_DIR}/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "e2e"
 vm_exec() { e2e_vm_exec "$@"; }
+REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
+REMOTE_HELM_DIR="${REMOTE_DIR}/helm/nanofaas"
 
 # Rust runtime does not support JVM/native toggle: ignore native flag defensively.
 if [[ "$(e2e_runtime_kind)" == "rust" && "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
@@ -889,7 +891,7 @@ build_control_plane_image_on_vm() {
         vm_cpu_count="$(vm_exec "getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo ${CPUS}" | tr -d '\r\n' || true)"
         resolve_control_plane_native_settings_for_arch "${vm_arch}" "${vm_cpu_count}"
         local native_cmd
-        native_cmd="cd /home/ubuntu/nanofaas && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${CONTROL_IMAGE} -PcontrolPlaneModules=${module_selector} --no-daemon"
+        native_cmd="cd ${REMOTE_DIR} && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${CONTROL_IMAGE} -PcontrolPlaneModules=${module_selector} --no-daemon"
         if [[ -n "${RESOLVED_CP_IMAGE_BUILDER}" ]]; then
             native_cmd="${native_cmd} -PimageBuilder=${RESOLVED_CP_IMAGE_BUILDER}"
         fi
@@ -906,17 +908,17 @@ build_control_plane_image_on_vm() {
 
     if [[ "$(e2e_runtime_kind)" == "rust" ]]; then
         log "Building control-plane image (runtime=rust)..."
-        e2e_build_control_plane_image "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}"
+        e2e_build_control_plane_image "${REMOTE_DIR}" "${CONTROL_IMAGE}"
         return
     fi
 
     log "Building control-plane image (JVM Dockerfile)..."
-    vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
-    vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
+    vm_exec "cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
+    vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
 }
 
 check_prerequisites() {
-    e2e_require_multipass
+    e2e_require_vm_access
 }
 
 cleanup() {
@@ -970,7 +972,7 @@ sync_and_build() {
         return
     fi
 
-    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "/home/ubuntu/nanofaas"
+    e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"
 
     if [[ "${CONTROL_PLANE_ONLY}" == "true" ]]; then
         log "Control-plane-only mode enabled: building only the control-plane image."
@@ -991,12 +993,12 @@ sync_and_build() {
     log "Building JARs and distributions..."
     if [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" || "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
         # Native control-plane image is built via bootBuildImage below with explicit module selector.
-        vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
+        vm_exec "cd ${REMOTE_DIR} && ./gradlew :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
     elif [[ "$(e2e_runtime_kind)" == "rust" ]]; then
-        e2e_build_control_plane_artifacts "/home/ubuntu/nanofaas"
-        vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
+        e2e_build_control_plane_artifacts "${REMOTE_DIR}"
+        vm_exec "cd ${REMOTE_DIR} && ./gradlew :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
     else
-        vm_exec "cd /home/ubuntu/nanofaas && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
+        vm_exec "cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
     fi
     log "JARs built"
 
@@ -1004,57 +1006,57 @@ sync_and_build() {
     if [[ "${CONTROL_PLANE_BUILD_ON_HOST}" == "true" ]]; then
         log "Skipping in-VM control-plane build (using host-built image already pushed to registry)."
         log "Building function-runtime Docker image..."
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
     elif [[ "${CONTROL_PLANE_NATIVE_BUILD}" == "true" ]]; then
         build_control_plane_image_on_vm
         log "Building function-runtime Docker image..."
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
     elif [[ "$(e2e_runtime_kind)" == "rust" ]]; then
         build_control_plane_image_on_vm
         log "Building function-runtime Docker image..."
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${RUNTIME_IMAGE} -f function-runtime/Dockerfile function-runtime/"
     else
-        e2e_build_core_images "/home/ubuntu/nanofaas" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
+        e2e_build_core_images "${REMOTE_DIR}" "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
     fi
 
     # Java demo images
     if should_include_demo "word-stats" "java"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_WORD_STATS_IMAGE} -f examples/java/word-stats/Dockerfile examples/java/word-stats/"
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${JAVA_WORD_STATS_IMAGE} -f examples/java/word-stats/Dockerfile examples/java/word-stats/"
     fi
     if should_include_demo "json-transform" "java"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform/Dockerfile examples/java/json-transform/"
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${JAVA_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform/Dockerfile examples/java/json-transform/"
     fi
 
     # Go demo images (need repo root context for function-sdk-go)
     if should_include_demo "word-stats" "go"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${GO_WORD_STATS_IMAGE} -f examples/go/word-stats/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${GO_WORD_STATS_IMAGE} -f examples/go/word-stats/Dockerfile ."
     fi
     if should_include_demo "json-transform" "go"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${GO_JSON_TRANSFORM_IMAGE} -f examples/go/json-transform/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${GO_JSON_TRANSFORM_IMAGE} -f examples/go/json-transform/Dockerfile ."
     fi
 
     # Python demo images (need repo root context for function-sdk-python)
     if should_include_demo "word-stats" "python"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_WORD_STATS_IMAGE} -f examples/python/word-stats/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${PYTHON_WORD_STATS_IMAGE} -f examples/python/word-stats/Dockerfile ."
     fi
     if should_include_demo "json-transform" "python"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${PYTHON_JSON_TRANSFORM_IMAGE} -f examples/python/json-transform/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${PYTHON_JSON_TRANSFORM_IMAGE} -f examples/python/json-transform/Dockerfile ."
     fi
 
     # Bash demo images (need repo root for watchdog build)
     if should_include_demo "word-stats" "exec"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_WORD_STATS_IMAGE} -f examples/bash/word-stats/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${BASH_WORD_STATS_IMAGE} -f examples/bash/word-stats/Dockerfile ."
     fi
     if should_include_demo "json-transform" "exec"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${BASH_JSON_TRANSFORM_IMAGE} -f examples/bash/json-transform/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${BASH_JSON_TRANSFORM_IMAGE} -f examples/bash/json-transform/Dockerfile ."
     fi
 
     # Java lite demo images (native compilation via multi-stage, needs repo root context)
     if should_include_demo "word-stats" "java-lite"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_WORD_STATS_IMAGE} -f examples/java/word-stats-lite/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${JAVA_LITE_WORD_STATS_IMAGE} -f examples/java/word-stats-lite/Dockerfile ."
     fi
     if should_include_demo "json-transform" "java-lite"; then
-        vm_exec "cd /home/ubuntu/nanofaas && sudo docker build -t ${JAVA_LITE_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform-lite/Dockerfile ."
+        vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${JAVA_LITE_JSON_TRANSFORM_IMAGE} -f examples/java/json-transform-lite/Dockerfile ."
     fi
 
     log "All images built"
@@ -1182,7 +1184,7 @@ ${DEMO_FUNCTIONS_YAML}
 ENDVALUES"
 
     # Install with --create-namespace (namespace.create=false avoids the duplicate error)
-    vm_exec "helm upgrade --install nanofaas /home/ubuntu/nanofaas/helm/nanofaas \
+    vm_exec "helm upgrade --install nanofaas ${REMOTE_HELM_DIR} \
         -f /tmp/e2e-values.yaml \
         --namespace ${NAMESPACE} \
         --create-namespace \
