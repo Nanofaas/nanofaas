@@ -17,7 +17,7 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 
 - Java 21 (SDKMAN recommended)
 - Docker-compatible container runtime (Docker Desktop or equivalent)
-- For Kubernetes E2E: OpenSSH client and internet access to install k3s in-VM
+- For Kubernetes E2E: `python3`, OpenSSH client, internet access, and a Debian/Ubuntu-style target VM
 - [Multipass](https://multipass.run) only if you want the scripts to create/manage the VM (`E2E_VM_LIFECYCLE=multipass`)
 
 ## Quickstart (local)
@@ -112,7 +112,7 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 
 Supported external-VM variables:
 `E2E_VM_LIFECYCLE=external`, `E2E_VM_HOST`, `E2E_VM_USER`, `E2E_VM_HOME`, `E2E_KUBECONFIG_PATH`, `E2E_REMOTE_PROJECT_DIR`, `E2E_PUBLIC_HOST`, `E2E_KUBECONFIG_SERVER`.
-SSH/SCP are always used for remote command execution and file transfer. Multipass is used only for VM lifecycle when `E2E_VM_LIFECYCLE=multipass`.
+SSH/SCP are always used for remote command execution and file transfer. VM provisioning is driven by Ansible over SSH for both `multipass` and `external` lifecycle modes. If `ansible-playbook` is not already installed on the host, the scripts bootstrap it idempotently in a local virtualenv and fall back to a user-site `pip` install when `python3 -m venv` is unavailable. k3s defaults to the latest official release at run time; set `K3S_VERSION` only when you need to pin a specific version. Multipass is used only for VM lifecycle when `E2E_VM_LIFECYCLE=multipass`.
 
 E2E/module matrix (control-plane optional modules compile):
 ```bash

@@ -234,19 +234,56 @@ def test_vm_exec_shell_quotes_kubeconfig_path_with_spaces():
     assert "/srv/dev/kube\\\\\\ config/config" in out
 
 
-def test_install_k3s_creates_parent_dir_for_custom_kubeconfig_path():
+def test_install_k3s_routes_helper_resolved_values_through_ansible():
     source = f"source '{SCRIPT}'"
     out = run_shell(
         f"{source}; "
-        "E2E_VM_HOME='/should/not/be/used'; "
+        "E2E_VM_HOST=vm.example.test; "
+        "E2E_VM_USER=dev; "
         "E2E_KUBECONFIG_PATH='/srv/dev/custom kube/config'; "
-        "e2e_require_vm_exec(){ return 0; }; "
-        "e2e_log(){ :; }; "
-        "vm_exec(){ printf '%s\\n' \"$*\"; }; "
+        "K3S_VERSION='v1.35.1+k3s1'; "
+        "e2e_require_vm_access(){ return 0; }; "
+        "e2e_run_ansible_playbook(){ printf '%s\\n' \"$@\"; }; "
         "e2e_install_k3s"
     )
     lines = out.splitlines()
 
-    assert any("mkdir -p /srv/dev/custom\\ kube" in line for line in lines)
-    assert any("sudo cp /etc/rancher/k3s/k3s.yaml /srv/dev/custom\\ kube/config" in line for line in lines)
-    assert all("/should/not/be/used/.kube" not in line for line in lines)
+    assert any("playbooks/provision-k3s.yml" in line for line in lines)
+    assert "vm_user=dev" in lines
+    assert "kubeconfig_path=/srv/dev/custom kube/config" in lines
+    assert "k3s_version_override=v1.35.1+k3s1" in lines
+
+
+def test_ansible_helper_paths_are_derived_from_repo_and_home():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "printf '%s|%s|%s' "
+        "\"$(e2e_get_ansible_root)\" "
+        "\"$(e2e_get_ansible_venv_dir)\" "
+        "\"$(e2e_get_ansible_bin)\""
+    )
+
+    ansible_root, ansible_venv, ansible_bin = out.split("|")
+    assert ansible_root.endswith("/scripts/ansible")
+    assert ansible_venv.startswith(str(Path.home()))
+    assert ansible_bin.endswith("/bin/ansible-playbook")
+
+
+def test_ansible_inventory_writer_uses_external_vm_identity_and_ssh_key():
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "tmp=$(mktemp); "
+        "E2E_VM_LIFECYCLE=external; "
+        "E2E_VM_HOST=vm.example.test; "
+        "E2E_VM_USER=dev; "
+        "E2E_SSH_KEY=/tmp/test-id; "
+        "e2e_write_ansible_inventory \"$tmp\"; "
+        "cat \"$tmp\"; "
+        "rm -f \"$tmp\""
+    )
+
+    assert "ansible_host: vm.example.test" in out
+    assert "ansible_user: dev" in out
+    assert "ansible_ssh_private_key_file: /tmp/test-id" in out

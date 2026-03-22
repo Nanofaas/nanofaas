@@ -71,8 +71,12 @@ platform and run tests against the live cluster.
 
 - `E2E_VM_LIFECYCLE=multipass` keeps the existing default: scripts create/start/delete the VM with Multipass.
 - `E2E_VM_LIFECYCLE=external` targets an existing VM; command execution and file copy still go through SSH/SCP, but the scripts do not create or delete the machine.
+- VM provisioning is executed through Ansible over SSH for both lifecycle modes.
+- Host-side `ansible-playbook` is used when already installed; otherwise the scripts bootstrap it idempotently under a local virtualenv and fall back to a user-site `pip` install when `venv` is unavailable.
 - SSH/SCP are always used for remote command execution and file transfer.
 - Multipass is used only for VM lifecycle operations when `E2E_VM_LIFECYCLE=multipass`.
+- k3s defaults to the latest official release at run time unless `K3S_VERSION` is explicitly set.
+- Current provisioning assumes a Debian/Ubuntu-style VM because bootstrap and package installation use `apt`.
 
 Supported external-VM environment variables:
 
@@ -100,9 +104,10 @@ Tests the full `nanofaas` CLI against a real k3s cluster. This is the most
 comprehensive CLI validation — it exercises every command end-to-end.
 
 **Prerequisites:**
+- `python3` on the host
 - OpenSSH client and an SSH public key at `~/.ssh/id_rsa.pub` or `~/.ssh/id_ed25519.pub`
 - [Multipass](https://multipass.run) (`brew install multipass`) only if `E2E_VM_LIFECYCLE=multipass`
-- Internet connection (downloads k3s, Docker, JDK 21 inside the VM)
+- Internet connection (downloads k3s, Docker, JDK 21, Helm and/or Ansible dependencies)
 
 **Run:**
 
@@ -116,8 +121,8 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 
 **What it does:**
 
-1. Creates a Multipass VM (4 CPU, 8 GB RAM, 30 GB disk)
-2. Installs dependencies: JDK 21, Docker, k3s
+1. Creates a Multipass VM (4 CPU, 8 GB RAM, 30 GB disk) when `E2E_VM_LIFECYCLE=multipass`, or reuses the external VM over SSH
+2. Runs Ansible provisioning for Docker, JDK 21, optional Helm, and k3s
 3. Syncs the project and builds JARs + Docker images
 4. Deploys control-plane and function-runtime on k3s
 5. Builds the CLI distribution (`installDist`)
@@ -145,6 +150,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 | `DISK` | `30G` | VM disk size |
 | `NAMESPACE` | `nanofaas-e2e` | Kubernetes namespace |
 | `KEEP_VM` | `false` | Keep VM after script exits |
+| `K3S_VERSION` | latest official release | Optional k3s pin; otherwise resolved dynamically at run time |
 
 **Typical duration:** ~10 minutes (mostly VM setup and Gradle build).
 
@@ -155,7 +161,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 KEEP_VM=true ./scripts/e2e-cli.sh
 
 # SSH into the VM
-multipass shell <vm-name>
+ssh <user>@<vm-host>
 
 # Check pods
 kubectl get pods -n nanofaas-e2e
@@ -164,15 +170,17 @@ kubectl get pods -n nanofaas-e2e
 kubectl logs -l app=control-plane -n nanofaas-e2e --tail=50
 
 # Run a CLI command manually
-export KUBECONFIG=/home/ubuntu/.kube/config
-export PATH=$PATH:/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin
+export KUBECONFIG=<remote-kubeconfig-path>
+export PATH=$PATH:<remote-project-dir>/nanofaas-cli/build/install/nanofaas-cli/bin
 export NANOFAAS_ENDPOINT=http://$(kubectl get svc control-plane -n nanofaas-e2e -o jsonpath='{.spec.clusterIP}'):8080
 export NANOFAAS_NAMESPACE=nanofaas-e2e
 nanofaas fn list
 
 # Clean up when done
 exit
-multipass delete <vm-name> && multipass purge
+if [[ "${E2E_VM_LIFECYCLE:-multipass}" == "multipass" ]]; then
+  multipass delete <vm-name> && multipass purge
+fi
 ```
 
 ### K3s Curl E2E (`scripts/e2e-k3s-curl.sh`)

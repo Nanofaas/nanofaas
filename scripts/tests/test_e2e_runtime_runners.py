@@ -61,6 +61,15 @@ def test_vm_based_runners_use_runtime_aware_shared_helpers():
     assert "e2e_require_vm_access" in k3s_helm
 
 
+def test_vm_provisioning_contract_uses_ansible_in_common_library():
+    common = (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").read_text(encoding="utf-8")
+    assert "e2e_ensure_ansible()" in common
+    assert "e2e_run_ansible_playbook()" in common
+    assert "playbooks/provision-base.yml" in common
+    assert "playbooks/provision-k3s.yml" in common
+    assert "playbooks/configure-registry.yml" in common
+
+
 def test_runner_scripts_resolve_remote_paths_through_helpers():
     expectations = {
         "e2e-k8s-vm.sh": (

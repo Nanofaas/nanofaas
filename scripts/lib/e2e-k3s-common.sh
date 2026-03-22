@@ -107,6 +107,162 @@ e2e_get_remote_project_dir() {
     echo "${E2E_REMOTE_PROJECT_DIR:-${vm_home}/nanofaas}"
 }
 
+e2e_get_repo_root() {
+    if [[ -n "${PROJECT_ROOT:-}" ]]; then
+        echo "${PROJECT_ROOT}"
+        return 0
+    fi
+
+    local script_dir
+    script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+    echo "${script_dir}"
+}
+
+e2e_get_ansible_root() {
+    echo "${E2E_ANSIBLE_ROOT:-$(e2e_get_repo_root)/scripts/ansible}"
+}
+
+e2e_get_ansible_venv_dir() {
+    echo "${E2E_ANSIBLE_VENV_DIR:-${HOME}/.cache/nanofaas-e2e/ansible-venv}"
+}
+
+e2e_get_ansible_bin() {
+    echo "${E2E_ANSIBLE_BIN:-$(e2e_get_ansible_venv_dir)/bin/ansible-playbook}"
+}
+
+e2e_ensure_ansible() {
+    if [[ -n "${E2E_ANSIBLE_BIN:-}" && -x "${E2E_ANSIBLE_BIN}" ]]; then
+        echo "${E2E_ANSIBLE_BIN}"
+        return 0
+    fi
+
+    local system_ansible
+    system_ansible=$(command -v ansible-playbook || true)
+    if [[ -n "${system_ansible}" ]]; then
+        echo "${system_ansible}"
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        e2e_error "python3 not found. Required to bootstrap ansible."
+        return 1
+    fi
+
+    local ansible_root venv_dir ansible_bin req_file req_stamp
+    local user_base user_bin user_req_stamp
+    ansible_root=$(e2e_get_ansible_root)
+    venv_dir=$(e2e_get_ansible_venv_dir)
+    ansible_bin=$(e2e_get_ansible_bin)
+    req_file="${ansible_root}/requirements.txt"
+    req_stamp="${venv_dir}/.requirements.txt"
+    user_base=$(python3 -m site --user-base 2>/dev/null)
+    user_bin="${user_base}/bin/ansible-playbook"
+    user_req_stamp="${HOME}/.cache/nanofaas-e2e/.requirements-user.txt"
+
+    mkdir -p "$(dirname "${venv_dir}")"
+    if [[ ! -x "${venv_dir}/bin/python3" ]]; then
+        python3 -m venv "${venv_dir}" >/dev/null 2>&1 || true
+    fi
+
+    if [[ -x "${venv_dir}/bin/python3" ]]; then
+        if [[ ! -x "${ansible_bin}" ]] || [[ ! -f "${req_stamp}" ]] || ! cmp -s "${req_file}" "${req_stamp}"; then
+            "${venv_dir}/bin/python3" -m pip install --upgrade pip >/dev/null
+            "${venv_dir}/bin/python3" -m pip install -r "${req_file}" >/dev/null
+            cp "${req_file}" "${req_stamp}"
+        fi
+
+        if [[ -x "${ansible_bin}" ]]; then
+            echo "${ansible_bin}"
+            return 0
+        fi
+    fi
+
+    mkdir -p "$(dirname "${user_req_stamp}")"
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
+    fi
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        e2e_error "python3 is present but neither venv nor pip is available to bootstrap ansible."
+        return 1
+    fi
+
+    if [[ ! -x "${user_bin}" ]] || [[ ! -f "${user_req_stamp}" ]] || ! cmp -s "${req_file}" "${user_req_stamp}"; then
+        python3 -m pip install --user -r "${req_file}" >/dev/null
+        cp "${req_file}" "${user_req_stamp}"
+    fi
+
+    if [[ ! -x "${user_bin}" ]]; then
+        e2e_error "Failed to bootstrap ansible-playbook with either venv or user-site pip install."
+        return 1
+    fi
+
+    echo "${user_bin}"
+}
+
+e2e_write_ansible_inventory() {
+    local dest=${1:?destination inventory path is required}
+    local vm_host vm_user ssh_key ssh_port connect_timeout
+
+    vm_host=$(e2e_get_vm_host) || return 1
+    vm_user=$(e2e_get_vm_user)
+    ssh_key=${E2E_SSH_KEY:-$(e2e_detect_multipass_ssh_key || true)}
+    ssh_port=${E2E_SSH_PORT:-22}
+    connect_timeout=${E2E_SSH_CONNECT_TIMEOUT:-15}
+
+    cat > "${dest}" <<EOF
+all:
+  hosts:
+    vm:
+      ansible_host: ${vm_host}
+      ansible_user: ${vm_user}
+      ansible_port: ${ssh_port}
+      ansible_connection: ssh
+      ansible_python_interpreter: /usr/bin/python3
+      ansible_ssh_common_args: >-
+        -o StrictHostKeyChecking=no
+        -o UserKnownHostsFile=/dev/null
+        -o LogLevel=ERROR
+        -o ConnectTimeout=${connect_timeout}
+EOF
+
+    if [[ -n "${ssh_key}" ]]; then
+        cat >> "${dest}" <<EOF
+      ansible_ssh_private_key_file: ${ssh_key}
+EOF
+    fi
+}
+
+e2e_run_ansible_playbook() {
+    local playbook=${1:?playbook path is required}
+    shift
+
+    e2e_require_vm_access || return 1
+
+    local ansible_root ansible_bin inventory_file
+    ansible_root=$(e2e_get_ansible_root)
+    ansible_bin=$(e2e_ensure_ansible) || return 1
+    inventory_file=$(e2e_mktemp_file "nanofaas-ansible-inventory" ".yml")
+    e2e_write_ansible_inventory "${inventory_file}" || {
+        rm -f "${inventory_file}"
+        return 1
+    }
+
+    local -a extra_vars=()
+    local arg
+    for arg in "$@"; do
+        extra_vars+=(-e "${arg}")
+    done
+
+    ANSIBLE_CONFIG="${ansible_root}/ansible.cfg" \
+        "${ansible_bin}" \
+        -i "${inventory_file}" \
+        "${extra_vars[@]}" \
+        "${playbook}"
+    local rc=$?
+    rm -f "${inventory_file}"
+    return "${rc}"
+}
+
 # ─── Temp file helpers ───────────────────────────────────────────────────────
 e2e_get_host_tmp_dir() {
     # Snap-packaged multipass cannot reliably read host files from /tmp.
@@ -585,40 +741,19 @@ e2e_ensure_vm_running() {
 }
 
 e2e_install_vm_dependencies() {
-    e2e_require_vm_exec || return 1
+    e2e_require_vm_access || return 1
     local install_helm=${1:-false}
     local helm_version=${HELM_VERSION:-3.16.4}
     helm_version=${helm_version#v}
-    local helm_label=""
     local vm_user
     vm_user=$(e2e_get_vm_user)
-    if [[ "${install_helm}" == "true" ]]; then
-        helm_label=", helm"
-    fi
 
-    e2e_log "Installing VM dependencies (docker, jdk21${helm_label})..."
-    vm_exec "sudo apt-get update -y"
-    vm_exec "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates tar unzip openjdk-21-jdk-headless docker.io"
-    vm_exec "sudo systemctl enable --now docker"
-    if [[ "${vm_user}" != "root" ]]; then
-        vm_exec "sudo usermod -aG docker ${vm_user} || true"
-    fi
-
-    if [[ "${install_helm}" == "true" ]]; then
-        vm_exec "if ! command -v helm >/dev/null 2>&1; then
-            arch=\$(uname -m)
-            case \"\${arch}\" in
-                x86_64|amd64) helm_arch=amd64 ;;
-                aarch64|arm64) helm_arch=arm64 ;;
-                *) echo \"Unsupported architecture for helm: \${arch}\" >&2; exit 1 ;;
-            esac
-            archive=/tmp/helm-v${helm_version}-linux-\${helm_arch}.tar.gz
-            curl -fsSL -o \"\${archive}\" \"https://get.helm.sh/helm-v${helm_version}-linux-\${helm_arch}.tar.gz\"
-            tar -xzf \"\${archive}\" -C /tmp
-            sudo install -m 0755 /tmp/linux-\${helm_arch}/helm /usr/local/bin/helm
-            rm -rf /tmp/linux-\${helm_arch} \"\${archive}\"
-        fi"
-    fi
+    e2e_log "Installing VM dependencies via Ansible..."
+    e2e_run_ansible_playbook \
+        "$(e2e_get_ansible_root)/playbooks/provision-base.yml" \
+        "install_helm=${install_helm}" \
+        "helm_version=${helm_version}" \
+        "vm_user=${vm_user}"
     e2e_log "VM dependencies installed"
 }
 
@@ -1497,39 +1632,29 @@ e2e_fetch_control_plane_prometheus() {
 }
 
 e2e_install_k3s() {
-    e2e_require_vm_exec || return 1
-    local k3s_version=${K3S_VERSION:-v1.32.2+k3s1}
-    local vm_user kubeconfig_path kubeconfig_dir
+    e2e_require_vm_access || return 1
+    local k3s_version=${K3S_VERSION:-}
+    local vm_user kubeconfig_path
     vm_user=$(e2e_get_vm_user)
     kubeconfig_path=$(e2e_get_kubeconfig_path)
-    kubeconfig_dir=$(dirname "${kubeconfig_path}")
-    local q_kubeconfig_path q_kubeconfig_dir
-    q_kubeconfig_path=$(printf '%q' "${kubeconfig_path}")
-    q_kubeconfig_dir=$(printf '%q' "${kubeconfig_dir}")
+    local -a ansible_vars=(
+        "vm_user=${vm_user}"
+        "kubeconfig_path=${kubeconfig_path}"
+    )
+    if [[ -n "${k3s_version}" ]]; then
+        ansible_vars+=("k3s_version_override=${k3s_version}")
+    fi
 
-    e2e_log "Installing k3s (${k3s_version})..."
-    vm_exec "curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='${k3s_version}' sh -s - --disable traefik"
-
-    vm_exec "for i in \$(seq 1 60); do
-        if sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready'; then
-            echo 'k3s node ready'
-            exit 0
-        fi
-        sleep 2
-    done
-    echo 'k3s node not ready after 120s' >&2
-    exit 1"
-
-    vm_exec "mkdir -p ${q_kubeconfig_dir}"
-    vm_exec "sudo cp /etc/rancher/k3s/k3s.yaml ${q_kubeconfig_path}"
-    vm_exec "sudo chown ${vm_user}:${vm_user} ${q_kubeconfig_path}"
-    vm_exec "chmod 600 ${q_kubeconfig_path}"
+    e2e_log "Installing k3s via Ansible..."
+    e2e_run_ansible_playbook \
+        "$(e2e_get_ansible_root)/playbooks/provision-k3s.yml" \
+        "${ansible_vars[@]}"
 
     e2e_log "k3s installed and ready"
 }
 
 e2e_setup_local_registry() {
-    e2e_require_vm_exec || return 1
+    e2e_require_vm_access || return 1
 
     local registry=${1:-localhost:5000}
     local host=${registry%:*}
@@ -1541,41 +1666,13 @@ e2e_setup_local_registry() {
         return 1
     fi
 
-    e2e_log "Starting local registry ${registry}..."
-    vm_exec "sudo docker rm -f ${container_name} >/dev/null 2>&1 || true"
-    vm_exec "sudo docker run -d --restart unless-stopped --name ${container_name} -p ${port}:5000 registry:2 >/dev/null"
-
-    vm_exec "for i in \$(seq 1 30); do
-        if curl -fsS http://${registry}/v2/ >/dev/null 2>&1; then
-            echo 'registry ready'
-            exit 0
-        fi
-        sleep 1
-    done
-    echo 'registry not ready after 30s' >&2
-    exit 1"
-
-    e2e_log "Configuring k3s to pull from ${registry}..."
-    vm_exec "cat <<EOF | sudo tee /etc/rancher/k3s/registries.yaml >/dev/null
-mirrors:
-  \"${registry}\":
-    endpoint:
-      - \"http://${registry}\"
-configs:
-  \"${registry}\":
-    tls:
-      insecure_skip_verify: true
-EOF"
-    vm_exec "sudo systemctl restart k3s"
-    vm_exec "for i in \$(seq 1 60); do
-        if sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q ' Ready'; then
-            echo 'k3s node ready'
-            exit 0
-        fi
-        sleep 2
-    done
-    echo 'k3s node not ready after k3s restart' >&2
-    exit 1"
+    e2e_log "Configuring local registry ${registry} via Ansible..."
+    e2e_run_ansible_playbook \
+        "$(e2e_get_ansible_root)/playbooks/configure-registry.yml" \
+        "registry=${registry}" \
+        "registry_host=${host}" \
+        "registry_port=${port}" \
+        "registry_container_name=${container_name}"
 
     e2e_log "Local registry configured for k3s"
 }

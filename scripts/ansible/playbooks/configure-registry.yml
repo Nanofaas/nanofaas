@@ -1,0 +1,92 @@
+---
+- name: Configure local registry for k3s
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    registry: localhost:5000
+    registry_host: localhost
+    registry_port: "5000"
+    registry_container_name: nanofaas-e2e-registry
+  pre_tasks:
+    - name: Ensure python3 is present on the target
+      ansible.builtin.raw: |
+        if command -v python3 >/dev/null 2>&1; then
+          echo already-present
+          exit 0
+        fi
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y python3 python3-apt
+      register: bootstrap_python
+      changed_when: "'already-present' not in bootstrap_python.stdout"
+
+    - name: Gather facts after python bootstrap
+      ansible.builtin.setup:
+  tasks:
+    - name: Ensure the registry container is running
+      ansible.builtin.shell: |
+        current_port="$(docker port {{ registry_container_name }} 5000/tcp 2>/dev/null | awk -F: 'END {print $NF}')"
+        if docker ps -q --filter "name=^/{{ registry_container_name }}$" --filter "status=running" | grep -q . \
+          && [[ "${current_port}" == "{{ registry_port }}" ]]; then
+          exit 0
+        fi
+        docker rm -f {{ registry_container_name }} >/dev/null 2>&1 || true
+        docker run -d --restart unless-stopped --name {{ registry_container_name }} -p {{ registry_port }}:5000 registry:2 >/dev/null
+        echo changed
+      args:
+        executable: /bin/bash
+      register: registry_container
+      changed_when: "'changed' in registry_container.stdout"
+
+    - name: Wait for the registry to answer
+      ansible.builtin.uri:
+        url: "http://{{ registry_host }}:{{ registry_port }}/v2/"
+        status_code: 200
+      register: registry_status
+      changed_when: false
+      retries: 30
+      delay: 1
+      until: registry_status.status == 200
+
+    - name: Ensure the k3s config directory exists
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure the registry mirror for k3s
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/registries.yaml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          mirrors:
+            "{{ registry }}":
+              endpoint:
+                - "http://{{ registry }}"
+          configs:
+            "{{ registry }}":
+              tls:
+                insecure_skip_verify: true
+      register: registry_config
+
+    - name: Restart k3s when registry config changes
+      ansible.builtin.systemd:
+        name: k3s
+        state: restarted
+      when: registry_config.changed
+
+    - name: Wait for k3s node readiness after registry update
+      ansible.builtin.command: k3s kubectl get nodes --no-headers
+      register: k3s_nodes
+      changed_when: false
+      until:
+        - k3s_nodes.rc == 0
+        - "' Ready ' in k3s_nodes.stdout"
+      retries: 60
+      delay: 2
+      when: registry_config.changed
