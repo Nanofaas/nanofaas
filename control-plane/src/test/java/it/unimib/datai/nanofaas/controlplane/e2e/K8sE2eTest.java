@@ -58,21 +58,10 @@ class K8sE2eTest {
         client.apps().deployments().inNamespace(NS).resource(functionRuntimeDeployment()).createOrReplace();
         client.services().inNamespace(NS).resource(functionRuntimeService()).createOrReplace();
 
-        Awaitility.await().atMost(Duration.ofMinutes(3)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
-            Deployment control = client.apps().deployments().inNamespace(NS).withName("control-plane").get();
-            Deployment runtime = client.apps().deployments().inNamespace(NS).withName("function-runtime").get();
-            Integer controlReady = control.getStatus().getReadyReplicas();
-            Integer runtimeReady = runtime.getStatus().getReadyReplicas();
-            org.junit.jupiter.api.Assertions.assertEquals(1, controlReady == null ? 0 : controlReady);
-            org.junit.jupiter.api.Assertions.assertEquals(1, runtimeReady == null ? 0 : runtimeReady);
-        });
-
-        Awaitility.await().atMost(Duration.ofMinutes(2)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
-            Endpoints control = client.endpoints().inNamespace(NS).withName("control-plane").get();
-            Endpoints runtime = client.endpoints().inNamespace(NS).withName("function-runtime").get();
-            org.junit.jupiter.api.Assertions.assertTrue(hasReadyEndpoint(control));
-            org.junit.jupiter.api.Assertions.assertTrue(hasReadyEndpoint(runtime));
-        });
+        awaitDeploymentReady("control-plane");
+        awaitDeploymentReady("function-runtime");
+        awaitServiceReady("control-plane");
+        awaitServiceReady("function-runtime");
     }
 
     @AfterAll
@@ -85,6 +74,7 @@ class K8sE2eTest {
 
     @Test
     void k8sRegisterInvokeAndPoll() throws Exception {
+        awaitControlPlaneReady();
         try (LocalPortForward apiForward = client.services().inNamespace(NS).withName("control-plane").portForward(8080);
              LocalPortForward mgmtForward = client.services().inNamespace(NS).withName("control-plane").portForward(8081)) {
 
@@ -129,6 +119,7 @@ class K8sE2eTest {
 
     @Test
     void k8sSyncQueueBackpressure() throws Exception {
+        awaitControlPlaneReady();
         try (LocalPortForward apiForward = client.services().inNamespace(NS).withName("control-plane").portForward(8080);
              LocalPortForward mgmtForward = client.services().inNamespace(NS).withName("control-plane").portForward(8081)) {
 
@@ -179,6 +170,7 @@ class K8sE2eTest {
 
     @Test
     void k8sColdStartMetrics_areRecorded() throws Exception {
+        awaitControlPlaneReady();
         try (LocalPortForward apiForward = client.services().inNamespace(NS).withName("control-plane").portForward(8080);
              LocalPortForward mgmtForward = client.services().inNamespace(NS).withName("control-plane").portForward(8081)) {
 
@@ -248,6 +240,26 @@ class K8sE2eTest {
                 .addNewEnv().withName("SYNC_QUEUE_RETRY_AFTER_SECONDS").withValue("2").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_THROUGHPUT_WINDOW").withValue("10s").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES").withValue("1").endEnv()
+                .withNewReadinessProbe()
+                .withNewHttpGet()
+                .withPath("/actuator/health/readiness")
+                .withPort(new IntOrString(8081))
+                .endHttpGet()
+                .withInitialDelaySeconds(10)
+                .withPeriodSeconds(5)
+                .withTimeoutSeconds(3)
+                .withFailureThreshold(3)
+                .endReadinessProbe()
+                .withNewLivenessProbe()
+                .withNewHttpGet()
+                .withPath("/actuator/health/liveness")
+                .withPort(new IntOrString(8081))
+                .endHttpGet()
+                .withInitialDelaySeconds(15)
+                .withPeriodSeconds(10)
+                .withTimeoutSeconds(3)
+                .withFailureThreshold(3)
+                .endLivenessProbe()
                 .endContainer()
                 .endSpec()
                 .endTemplate()
@@ -284,6 +296,14 @@ class K8sE2eTest {
                 .withName("function-runtime")
                 .withImage(RUNTIME_IMAGE)
                 .addNewPort().withContainerPort(8080).endPort()
+                .withNewReadinessProbe()
+                .withNewHttpGet()
+                .withPath("/actuator/health")
+                .withPort(new IntOrString(8080))
+                .endHttpGet()
+                .withInitialDelaySeconds(10)
+                .withPeriodSeconds(5)
+                .endReadinessProbe()
                 .endContainer()
                 .endSpec()
                 .endTemplate()
@@ -309,6 +329,26 @@ class K8sE2eTest {
                         .then()
                         .statusCode(200)
                         .body("status", equalTo("UP")));
+    }
+
+    private static void awaitControlPlaneReady() {
+        awaitDeploymentReady("control-plane");
+        awaitServiceReady("control-plane");
+    }
+
+    private static void awaitDeploymentReady(String deploymentName) {
+        Awaitility.await().atMost(Duration.ofMinutes(3)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
+            Deployment deployment = client.apps().deployments().inNamespace(NS).withName(deploymentName).get();
+            Integer ready = deployment == null || deployment.getStatus() == null ? null : deployment.getStatus().getReadyReplicas();
+            org.junit.jupiter.api.Assertions.assertEquals(1, ready == null ? 0 : ready);
+        });
+    }
+
+    private static void awaitServiceReady(String serviceName) {
+        Awaitility.await().atMost(Duration.ofMinutes(2)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
+            Endpoints endpoints = client.endpoints().inNamespace(NS).withName(serviceName).get();
+            org.junit.jupiter.api.Assertions.assertTrue(hasReadyEndpoint(endpoints));
+        });
     }
 
 }
