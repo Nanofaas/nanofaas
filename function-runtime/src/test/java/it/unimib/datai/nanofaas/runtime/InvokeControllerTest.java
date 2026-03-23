@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -22,6 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "EXECUTION_ID=test-execution")
 @AutoConfigureMockMvc
 class InvokeControllerTest {
+    private static final int CALLBACK_TIMEOUT_MS = 2_000;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -50,7 +53,8 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         // Verify callback was called with header execution ID
-        verify(callbackClient).sendResult(eq("header-exec-123"), any(InvocationResult.class), any());
+        verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
+                .sendResult(eq("header-exec-123"), any(InvocationResult.class), any());
     }
 
     @Test
@@ -63,7 +67,8 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         // Verify callback was called with default/env execution ID (test-execution is the default)
-        verify(callbackClient).sendResult(eq("test-execution"), any(InvocationResult.class), any());
+        verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
+                .sendResult(eq("test-execution"), any(InvocationResult.class), any());
     }
 
     @Test
@@ -78,7 +83,8 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         // Verify header execution ID was used, not the env one
-        verify(callbackClient).sendResult(eq("header-takes-precedence"), any(InvocationResult.class), any());
+        verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
+                .sendResult(eq("header-takes-precedence"), any(InvocationResult.class), any());
     }
 
     @Test
@@ -92,7 +98,8 @@ class InvokeControllerTest {
                         .content("{\"input\": \"test\", \"metadata\": {}}"))
                 .andExpect(status().isOk());
 
-        verify(callbackClient).sendResult(eq("exec-123"), any(InvocationResult.class), eq("trace-456"));
+        verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
+                .sendResult(eq("exec-123"), any(InvocationResult.class), eq("trace-456"));
     }
 
     @Test
@@ -105,6 +112,7 @@ class InvokeControllerTest {
                         .content("{\"input\": \"test\", \"metadata\": {}}"))
                 .andExpect(status().isOk());
 
-        verify(callbackClient).sendResult(eq("exec-789"), any(InvocationResult.class), (String) isNull());
+        verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
+                .sendResult(eq("exec-789"), any(InvocationResult.class), (String) isNull());
     }
 }
