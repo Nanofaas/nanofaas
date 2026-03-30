@@ -22,9 +22,13 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 
 ## Quickstart (local)
 
+Invoke these commands in 2 different terminals:
 ```bash
 ./gradlew :control-plane:bootRun
-./gradlew :function-runtime:bootRun
+```
+
+```bash
+SERVER_PORT=8082 ./gradlew :function-runtime:bootRun
 ```
 
 `bootRun` includes all optional control-plane modules by default.
