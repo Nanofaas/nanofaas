@@ -259,7 +259,7 @@ curl -fsS \
   -d '{"replicas":2}' \
   "${BASE_URL}/v1/functions/${FUNCTION_NAME}/replicas" \
   > "${SCALE_RESPONSE}"
-assert_json_field "${SCALE_RESPONSE}" "name" "${FUNCTION_NAME}"
+assert_json_field "${SCALE_RESPONSE}" "function" "${FUNCTION_NAME}"
 assert_json_field "${SCALE_RESPONSE}" "replicas" "2"
 wait_for_container_count 2 60
 
