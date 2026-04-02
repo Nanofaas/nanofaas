@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.imagevalidator;
 
 import it.unimib.datai.nanofaas.controlplane.config.CoreDefaults;
-import it.unimib.datai.nanofaas.controlplane.config.KubernetesProperties;
+import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;

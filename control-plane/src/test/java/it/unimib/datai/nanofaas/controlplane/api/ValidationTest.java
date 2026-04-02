@@ -104,8 +104,7 @@ class ValidationTest {
                 ExecutionMode.DEPLOYMENT, null, null, null
         );
 
-        when(functionService.register(any())).thenReturn(Optional.of(spec));
-        when(functionService.getRegistered("myfunc")).thenReturn(Optional.of(new RegisteredFunction(
+        when(functionService.register(any())).thenReturn(Optional.of(new RegisteredFunction(
                 spec,
                 new DeploymentMetadata(
                         ExecutionMode.DEPLOYMENT,

@@ -11,12 +11,12 @@ public record RegisteredFunction(
             throw new IllegalArgumentException("spec is required");
         }
         deploymentMetadata = deploymentMetadata == null
-                ? DeploymentMetadata.nonManaged(spec.executionMode())
+                ? DeploymentMetadata.nonManaged(spec.executionMode(), spec.endpointUrl())
                 : deploymentMetadata;
     }
 
     public static RegisteredFunction nonManaged(FunctionSpec spec) {
-        return new RegisteredFunction(spec, DeploymentMetadata.nonManaged(spec.executionMode()));
+        return new RegisteredFunction(spec, DeploymentMetadata.nonManaged(spec.executionMode(), spec.endpointUrl()));
     }
 
     public String name() {

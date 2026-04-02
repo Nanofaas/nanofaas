@@ -8,9 +8,17 @@ import java.time.Duration;
 
 final class HttpEndpointProbe implements EndpointProbe {
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(2))
-            .build();
+    private final HttpClient httpClient;
+
+    HttpEndpointProbe() {
+        this(HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build());
+    }
+
+    HttpEndpointProbe(HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
 
     @Override
     public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
@@ -38,6 +46,9 @@ final class HttpEndpointProbe implements EndpointProbe {
                     .build();
             HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
             return response.statusCode() >= 200 && response.statusCode() < 300;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         } catch (Exception ignored) {
             return false;
         }

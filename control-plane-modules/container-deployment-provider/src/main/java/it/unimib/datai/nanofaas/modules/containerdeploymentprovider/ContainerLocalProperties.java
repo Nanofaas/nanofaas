@@ -9,9 +9,10 @@ public record ContainerLocalProperties(
         String runtimeAdapter,
         String bindHost,
         Duration readinessTimeout,
-        Duration readinessPollInterval
+        Duration readinessPollInterval,
+        String callbackUrl
 ) {
     public ContainerLocalProperties() {
-        this("docker", "127.0.0.1", Duration.ofSeconds(20), Duration.ofMillis(250));
+        this("docker", "127.0.0.1", Duration.ofSeconds(20), Duration.ofMillis(250), null);
     }
 }

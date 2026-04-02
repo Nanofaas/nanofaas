@@ -60,10 +60,10 @@ class FunctionServiceConcurrencyTest {
                             null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
                     );
 
-                    Optional<FunctionSpec> result = functionService.register(spec);
+                    Optional<RegisteredFunction> result = functionService.register(spec);
                     if (result.isPresent()) {
                         successCount.incrementAndGet();
-                        registeredSpecs.add(result.get());
+                        registeredSpecs.add(result.get().spec());
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -103,7 +103,7 @@ class FunctionServiceConcurrencyTest {
                             null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
                     );
 
-                    Optional<FunctionSpec> result = functionService.register(spec);
+                    Optional<RegisteredFunction> result = functionService.register(spec);
                     if (result.isPresent()) {
                         successCount.incrementAndGet();
                     }
@@ -134,8 +134,8 @@ class FunctionServiceConcurrencyTest {
                 null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
         );
 
-        Optional<FunctionSpec> result1 = functionService.register(spec1);
-        Optional<FunctionSpec> result2 = functionService.register(spec2);
+        Optional<RegisteredFunction> result1 = functionService.register(spec1);
+        Optional<RegisteredFunction> result2 = functionService.register(spec2);
 
         assertThat(result1).isPresent();
         assertThat(result2).isEmpty();
@@ -174,7 +174,7 @@ class FunctionServiceConcurrencyTest {
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<Optional<FunctionSpec>> registerFuture = executor.submit(() -> localService.register(spec));
+            Future<Optional<RegisteredFunction>> registerFuture = executor.submit(() -> localService.register(spec));
 
             assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
@@ -226,7 +226,7 @@ class FunctionServiceConcurrencyTest {
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<FunctionSpec>> registerFuture = executor.submit(() -> localService.register(spec));
+            Future<Optional<RegisteredFunction>> registerFuture = executor.submit(() -> localService.register(spec));
 
             assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
             Thread.sleep(150);
@@ -237,8 +237,9 @@ class FunctionServiceConcurrencyTest {
 
             allowProvision.countDown();
 
-            Optional<FunctionSpec> registered = registerFuture.get(5, TimeUnit.SECONDS);
+            Optional<RegisteredFunction> registered = registerFuture.get(5, TimeUnit.SECONDS);
             assertThat(registered).isPresent();
+            assertThat(registered.get().spec().endpointUrl()).isEqualTo("http://fn-svc:8080");
             assertThat(localService.get("deploy-fn")).hasValueSatisfying(fn ->
                     assertThat(fn.endpointUrl()).isEqualTo("http://fn-svc:8080"));
         } finally {

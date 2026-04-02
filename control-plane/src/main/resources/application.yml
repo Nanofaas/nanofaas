@@ -30,6 +30,9 @@ nanofaas:
   admin:
     runtime-config:
       enabled: false
+  deployment:
+    # Optional backend id to prefer when multiple managed deployment providers are available.
+    default-backend: ""
   defaults:
     timeoutMs: 30000
     concurrency: 4

@@ -23,7 +23,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 @WebFluxTest(controllers = FunctionController.class)
 @Import(GlobalExceptionHandler.class)
@@ -66,6 +68,23 @@ class FunctionControllerTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isEqualTo(409);
+    }
+
+    @Test
+    void register_successDoesNotDependOnSubsequentRegistryLookup() {
+        FunctionSpec request = spec("echo");
+        when(functionService.register(any())).thenReturn(Optional.of(
+                registered("echo", ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null)
+        ));
+
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isCreated();
+
+        verify(functionService, never()).getRegistered("echo");
     }
 
     @Test
@@ -146,8 +165,7 @@ class FunctionControllerTest {
                         )
                 )
         );
-        when(functionService.register(any())).thenReturn(Optional.of(resolved));
-        when(functionService.getRegistered("echo")).thenReturn(Optional.of(new RegisteredFunction(
+        when(functionService.register(any())).thenReturn(Optional.of(new RegisteredFunction(
                 resolved,
                 new DeploymentMetadata(
                         ExecutionMode.DEPLOYMENT,

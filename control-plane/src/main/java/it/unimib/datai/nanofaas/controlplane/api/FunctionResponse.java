@@ -72,7 +72,7 @@ public record FunctionResponse(
                 registeredFunction.deploymentMetadata().effectiveExecutionMode(),
                 registeredFunction.deploymentMetadata().deploymentBackend(),
                 registeredFunction.deploymentMetadata().degradationReason(),
-                registeredFunction.spec().endpointUrl()
+                registeredFunction.deploymentMetadata().effectiveEndpointUrl()
         );
     }
 }

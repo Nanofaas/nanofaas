@@ -2,6 +2,7 @@ plugins {
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
     id 'org.graalvm.buildtools.native'
+    id 'java-test-fixtures'
 }
 
 def parseCsvModules = { String raw ->
@@ -68,6 +69,10 @@ dependencies {
     testImplementation 'org.testcontainers:testcontainers:2.0.3'
     testImplementation 'org.awaitility:awaitility:4.2.1'
     testImplementation 'io.rest-assured:rest-assured:5.4.0'
+
+    testFixturesImplementation 'org.awaitility:awaitility:4.2.1'
+    testFixturesImplementation 'io.rest-assured:rest-assured:5.4.0'
+    testFixturesImplementation 'org.hamcrest:hamcrest:2.2'
 }
 
 tasks.register('printSelectedControlPlaneModules') {

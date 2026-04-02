@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.deployment;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -13,7 +14,7 @@ public class DeploymentProviderResolver {
     private final List<ManagedDeploymentProvider> providers;
     private final DeploymentProperties properties;
 
-    public DeploymentProviderResolver(List<ManagedDeploymentProvider> providers,
+    public DeploymentProviderResolver(@Autowired(required = false) List<ManagedDeploymentProvider> providers,
                                       DeploymentProperties properties) {
         this.providers = providers == null ? List.of() : List.copyOf(providers);
         this.properties = properties == null ? new DeploymentProperties() : properties;

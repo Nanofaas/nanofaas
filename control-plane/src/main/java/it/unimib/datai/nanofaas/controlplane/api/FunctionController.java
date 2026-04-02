@@ -32,7 +32,6 @@ public class FunctionController {
     public ResponseEntity<?> register(@Valid @RequestBody FunctionSpec spec) {
         try {
             return functionService.register(spec)
-                    .flatMap(ignored -> functionService.getRegistered(spec.name()))
                     .map(registered -> ResponseEntity.status(HttpStatus.CREATED).body(FunctionResponse.from(registered)))
                     .orElse(ResponseEntity.status(HttpStatus.CONFLICT).build());
         } catch (IllegalStateException ex) {

@@ -21,5 +21,6 @@ dependencies {
     testImplementation 'org.awaitility:awaitility:4.2.1'
     testImplementation 'io.fabric8:kubernetes-server-mock:7.5.2'
     testImplementation 'io.rest-assured:rest-assured:5.4.0'
+    testImplementation(testFixtures(project(':control-plane')))
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

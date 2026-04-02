@@ -3,7 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
-import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,19 +25,32 @@ public class FunctionService {
     private final FunctionRegistry registry;
     private final FunctionSpecResolver resolver;
     private final DeploymentProviderResolver deploymentProviderResolver;
+    private final ManagedDeploymentCoordinator managedDeploymentCoordinator;
     private final ImageValidator imageValidator;
     private final List<FunctionRegistrationListener> listeners;
     private final ConcurrentHashMap<String, LockEntry> functionLocks = new ConcurrentHashMap<>();
+
+    public FunctionService(FunctionRegistry registry,
+                           FunctionDefaults defaults,
+                           ImageValidator imageValidator,
+                           @Autowired(required = false) List<FunctionRegistrationListener> listeners,
+                           DeploymentProviderResolver deploymentProviderResolver) {
+        this(registry, defaults, imageValidator, listeners, deploymentProviderResolver, null);
+    }
 
     @Autowired
     public FunctionService(FunctionRegistry registry,
                            FunctionDefaults defaults,
                            ImageValidator imageValidator,
                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
-                           DeploymentProviderResolver deploymentProviderResolver) {
+                           DeploymentProviderResolver deploymentProviderResolver,
+                           @Autowired(required = false) ManagedDeploymentCoordinator managedDeploymentCoordinator) {
         this.registry = registry;
         this.resolver = new FunctionSpecResolver(defaults);
         this.deploymentProviderResolver = deploymentProviderResolver;
+        this.managedDeploymentCoordinator = managedDeploymentCoordinator == null
+                ? new ManagedDeploymentCoordinator(deploymentProviderResolver)
+                : managedDeploymentCoordinator;
         this.imageValidator = imageValidator;
         this.listeners = listeners == null ? List.of() : listeners;
     }
@@ -58,7 +71,7 @@ public class FunctionService {
         return registry.getRegistered(name);
     }
 
-    public Optional<FunctionSpec> register(FunctionSpec spec) {
+    public Optional<RegisteredFunction> register(FunctionSpec spec) {
         FunctionSpec initialResolved = resolver.resolve(spec);
 
         return withFunctionLock(initialResolved.name(), () -> {
@@ -77,7 +90,7 @@ public class FunctionService {
             try {
                 notifyRegisterListeners(registered.spec());
                 registry.put(registered);
-                return Optional.of(registered.spec());
+                return Optional.of(registered);
             } catch (RuntimeException e) {
                 rollbackProvisionedRegistration(registered, e);
                 throw e;
@@ -100,7 +113,7 @@ public class FunctionService {
             if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
                 throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
             }
-            managedProviderFor(function).setReplicas(name, replicas);
+            managedDeploymentCoordinator.setReplicas(function, replicas);
             log.info("Set replicas for function {} to {}", name, replicas);
             return Optional.of(replicas);
         });
@@ -117,7 +130,7 @@ public class FunctionService {
                         notified.add(listener);
                     }
                     if (existing.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT) {
-                        managedProviderFor(existing).deprovision(name);
+                        managedDeploymentCoordinator.deprovision(existing);
                     }
                 } catch (RuntimeException e) {
                     rollbackRemovalListeners(existing.spec(), notified, e);
@@ -143,7 +156,8 @@ public class FunctionService {
                         spec.executionMode(),
                         provisionResult.effectiveExecutionMode(),
                         provisionResult.backendId(),
-                        provisionResult.degradationReason()
+                        provisionResult.degradationReason(),
+                        provisionResult.endpointUrl()
                 )
         );
     }
@@ -169,11 +183,11 @@ public class FunctionService {
     }
 
     private void rollbackProvisionedRegistration(RegisteredFunction function, RuntimeException failure) {
-        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+        if (!managedDeploymentCoordinator.isManagedDeployment(function)) {
             return;
         }
         try {
-            managedProviderFor(function).deprovision(function.spec().name());
+            managedDeploymentCoordinator.deprovision(function);
         } catch (RuntimeException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }
@@ -214,14 +228,6 @@ public class FunctionService {
                 failure.addSuppressed(rollbackFailure);
             }
         }
-    }
-
-    private ManagedDeploymentProvider managedProviderFor(RegisteredFunction function) {
-        String backend = function.deploymentMetadata().deploymentBackend();
-        if (backend != null && !backend.isBlank()) {
-            return deploymentProviderResolver.requireBackend(backend);
-        }
-        return deploymentProviderResolver.resolve(function.spec(), null);
     }
 
     private <T> T withFunctionLock(String functionName, Supplier<T> action) {

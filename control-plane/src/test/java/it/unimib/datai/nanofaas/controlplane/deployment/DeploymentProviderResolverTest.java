@@ -69,6 +69,19 @@ class DeploymentProviderResolverTest {
     }
 
     @Test
+    void blankExplicitHint_fallsBackToDefaultBackend() {
+        ManagedDeploymentProvider k8s = stubProvider("k8s", true, true);
+        ManagedDeploymentProvider local = stubProvider("container-local", true, true);
+
+        DeploymentProviderResolver resolver = new DeploymentProviderResolver(
+                List.of(k8s, local),
+                new DeploymentProperties("container-local")
+        );
+
+        assertThat(resolver.resolve(spec("fn"), "   ")).isSameAs(local);
+    }
+
+    @Test
     void singleProvider_selectedWhenNoHintOrDefault() {
         ManagedDeploymentProvider k8s = stubProvider("k8s", true, true);
 

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,16 +39,26 @@ class FunctionServiceTest {
     }
 
     @Test
+    void register_returnsRegisteredFunctionContract() throws NoSuchMethodException {
+        ParameterizedType returnType = (ParameterizedType) FunctionService.class
+                .getMethod("register", FunctionSpec.class)
+                .getGenericReturnType();
+
+        assertEquals(Optional.class, FunctionService.class.getMethod("register", FunctionSpec.class).getReturnType());
+        assertEquals(RegisteredFunction.class, returnType.getActualTypeArguments()[0]);
+    }
+
+    @Test
     void register_deploymentMode_provisionsAndSetsUrl() {
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
 
-        Optional<FunctionSpec> result = service.register(spec);
+        Optional<RegisteredFunction> result = service.register(spec);
 
         assertTrue(result.isPresent());
-        assertEquals("http://fn-svc:8080", result.get().endpointUrl());
+        assertEquals("http://fn-svc:8080", result.get().spec().endpointUrl());
         verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
         verify(provider).provision(any());
         verify(listener).onRegister(any());
@@ -61,7 +72,7 @@ class FunctionServiceTest {
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
 
         service.register(spec);
-        Optional<FunctionSpec> dup = service.register(spec);
+        Optional<RegisteredFunction> dup = service.register(spec);
 
         assertTrue(dup.isEmpty());
         verify(provider, times(1)).provision(any());
@@ -74,7 +85,7 @@ class FunctionServiceTest {
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.LOCAL, null, null, null);
 
-        Optional<FunctionSpec> result = service.register(spec);
+        Optional<RegisteredFunction> result = service.register(spec);
 
         assertTrue(result.isPresent());
         verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.LOCAL));

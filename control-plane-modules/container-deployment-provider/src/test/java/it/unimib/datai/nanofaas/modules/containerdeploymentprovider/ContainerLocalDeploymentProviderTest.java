@@ -16,8 +16,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ContainerLocalDeploymentProviderTest {
 
@@ -27,7 +29,7 @@ class ContainerLocalDeploymentProviderTest {
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
                 adapter,
-                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10)),
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
                 new FixedPortAllocator(19001, 19002),
                 functionName -> proxy
@@ -51,7 +53,7 @@ class ContainerLocalDeploymentProviderTest {
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
                 adapter,
-                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10)),
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 probe,
                 new FixedPortAllocator(19001, 19002, 19003),
                 functionName -> proxy
@@ -82,7 +84,7 @@ class ContainerLocalDeploymentProviderTest {
     void supports_rejectsImagePullSecretsInFirstMilestone() {
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
                 new RecordingContainerRuntimeAdapter(),
-                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10)),
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
                 new FixedPortAllocator(19001),
                 functionName -> new RecordingProxy("http://127.0.0.1:19090/invoke")
@@ -109,6 +111,74 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(provider.supports(spec)).isFalse();
     }
 
+    @Test
+    void provision_startFailure_closesFailedProxyAndAllowsRetry() {
+        FailOnceContainerRuntimeAdapter adapter = new FailOnceContainerRuntimeAdapter();
+        RecordingProxy firstProxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        RecordingProxy secondProxy = new RecordingProxy("http://127.0.0.1:19091/invoke");
+        AtomicInteger proxyCreations = new AtomicInteger();
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> proxyCreations.getAndIncrement() == 0 ? firstProxy : secondProxy
+        );
+
+        assertThatThrownBy(() -> provider.provision(spec("echo", 1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("boom");
+
+        assertThat(firstProxy.isClosed()).isTrue();
+        assertThat(provider.provision(spec("echo", 1)).endpointUrl()).isEqualTo("http://127.0.0.1:19091/invoke");
+        assertThat(proxyCreations.get()).isEqualTo(2);
+    }
+
+    @Test
+    void provision_readinessFailure_removesContainerAndClosesProxy() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new FailingEndpointProbe("probe timeout"),
+                new FixedPortAllocator(19001),
+                functionName -> proxy
+        );
+
+        assertThatThrownBy(() -> provider.provision(spec("echo", 1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("probe timeout");
+
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
+        assertThat(proxy.isClosed()).isTrue();
+    }
+
+    @Test
+    void provision_injectsConfiguredCallbackUrl() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties(
+                        "docker",
+                        "127.0.0.1",
+                        Duration.ofSeconds(5),
+                        Duration.ofMillis(10),
+                        "http://control-plane.local:8080/v1/internal/executions"
+                ),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001),
+                functionName -> new RecordingProxy("http://127.0.0.1:19090/invoke")
+        );
+
+        provider.provision(spec("echo", 1));
+
+        assertThat(adapter.startedSpecs())
+                .singleElement()
+                .satisfies(startedSpec -> assertThat(startedSpec.env())
+                        .containsEntry("CALLBACK_URL", "http://control-plane.local:8080/v1/internal/executions"));
+    }
+
     private static FunctionSpec spec(String name, int minReplicas) {
         return new FunctionSpec(
                 name,
@@ -128,7 +198,7 @@ class ContainerLocalDeploymentProviderTest {
         );
     }
 
-    private static final class RecordingContainerRuntimeAdapter implements ContainerRuntimeAdapter {
+    private static class RecordingContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         private final List<ContainerInstanceSpec> started = new ArrayList<>();
         private final List<String> removed = new ArrayList<>();
 
@@ -151,8 +221,25 @@ class ContainerLocalDeploymentProviderTest {
             return started.stream().map(ContainerInstanceSpec::hostPort).toList();
         }
 
+        List<ContainerInstanceSpec> startedSpecs() {
+            return started;
+        }
+
         List<String> removedContainers() {
             return removed;
+        }
+    }
+
+    private static final class FailOnceContainerRuntimeAdapter extends RecordingContainerRuntimeAdapter {
+        private boolean failNext = true;
+
+        @Override
+        public void runContainer(ContainerInstanceSpec spec) {
+            if (failNext) {
+                failNext = false;
+                throw new IllegalStateException("boom");
+            }
+            super.runContainer(spec);
         }
     }
 
@@ -186,6 +273,18 @@ class ContainerLocalDeploymentProviderTest {
         }
     }
 
+    private record FailingEndpointProbe(String message) implements EndpointProbe {
+        @Override
+        public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
+            throw new IllegalStateException(message);
+        }
+
+        @Override
+        public boolean isReady(String baseUrl) {
+            return false;
+        }
+    }
+
     private static final class FixedPortAllocator implements PortAllocator {
         private final List<Integer> ports;
 
@@ -202,6 +301,7 @@ class ContainerLocalDeploymentProviderTest {
     private static final class RecordingProxy implements ManagedFunctionProxy {
         private final String endpointUrl;
         private List<String> backends = List.of();
+        private boolean closed;
 
         private RecordingProxy(String endpointUrl) {
             this.endpointUrl = endpointUrl;
@@ -219,11 +319,15 @@ class ContainerLocalDeploymentProviderTest {
 
         @Override
         public void close() {
-            // Nothing to do.
+            closed = true;
         }
 
         List<String> backends() {
             return backends;
+        }
+
+        boolean isClosed() {
+            return closed;
         }
     }
 }

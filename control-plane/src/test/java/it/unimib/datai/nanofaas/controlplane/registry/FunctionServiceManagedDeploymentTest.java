@@ -30,14 +30,14 @@ class FunctionServiceManagedDeploymentTest {
 
         FunctionService service = serviceWithProviders(provider);
 
-        Optional<FunctionSpec> result = service.register(deploymentSpec("fn", null));
+        Optional<RegisteredFunction> result = service.register(deploymentSpec("fn", null));
 
         assertThat(result)
                 .isPresent()
                 .get()
                 .satisfies(registered -> {
-                    assertThat(registered.executionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
-                    assertThat(registered.endpointUrl()).isEqualTo("http://fn-svc:8080/invoke");
+                    assertThat(registered.spec().executionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
+                    assertThat(registered.spec().endpointUrl()).isEqualTo("http://fn-svc:8080/invoke");
                 });
 
         assertThat(service.getRegistered("fn"))
@@ -48,6 +48,7 @@ class FunctionServiceManagedDeploymentTest {
                     assertThat(registered.deploymentMetadata().effectiveExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
                     assertThat(registered.deploymentMetadata().deploymentBackend()).isEqualTo("k8s");
                     assertThat(registered.deploymentMetadata().degradationReason()).isNull();
+                    assertThat(registered.deploymentMetadata().effectiveEndpointUrl()).isEqualTo("http://fn-svc:8080/invoke");
                     assertThat(registered.spec().endpointUrl()).isEqualTo("http://fn-svc:8080/invoke");
                 });
     }
@@ -56,7 +57,7 @@ class FunctionServiceManagedDeploymentTest {
     void register_withoutProviderAndWithEndpoint_degradesToPoolAndPersistsReason() {
         FunctionService service = serviceWithProviders();
 
-        Optional<FunctionSpec> result = service.register(
+        Optional<RegisteredFunction> result = service.register(
                 deploymentSpec("fn", "http://external:8080/invoke")
         );
 
@@ -64,8 +65,8 @@ class FunctionServiceManagedDeploymentTest {
                 .isPresent()
                 .get()
                 .satisfies(registered -> {
-                    assertThat(registered.executionMode()).isEqualTo(ExecutionMode.POOL);
-                    assertThat(registered.endpointUrl()).isEqualTo("http://external:8080/invoke");
+                    assertThat(registered.spec().executionMode()).isEqualTo(ExecutionMode.POOL);
+                    assertThat(registered.spec().endpointUrl()).isEqualTo("http://external:8080/invoke");
                 });
 
         assertThat(service.getRegistered("fn"))
@@ -77,6 +78,7 @@ class FunctionServiceManagedDeploymentTest {
                     assertThat(registered.deploymentMetadata().deploymentBackend()).isNull();
                     assertThat(registered.deploymentMetadata().degradationReason())
                             .contains("No managed deployment provider");
+                    assertThat(registered.deploymentMetadata().effectiveEndpointUrl()).isEqualTo("http://external:8080/invoke");
                 });
     }
 

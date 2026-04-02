@@ -40,6 +40,10 @@ Container-local provider properties:
 - `nanofaas.container-local.readiness-poll-interval`
   - Probe interval while waiting for readiness
   - Default: `250ms`
+- `nanofaas.container-local.callback-url`
+  - Optional callback base URL injected as `CALLBACK_URL` for async runtimes
+  - Example: `http://host.docker.internal:8080/v1/internal/executions`
+  - Default: unset
 
 ## Run Control Plane With Only Container-Local
 
@@ -62,4 +66,6 @@ Using Podman:
 - The first milestone uses a CLI adapter, not an embedded containerd client.
 - `imagePullSecrets` are not supported by `container-local` in this first cut.
 - The stable invocation endpoint is provided by a small local proxy inside the module, which keeps the core `PoolDispatcher` unchanged.
+- Async callbacks require `nanofaas.container-local.callback-url` to point back to the local control plane from inside the function container.
+- Port allocation is best-effort: the current ephemeral-port probe has the usual bind-close-rebind race and is intended for local dev/single-node usage, not hardened multi-tenant scheduling.
 - The adapter boundary is intentionally runtime-neutral so a future containerd-native adapter can replace the CLI implementation without changing the core provider contract.

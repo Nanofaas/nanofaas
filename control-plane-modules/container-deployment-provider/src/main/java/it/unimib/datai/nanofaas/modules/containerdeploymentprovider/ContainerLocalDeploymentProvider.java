@@ -170,6 +170,9 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         if (spec.runtimeCommand() != null && !spec.runtimeCommand().isBlank()) {
             env.put("WATCHDOG_CMD", spec.runtimeCommand());
         }
+        if (properties.callbackUrl() != null && !properties.callbackUrl().isBlank()) {
+            env.put("CALLBACK_URL", properties.callbackUrl());
+        }
         if (spec.env() != null) {
             spec.env().forEach((key, value) -> {
                 if (!RESERVED_ENV.contains(key) && value != null) {
