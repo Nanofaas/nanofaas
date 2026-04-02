@@ -10,18 +10,33 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class FunctionRegistry {
-    private final Map<String, FunctionSpec> functions = new ConcurrentHashMap<>();
+    private final Map<String, RegisteredFunction> functions = new ConcurrentHashMap<>();
 
     public Collection<FunctionSpec> list() {
-        return functions.values();
+        return functions.values().stream()
+                .map(RegisteredFunction::spec)
+                .toList();
+    }
+
+    public Collection<RegisteredFunction> listRegistered() {
+        return functions.values().stream().toList();
     }
 
     public Optional<FunctionSpec> get(String name) {
+        return getRegistered(name).map(RegisteredFunction::spec);
+    }
+
+    public Optional<RegisteredFunction> getRegistered(String name) {
         return Optional.ofNullable(functions.get(name));
     }
 
     public FunctionSpec put(FunctionSpec spec) {
-        return functions.put(spec.name(), spec);
+        RegisteredFunction previous = functions.put(spec.name(), RegisteredFunction.nonManaged(spec));
+        return previous == null ? null : previous.spec();
+    }
+
+    public RegisteredFunction put(RegisteredFunction function) {
+        return functions.put(function.name(), function);
     }
 
     /**
@@ -31,10 +46,20 @@ public class FunctionRegistry {
      * @return the previous value if one existed, or null if the put succeeded
      */
     public FunctionSpec putIfAbsent(FunctionSpec spec) {
-        return functions.putIfAbsent(spec.name(), spec);
+        RegisteredFunction previous = functions.putIfAbsent(spec.name(), RegisteredFunction.nonManaged(spec));
+        return previous == null ? null : previous.spec();
+    }
+
+    public RegisteredFunction putIfAbsent(RegisteredFunction function) {
+        return functions.putIfAbsent(function.name(), function);
     }
 
     public FunctionSpec remove(String name) {
+        RegisteredFunction previous = functions.remove(name);
+        return previous == null ? null : previous.spec();
+    }
+
+    public RegisteredFunction removeRegistered(String name) {
         return functions.remove(name);
     }
 }

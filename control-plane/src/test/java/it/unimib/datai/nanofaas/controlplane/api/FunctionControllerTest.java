@@ -8,6 +8,8 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
+import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
@@ -35,7 +37,10 @@ class FunctionControllerTest {
 
     @Test
     void list_returnsRegisteredFunctions() {
-        when(functionService.list()).thenReturn(List.of(spec("echo"), spec("sum")));
+        when(functionService.listRegistered()).thenReturn(List.of(
+                registered("echo", ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null),
+                registered("sum", ExecutionMode.LOCAL, ExecutionMode.LOCAL, null, null)
+        ));
 
         webClient.get()
                 .uri("/v1/functions")
@@ -43,7 +48,11 @@ class FunctionControllerTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$[0].name").isEqualTo("echo")
-                .jsonPath("$[1].name").isEqualTo("sum");
+                .jsonPath("$[0].requestedExecutionMode").isEqualTo("DEPLOYMENT")
+                .jsonPath("$[0].effectiveExecutionMode").isEqualTo("DEPLOYMENT")
+                .jsonPath("$[0].deploymentBackend").isEqualTo("k8s")
+                .jsonPath("$[1].name").isEqualTo("sum")
+                .jsonPath("$[1].requestedExecutionMode").isEqualTo("LOCAL");
     }
 
     @Test
@@ -61,7 +70,7 @@ class FunctionControllerTest {
 
     @Test
     void get_missingFunction_returns404() {
-        when(functionService.get("missing")).thenReturn(Optional.empty());
+        when(functionService.getRegistered("missing")).thenReturn(Optional.empty());
 
         webClient.get()
                 .uri("/v1/functions/missing")
@@ -105,7 +114,7 @@ class FunctionControllerTest {
     }
 
     @Test
-    void register_withConcurrencyControl_returnsResolvedSpec() {
+    void register_withConcurrencyControl_returnsMetadataResponse() {
         FunctionSpec resolved = new FunctionSpec(
                 "echo",
                 "ghcr.io/example/echo:v2",
@@ -138,6 +147,15 @@ class FunctionControllerTest {
                 )
         );
         when(functionService.register(any())).thenReturn(Optional.of(resolved));
+        when(functionService.getRegistered("echo")).thenReturn(Optional.of(new RegisteredFunction(
+                resolved,
+                new DeploymentMetadata(
+                        ExecutionMode.DEPLOYMENT,
+                        ExecutionMode.DEPLOYMENT,
+                        "k8s",
+                        null
+                )
+        )));
 
         String payload = """
                 {
@@ -176,10 +194,49 @@ class FunctionControllerTest {
                 .expectStatus().isCreated()
                 .expectBody()
                 .jsonPath("$.name").isEqualTo("echo")
+                .jsonPath("$.requestedExecutionMode").isEqualTo("DEPLOYMENT")
+                .jsonPath("$.effectiveExecutionMode").isEqualTo("DEPLOYMENT")
+                .jsonPath("$.deploymentBackend").isEqualTo("k8s")
                 .jsonPath("$.scalingConfig.concurrencyControl.mode").isEqualTo("ADAPTIVE_PER_POD")
                 .jsonPath("$.scalingConfig.concurrencyControl.targetInFlightPerPod").isEqualTo(3)
                 .jsonPath("$.scalingConfig.concurrencyControl.minTargetInFlightPerPod").isEqualTo(1)
                 .jsonPath("$.scalingConfig.concurrencyControl.maxTargetInFlightPerPod").isEqualTo(6);
+    }
+
+    @Test
+    void register_providerSelectionFailure_returns503WithMessage() {
+        when(functionService.register(any())).thenThrow(new IllegalStateException("No managed deployment provider available"));
+
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(spec("echo"))
+                .exchange()
+                .expectStatus().isEqualTo(503)
+                .expectBody(String.class)
+                .isEqualTo("No managed deployment provider available");
+    }
+
+    @Test
+    void get_existingFunction_returnsFunctionResponse() {
+        RegisteredFunction registered = registered(
+                "echo",
+                ExecutionMode.DEPLOYMENT,
+                ExecutionMode.POOL,
+                null,
+                "No managed deployment provider available for function 'echo'"
+        );
+        when(functionService.getRegistered("echo")).thenReturn(Optional.of(registered));
+
+        webClient.get()
+                .uri("/v1/functions/echo")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.name").isEqualTo("echo")
+                .jsonPath("$.requestedExecutionMode").isEqualTo("DEPLOYMENT")
+                .jsonPath("$.effectiveExecutionMode").isEqualTo("POOL")
+                .jsonPath("$.degradationReason").exists();
     }
 
     private FunctionSpec spec(String name) {
@@ -198,6 +255,33 @@ class FunctionControllerTest {
                 null,
                 null,
                 null
+        );
+    }
+
+    private RegisteredFunction registered(String name,
+                                          ExecutionMode requested,
+                                          ExecutionMode effective,
+                                          String backend,
+                                          String degradationReason) {
+        FunctionSpec spec = new FunctionSpec(
+                name,
+                "ghcr.io/example/" + name + ":v1",
+                null,
+                Map.of(),
+                null,
+                1000,
+                1,
+                10,
+                3,
+                effective == ExecutionMode.LOCAL ? null : "http://" + name + ":8080/invoke",
+                effective,
+                null,
+                null,
+                null
+        );
+        return new RegisteredFunction(
+                spec,
+                new DeploymentMetadata(requested, effective, backend, degradationReason)
         );
     }
 }

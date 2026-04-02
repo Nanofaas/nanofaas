@@ -2,7 +2,9 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +24,7 @@ public class FunctionService {
 
     private final FunctionRegistry registry;
     private final FunctionSpecResolver resolver;
-    private final KubernetesResourceManager resourceManager;
+    private final DeploymentProviderResolver deploymentProviderResolver;
     private final ImageValidator imageValidator;
     private final List<FunctionRegistrationListener> listeners;
     private final ConcurrentHashMap<String, LockEntry> functionLocks = new ConcurrentHashMap<>();
@@ -30,12 +32,12 @@ public class FunctionService {
     @Autowired
     public FunctionService(FunctionRegistry registry,
                            FunctionDefaults defaults,
-                           @Autowired(required = false) KubernetesResourceManager resourceManager,
                            ImageValidator imageValidator,
-                           @Autowired(required = false) List<FunctionRegistrationListener> listeners) {
+                           @Autowired(required = false) List<FunctionRegistrationListener> listeners,
+                           DeploymentProviderResolver deploymentProviderResolver) {
         this.registry = registry;
         this.resolver = new FunctionSpecResolver(defaults);
-        this.resourceManager = resourceManager;
+        this.deploymentProviderResolver = deploymentProviderResolver;
         this.imageValidator = imageValidator;
         this.listeners = listeners == null ? List.of() : listeners;
     }
@@ -44,51 +46,38 @@ public class FunctionService {
         return registry.list();
     }
 
+    public Collection<RegisteredFunction> listRegistered() {
+        return registry.listRegistered();
+    }
+
     public Optional<FunctionSpec> get(String name) {
         return registry.get(name);
+    }
+
+    public Optional<RegisteredFunction> getRegistered(String name) {
+        return registry.getRegistered(name);
     }
 
     public Optional<FunctionSpec> register(FunctionSpec spec) {
         FunctionSpec initialResolved = resolver.resolve(spec);
 
         return withFunctionLock(initialResolved.name(), () -> {
-            if (registry.get(initialResolved.name()).isPresent()) {
+            if (registry.getRegistered(initialResolved.name()).isPresent()) {
                 return Optional.empty();
             }
 
-            FunctionSpec resolved;
+            RegisteredFunction registered;
             try {
                 imageValidator.validate(initialResolved);
-                resolved = initialResolved;
-                if (initialResolved.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
-                    String serviceUrl = resourceManager.provision(initialResolved);
-                    resolved = new FunctionSpec(
-                            initialResolved.name(),
-                            initialResolved.image(),
-                            initialResolved.command(),
-                            initialResolved.env(),
-                            initialResolved.resources(),
-                            initialResolved.timeoutMs(),
-                            initialResolved.concurrency(),
-                            initialResolved.queueSize(),
-                            initialResolved.maxRetries(),
-                            serviceUrl,
-                            initialResolved.executionMode(),
-                            initialResolved.runtimeMode(),
-                            initialResolved.runtimeCommand(),
-                            initialResolved.scalingConfig(),
-                            initialResolved.imagePullSecrets()
-                    );
-                }
+                registered = resolveRegistration(initialResolved);
             } catch (RuntimeException e) {
                 throw e;
             }
 
-            FunctionSpec registered = resolved;
             try {
-                notifyRegisterListeners(registered);
+                notifyRegisterListeners(registered.spec());
                 registry.put(registered);
-                return Optional.of(registered);
+                return Optional.of(registered.spec());
             } catch (RuntimeException e) {
                 rollbackProvisionedRegistration(registered, e);
                 throw e;
@@ -100,21 +89,18 @@ public class FunctionService {
      * Sets the replica count for a DEPLOYMENT-mode function.
      * Returns the new replica count, or empty if function not found.
      * Throws IllegalArgumentException if function is not in DEPLOYMENT mode.
-     * Throws IllegalStateException if KubernetesResourceManager is not available.
+     * Throws IllegalStateException if the effective deployment provider is not available.
      */
     public Optional<Integer> setReplicas(String name, int replicas) {
         return withFunctionLock(name, () -> {
-            FunctionSpec spec = registry.get(name).orElse(null);
-            if (spec == null) {
+            RegisteredFunction function = registry.getRegistered(name).orElse(null);
+            if (function == null) {
                 return Optional.empty();
             }
-            if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
+            if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
                 throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
             }
-            if (resourceManager == null) {
-                throw new IllegalStateException("KubernetesResourceManager not available");
-            }
-            resourceManager.setReplicas(name, replicas);
+            managedProviderFor(function).setReplicas(name, replicas);
             log.info("Set replicas for function {} to {}", name, replicas);
             return Optional.of(replicas);
         });
@@ -122,7 +108,7 @@ public class FunctionService {
 
     public Optional<FunctionSpec> remove(String name) {
         return withFunctionLock(name, () -> {
-            FunctionSpec existing = registry.remove(name);
+            RegisteredFunction existing = registry.removeRegistered(name);
             if (existing != null) {
                 List<FunctionRegistrationListener> notified = new ArrayList<>();
                 try {
@@ -130,26 +116,64 @@ public class FunctionService {
                         listener.onRemove(name);
                         notified.add(listener);
                     }
-                    if (existing.executionMode() == ExecutionMode.DEPLOYMENT && resourceManager != null) {
-                        resourceManager.deprovision(name);
+                    if (existing.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT) {
+                        managedProviderFor(existing).deprovision(name);
                     }
                 } catch (RuntimeException e) {
-                    rollbackRemovalListeners(existing, notified, e);
+                    rollbackRemovalListeners(existing.spec(), notified, e);
                     registry.put(existing);
                     throw e;
                 }
-                return Optional.of(existing);
+                return Optional.of(existing.spec());
             }
             return Optional.empty();
         });
     }
 
-    private void rollbackProvisionedRegistration(FunctionSpec spec, RuntimeException failure) {
-        if (spec.executionMode() != ExecutionMode.DEPLOYMENT || resourceManager == null) {
+    private RegisteredFunction resolveRegistration(FunctionSpec spec) {
+        if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
+            return RegisteredFunction.nonManaged(spec);
+        }
+
+        ProvisionResult provisionResult = deploymentProviderResolver.resolveAndProvision(spec, null);
+        FunctionSpec effectiveSpec = withEffectiveProvisioning(spec, provisionResult);
+        return new RegisteredFunction(
+                effectiveSpec,
+                new DeploymentMetadata(
+                        spec.executionMode(),
+                        provisionResult.effectiveExecutionMode(),
+                        provisionResult.backendId(),
+                        provisionResult.degradationReason()
+                )
+        );
+    }
+
+    private FunctionSpec withEffectiveProvisioning(FunctionSpec spec, ProvisionResult provisionResult) {
+        return new FunctionSpec(
+                spec.name(),
+                spec.image(),
+                spec.command(),
+                spec.env(),
+                spec.resources(),
+                spec.timeoutMs(),
+                spec.concurrency(),
+                spec.queueSize(),
+                spec.maxRetries(),
+                provisionResult.endpointUrl(),
+                provisionResult.effectiveExecutionMode(),
+                spec.runtimeMode(),
+                spec.runtimeCommand(),
+                spec.scalingConfig(),
+                spec.imagePullSecrets()
+        );
+    }
+
+    private void rollbackProvisionedRegistration(RegisteredFunction function, RuntimeException failure) {
+        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
             return;
         }
         try {
-            resourceManager.deprovision(spec.name());
+            managedProviderFor(function).deprovision(function.spec().name());
         } catch (RuntimeException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }
@@ -190,6 +214,14 @@ public class FunctionService {
                 failure.addSuppressed(rollbackFailure);
             }
         }
+    }
+
+    private ManagedDeploymentProvider managedProviderFor(RegisteredFunction function) {
+        String backend = function.deploymentMetadata().deploymentBackend();
+        if (backend != null && !backend.isBlank()) {
+            return deploymentProviderResolver.requireBackend(backend);
+        }
+        return deploymentProviderResolver.resolve(function.spec(), null);
     }
 
     private <T> T withFunctionLock(String functionName, Supplier<T> action) {

@@ -1,10 +1,11 @@
 # nanofaas
 
-Minimal, high-performance FaaS control plane and Java function runtime designed for Kubernetes, with a focus on low latency and fast startup (GraalVM-ready).
+Minimal, high-performance FaaS control plane and Java function runtime with pluggable managed-deployment backends, optimized for low latency and fast startup (GraalVM-ready).
 
 ## Modules
 
-- `control-plane/` API gateway, in-memory queueing, scheduler thread, and Kubernetes dispatch
+- `control-plane/` API gateway, in-memory queueing, scheduler thread, and backend-neutral dispatch core
+- `control-plane-modules/` optional modules, including managed deployment providers such as `k8s-deployment-provider` and `container-deployment-provider`
 - `function-sdk-go/` Go SDK for authoring NanoFaaS functions with an embedded HTTP runtime
 - `function-runtime/` HTTP runtime for Java function handlers
 - `python-runtime/` HTTP runtime for Python function handlers
@@ -29,6 +30,8 @@ Minimal, high-performance FaaS control plane and Java function runtime designed 
 
 `bootRun` includes all optional control-plane modules by default.
 Use `-PcontrolPlaneModules=none` to run a core-only control plane.
+Use `-PcontrolPlaneModules=container-deployment-provider` plus `--args='--nanofaas.deployment.default-backend=container-local'`
+for a no-Kubernetes managed-deployment profile.
 
 ## Control-plane local tooling (TUI)
 
@@ -59,6 +62,11 @@ You can build a custom control plane by selecting optional modules at compile ti
 ```bash
 # include one module
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=build-metadata
+
+# run with the local managed-deployment provider only
+./gradlew :control-plane:bootRun \
+  -PcontrolPlaneModules=container-deployment-provider \
+  --args='--nanofaas.deployment.default-backend=container-local'
 
 # include all modules found under control-plane-modules/
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
@@ -131,6 +139,7 @@ E2E/module matrix (control-plane optional modules compile):
 
 - `docs/tutorial-java-function.md` — step-by-step guide to writing, building, and invoking a Java function.
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
+- `docs/no-k8s-profile.md` documents the `container-local` managed-deployment profile.
 - `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
 - `function-sdk-go/README.md` documents the planned Go function authoring/runtime SDK.
 

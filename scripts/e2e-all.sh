@@ -17,6 +17,7 @@ set -euo pipefail
 # Suites (in execution order):
 #   docker          - e2e.sh (local Docker containers)
 #   buildpack       - e2e-buildpack.sh (buildpack images)
+#   container-local - e2e-container-local.sh (No-k8s managed DEPLOYMENT)
 #   k3s-curl        - e2e-k3s-curl.sh (k3s + curl tests)
 #   k8s-vm          - e2e-k8s-vm.sh (K8sE2eTest in VM)
 #   cold-start      - e2e-cold-start-metrics.sh (cold start metrics)
@@ -57,6 +58,7 @@ E2E_RUNTIME_KIND=$(e2e_runtime_kind)
 SUITES=(
     "docker|Local Docker containers|${SCRIPT_DIR}/e2e.sh"
     "buildpack|Buildpack images|${SCRIPT_DIR}/e2e-buildpack.sh"
+    "container-local|No-k8s managed DEPLOYMENT|${SCRIPT_DIR}/e2e-container-local.sh"
     "k3s-curl|k3s + curl tests|${SCRIPT_DIR}/e2e-k3s-curl.sh"
     "k8s-vm|K8sE2eTest in VM|${SCRIPT_DIR}/e2e-k8s-vm.sh"
     "cold-start|Cold start metrics|${PROJECT_ROOT}/experiments/e2e-cold-start-metrics.sh"
@@ -125,6 +127,9 @@ suite_runtime_skip_reason() {
             ;;
         buildpack)
             echo "rust runtime skip: suite uses Java buildpack E2E flow."
+            ;;
+        container-local)
+            echo "rust runtime skip: suite uses Java-only no-k8s managed deployment flow."
             ;;
         cold-start)
             echo "rust runtime skip: cold-start metrics suite is not parameterized for rust runtime."

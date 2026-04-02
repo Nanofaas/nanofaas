@@ -3,9 +3,11 @@ package it.unimib.datai.nanofaas.controlplane.api;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
+import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
@@ -103,13 +105,25 @@ class ValidationTest {
         );
 
         when(functionService.register(any())).thenReturn(Optional.of(spec));
+        when(functionService.getRegistered("myfunc")).thenReturn(Optional.of(new RegisteredFunction(
+                spec,
+                new DeploymentMetadata(
+                        ExecutionMode.DEPLOYMENT,
+                        ExecutionMode.DEPLOYMENT,
+                        "k8s",
+                        null
+                )
+        )));
 
         webClient.post()
                 .uri("/v1/functions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(spec)
                 .exchange()
-                .expectStatus().isCreated();
+                .expectStatus().isCreated()
+                .expectBody()
+                .jsonPath("$.requestedExecutionMode").isEqualTo("DEPLOYMENT")
+                .jsonPath("$.effectiveExecutionMode").isEqualTo("DEPLOYMENT");
     }
 
     @Test

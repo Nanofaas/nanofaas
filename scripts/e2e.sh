@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+#
+# Docker-based POOL regression path.
+#
+# This script keeps covering the historical local Docker regression based on
+# `E2eFlowTest`, where the function uses an externally supplied `endpointUrl`
+# and the control-plane exercises the `POOL` path. Provider-backed
+# `DEPLOYMENT` coverage lives in `scripts/e2e-container-local.sh`.
+#
+
 export SDKMAN_NON_INTERACTIVE=true
 export SDKMAN_DISABLE_PROMPT=true
 export PAGER=${PAGER:-cat}

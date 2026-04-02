@@ -31,6 +31,26 @@ class E2eApiSupportTest {
     }
 
     @Test
+    void deploymentFunctionSpec_omitsEndpointAndUsesDeploymentMode() {
+        Map<String, Object> spec = E2eApiSupport.deploymentFunctionSpec(
+                "echo",
+                "nanofaas/function-runtime:test",
+                5000,
+                2,
+                20,
+                3);
+
+        assertThat(spec).containsEntry("name", "echo");
+        assertThat(spec).containsEntry("image", "nanofaas/function-runtime:test");
+        assertThat(spec).containsEntry("executionMode", "DEPLOYMENT");
+        assertThat(spec).doesNotContainKey("endpointUrl");
+        assertThat(spec).containsEntry("timeoutMs", 5000);
+        assertThat(spec).containsEntry("concurrency", 2);
+        assertThat(spec).containsEntry("queueSize", 20);
+        assertThat(spec).containsEntry("maxRetries", 3);
+    }
+
+    @Test
     void metricSum_filtersByMetricAndLabels() {
         String metrics = """
                 # HELP function_cold_start_total Total cold starts

@@ -25,6 +25,7 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class K8sE2eTest {
@@ -55,13 +56,8 @@ class K8sE2eTest {
         client.apps().deployments().inNamespace(NS).resource(controlPlaneDeployment()).createOrReplace();
         client.services().inNamespace(NS).resource(controlPlaneService()).createOrReplace();
 
-        client.apps().deployments().inNamespace(NS).resource(functionRuntimeDeployment()).createOrReplace();
-        client.services().inNamespace(NS).resource(functionRuntimeService()).createOrReplace();
-
         awaitDeploymentReady("control-plane");
-        awaitDeploymentReady("function-runtime");
         awaitServiceReady("control-plane");
-        awaitServiceReady("function-runtime");
     }
 
     @AfterAll
@@ -85,30 +81,57 @@ class K8sE2eTest {
             awaitHealth(mgmtPort, "/actuator/health/liveness");
             awaitHealth(mgmtPort, "/actuator/health/readiness");
 
-            String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
-            Map<String, Object> spec = E2eApiSupport.poolFunctionSpec("k8s-echo", RUNTIME_IMAGE, endpointUrl);
-            E2eApiSupport.registerFunction(spec);
+            String functionName = "k8s-echo";
+            var registerResponse = E2eApiSupport.registerDeploymentFunction(functionName, RUNTIME_IMAGE);
+            String endpointUrl = registerResponse.then()
+                    .statusCode(201)
+                    .body("name", equalTo(functionName))
+                    .body("image", equalTo(RUNTIME_IMAGE))
+                    .body("requestedExecutionMode", equalTo("DEPLOYMENT"))
+                    .body("effectiveExecutionMode", equalTo("DEPLOYMENT"))
+                    .body("deploymentBackend", equalTo("k8s"))
+                    .body("endpointUrl", notNullValue())
+                    .extract()
+                    .path("endpointUrl");
+
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    endpointUrl.startsWith("http://fn-" + functionName + "." + NS + ".svc.cluster.local:8080/invoke"),
+                    "expected provider-derived service endpoint but was " + endpointUrl);
+            awaitManagedFunctionReady(functionName);
 
             RestAssured.get("/v1/functions")
                     .then()
                     .statusCode(200)
-                    .body("name", hasItem("k8s-echo"));
+                    .body("name", hasItem(functionName));
 
-            RestAssured.get("/v1/functions/k8s-echo")
+            RestAssured.get("/v1/functions/{name}", functionName)
                     .then()
                     .statusCode(200)
-                    .body("name", equalTo("k8s-echo"))
-                    .body("image", equalTo(RUNTIME_IMAGE));
+                    .body("name", equalTo(functionName))
+                    .body("image", equalTo(RUNTIME_IMAGE))
+                    .body("requestedExecutionMode", equalTo("DEPLOYMENT"))
+                    .body("effectiveExecutionMode", equalTo("DEPLOYMENT"))
+                    .body("deploymentBackend", equalTo("k8s"))
+                    .body("endpointUrl", equalTo(endpointUrl));
 
-            E2eApiSupport.awaitSyncInvokeSuccess("k8s-echo", "hi");
-            E2eApiSupport.awaitSyncInvokeSuccess("k8s-echo", "hello");
+            E2eApiSupport.awaitSyncInvokeSuccess(functionName, "hi");
+            E2eApiSupport.awaitSyncInvokeSuccess(functionName, "hello");
 
-            String executionId = E2eApiSupport.enqueue("k8s-echo", "payload", "abc");
-            String executionId2 = E2eApiSupport.enqueue("k8s-echo", "payload", "abc");
+            String executionId = E2eApiSupport.enqueue(functionName, "payload", "abc");
+            String executionId2 = E2eApiSupport.enqueue(functionName, "payload", "abc");
 
             org.junit.jupiter.api.Assertions.assertEquals(executionId, executionId2);
 
             E2eApiSupport.awaitExecutionSuccess(executionId, Duration.ofSeconds(20));
+
+            RestAssured.delete("/v1/functions/{name}", functionName)
+                    .then()
+                    .statusCode(204);
+            awaitManagedFunctionDeleted(functionName);
+
+            RestAssured.get("/v1/functions/{name}", functionName)
+                    .then()
+                    .statusCode(404);
 
             String metrics = E2eApiSupport.fetchPrometheusMetrics(
                     "http://localhost:" + mgmtPort + "/actuator/prometheus");
@@ -130,11 +153,9 @@ class K8sE2eTest {
             awaitHealth(mgmtPort, "/actuator/health/liveness");
             awaitHealth(mgmtPort, "/actuator/health/readiness");
 
-            String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
             String fn = "k8s-echo-sync-queue";
-            Map<String, Object> spec = E2eApiSupport.poolFunctionSpec(
-                    fn, RUNTIME_IMAGE, endpointUrl, 5000, 1, 20, 3);
-            E2eApiSupport.registerFunction(spec);
+            E2eApiSupport.registerFunction(E2eApiSupport.deploymentFunctionSpec(
+                    fn, RUNTIME_IMAGE, 5000, 1, 20, 3));
             E2eApiSupport.awaitSyncInvokeSuccess(fn, "warmup");
 
             Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
@@ -181,8 +202,7 @@ class K8sE2eTest {
             awaitHealth(mgmtPort, "/actuator/health/readiness");
 
             String functionName = "k8s-cold-metrics";
-            String endpointUrl = "http://function-runtime." + NS + ".svc.cluster.local:8080/invoke";
-            E2eApiSupport.registerPoolFunction(functionName, RUNTIME_IMAGE, endpointUrl);
+            E2eApiSupport.registerDeploymentFunction(functionName, RUNTIME_IMAGE);
 
             E2eApiSupport.awaitSyncInvokeSuccess(functionName, "cold");
             E2eApiSupport.awaitSyncInvokeSuccess(functionName, "warm-1");
@@ -230,6 +250,11 @@ class K8sE2eTest {
                 .addNewPort().withContainerPort(8080).endPort()
                 .addNewPort().withContainerPort(8081).endPort()
                 .addNewEnv().withName("POD_NAMESPACE").withValue(NS).endEnv()
+                .addNewEnv()
+                .withName("NANOFAAS_K8S_CALLBACK_URL")
+                .withValue("http://control-plane." + NS + ".svc.cluster.local:8080/v1/internal/executions")
+                .endEnv()
+                .addNewEnv().withName("NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND").withValue("k8s").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_ENABLED").withValue("true").endEnv()
                 .addNewEnv().withName("NANOFAAS_SYNC_QUEUE_ENABLED").withValue("true").endEnv()
                 .addNewEnv().withName("SYNC_QUEUE_ADMISSION_ENABLED").withValue("false").endEnv()
@@ -334,6 +359,33 @@ class K8sE2eTest {
     private static void awaitControlPlaneReady() {
         awaitDeploymentReady("control-plane");
         awaitServiceReady("control-plane");
+    }
+
+    private static void awaitManagedFunctionReady(String functionName) {
+        Awaitility.await().atMost(Duration.ofMinutes(2)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
+            String deploymentName = "fn-" + functionName;
+            Deployment deployment = client.apps().deployments().inNamespace(NS).withName(deploymentName).get();
+            Integer ready = deployment == null || deployment.getStatus() == null ? null : deployment.getStatus().getReadyReplicas();
+            org.junit.jupiter.api.Assertions.assertNotNull(ready, "expected deployment ready replicas");
+            org.junit.jupiter.api.Assertions.assertTrue(ready >= 1, "expected at least one ready replica");
+
+            Service service = client.services().inNamespace(NS).withName(deploymentName).get();
+            org.junit.jupiter.api.Assertions.assertNotNull(service, "expected managed service to exist");
+            Endpoints endpoints = client.endpoints().inNamespace(NS).withName(deploymentName).get();
+            org.junit.jupiter.api.Assertions.assertTrue(hasReadyEndpoint(endpoints), "expected managed service endpoints");
+        });
+    }
+
+    private static void awaitManagedFunctionDeleted(String functionName) {
+        String deploymentName = "fn-" + functionName;
+        Awaitility.await().atMost(Duration.ofMinutes(1)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
+            org.junit.jupiter.api.Assertions.assertNull(
+                    client.apps().deployments().inNamespace(NS).withName(deploymentName).get(),
+                    "expected managed deployment to be deleted");
+            org.junit.jupiter.api.Assertions.assertNull(
+                    client.services().inNamespace(NS).withName(deploymentName).get(),
+                    "expected managed service to be deleted");
+        });
     }
 
     private static void awaitDeploymentReady(String deploymentName) {

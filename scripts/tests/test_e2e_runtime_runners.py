@@ -192,6 +192,13 @@ def test_e2e_all_logs_runtime_and_skips_unsupported_rust_suites():
     assert "k3s-curl" in script
 
 
+def test_e2e_all_includes_container_local_managed_deployment_suite():
+    script = read_script("e2e-all.sh")
+    assert "container-local" in script
+    assert "e2e-container-local.sh" in script
+    assert "No-k8s managed DEPLOYMENT" in script
+
+
 def test_e2e_all_describes_vm_prerequisites_in_lifecycle_aware_way():
     script = read_script("e2e-all.sh")
     assert "- ssh (for every VM-based suite)" in script
@@ -220,3 +227,29 @@ def test_e2e_all_dry_run_executes_supported_suite_for_rust_runtime():
     assert "Would execute:" in output
     assert "e2e-k3s-curl.sh" in output
     assert "SKIP: k3s-curl" not in output
+
+
+def test_e2e_container_local_script_covers_provider_backed_deployment_flow():
+    script = read_script("e2e-container-local.sh")
+    assert "container-deployment-provider" in script
+    assert "-PcontrolPlaneModules=" in script
+    assert "nanofaas.deployment.default-backend=container-local" in script
+    assert '"executionMode":"DEPLOYMENT"' in script or '"executionMode": "DEPLOYMENT"' in script
+    assert "deploymentBackend" in script
+    assert "endpointUrl" in script
+    assert "/replicas" in script
+    assert "delete" in script.lower()
+
+
+def test_e2e_script_clarifies_local_docker_flow_is_pool_regression():
+    script = read_script("e2e.sh")
+    assert "POOL" in script
+    assert "local Docker regression" in script or "Docker-based POOL regression" in script
+
+
+def test_e2e_buildpack_script_prepares_buildpack_runtime_for_container_local_path():
+    script = read_script("e2e-buildpack.sh")
+    assert ":function-runtime:bootBuildImage" in script
+    assert "ContainerLocalE2eTest" in script
+    assert "SKIP_FUNCTION_IMAGE_BUILD=true" in script
+    assert "FUNCTION_IMAGE" in script

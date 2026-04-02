@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+#
+# Buildpack regression + managed local DEPLOYMENT path.
+#
+# This wrapper keeps the historical `BuildpackE2eTest` coverage and also prepares
+# the buildpack runtime image for the no-k8s `container-local` E2E runner.
+#
+
 export SDKMAN_NON_INTERACTIVE=true
 export SDKMAN_DISABLE_PROMPT=true
 export PAGER=${PAGER:-cat}
@@ -51,4 +58,12 @@ fi
 sdk use java "$JDK_VERSION"
 set -u
 
-./gradlew -PrunE2e :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.e2e.BuildpackE2eTest
+FUNCTION_IMAGE=${FUNCTION_IMAGE:-nanofaas/function-runtime:buildpack}
+
+./gradlew :function-runtime:bootBuildImage -PfunctionRuntimeImage="${FUNCTION_IMAGE}"
+
+SKIP_FUNCTION_IMAGE_BUILD=true \
+FUNCTION_IMAGE="${FUNCTION_IMAGE}" \
+./gradlew -PrunE2e :control-plane:test \
+  --tests it.unimib.datai.nanofaas.controlplane.e2e.BuildpackE2eTest \
+  --tests it.unimib.datai.nanofaas.controlplane.e2e.ContainerLocalE2eTest
