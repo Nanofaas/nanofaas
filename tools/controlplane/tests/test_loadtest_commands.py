@@ -47,3 +47,44 @@ def test_loadtest_run_dry_run_resolves_scenario_file_from_workspace_root(
 
     assert result.exit_code == 0
     assert "word-stats-java, json-transform-java" in result.stdout
+
+
+def test_loadtest_run_dry_run_shows_effective_metrics_gate_for_saved_profile() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["loadtest", "run", "--saved-profile", "demo-java", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert "Metrics gate:" in result.stdout
+    assert "function_dispatch_total" in result.stdout
+
+
+def test_loadtest_run_missing_saved_profile_exits_with_clean_cli_error() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["loadtest", "run", "--saved-profile", "does-not-exist"],
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.exit_code == 2
+    assert "Profile not found" in combined
+    assert "Traceback" not in combined
+
+
+def test_loadtest_run_missing_scenario_file_exits_with_clean_cli_error() -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "loadtest",
+            "run",
+            "--scenario-file",
+            "tools/controlplane/scenarios/nope.toml",
+            "--dry-run",
+        ],
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.exit_code == 2
+    assert "Scenario file not found" in combined
+    assert "Traceback" not in combined

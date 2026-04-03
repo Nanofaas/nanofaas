@@ -16,10 +16,6 @@ from controlplane_tool.metrics import (
     query_prometheus_metric_names,
     query_prometheus_range_series,
 )
-from controlplane_tool.metrics_contract import (
-    CORE_REQUIRED_METRICS,
-    LEGACY_STRICT_REQUIRED_METRICS,
-)
 from controlplane_tool.control_plane_runtime import (
     ControlPlaneRuntimeManager,
     ControlPlaneSession,
@@ -30,6 +26,7 @@ from controlplane_tool.loadtest_models import (
     LoadtestRequest,
     MetricsGate,
     TargetRunResult,
+    effective_required_metrics,
 )
 from controlplane_tool.mockk8s import default_mockk8s_test_selectors
 from controlplane_tool.mockk8s_runtime import MockK8sRuntimeManager, MockK8sSession
@@ -149,16 +146,6 @@ class ShellCommandAdapter:
     ) -> SutPreflight:
         return SutPreflight(base_url=base_url, fixture_name=fixture_name)
 
-    def _gate_required_metrics(self, profile: Profile) -> list[str]:
-        configured = list(profile.metrics.required)
-        if profile.metrics.strict_required:
-            return configured
-        if not configured:
-            return list(CORE_REQUIRED_METRICS)
-        if set(configured) == set(LEGACY_STRICT_REQUIRED_METRICS):
-            return list(CORE_REQUIRED_METRICS)
-        return configured
-
     def _query_candidates_for_metric(self, metric_name: str) -> list[str]:
         candidates = [metric_name]
         if metric_name.endswith("_ms"):
@@ -215,7 +202,7 @@ class ShellCommandAdapter:
             profile=profile,
             scenario=scenario,
             load_profile=resolve_load_profile(profile.tests.load_profile),
-            metrics_gate=MetricsGate(required_metrics=self._gate_required_metrics(profile)),
+            metrics_gate=MetricsGate(required_metrics=effective_required_metrics(profile)),
         )
 
     def bootstrap_loadtest(
@@ -361,7 +348,7 @@ class ShellCommandAdapter:
         gate_required_metrics = (
             list(request.metrics_gate.required_metrics)
             if request.metrics_gate.required_metrics
-            else self._gate_required_metrics(profile)
+            else effective_required_metrics(profile)
         )
         query_metrics = sorted(set(configured_required_metrics) | set(gate_required_metrics))
 

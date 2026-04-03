@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 
 import typer
+from pydantic import ValidationError
 
 from controlplane_tool.loadtest_catalog import list_load_profiles, resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate, effective_required_metrics
 from controlplane_tool.loadtest_runner import LoadtestRunner
 from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
 from controlplane_tool.models import (
@@ -19,7 +20,7 @@ from controlplane_tool.models import (
     TestsConfig,
 )
 from controlplane_tool.paths import default_tool_paths, resolve_workspace_path
-from controlplane_tool.profiles import load_profile as load_saved_profile
+from controlplane_tool.profiles import load_profile as load_saved_profile, profile_path
 from controlplane_tool.scenario_loader import load_scenario_file, resolve_scenario_spec
 from controlplane_tool.scenario_models import ResolvedScenario, ScenarioSpec
 
@@ -191,9 +192,51 @@ def build_loadtest_request(
         load_profile=resolve_load_profile(resolved_load_profile_name),
         metrics_gate=MetricsGate(
             mode=active_profile.loadtest.metrics_gate_mode,
-            required_metrics=list(active_profile.metrics.required),
+            required_metrics=effective_required_metrics(active_profile),
         ),
     )
+
+
+def _build_request_or_exit(
+    *,
+    saved_profile: str | None,
+    scenario_file: Path | None,
+    load_profile_name: str | None,
+    run_name: str | None,
+) -> LoadtestRequest:
+    if saved_profile is not None and not profile_path(saved_profile).exists():
+        typer.echo(f"Profile not found: {saved_profile}", err=True)
+        raise typer.Exit(code=2)
+
+    try:
+        return build_loadtest_request(
+            saved_profile=saved_profile,
+            scenario_file=scenario_file,
+            load_profile_name=load_profile_name,
+            run_name=run_name,
+        )
+    except FileNotFoundError as exc:
+        resolved_path = (
+            resolve_workspace_path(scenario_file)
+            if scenario_file is not None
+            else (
+                Path(exc.filename).resolve()
+                if exc.filename
+                else None
+            )
+        )
+        if resolved_path is not None:
+            typer.echo(f"Scenario file not found: {resolved_path}", err=True)
+        else:
+            typer.echo("Scenario file not found.", err=True)
+        raise typer.Exit(code=2) from exc
+    except ValidationError as exc:
+        first_error = exc.errors()[0]["msg"] if exc.errors() else "validation failed"
+        typer.echo(f"Invalid loadtest request: {first_error}", err=True)
+        raise typer.Exit(code=2) from exc
+    except ValueError as exc:
+        typer.echo(f"Invalid loadtest request: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
 
 
 def render_loadtest_plan(request: LoadtestRequest) -> list[str]:
@@ -267,7 +310,7 @@ def install_loadtest_commands(app: typer.Typer) -> None:
         saved_profile: str | None = typer.Option(None, "--saved-profile"),
         dry_run: bool = typer.Option(False, "--dry-run"),
     ) -> None:
-        request = build_loadtest_request(
+        request = _build_request_or_exit(
             saved_profile=saved_profile,
             scenario_file=scenario_file,
             load_profile_name=load_profile_name,

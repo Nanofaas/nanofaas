@@ -5,6 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from controlplane_tool.metrics_contract import (
+    CORE_REQUIRED_METRICS,
+    LEGACY_STRICT_REQUIRED_METRICS,
+)
 from controlplane_tool.models import LoadProfile, MetricsGateMode, Profile
 from controlplane_tool.scenario_models import ResolvedScenario
 
@@ -38,6 +42,17 @@ class TargetRunResult(BaseModel):
     detail: str
 
 
+def effective_required_metrics(profile: Profile) -> list[str]:
+    configured = list(profile.metrics.required)
+    if profile.metrics.strict_required:
+        return configured
+    if not configured:
+        return list(CORE_REQUIRED_METRICS)
+    if set(configured) == set(LEGACY_STRICT_REQUIRED_METRICS):
+        return list(CORE_REQUIRED_METRICS)
+    return configured
+
+
 class LoadtestRequest(BaseModel):
     name: str
     profile: Profile
@@ -59,7 +74,7 @@ class LoadtestRequest(BaseModel):
         )
         if not self.metrics_gate.required_metrics:
             self.metrics_gate = self.metrics_gate.model_copy(
-                update={"required_metrics": list(self.profile.metrics.required)}
+                update={"required_metrics": effective_required_metrics(self.profile)}
             )
         if self.report_title is None:
             self.report_title = self.profile.report.title

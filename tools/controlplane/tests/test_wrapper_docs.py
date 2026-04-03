@@ -24,3 +24,8 @@ def test_profile_fixture_exists_for_saved_profile_flow() -> None:
 def test_loadtest_wrapper_routes_to_legacy_backend() -> None:
     script = Path("scripts/e2e-loadtest.sh").read_text(encoding="utf-8")
     assert "experiments/e2e-loadtest.sh" in script
+
+
+def test_gitignore_includes_controlplane_runs_dir() -> None:
+    gitignore = Path(".gitignore").read_text(encoding="utf-8")
+    assert "tools/controlplane/runs/" in gitignore
