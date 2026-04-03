@@ -1,1 +1,1 @@
-"""Control-plane orchestration package."""
+"""Control-plane local tooling package."""

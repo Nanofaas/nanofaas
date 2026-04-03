@@ -405,7 +405,7 @@ def test_metrics_step_registers_fixture_before_k6(tmp_path: Path, monkeypatch) -
     adapter = _RecordingAdapter(repo_root=tmp_path, manager=manager, preflight=preflight)
     run_dir = tmp_path / "run"
     run_dir.mkdir(parents=True, exist_ok=True)
-    k6_script = tmp_path / "tooling" / "controlplane_tui" / "assets" / "k6" / "tool-metrics-echo.js"
+    k6_script = tmp_path / "tools" / "controlplane" / "assets" / "k6" / "tool-metrics-echo.js"
     k6_script.parent.mkdir(parents=True, exist_ok=True)
     k6_script.write_text("export default function(){}", encoding="utf-8")
 

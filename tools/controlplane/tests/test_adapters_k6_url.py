@@ -95,7 +95,7 @@ def _prepare_fake_repo(root: Path) -> None:
         'class Metrics { void x(){ "function_dispatch_total".toString(); "function_latency_ms".toString(); "function_e2e_latency_ms".toString(); } }',
         encoding="utf-8",
     )
-    k6_script = root / "tooling" / "controlplane_tui" / "assets" / "k6" / "tool-metrics-echo.js"
+    k6_script = root / "tools" / "controlplane" / "assets" / "k6" / "tool-metrics-echo.js"
     k6_script.parent.mkdir(parents=True, exist_ok=True)
     k6_script.write_text("export default function(){}", encoding="utf-8")
 

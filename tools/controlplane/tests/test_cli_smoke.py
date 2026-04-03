@@ -7,4 +7,4 @@ def test_cli_help_exits_zero() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "control-plane orchestration" in result.stdout.lower()
+    assert "Control plane" in result.stdout

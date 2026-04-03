@@ -294,7 +294,7 @@ class ShellCommandAdapter:
             except RuntimeError as exc:
                 return (False, f"sut preflight failed: {exc}")
             k6_script = (
-                self.repo_root / "tooling" / "controlplane_tui" / "assets" / "k6" / "tool-metrics-echo.js"
+                self.repo_root / "tools" / "controlplane" / "assets" / "k6" / "tool-metrics-echo.js"
             )
             k6_ok = True
             k6_detail = "k6 skipped"

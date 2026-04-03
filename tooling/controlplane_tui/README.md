@@ -1,5 +1,7 @@
 # Control Plane Local Tooling (`controlplane-tool`)
 
+Canonical project root: `tools/controlplane/`. This README remains as a migration shim during the move.
+
 Interactive local tool to configure control-plane builds, run optional test phases, and generate run reports.
 
 This app is implemented in Python and managed with `uv`.
@@ -132,5 +134,5 @@ Main outputs:
 Run tool tests:
 
 ```bash
-uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests -v
+uv run --project tools/controlplane pytest tools/controlplane/tests -v
 ```
