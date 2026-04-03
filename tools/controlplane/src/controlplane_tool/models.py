@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 ControlPlaneImplementation = Literal["rust", "java"]
 BuildMode = Literal["native", "jvm", "rust"]
 LoadProfile = Literal["quick", "stress"]
+BuildAction = Literal["jar", "build", "run", "image", "native", "test", "inspect"]
+ProfileName = Literal["core", "k8s", "container-local", "all"]
 
 
 class ControlPlaneConfig(BaseModel):
