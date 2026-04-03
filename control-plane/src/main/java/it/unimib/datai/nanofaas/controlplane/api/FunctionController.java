@@ -22,21 +22,28 @@ public class FunctionController {
     }
 
     @GetMapping
-    public Collection<FunctionSpec> list() {
-        return functionService.list();
+    public Collection<FunctionResponse> list() {
+        return functionService.listRegistered().stream()
+                .map(FunctionResponse::from)
+                .toList();
     }
 
     @PostMapping
-    public ResponseEntity<FunctionSpec> register(@Valid @RequestBody FunctionSpec spec) {
-        return functionService.register(spec)
-                .map(resolved -> ResponseEntity.status(HttpStatus.CREATED).body(resolved))
-                .orElse(ResponseEntity.status(HttpStatus.CONFLICT).build());
+    public ResponseEntity<?> register(@Valid @RequestBody FunctionSpec spec) {
+        try {
+            return functionService.register(spec)
+                    .map(registered -> ResponseEntity.status(HttpStatus.CREATED).body(FunctionResponse.from(registered)))
+                    .orElse(ResponseEntity.status(HttpStatus.CONFLICT).build());
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+        }
     }
 
     @GetMapping("/{name}")
-    public ResponseEntity<FunctionSpec> get(
+    public ResponseEntity<FunctionResponse> get(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
-        return functionService.get(name)
+        return functionService.getRegistered(name)
+                .map(FunctionResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

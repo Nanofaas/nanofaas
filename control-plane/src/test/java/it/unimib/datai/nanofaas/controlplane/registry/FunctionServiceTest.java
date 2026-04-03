@@ -2,11 +2,15 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,7 +23,7 @@ class FunctionServiceTest {
 
     private FunctionRegistry registry;
     private FunctionDefaults defaults;
-    private KubernetesResourceManager resourceManager;
+    private ManagedDeploymentProvider provider;
     private FunctionRegistrationListener listener;
     private ImageValidator imageValidator;
     private FunctionService service;
@@ -28,41 +32,51 @@ class FunctionServiceTest {
     void setUp() {
         registry = new FunctionRegistry();
         defaults = new FunctionDefaults(30000, 4, 100, 3);
-        resourceManager = mock(KubernetesResourceManager.class);
+        provider = provider();
         listener = mock(FunctionRegistrationListener.class);
         imageValidator = mock(ImageValidator.class);
-        service = new FunctionService(registry, defaults, resourceManager, imageValidator, List.of(listener));
+        service = new FunctionService(registry, defaults, imageValidator, List.of(listener), resolver(provider));
+    }
+
+    @Test
+    void register_returnsRegisteredFunctionContract() throws NoSuchMethodException {
+        ParameterizedType returnType = (ParameterizedType) FunctionService.class
+                .getMethod("register", FunctionSpec.class)
+                .getGenericReturnType();
+
+        assertEquals(Optional.class, FunctionService.class.getMethod("register", FunctionSpec.class).getReturnType());
+        assertEquals(RegisteredFunction.class, returnType.getActualTypeArguments()[0]);
     }
 
     @Test
     void register_deploymentMode_provisionsAndSetsUrl() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
 
-        Optional<FunctionSpec> result = service.register(spec);
+        Optional<RegisteredFunction> result = service.register(spec);
 
         assertTrue(result.isPresent());
-        assertEquals("http://fn-svc:8080", result.get().endpointUrl());
+        assertEquals("http://fn-svc:8080", result.get().spec().endpointUrl());
         verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT));
-        verify(resourceManager).provision(any());
+        verify(provider).provision(any());
         verify(listener).onRegister(any());
     }
 
     @Test
     void register_duplicate_returnsEmptyAndDoesNotDeprovision() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
 
         service.register(spec);
-        Optional<FunctionSpec> dup = service.register(spec);
+        Optional<RegisteredFunction> dup = service.register(spec);
 
         assertTrue(dup.isEmpty());
-        verify(resourceManager, times(1)).provision(any());
-        verify(resourceManager, never()).deprovision("fn");
+        verify(provider, times(1)).provision(any());
+        verify(provider, never()).deprovision("fn");
         verify(listener, times(1)).onRegister(any());
     }
 
@@ -71,16 +85,16 @@ class FunctionServiceTest {
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.LOCAL, null, null, null);
 
-        Optional<FunctionSpec> result = service.register(spec);
+        Optional<RegisteredFunction> result = service.register(spec);
 
         assertTrue(result.isPresent());
         verify(imageValidator).validate(resolved("fn", "img:latest", ExecutionMode.LOCAL));
-        verify(resourceManager, never()).provision(any());
+        verify(provider, never()).provision(any());
     }
 
     @Test
     void register_duplicateSkipsImageValidationOnConflict() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
 
@@ -92,7 +106,7 @@ class FunctionServiceTest {
 
     @Test
     void register_listenerFailure_rollsBackRegistryAndProvisionedResources() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         doThrow(new IllegalStateException("listener failure")).when(listener).onRegister(any());
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
@@ -103,8 +117,8 @@ class FunctionServiceTest {
         assertEquals("listener failure", thrown.getMessage());
         assertTrue(service.get("fn").isEmpty());
         assertTrue(service.list().isEmpty());
-        verify(resourceManager).provision(any());
-        verify(resourceManager).deprovision("fn");
+        verify(provider).provision(any());
+        verify(provider).deprovision("fn");
     }
 
     @Test
@@ -114,11 +128,11 @@ class FunctionServiceTest {
         FunctionService localService = new FunctionService(
                 registry,
                 defaults,
-                resourceManager,
                 imageValidator,
-                List.of(firstListener, secondListener)
+                List.of(firstListener, secondListener),
+                resolver(provider)
         );
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         doThrow(new IllegalStateException("listener failure")).when(secondListener).onRegister(any());
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
@@ -132,7 +146,7 @@ class FunctionServiceTest {
         verify(secondListener).onRegister(any());
         verify(firstListener).onRemove("fn");
         verify(secondListener, never()).onRemove("fn");
-        verify(resourceManager).deprovision("fn");
+        verify(provider).deprovision("fn");
     }
 
     @Test
@@ -184,7 +198,7 @@ class FunctionServiceTest {
 
     @Test
     void remove_existing_deprovisions() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
@@ -193,13 +207,13 @@ class FunctionServiceTest {
         Optional<FunctionSpec> removed = service.remove("fn");
 
         assertTrue(removed.isPresent());
-        verify(resourceManager).deprovision("fn");
+        verify(provider).deprovision("fn");
         verify(listener).onRemove("fn");
     }
 
     @Test
     void remove_listenerFailure_keepsRegistryAndResourcesConsistent() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         doThrow(new IllegalStateException("listener failure")).when(listener).onRemove("fn");
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
@@ -211,7 +225,7 @@ class FunctionServiceTest {
         assertEquals("listener failure", thrown.getMessage());
         assertTrue(service.get("fn").isPresent());
         assertEquals(1, service.list().size());
-        verify(resourceManager, never()).deprovision("fn");
+        verify(provider, never()).deprovision("fn");
     }
 
     @Test
@@ -221,26 +235,29 @@ class FunctionServiceTest {
         FunctionService localService = new FunctionService(
                 registry,
                 defaults,
-                resourceManager,
                 imageValidator,
-                List.of(firstListener, secondListener)
+                List.of(firstListener, secondListener),
+                resolver(provider)
         );
         doThrow(new IllegalStateException("listener failure")).when(secondListener).onRemove("fn");
-        registry.put(new FunctionSpec(
-                "fn", "img:latest",
-                List.of(),
-                java.util.Map.of(),
-                null,
-                30000,
-                4,
-                100,
-                3,
-                "http://fn-svc:8080",
-                ExecutionMode.DEPLOYMENT,
-                it.unimib.datai.nanofaas.common.model.RuntimeMode.HTTP,
-                null,
-                resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT).scalingConfig(),
-                null
+        registry.put(new RegisteredFunction(
+                new FunctionSpec(
+                        "fn", "img:latest",
+                        List.of(),
+                        java.util.Map.of(),
+                        null,
+                        30000,
+                        4,
+                        100,
+                        3,
+                        "http://fn-svc:8080",
+                        ExecutionMode.DEPLOYMENT,
+                        it.unimib.datai.nanofaas.common.model.RuntimeMode.HTTP,
+                        null,
+                        resolved("fn", "img:latest", ExecutionMode.DEPLOYMENT).scalingConfig(),
+                        null
+                ),
+                new DeploymentMetadata(ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null)
         ));
 
         IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> localService.remove("fn"));
@@ -251,7 +268,7 @@ class FunctionServiceTest {
         verify(secondListener).onRemove("fn");
         verify(firstListener).onRegister(any());
         verify(secondListener, never()).onRegister(any());
-        verify(resourceManager, never()).deprovision("fn");
+        verify(provider, never()).deprovision("fn");
     }
 
     @Test
@@ -261,7 +278,7 @@ class FunctionServiceTest {
 
     @Test
     void setReplicas_success() {
-        when(resourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
         service.register(spec);
@@ -270,7 +287,7 @@ class FunctionServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals(3, result.get());
-        verify(resourceManager).setReplicas("fn", 3);
+        verify(provider).setReplicas("fn", 3);
     }
 
     @Test
@@ -310,5 +327,17 @@ class FunctionServiceTest {
         functionLocksField.setAccessible(true);
         ConcurrentHashMap<?, ?> functionLocks = (ConcurrentHashMap<?, ?>) functionLocksField.get(service);
         return functionLocks.size();
+    }
+
+    private static ManagedDeploymentProvider provider() {
+        ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
+        when(provider.backendId()).thenReturn("k8s");
+        when(provider.isAvailable()).thenReturn(true);
+        when(provider.supports(any())).thenReturn(true);
+        return provider;
+    }
+
+    private static DeploymentProviderResolver resolver(ManagedDeploymentProvider provider) {
+        return new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null));
     }
 }

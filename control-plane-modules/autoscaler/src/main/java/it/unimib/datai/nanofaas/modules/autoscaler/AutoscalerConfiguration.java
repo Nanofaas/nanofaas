@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
@@ -35,13 +35,13 @@ public class AutoscalerConfiguration {
     @Bean
     InternalScaler internalScaler(FunctionRegistry registry,
                                   ScalingMetricsReader metricsReader,
-                                  ObjectProvider<KubernetesResourceManager> resourceManagerProvider,
+                                  ObjectProvider<ManagedDeploymentCoordinator> deploymentCoordinatorProvider,
                                   ScalingProperties properties,
                                   ColdStartTracker coldStartTracker) {
         return new InternalScaler(
                 registry,
                 metricsReader,
-                resourceManagerProvider.getIfAvailable(),
+                deploymentCoordinatorProvider.getIfAvailable(),
                 properties,
                 coldStartTracker
         );

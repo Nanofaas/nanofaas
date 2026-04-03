@@ -8,7 +8,7 @@ import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.config.KubernetesProperties;
+import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.springframework.beans.factory.ObjectProvider;

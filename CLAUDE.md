@@ -42,6 +42,8 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
 ./gradlew :control-plane:bootRun -PcontrolPlaneModules=all
 ./gradlew :control-plane:test -PcontrolPlaneModules=all
 NANOFAAS_CONTROL_PLANE_MODULES=none ./gradlew :control-plane:bootJar
+# No-K8s managed deployment profile
+./gradlew :control-plane:bootRun -PcontrolPlaneModules=container-deployment-provider --args='--nanofaas.deployment.default-backend=container-local'
 # If selector is omitted: runtime/artifact tasks default to all modules, non-runtime tasks default to core-only.
 
 # Build Python runtime image
@@ -85,9 +87,11 @@ Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `contro
 - **runtime-config** - Hot runtime config service and admin API (`/v1/admin/runtime-config`) when `nanofaas.admin.runtime-config.enabled=true`
 - **image-validator** - Kubernetes-backed image validation
 - **build-metadata** - `/modules/build-metadata` diagnostics endpoint
+- **k8s-deployment-provider** - Kubernetes managed deployment backend for `DEPLOYMENT`
+- **container-deployment-provider** - Local managed deployment backend using a Docker-compatible runtime CLI
 
 Execution Modes:
-- **DEPLOYMENT** - Default mode; routes to K8s Deployment+Service with warm containers
+- **DEPLOYMENT** - Managed deployment intent resolved through a backend provider (`k8s`, `container-local`, ...)
 - **POOL** - OpenWhisk-style warm pool mode
 - **LOCAL** - In-process execution for testing
 
@@ -126,7 +130,9 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 `control-plane/src/main/resources/application.yml`:
 - `nanofaas.defaults.timeoutMs` (30000), `concurrency` (4), `queueSize` (100), `maxRetries` (3)
 - `nanofaas.rate.maxPerSecond` (1000)
+- `nanofaas.deployment.default-backend`
 - `nanofaas.k8s.namespace`, `callbackUrl`
+- `nanofaas.container-local.runtime-adapter`, `bind-host`, `readiness-timeout`, `readiness-poll-interval`
 
 ## Testing
 

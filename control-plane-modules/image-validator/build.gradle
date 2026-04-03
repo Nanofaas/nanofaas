@@ -12,6 +12,7 @@ dependencyManagement {
 dependencies {
     implementation project(':common')
     implementation project(':control-plane')
+    implementation project(':control-plane-modules:k8s-deployment-provider')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'io.fabric8:kubernetes-client:7.5.2'

@@ -1,4 +1,12 @@
 pluginManagement {
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == 'org.graalvm.buildtools.native' && requested.version != null) {
+                useModule("org.graalvm.buildtools:native-gradle-plugin:${requested.version}")
+            }
+        }
+    }
+
     repositories {
         gradlePluginPortal()
         mavenCentral()
