@@ -6,12 +6,13 @@ import tomllib
 import tomli_w
 
 from controlplane_tool.models import Profile
+from controlplane_tool.paths import default_tool_paths
 
 
 def profiles_dir(root: Path | None = None) -> Path:
     if root is not None:
         return root
-    return Path("tooling/profiles")
+    return default_tool_paths().profiles_dir
 
 
 def profile_path(name: str, root: Path | None = None) -> Path:

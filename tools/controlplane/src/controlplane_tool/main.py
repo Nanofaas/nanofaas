@@ -4,11 +4,16 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.pipeline import PipelineRunner
+from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.profiles import load_profile, save_profile
 from controlplane_tool.tui import build_profile_interactive
 
 app = typer.Typer(
     help="Control-plane orchestration product for build, test, and reporting."
+)
+DEFAULT_TOOL_PATHS = default_tool_paths()
+DEFAULT_PROFILES_DIR = DEFAULT_TOOL_PATHS.profiles_dir.relative_to(
+    DEFAULT_TOOL_PATHS.workspace_root
 )
 
 
@@ -18,7 +23,7 @@ def run(
     use_saved_profile: bool = typer.Option(
         False,
         "--use-saved-profile",
-        help="Load profile from tooling/profiles/<name>.toml instead of opening wizard.",
+        help=f"Load profile from {DEFAULT_PROFILES_DIR}/<name>.toml instead of opening wizard.",
     ),
 ) -> None:
     """Start Control plane interactive flow."""

@@ -8,6 +8,7 @@ import time
 
 from controlplane_tool.adapters import ShellCommandAdapter
 from controlplane_tool.models import Profile
+from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.report import render_report
 
 
@@ -32,7 +33,7 @@ class PipelineRunner:
         self.adapter = adapter or ShellCommandAdapter()
 
     def run(self, profile: Profile, runs_root: Path | None = None) -> RunResult:
-        root = runs_root or Path("tooling/runs")
+        root = runs_root or default_tool_paths().runs_dir
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         run_dir = root / f"{timestamp}-{profile.name}"
         run_dir.mkdir(parents=True, exist_ok=True)
