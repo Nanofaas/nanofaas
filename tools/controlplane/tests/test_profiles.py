@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from controlplane_tool.models import (
+    CliTestConfig,
     ControlPlaneConfig,
     LoadtestConfig,
     MetricsConfig,
@@ -59,6 +60,7 @@ def test_profile_roundtrip_with_e2e_selection(tmp_path: Path) -> None:
             function_preset="demo-java",
             namespace="nanofaas-e2e",
         ),
+        cli_test=CliTestConfig(default_scenario="vm"),
     )
 
     save_profile(profile, root=tmp_path)
@@ -66,6 +68,7 @@ def test_profile_roundtrip_with_e2e_selection(tmp_path: Path) -> None:
 
     assert loaded.scenario.function_preset == "demo-java"
     assert loaded.scenario.base_scenario == "k8s-vm"
+    assert loaded.cli_test.default_scenario == "vm"
 
 
 def test_profile_roundtrip_with_loadtest_defaults(tmp_path: Path) -> None:

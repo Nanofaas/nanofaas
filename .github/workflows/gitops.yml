@@ -71,7 +71,7 @@ jobs:
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./scripts/control-plane-build.sh image --profile all -- -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
+          ./scripts/controlplane.sh image --profile all -- -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:latest
 
       - name: Log in to the Container registry

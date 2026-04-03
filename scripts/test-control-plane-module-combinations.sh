@@ -63,7 +63,7 @@ if ! [[ "${MAX_COMBINATIONS}" =~ ^[0-9]+$ ]]; then
     exit 2
 fi
 
-cmd=(./scripts/control-plane-build.sh matrix --task "${TASK}" --max-combinations "${MAX_COMBINATIONS}")
+cmd=(./scripts/controlplane.sh matrix --task "${TASK}" --max-combinations "${MAX_COMBINATIONS}")
 
 if [[ -n "${MODULES_CSV}" ]]; then
     cmd+=(--modules "${MODULES_CSV}")

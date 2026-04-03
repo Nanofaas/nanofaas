@@ -28,7 +28,7 @@ def test_run_returns_nonzero_when_pipeline_failed(monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(
         main_mod.app,
-        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+        ["tui", "--profile-name", "qa", "--use-saved-profile"],
     )
 
     assert result.exit_code == 1
@@ -41,7 +41,7 @@ def test_run_missing_profile_is_user_friendly(monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(
         main_mod.app,
-        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+        ["tui", "--profile-name", "qa", "--use-saved-profile"],
     )
 
     assert result.exit_code == 2
@@ -64,7 +64,7 @@ def test_run_invalid_profile_is_user_friendly(monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(
         main_mod.app,
-        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+        ["tui", "--profile-name", "qa", "--use-saved-profile"],
     )
 
     assert result.exit_code == 2
@@ -92,7 +92,10 @@ def test_run_command_supports_passthrough_gradle_args_in_dry_run() -> None:
     assert "--args=--nanofaas.deployment.default-backend=container-local" in result.stdout
 
 
-def test_tui_and_pipeline_run_delegate_to_same_pipeline_executor(monkeypatch, tmp_path: Path) -> None:
+def test_tui_uses_loadtest_executor_for_saved_and_interactive_profiles(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     calls: list[str] = []
 
     monkeypatch.setattr(main_mod, "load_profile", lambda _name: _valid_profile())
@@ -113,16 +116,16 @@ def test_tui_and_pipeline_run_delegate_to_same_pipeline_executor(monkeypatch, tm
     monkeypatch.setattr(main_mod, "run_loadtest_request", _record_run_loadtest_request)
 
     runner = CliRunner()
-    pipeline_result = runner.invoke(
+    saved_result = runner.invoke(
         main_mod.app,
-        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+        ["tui", "--profile-name", "qa", "--use-saved-profile"],
     )
-    tui_result = runner.invoke(
+    interactive_result = runner.invoke(
         main_mod.app,
         ["tui", "--profile-name", "qa"],
     )
 
-    assert pipeline_result.exit_code == 0
-    assert tui_result.exit_code == 0
+    assert saved_result.exit_code == 0
+    assert interactive_result.exit_code == 0
     assert len(calls) == 2
     assert calls == ["qa", "qa"]

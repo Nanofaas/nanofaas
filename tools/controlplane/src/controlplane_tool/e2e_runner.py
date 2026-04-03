@@ -139,7 +139,7 @@ class E2eRunner:
                 self._step(
                     "Run Docker POOL regression test",
                     [
-                        "./scripts/control-plane-build.sh",
+                        "./scripts/controlplane.sh",
                         "test",
                         "--profile",
                         "all",
@@ -164,7 +164,7 @@ class E2eRunner:
                 self._step(
                     "Run buildpack regression tests",
                     [
-                        "./scripts/control-plane-build.sh",
+                        "./scripts/controlplane.sh",
                         "test",
                         "--profile",
                         "all",
@@ -243,7 +243,7 @@ class E2eRunner:
                 self._remote_exec_step(
                     "Build control-plane and runtime images in VM",
                     vm_request,
-                    f"cd {remote_dir} && ./scripts/control-plane-build.sh image --profile k8s -- -PcontrolPlaneImage={request.local_registry}/nanofaas/control-plane:e2e",
+                    f"cd {remote_dir} && ./scripts/controlplane.sh image --profile k8s -- -PcontrolPlaneImage={request.local_registry}/nanofaas/control-plane:e2e",
                 ),
                 self._remote_exec_step(
                     "Run K8sE2eTest in VM",
@@ -252,7 +252,7 @@ class E2eRunner:
                         [
                             f"cd {remote_dir} &&",
                             f"KUBECONFIG={kubeconfig_path}",
-                            "./scripts/control-plane-build.sh",
+                            "./scripts/controlplane.sh",
                             "test",
                             "--profile",
                             "k8s",

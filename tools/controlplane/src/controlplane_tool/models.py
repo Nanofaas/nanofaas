@@ -13,6 +13,7 @@ ProfileName = Literal["core", "k8s", "container-local", "all"]
 VmLifecycle = Literal["multipass", "external"]
 RuntimeKind = Literal["java", "rust"]
 FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "fixture"]
+CliTestScenarioName = Literal["unit", "vm", "host-platform", "deploy-host"]
 ScenarioName = Literal[
     "docker",
     "buildpack",
@@ -78,6 +79,10 @@ class LoadtestConfig(BaseModel):
     function_preset: str | None = None
 
 
+class CliTestConfig(BaseModel):
+    default_scenario: CliTestScenarioName | None = None
+
+
 class Profile(BaseModel):
     name: str
     control_plane: ControlPlaneConfig
@@ -87,3 +92,4 @@ class Profile(BaseModel):
     report: ReportConfig = Field(default_factory=ReportConfig)
     scenario: ScenarioSelectionConfig = Field(default_factory=ScenarioSelectionConfig)
     loadtest: LoadtestConfig = Field(default_factory=LoadtestConfig)
+    cli_test: CliTestConfig = Field(default_factory=CliTestConfig)

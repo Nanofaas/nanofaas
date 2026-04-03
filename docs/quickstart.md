@@ -7,21 +7,19 @@
 - Native build (GraalVM via SDKMAN):
   - `./scripts/native-build.sh`
 - E2E test (requires Docker + SDKMAN JDK):
-  - `./scripts/e2e.sh`
-  - Compatibility wrapper over `scripts/controlplane.sh e2e run docker`
+  - `./scripts/controlplane.sh e2e run docker`
 - If you use a Docker-compatible runtime (e.g., podman/colima), export:
   - `CONTAINER_HOST=unix:///path/to/socket`
   - `CONTAINER_TLS_VERIFY=0` (optional)
   - `CONTAINER_CERT_PATH=/path/to/certs` (optional)
 - E2E buildpack test (builds minimal images with Spring Boot buildpacks):
-  - `./scripts/e2e-buildpack.sh`
+  - `./scripts/controlplane.sh e2e run buildpack`
   - Requires Docker (buildpacks run with `bootBuildImage`).
 - E2E test on Kubernetes (k3s in Multipass):
   - Fully automated:
     - `./gradlew k8sE2e`
-  - Direct script entrypoint:
-    - `./scripts/e2e-k8s-vm.sh`
-    - Compatibility wrapper over `scripts/controlplane.sh e2e run k8s-vm`
+  - Canonical orchestration entrypoint:
+    - `./scripts/controlplane.sh e2e run k8s-vm`
   - Optional env for sizing/debug:
     - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
   - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
@@ -31,7 +29,7 @@
 
 ## Run control plane locally
 
-- `scripts/control-plane-build.sh run --profile core`
+- `scripts/controlplane.sh run --profile core`
 - Control plane API on `http://localhost:8080`
 - Metrics on `http://localhost:8081/actuator/prometheus`
 
@@ -46,17 +44,17 @@
   - `scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run`
   - `scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run`
 - Use the unified non-interactive wrapper for control-plane Gradle actions:
-  - `scripts/control-plane-build.sh jar --profile core --dry-run`
-  - `scripts/control-plane-build.sh image --profile all --dry-run`
-  - `scripts/control-plane-build.sh native --profile all --dry-run`
-  - `scripts/control-plane-build.sh test --profile k8s --dry-run`
-  - `scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run`
-  - `scripts/control-plane-build.sh inspect --profile container-local --dry-run`
+  - `scripts/controlplane.sh build --profile core --dry-run`
+  - `scripts/controlplane.sh image --profile all --dry-run`
+  - `scripts/controlplane.sh native --profile all --dry-run`
+  - `scripts/controlplane.sh test --profile k8s --dry-run`
+  - `scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run`
+  - `scripts/controlplane.sh inspect --profile container-local --dry-run`
 
 - Open the interactive wizard and save a reusable profile:
-  - `scripts/controlplane-tool.sh --profile-name dev`
+  - `scripts/controlplane.sh tui --profile-name dev`
 - Re-run with an existing profile:
-  - `scripts/controlplane-tool.sh --profile-name dev --use-saved-profile`
+  - `scripts/controlplane.sh tui --profile-name dev --use-saved-profile`
 - Exit codes:
   - `0` when run final status is `passed`
   - `1` when run final status is `failed`

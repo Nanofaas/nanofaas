@@ -14,9 +14,9 @@ This package provides one control-plane tooling surface for milestone 5:
 - `matrix`
 - `vm up|sync|provision-base|provision-k3s|registry|down|inspect`
 - `functions list|show|show-preset`
+- `cli-test list|run|inspect`
 - `e2e list|run|all`
 - `loadtest list-profiles|show-profile|run|inspect`
-- `pipeline-run`
 - `tui`
 
 ## Recommended entrypoints
@@ -29,6 +29,10 @@ scripts/controlplane.sh functions list
 scripts/controlplane.sh functions show-preset demo-java
 scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+scripts/controlplane.sh cli-test list
+scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
@@ -46,25 +50,14 @@ scripts/e2e-loadtest.sh --profile demo-java --dry-run
 
 For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH operations and treats `e2e all` as one shared VM session with one final teardown point. Use `--keep-vm` to preserve a Multipass VM after the run; external VM lifecycle mode is always preserved.
 
-Compatibility wrappers remain available for narrower entrypoints:
+Use the canonical wrapper for saved-profile / interactive runs as well:
 
 ```bash
-scripts/control-plane-build.sh jar --profile core --dry-run
-scripts/control-plane-build.sh image --profile all --dry-run
-scripts/control-plane-build.sh native --profile all --dry-run
-scripts/control-plane-build.sh test --profile k8s -- --tests '*CoreDefaultsTest'
-scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
-scripts/control-plane-build.sh inspect --profile container-local --dry-run
+scripts/controlplane.sh tui --profile-name dev
+scripts/controlplane.sh tui --profile-name dev --use-saved-profile
 ```
 
-Use the compatibility wrapper for the saved-profile / interactive pipeline flow:
-
-```bash
-scripts/controlplane-tool.sh --profile-name dev
-scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
-```
-
-pipeline-run remains a compatibility alias to `loadtest run`, so the real UX surface for load generation and Prometheus validation is now the `loadtest` command group. The top-level `scripts/e2e-loadtest.sh` wrapper stays separate because it still models the legacy experimental workflow rather than the generic `loadtest run` planner.
+`loadtest run` is the canonical surface for load generation and Prometheus validation. The top-level `scripts/e2e-loadtest.sh` wrapper stays separate because it still models the legacy experimental workflow rather than the generic `loadtest run` planner.
 
 Operational Ansible assets are canonical under `ops/ansible/`.
 
@@ -109,6 +102,13 @@ Loadtest saved profiles can also persist:
 - `loadtest.default_load_profile`
 - `loadtest.metrics_gate_mode`
 - `loadtest.scenario_file` or `loadtest.function_preset`
+
+CLI validation saved profiles can also persist:
+
+- `cli_test.default_scenario`
+
+That lets the same saved profile drive `scripts/controlplane.sh cli-test run --saved-profile <name>` without repeating the scenario name on the command line.
+`host-platform` is intentionally platform-only, so saved-profile runtime and namespace defaults still apply there but function selections do not. `vm` validates every function in the resolved selection, `deploy-host` builds, pushes, and registers every selected function on the host, and missing saved profiles or scenario files fail validation with exit code 2.
 
 Scenario defaults are scenario-aware:
 

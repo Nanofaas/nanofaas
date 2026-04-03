@@ -7,6 +7,7 @@ source "${SCRIPT_DIR}/e2e-k3s-common.sh"
 source "${SCRIPT_DIR}/scenario-manifest.sh"
 e2e_set_log_prefix "deploy-host-e2e"
 CLI_BIN="${PROJECT_ROOT}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas"
+NANOFAAS_CLI_SKIP_INSTALL_DIST=${NANOFAAS_CLI_SKIP_INSTALL_DIST:-false}
 
 REGISTRY_PORT=${REGISTRY_PORT:-5050}
 CONTROL_PLANE_PORT=${CONTROL_PLANE_PORT:-18080}
@@ -15,8 +16,11 @@ IMAGE_REPOSITORY=${IMAGE_REPOSITORY:-nanofaas/deploy-e2e}
 FUNCTION_NAME=${FUNCTION_NAME:-deploy-e2e}
 TAG=${TAG:-e2e-$(date +%s)}
 BUILDX_BUILDER=${BUILDX_BUILDER:-}
+DEFAULT_FUNCTION_NAME=${FUNCTION_NAME}
+DEFAULT_IMAGE_REPOSITORY=${IMAGE_REPOSITORY}
 FUNCTION_EXAMPLE_DIR=""
 FUNCTION_DOCKERFILE=""
+SELECTED_FUNCTIONS=()
 
 WORK_DIR=""
 REQUEST_BODY_PATH=""
@@ -65,16 +69,31 @@ check_prerequisites() {
     command -v curl >/dev/null 2>&1 || { err "curl not found"; exit 1; }
 }
 
-resolve_function_selection() {
+resolve_selected_functions() {
+    if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
+        SELECTED_FUNCTIONS=("${DEFAULT_FUNCTION_NAME}")
+        return 0
+    fi
+
+    mapfile -t SELECTED_FUNCTIONS < <(scenario_selected_functions)
+}
+
+select_function_context() {
+    local function_key=$1
+    FUNCTION_NAME="${function_key}"
+    IMAGE_REPOSITORY="${DEFAULT_IMAGE_REPOSITORY}"
+    FUNCTION_EXAMPLE_DIR=""
+    FUNCTION_DOCKERFILE=""
+
     if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
         return 0
     fi
 
-    scenario_require_single_function || { err "deploy-host supports exactly one selected function"; exit 1; }
-    FUNCTION_NAME=$(scenario_first_function_key)
     IMAGE_REPOSITORY="nanofaas/${FUNCTION_NAME}"
     FUNCTION_EXAMPLE_DIR=$(scenario_function_example_dir "${FUNCTION_NAME}" || true)
-    FUNCTION_DOCKERFILE="${FUNCTION_EXAMPLE_DIR}/Dockerfile"
+    if [[ -n "${FUNCTION_EXAMPLE_DIR}" ]]; then
+        FUNCTION_DOCKERFILE="${FUNCTION_EXAMPLE_DIR}/Dockerfile"
+    fi
 }
 
 resolve_buildx_builder() {
@@ -98,6 +117,15 @@ resolve_buildx_builder() {
 }
 
 build_cli() {
+    if [[ "${NANOFAAS_CLI_SKIP_INSTALL_DIST}" == "true" ]]; then
+        log "Skipping host CLI build because NANOFAAS_CLI_SKIP_INSTALL_DIST=true"
+        if [[ ! -x "${CLI_BIN}" ]]; then
+            err "CLI binary not found at ${CLI_BIN}"
+            exit 1
+        fi
+        return 0
+    fi
+
     log "Building nanofaas CLI on host..."
     (cd "${PROJECT_ROOT}" && ./gradlew :nanofaas-cli:installDist --no-daemon -q)
     if [[ ! -x "${CLI_BIN}" ]]; then
@@ -209,6 +237,7 @@ EOF
 
 run_deploy() {
     log "Running: nanofaas deploy (build + push + register)..."
+    rm -f "${REQUEST_BODY_PATH}"
     "${CLI_BIN}" \
         --endpoint "http://127.0.0.1:${CONTROL_PLANE_PORT}" \
         deploy -f "${WORK_DIR}/function.yaml"
@@ -249,16 +278,19 @@ main() {
     log "registry=localhost:${REGISTRY_PORT} image=${IMAGE_REPOSITORY}:${TAG}"
 
     check_prerequisites
-    resolve_function_selection
+    resolve_selected_functions
     resolve_buildx_builder
     build_cli
     setup_workdir
     start_registry
     start_fake_control_plane
-    write_test_function
-    run_deploy
-    verify_registry_push
-    verify_register_request
+    for function_key in "${SELECTED_FUNCTIONS[@]}"; do
+        select_function_context "${function_key}"
+        write_test_function
+        run_deploy
+        verify_registry_push
+        verify_register_request
+    done
 
     log "Deploy host E2E: PASSED"
 }

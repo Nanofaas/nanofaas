@@ -210,7 +210,7 @@ if ! "${RUNTIME_ADAPTER}" version >/dev/null 2>&1; then
 fi
 
 info "Building control-plane and function-runtime artifacts"
-(cd "${PROJECT_ROOT}" && ./scripts/control-plane-build.sh jar --profile container-local --modules "${CONTROL_PLANE_MODULES}" -- --quiet)
+(cd "${PROJECT_ROOT}" && ./scripts/controlplane.sh jar --profile container-local --modules "${CONTROL_PLANE_MODULES}" -- --quiet)
 (cd "${PROJECT_ROOT}" && ./gradlew :function-runtime:bootJar --quiet)
 
 build_selected_function_image() {

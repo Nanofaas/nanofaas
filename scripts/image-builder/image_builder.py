@@ -242,7 +242,7 @@ def build_gradle_command(image_cfg: dict[str, str], full_image: str, arch: str) 
     if image_cfg.get("wrapper_action"):
         cmd = (
             f"NATIVE_IMAGE_BUILD_ARGS={native_args} BP_OCI_SOURCE={oci_source} "
-            f"./scripts/control-plane-build.sh {image_cfg['wrapper_action']} "
+            f"./scripts/controlplane.sh {image_cfg['wrapper_action']} "
             f"--profile {image_cfg['wrapper_profile']} -- "
             f"-P{image_cfg['image_param']}={full_image} "
             f"-PimagePlatform={platform}"

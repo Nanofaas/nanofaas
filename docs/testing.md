@@ -13,9 +13,9 @@ All modules use JUnit 5. Test classes follow the `*Test.java` naming convention.
 # Run all unit tests
 ./gradlew test
 
-# Run the control-plane through the unified wrapper
-scripts/control-plane-build.sh test --profile core
-scripts/control-plane-build.sh test --profile k8s -- --tests it.unimib.datai.nanofaas.controlplane.core.QueueManagerTest
+# Run the control-plane through the canonical wrapper
+scripts/controlplane.sh test --profile core
+scripts/controlplane.sh test --profile k8s -- --tests it.unimib.datai.nanofaas.controlplane.core.QueueManagerTest
 
 # Run other modules directly
 ./gradlew :function-runtime:test
@@ -31,8 +31,8 @@ scripts/control-plane-build.sh test --profile k8s -- --tests it.unimib.datai.nan
 Use the wrapper when you want to compile or inspect multiple optional-module combinations:
 
 ```bash
-scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 8
-scripts/control-plane-build.sh matrix --task :control-plane:test --modules async-queue,sync-queue --dry-run
+scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 8
+scripts/controlplane.sh matrix --task :control-plane:test --modules async-queue,sync-queue --dry-run
 ./scripts/test-control-plane-module-combinations.sh --task :control-plane:bootJar
 ```
 
@@ -78,11 +78,15 @@ Multipass VM or target an existing local/remote VM over SSH, then deploy the
 platform and run tests against the live cluster.
 
 Canonical entrypoint for orchestration is `scripts/controlplane.sh`. Most legacy
-`scripts/e2e*.sh` files are compatibility wrappers over `scripts/controlplane.sh e2e ...`, but `scripts/e2e-loadtest.sh` intentionally preserves the older Helm/Grafana/parity backend via `experiments/e2e-loadtest.sh`.
+`scripts/e2e*.sh` files are compatibility wrappers over `scripts/controlplane.sh e2e ...`; the `scripts/e2e-cli*.sh` family is now a compatibility wrapper layer over `scripts/controlplane.sh cli-test ...`; and `scripts/e2e-loadtest.sh` intentionally preserves the older Helm/Grafana/parity backend via `experiments/e2e-loadtest.sh`.
 
 ```bash
 scripts/controlplane.sh e2e list
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+scripts/controlplane.sh cli-test list
+scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
 scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
 scripts/controlplane.sh loadtest list-profiles
@@ -100,10 +104,20 @@ Behavioral notes for the repaired milestone 3 contract:
 Loadtest is now a first-class workflow:
 
 - `scripts/controlplane.sh loadtest run ...` is the canonical interface for k6 + Prometheus validation.
-- `pipeline-run` remains a compatibility alias over the same loadtest runner.
 - saved profiles can persist `loadtest.default_load_profile`, `loadtest.metrics_gate_mode`, and `loadtest.scenario_file` or `loadtest.function_preset`.
 - the dry-run output still renders one scenario manifest and one k6 plan, and the runtime path still bootstraps a tool-managed control-plane runtime when needed.
 - `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity workflow; `--profile demo-java` maps that path to the Java demo benchmark matrix, while `--summary-only` belongs to `scripts/e2e-loadtest-registry.sh`.
+
+CLI validation is also first-class:
+
+- `scripts/controlplane.sh cli-test list|inspect|run` is the canonical interface for `nanofaas-cli` validation.
+- saved profiles can persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario directly from the profile.
+- `vm` validates and executes every function in the resolved selection, and `deploy-host` iterates the same full function set when it builds, pushes, and registers host-side deploy fixtures.
+- `host-platform` is intentionally platform-only: saved-profile runtime and namespace defaults still apply, but function selections are ignored for that scenario.
+- missing saved profiles or scenario files are reported as CLI validation failures with exit code 2.
+- `scripts/e2e-cli.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run vm`.
+- `scripts/e2e-cli-host-platform.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run host-platform`.
+- `scripts/e2e-cli-deploy-host.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run deploy-host`.
 
 ### VM lifecycle modes
 
@@ -133,7 +147,7 @@ Examples:
 
 ```bash
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
 Canonical Ansible asset root: `ops/ansible/`.
@@ -142,7 +156,9 @@ Canonical Ansible asset root: `ops/ansible/`.
 
 Tests the full `nanofaas` CLI against a real k3s cluster. This is the most
 comprehensive CLI validation — it exercises every command end-to-end.
-The script is a wrapper over `scripts/controlplane.sh e2e run cli`.
+The canonical entrypoint is `scripts/controlplane.sh cli-test run vm`.
+`./scripts/e2e-cli.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run vm`.
+When the resolved manifest selects multiple functions, the VM scenario validates the entire set instead of silently narrowing to the first entry.
 
 **Prerequisites:**
 - `python3` on the host
@@ -153,6 +169,9 @@ The script is a wrapper over `scripts/controlplane.sh e2e run cli`.
 **Run:**
 
 ```bash
+# Canonical path
+scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+
 # Full run (creates VM, tests, cleans up)
 ./scripts/e2e-cli.sh
 
@@ -276,9 +295,12 @@ The compatibility script is a wrapper over `scripts/controlplane.sh e2e run k8s-
 End-to-end scenario where `nanofaas-cli` runs on the host machine and executes
 `platform install/status/uninstall` (Helm local to host) against a k3s cluster
 running in a VM.
-The script is a wrapper over `scripts/controlplane.sh e2e run cli-host`.
+The canonical entrypoint is `scripts/controlplane.sh cli-test run host-platform`.
+`./scripts/e2e-cli-host-platform.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run host-platform`.
+This scenario is intentionally platform-only, so saved profiles can choose `host-platform` as the default scenario while function selections remain ignored.
 
 ```bash
+scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 ./scripts/e2e-cli-host-platform.sh
 ```
 
@@ -289,9 +311,12 @@ Host-only validation of `nanofaas deploy` without Multipass/VM:
 - runs a fake control-plane HTTP endpoint on host
 - executes CLI `deploy` (docker buildx + push + register)
 - verifies pushed tag exists in registry and `POST /v1/functions` payload
-The script is a wrapper over `scripts/controlplane.sh e2e run deploy-host`.
+The canonical entrypoint is `scripts/controlplane.sh cli-test run deploy-host`.
+`./scripts/e2e-cli-deploy-host.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run deploy-host`.
+Preset-backed and scenario-backed deploy runs iterate the full resolved function set instead of requiring a single function.
 
 ```bash
+scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 ./scripts/e2e-cli-deploy-host.sh
 ```
 
@@ -356,6 +381,10 @@ The E2E orchestration surface now exposes a typed function catalog plus reusable
 scripts/controlplane.sh functions list
 scripts/controlplane.sh functions show-preset demo-java
 scripts/controlplane.sh functions show-preset demo-loadtest
+scripts/controlplane.sh cli-test list
+scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
@@ -387,7 +416,7 @@ Optional override for an existing endpoint:
 
 ```bash
 export NANOFAAS_TOOL_PROMETHEUS_URL=http://127.0.0.1:9090
-scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
+scripts/controlplane.sh tui --profile-name dev --use-saved-profile
 ```
 
 The metrics step invokes k6 with control-plane base URL semantics:

@@ -8,3 +8,6 @@ build_mode = "native"
 base_scenario = "k8s-vm"
 function_preset = "demo-java"
 namespace = "nanofaas-e2e"
+
+[cli_test]
+default_scenario = "vm"

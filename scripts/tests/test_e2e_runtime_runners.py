@@ -34,9 +34,6 @@ def test_legacy_runner_scripts_delegate_to_controlplane_e2e_run() -> None:
         "e2e-k3s-curl.sh": "k3s-curl",
         "e2e-k8s-vm.sh": "k8s-vm",
         "e2e-k3s-helm.sh": "helm-stack",
-        "e2e-cli.sh": "cli",
-        "e2e-cli-host-platform.sh": "cli-host",
-        "e2e-cli-deploy-host.sh": "deploy-host",
     }
     legacy_markers = (
         "e2e_install_k3s",
@@ -119,3 +116,29 @@ def test_backends_source_scenario_manifest_helpers() -> None:
         script = (SCRIPTS_DIR / "lib" / backend_name).read_text(encoding="utf-8")
         assert "scenario-manifest.sh" in script
         assert "NANOFAAS_SCENARIO_PATH" in script
+
+
+def test_cli_backends_remain_concrete_workflows() -> None:
+    cli_backend = (SCRIPTS_DIR / "lib" / "e2e-cli-backend.sh").read_text(encoding="utf-8")
+    host_backend = (SCRIPTS_DIR / "lib" / "e2e-cli-host-backend.sh").read_text(encoding="utf-8")
+    deploy_backend = (SCRIPTS_DIR / "lib" / "e2e-deploy-host-backend.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "nanofaas fn apply" in cli_backend
+    assert "platform install" in host_backend
+    assert 'deploy -f "${WORK_DIR}/function.yaml"' in deploy_backend
+
+
+def test_cli_backend_iterates_all_selected_functions() -> None:
+    script = (SCRIPTS_DIR / "lib" / "e2e-cli-backend.sh").read_text(encoding="utf-8")
+
+    assert "scenario_selected_functions" in script
+    assert "for function_key in" in script or "for FUNCTION_NAME in" in script
+
+
+def test_deploy_host_backend_iterates_all_selected_functions() -> None:
+    script = (SCRIPTS_DIR / "lib" / "e2e-deploy-host-backend.sh").read_text(encoding="utf-8")
+
+    assert "scenario_selected_functions" in script
+    assert "scenario_require_single_function" not in script

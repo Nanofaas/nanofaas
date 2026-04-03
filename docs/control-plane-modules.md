@@ -25,23 +25,23 @@ The core provides no-op defaults for:
 
 ## Build-time selection
 
-For the common profiles, prefer the wrapper:
+For the common profiles, prefer the canonical wrapper:
 
 ```bash
-scripts/control-plane-build.sh jar --profile core
-scripts/control-plane-build.sh jar --profile k8s
-scripts/control-plane-build.sh jar --profile container-local
-scripts/control-plane-build.sh jar --profile all
+scripts/controlplane.sh jar --profile core
+scripts/controlplane.sh jar --profile k8s
+scripts/controlplane.sh jar --profile container-local
+scripts/controlplane.sh jar --profile all
 ```
 
 Use `--modules <csv|none|all>` when you need to override the profile-derived selector:
 
 ```bash
-scripts/control-plane-build.sh jar --profile core --modules async-queue,sync-queue
-scripts/control-plane-build.sh jar --profile all --modules all
-scripts/control-plane-build.sh jar --profile core --modules none
-scripts/control-plane-build.sh inspect --profile core --modules build-metadata
-scripts/control-plane-build.sh matrix --task :control-plane:bootJar --modules async-queue,sync-queue --dry-run
+scripts/controlplane.sh jar --profile core --modules async-queue,sync-queue
+scripts/controlplane.sh jar --profile all --modules all
+scripts/controlplane.sh jar --profile core --modules none
+scripts/controlplane.sh inspect --profile core --modules build-metadata
+scripts/controlplane.sh matrix --task :control-plane:bootJar --modules async-queue,sync-queue --dry-run
 ```
 
 Raw Gradle module selection remains available for advanced workflows through these selectors:

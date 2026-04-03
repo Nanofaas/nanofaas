@@ -13,5 +13,5 @@ def test_release_manager_uses_native_build_args_for_bootbuildimage_tasks():
     assert "-J-Xmx" in script
     assert "-J-XX:ActiveProcessorCount=" in script
     assert "NATIVE_IMAGE_BUILD_ARGS=" in script
-    assert "./scripts/control-plane-build.sh image --profile all --" in script
+    assert "./scripts/controlplane.sh image --profile all --" in script
     assert "./gradlew :control-plane:bootBuildImage" not in script

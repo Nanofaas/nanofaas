@@ -15,43 +15,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew build
 
 # Run locally
-./scripts/control-plane-build.sh run --profile core # API on :8080, metrics on :8081
+./scripts/controlplane.sh run --profile core # API on :8080, metrics on :8081
 ./gradlew :function-runtime:bootRun # Handler on :8080
 
 # Run all tests
 ./gradlew test
 
 # Run a single test class
-./scripts/control-plane-build.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
+./scripts/controlplane.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
 
 # E2E tests (requires Docker)
-./scripts/e2e.sh                    # Compatibility wrapper -> controlplane e2e run docker
-./scripts/e2e-buildpack.sh          # Compatibility wrapper -> controlplane e2e run buildpack
+./scripts/controlplane.sh e2e run docker
+./scripts/controlplane.sh e2e run buildpack
 
 # CLI E2E (full CLI against k3s, 47 tests)
-./scripts/e2e-cli.sh                       # Compatibility wrapper -> controlplane e2e run cli
-KEEP_VM=true ./scripts/e2e-cli.sh          # Keep VM for debugging
+./scripts/controlplane.sh cli-test run vm
+KEEP_VM=true ./scripts/controlplane.sh cli-test run vm
 
 # K3s E2E with Curl (self-contained Multipass VM)
-./scripts/e2e-k3s-curl.sh              # Compatibility wrapper -> controlplane e2e run k3s-curl
-KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
+./scripts/controlplane.sh e2e run k3s-curl
+KEEP_VM=true ./scripts/controlplane.sh e2e run k3s-curl
 
 # Kubernetes E2E (k3s in Multipass)
-./scripts/e2e-k8s-vm.sh               # Compatibility wrapper -> controlplane e2e run k8s-vm
+./scripts/controlplane.sh e2e run k8s-vm
 # or:
 ./gradlew k8sE2e
 
 # Build OCI images
-./scripts/control-plane-build.sh image --profile all
+./scripts/controlplane.sh image --profile all
 ./gradlew :function-runtime:bootBuildImage
 
 # Control-plane optional module selection
-./scripts/control-plane-build.sh run --profile all
-./scripts/control-plane-build.sh test --profile all
-./scripts/control-plane-build.sh jar --profile core
-./scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
+./scripts/controlplane.sh run --profile all
+./scripts/controlplane.sh test --profile all
+./scripts/controlplane.sh jar --profile core
+./scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 # No-K8s managed deployment profile
-./scripts/control-plane-build.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local'
+./scripts/controlplane.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local'
 # Use --modules <csv|none|all> only for advanced overrides.
 
 # Build Python runtime image

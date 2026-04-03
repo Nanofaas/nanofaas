@@ -29,6 +29,16 @@ def test_cli_wrapper_dry_run_leads_to_real_backend() -> None:
     assert "e2e-cli-backend.sh" in output
 
 
+def test_cli_host_platform_wrapper_dry_run_leads_to_real_backend() -> None:
+    output = run_script("e2e-cli-host-platform.sh")
+    assert "e2e-cli-host-backend.sh" in output
+
+
+def test_cli_deploy_host_wrapper_dry_run_leads_to_real_backend() -> None:
+    output = run_script("e2e-cli-deploy-host.sh")
+    assert "e2e-deploy-host-backend.sh" in output
+
+
 def test_k3s_curl_wrapper_dry_run_leads_to_real_backend() -> None:
     output = run_script("e2e-k3s-curl.sh")
     assert "e2e-k3s-curl-backend.sh" in output

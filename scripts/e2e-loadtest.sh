@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Compatibility wrapper. Prefer `scripts/controlplane.sh loadtest run ...` for the canonical loadtest surface.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LEGACY_SCRIPT="${ROOT_DIR}/experiments/e2e-loadtest.sh"
 LEGACY_SCRIPT_DISPLAY="experiments/e2e-loadtest.sh"

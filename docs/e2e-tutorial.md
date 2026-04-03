@@ -28,7 +28,7 @@ metrics with Grafana. The entire process is automated with two scripts.
 
 ```bash
 # 1. Deploy nanofaas (creates VM, builds, deploys, verifies — ~15 min first run)
-./scripts/e2e-k3s-helm.sh
+./scripts/controlplane.sh e2e run helm-stack
 
 # 2. Run load tests + Grafana dashboard (~12 min)
 ./scripts/e2e-loadtest.sh
@@ -61,7 +61,7 @@ The reusable TOML scenario specs live under `tools/controlplane/scenarios/`.
 ### Step 1: Deploy nanofaas
 
 ```bash
-./scripts/e2e-k3s-helm.sh
+./scripts/controlplane.sh e2e run helm-stack
 ```
 
 This script performs the following automatically:
@@ -134,8 +134,8 @@ E2E_KUBECONFIG_SERVER=<optional-https-server-url>
 Examples:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-curl
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
 `E2E_PUBLIC_HOST` is useful when the SSH host and the NodePort-reachable host differ.
@@ -167,7 +167,7 @@ This script:
 
 `--profile demo-java` is compatibility sugar for the legacy script: it narrows the benchmark matrix to the Java demo workloads while keeping the same Helm/Grafana/parity backend. Registry-summary flows remain on `./scripts/e2e-loadtest-registry.sh --summary-only`.
 
-Go demo functions are deployed and smoke-tested by `./scripts/e2e-k3s-helm.sh`,
+Go demo functions are deployed and smoke-tested by `./scripts/controlplane.sh e2e run helm-stack`,
 but they are not yet included in the current k6 benchmark matrix because the
 repository does not yet ship `experiments/k6/*-go.js` workloads.
 

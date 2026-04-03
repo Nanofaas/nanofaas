@@ -48,14 +48,14 @@ Container-local provider properties:
 ## Run Control Plane With Only Container-Local
 
 ```bash
-scripts/control-plane-build.sh run --profile container-local -- \
+scripts/controlplane.sh run --profile container-local -- \
   --args='--nanofaas.deployment.default-backend=container-local'
 ```
 
 Using Podman:
 
 ```bash
-scripts/control-plane-build.sh run --profile container-local -- \
+scripts/controlplane.sh run --profile container-local -- \
   --args='--nanofaas.deployment.default-backend=container-local --nanofaas.container-local.runtime-adapter=podman'
 ```
 

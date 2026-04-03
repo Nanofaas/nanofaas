@@ -5,10 +5,12 @@ from pathlib import Path
 import questionary
 import typer
 
+from controlplane_tool.cli_test_catalog import list_cli_test_scenarios
 from controlplane_tool.e2e_catalog import list_scenarios
 from controlplane_tool.function_catalog import list_function_presets
 from controlplane_tool.loadtest_catalog import list_load_profiles
 from controlplane_tool.models import (
+    CliTestConfig,
     ControlPlaneConfig,
     LoadtestConfig,
     MetricsConfig,
@@ -101,6 +103,29 @@ def _prompt_scenario_selection() -> ScenarioSelectionConfig:
     return ScenarioSelectionConfig(base_scenario=base_scenario, functions=functions)
 
 
+def _prompt_cli_test_selection() -> CliTestConfig:
+    save_defaults = questionary.confirm(
+        "Save default CLI validation scenario in this profile?",
+        default=False,
+    ).ask()
+    if save_defaults is None:
+        raise typer.Exit(code=1)
+    if not save_defaults:
+        return CliTestConfig()
+
+    default_scenario = questionary.select(
+        "Default CLI validation scenario:",
+        choices=[
+            questionary.Choice(scenario.name, value=scenario.name)
+            for scenario in list_cli_test_scenarios()
+        ],
+        default="vm",
+    ).ask()
+    if default_scenario is None:
+        raise typer.Exit(code=1)
+    return CliTestConfig(default_scenario=default_scenario)
+
+
 def build_profile_interactive(profile_name: str) -> Profile:
     runtime = questionary.select(
         "Control plane implementation:",
@@ -173,6 +198,7 @@ def build_profile_interactive(profile_name: str) -> Profile:
         selected_load_profile = load_profile
 
     scenario = _prompt_scenario_selection()
+    cli_test = _prompt_cli_test_selection()
     loadtest = LoadtestConfig(default_load_profile=selected_load_profile)
     if scenario.scenario_file:
         loadtest.scenario_file = scenario.scenario_file
@@ -192,6 +218,7 @@ def build_profile_interactive(profile_name: str) -> Profile:
         report=ReportConfig(title=f"Control Plane run ({profile_name})"),
         scenario=scenario,
         loadtest=loadtest,
+        cli_test=cli_test,
     )
 
 

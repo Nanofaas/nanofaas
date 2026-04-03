@@ -13,6 +13,7 @@ LOCAL_REGISTRY=${LOCAL_REGISTRY:-localhost:5000}
 TAG=${TAG:-e2e}
 CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:${TAG}}
 CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
+NANOFAAS_CLI_SKIP_INSTALL_DIST=${NANOFAAS_CLI_SKIP_INSTALL_DIST:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/e2e-k3s-common.sh"
@@ -80,6 +81,17 @@ export_kubeconfig_to_host() {
 }
 
 build_cli_on_host() {
+    if [[ "${NANOFAAS_CLI_SKIP_INSTALL_DIST}" == "true" ]]; then
+        log "Skipping host CLI build because NANOFAAS_CLI_SKIP_INSTALL_DIST=true"
+        if [[ ! -x "${CLI_BIN}" ]]; then
+            err "CLI binary not found at ${CLI_BIN}"
+            exit 1
+        fi
+        CLI_CONFIG="$(mktemp -t nanofaas-cli-config.XXXXXX)"
+        rm -f "${CLI_CONFIG}"
+        return 0
+    fi
+
     log "Building nanofaas-cli on host..."
     (cd "${PROJECT_ROOT}" && ./gradlew :nanofaas-cli:installDist --no-daemon -q)
     if [[ ! -x "${CLI_BIN}" ]]; then

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-exec "$(dirname "$0")/controlplane.sh" e2e run cli-host "$@"
+# Compatibility wrapper. Prefer `scripts/controlplane.sh cli-test run host-platform ...`.
+exec "$(dirname "$0")/controlplane.sh" cli-test run host-platform "$@"

@@ -4,6 +4,7 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.cli_commands import install_cli_commands
+from controlplane_tool.cli_test_commands import install_cli_test_commands
 from controlplane_tool.e2e_commands import install_e2e_commands
 from controlplane_tool.function_commands import install_function_commands
 from controlplane_tool.loadtest_commands import (
@@ -49,23 +50,6 @@ def _load_or_build_profile(
         raise typer.Exit(code=2)
 
 
-@app.command("pipeline-run")
-def pipeline_run(
-    profile_name: str = typer.Option("default", help="Profile name to save/use."),
-    use_saved_profile: bool = typer.Option(
-        False,
-        "--use-saved-profile",
-        help=f"Load profile from {DEFAULT_PROFILES_DIR}/<name>.toml instead of opening wizard.",
-    ),
-) -> None:
-    profile, message = _load_or_build_profile(
-        profile_name=profile_name,
-        use_saved_profile=use_saved_profile,
-    )
-    typer.echo(message)
-    run_loadtest_request(build_loadtest_request(profile=profile), dry_run=False)
-
-
 @app.command("tui")
 def tui(
     profile_name: str = typer.Option("default", help="Profile name to save/use."),
@@ -84,6 +68,7 @@ def tui(
 
 
 install_cli_commands(app)
+install_cli_test_commands(app)
 install_vm_commands(app)
 install_e2e_commands(app)
 install_function_commands(app)

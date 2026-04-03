@@ -71,7 +71,7 @@ def test_gradle_command_arm64_uses_custom_builder():
         "ghcr.io/miciav/nanofaas/control-plane:v0.10.0-arm64",
         "arm64",
     )
-    assert "./scripts/control-plane-build.sh image --profile all --" in cmd
+    assert "./scripts/controlplane.sh image --profile all --" in cmd
     assert "-PcontrolPlaneImage=ghcr.io/miciav/nanofaas/control-plane:v0.10.0-arm64" in cmd
     assert "NATIVE_IMAGE_BUILD_ARGS=" in cmd
     assert "BP_OCI_SOURCE=" in cmd
@@ -88,7 +88,7 @@ def test_gradle_command_amd64_uses_default_builder():
         "ghcr.io/miciav/nanofaas/control-plane:v0.10.0-amd64",
         "amd64",
     )
-    assert "./scripts/control-plane-build.sh image --profile all --" in cmd
+    assert "./scripts/controlplane.sh image --profile all --" in cmd
     assert "NATIVE_IMAGE_BUILD_ARGS=" in cmd
     assert "BP_OCI_SOURCE=" in cmd
     assert "-J-Xmx8g" in cmd

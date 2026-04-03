@@ -11,6 +11,7 @@ CONTROL_IMAGE=${CONTROL_PLANE_IMAGE:-${LOCAL_REGISTRY}/nanofaas/control-plane:e2
 RUNTIME_IMAGE=${FUNCTION_RUNTIME_IMAGE:-${LOCAL_REGISTRY}/nanofaas/function-runtime:e2e}
 KEEP_VM=${KEEP_VM:-false}
 CONTROL_PLANE_RUNTIME=${CONTROL_PLANE_RUNTIME:-java}
+NANOFAAS_CLI_SKIP_INSTALL_DIST=${NANOFAAS_CLI_SKIP_INSTALL_DIST:-false}
 CONTROL_IMAGE_REPOSITORY=${CONTROL_IMAGE%:*}
 CONTROL_IMAGE_TAG=${CONTROL_IMAGE##*:}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,9 +26,12 @@ REMOTE_HELM_DIR="${REMOTE_DIR}/helm/nanofaas"
 
 NANOFAAS_ENDPOINT=""
 LAST_EXEC_ID=""
-FUNCTION_NAME=${FUNCTION_NAME:-echo-test}
-FUNCTION_IMAGE=${FUNCTION_IMAGE:-${RUNTIME_IMAGE}}
+DEFAULT_FUNCTION_NAME=${FUNCTION_NAME:-echo-test}
+DEFAULT_FUNCTION_IMAGE=${FUNCTION_IMAGE:-${RUNTIME_IMAGE}}
+FUNCTION_NAME=${DEFAULT_FUNCTION_NAME}
+FUNCTION_IMAGE=${DEFAULT_FUNCTION_IMAGE}
 FUNCTION_PAYLOAD_FILE=""
+SELECTED_FUNCTIONS=()
 
 cleanup() {
     local exit_code=$?
@@ -54,13 +58,26 @@ vm_exec() {
     e2e_vm_exec "${env_vars}$*"
 }
 
-resolve_function_selection() {
+resolve_selected_functions() {
+    if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
+        SELECTED_FUNCTIONS=("${DEFAULT_FUNCTION_NAME}")
+        return 0
+    fi
+
+    mapfile -t SELECTED_FUNCTIONS < <(scenario_selected_functions)
+}
+
+select_function_context() {
+    local function_key=$1
+    FUNCTION_NAME="${function_key}"
+    FUNCTION_IMAGE="${DEFAULT_FUNCTION_IMAGE}"
+    FUNCTION_PAYLOAD_FILE=""
+
     if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
         return 0
     fi
 
-    FUNCTION_NAME=$(scenario_first_function_key)
-    FUNCTION_IMAGE=$(scenario_function_image "${FUNCTION_NAME}" || echo "${RUNTIME_IMAGE}")
+    FUNCTION_IMAGE=$(scenario_function_image "${FUNCTION_NAME}" || echo "${DEFAULT_FUNCTION_IMAGE}")
     FUNCTION_PAYLOAD_FILE=$(scenario_function_payload_path "${FUNCTION_NAME}" || true)
 }
 
@@ -148,6 +165,12 @@ deploy_platform_primitives() {
 }
 
 build_cli() {
+    if [[ "${NANOFAAS_CLI_SKIP_INSTALL_DIST}" == "true" ]]; then
+        log "Skipping CLI build in VM because NANOFAAS_CLI_SKIP_INSTALL_DIST=true"
+        vm_exec "test -x ${CLI_BIN_DIR}/nanofaas" || fail_now "CLI binary not found in VM"
+        return 0
+    fi
+
     log "Building CLI in VM..."
     vm_exec "cd ${REMOTE_DIR} && ./gradlew :nanofaas-cli:installDist --no-daemon -q"
 }
@@ -262,18 +285,18 @@ EOF"
         fail_now "${FUNCTION_NAME} still present after delete"
     fi
 
-    pass "CLI function lifecycle"
+    pass "CLI function lifecycle (${FUNCTION_NAME})"
 }
 
 test_cli_k8s_commands() {
     if [[ -n "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
         vm_exec "nanofaas k8s pods ${FUNCTION_NAME}" | grep -q "${FUNCTION_NAME}" || fail_now "k8s pods missing ${FUNCTION_NAME}"
-        pass "CLI k8s commands"
+        pass "CLI k8s commands (${FUNCTION_NAME})"
         return 0
     fi
     deploy_echo_deployment_mode
     vm_exec "nanofaas k8s pods echo-deploy" | grep -q "echo-deploy" || fail_now "k8s pods missing echo-deploy"
-    pass "CLI k8s commands"
+    pass "CLI k8s commands (${FUNCTION_NAME})"
 }
 
 test_cli_platform_lifecycle() {
@@ -307,7 +330,6 @@ print_summary() {
 
 main() {
     log "Starting CLI compatibility workflow"
-    resolve_function_selection
     check_prerequisites
     if [[ "${E2E_SKIP_VM_BOOTSTRAP:-false}" != "true" ]]; then
         create_vm
@@ -317,13 +339,17 @@ main() {
     fi
     sync_project
     build_artifacts
-    build_primary_function_image
     deploy_platform_primitives
     build_cli
     setup_cli_env
     test_cli_help
-    test_cli_function_flow
-    test_cli_k8s_commands
+    resolve_selected_functions
+    for function_key in "${SELECTED_FUNCTIONS[@]}"; do
+        select_function_context "${function_key}"
+        build_primary_function_image
+        test_cli_function_flow
+        test_cli_k8s_commands
+    done
     test_cli_platform_lifecycle
     print_summary
 }
