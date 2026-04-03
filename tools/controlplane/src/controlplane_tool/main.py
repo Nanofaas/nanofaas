@@ -10,7 +10,7 @@ from controlplane_tool.profiles import load_profile
 from controlplane_tool.tui import build_and_save_profile
 
 app = typer.Typer(
-    help="Control-plane orchestration product for build, test, and reporting."
+    help="Control plane orchestration product for build, test, and reporting."
 )
 DEFAULT_TOOL_PATHS = default_tool_paths()
 DEFAULT_PROFILES_DIR = DEFAULT_TOOL_PATHS.profiles_dir.relative_to(
