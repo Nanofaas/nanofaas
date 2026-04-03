@@ -176,3 +176,14 @@ class PipelineRunner:
         payload = self._write_summary(result)
         render_report(summary=payload, output_dir=result.run_dir)
         return result
+
+
+def execute_pipeline(
+    profile: Profile,
+    runner: PipelineRunner | None = None,
+    runs_root: Path | None = None,
+) -> RunResult:
+    active_runner = runner or PipelineRunner()
+    if runs_root is None:
+        return active_runner.run(profile)
+    return active_runner.run(profile, runs_root=runs_root)

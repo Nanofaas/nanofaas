@@ -4,10 +4,10 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.cli_commands import install_cli_commands
-from controlplane_tool.pipeline import PipelineRunner
+from controlplane_tool.pipeline import PipelineRunner, execute_pipeline
 from controlplane_tool.paths import default_tool_paths
-from controlplane_tool.profiles import load_profile, save_profile
-from controlplane_tool.tui import build_profile_interactive
+from controlplane_tool.profiles import load_profile
+from controlplane_tool.tui import build_and_save_profile
 
 app = typer.Typer(
     help="Control-plane orchestration product for build, test, and reporting."
@@ -18,8 +18,7 @@ DEFAULT_PROFILES_DIR = DEFAULT_TOOL_PATHS.profiles_dir.relative_to(
 )
 
 
-@app.command("pipeline-run")
-def pipeline_run(
+def _run_pipeline_entry(
     profile_name: str = typer.Option("default", help="Profile name to save/use."),
     use_saved_profile: bool = typer.Option(
         False,
@@ -33,8 +32,7 @@ def pipeline_run(
             profile = load_profile(profile_name)
             typer.echo(f"Loaded profile: {profile_name}")
         else:
-            profile = build_profile_interactive(profile_name=profile_name)
-            destination = save_profile(profile)
+            profile, destination = build_and_save_profile(profile_name=profile_name)
             typer.echo(f"Profile saved: {destination}")
     except FileNotFoundError:
         typer.echo(f"Profile not found: {profile_name}", err=True)
@@ -44,12 +42,24 @@ def pipeline_run(
         typer.echo(f"Invalid profile '{profile_name}': {first_error}", err=True)
         raise typer.Exit(code=2)
 
-    result = PipelineRunner().run(profile)
+    result = execute_pipeline(profile, runner=PipelineRunner())
     typer.echo(f"Run status: {result.final_status}")
     typer.echo(f"Summary: {result.run_dir / 'summary.json'}")
     typer.echo(f"Report: {result.run_dir / 'report.html'}")
     if result.final_status != "passed":
         raise typer.Exit(code=1)
+
+
+@app.command("pipeline-run")
+def pipeline_run(
+    profile_name: str = typer.Option("default", help="Profile name to save/use."),
+    use_saved_profile: bool = typer.Option(
+        False,
+        "--use-saved-profile",
+        help=f"Load profile from {DEFAULT_PROFILES_DIR}/<name>.toml instead of opening wizard.",
+    ),
+) -> None:
+    _run_pipeline_entry(profile_name=profile_name, use_saved_profile=use_saved_profile)
 
 
 @app.command("tui")
@@ -61,7 +71,7 @@ def tui(
         help=f"Load profile from {DEFAULT_PROFILES_DIR}/<name>.toml instead of opening wizard.",
     ),
 ) -> None:
-    pipeline_run(profile_name=profile_name, use_saved_profile=use_saved_profile)
+    _run_pipeline_entry(profile_name=profile_name, use_saved_profile=use_saved_profile)
 
 
 install_cli_commands(app)

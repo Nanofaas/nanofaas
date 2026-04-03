@@ -9,6 +9,9 @@ import time
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from controlplane_tool.build_requests import BuildRequest
+from controlplane_tool.gradle_planner import build_gradle_command
+
 
 @dataclass
 class ControlPlaneSession:
@@ -75,8 +78,13 @@ class ControlPlaneRuntimeManager:
             }
         )
 
+        command = build_gradle_command(
+            repo_root=self.repo_root,
+            request=BuildRequest(action="run", profile="k8s"),
+            extra_gradle_args=["--console=plain"],
+        )
         process = subprocess.Popen(
-            [str(self.repo_root / "gradlew"), ":control-plane:bootRun", "--console=plain"],
+            command,
             cwd=self.repo_root,
             env=env,
             stdout=log_file,

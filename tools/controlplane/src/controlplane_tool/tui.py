@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import questionary
 import typer
 
@@ -12,6 +14,7 @@ from controlplane_tool.models import (
 )
 from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
 from controlplane_tool.module_catalog import module_choices
+from controlplane_tool.profiles import save_profile
 
 DEFAULT_REQUIRED_METRICS: tuple[str, ...] = CORE_REQUIRED_METRICS
 
@@ -97,3 +100,9 @@ def build_profile_interactive(profile_name: str) -> Profile:
         ),
         report=ReportConfig(title=f"Control Plane run ({profile_name})"),
     )
+
+
+def build_and_save_profile(profile_name: str) -> tuple[Profile, Path]:
+    profile = build_profile_interactive(profile_name=profile_name)
+    destination = save_profile(profile)
+    return profile, destination

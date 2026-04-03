@@ -95,3 +95,46 @@ def test_run_command_supports_passthrough_gradle_args_in_dry_run() -> None:
     assert ":control-plane:bootRun" in result.stdout
     assert "container-deployment-provider" in result.stdout
     assert "--args=--nanofaas.deployment.default-backend=container-local" in result.stdout
+
+
+def test_tui_and_pipeline_run_delegate_to_same_pipeline_executor(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def _record_execute_pipeline(profile: Profile, runner, runs_root=None):  # noqa: ANN001
+        calls.append(type(runner).__name__)
+        run_dir = tmp_path / f"{len(calls)}-{profile.name}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "summary.json").write_text("{}", encoding="utf-8")
+        (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
+        return RunResult(
+            profile_name=profile.name,
+            run_dir=run_dir,
+            final_status="passed",
+            steps=[StepResult(name="compile", status="passed", detail="ok", duration_ms=1)],
+        )
+
+    monkeypatch.setattr(main_mod, "load_profile", lambda _name: _valid_profile())
+    monkeypatch.setattr(
+        main_mod,
+        "build_and_save_profile",
+        lambda profile_name: (
+            _valid_profile().model_copy(update={"name": profile_name}),
+            tmp_path / f"{profile_name}.toml",
+        ),
+    )
+    monkeypatch.setattr(main_mod, "execute_pipeline", _record_execute_pipeline)
+
+    runner = CliRunner()
+    pipeline_result = runner.invoke(
+        main_mod.app,
+        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+    )
+    tui_result = runner.invoke(
+        main_mod.app,
+        ["tui", "--profile-name", "qa"],
+    )
+
+    assert pipeline_result.exit_code == 0
+    assert tui_result.exit_code == 0
+    assert len(calls) == 2
+    assert calls == ["PipelineRunner", "PipelineRunner"]
