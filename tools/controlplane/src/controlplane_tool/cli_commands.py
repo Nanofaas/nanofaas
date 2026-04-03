@@ -8,7 +8,10 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.build_requests import BuildRequest
-from controlplane_tool.gradle_planner import build_gradle_command
+from controlplane_tool.gradle_planner import (
+    build_gradle_command,
+    plan_module_matrix_commands,
+)
 from controlplane_tool.paths import default_tool_paths
 
 CLI_CONTEXT_SETTINGS = {
@@ -70,6 +73,34 @@ class GradleCommandExecutor:
             dry_run=False,
         )
 
+    def execute_matrix(
+        self,
+        task: str,
+        modules: str | None,
+        max_combinations: int,
+        extra_gradle_args: list[str],
+        dry_run: bool,
+    ) -> tuple[list[list[str]], int]:
+        commands = plan_module_matrix_commands(
+            repo_root=self.repo_root,
+            task=task,
+            max_combinations=max_combinations,
+            modules_csv=modules,
+            extra_gradle_args=extra_gradle_args,
+        )
+        if dry_run:
+            return commands, 0
+
+        for command in commands:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_root,
+                check=False,
+            )
+            if completed.returncode != 0:
+                return commands, completed.returncode
+        return commands, 0
+
 
 def _combined_extra_gradle_args(
     ctx: typer.Context,
@@ -109,7 +140,65 @@ def _run_gradle_action(
         raise typer.Exit(code=result.return_code)
 
 
+def _run_matrix_action(
+    *,
+    ctx: typer.Context,
+    task: str,
+    modules: str | None,
+    max_combinations: int,
+    dry_run: bool,
+    extra_gradle_arg: list[str] | None,
+) -> None:
+    try:
+        commands, return_code = GradleCommandExecutor().execute_matrix(
+            task=task,
+            modules=modules,
+            max_combinations=max_combinations,
+            extra_gradle_args=_combined_extra_gradle_args(ctx, extra_gradle_arg),
+            dry_run=dry_run,
+        )
+    except (ValidationError, ValueError) as exc:
+        message = (
+            exc.errors()[0]["msg"]
+            if isinstance(exc, ValidationError) and exc.errors()
+            else str(exc)
+        )
+        typer.echo(f"Invalid matrix request: {message}", err=True)
+        raise typer.Exit(code=2)
+
+    for command in commands:
+        typer.echo(" ".join(command))
+
+    if return_code != 0:
+        raise typer.Exit(code=return_code)
+
+
 def install_cli_commands(app: typer.Typer) -> None:
+    @app.command("jar", context_settings=CLI_CONTEXT_SETTINGS)
+    def jar_command(
+        ctx: typer.Context,
+        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        modules: str | None = typer.Option(
+            None,
+            "--modules",
+            help="Explicit module selector override.",
+        ),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print planned Gradle command only."),
+        extra_gradle_arg: list[str] | None = typer.Option(
+            None,
+            "--extra-gradle-arg",
+            help="Additional Gradle argument. Repeatable.",
+        ),
+    ) -> None:
+        _run_gradle_action(
+            ctx=ctx,
+            action="jar",
+            profile=profile,
+            modules=modules,
+            dry_run=dry_run,
+            extra_gradle_arg=extra_gradle_arg,
+        )
+
     @app.command("build", context_settings=CLI_CONTEXT_SETTINGS)
     def build_command(
         ctx: typer.Context,
@@ -256,6 +345,41 @@ def install_cli_commands(app: typer.Typer) -> None:
             action="inspect",
             profile=profile,
             modules=modules,
+            dry_run=dry_run,
+            extra_gradle_arg=extra_gradle_arg,
+        )
+
+    @app.command("matrix", context_settings=CLI_CONTEXT_SETTINGS)
+    def matrix_command(
+        ctx: typer.Context,
+        task: str = typer.Option(
+            ":control-plane:bootJar",
+            "--task",
+            help="Gradle task to run for each module combination.",
+        ),
+        modules: str | None = typer.Option(
+            None,
+            "--modules",
+            help="Explicit module list override as CSV.",
+        ),
+        max_combinations: int = typer.Option(
+            0,
+            "--max-combinations",
+            min=0,
+            help="Run only the first N combinations (0 = all).",
+        ),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print planned Gradle commands only."),
+        extra_gradle_arg: list[str] | None = typer.Option(
+            None,
+            "--extra-gradle-arg",
+            help="Additional Gradle argument. Repeatable.",
+        ),
+    ) -> None:
+        _run_matrix_action(
+            ctx=ctx,
+            task=task,
+            modules=modules,
+            max_combinations=max_combinations,
             dry_run=dry_run,
             extra_gradle_arg=extra_gradle_arg,
         )

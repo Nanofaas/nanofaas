@@ -605,7 +605,7 @@ build_control_plane_image_on_host() {
         resolve_control_plane_native_settings_for_arch "${host_arch}" "${host_cpu_count}"
 
         local native_cmd
-        native_cmd="cd ${PROJECT_ROOT} && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${HOST_CONTROL_IMAGE} -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon"
+        native_cmd="cd ${PROJECT_ROOT} && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./scripts/control-plane-build.sh image --profile k8s --modules '${CONTROL_PLANE_MODULES}' -- -PcontrolPlaneImage=${HOST_CONTROL_IMAGE} --no-daemon"
         if [[ -n "${RESOLVED_CP_IMAGE_BUILDER}" ]]; then
             native_cmd="${native_cmd} -PimageBuilder=${RESOLVED_CP_IMAGE_BUILDER}"
         fi
@@ -623,7 +623,7 @@ build_control_plane_image_on_host() {
         (cd "${PROJECT_ROOT}" && docker build -t "${HOST_CONTROL_IMAGE}" -f "${rust_cp_dir}/Dockerfile" "${rust_cp_dir}/")
     else
         log "Building control-plane image on host (JVM Dockerfile)..."
-        (cd "${PROJECT_ROOT}" && ./gradlew :control-plane:bootJar -PcontrolPlaneModules="${CONTROL_PLANE_MODULES}" --no-daemon -q)
+        (cd "${PROJECT_ROOT}" && ./scripts/control-plane-build.sh jar --profile k8s --modules "${CONTROL_PLANE_MODULES}" -- --no-daemon -q)
         (cd "${PROJECT_ROOT}" && docker build -t "${HOST_CONTROL_IMAGE}" -f control-plane/Dockerfile control-plane/)
     fi
     write_control_plane_cache_manifest
@@ -891,7 +891,7 @@ build_control_plane_image_on_vm() {
         vm_cpu_count="$(vm_exec "getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo ${CPUS}" | tr -d '\r\n' || true)"
         resolve_control_plane_native_settings_for_arch "${vm_arch}" "${vm_cpu_count}"
         local native_cmd
-        native_cmd="cd ${REMOTE_DIR} && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${CONTROL_IMAGE} -PcontrolPlaneModules=${module_selector} --no-daemon"
+        native_cmd="cd ${REMOTE_DIR} && NATIVE_IMAGE_BUILD_ARGS='${RESOLVED_CP_NATIVE_IMAGE_BUILD_ARGS}' BP_OCI_SOURCE=https://github.com/miciav/nanofaas ./scripts/control-plane-build.sh image --profile k8s --modules '${module_selector}' -- -PcontrolPlaneImage=${CONTROL_IMAGE} --no-daemon"
         if [[ -n "${RESOLVED_CP_IMAGE_BUILDER}" ]]; then
             native_cmd="${native_cmd} -PimageBuilder=${RESOLVED_CP_IMAGE_BUILDER}"
         fi
@@ -913,7 +913,7 @@ build_control_plane_image_on_vm() {
     fi
 
     log "Building control-plane image (JVM Dockerfile)..."
-    vm_exec "cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
+    vm_exec "cd ${REMOTE_DIR} && ./scripts/control-plane-build.sh jar --profile k8s --modules '${CONTROL_PLANE_MODULES}' -- --no-daemon -q"
     vm_exec "cd ${REMOTE_DIR} && sudo docker build -t ${CONTROL_IMAGE} -f control-plane/Dockerfile control-plane/"
 }
 
@@ -998,7 +998,8 @@ sync_and_build() {
         e2e_build_control_plane_artifacts "${REMOTE_DIR}"
         vm_exec "cd ${REMOTE_DIR} && ./gradlew :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
     else
-        vm_exec "cd ${REMOTE_DIR} && ./gradlew :control-plane:bootJar :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar -PcontrolPlaneModules=${CONTROL_PLANE_MODULES} --no-daemon -q"
+        vm_exec "cd ${REMOTE_DIR} && ./scripts/control-plane-build.sh jar --profile k8s --modules '${CONTROL_PLANE_MODULES}' -- --no-daemon -q"
+        vm_exec "cd ${REMOTE_DIR} && ./gradlew :function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar --no-daemon -q"
     fi
     log "JARs built"
 

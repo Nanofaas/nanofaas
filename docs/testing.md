@@ -13,17 +13,27 @@ All modules use JUnit 5. Test classes follow the `*Test.java` naming convention.
 # Run all unit tests
 ./gradlew test
 
-# Run a single module
-./gradlew :control-plane:test
+# Run the control-plane through the unified wrapper
+scripts/control-plane-build.sh test --profile core
+scripts/control-plane-build.sh test --profile k8s -- --tests it.unimib.datai.nanofaas.controlplane.core.QueueManagerTest
+
+# Run other modules directly
 ./gradlew :function-runtime:test
 ./gradlew :nanofaas-cli:test
-
-# Run a single test class
-./gradlew :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.core.QueueManagerTest
 
 # Run with coverage report (JaCoCo)
 ./gradlew :nanofaas-cli:test :nanofaas-cli:jacocoTestReport
 # Report: nanofaas-cli/build/reports/jacoco/test/html/index.html
+```
+
+### Control-plane module matrix
+
+Use the wrapper when you want to compile or inspect multiple optional-module combinations:
+
+```bash
+scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 8
+scripts/control-plane-build.sh matrix --task :control-plane:test --modules async-queue,sync-queue --dry-run
+./scripts/test-control-plane-module-combinations.sh --task :control-plane:bootJar
 ```
 
 ### Key testing libraries

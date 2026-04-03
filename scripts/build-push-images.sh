@@ -120,7 +120,7 @@ cd "$ROOT"
 if should_build "control-plane"; then
     IMG="${BASE}/control-plane:${TAG}${TAG_SUFFIX}"
     info "Building control-plane → $IMG"
-    NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew :control-plane:bootBuildImage \
+    NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./scripts/control-plane-build.sh image --profile all -- \
         -PcontrolPlaneImage="$IMG"
     ok "Built $IMG"
     push_image "$IMG"

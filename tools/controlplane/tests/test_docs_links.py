@@ -19,6 +19,11 @@ def test_docs_reference_controlplane_tool() -> None:
     assert "scripts/control-plane-build.sh" in control_plane
     assert "scripts/control-plane-build.sh" in modules
     assert "scripts/control-plane-build.sh" in root_readme
+    assert "scripts/control-plane-build.sh image --profile all" in root_readme
+    assert "scripts/control-plane-build.sh jar --profile container-local" in control_plane
+    assert "scripts/control-plane-build.sh matrix" in testing
+    assert "scripts/control-plane-build.sh matrix" in tool_readme
+    assert "./gradlew :control-plane:bootJar -PcontrolPlaneModules=" not in modules
     assert "exit code" in quickstart.lower()
     assert "controlplane-tool" in testing
     assert "NANOFAAS_URL=http://localhost:8080" in testing

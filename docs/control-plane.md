@@ -6,13 +6,16 @@ For module selection and module packaging details, see `docs/control-plane-modul
 
 The canonical control-plane tooling root is `tools/controlplane/`.
 
-Use the thin wrapper `scripts/control-plane-build.sh` for milestone 1 control-plane actions:
+Use the thin wrapper `scripts/control-plane-build.sh` for the primary control-plane build contract:
 
 ```bash
-scripts/control-plane-build.sh build --profile core
+scripts/control-plane-build.sh jar --profile container-local
+scripts/control-plane-build.sh jar --profile core
 scripts/control-plane-build.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
-scripts/control-plane-build.sh image --profile k8s --extra-gradle-arg -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/control-plane-build.sh image --profile k8s -- -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/control-plane-build.sh native --profile all
 scripts/control-plane-build.sh test --profile core -- --tests '*CoreDefaultsTest'
+scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 scripts/control-plane-build.sh inspect --profile all
 ```
 

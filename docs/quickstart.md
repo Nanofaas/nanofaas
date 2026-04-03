@@ -29,7 +29,7 @@
 
 ## Run control plane locally
 
-- `./gradlew :control-plane:bootRun`
+- `scripts/control-plane-build.sh run --profile core`
 - Control plane API on `http://localhost:8080`
 - Metrics on `http://localhost:8081/actuator/prometheus`
 
@@ -38,9 +38,11 @@
 - Canonical tool root:
   - `tools/controlplane/`
 - Use the unified non-interactive wrapper for control-plane Gradle actions:
-  - `scripts/control-plane-build.sh build --profile core --dry-run`
+  - `scripts/control-plane-build.sh jar --profile core --dry-run`
   - `scripts/control-plane-build.sh image --profile all --dry-run`
+  - `scripts/control-plane-build.sh native --profile all --dry-run`
   - `scripts/control-plane-build.sh test --profile k8s --dry-run`
+  - `scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run`
   - `scripts/control-plane-build.sh inspect --profile container-local --dry-run`
 
 - Open the interactive wizard and save a reusable profile:

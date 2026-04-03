@@ -18,7 +18,7 @@ function that returns a personalised greeting.
 Start the platform locally before you begin:
 
 ```bash
-./gradlew :control-plane:bootRun   # API on http://localhost:8080
+scripts/control-plane-build.sh run --profile core   # API on http://localhost:8080
 ./gradlew :function-runtime:bootRun # runtime on http://localhost:8081
 ```
 

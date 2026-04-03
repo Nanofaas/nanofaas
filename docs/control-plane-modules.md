@@ -25,41 +25,29 @@ The core provides no-op defaults for:
 
 ## Build-time selection
 
-For the common milestone 1 profiles, prefer the wrapper:
+For the common profiles, prefer the wrapper:
 
 ```bash
-scripts/control-plane-build.sh build --profile core
-scripts/control-plane-build.sh build --profile k8s
-scripts/control-plane-build.sh build --profile container-local
-scripts/control-plane-build.sh build --profile all
+scripts/control-plane-build.sh jar --profile core
+scripts/control-plane-build.sh jar --profile k8s
+scripts/control-plane-build.sh jar --profile container-local
+scripts/control-plane-build.sh jar --profile all
 ```
 
-Use `--modules <csv|none|all>` when you need to override the profile-derived selector.
+Use `--modules <csv|none|all>` when you need to override the profile-derived selector:
 
-Raw Gradle module selection remains available for advanced workflows:
+```bash
+scripts/control-plane-build.sh jar --profile core --modules async-queue,sync-queue
+scripts/control-plane-build.sh jar --profile all --modules all
+scripts/control-plane-build.sh jar --profile core --modules none
+scripts/control-plane-build.sh inspect --profile core --modules build-metadata
+scripts/control-plane-build.sh matrix --task :control-plane:bootJar --modules async-queue,sync-queue --dry-run
+```
 
-Use one of these:
+Raw Gradle module selection remains available for advanced workflows through these selectors:
 
 - `-PcontrolPlaneModules=<csv>`
 - `NANOFAAS_CONTROL_PLANE_MODULES=<csv>`
-
-Example:
-
-```bash
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=async-queue,sync-queue
-```
-
-`all` expands to every optional module:
-
-```bash
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
-```
-
-`none` means core-only:
-
-```bash
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=none
-```
 
 Rules:
 

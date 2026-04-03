@@ -24,13 +24,12 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 ## Quickstart (local)
 
 ```bash
-./gradlew :control-plane:bootRun
+scripts/control-plane-build.sh run --profile core
 ./gradlew :function-runtime:bootRun
 ```
 
-`bootRun` includes all optional control-plane modules by default.
-Use `-PcontrolPlaneModules=none` to run a core-only control plane.
-Use `-PcontrolPlaneModules=container-deployment-provider` plus `--args='--nanofaas.deployment.default-backend=container-local'`
+Use `scripts/control-plane-build.sh run --profile all` to start the full optional-module stack.
+Use `scripts/control-plane-build.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local`
 for a no-Kubernetes managed-deployment profile.
 
 ## Control-plane tooling
@@ -63,7 +62,8 @@ Artifacts are written under:
 ## Build images (buildpacks)
 
 ```bash
-./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
+scripts/control-plane-build.sh image --profile all -- -PcontrolPlaneImage=nanofaas/control-plane:buildpack
+./gradlew :function-runtime:bootBuildImage
 ```
 
 ## Custom control-plane builds
@@ -71,9 +71,12 @@ Artifacts are written under:
 Use the wrapper for the common profiles:
 
 ```bash
-scripts/control-plane-build.sh build --profile core
+scripts/control-plane-build.sh jar --profile core
 scripts/control-plane-build.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
-scripts/control-plane-build.sh image --profile k8s --extra-gradle-arg -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/control-plane-build.sh image --profile k8s -- -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/control-plane-build.sh native --profile all
+scripts/control-plane-build.sh test --profile core -- --tests '*CoreDefaultsTest'
+scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 scripts/control-plane-build.sh inspect --profile all
 ```
 
@@ -144,6 +147,7 @@ SSH/SCP are always used for remote command execution and file transfer. VM provi
 
 E2E/module matrix (control-plane optional modules compile):
 ```bash
+scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 ./scripts/test-control-plane-module-combinations.sh
 ```
 

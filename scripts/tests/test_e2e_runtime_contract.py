@@ -74,6 +74,19 @@ def test_build_dispatch_helpers_route_to_runtime_specific_paths():
     assert "RUST_IMG:/tmp/b:cp-rust:test" in lines
 
 
+def test_build_core_jars_uses_wrapper_for_control_plane_jar() -> None:
+    source = f"source '{SCRIPT}'"
+    out = run_shell(
+        f"{source}; "
+        "e2e_require_vm_exec(){ return 0; }; "
+        "vm_exec(){ printf '%s\\n' \"$*\"; }; "
+        "e2e_build_core_jars /tmp/repo false"
+    )
+    assert "./scripts/control-plane-build.sh jar --profile k8s" in out
+    assert "./gradlew :function-runtime:bootJar" in out
+    assert ":control-plane:bootJar :function-runtime:bootJar" not in out
+
+
 def test_sync_env_renderer_emits_both_aliases_and_can_be_empty():
     source = f"source '{SCRIPT}'"
 

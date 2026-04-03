@@ -189,11 +189,8 @@ if ! "${RUNTIME_ADAPTER}" version >/dev/null 2>&1; then
 fi
 
 info "Building control-plane and function-runtime artifacts"
-(cd "${PROJECT_ROOT}" && ./gradlew \
-  :control-plane:bootJar \
-  :function-runtime:bootJar \
-  -PcontrolPlaneModules="${CONTROL_PLANE_MODULES}" \
-  --quiet)
+(cd "${PROJECT_ROOT}" && ./scripts/control-plane-build.sh jar --profile container-local --modules "${CONTROL_PLANE_MODULES}" -- --quiet)
+(cd "${PROJECT_ROOT}" && ./gradlew :function-runtime:bootJar --quiet)
 
 if [[ "${SKIP_FUNCTION_IMAGE_BUILD}" == "true" ]]; then
   info "Skipping function-runtime image build; using existing image ${FUNCTION_IMAGE}"

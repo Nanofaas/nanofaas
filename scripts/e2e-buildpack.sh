@@ -64,6 +64,7 @@ FUNCTION_IMAGE=${FUNCTION_IMAGE:-nanofaas/function-runtime:buildpack}
 
 SKIP_FUNCTION_IMAGE_BUILD=true \
 FUNCTION_IMAGE="${FUNCTION_IMAGE}" \
-./gradlew -PrunE2e :control-plane:test \
+./scripts/control-plane-build.sh test --profile all -- \
+  -PrunE2e \
   --tests it.unimib.datai.nanofaas.controlplane.e2e.BuildpackE2eTest \
   --tests it.unimib.datai.nanofaas.controlplane.e2e.ContainerLocalE2eTest

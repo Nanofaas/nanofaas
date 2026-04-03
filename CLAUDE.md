@@ -9,14 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew build
 
 # Run locally
-./gradlew :control-plane:bootRun    # API on :8080, metrics on :8081
+./scripts/control-plane-build.sh run --profile core # API on :8080, metrics on :8081
 ./gradlew :function-runtime:bootRun # Handler on :8080
 
 # Run all tests
 ./gradlew test
 
 # Run a single test class
-./gradlew :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
+./scripts/control-plane-build.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
 
 # E2E tests (requires Docker)
 ./scripts/e2e.sh                    # Local containers
@@ -36,15 +36,17 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
 ./gradlew k8sE2e
 
 # Build OCI images
-./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
+./scripts/control-plane-build.sh image --profile all
+./gradlew :function-runtime:bootBuildImage
 
 # Control-plane optional module selection
-./gradlew :control-plane:bootRun -PcontrolPlaneModules=all
-./gradlew :control-plane:test -PcontrolPlaneModules=all
-NANOFAAS_CONTROL_PLANE_MODULES=none ./gradlew :control-plane:bootJar
+./scripts/control-plane-build.sh run --profile all
+./scripts/control-plane-build.sh test --profile all
+./scripts/control-plane-build.sh jar --profile core
+./scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 # No-K8s managed deployment profile
-./gradlew :control-plane:bootRun -PcontrolPlaneModules=container-deployment-provider --args='--nanofaas.deployment.default-backend=container-local'
-# If selector is omitted: runtime/artifact tasks default to all modules, non-runtime tasks default to core-only.
+./scripts/control-plane-build.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local'
+# Use --modules <csv|none|all> only for advanced overrides.
 
 # Build Python runtime image
 cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime python-runtime/

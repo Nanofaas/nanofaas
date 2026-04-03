@@ -61,6 +61,30 @@ def test_vm_based_runners_use_runtime_aware_shared_helpers():
     assert "e2e_require_vm_access" in k3s_helm
 
 
+def test_e2e_script_uses_wrapper_for_control_plane_test() -> None:
+    script = read_script("e2e.sh")
+    assert "scripts/control-plane-build.sh test --profile all" in script
+    assert ":control-plane:test" not in script
+
+
+def test_e2e_buildpack_script_uses_wrapper_for_control_plane_test() -> None:
+    script = read_script("e2e-buildpack.sh")
+    assert "scripts/control-plane-build.sh test --profile all" in script
+    assert ":control-plane:test" not in script
+
+
+def test_e2e_container_local_script_uses_wrapper_for_control_plane_jar() -> None:
+    script = read_script("e2e-container-local.sh")
+    assert "scripts/control-plane-build.sh jar --profile container-local" in script
+    assert ":control-plane:bootJar" not in script
+
+
+def test_e2e_k8s_vm_uses_wrapper_for_control_plane_test() -> None:
+    script = read_script("e2e-k8s-vm.sh")
+    assert "scripts/control-plane-build.sh test --profile k8s" in script
+    assert ":control-plane:test" not in script
+
+
 def test_vm_provisioning_contract_uses_ansible_in_common_library():
     common = (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").read_text(encoding="utf-8")
     assert "e2e_ensure_ansible()" in common
@@ -241,7 +265,7 @@ def test_e2e_all_dry_run_executes_supported_suite_for_rust_runtime():
 def test_e2e_container_local_script_covers_provider_backed_deployment_flow():
     script = read_script("e2e-container-local.sh")
     assert "container-deployment-provider" in script
-    assert "-PcontrolPlaneModules=" in script
+    assert '--modules "${CONTROL_PLANE_MODULES}"' in script
     assert "nanofaas.deployment.default-backend=container-local" in script
     assert '"executionMode":"DEPLOYMENT"' in script or '"executionMode": "DEPLOYMENT"' in script
     assert "deploymentBackend" in script

@@ -14,6 +14,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -72,16 +73,41 @@ class BuildpackE2eTest {
     }
 
     private static void runGradleBuild() throws Exception {
-        // Test runs from control-plane/ directory, so project root is ..
         File projectRoot = new File("..").getAbsoluteFile().getCanonicalFile();
-        ProcessBuilder builder = new ProcessBuilder().directory(projectRoot);
-        if (E2eTestSupport.resolveControlPlaneContainerPlan().isImageOverride()) {
-            builder.command("./gradlew", ":function-runtime:bootBuildImage",
-                    "-PfunctionRuntimeImage=" + RUNTIME_IMAGE, "--no-daemon");
-        } else {
-            builder.command("./gradlew", ":control-plane:bootBuildImage", ":function-runtime:bootBuildImage",
-                    "-PcontrolPlaneImage=" + CONTROL_IMAGE, "-PfunctionRuntimeImage=" + RUNTIME_IMAGE, "--no-daemon");
+        boolean imageOverride = E2eTestSupport.resolveControlPlaneContainerPlan().isImageOverride();
+
+        List<String> controlPlaneCommand = controlPlaneImageCommand(imageOverride);
+        if (!controlPlaneCommand.isEmpty()) {
+            runProjectCommand(projectRoot, controlPlaneCommand);
         }
+
+        runProjectCommand(projectRoot, functionRuntimeImageCommand());
+    }
+
+    static List<String> controlPlaneImageCommand(boolean imageOverride) {
+        if (imageOverride) {
+            return List.of();
+        }
+        return List.of(
+                "./scripts/control-plane-build.sh",
+                "image",
+                "--profile",
+                "all",
+                "--",
+                "-PcontrolPlaneImage=" + CONTROL_IMAGE,
+                "--no-daemon");
+    }
+
+    static List<String> functionRuntimeImageCommand() {
+        return List.of(
+                "./gradlew",
+                ":function-runtime:bootBuildImage",
+                "-PfunctionRuntimeImage=" + RUNTIME_IMAGE,
+                "--no-daemon");
+    }
+
+    private static void runProjectCommand(File projectRoot, List<String> command) throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(command).directory(projectRoot);
         builder.environment().putIfAbsent("JAVA_HOME", System.getProperty("java.home"));
         builder.redirectErrorStream(true);
         Process process = builder.start();
@@ -95,7 +121,7 @@ class BuildpackE2eTest {
 
         int exit = process.waitFor();
         if (exit != 0) {
-            throw new IllegalStateException("bootBuildImage failed with exit code " + exit);
+            throw new IllegalStateException(String.join(" ", command) + " failed with exit code " + exit);
         }
     }
 }

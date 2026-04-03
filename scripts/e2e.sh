@@ -60,4 +60,6 @@ fi
 sdk use java "$JDK_VERSION"
 set -u
 
-./gradlew -PrunE2e :control-plane:test --tests it.unimib.datai.nanofaas.controlplane.e2e.E2eFlowTest
+./scripts/control-plane-build.sh test --profile all -- \
+  -PrunE2e \
+  --tests it.unimib.datai.nanofaas.controlplane.e2e.E2eFlowTest

@@ -243,7 +243,7 @@ def build_and_push_arm64(version):
     cp_image = f"{base_image}/control-plane:{tag}-arm64"
     console.print(f"[blue]Building {cp_image}...[/blue]")
     run_with_disk_retry(
-        f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./gradlew :control-plane:bootBuildImage "
+        f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./scripts/control-plane-build.sh image --profile all -- "
         f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform} "
         f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
     )

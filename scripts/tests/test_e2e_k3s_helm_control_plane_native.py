@@ -49,7 +49,7 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "\"runtime_kind\": runtime_kind" in script
     assert "ensure_host_image_available_from_local_cache" in script
     assert "retagging from" in script
-    assert ":control-plane:bootBuildImage" in script
+    assert "scripts/control-plane-build.sh image --profile k8s" in script
     assert ":function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar" in script
     assert "uname -m" in script
     assert "linux/arm64" in script
@@ -57,7 +57,9 @@ def test_k3s_helm_script_supports_native_control_plane_build_knobs():
     assert "paketobuildpacks/builder-jammy-java-tiny:latest" in script
     assert "NATIVE_IMAGE_BUILD_ARGS=" in script
     assert "detect_local_cpu_count" in script
-    assert ":control-plane:bootJar -PcontrolPlaneModules=" in script
+    assert "scripts/control-plane-build.sh jar --profile k8s" in script
+    assert ":control-plane:bootBuildImage" not in script
+    assert ":control-plane:bootJar -PcontrolPlaneModules=" not in script
     assert "-J-Xmx8g" in script
     assert "-J-Xmx4g" not in script
     assert "-J-XX:ActiveProcessorCount=${active_processors}" in script

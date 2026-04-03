@@ -897,7 +897,8 @@ e2e_build_core_jars() {
     vm_exec "cd ${q_remote_dir} && rm -rf control-plane/build function-runtime/build"
 
     e2e_log "Building core boot jars..."
-    vm_exec "cd ${q_remote_dir} && ./gradlew :control-plane:bootJar :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
+    vm_exec "cd ${q_remote_dir} && ./scripts/control-plane-build.sh jar --profile k8s -- --no-daemon --rerun-tasks ${quiet_flag}"
+    vm_exec "cd ${q_remote_dir} && ./gradlew :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
     e2e_log "Core boot jars built"
 }
 

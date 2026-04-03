@@ -2,14 +2,16 @@
 
 Canonical project root: `tools/controlplane/`.
 
-This package provides one control-plane tooling surface for milestone 1:
+This package provides one control-plane tooling surface for milestone 2:
 
+- `jar`
 - `build`
 - `run`
 - `image`
 - `native`
 - `test`
 - `inspect`
+- `matrix`
 - `pipeline-run`
 - `tui`
 
@@ -18,9 +20,11 @@ This package provides one control-plane tooling surface for milestone 1:
 Use the thin wrapper for non-interactive control-plane actions:
 
 ```bash
-scripts/control-plane-build.sh build --profile core --dry-run
+scripts/control-plane-build.sh jar --profile core --dry-run
 scripts/control-plane-build.sh image --profile all --dry-run
+scripts/control-plane-build.sh native --profile all --dry-run
 scripts/control-plane-build.sh test --profile k8s -- --tests '*CoreDefaultsTest'
+scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 scripts/control-plane-build.sh inspect --profile container-local --dry-run
 ```
 

@@ -56,6 +56,14 @@ jobs:
           java-version: '21'
           cache: 'gradle'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
       - name: Build Java artifacts
         run: ./gradlew build -x test
 
@@ -63,7 +71,7 @@ jobs:
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :control-plane:bootBuildImage -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
+          ./scripts/control-plane-build.sh image --profile all -- -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:latest
 
       - name: Log in to the Container registry
