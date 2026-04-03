@@ -81,7 +81,7 @@ def test_e2e_container_local_script_uses_wrapper_for_control_plane_jar() -> None
 
 def test_e2e_k8s_vm_uses_wrapper_for_control_plane_test() -> None:
     script = read_script("e2e-k8s-vm.sh")
-    assert "scripts/control-plane-build.sh test --profile k8s" in script
+    assert "scripts/control-plane-build.sh test --profile k8s --modules" in script
     assert ":control-plane:test" not in script
 
 

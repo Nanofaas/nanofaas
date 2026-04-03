@@ -58,4 +58,4 @@ log "Pushing images to local registry"
 e2e_push_images_to_registry "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
 
 log "Running K8sE2eTest in VM"
-vm_exec "cd ${REMOTE_DIR} && KUBECONFIG=${KUBECONFIG_PATH} NANOFAAS_E2E_NAMESPACE=${NAMESPACE} CONTROL_PLANE_IMAGE=${CONTROL_IMAGE} FUNCTION_RUNTIME_IMAGE=${RUNTIME_IMAGE} ./scripts/control-plane-build.sh test --profile k8s -- -PrunE2e --tests it.unimib.datai.nanofaas.controlplane.e2e.K8sE2eTest --no-daemon"
+vm_exec "cd ${REMOTE_DIR} && KUBECONFIG=${KUBECONFIG_PATH} NANOFAAS_E2E_NAMESPACE=${NAMESPACE} CONTROL_PLANE_IMAGE=${CONTROL_IMAGE} FUNCTION_RUNTIME_IMAGE=${RUNTIME_IMAGE} ./scripts/control-plane-build.sh test --profile k8s --modules $(e2e_get_control_plane_modules) -- -PrunE2e --tests it.unimib.datai.nanofaas.controlplane.e2e.K8sE2eTest --no-daemon"

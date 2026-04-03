@@ -882,13 +882,19 @@ e2e_is_rust_runtime() {
     [[ "$(e2e_runtime_kind)" == "rust" ]]
 }
 
+e2e_get_control_plane_modules() {
+    echo "${CONTROL_PLANE_MODULES:-all}"
+}
+
 e2e_build_core_jars() {
     e2e_require_vm_exec || return 1
     local remote_dir=${1:-$(e2e_get_remote_project_dir)}
     local quiet=${2:-true}
     local quiet_flag=""
     local q_remote_dir
+    local modules_selector
     q_remote_dir=$(printf '%q' "${remote_dir}")
+    modules_selector=$(e2e_get_control_plane_modules)
     if [[ "${quiet}" == "true" ]]; then
         quiet_flag="-q"
     fi
@@ -897,7 +903,7 @@ e2e_build_core_jars() {
     vm_exec "cd ${q_remote_dir} && rm -rf control-plane/build function-runtime/build"
 
     e2e_log "Building core boot jars..."
-    vm_exec "cd ${q_remote_dir} && ./scripts/control-plane-build.sh jar --profile k8s -- --no-daemon --rerun-tasks ${quiet_flag}"
+    vm_exec "cd ${q_remote_dir} && ./scripts/control-plane-build.sh jar --profile k8s --modules ${modules_selector} -- --no-daemon --rerun-tasks ${quiet_flag}"
     vm_exec "cd ${q_remote_dir} && ./gradlew :function-runtime:bootJar --no-daemon --rerun-tasks ${quiet_flag}"
     e2e_log "Core boot jars built"
 }

@@ -80,9 +80,10 @@ def test_build_core_jars_uses_wrapper_for_control_plane_jar() -> None:
         f"{source}; "
         "e2e_require_vm_exec(){ return 0; }; "
         "vm_exec(){ printf '%s\\n' \"$*\"; }; "
+        "CONTROL_PLANE_MODULES=all; "
         "e2e_build_core_jars /tmp/repo false"
     )
-    assert "./scripts/control-plane-build.sh jar --profile k8s" in out
+    assert "./scripts/control-plane-build.sh jar --profile k8s --modules all" in out
     assert "./gradlew :function-runtime:bootJar" in out
     assert ":control-plane:bootJar :function-runtime:bootJar" not in out
 
