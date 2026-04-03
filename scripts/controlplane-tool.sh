@@ -4,4 +4,4 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-exec uv run --project tooling/controlplane_tui controlplane-tool "$@"
+exec uv run --project tools/controlplane controlplane-tool "$@"
