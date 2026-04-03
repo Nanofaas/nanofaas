@@ -119,7 +119,7 @@ e2e_get_repo_root() {
 }
 
 e2e_get_ansible_root() {
-    echo "${E2E_ANSIBLE_ROOT:-$(e2e_get_repo_root)/scripts/ansible}"
+    echo "${E2E_ANSIBLE_ROOT:-$(e2e_get_repo_root)/ops/ansible}"
 }
 
 e2e_get_ansible_venv_dir() {

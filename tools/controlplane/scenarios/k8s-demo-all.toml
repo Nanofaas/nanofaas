@@ -1,0 +1,14 @@
+name = "k8s-demo-all"
+base_scenario = "helm-stack"
+runtime = "java"
+function_preset = "demo-loadtest"
+namespace = "nanofaas-e2e"
+local_registry = "localhost:5000"
+
+[invoke]
+mode = "smoke"
+payload_dir = "payloads"
+
+[load]
+profile = "quick"
+targets = ["word-stats-java", "json-transform-java"]

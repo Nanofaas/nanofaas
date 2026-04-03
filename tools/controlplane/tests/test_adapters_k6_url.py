@@ -2,9 +2,12 @@ from pathlib import Path
 
 from controlplane_tool.adapters import AdapterResult, ShellCommandAdapter
 from controlplane_tool.control_plane_runtime import ControlPlaneSession
+from controlplane_tool.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
 from controlplane_tool.mockk8s_runtime import MockK8sSession
 from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
 from controlplane_tool.prometheus_runtime import PrometheusSession
+from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.sut_preflight import SutFixture
 
 
@@ -17,9 +20,12 @@ class FakePrometheusManager:
 
 
 class FakeSutPreflight:
+    def __init__(self, function_name: str = "tool-metrics-echo") -> None:
+        self.function_name = function_name
+
     def ensure_fixture(self) -> SutFixture:
         return SutFixture(
-            function_name="tool-metrics-echo",
+            function_name=self.function_name,
             registered=True,
             warmup_status_code=200,
         )
@@ -64,6 +70,14 @@ class RecordingAdapter(ShellCommandAdapter):
         base_url: str,  # noqa: ARG002
     ) -> FakeSutPreflight:
         return FakeSutPreflight()
+
+    def _create_sut_preflight_for_target(
+        self,
+        profile: Profile,  # noqa: ARG002
+        base_url: str,  # noqa: ARG002
+        fixture_name: str,
+    ) -> FakeSutPreflight:
+        return FakeSutPreflight(function_name=fixture_name)
 
     def _create_mockk8s_manager(self, profile: Profile) -> FakeMockK8sManager:  # noqa: ARG002
         return FakeMockK8sManager()
@@ -143,3 +157,105 @@ def test_metrics_k6_uses_control_plane_base_url(tmp_path: Path, monkeypatch) -> 
     k6_command = next(command for command in adapter.commands if command and command[0] == "k6")
     assert "NANOFAAS_URL=http://127.0.0.1:8080" in k6_command
     assert "NANOFAAS_FUNCTION=tool-metrics-echo" in k6_command
+
+
+def test_loadtest_k6_uses_resolved_scenario_manifest_and_target(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _prepare_fake_repo(tmp_path)
+    run_dir = tmp_path / "run-loadtest"
+    run_dir.mkdir(parents=True)
+
+    profile = Profile(
+        name="qa",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
+        modules=[],
+        tests=TestsConfig(enabled=True, api=False, e2e_mockk8s=False, metrics=True),
+        metrics=MetricsConfig(required=["function_dispatch_total"]),
+    )
+    request = LoadtestRequest(
+        name="qa",
+        profile=profile,
+        scenario=load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml")),
+        load_profile=resolve_load_profile("quick"),
+        metrics_gate=MetricsGate(required_metrics=["function_dispatch_total"]),
+    )
+
+    adapter = RecordingAdapter(repo_root=tmp_path)
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_metric_names",
+        lambda base_url: {"function_dispatch_total"},  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_range_series",
+        lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
+            {"timestamp": start.isoformat(), "value": 1.0},
+            {"timestamp": end.isoformat(), "value": 2.0},
+        ],
+    )
+
+    context = adapter.bootstrap_loadtest(profile, request, run_dir)
+    try:
+        ok, detail = adapter.run_loadtest_k6(request, context, run_dir)
+    finally:
+        adapter.cleanup_loadtest(context)
+
+    assert ok is True
+    assert "k6" in detail
+    k6_command = next(command for command in adapter.commands if command and command[0] == "k6")
+    assert "NANOFAAS_URL=http://127.0.0.1:8080" in k6_command
+    assert "NANOFAAS_FUNCTION=word-stats-java" in k6_command
+    assert any(item.startswith("NANOFAAS_SCENARIO_MANIFEST=") for item in k6_command)
+    assert "--stage" in k6_command
+
+
+def test_loadtest_k6_runs_all_requested_targets_in_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _prepare_fake_repo(tmp_path)
+    run_dir = tmp_path / "run-all-targets"
+    run_dir.mkdir(parents=True)
+
+    profile = Profile(
+        name="qa",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
+        modules=[],
+        tests=TestsConfig(enabled=True, api=False, e2e_mockk8s=False, metrics=True),
+        metrics=MetricsConfig(required=["function_dispatch_total"]),
+    )
+    request = LoadtestRequest(
+        name="qa",
+        profile=profile,
+        scenario=load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml")),
+        load_profile=resolve_load_profile("quick"),
+        metrics_gate=MetricsGate(required_metrics=["function_dispatch_total"]),
+    )
+
+    adapter = RecordingAdapter(repo_root=tmp_path)
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_metric_names",
+        lambda base_url: {"function_dispatch_total"},  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_range_series",
+        lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
+            {"timestamp": start.isoformat(), "value": 1.0},
+            {"timestamp": end.isoformat(), "value": 2.0},
+        ],
+    )
+
+    context = adapter.bootstrap_loadtest(profile, request, run_dir)
+    try:
+        ok, detail = adapter.run_loadtest_k6(request, context, run_dir)
+    finally:
+        adapter.cleanup_loadtest(context)
+
+    assert ok is True
+    assert "word-stats-java" in detail
+    assert "json-transform-java" in detail
+    k6_commands = [command for command in adapter.commands if command and command[0] == "k6"]
+    assert len(k6_commands) == 2
+    assert "NANOFAAS_FUNCTION=word-stats-java" in k6_commands[0]
+    assert "NANOFAAS_FUNCTION=json-transform-java" in k6_commands[1]

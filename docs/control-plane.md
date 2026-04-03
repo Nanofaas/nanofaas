@@ -5,6 +5,7 @@ For module selection and module packaging details, see `docs/control-plane-modul
 ## Unified Tooling
 
 The canonical control-plane tooling root is `tools/controlplane/`.
+The canonical shell orchestration wrapper is `scripts/controlplane.sh`.
 
 Use the thin wrapper `scripts/control-plane-build.sh` for the primary control-plane build contract:
 
@@ -18,6 +19,20 @@ scripts/control-plane-build.sh test --profile core -- --tests '*CoreDefaultsTest
 scripts/control-plane-build.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
 scripts/control-plane-build.sh inspect --profile all
 ```
+
+Milestone 3 also exposes VM lifecycle and E2E orchestration through the same product surface:
+
+```bash
+scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+scripts/controlplane.sh vm provision-base --lifecycle external --host vm.example.test --user dev --dry-run
+scripts/controlplane.sh e2e list
+scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+```
+
+For VM-backed E2E plans, the tool resolves the actual SSH target for Ansible/SSH operations and no longer plans against `localhost`. `e2e all` computes one shared VM bootstrap block for VM-backed scenarios, then runs scenario-specific workflows on top of that session. `--keep-vm` skips final Multipass teardown; external VM lifecycle mode is never torn down by the tool.
+
+Operational Ansible assets are now canonical under `ops/ansible/`.
 
 The raw `./gradlew ... -PcontrolPlaneModules=...` workflow is still supported for low-level/advanced scenarios.
 

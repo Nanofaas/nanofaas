@@ -4,9 +4,12 @@ import json
 from pathlib import Path
 
 from controlplane_tool.adapters import AdapterResult, ShellCommandAdapter
+from controlplane_tool.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
 from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS, LEGACY_STRICT_REQUIRED_METRICS
 from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
 from controlplane_tool.prometheus_runtime import PrometheusSession
+from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.sut_preflight import SutFixture
 
 
@@ -121,6 +124,14 @@ class _RecordingAdapter(ShellCommandAdapter):
         return self.preflight
 
     def _create_sut_preflight_for_base_url(self, profile: Profile, base_url: str):  # noqa: ANN001, ARG002
+        return self.preflight
+
+    def _create_sut_preflight_for_target(
+        self,
+        profile: Profile,  # noqa: ARG002
+        base_url: str,  # noqa: ARG002
+        fixture_name: str,  # noqa: ARG002
+    ):
         return self.preflight
 
     def _create_mockk8s_manager(self, profile: Profile):  # noqa: ANN001, ARG002
@@ -430,6 +441,92 @@ def test_metrics_step_registers_fixture_before_k6(tmp_path: Path, monkeypatch) -
     assert preflight.ensure_calls == 1
     k6_command = next(command for command in adapter.commands if command and command[0] == "k6")
     assert "NANOFAAS_FUNCTION=tool-metrics-echo" in k6_command
+
+
+def test_loadtest_bootstrap_writes_scenario_manifest_artifact(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    session = PrometheusSession(
+        url="http://127.0.0.1:19090",
+        owned_container_name="controlplane-tool-prom-bootstrap",
+    )
+    manager = _FakePrometheusManager(session=session)
+    preflight = _FakeSutPreflight()
+    adapter = _RecordingAdapter(repo_root=tmp_path, manager=manager, preflight=preflight)
+    run_dir = tmp_path / "run-bootstrap"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    request = LoadtestRequest(
+        name="perf-java",
+        profile=_profile(),
+        scenario=load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml")),
+        load_profile=resolve_load_profile("quick"),
+        metrics_gate=MetricsGate(required_metrics=["function_dispatch_total"]),
+    )
+
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_metric_names",
+        lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_range_series",
+        lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
+            {"timestamp": start.isoformat(), "value": 1.0},
+            {"timestamp": end.isoformat(), "value": 2.0},
+        ],
+    )
+
+    context = adapter.bootstrap_loadtest(_profile(), request, run_dir)
+    try:
+        manifest = json.loads(Path(context.scenario_manifest_path).read_text(encoding="utf-8"))
+    finally:
+        adapter.cleanup_loadtest(context)
+
+    assert preflight.ensure_calls == 2
+    assert context.target_functions == ["word-stats-java", "json-transform-java"]
+    assert manifest["functionKeys"] == ["word-stats-java", "json-transform-java"]
+    assert manifest["load"]["profile"] == "quick"
+
+
+def test_loadtest_bootstrap_ensures_all_requested_fixtures(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    session = PrometheusSession(
+        url="http://127.0.0.1:19090",
+        owned_container_name="controlplane-tool-prom-bootstrap-all",
+    )
+    manager = _FakePrometheusManager(session=session)
+    preflight = _FakeSutPreflight()
+    adapter = _RecordingAdapter(repo_root=tmp_path, manager=manager, preflight=preflight)
+    run_dir = tmp_path / "run-bootstrap-all"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    request = LoadtestRequest(
+        name="perf-java",
+        profile=_profile(),
+        scenario=load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml")),
+        load_profile=resolve_load_profile("quick"),
+        metrics_gate=MetricsGate(required_metrics=["function_dispatch_total"]),
+    )
+
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_metric_names",
+        lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.adapters.query_prometheus_range_series",
+        lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
+            {"timestamp": start.isoformat(), "value": 1.0},
+            {"timestamp": end.isoformat(), "value": 2.0},
+        ],
+    )
+
+    context = adapter.bootstrap_loadtest(_profile(), request, run_dir)
+    adapter.cleanup_loadtest(context)
+
+    assert preflight.ensure_calls == 2
 
 
 def test_metrics_step_uses_core_gate_for_legacy_required_list(

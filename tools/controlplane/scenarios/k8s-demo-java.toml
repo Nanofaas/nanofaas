@@ -1,0 +1,18 @@
+name = "k8s-demo-java"
+base_scenario = "k8s-vm"
+runtime = "java"
+function_preset = "demo-java"
+namespace = "nanofaas-e2e"
+local_registry = "localhost:5000"
+
+[invoke]
+mode = "smoke"
+payload_dir = "payloads"
+
+[payloads]
+word-stats-java = "word-stats-sample.json"
+json-transform-java = "json-transform-sample.json"
+
+[load]
+profile = "quick"
+targets = ["word-stats-java", "json-transform-java"]

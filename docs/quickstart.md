@@ -8,6 +8,7 @@
   - `./scripts/native-build.sh`
 - E2E test (requires Docker + SDKMAN JDK):
   - `./scripts/e2e.sh`
+  - Compatibility wrapper over `scripts/controlplane.sh e2e run docker`
 - If you use a Docker-compatible runtime (e.g., podman/colima), export:
   - `CONTAINER_HOST=unix:///path/to/socket`
   - `CONTAINER_TLS_VERIFY=0` (optional)
@@ -20,6 +21,7 @@
     - `./gradlew k8sE2e`
   - Direct script entrypoint:
     - `./scripts/e2e-k8s-vm.sh`
+    - Compatibility wrapper over `scripts/controlplane.sh e2e run k8s-vm`
   - Optional env for sizing/debug:
     - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
   - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
@@ -37,6 +39,12 @@
 
 - Canonical tool root:
   - `tools/controlplane/`
+- Canonical orchestration wrapper:
+  - `scripts/controlplane.sh --help`
+- VM/E2E examples:
+  - `scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run`
+  - `scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run`
+  - `scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run`
 - Use the unified non-interactive wrapper for control-plane Gradle actions:
   - `scripts/control-plane-build.sh jar --profile core --dry-run`
   - `scripts/control-plane-build.sh image --profile all --dry-run`

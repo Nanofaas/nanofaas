@@ -3,7 +3,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMON = REPO_ROOT / "scripts" / "lib" / "e2e-k3s-common.sh"
-ANSIBLE_DIR = REPO_ROOT / "scripts" / "ansible"
+ANSIBLE_DIR = REPO_ROOT / "ops" / "ansible"
 
 
 def test_ansible_layout_exists_for_vm_provisioning():
@@ -24,6 +24,7 @@ def test_common_script_exposes_ansible_bootstrap_and_inventory_helpers():
     assert "e2e_write_ansible_inventory()" in script
     assert "e2e_run_ansible_playbook()" in script
     assert "python3 -m pip install --user -r" in script
+    assert "ops/ansible" in script
 
 
 def test_common_script_routes_vm_provisioning_through_ansible_playbooks():

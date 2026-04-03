@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,6 +40,17 @@ class K8sE2eDeploymentSpecTest {
                 () -> assertNotNull(readiness, "function-runtime readinessProbe should be configured"),
                 () -> assertEquals("/actuator/health", readiness.getHttpGet().getPath()),
                 () -> assertEquals(Integer.valueOf(8080), readiness.getHttpGet().getPort().getIntVal())
+        );
+    }
+
+    @Test
+    void registrationTargets_fallsBackToLegacyEchoWhenManifestIsAbsent() {
+        var targets = K8sE2eTest.registrationTargets(Optional.empty());
+
+        assertAll(
+                () -> assertEquals(1, targets.size()),
+                () -> assertEquals("k8s-echo", targets.getFirst().name()),
+                () -> assertEquals("legacy-echo", targets.getFirst().family())
         );
     }
 

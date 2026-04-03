@@ -97,5 +97,38 @@
       <p>No metrics available in this run.</p>
       {% endif %}
     </section>
+
+    {% if summary.loadtest %}
+    <section>
+      <h2>Loadtest Targets</h2>
+      <p>Scenario: <strong>{{ summary.loadtest.scenario }}</strong></p>
+      <p>Profile: <strong>{{ summary.loadtest.load_profile }}</strong></p>
+      <p>Requested targets: {{ summary.loadtest.targets | join(", ") }}</p>
+      {% if summary.loadtest.target_results %}
+      <table>
+        <thead>
+          <tr>
+            <th>Target</th>
+            <th>Status</th>
+            <th>k6 Summary</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for target in summary.loadtest.target_results %}
+          <tr>
+            <td>{{ target.function_key }}</td>
+            <td class="status-{{ target.status }}">{{ target.status }}</td>
+            <td>{{ target.k6_summary_path }}</td>
+            <td>{{ target.detail }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>No per-target k6 artifacts were captured for this run.</p>
+      {% endif %}
+    </section>
+    {% endif %}
   </body>
 </html>

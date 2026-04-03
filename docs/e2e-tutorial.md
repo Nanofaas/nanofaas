@@ -37,6 +37,23 @@ metrics with Grafana. The entire process is automated with two scripts.
 That's it. Open http://localhost:3000 (admin/admin) to see the Grafana dashboard
 while the tests run.
 
+When you want to dry-run or narrow the E2E selection before running the heavier wrappers,
+use the controlplane tool directly:
+
+```bash
+scripts/controlplane.sh functions list
+scripts/controlplane.sh e2e run k3s-curl --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
+scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh loadtest list-profiles
+scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
+scripts/e2e-loadtest.sh --profile demo-java --dry-run
+```
+
+The split is intentional: `scripts/controlplane.sh loadtest run ...` is the generic first-class planner, while `scripts/e2e-loadtest.sh` stays as a compatibility wrapper over `experiments/e2e-loadtest.sh` for the legacy Helm/Grafana/parity flow.
+
+The reusable TOML scenario specs live under `tools/controlplane/scenarios/`.
+
 ---
 
 ## Step-by-Step Guide
@@ -133,6 +150,7 @@ provisioning idempotently, and performs a clean Helm install each time.
 
 ```bash
 ./scripts/e2e-loadtest.sh
+./scripts/e2e-loadtest.sh --profile demo-java --dry-run
 ```
 
 This script:
@@ -146,6 +164,8 @@ This script:
    - Ramp-up profile: 0 → 5 → 10 → 20 → 20 → 0 VUs over ~2 minutes
    - 10-second cooldown between tests
 5. **Generates a performance report** with per-function and per-runtime analysis
+
+`--profile demo-java` is compatibility sugar for the legacy script: it narrows the benchmark matrix to the Java demo workloads while keeping the same Helm/Grafana/parity backend. Registry-summary flows remain on `./scripts/e2e-loadtest-registry.sh --summary-only`.
 
 Go demo functions are deployed and smoke-tested by `./scripts/e2e-k3s-helm.sh`,
 but they are not yet included in the current k6 benchmark matrix because the

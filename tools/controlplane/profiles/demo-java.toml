@@ -1,0 +1,10 @@
+name = "demo-java"
+
+[control_plane]
+implementation = "java"
+build_mode = "native"
+
+[scenario]
+base_scenario = "k8s-vm"
+function_preset = "demo-java"
+namespace = "nanofaas-e2e"

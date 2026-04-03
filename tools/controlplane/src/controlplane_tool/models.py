@@ -6,9 +6,34 @@ from pydantic import BaseModel, Field
 
 ControlPlaneImplementation = Literal["rust", "java"]
 BuildMode = Literal["native", "jvm", "rust"]
-LoadProfile = Literal["quick", "stress"]
+LoadProfile = Literal["quick", "smoke", "stress"]
+MetricsGateMode = Literal["enforce", "warn", "off"]
 BuildAction = Literal["jar", "build", "run", "image", "native", "test", "inspect"]
 ProfileName = Literal["core", "k8s", "container-local", "all"]
+VmLifecycle = Literal["multipass", "external"]
+RuntimeKind = Literal["java", "rust"]
+FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "fixture"]
+ScenarioName = Literal[
+    "docker",
+    "buildpack",
+    "container-local",
+    "k3s-curl",
+    "k8s-vm",
+    "cli",
+    "cli-host",
+    "deploy-host",
+    "helm-stack",
+]
+
+VM_BACKED_SCENARIOS = frozenset(
+    {
+        "k3s-curl",
+        "k8s-vm",
+        "cli",
+        "cli-host",
+        "helm-stack",
+    }
+)
 
 
 class ControlPlaneConfig(BaseModel):
@@ -37,6 +62,22 @@ class ReportConfig(BaseModel):
     include_baseline: bool = False
 
 
+class ScenarioSelectionConfig(BaseModel):
+    base_scenario: ScenarioName | None = None
+    function_preset: str | None = None
+    functions: list[str] = Field(default_factory=list)
+    scenario_file: str | None = None
+    namespace: str | None = None
+    local_registry: str | None = None
+
+
+class LoadtestConfig(BaseModel):
+    default_load_profile: LoadProfile = "quick"
+    metrics_gate_mode: MetricsGateMode = "enforce"
+    scenario_file: str | None = None
+    function_preset: str | None = None
+
+
 class Profile(BaseModel):
     name: str
     control_plane: ControlPlaneConfig
@@ -44,3 +85,5 @@ class Profile(BaseModel):
     tests: TestsConfig = Field(default_factory=TestsConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     report: ReportConfig = Field(default_factory=ReportConfig)
+    scenario: ScenarioSelectionConfig = Field(default_factory=ScenarioSelectionConfig)
+    loadtest: LoadtestConfig = Field(default_factory=LoadtestConfig)

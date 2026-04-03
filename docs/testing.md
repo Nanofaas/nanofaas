@@ -77,6 +77,34 @@ nanofaas provides several E2E test suites. VM-based suites can either create a
 Multipass VM or target an existing local/remote VM over SSH, then deploy the
 platform and run tests against the live cluster.
 
+Canonical entrypoint for orchestration is `scripts/controlplane.sh`. Most legacy
+`scripts/e2e*.sh` files are compatibility wrappers over `scripts/controlplane.sh e2e ...`, but `scripts/e2e-loadtest.sh` intentionally preserves the older Helm/Grafana/parity backend via `experiments/e2e-loadtest.sh`.
+
+```bash
+scripts/controlplane.sh e2e list
+scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+scripts/controlplane.sh loadtest list-profiles
+scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
+scripts/e2e-loadtest.sh --profile demo-java --dry-run
+```
+
+Behavioral notes for the repaired milestone 3 contract:
+
+- VM provisioning targets the resolved VM host over SSH/Ansible; dry-run plans no longer fall back to `localhost` for VM-backed playbooks.
+- `scripts/controlplane.sh e2e all ...` reuses one shared VM session across VM-backed scenarios instead of looping over isolated per-scenario VM startups.
+- `--keep-vm` keeps Multipass VMs available for debugging after `run` or `all`; with `E2E_VM_LIFECYCLE=external`, teardown is always skipped.
+- `container-local`, `deploy-host`, `k3s-curl`, `cli`, `cli-host`, and `helm-stack` route through compatibility backends that execute concrete workflows instead of placeholder `echo` steps.
+
+Loadtest is now a first-class workflow:
+
+- `scripts/controlplane.sh loadtest run ...` is the canonical interface for k6 + Prometheus validation.
+- `pipeline-run` remains a compatibility alias over the same loadtest runner.
+- saved profiles can persist `loadtest.default_load_profile`, `loadtest.metrics_gate_mode`, and `loadtest.scenario_file` or `loadtest.function_preset`.
+- the dry-run output still renders one scenario manifest and one k6 plan, and the runtime path still bootstraps a tool-managed control-plane runtime when needed.
+- `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity workflow; `--profile demo-java` maps that path to the Java demo benchmark matrix, while `--summary-only` belongs to `scripts/e2e-loadtest-registry.sh`.
+
 ### VM lifecycle modes
 
 - `E2E_VM_LIFECYCLE=multipass` keeps the existing default: scripts create/start/delete the VM with Multipass.
@@ -108,10 +136,13 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
 ```
 
+Canonical Ansible asset root: `ops/ansible/`.
+
 ### CLI E2E (`scripts/e2e-cli.sh`)
 
 Tests the full `nanofaas` CLI against a real k3s cluster. This is the most
 comprehensive CLI validation — it exercises every command end-to-end.
+The script is a wrapper over `scripts/controlplane.sh e2e run cli`.
 
 **Prerequisites:**
 - `python3` on the host
@@ -197,6 +228,7 @@ fi
 
 Tests the control-plane REST API with `curl` against a k3s cluster.
 Covers the core HTTP API (register, invoke, enqueue, get execution status).
+The script is a wrapper over `scripts/controlplane.sh e2e run k3s-curl`.
 
 ```bash
 ./scripts/e2e-k3s-curl.sh
@@ -207,6 +239,7 @@ KEEP_VM=true ./scripts/e2e-k3s-curl.sh    # keep VM for debugging
 
 Runs control-plane + function-runtime in local Docker containers using
 Testcontainers and RestAssured. No Kubernetes needed.
+The script is a wrapper over `scripts/controlplane.sh e2e run docker`.
 
 ```bash
 ./scripts/e2e.sh
@@ -219,6 +252,7 @@ and Go SDK example containers against the same control-plane flows.
 
 Same as Docker E2E but builds images using Cloud Native Buildpacks instead
 of Dockerfiles.
+The script is a wrapper over `scripts/controlplane.sh e2e run buildpack`.
 
 ```bash
 ./scripts/e2e-buildpack.sh
@@ -227,6 +261,7 @@ of Dockerfiles.
 ### Kubernetes E2E (JUnit on k3s)
 
 JUnit-based E2E that runs in a dedicated VM with k3s.
+The compatibility script is a wrapper over `scripts/controlplane.sh e2e run k8s-vm`.
 
 ```bash
 # Full run (provision VM, install k3s, build/push images to local registry, run test)
@@ -241,6 +276,7 @@ JUnit-based E2E that runs in a dedicated VM with k3s.
 End-to-end scenario where `nanofaas-cli` runs on the host machine and executes
 `platform install/status/uninstall` (Helm local to host) against a k3s cluster
 running in a VM.
+The script is a wrapper over `scripts/controlplane.sh e2e run cli-host`.
 
 ```bash
 ./scripts/e2e-cli-host-platform.sh
@@ -253,6 +289,7 @@ Host-only validation of `nanofaas deploy` without Multipass/VM:
 - runs a fake control-plane HTTP endpoint on host
 - executes CLI `deploy` (docker buildx + push + register)
 - verifies pushed tag exists in registry and `POST /v1/functions` payload
+The script is a wrapper over `scripts/controlplane.sh e2e run deploy-host`.
 
 ```bash
 ./scripts/e2e-cli-deploy-host.sh
@@ -262,10 +299,13 @@ Host-only validation of `nanofaas deploy` without Multipass/VM:
 
 Full Helm-based deployment with k6 load testing and Grafana dashboard.
 See [docs/e2e-tutorial.md](e2e-tutorial.md) for a detailed walkthrough.
+`scripts/e2e-k3s-helm.sh` is a wrapper over `scripts/controlplane.sh e2e run helm-stack`.
+`scripts/e2e-loadtest.sh` is a compatibility wrapper over `experiments/e2e-loadtest.sh`, not over `scripts/controlplane.sh loadtest run`.
 
 ```bash
 ./scripts/e2e-k3s-helm.sh     # deploy nanofaas with Helm
 ./scripts/e2e-loadtest.sh     # run k6 load tests + Grafana
+./scripts/e2e-loadtest.sh --profile demo-java --dry-run
 ./scripts/e2e-loadtest.sh --help
 ./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
 ```
@@ -278,6 +318,7 @@ Key load-test parameters:
 - `K6_PAYLOAD_MODE=pool-sequential|pool-random|legacy-random` for payload model
 - `K6_PAYLOAD_POOL_SIZE=<n>` for pool size in pool modes
 - `./scripts/e2e-loadtest-registry.sh --summary-only` to regenerate Section 1..9 from existing `k6/results`
+- `./scripts/e2e-loadtest.sh --profile demo-java --dry-run` to inspect the legacy backend mapping for the Java-only benchmark slice
 - `PROM_CONTAINER_METRICS_ENABLED=true` to enable institutional container CPU/RAM metrics in bundled Prometheus
 - `PROM_CONTAINER_METRICS_MODE=kubelet|daemonset` (`kubelet` recommended on k3s)
 - `PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY=true|false` for kubelet TLS policy in dev/staging
@@ -297,16 +338,40 @@ uv run pytest scripts/tests -q
 
 ### Control-plane local tooling tests (Python)
 
-The local TUI/build orchestration tool (`controlplane-tool`, project path `tooling/controlplane_tui`) is validated with `pytest`.
+The local TUI/build orchestration tool (`controlplane-tool`, project path `tools/controlplane`) is validated with `pytest`.
 
 ```bash
 # Run all tooling tests
-uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests -v
+uv run --project tools/controlplane pytest tools/controlplane/tests -v
 
 # Focused tests
-uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/test_pipeline.py -v
-uv run --project tooling/controlplane_tui pytest tooling/controlplane_tui/tests/test_report.py -v
+uv run --project tools/controlplane pytest tools/controlplane/tests/test_pipeline.py -v
+uv run --project tools/controlplane pytest tools/controlplane/tests/test_report.py -v
+uv run --project tools/controlplane pytest tools/controlplane/tests/test_e2e_commands.py -v
 ```
+
+The E2E orchestration surface now exposes a typed function catalog plus reusable scenario specs:
+
+```bash
+scripts/controlplane.sh functions list
+scripts/controlplane.sh functions show-preset demo-java
+scripts/controlplane.sh functions show-preset demo-loadtest
+scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run helm-stack --dry-run
+scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
+scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
+scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
+```
+
+Scenario specs live under `tools/controlplane/scenarios/`.
+Saved profile defaults live under `tools/controlplane/profiles/`.
+Selection precedence is explicit CLI override first, then scenario file, then saved profile defaults.
+
+Additional selection semantics:
+
+- `helm-stack` built-in defaults resolve the `demo-loadtest` preset, so dry-run and live plans exclude unsupported Go functions.
+- explicit CLI selection on top of a scenario file or saved profile preserves inherited payloads, namespace, and `load.profile`, then narrows `load.targets` to the selected subset.
+- `k8s-vm` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
 
 For metric time-series collection during a tooling run, the tool now auto-manages Prometheus:
 - no interactive URL prompt is shown in the wizard,

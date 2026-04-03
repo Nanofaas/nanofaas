@@ -19,6 +19,7 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 - Java 21 (SDKMAN recommended)
 - Docker-compatible container runtime (Docker Desktop or equivalent)
 - For Kubernetes E2E: `python3`, OpenSSH client, internet access, and a Debian/Ubuntu-style target VM
+- Operational Ansible assets live under `ops/ansible/`
 - [Multipass](https://multipass.run) only if you want the scripts to create/manage the VM (`E2E_VM_LIFECYCLE=multipass`)
 
 ## Quickstart (local)
@@ -35,29 +36,60 @@ for a no-Kubernetes managed-deployment profile.
 ## Control-plane tooling
 
 Canonical tool root: `tools/controlplane/`.
+Canonical shell entrypoint: `scripts/controlplane.sh`.
 
-Use the wrapper below for the unified control-plane build/run/image/test/inspect UX:
+Use the canonical wrapper below for unified build, VM lifecycle, E2E, and TUI flows:
+
+```bash
+scripts/controlplane.sh build --profile core --dry-run
+scripts/controlplane.sh functions list
+scripts/controlplane.sh functions show-preset demo-loadtest
+scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run helm-stack --dry-run
+scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
+scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+scripts/controlplane.sh loadtest list-profiles
+scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
+scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run
+scripts/e2e-loadtest.sh --profile demo-java --dry-run
+scripts/controlplane.sh tui --profile-name dev
+```
+
+Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`.
+
+For VM-backed scenarios, provisioning is executed against the resolved VM host over SSH/Ansible rather than `localhost`. `scripts/controlplane.sh e2e all ...` plans one shared VM bootstrap block for VM-backed scenarios, reuses that session across scenarios, and tears the Multipass VM down once at the end unless `--keep-vm` is set. When `E2E_VM_LIFECYCLE=external`, the tool never attempts VM teardown.
+
+Compatibility wrappers remain available for narrower entrypoints:
 
 ```bash
 scripts/control-plane-build.sh build --profile core --dry-run
 scripts/control-plane-build.sh image --profile all --dry-run
 scripts/control-plane-build.sh test --profile k8s -- --tests '*CoreDefaultsTest'
 scripts/control-plane-build.sh inspect --profile container-local --dry-run
-```
-
-Use the compatibility wrapper below for the interactive/profile-driven pipeline runner and HTML report generation:
-
-```bash
-scripts/controlplane-tool.sh --help
 scripts/controlplane-tool.sh --profile-name dev
-scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
 ```
+
+The canonical operational asset root for VM provisioning is `ops/ansible/`.
 
 Artifacts are written under:
 
 - `tools/controlplane/profiles/<profile>.toml`
+- `tools/controlplane/scenarios/<scenario>.toml`
 - `tools/controlplane/runs/<timestamp>-<profile>/summary.json`
 - `tools/controlplane/runs/<timestamp>-<profile>/report.html`
+
+Function/scenario selection precedence for `scripts/controlplane.sh e2e run` is:
+
+1. explicit CLI override (`--function-preset` or `--functions`)
+2. `--scenario-file`
+3. `--saved-profile`
+
+When a CLI override is layered on top of a scenario file or saved profile, the tool preserves the inherited scenario metadata and shrinks payload/load selections to the chosen function subset. `helm-stack` defaults to the backend-safe `demo-loadtest` preset, and unsupported Go selections are rejected before the compatibility backend runs. For `k8s-vm`, the resolved selection is forwarded into the VM via `-Dnanofaas.e2e.scenarioManifest=...`, so the executed `K8sE2eTest` consumes the same manifest shown by dry-run output.
+
+The repository ships `tools/controlplane/profiles/demo-java.toml` as a ready-to-run example profile.
+`pipeline-run` remains as a compatibility alias over the first-class `loadtest run` workflow.
 
 ## Build images (buildpacks)
 
@@ -132,6 +164,8 @@ E2E (Kubernetes VM + k3s):
 ./gradlew k8sE2e
 # or:
 ./scripts/e2e-k8s-vm.sh
+# or directly through the canonical orchestration wrapper:
+./scripts/controlplane.sh e2e run k8s-vm
 ```
 
 VM-based E2E can also target an existing local or remote VM over SSH/SCP:
@@ -144,6 +178,8 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 Supported external-VM variables:
 `E2E_VM_LIFECYCLE=external`, `E2E_VM_HOST`, `E2E_VM_USER`, `E2E_VM_HOME`, `E2E_KUBECONFIG_PATH`, `E2E_REMOTE_PROJECT_DIR`, `E2E_PUBLIC_HOST`, `E2E_KUBECONFIG_SERVER`.
 SSH/SCP are always used for remote command execution and file transfer. VM provisioning is driven by Ansible over SSH for both `multipass` and `external` lifecycle modes. If `ansible-playbook` is not already installed on the host, the scripts bootstrap it idempotently in a local virtualenv and fall back to a user-site `pip` install when `python3 -m venv` is unavailable. k3s defaults to the latest official release at run time; set `K3S_VERSION` only when you need to pin a specific version. Multipass is used only for VM lifecycle when `E2E_VM_LIFECYCLE=multipass`.
+For wrapper-driven VM scenarios, `KEEP_VM=true` maps to the tool-level `--keep-vm` behavior: keep Multipass instances for debugging, but never delete external VMs.
+Most top-level `scripts/e2e*.sh` files remain compatibility wrappers over `scripts/controlplane.sh e2e ...`; `scripts/e2e-loadtest.sh` is the intentional exception because it preserves the legacy Helm/Grafana/parity workflow via `experiments/e2e-loadtest.sh`, while `scripts/e2e-loadtest-registry.sh` owns registry-summary flows such as `--summary-only`.
 
 E2E/module matrix (control-plane optional modules compile):
 ```bash

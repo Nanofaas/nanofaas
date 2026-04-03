@@ -1,21 +1,10 @@
 from pathlib import Path
 
-from pydantic import ValidationError
+import typer
 from typer.testing import CliRunner
 
 import controlplane_tool.main as main_mod
 from controlplane_tool.models import ControlPlaneConfig, Profile
-from controlplane_tool.pipeline import RunResult, StepResult
-
-
-class _FailedRunner:
-    def run(self, profile: Profile) -> RunResult:
-        return RunResult(
-            profile_name=profile.name,
-            run_dir=Path("tooling/runs/fake"),
-            final_status="failed",
-            steps=[StepResult(name="compile", status="failed", detail="boom", duration_ms=1)],
-        )
 
 
 def _valid_profile() -> Profile:
@@ -28,7 +17,13 @@ def _valid_profile() -> Profile:
 
 def test_run_returns_nonzero_when_pipeline_failed(monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "load_profile", lambda _name: _valid_profile())
-    monkeypatch.setattr(main_mod, "PipelineRunner", lambda: _FailedRunner())
+    monkeypatch.setattr(main_mod, "build_loadtest_request", lambda profile: {"name": profile.name})
+
+    def _fail_run(request, *, dry_run, runner=None):  # noqa: ANN001, ARG001
+        typer.echo("Run status: failed")
+        raise typer.Exit(code=1)
+
+    monkeypatch.setattr(main_mod, "run_loadtest_request", _fail_run)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -100,19 +95,6 @@ def test_run_command_supports_passthrough_gradle_args_in_dry_run() -> None:
 def test_tui_and_pipeline_run_delegate_to_same_pipeline_executor(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 
-    def _record_execute_pipeline(profile: Profile, runner, runs_root=None):  # noqa: ANN001
-        calls.append(type(runner).__name__)
-        run_dir = tmp_path / f"{len(calls)}-{profile.name}"
-        run_dir.mkdir(parents=True, exist_ok=True)
-        (run_dir / "summary.json").write_text("{}", encoding="utf-8")
-        (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
-        return RunResult(
-            profile_name=profile.name,
-            run_dir=run_dir,
-            final_status="passed",
-            steps=[StepResult(name="compile", status="passed", detail="ok", duration_ms=1)],
-        )
-
     monkeypatch.setattr(main_mod, "load_profile", lambda _name: _valid_profile())
     monkeypatch.setattr(
         main_mod,
@@ -122,7 +104,13 @@ def test_tui_and_pipeline_run_delegate_to_same_pipeline_executor(monkeypatch, tm
             tmp_path / f"{profile_name}.toml",
         ),
     )
-    monkeypatch.setattr(main_mod, "execute_pipeline", _record_execute_pipeline)
+    monkeypatch.setattr(main_mod, "build_loadtest_request", lambda profile: {"name": profile.name})
+
+    def _record_run_loadtest_request(request, *, dry_run, runner=None):  # noqa: ANN001, ARG001
+        calls.append(request["name"])
+        typer.echo("Run status: passed")
+
+    monkeypatch.setattr(main_mod, "run_loadtest_request", _record_run_loadtest_request)
 
     runner = CliRunner()
     pipeline_result = runner.invoke(
@@ -137,4 +125,4 @@ def test_tui_and_pipeline_run_delegate_to_same_pipeline_executor(monkeypatch, tm
     assert pipeline_result.exit_code == 0
     assert tui_result.exit_code == 0
     assert len(calls) == 2
-    assert calls == ["PipelineRunner", "PipelineRunner"]
+    assert calls == ["qa", "qa"]

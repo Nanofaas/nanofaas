@@ -5,6 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
+# Canonical control-plane orchestration wrapper
+./scripts/controlplane.sh --help
+./scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+./scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
+./scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+
 # Build all modules
 ./gradlew build
 
@@ -19,19 +25,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./scripts/control-plane-build.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
 
 # E2E tests (requires Docker)
-./scripts/e2e.sh                    # Local containers
-./scripts/e2e-buildpack.sh          # Buildpack images
+./scripts/e2e.sh                    # Compatibility wrapper -> controlplane e2e run docker
+./scripts/e2e-buildpack.sh          # Compatibility wrapper -> controlplane e2e run buildpack
 
 # CLI E2E (full CLI against k3s, 47 tests)
-./scripts/e2e-cli.sh                       # Full test with VM cleanup
+./scripts/e2e-cli.sh                       # Compatibility wrapper -> controlplane e2e run cli
 KEEP_VM=true ./scripts/e2e-cli.sh          # Keep VM for debugging
 
 # K3s E2E with Curl (self-contained Multipass VM)
-./scripts/e2e-k3s-curl.sh              # Full test with VM cleanup
+./scripts/e2e-k3s-curl.sh              # Compatibility wrapper -> controlplane e2e run k3s-curl
 KEEP_VM=true ./scripts/e2e-k3s-curl.sh # Keep VM for debugging
 
 # Kubernetes E2E (k3s in Multipass)
-./scripts/e2e-k8s-vm.sh
+./scripts/e2e-k8s-vm.sh               # Compatibility wrapper -> controlplane e2e run k8s-vm
 # or:
 ./gradlew k8sE2e
 
@@ -64,6 +70,8 @@ cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime p
 # Python tests for experiments
 cd experiments && python -m pytest tests/ -v
 ```
+
+Ansible assets for VM provisioning live under `ops/ansible/`.
 
 ## Architecture Overview
 

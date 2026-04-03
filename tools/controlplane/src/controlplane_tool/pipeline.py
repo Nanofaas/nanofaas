@@ -1,36 +1,77 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
 
 from controlplane_tool.adapters import ShellCommandAdapter
+from controlplane_tool.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.loadtest_runner import LoadtestRunner
 from controlplane_tool.models import Profile
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.report import render_report
-
-
-@dataclass(frozen=True)
-class StepResult:
-    name: str
-    status: str
-    detail: str
-    duration_ms: int
-
-
-@dataclass(frozen=True)
-class RunResult:
-    profile_name: str
-    run_dir: Path
-    final_status: str
-    steps: list[StepResult]
+from controlplane_tool.run_models import RunResult, StepResult
+from controlplane_tool.scenario_loader import load_scenario_file, resolve_scenario_spec
+from controlplane_tool.scenario_models import ScenarioSpec
 
 
 class PipelineRunner:
     def __init__(self, adapter: object | None = None) -> None:
         self.adapter = adapter or ShellCommandAdapter()
+
+    def _loadtest_request(self, profile: Profile) -> LoadtestRequest:
+        if profile.scenario.scenario_file:
+            scenario = load_scenario_file(Path(profile.scenario.scenario_file))
+        else:
+            scenario = resolve_scenario_spec(
+                ScenarioSpec(
+                    name=f"{profile.name}-loadtest",
+                    base_scenario=profile.scenario.base_scenario or "k8s-vm",
+                    runtime=profile.control_plane.implementation,
+                    function_preset=profile.scenario.function_preset or "metrics-smoke",
+                    functions=list(profile.scenario.functions),
+                    namespace=profile.scenario.namespace,
+                    local_registry=profile.scenario.local_registry,
+                )
+            )
+
+        return LoadtestRequest(
+            name=profile.name,
+            profile=profile,
+            scenario=scenario,
+            load_profile=resolve_load_profile(profile.tests.load_profile),
+            metrics_gate=MetricsGate(
+                mode=profile.loadtest.metrics_gate_mode,
+                required_metrics=list(profile.metrics.required),
+            ),
+        )
+
+    def _run_loadtest_flow(self, profile: Profile, run_dir: Path) -> StepResult:
+        if not hasattr(self.adapter, "bootstrap_loadtest") and hasattr(
+            self.adapter, "run_metrics_tests"
+        ):
+            return self._run_step(
+                "test_metrics_prometheus_k6",
+                self.adapter.run_metrics_tests,
+                profile,
+                run_dir,
+            )
+
+        start = time.time()
+        loadtest_result = LoadtestRunner(adapter=self.adapter).run(
+            self._loadtest_request(profile),
+            runs_root=run_dir.parent,
+        )
+        duration_ms = int((time.time() - start) * 1000)
+        return StepResult(
+            name="test_metrics_prometheus_k6",
+            status="passed" if loadtest_result.final_status == "passed" else "failed",
+            detail=f"loadtest runner: {loadtest_result.final_status} ({loadtest_result.run_dir})",
+            duration_ms=duration_ms,
+        )
 
     def run(self, profile: Profile, runs_root: Path | None = None) -> RunResult:
         root = runs_root or default_tool_paths().runs_dir
@@ -106,14 +147,7 @@ class PipelineRunner:
             )
 
         if profile.tests.enabled and profile.tests.metrics:
-            steps.append(
-                self._run_step(
-                    "test_metrics_prometheus_k6",
-                    self.adapter.run_metrics_tests,
-                    profile,
-                    run_dir,
-                )
-            )
+            steps.append(self._run_loadtest_flow(profile, run_dir))
         else:
             steps.append(
                 StepResult(

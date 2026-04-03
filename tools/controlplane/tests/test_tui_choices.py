@@ -31,8 +31,8 @@ class _Prompt:
 def test_tui_no_longer_prompts_for_prometheus_url(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
-    select_answers = iter(["java", "native", "stress"])
-    confirm_answers = iter([True, True, True, True])
+    select_answers = iter(["java", "native", "smoke"])
+    confirm_answers = iter([True, True, True, True, False])
     text_calls: list[str] = []
 
     monkeypatch.setattr(
@@ -61,6 +61,40 @@ def test_tui_no_longer_prompts_for_prometheus_url(monkeypatch) -> None:
     profile = build_profile_interactive(profile_name="dev")
 
     assert profile.tests.metrics is True
+    assert profile.loadtest.default_load_profile == "smoke"
     assert profile.metrics.prometheus_url is None
     assert profile.metrics.strict_required is False
     assert text_calls == []
+
+
+def test_tui_can_save_default_function_preset(monkeypatch) -> None:
+    import controlplane_tool.tui as tui
+
+    select_answers = iter(["java", "native", "quick", "preset", "k8s-vm", "demo-java"])
+    confirm_answers = iter([True, True, True, True, True])
+
+    monkeypatch.setattr(
+        tui.questionary,
+        "select",
+        lambda *args, **kwargs: _Prompt(next(select_answers)),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "checkbox",
+        lambda *args, **kwargs: _Prompt(["autoscaler"]),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt("word-stats-java,json-transform-java"),
+    )
+
+    profile = build_profile_interactive(profile_name="demo-java")
+
+    assert profile.scenario.function_preset == "demo-java"
+    assert profile.scenario.base_scenario == "k8s-vm"

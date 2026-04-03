@@ -279,7 +279,7 @@ def test_ansible_helper_paths_are_derived_from_repo_and_home():
     )
 
     ansible_root, ansible_venv, ansible_bin = out.split("|")
-    assert ansible_root.endswith("/scripts/ansible")
+    assert ansible_root.endswith("/ops/ansible")
     assert ansible_venv.startswith(str(Path.home()))
     assert ansible_bin.endswith("/bin/ansible-playbook")
 

@@ -2,9 +2,11 @@ from pathlib import Path
 
 from controlplane_tool.models import (
     ControlPlaneConfig,
+    LoadtestConfig,
     MetricsConfig,
     Profile,
     ReportConfig,
+    ScenarioSelectionConfig,
     TestsConfig,
 )
 from controlplane_tool.profiles import load_profile, save_profile
@@ -46,3 +48,40 @@ def test_profile_roundtrip_without_prometheus_url(tmp_path: Path) -> None:
     loaded = load_profile("dev-no-prom", root=tmp_path)
 
     assert loaded.metrics.prometheus_url is None
+
+
+def test_profile_roundtrip_with_e2e_selection(tmp_path: Path) -> None:
+    profile = Profile(
+        name="demo-java",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
+        scenario=ScenarioSelectionConfig(
+            base_scenario="k8s-vm",
+            function_preset="demo-java",
+            namespace="nanofaas-e2e",
+        ),
+    )
+
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("demo-java", root=tmp_path)
+
+    assert loaded.scenario.function_preset == "demo-java"
+    assert loaded.scenario.base_scenario == "k8s-vm"
+
+
+def test_profile_roundtrip_with_loadtest_defaults(tmp_path: Path) -> None:
+    profile = Profile(
+        name="perf-java",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
+        loadtest=LoadtestConfig(
+            default_load_profile="smoke",
+            metrics_gate_mode="warn",
+            scenario_file="tools/controlplane/scenarios/k8s-demo-java.toml",
+        ),
+    )
+
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("perf-java", root=tmp_path)
+
+    assert loaded.loadtest.default_load_profile == "smoke"
+    assert loaded.loadtest.metrics_gate_mode == "warn"
+    assert loaded.loadtest.scenario_file == "tools/controlplane/scenarios/k8s-demo-java.toml"

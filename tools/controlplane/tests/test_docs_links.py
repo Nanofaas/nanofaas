@@ -14,15 +14,34 @@ def test_docs_reference_controlplane_tool() -> None:
         encoding="utf-8"
     )
 
+    assert "scripts/controlplane.sh" in quickstart
     assert "scripts/control-plane-build.sh" in quickstart
     assert "scripts/controlplane-tool.sh" in quickstart
     assert "scripts/control-plane-build.sh" in control_plane
+    assert "scripts/controlplane.sh vm up" in control_plane
     assert "scripts/control-plane-build.sh" in modules
     assert "scripts/control-plane-build.sh" in root_readme
     assert "scripts/control-plane-build.sh image --profile all" in root_readme
+    assert "scripts/controlplane.sh functions list" in root_readme
+    assert "scripts/controlplane.sh vm up" in root_readme
     assert "scripts/control-plane-build.sh jar --profile container-local" in control_plane
     assert "scripts/control-plane-build.sh matrix" in testing
-    assert "scripts/control-plane-build.sh matrix" in tool_readme
+    assert "scripts/controlplane.sh e2e run k8s-vm" in testing
+    assert "scripts/controlplane.sh loadtest list-profiles" in testing
+    assert "scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run" in testing
+    assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
+    assert "--function-preset demo-java" in testing
+    assert "--scenario-file tools/controlplane/scenarios/k8s-demo-java.toml" in testing
+    assert "--saved-profile demo-java" in testing
+    assert "scripts/e2e-k8s-vm.sh" in testing
+    assert "wrapper" in testing.lower()
+    assert "scripts/controlplane.sh e2e all" in tool_readme
+    assert "scripts/controlplane.sh loadtest list-profiles" in tool_readme
+    assert "scripts/controlplane.sh loadtest show-profile quick" in tool_readme
+    assert "scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run" in tool_readme
+    assert "scripts/controlplane.sh vm up" in tool_readme
+    assert "scripts/controlplane.sh functions show-preset demo-java" in tool_readme
+    assert "demo-loadtest" in tool_readme
     assert "./gradlew :control-plane:bootJar -PcontrolPlaneModules=" not in modules
     assert "exit code" in quickstart.lower()
     assert "controlplane-tool" in testing
@@ -37,3 +56,8 @@ def test_docs_reference_controlplane_tool() -> None:
     assert "tool-managed control-plane runtime" in testing
     assert "strict_required = true" in tool_readme
     assert "deterministic fixture function" in testing
+    assert "ops/ansible" in tool_readme
+    assert "tools/controlplane/scenarios/" in tool_readme
+    assert "Selection precedence is" in tool_readme
+    assert "scenarioManifest" in testing
+    assert "pipeline-run remains a compatibility alias" in tool_readme
