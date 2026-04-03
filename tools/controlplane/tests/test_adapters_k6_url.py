@@ -137,6 +137,9 @@ def test_metrics_k6_uses_control_plane_base_url(tmp_path: Path, monkeypatch) -> 
     )
     adapter.run_metrics_tests(profile, run_dir)
 
+    gradle_command = next(command for command in adapter.commands if command and command[0].endswith("/gradlew"))
+    assert gradle_command[:2] == [str(tmp_path / "gradlew"), ":control-plane:test"]
+    assert "-PcontrolPlaneModules=none" in gradle_command
     k6_command = next(command for command in adapter.commands if command and command[0] == "k6")
     assert "NANOFAAS_URL=http://127.0.0.1:8080" in k6_command
     assert "NANOFAAS_FUNCTION=tool-metrics-echo" in k6_command

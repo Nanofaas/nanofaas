@@ -171,6 +171,8 @@ def test_metrics_step_bootstraps_prometheus_when_missing(tmp_path: Path, monkeyp
 
     assert ok is True
     assert "prometheus" in detail
+    assert adapter.commands[0][:2] == [str(tmp_path / "gradlew"), ":control-plane:test"]
+    assert "-PcontrolPlaneModules=none" in adapter.commands[0]
     observed = json.loads((run_dir / "metrics" / "observed-metrics.json").read_text(encoding="utf-8"))
     assert observed["source"] == "prometheus-api"
     assert observed["owned_container"] is True

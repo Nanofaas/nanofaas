@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import time
 
+from controlplane_tool.build_requests import BuildRequest
+from controlplane_tool.gradle_planner import build_gradle_command
 from controlplane_tool.metrics import (
     missing_required_metrics,
     query_prometheus_metric_names,
@@ -39,10 +41,27 @@ class ShellCommandAdapter:
     def __init__(self, repo_root: Path | None = None) -> None:
         self.repo_root = repo_root or Path.cwd()
 
-    def _modules_arg(self, profile: Profile) -> list[str]:
+    def _modules_selector(self, profile: Profile) -> str:
         if not profile.modules:
-            return ["-PcontrolPlaneModules=none"]
-        return [f"-PcontrolPlaneModules={','.join(profile.modules)}"]
+            return "none"
+        return ",".join(profile.modules)
+
+    def _build_gradle_command(
+        self,
+        action: str,
+        profile: Profile,
+        extra_gradle_args: list[str] | None = None,
+    ) -> list[str]:
+        request = BuildRequest(
+            action=action,
+            profile="core",
+            modules=self._modules_selector(profile),
+        )
+        return build_gradle_command(
+            repo_root=self.repo_root,
+            request=request,
+            extra_gradle_args=extra_gradle_args,
+        )
 
     def _run(self, command: list[str], run_dir: Path, log_name: str) -> AdapterResult:
         log_path = run_dir / log_name
@@ -166,12 +185,10 @@ class ShellCommandAdapter:
             )
             return (result.ok, result.detail)
 
-        gradlew = str(self.repo_root / "gradlew")
-        modules_arg = self._modules_arg(profile)
         if profile.control_plane.build_mode == "native":
-            command = [gradlew, ":control-plane:nativeCompile", *modules_arg]
+            command = self._build_gradle_command("native", profile)
         else:
-            command = [gradlew, ":control-plane:bootJar", *modules_arg]
+            command = self._build_gradle_command("build", profile)
         result = self._run(command, run_dir, "build.log")
         return (result.ok, result.detail)
 
@@ -195,18 +212,13 @@ class ShellCommandAdapter:
             return (result.ok, f"{result.detail}; image={tag}")
 
         if profile.control_plane.build_mode == "native":
-            command = [
-                str(self.repo_root / "gradlew"),
-                ":control-plane:bootBuildImage",
-                f"-PcontrolPlaneImage={tag}",
-                *self._modules_arg(profile),
-            ]
+            command = self._build_gradle_command(
+                "image",
+                profile,
+                extra_gradle_args=[f"-PcontrolPlaneImage={tag}"],
+            )
         else:
-            command = [
-                str(self.repo_root / "gradlew"),
-                ":control-plane:bootJar",
-                *self._modules_arg(profile),
-            ]
+            command = self._build_gradle_command("build", profile)
             first = self._run(command, run_dir, "build.log")
             if not first.ok:
                 return (False, first.detail)
@@ -223,31 +235,37 @@ class ShellCommandAdapter:
         return (result.ok, f"{result.detail}; image={tag}")
 
     def run_api_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:
-        command = [
-            str(self.repo_root / "gradlew"),
-            ":control-plane:test",
-            "--tests",
-            "*ControlPlaneApiTest",
-        ]
+        command = self._build_gradle_command(
+            "test",
+            profile,
+            extra_gradle_args=["--tests", "*ControlPlaneApiTest"],
+        )
         result = self._run(command, run_dir, "test.log")
         return (result.ok, result.detail)
 
     def run_mockk8s_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:
-        command = [str(self.repo_root / "gradlew"), ":control-plane:test"]
+        extra_gradle_args: list[str] = []
         for selector in default_mockk8s_test_selectors():
-            command.extend(["--tests", selector])
+            extra_gradle_args.extend(["--tests", selector])
+        command = self._build_gradle_command(
+            "test",
+            profile,
+            extra_gradle_args=extra_gradle_args,
+        )
         result = self._run(command, run_dir, "test.log")
         return (result.ok, result.detail)
 
     def run_metrics_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:
-        command = [
-            str(self.repo_root / "gradlew"),
-            ":control-plane:test",
-            "--tests",
-            "*PrometheusEndpointTest",
-            "--tests",
-            "*MetricsTest",
-        ]
+        command = self._build_gradle_command(
+            "test",
+            profile,
+            extra_gradle_args=[
+                "--tests",
+                "*PrometheusEndpointTest",
+                "--tests",
+                "*MetricsTest",
+            ],
+        )
         result = self._run(command, run_dir, "test.log")
         if not result.ok:
             return (False, result.detail)
@@ -278,7 +296,7 @@ class ShellCommandAdapter:
             except RuntimeError as exc:
                 return (False, f"control-plane bootstrap failed: {exc}")
 
-            scrape_target = control_plane_session.prometheus_scrape_target
+            scrape_target = getattr(control_plane_session, "prometheus_scrape_target", None)
             if scrape_target and scrape_target.strip():
                 prometheus_manager.scrape_target = scrape_target.strip()
             try:
