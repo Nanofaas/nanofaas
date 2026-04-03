@@ -25,6 +25,19 @@ The core provides no-op defaults for:
 
 ## Build-time selection
 
+For the common milestone 1 profiles, prefer the wrapper:
+
+```bash
+scripts/control-plane-build.sh build --profile core
+scripts/control-plane-build.sh build --profile k8s
+scripts/control-plane-build.sh build --profile container-local
+scripts/control-plane-build.sh build --profile all
+```
+
+Use `--modules <csv|none|all>` when you need to override the profile-derived selector.
+
+Raw Gradle module selection remains available for advanced workflows:
+
 Use one of these:
 
 - `-PcontrolPlaneModules=<csv>`

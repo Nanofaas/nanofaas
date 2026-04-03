@@ -2,6 +2,22 @@
 
 For module selection and module packaging details, see `docs/control-plane-modules.md`.
 
+## Unified Tooling
+
+The canonical control-plane tooling root is `tools/controlplane/`.
+
+Use the thin wrapper `scripts/control-plane-build.sh` for milestone 1 control-plane actions:
+
+```bash
+scripts/control-plane-build.sh build --profile core
+scripts/control-plane-build.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
+scripts/control-plane-build.sh image --profile k8s --extra-gradle-arg -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/control-plane-build.sh test --profile core -- --tests '*CoreDefaultsTest'
+scripts/control-plane-build.sh inspect --profile all
+```
+
+The raw `./gradlew ... -PcontrolPlaneModules=...` workflow is still supported for low-level/advanced scenarios.
+
 ## Architecture Summary
 
 - The control-plane is a minimal core plus optional modules from `control-plane-modules/`.

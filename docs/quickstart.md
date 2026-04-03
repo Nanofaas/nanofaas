@@ -35,6 +35,14 @@
 
 ## Run control-plane tooling wizard locally
 
+- Canonical tool root:
+  - `tools/controlplane/`
+- Use the unified non-interactive wrapper for control-plane Gradle actions:
+  - `scripts/control-plane-build.sh build --profile core --dry-run`
+  - `scripts/control-plane-build.sh image --profile all --dry-run`
+  - `scripts/control-plane-build.sh test --profile k8s --dry-run`
+  - `scripts/control-plane-build.sh inspect --profile container-local --dry-run`
+
 - Open the interactive wizard and save a reusable profile:
   - `scripts/controlplane-tool.sh --profile-name dev`
 - Re-run with an existing profile:
@@ -53,9 +61,9 @@
   - If no endpoint is reachable, the tool auto-pulls `prom/prometheus` (if needed) and starts a local Docker container.
   - Default metric gating is scenario-compatible; strict full-gate can be enabled in profile with `metrics.strict_required = true`.
 - Artifacts:
-  - `tooling/profiles/<profile>.toml`
-  - `tooling/runs/<timestamp>-<profile>/summary.json`
-  - `tooling/runs/<timestamp>-<profile>/report.html`
+  - `tools/controlplane/profiles/<profile>.toml`
+  - `tools/controlplane/runs/<timestamp>-<profile>/summary.json`
+  - `tools/controlplane/runs/<timestamp>-<profile>/report.html`
 
 ## Run function runtime locally
 

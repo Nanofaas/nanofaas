@@ -33,9 +33,20 @@ Use `-PcontrolPlaneModules=none` to run a core-only control plane.
 Use `-PcontrolPlaneModules=container-deployment-provider` plus `--args='--nanofaas.deployment.default-backend=container-local'`
 for a no-Kubernetes managed-deployment profile.
 
-## Control-plane local tooling (TUI)
+## Control-plane tooling
 
-Interactive local orchestrator for profile-based control-plane builds, optional test phases, and HTML report generation.
+Canonical tool root: `tools/controlplane/`.
+
+Use the wrapper below for the unified control-plane build/run/image/test/inspect UX:
+
+```bash
+scripts/control-plane-build.sh build --profile core --dry-run
+scripts/control-plane-build.sh image --profile all --dry-run
+scripts/control-plane-build.sh test --profile k8s -- --tests '*CoreDefaultsTest'
+scripts/control-plane-build.sh inspect --profile container-local --dry-run
+```
+
+Use the compatibility wrapper below for the interactive/profile-driven pipeline runner and HTML report generation:
 
 ```bash
 scripts/controlplane-tool.sh --help
@@ -45,9 +56,9 @@ scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
 
 Artifacts are written under:
 
-- `tooling/profiles/<profile>.toml`
-- `tooling/runs/<timestamp>-<profile>/summary.json`
-- `tooling/runs/<timestamp>-<profile>/report.html`
+- `tools/controlplane/profiles/<profile>.toml`
+- `tools/controlplane/runs/<timestamp>-<profile>/summary.json`
+- `tools/controlplane/runs/<timestamp>-<profile>/report.html`
 
 ## Build images (buildpacks)
 
@@ -57,7 +68,16 @@ Artifacts are written under:
 
 ## Custom control-plane builds
 
-You can build a custom control plane by selecting optional modules at compile time.
+Use the wrapper for the common profiles:
+
+```bash
+scripts/control-plane-build.sh build --profile core
+scripts/control-plane-build.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
+scripts/control-plane-build.sh image --profile k8s --extra-gradle-arg -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/control-plane-build.sh inspect --profile all
+```
+
+Raw Gradle remains available for low-level/advanced workflows.
 
 ```bash
 # include one module
