@@ -58,6 +58,20 @@
         append: true
       when: vm_user != "root"
 
+    - name: Download uv installer
+      ansible.builtin.get_url:
+        url: https://astral.sh/uv/install.sh
+        dest: /tmp/uv-install.sh
+        mode: "0755"
+
+    - name: Install uv
+      ansible.builtin.shell: /tmp/uv-install.sh
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/uv
+      environment:
+        UV_INSTALL_DIR: /usr/local/bin
+
     - name: Fail when Helm is requested on an unsupported architecture
       ansible.builtin.fail:
         msg: "Unsupported architecture for Helm: {{ ansible_architecture }}"

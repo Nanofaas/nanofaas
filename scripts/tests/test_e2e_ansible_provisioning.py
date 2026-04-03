@@ -54,3 +54,9 @@ def test_ansible_playbooks_preserve_idempotence_guards_for_helm_and_registry():
 
     assert '("v" ~ helm_version)' in base
     assert 'docker port {{ registry_container_name }} 5000/tcp' in registry
+
+
+def test_base_playbook_installs_uv_for_controlplane_wrapper() -> None:
+    base = (ANSIBLE_DIR / "playbooks" / "provision-base.yml").read_text(encoding="utf-8")
+    assert "Install uv" in base
+    assert "UV_INSTALL_DIR" in base or "command -v uv" in base
