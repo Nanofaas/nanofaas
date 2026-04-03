@@ -21,6 +21,9 @@ REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}
 FUNCTION_NAME=${FUNCTION_NAME:-echo-test}
 FUNCTION_IMAGE=${FUNCTION_IMAGE:-${RUNTIME_IMAGE}}
 FUNCTION_PAYLOAD_FILE=""
+FUNCTION_RUNTIME=""
+FUNCTION_FAMILY=""
+SELECTED_FUNCTIONS=()
 
 cleanup() {
     local exit_code=$?
@@ -32,12 +35,34 @@ trap cleanup EXIT
 
 resolve_function_selection() {
     if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
+        SELECTED_FUNCTIONS=("${FUNCTION_NAME}")
         return 0
     fi
 
-    FUNCTION_NAME=$(scenario_first_function_key)
+    mapfile -t SELECTED_FUNCTIONS < <(scenario_selected_functions)
+    if [[ ${#SELECTED_FUNCTIONS[@]} -eq 0 ]]; then
+        error "No selected functions found in scenario manifest"
+        exit 1
+    fi
+}
+
+select_active_function() {
+    local function_key=$1
+
+    FUNCTION_NAME=${function_key}
+    FUNCTION_PAYLOAD_FILE=""
+    FUNCTION_RUNTIME=""
+    FUNCTION_FAMILY=""
+
+    if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
+        FUNCTION_IMAGE=${RUNTIME_IMAGE}
+        return 0
+    fi
+
     FUNCTION_IMAGE=$(scenario_function_image "${FUNCTION_NAME}" || echo "${RUNTIME_IMAGE}")
     FUNCTION_PAYLOAD_FILE=$(scenario_function_payload_path "${FUNCTION_NAME}" || true)
+    FUNCTION_RUNTIME=$(scenario_function_runtime "${FUNCTION_NAME}" || true)
+    FUNCTION_FAMILY=$(scenario_function_family "${FUNCTION_NAME}" || true)
 }
 
 write_request_payload() {
@@ -93,8 +118,8 @@ build_primary_function_image() {
     fi
 
     local runtime family dockerfile
-    runtime=$(scenario_function_runtime "${FUNCTION_NAME}" || true)
-    family=$(scenario_function_family "${FUNCTION_NAME}" || true)
+    runtime=${FUNCTION_RUNTIME}
+    family=${FUNCTION_FAMILY}
 
     case "${runtime}" in
         java)
@@ -123,11 +148,16 @@ build_primary_function_image() {
     esac
 }
 
-push_images_to_registry() {
+push_core_images_to_registry() {
     e2e_push_images_to_registry "${CONTROL_IMAGE}" "${RUNTIME_IMAGE}"
-    if [[ -n "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
-        e2e_push_images_to_registry "${FUNCTION_IMAGE}"
+}
+
+push_selected_function_image() {
+    if [[ -z "${NANOFAAS_SCENARIO_PATH:-}" ]]; then
+        return 0
     fi
+
+    e2e_push_images_to_registry "${FUNCTION_IMAGE}"
 }
 
 create_namespace() {
@@ -270,6 +300,20 @@ print_summary() {
     log "  VM=${VM_NAME}"
     log "  Namespace=${NAMESPACE}"
     log "  Registry=${LOCAL_REGISTRY}"
+    log "  Functions=${SELECTED_FUNCTIONS[*]}"
+}
+
+run_selected_function_workflow() {
+    local function_key=$1
+
+    select_active_function "${function_key}"
+    log "Running scenario checks for function ${FUNCTION_NAME}"
+    build_primary_function_image
+    push_selected_function_image
+    register_function
+    invoke_function_with_curl
+    test_async_invocation
+    test_queue_depth
 }
 
 main() {
@@ -292,8 +336,7 @@ main() {
     sync_project
     build_jars
     build_images
-    build_primary_function_image
-    push_images_to_registry
+    push_core_images_to_registry
     create_namespace
     deploy_control_plane
     deploy_function_runtime
@@ -301,11 +344,10 @@ main() {
     wait_for_deployment "function-runtime" 120
     verify_pods_running
     verify_health_endpoints
-    register_function
-    invoke_function_with_curl
-    test_async_invocation
+    for function_key in "${SELECTED_FUNCTIONS[@]}"; do
+        run_selected_function_workflow "${function_key}"
+    done
     verify_prometheus_metrics
-    test_queue_depth
     print_summary
 }
 

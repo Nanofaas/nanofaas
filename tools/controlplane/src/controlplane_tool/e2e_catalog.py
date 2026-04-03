@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from controlplane_tool.models import RuntimeKind, ScenarioName
+
+SelectionMode = Literal["single", "multi"]
 
 
 @dataclass(frozen=True)
@@ -11,6 +14,7 @@ class ScenarioDefinition:
     description: str
     requires_vm: bool
     supported_runtimes: tuple[RuntimeKind, ...]
+    selection_mode: SelectionMode = "multi"
     uses_host_cli: bool = False
     grouped_phases: bool = False
 
@@ -30,9 +34,10 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
     ),
     ScenarioDefinition(
         name="container-local",
-        description="No-k8s managed DEPLOYMENT provider flow.",
+        description="No-k8s managed DEPLOYMENT provider flow for a single selected function.",
         requires_vm=False,
         supported_runtimes=("java",),
+        selection_mode="single",
     ),
     ScenarioDefinition(
         name="k3s-curl",

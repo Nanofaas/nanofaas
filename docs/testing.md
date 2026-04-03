@@ -100,6 +100,8 @@ Behavioral notes for the repaired milestone 3 contract:
 - `scripts/controlplane.sh e2e all ...` reuses one shared VM session across VM-backed scenarios instead of looping over isolated per-scenario VM startups.
 - `--keep-vm` keeps Multipass VMs available for debugging after `run` or `all`; with `E2E_VM_LIFECYCLE=external`, teardown is always skipped.
 - `container-local`, `deploy-host`, `k3s-curl`, `cli`, `cli-host`, and `helm-stack` route through compatibility backends that execute concrete workflows instead of placeholder `echo` steps.
+- `container-local` is intentionally a single-function managed-deployment verification path; multi-function presets are rejected in CLI validation before the backend runs.
+- `k3s-curl` consumes the full selected function set in manifest mode, so presets such as `demo-java` are exercised end-to-end instead of being reduced to the first function.
 
 Loadtest is now a first-class workflow:
 

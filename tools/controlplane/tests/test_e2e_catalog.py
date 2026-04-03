@@ -19,3 +19,13 @@ def test_catalog_lists_expected_suite_names() -> None:
 def test_k8s_vm_scenario_is_vm_backed() -> None:
     scenario = resolve_scenario("k8s-vm")
     assert scenario.requires_vm is True
+
+
+def test_container_local_selection_mode_is_single() -> None:
+    scenario = resolve_scenario("container-local")
+    assert scenario.selection_mode == "single"
+
+
+def test_k3s_curl_selection_mode_is_multi() -> None:
+    scenario = resolve_scenario("k3s-curl")
+    assert scenario.selection_mode == "multi"

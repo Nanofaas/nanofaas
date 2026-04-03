@@ -224,6 +224,16 @@ def _validate_scenario_function_selection(scenario: ResolvedScenario) -> None:
     )
 
 
+def _validate_scenario_selection_contract(
+    definition, scenario: ResolvedScenario
+) -> None:
+    if definition.selection_mode == "single" and len(scenario.function_keys) != 1:
+        raise ValueError(
+            f"scenario '{definition.name}' supports exactly one selected function, "
+            f"got {len(scenario.function_keys)}"
+        )
+
+
 def _resolve_run_request(
     *,
     scenario: str | None,
@@ -380,7 +390,9 @@ def _resolve_run_request(
         )
         scenario_source = "built-in default"
 
+    scenario_definition = resolve_scenario(resolved_scenario.base_scenario)
     _validate_scenario_function_selection(resolved_scenario)
+    _validate_scenario_selection_contract(scenario_definition, resolved_scenario)
 
     return _build_request(
         scenario=resolved_scenario.base_scenario,

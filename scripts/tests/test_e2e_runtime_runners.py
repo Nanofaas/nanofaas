@@ -142,3 +142,10 @@ def test_deploy_host_backend_iterates_all_selected_functions() -> None:
 
     assert "scenario_selected_functions" in script
     assert "scenario_require_single_function" not in script
+
+
+def test_k3s_curl_backend_iterates_all_selected_functions() -> None:
+    script = (SCRIPTS_DIR / "lib" / "e2e-k3s-curl-backend.sh").read_text(encoding="utf-8")
+
+    assert "scenario_selected_functions" in script
+    assert "for function_key in" in script or "for FUNCTION_NAME in" in script

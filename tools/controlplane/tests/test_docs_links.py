@@ -49,6 +49,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run host-platform --function-preset" not in testing
     assert "scripts/controlplane.sh cli-test run host-platform --scenario-file" not in testing
+    assert "multi-function presets are rejected in CLI validation" in testing
+    assert "presets such as `demo-java` are exercised end-to-end" in testing
     assert "scripts/controlplane.sh tui --profile-name dev --use-saved-profile" in testing
     assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
     assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in testing
@@ -57,6 +59,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert PIPELINE_ALIAS not in testing
 
     assert "scripts/controlplane.sh e2e all" in tool_readme
+    assert "scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test list" in tool_readme
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
@@ -65,6 +68,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh vm up" in tool_readme
     assert "scripts/controlplane.sh functions show-preset demo-java" in tool_readme
     assert "cli_test.default_scenario" in tool_readme
+    assert "single-function" in tool_readme
     assert BUILD_WRAPPER not in tool_readme
     assert TUI_WRAPPER not in tool_readme
     assert PIPELINE_ALIAS not in tool_readme

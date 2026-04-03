@@ -112,7 +112,9 @@ That lets the same saved profile drive `scripts/controlplane.sh cli-test run --s
 
 Scenario defaults are scenario-aware:
 
+- `container-local` is intentionally single-function; multi-function presets such as `demo-java` are rejected before the backend starts.
 - `helm-stack` defaults to `demo-loadtest`, which excludes Go functions because the Helm/loadtest compatibility backend does not exercise Go.
+- `k3s-curl` consumes the full resolved function selection in manifest mode instead of silently collapsing to the first entry.
 - unsupported selections such as `scripts/controlplane.sh e2e run helm-stack --functions word-stats-go --dry-run` fail in CLI validation before the backend starts.
 
 For `k8s-vm`, the resolved manifest is not only rendered in dry-run output. The real VM command now passes `-Dnanofaas.e2e.scenarioManifest=...` into `K8sE2eTest`, so the selected functions and payloads are consumed inside the VM execution path.
@@ -120,6 +122,7 @@ For `k8s-vm`, the resolved manifest is not only rendered in dry-run output. The 
 Examples:
 
 ```bash
+scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run
 scripts/controlplane.sh e2e run k3s-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run helm-stack --functions word-stats-java,json-transform-java --dry-run
