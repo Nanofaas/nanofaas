@@ -31,7 +31,10 @@ def test_run_returns_nonzero_when_pipeline_failed(monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "PipelineRunner", lambda: _FailedRunner())
 
     runner = CliRunner()
-    result = runner.invoke(main_mod.app, ["--profile-name", "qa", "--use-saved-profile"])
+    result = runner.invoke(
+        main_mod.app,
+        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+    )
 
     assert result.exit_code == 1
     assert "Run status: failed" in result.stdout
@@ -41,7 +44,10 @@ def test_run_missing_profile_is_user_friendly(monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "load_profile", lambda _name: (_ for _ in ()).throw(FileNotFoundError("missing")))
 
     runner = CliRunner()
-    result = runner.invoke(main_mod.app, ["--profile-name", "qa", "--use-saved-profile"])
+    result = runner.invoke(
+        main_mod.app,
+        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+    )
 
     assert result.exit_code == 2
     assert "Profile not found" in result.stderr
@@ -61,8 +67,31 @@ def test_run_invalid_profile_is_user_friendly(monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "load_profile", _raise_validation)
 
     runner = CliRunner()
-    result = runner.invoke(main_mod.app, ["--profile-name", "qa", "--use-saved-profile"])
+    result = runner.invoke(
+        main_mod.app,
+        ["pipeline-run", "--profile-name", "qa", "--use-saved-profile"],
+    )
 
     assert result.exit_code == 2
     assert "Invalid profile" in result.stderr
     assert "Traceback" not in result.stdout
+
+
+def test_run_command_supports_passthrough_gradle_args_in_dry_run() -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        main_mod.app,
+        [
+            "run",
+            "--profile",
+            "container-local",
+            "--dry-run",
+            "--",
+            "--args=--nanofaas.deployment.default-backend=container-local",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert ":control-plane:bootRun" in result.stdout
+    assert "container-deployment-provider" in result.stdout
+    assert "--args=--nanofaas.deployment.default-backend=container-local" in result.stdout

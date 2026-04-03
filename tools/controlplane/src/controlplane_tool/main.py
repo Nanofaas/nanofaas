@@ -3,6 +3,7 @@ from __future__ import annotations
 import typer
 from pydantic import ValidationError
 
+from controlplane_tool.cli_commands import install_cli_commands
 from controlplane_tool.pipeline import PipelineRunner
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.profiles import load_profile, save_profile
@@ -17,8 +18,8 @@ DEFAULT_PROFILES_DIR = DEFAULT_TOOL_PATHS.profiles_dir.relative_to(
 )
 
 
-@app.command("run")
-def run(
+@app.command("pipeline-run")
+def pipeline_run(
     profile_name: str = typer.Option("default", help="Profile name to save/use."),
     use_saved_profile: bool = typer.Option(
         False,
@@ -49,6 +50,21 @@ def run(
     typer.echo(f"Report: {result.run_dir / 'report.html'}")
     if result.final_status != "passed":
         raise typer.Exit(code=1)
+
+
+@app.command("tui")
+def tui(
+    profile_name: str = typer.Option("default", help="Profile name to save/use."),
+    use_saved_profile: bool = typer.Option(
+        False,
+        "--use-saved-profile",
+        help=f"Load profile from {DEFAULT_PROFILES_DIR}/<name>.toml instead of opening wizard.",
+    ),
+) -> None:
+    pipeline_run(profile_name=profile_name, use_saved_profile=use_saved_profile)
+
+
+install_cli_commands(app)
 
 
 def main() -> None:
