@@ -57,36 +57,17 @@ class RecordingAdapter(ShellCommandAdapter):
         super().__init__(repo_root=repo_root)
         self.commands: list[list[str]] = []
 
-    def _run(self, command: list[str], run_dir: Path, log_name: str) -> AdapterResult:  # noqa: ARG002
-        self.commands.append(command)
-        return AdapterResult(ok=True, detail="ok")
-
-    def _create_prometheus_manager(self, profile: Profile) -> FakePrometheusManager:  # noqa: ARG002
-        return FakePrometheusManager()
-
-    def _create_sut_preflight_for_base_url(
-        self,
-        profile: Profile,  # noqa: ARG002
-        base_url: str,  # noqa: ARG002
-    ) -> FakeSutPreflight:
-        return FakeSutPreflight()
-
-    def _create_sut_preflight_for_target(
-        self,
-        profile: Profile,  # noqa: ARG002
-        base_url: str,  # noqa: ARG002
-        fixture_name: str,
-    ) -> FakeSutPreflight:
-        return FakeSutPreflight(function_name=fixture_name)
-
-    def _create_mockk8s_manager(self, profile: Profile) -> FakeMockK8sManager:  # noqa: ARG002
-        return FakeMockK8sManager()
-
-    def _create_control_plane_manager(
-        self,
-        profile: Profile,  # noqa: ARG002
-    ) -> FakeControlPlaneManager:
-        return FakeControlPlaneManager()
+        recording_self = self
+        self._gradle._run = lambda cmd, run_dir, log_name: (  # type: ignore[method-assign]
+            recording_self.commands.append(cmd) or AdapterResult(ok=True, detail="ok")
+        )
+        self._k6._run = lambda cmd, run_dir, log_name: (  # type: ignore[method-assign]
+            recording_self.commands.append(cmd) or AdapterResult(ok=True, detail="ok")
+        )
+        self._bootstrap._create_prometheus_manager = lambda p: FakePrometheusManager()  # type: ignore[method-assign]
+        self._bootstrap._create_mockk8s_manager = lambda p: FakeMockK8sManager()  # type: ignore[method-assign]
+        self._bootstrap._create_control_plane_manager = lambda p: FakeControlPlaneManager()  # type: ignore[method-assign]
+        self._bootstrap._create_sut_preflight = lambda url, name: FakeSutPreflight(function_name=name)  # type: ignore[method-assign]
 
 
 def _prepare_fake_repo(root: Path) -> None:
@@ -135,7 +116,7 @@ def test_metrics_k6_uses_control_plane_base_url(tmp_path: Path, monkeypatch) -> 
 
     adapter = RecordingAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.adapters.query_prometheus_metric_names",
+        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {  # noqa: ARG005
             "function_dispatch_total",
             "function_latency_ms",
@@ -143,7 +124,7 @@ def test_metrics_k6_uses_control_plane_base_url(tmp_path: Path, monkeypatch) -> 
         },
     )
     monkeypatch.setattr(
-        "controlplane_tool.adapters.query_prometheus_range_series",
+        "controlplane_tool.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -184,11 +165,11 @@ def test_loadtest_k6_uses_resolved_scenario_manifest_and_target(
 
     adapter = RecordingAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.adapters.query_prometheus_metric_names",
+        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.adapters.query_prometheus_range_series",
+        "controlplane_tool.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -235,11 +216,11 @@ def test_loadtest_k6_runs_all_requested_targets_in_order(
 
     adapter = RecordingAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.adapters.query_prometheus_metric_names",
+        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.adapters.query_prometheus_range_series",
+        "controlplane_tool.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},

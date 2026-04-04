@@ -14,15 +14,15 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from controlplane_tool.k3s_runtime import (
-    HelmStackRunner,
-    K3sCurlRunner,
-    _function_family,
-    _function_image,
-    _function_payload,
-    _function_runtime,
-    _selected_functions,
+from controlplane_tool.k3s_curl_runner import K3sCurlRunner
+from controlplane_tool.helm_stack_runner import HelmStackRunner
+from controlplane_tool.scenario_helpers import (
+    function_family as _function_family,
+    function_image as _function_image,
+    function_runtime as _function_runtime,
+    selected_functions as _selected_functions,
 )
+from controlplane_tool.scenario_helpers import function_payload as _function_payload
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -294,4 +294,4 @@ def test_helm_stack_runner_run_invokes_autoscaling_script(tmp_path, monkeypatch)
         runner.run()
 
     called_cmds = [" ".join(c) for c in calls]
-    assert any("e2e-autoscaling.sh" in cmd for cmd in called_cmds)
+    assert any("autoscaling.py" in cmd for cmd in called_cmds)

@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.cli_runtime import (
-    CliHostPlatformRunner,
-    CliVmRunner,
-    _function_image,
-    _selected_functions,
+from controlplane_tool.cli_vm_runner import CliVmRunner
+from controlplane_tool.cli_host_runner import CliHostPlatformRunner
+from controlplane_tool.scenario_helpers import (
+    function_image as _function_image,
+    selected_functions as _selected_functions,
 )
 from controlplane_tool.vm_models import VmRequest
 
