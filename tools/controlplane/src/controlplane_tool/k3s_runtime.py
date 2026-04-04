@@ -16,33 +16,21 @@ Invoked via:
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from controlplane_tool.registry_runtime import LocalRegistry
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.vm_models import VmRequest, vm_request_from_env
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
-
-
-def _vm_request_from_env() -> VmRequest:
-    """Reconstruct VmRequest from environment variables set by E2eRunner._vm_env()."""
-    return VmRequest(
-        lifecycle=os.getenv("E2E_VM_LIFECYCLE", "multipass"),
-        name=os.getenv("VM_NAME"),
-        host=os.getenv("E2E_VM_HOST"),
-        user=os.getenv("E2E_VM_USER", "ubuntu"),
-        home=os.getenv("E2E_VM_HOME"),
-        cpus=int(os.getenv("CPUS", "4")),
-        memory=os.getenv("MEMORY", "8G"),
-        disk=os.getenv("DISK", "30G"),
-    )
 
 
 def _resolve_scenario(scenario_file: Path | None) -> "ResolvedScenario | None":
@@ -112,12 +100,13 @@ class K3sCurlRunner:
         runtime: str = "java",
     ) -> None:
         self.repo_root = Path(repo_root)
-        self.vm_request = vm_request or _vm_request_from_env()
+        self.vm_request = vm_request or vm_request_from_env()
         self.namespace = namespace
         self.registry = LocalRegistry(local_registry)
         self.runtime = runtime
         self._shell = SubprocessShell()
         self._vm = VmOrchestrator(self.repo_root, shell=self._shell)
+        self._cached_service_ip: str | None = None
 
     def _vm_exec(self, command: str) -> str:
         result = self._vm.remote_exec(self.vm_request, command=command)
@@ -221,14 +210,20 @@ class K3sCurlRunner:
             f"kubectl rollout status deployment/{name} -n {self.namespace} --timeout={timeout}s"
         )
 
+    def _control_plane_service_ip(self) -> str:
+        if self._cached_service_ip is None:
+            ip = self._vm_exec(
+                f"kubectl get svc -n {self.namespace} control-plane "
+                f"-o jsonpath='{{.spec.clusterIP}}'"
+            )
+            if not ip:
+                raise RuntimeError("Failed to resolve control-plane ClusterIP")
+            self._cached_service_ip = ip
+        return self._cached_service_ip
+
     def _verify_health(self) -> None:
         print("[k3s-curl] Verifying control-plane health")
-        service_ip = self._vm_exec(
-            f"kubectl get svc -n {self.namespace} control-plane "
-            f"-o jsonpath='{{.spec.clusterIP}}'"
-        )
-        if not service_ip:
-            raise RuntimeError("Failed to resolve control-plane ClusterIP")
+        service_ip = self._control_plane_service_ip()
         self._vm_exec(
             f"curl -sf http://{service_ip}:8081/actuator/health | grep -q '\"status\":\"UP\"'"
         )
@@ -267,14 +262,8 @@ class K3sCurlRunner:
             raise RuntimeError(f"Unsupported function runtime: {rt!r}")
 
     def _kubectl_curl(self, method: str, path: str, body_json: str | None = None) -> str:
-        service_ip = self._vm_exec(
-            f"kubectl get svc -n {self.namespace} control-plane "
-            f"-o jsonpath='{{.spec.clusterIP}}'"
-        )
-        url = f"http://{service_ip}:8080{path}"
+        url = f"http://{self._control_plane_service_ip()}:8080{path}"
         if body_json:
-            import base64
-
             b64 = base64.b64encode(body_json.encode()).decode()
             return self._vm_exec(
                 f"echo '{b64}' | base64 -d | "
@@ -319,16 +308,13 @@ class K3sCurlRunner:
             response = self._kubectl_curl("GET", f"/v1/executions/{exec_id}")
             if '"status":"success"' in response or '"status": "success"' in response:
                 return
+            time.sleep(1)
         raise RuntimeError(f"Async execution did not complete: executionId={exec_id}")
 
     def _verify_prometheus_metrics(self) -> None:
         print("[k3s-curl] Verifying Prometheus metrics")
-        service_ip = self._vm_exec(
-            f"kubectl get svc -n {self.namespace} control-plane "
-            f"-o jsonpath='{{.spec.clusterIP}}'"
-        )
         metrics = self._vm_exec(
-            f"curl -sf http://{service_ip}:8081/actuator/prometheus"
+            f"curl -sf http://{self._control_plane_service_ip()}:8081/actuator/prometheus"
         )
         for metric in (
             "function_enqueue_total",
@@ -383,7 +369,6 @@ class HelmStackRunner:
     """Run the Helm stack compatibility workflow against a VM-backed k3s cluster.
 
     Mirrors the logic of the deleted e2e-helm-stack-backend.sh.
-    Delegates to experiments/ scripts; M12 will replace those with native Python.
     """
 
     def __init__(
@@ -397,7 +382,7 @@ class HelmStackRunner:
         noninteractive: bool = True,
     ) -> None:
         self.repo_root = Path(repo_root)
-        self.vm_request = vm_request or _vm_request_from_env()
+        self.vm_request = vm_request or vm_request_from_env()
         self.namespace = namespace
         self.registry = LocalRegistry(local_registry)
         self.runtime = runtime
@@ -434,9 +419,18 @@ class HelmStackRunner:
             )
 
         env = self._build_env()
-        print("[helm-stack] Running experiments/e2e-loadtest-registry.sh")
+        print("[helm-stack] Running loadtest via Python runner")
         subprocess.run(
-            ["bash", str(self.repo_root / "experiments" / "e2e-loadtest-registry.sh")],
+            [
+                "uv",
+                "run",
+                "--project",
+                str(self.repo_root / "tools" / "controlplane"),
+                "--locked",
+                "controlplane-tool",
+                "loadtest",
+                "run",
+            ],
             check=True,
             env=env,
         )

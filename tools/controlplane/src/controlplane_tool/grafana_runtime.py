@@ -16,6 +16,7 @@ Usage:
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -55,7 +56,7 @@ class GrafanaRuntime:
         subprocess.run(
             ["docker", "compose", "-f", str(self._compose_file), "up", "-d"],
             check=True,
-            env={"PROM_URL": self.prom_url, **_host_env()},
+            env={"PROM_URL": self.prom_url, **os.environ},
         )
 
     def stop(self) -> None:
@@ -69,7 +70,3 @@ class GrafanaRuntime:
         )
 
 
-def _host_env() -> dict[str, str]:
-    import os
-
-    return dict(os.environ)

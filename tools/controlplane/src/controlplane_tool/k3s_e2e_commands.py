@@ -17,7 +17,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
 
 k3s_e2e_app = typer.Typer(
     help="Run VM/K3s-backed E2E scenarios using the Python-native runtime (M11+).",
@@ -41,9 +41,7 @@ def run_k3s_curl(
     """Run the k3s curl compatibility workflow inside a VM-backed environment (Python-native)."""
     from controlplane_tool.k3s_runtime import K3sCurlRunner
 
-    resolved_scenario_file = scenario_file or (
-        Path(s) if (s := os.getenv("NANOFAAS_SCENARIO_PATH", "").strip()) else None
-    )
+    resolved_scenario_file = scenario_path_from_env(scenario_file)
     resolved_runtime = os.getenv("CONTROL_PLANE_RUNTIME", runtime)
 
     repo_root = default_tool_paths().workspace_root

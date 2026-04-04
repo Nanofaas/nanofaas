@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.vm_models import VmRequest, vm_request_from_env
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
@@ -52,20 +52,6 @@ def _function_image(fn_key: str, resolved: "ResolvedScenario | None", default: s
     return default
 
 
-def _vm_request_from_env() -> VmRequest:
-    """Reconstruct VmRequest from environment variables set by E2eRunner._vm_env()."""
-    return VmRequest(
-        lifecycle=os.getenv("E2E_VM_LIFECYCLE", "multipass"),
-        name=os.getenv("VM_NAME"),
-        host=os.getenv("E2E_VM_HOST"),
-        user=os.getenv("E2E_VM_USER", "ubuntu"),
-        home=os.getenv("E2E_VM_HOME"),
-        cpus=int(os.getenv("CPUS", "4")),
-        memory=os.getenv("MEMORY", "8G"),
-        disk=os.getenv("DISK", "30G"),
-    )
-
-
 class CliVmRunner:
     """Run the CLI E2E workflow inside a VM-backed environment.
 
@@ -83,7 +69,7 @@ class CliVmRunner:
         skip_cli_build: bool = False,
     ) -> None:
         self.repo_root = Path(repo_root)
-        self.vm_request = vm_request or _vm_request_from_env()
+        self.vm_request = vm_request or vm_request_from_env()
         self.namespace = namespace
         self.local_registry = local_registry
         self.runtime = runtime
@@ -253,7 +239,7 @@ class CliHostPlatformRunner:
         skip_cli_build: bool = False,
     ) -> None:
         self.repo_root = Path(repo_root)
-        self.vm_request = vm_request or _vm_request_from_env()
+        self.vm_request = vm_request or vm_request_from_env()
         self.namespace = namespace
         self.release = release
         self.local_registry = local_registry

@@ -40,6 +40,16 @@ def default_tool_paths() -> ToolPaths:
     return ToolPaths.repo_root(discover_repo_root())
 
 
+def scenario_path_from_env(cli_path: Path | None = None) -> Path | None:
+    """Resolve scenario path: CLI argument takes precedence over NANOFAAS_SCENARIO_PATH env var."""
+    if cli_path is not None:
+        return cli_path
+    import os
+
+    s = os.getenv("NANOFAAS_SCENARIO_PATH", "").strip()
+    return Path(s) if s else None
+
+
 def resolve_workspace_path(path: Path) -> Path:
     if path.is_absolute():
         return path.resolve()

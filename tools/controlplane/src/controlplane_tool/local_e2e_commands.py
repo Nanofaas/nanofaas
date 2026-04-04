@@ -18,7 +18,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
 
 local_e2e_app = typer.Typer(
     help="Run local E2E scenarios using the Python-native runtime (M9+).",
@@ -46,10 +46,7 @@ def run_container_local(
     """Run the container-local managed DEPLOYMENT E2E flow (Python-native)."""
     from controlplane_tool.local_e2e_runner import ContainerLocalE2eRunner
 
-    # Allow overriding scenario path via env (matches legacy NANOFAAS_SCENARIO_PATH convention)
-    resolved_scenario_file = scenario_file or (
-        Path(s) if (s := os.getenv("NANOFAAS_SCENARIO_PATH", "").strip()) else None
-    )
+    resolved_scenario_file = scenario_path_from_env(scenario_file)
 
     repo_root = default_tool_paths().workspace_root
     runner = ContainerLocalE2eRunner(
@@ -82,9 +79,7 @@ def run_deploy_host(
     """Run the deploy-host E2E flow (Python-native)."""
     from controlplane_tool.local_e2e_runner import DeployHostE2eRunner
 
-    resolved_scenario_file = scenario_file or (
-        Path(s) if (s := os.getenv("NANOFAAS_SCENARIO_PATH", "").strip()) else None
-    )
+    resolved_scenario_file = scenario_path_from_env(scenario_file)
     if os.getenv("NANOFAAS_CLI_SKIP_INSTALL_DIST", "").lower() == "true":
         skip_cli_build = True
 

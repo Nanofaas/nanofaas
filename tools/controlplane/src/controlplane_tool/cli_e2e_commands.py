@@ -17,7 +17,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
 
 cli_e2e_app = typer.Typer(
     help="Run CLI E2E scenarios using the Python-native runtime (M10+).",
@@ -44,9 +44,7 @@ def run_vm(
     """Run the CLI workflow inside a VM-backed k3s environment (Python-native)."""
     from controlplane_tool.cli_runtime import CliVmRunner
 
-    resolved_scenario_file = scenario_file or (
-        Path(s) if (s := os.getenv("NANOFAAS_SCENARIO_PATH", "").strip()) else None
-    )
+    resolved_scenario_file = scenario_path_from_env(scenario_file)
     if os.getenv("NANOFAAS_CLI_SKIP_INSTALL_DIST", "").lower() == "true":
         skip_cli_build = True
 
