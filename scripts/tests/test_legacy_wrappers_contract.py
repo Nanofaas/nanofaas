@@ -4,6 +4,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"
 
+# Internal shell backends: these are migration targets that must be deleted by M13.
+# Each entry is tracked here so their removal is tested progressively as M9–M11 land.
+INTERNAL_BACKENDS_PENDING_MIGRATION = (
+    "lib/e2e-container-local-backend.sh",      # M9: replace with local_e2e_runner.py
+    "lib/e2e-deploy-host-backend.sh",          # M9: replace with local_e2e_runner.py
+    "lib/scenario-manifest.sh",               # M9: replace with ResolvedScenario
+    "lib/e2e-cli-backend.sh",                  # M10: replace with cli_runtime.py
+    "lib/e2e-cli-host-backend.sh",             # M10: replace with cli_runtime.py
+    "lib/e2e-k3s-curl-backend.sh",             # M11: replace with k3s_runtime.py
+    "lib/e2e-helm-stack-backend.sh",           # M11: replace with k3s_runtime.py
+    "lib/e2e-k3s-common.sh",                   # M11: absorb into Python adapters
+)
+
 SHIM_TARGETS = {
     "control-plane-build.sh": 'exec "$(dirname "$0")/controlplane.sh" "$@"',
     "controlplane-tool.sh": 'exec "$(dirname "$0")/controlplane.sh" tui "$@"',
@@ -35,3 +48,17 @@ def test_loadtest_wrapper_remains_explicit_legacy_backend() -> None:
     assert "Compatibility wrapper" in script
     assert "scripts/controlplane.sh loadtest run" in script
     assert "experiments/e2e-loadtest.sh" in script
+
+
+def test_internal_backends_exist_pending_migration() -> None:
+    """Verifies each internal backend is still present and awaiting Python migration.
+
+    This test acts as a migration registry.  Remove each entry here AFTER the
+    corresponding milestone (M9–M11) deletes the file and the Python path is green.
+    """
+    for backend in INTERNAL_BACKENDS_PENDING_MIGRATION:
+        path = SCRIPTS_DIR / backend
+        assert path.exists(), (
+            f"Backend {backend!r} was expected to exist as a pending-migration target "
+            f"but was already deleted.  Remove it from INTERNAL_BACKENDS_PENDING_MIGRATION."
+        )

@@ -47,6 +47,15 @@ def test_primary_docs_and_workflows_use_canonical_controlplane_surface() -> None
             assert token not in text, f"{path} still references {token}"
 
 
+def test_python_runtime_primitives_are_available() -> None:
+    """Fails until runtime_primitives.py and control_plane_api.py are created (M8)."""
+    from controlplane_tool.runtime_primitives import CommandRunner
+    from controlplane_tool.control_plane_api import ControlPlaneApi
+
+    assert CommandRunner is not None
+    assert ControlPlaneApi is not None
+
+
 def test_compatibility_notes_are_centralized_when_legacy_wrappers_are_mentioned() -> None:
     testing = (ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
     cli_doc = (ROOT / "docs" / "nanofaas-cli.md").read_text(encoding="utf-8")

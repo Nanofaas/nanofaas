@@ -301,3 +301,35 @@ def test_ansible_inventory_writer_uses_external_vm_identity_and_ssh_key():
     assert "ansible_host: vm.example.test" in out
     assert "ansible_user: dev" in out
     assert "ansible_ssh_private_key_file: /tmp/test-id" in out
+
+
+# ---------------------------------------------------------------------------
+# Python-runtime contract (M8+): verify that the Python substrate that will
+# progressively replace the shell contracts above is importable and coherent.
+# These tests fail until the relevant modules are created (M8).
+# ---------------------------------------------------------------------------
+
+def test_python_runtime_primitives_module_is_importable() -> None:
+    """Fails until runtime_primitives.py is created (M8)."""
+    import importlib
+    import sys
+
+    tool_src = REPO_ROOT / "tools" / "controlplane" / "src"
+    if str(tool_src) not in sys.path:
+        sys.path.insert(0, str(tool_src))
+
+    mod = importlib.import_module("controlplane_tool.runtime_primitives")
+    assert hasattr(mod, "CommandRunner")
+
+
+def test_python_control_plane_api_module_is_importable() -> None:
+    """Fails until control_plane_api.py is created (M8)."""
+    import importlib
+    import sys
+
+    tool_src = REPO_ROOT / "tools" / "controlplane" / "src"
+    if str(tool_src) not in sys.path:
+        sys.path.insert(0, str(tool_src))
+
+    mod = importlib.import_module("controlplane_tool.control_plane_api")
+    assert hasattr(mod, "ControlPlaneApi")
