@@ -76,12 +76,19 @@ def _function_family(fn_key: str, resolved: "ResolvedScenario | None") -> str | 
 
 def _function_payload(fn_key: str, resolved: "ResolvedScenario | None") -> str:
     """Return a JSON request payload string for invocation."""
+    default = json.dumps({"input": {"message": "hello-k3s-test"}})
     if resolved is None:
-        return json.dumps({"input": {"message": "hello-k3s-test"}})
+        return default
+    # Check per-function payload_path first, then scenario-level payloads override map
     for fn in resolved.functions:
-        if fn.key == fn_key and fn.payload:
-            return json.dumps({"input": fn.payload})
-    return json.dumps({"input": {"message": "hello-k3s-test"}})
+        if fn.key == fn_key and fn.payload_path and fn.payload_path.exists():
+            content = json.loads(fn.payload_path.read_text(encoding="utf-8"))
+            return json.dumps({"input": content})
+    payload_path = resolved.payloads.get(fn_key)
+    if payload_path and payload_path.exists():
+        content = json.loads(payload_path.read_text(encoding="utf-8"))
+        return json.dumps({"input": content})
+    return default
 
 
 class K3sCurlRunner:
