@@ -7,6 +7,8 @@ Mirrors the logic of the deleted e2e-container-local-backend.sh (M9).
 """
 from __future__ import annotations
 
+from controlplane_tool.console import console
+
 import os
 import subprocess
 import tempfile
@@ -92,7 +94,7 @@ class ContainerLocalE2eRunner:
         return fn.key, fn.image, fn.runtime, fn.family, fn.payload_path
 
     def _build_artifacts(self) -> None:
-        print("[e2e-container-local] Building control-plane and function-runtime artifacts")
+        console.print("[e2e-container-local] Building control-plane and function-runtime artifacts")
         self._run(
             [
                 "./scripts/controlplane.sh",
@@ -113,7 +115,7 @@ class ContainerLocalE2eRunner:
         runtime_kind: str | None,
         family: str | None,
     ) -> None:
-        print(f"[e2e-container-local] Building function image {image}")
+        console.print(f"[e2e-container-local] Building function image {image}")
         adapter = self.runtime_adapter or "docker"
         if runtime_kind is None:
             self._run([adapter, "build", "-t", image, "function-runtime"])
@@ -199,7 +201,7 @@ class ContainerLocalE2eRunner:
 
         control_plane_jar = self.repo_root / "control-plane" / "build" / "libs" / "app.jar"
 
-        print("[e2e-container-local] Starting control-plane with container-local provider")
+        console.print("[e2e-container-local] Starting control-plane with container-local provider")
         log_file = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
         cp_proc = subprocess.Popen(
             [
@@ -220,7 +222,7 @@ class ContainerLocalE2eRunner:
         log_file.close()
 
         try:
-            print("[e2e-container-local] Waiting for control-plane readiness")
+            console.print("[e2e-container-local] Waiting for control-plane readiness")
             if not wait_for_http_ok(self._api.health_url, max_attempts=90):
                 raise RuntimeError("Control-plane did not become healthy")
 
@@ -288,7 +290,7 @@ class ContainerLocalE2eRunner:
                 )
                 assert read_json_field(invoke_resp, "status") == "success"
 
-                print("[e2e-container-local] Scaling managed function to 2 replicas")
+                console.print("[e2e-container-local] Scaling managed function to 2 replicas")
                 scale_resp = tmp / "scale.json"
                 subprocess.run(
                     [
@@ -326,7 +328,7 @@ class ContainerLocalE2eRunner:
                 )
                 assert read_json_field(invoke_resp2, "status") == "success"
 
-                print("[e2e-container-local] Deleting managed function and verifying cleanup")
+                console.print("[e2e-container-local] Deleting managed function and verifying cleanup")
                 subprocess.run(
                     [
                         "curl",
@@ -347,6 +349,6 @@ class ContainerLocalE2eRunner:
                         f"Expected 404 after function delete, got {status}"
                     )
 
-            print("[e2e-container-local] PASS: container-local managed DEPLOYMENT flow")
+            console.print("[e2e-container-local] PASS: container-local managed DEPLOYMENT flow")
         finally:
             self._cleanup(cp_proc, function_slug, function_name)

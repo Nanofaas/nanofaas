@@ -7,6 +7,8 @@ Mirrors the logic of the deleted e2e-k3s-curl-backend.sh (M11).
 """
 from __future__ import annotations
 
+from controlplane_tool.console import console
+
 import base64
 import json
 import os
@@ -75,7 +77,7 @@ class K3sCurlRunner:
         return self.registry.function_runtime_image()
 
     def _build_jars(self) -> None:
-        print(f"[k3s-curl] Building jars (runtime={self.runtime})")
+        console.print(f"[k3s-curl] Building jars (runtime={self.runtime})")
         if self.runtime == "rust":
             self._vm_exec(
                 f"cd {self._remote_dir} && ./gradlew :function-runtime:bootJar --no-daemon -q"
@@ -90,7 +92,7 @@ class K3sCurlRunner:
             )
 
     def _build_images(self) -> None:
-        print("[k3s-curl] Building and pushing core images")
+        console.print("[k3s-curl] Building and pushing core images")
         if self.runtime == "rust":
             self._vm_exec(
                 f"cd {self._remote_dir} && "
@@ -113,7 +115,7 @@ class K3sCurlRunner:
         self._vm_exec(f"sudo docker push {self._runtime_image}")
 
     def _deploy_platform(self) -> None:
-        print("[k3s-curl] Deploying platform to k3s")
+        console.print("[k3s-curl] Deploying platform to k3s")
         self._vm_exec(
             f"kubectl create namespace {self.namespace} --dry-run=client -o yaml | kubectl apply -f -"
         )
@@ -170,7 +172,7 @@ class K3sCurlRunner:
         return self._cached_service_ip
 
     def _verify_health(self) -> None:
-        print("[k3s-curl] Verifying control-plane health")
+        console.print("[k3s-curl] Verifying control-plane health")
         service_ip = self._control_plane_service_ip()
         self._vm_exec(
             f"curl -sf http://{service_ip}:8081/actuator/health | grep -q '\"status\":\"UP\"'"
@@ -265,7 +267,7 @@ class K3sCurlRunner:
             raise RuntimeError(f"Async execution did not complete: executionId={exec_id}") from exc
 
     def _verify_prometheus_metrics(self) -> None:
-        print("[k3s-curl] Verifying Prometheus metrics")
+        console.print("[k3s-curl] Verifying Prometheus metrics")
         metrics = self._vm_exec(
             f"curl -sf http://{self._control_plane_service_ip()}:8081/actuator/prometheus"
         )
@@ -284,7 +286,7 @@ class K3sCurlRunner:
         resolved: "ResolvedScenario | None",
     ) -> None:
         fn_image = _function_image(fn_key, resolved, self._runtime_image)
-        print(f"[k3s-curl] Running function workflow for '{fn_key}'")
+        console.print(f"[k3s-curl] Running function workflow for '{fn_key}'")
         self._build_function_image(fn_key, fn_image, resolved)
         if resolved is not None:
             self._vm_exec(f"sudo docker push {fn_image}")
@@ -315,4 +317,4 @@ class K3sCurlRunner:
             self._run_function_workflow(fn_key, resolved)
 
         self._verify_prometheus_metrics()
-        print("[k3s-curl] k3s curl E2E workflow PASSED")
+        console.print("[k3s-curl] k3s curl E2E workflow PASSED")
