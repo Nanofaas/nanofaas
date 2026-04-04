@@ -59,3 +59,33 @@ def test_internal_backends_exist_pending_migration() -> None:
             f"Backend {backend!r} was expected to exist as a pending-migration target "
             f"but was already deleted.  Remove it from INTERNAL_BACKENDS_PENDING_MIGRATION."
         )
+
+
+def test_scripts_lib_directory_is_empty_after_full_migration() -> None:
+    """M13: All internal shell backends have been deleted — scripts/lib/ should be empty."""
+    lib_dir = SCRIPTS_DIR / "lib"
+    if not lib_dir.exists():
+        return  # already fully cleaned
+    remaining = [f for f in lib_dir.iterdir() if f.name != "__pycache__"]
+    assert remaining == [], (
+        f"scripts/lib/ still has files after full migration: "
+        + ", ".join(str(f.name) for f in remaining)
+    )
+
+
+def test_python_cli_exposes_all_expected_command_groups() -> None:
+    """M13: All scenario command groups must be registered in the controlplane-tool CLI."""
+    import sys
+    from pathlib import Path as _Path
+
+    tool_src = _Path(__file__).resolve().parents[2] / "tools" / "controlplane" / "src"
+    if str(tool_src) not in sys.path:
+        sys.path.insert(0, str(tool_src))
+
+    from controlplane_tool.main import app  # noqa: PLC0415
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e", "k3s-e2e"):
+        assert group in result.stdout, f"Expected command group {group!r} not found in CLI help"
