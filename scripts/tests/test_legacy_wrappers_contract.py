@@ -38,11 +38,13 @@ def test_legacy_wrappers_are_documented_as_compatibility_only() -> None:
         assert len(script.strip().splitlines()) <= 7, name
 
 
-def test_loadtest_wrapper_remains_explicit_legacy_backend() -> None:
+def test_loadtest_wrapper_routes_to_python_loadtest_run() -> None:
+    # M12: e2e-loadtest.sh now routes to controlplane.sh loadtest run (not experiments script)
     script = (SCRIPTS_DIR / "e2e-loadtest.sh").read_text(encoding="utf-8")
     assert "Compatibility wrapper" in script
-    assert "scripts/controlplane.sh loadtest run" in script
-    assert "experiments/e2e-loadtest.sh" in script
+    assert "controlplane.sh" in script
+    assert "loadtest run" in script
+    assert "experiments/e2e-loadtest.sh" not in script
 
 
 def test_internal_backends_exist_pending_migration() -> None:

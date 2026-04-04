@@ -74,17 +74,9 @@ def test_vm_provisioning_contract_uses_python_ansible_adapter() -> None:
     assert hasattr(adapter, "configure_registry")
 
 
-def test_experiment_scripts_resolve_host_endpoints_through_shared_helpers() -> None:
-    loadtest = (REPO_ROOT / "experiments" / "e2e-loadtest.sh").read_text(encoding="utf-8")
-    assert "e2e_resolve_nanofaas_url 30080" in loadtest
-    assert "e2e_resolve_nanofaas_url 30090" in loadtest
-
-    loadtest_registry = (REPO_ROOT / "experiments" / "e2e-loadtest-registry.sh").read_text(encoding="utf-8")
-    assert 'REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}' in loadtest_registry
-    assert 'REMOTE_HELM_DIR="${REMOTE_DIR}/helm/nanofaas"' in loadtest_registry
-    assert 'e2e_sync_project_to_vm "${PROJECT_ROOT}" "${VM_NAME}" "${REMOTE_DIR}"' in loadtest_registry
-    assert "e2e_resolve_nanofaas_url 30090" in loadtest_registry
-
+# M12: e2e-loadtest.sh and e2e-loadtest-registry.sh deleted; Python adapters own the workflow.
+# e2e-cold-start-metrics.sh is kept (not in M12 scope).
+def test_cold_start_experiment_script_resolves_shared_helpers() -> None:
     cold_start = (REPO_ROOT / "experiments" / "e2e-cold-start-metrics.sh").read_text(encoding="utf-8")
     assert 'REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}' in cold_start
     assert 'e2e_build_control_plane_artifacts "${REMOTE_DIR}"' in cold_start

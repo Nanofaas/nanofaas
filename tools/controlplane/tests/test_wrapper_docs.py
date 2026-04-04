@@ -26,11 +26,13 @@ def test_profile_fixture_exists_for_saved_profile_flow() -> None:
     assert 'default_scenario = "vm"' in profile
 
 
-def test_loadtest_wrapper_routes_to_legacy_backend() -> None:
+def test_loadtest_wrapper_routes_to_python_runner() -> None:
+    # M12: wrapper routes to controlplane.sh loadtest run (not experiments script)
     script = Path("scripts/e2e-loadtest.sh").read_text(encoding="utf-8")
     assert "Compatibility wrapper" in script
-    assert "experiments/e2e-loadtest.sh" in script
-    assert "scripts/controlplane.sh loadtest run" in script
+    assert "experiments/e2e-loadtest.sh" not in script
+    assert "controlplane.sh" in script
+    assert "loadtest run" in script
 
 
 def test_gitignore_includes_controlplane_runs_dir() -> None:
