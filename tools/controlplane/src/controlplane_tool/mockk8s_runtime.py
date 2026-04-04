@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-import socket
 import subprocess
 import sys
-import time
-from urllib.error import URLError
-from urllib.request import urlopen
+import httpx
+from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
+
+from controlplane_tool.tool_settings import ToolSettings
 
 
 @dataclass
@@ -92,7 +92,7 @@ class MockK8sRuntimeManager:
         candidates: list[str] = []
         if self.preferred_url and self.preferred_url.strip():
             candidates.append(self.preferred_url.strip())
-        env_url = os.getenv("NANOFAAS_TOOL_MOCKK8S_URL", "").strip()
+        env_url = ToolSettings().nanofaas_tool_mockk8s_url.strip()
         if env_url:
             candidates.append(env_url)
 
@@ -108,35 +108,26 @@ class MockK8sRuntimeManager:
     def _is_ready(self, base_url: str) -> bool:
         health_url = f"{base_url.rstrip('/')}/healthz"
         try:
-            with urlopen(health_url, timeout=1.5) as response:
-                return int(getattr(response, "status", 0)) == 200
-        except (OSError, URLError):
+            return httpx.get(health_url, timeout=1.5).status_code == 200
+        except (httpx.RequestError, httpx.HTTPStatusError):
             return False
 
     def _wait_ready(self, base_url: str) -> bool:
-        start = time.time()
-        while time.time() - start < self.startup_timeout_seconds:
-            if self._is_ready(base_url):
-                return True
-            time.sleep(0.25)
-        return False
+        try:
+            for attempt in Retrying(
+                stop=stop_after_delay(self.startup_timeout_seconds),
+                wait=wait_fixed(0.25),
+            ):
+                with attempt:
+                    if not self._is_ready(base_url):
+                        raise RuntimeError("not ready")
+        except RetryError:
+            return False
+        return True
 
     def _pick_local_port(self) -> int:
-        preferred = 18080
-        if self._is_port_free(preferred):
-            return preferred
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind(("127.0.0.1", 0))
-            return int(sock.getsockname()[1])
-
-    def _is_port_free(self, port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("127.0.0.1", port))
-            except OSError:
-                return False
-        return True
+        from controlplane_tool.net_utils import pick_local_port
+        return pick_local_port(preferred=18080)
 
     def _tail(self, log_path: Path, max_chars: int = 320) -> str:
         if not log_path.exists():

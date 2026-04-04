@@ -132,11 +132,10 @@ class DeployHostE2eRunner:
         return fn_yaml
 
     def _verify_registry_push(self, image_repo: str, tag: str) -> None:
-        import urllib.request
+        import httpx
 
         url = f"http://127.0.0.1:{self.registry_port}/v2/{image_repo}/tags/list"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            tags_json = resp.read().decode("utf-8")
+        tags_json = httpx.get(url, timeout=10).text
         if f'"{tag}"' not in tags_json:
             raise RuntimeError(f"Tag {tag} not found in registry response: {tags_json}")
 

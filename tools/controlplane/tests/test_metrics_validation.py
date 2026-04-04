@@ -1,4 +1,6 @@
+import httpx
 import pytest
+from unittest.mock import MagicMock
 
 from controlplane_tool.metrics import (
     build_required_metric_series,
@@ -51,38 +53,20 @@ def test_build_required_metric_series_from_prometheus_payloads() -> None:
 
 
 def test_query_prometheus_metric_names_wraps_transport_errors(monkeypatch) -> None:
-    def _raise(*args, **kwargs):  # noqa: ARG001
-        raise OSError("connection refused")
-
-    monkeypatch.setattr("controlplane_tool.metrics.urlopen", _raise)
+    monkeypatch.setattr(
+        "controlplane_tool.metrics.httpx.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(httpx.RequestError("connection refused")),
+    )
 
     with pytest.raises(RuntimeError, match="prometheus api request failed"):
         query_prometheus_metric_names("http://127.0.0.1:9090")
 
 
 def test_query_prometheus_metric_names_accepts_list_data_payload(monkeypatch) -> None:
-    class _Response:
-        status = 200
-
-        def __init__(self, payload: str) -> None:
-            self._payload = payload
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
-            return None
-
-        def read(self) -> bytes:
-            return self._payload.encode("utf-8")
-
-    payload = (
-        '{"status":"success","data":["function_dispatch_total","function_latency_ms","up"]}'
-    )
-    monkeypatch.setattr(
-        "controlplane_tool.metrics.urlopen",
-        lambda url, timeout=4.0: _Response(payload),  # noqa: ARG005
-    )
+    payload = {"status": "success", "data": ["function_dispatch_total", "function_latency_ms", "up"]}
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.json.return_value = payload
+    monkeypatch.setattr("controlplane_tool.metrics.httpx.get", lambda *a, **kw: mock_response)
 
     names = query_prometheus_metric_names("http://127.0.0.1:9090")
 

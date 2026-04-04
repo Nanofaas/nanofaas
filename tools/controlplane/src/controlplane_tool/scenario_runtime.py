@@ -10,37 +10,41 @@ scripts/lib/e2e-deploy-host-backend.sh.
 from __future__ import annotations
 
 import shutil
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+import httpx
+from tenacity import RetryError, Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
 def wait_for_http_ok(url: str, max_attempts: int = 60, interval_seconds: float = 1.0) -> bool:
     """Poll *url* until it returns HTTP 2xx.  Returns True on success, False on timeout."""
-    for _ in range(max_attempts):
-        try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
-                if resp.status < 300:
-                    return True
-        except Exception:
-            pass
-        time.sleep(interval_seconds)
-    return False
+    try:
+        for attempt in Retrying(
+            stop=stop_after_attempt(max_attempts),
+            wait=wait_fixed(interval_seconds),
+        ):
+            with attempt:
+                response = httpx.get(url, timeout=5)
+                if response.status_code >= 300:
+                    raise RuntimeError(f"non-2xx: {response.status_code}")
+    except RetryError:
+        return False
+    return True
 
 
 def wait_for_http_any_status(url: str, max_attempts: int = 30, interval_seconds: float = 1.0) -> bool:
     """Poll *url* until any response is received (any HTTP status code)."""
-    for _ in range(max_attempts):
-        try:
-            urllib.request.urlopen(url, timeout=5)
-            return True
-        except urllib.error.HTTPError:
-            return True
-        except Exception:
-            pass
-        time.sleep(interval_seconds)
-    return False
+    try:
+        for attempt in Retrying(
+            stop=stop_after_attempt(max_attempts),
+            wait=wait_fixed(interval_seconds),
+            retry=retry_if_exception_type(httpx.RequestError),
+        ):
+            with attempt:
+                httpx.get(url, timeout=5)
+    except RetryError:
+        return False
+    return True
 
 
 def select_container_runtime(preferred: str | None = None) -> str | None:

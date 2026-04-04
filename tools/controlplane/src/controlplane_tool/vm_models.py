@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
-
 from pydantic import BaseModel, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from controlplane_tool.models import VmLifecycle
 
@@ -24,15 +23,29 @@ class VmRequest(BaseModel):
         return self
 
 
+class _VmEnvSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_ignore_empty=True)
+
+    e2e_vm_lifecycle: VmLifecycle = "multipass"
+    vm_name: str | None = None
+    e2e_vm_host: str | None = None
+    e2e_vm_user: str = "ubuntu"
+    e2e_vm_home: str | None = None
+    cpus: int = 4
+    memory: str = "8G"
+    disk: str = "30G"
+
+
 def vm_request_from_env() -> "VmRequest":
     """Reconstruct VmRequest from environment variables set by E2eRunner._vm_env()."""
+    s = _VmEnvSettings()
     return VmRequest(
-        lifecycle=os.getenv("E2E_VM_LIFECYCLE", "multipass"),
-        name=os.getenv("VM_NAME"),
-        host=os.getenv("E2E_VM_HOST"),
-        user=os.getenv("E2E_VM_USER", "ubuntu"),
-        home=os.getenv("E2E_VM_HOME"),
-        cpus=int(os.getenv("CPUS", "4")),
-        memory=os.getenv("MEMORY", "8G"),
-        disk=os.getenv("DISK", "30G"),
+        lifecycle=s.e2e_vm_lifecycle,
+        name=s.vm_name,
+        host=s.e2e_vm_host,
+        user=s.e2e_vm_user,
+        home=s.e2e_vm_home,
+        cpus=s.cpus,
+        memory=s.memory,
+        disk=s.disk,
     )

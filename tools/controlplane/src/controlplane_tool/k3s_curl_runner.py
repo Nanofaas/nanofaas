@@ -10,8 +10,9 @@ from __future__ import annotations
 import base64
 import json
 import os
-import time
 from pathlib import Path
+
+from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 from typing import TYPE_CHECKING
 
 from controlplane_tool.registry_runtime import LocalRegistry
@@ -251,12 +252,17 @@ class K3sCurlRunner:
         return str(exec_id)
 
     def _poll_execution(self, exec_id: str, max_polls: int = 20) -> None:
-        for _ in range(max_polls):
-            response = self._kubectl_curl("GET", f"/v1/executions/{exec_id}")
-            if '"status":"success"' in response or '"status": "success"' in response:
-                return
-            time.sleep(1)
-        raise RuntimeError(f"Async execution did not complete: executionId={exec_id}")
+        try:
+            for attempt in Retrying(
+                stop=stop_after_attempt(max_polls),
+                wait=wait_fixed(1),
+            ):
+                with attempt:
+                    response = self._kubectl_curl("GET", f"/v1/executions/{exec_id}")
+                    if '"status":"success"' not in response and '"status": "success"' not in response:
+                        raise RuntimeError("execution not complete yet")
+        except RetryError as exc:
+            raise RuntimeError(f"Async execution did not complete: executionId={exec_id}") from exc
 
     def _verify_prometheus_metrics(self) -> None:
         print("[k3s-curl] Verifying Prometheus metrics")

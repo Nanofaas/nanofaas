@@ -3,14 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-import socket
 import subprocess
-import time
-from urllib.error import URLError
-from urllib.request import urlopen
+import httpx
+from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
 
 from controlplane_tool.build_requests import BuildRequest
 from controlplane_tool.gradle_planner import build_gradle_command
+from controlplane_tool.tool_settings import ToolSettings
 
 
 @dataclass
@@ -37,10 +36,11 @@ class ControlPlaneRuntimeManager:
         self.startup_timeout_seconds = startup_timeout_seconds
 
     def ensure_available(self, run_dir: Path, kubernetes_api_url: str) -> ControlPlaneSession:
-        external_url = os.getenv("NANOFAAS_TOOL_CONTROL_PLANE_URL", "").strip()
+        settings = ToolSettings()
+        external_url = settings.nanofaas_tool_control_plane_url.strip()
         if external_url:
             base_url = external_url.rstrip("/")
-            management_url = os.getenv("NANOFAAS_TOOL_CONTROL_PLANE_MANAGEMENT_URL", "").strip()
+            management_url = settings.nanofaas_tool_control_plane_management_url.strip()
             if not management_url:
                 management_url = "http://127.0.0.1:8081"
             if not self._wait_ready(base_url):
@@ -136,42 +136,30 @@ class ControlPlaneRuntimeManager:
         base_url: str,
         process: subprocess.Popen[str] | None = None,
     ) -> bool:
-        start = time.time()
-        while time.time() - start < self.startup_timeout_seconds:
-            if process is not None and process.poll() is not None:
-                return False
-            if self._is_ready(base_url):
-                return True
-            time.sleep(0.5)
-        return False
+        try:
+            for attempt in Retrying(
+                stop=stop_after_delay(self.startup_timeout_seconds),
+                wait=wait_fixed(0.5),
+            ):
+                with attempt:
+                    if process is not None and process.poll() is not None:
+                        return False
+                    if not self._is_ready(base_url):
+                        raise RuntimeError("not ready")
+        except RetryError:
+            return False
+        return True
 
     def _is_ready(self, base_url: str) -> bool:
         health_url = f"{base_url.rstrip('/')}/v1/functions"
         try:
-            with urlopen(health_url, timeout=2.0) as response:
-                return int(getattr(response, "status", 0)) == 200
-        except (OSError, URLError):
+            return httpx.get(health_url, timeout=2.0).status_code == 200
+        except (httpx.RequestError, httpx.HTTPStatusError):
             return False
 
     def _pick_local_port(self, preferred: int, blocked_ports: set[int] | None = None) -> int:
-        blocked = blocked_ports or set()
-        if preferred not in blocked and self._is_port_free(preferred):
-            return preferred
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind(("127.0.0.1", 0))
-            candidate = int(sock.getsockname()[1])
-        if candidate in blocked:
-            return self._pick_local_port(preferred=0, blocked_ports=blocked)
-        return candidate
-
-    def _is_port_free(self, port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("127.0.0.1", port))
-            except OSError:
-                return False
-        return True
+        from controlplane_tool.net_utils import pick_local_port
+        return pick_local_port(preferred=preferred, blocked=blocked_ports)
 
     def _tail(self, log_path: Path, max_chars: int = 400) -> str:
         if not log_path.exists():

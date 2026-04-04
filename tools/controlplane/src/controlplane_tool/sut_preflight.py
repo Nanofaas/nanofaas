@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import time
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+import httpx
+from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
 
 
 @dataclass(frozen=True)
@@ -110,13 +110,17 @@ class SutPreflight:
             )
 
     def _wait_control_plane_ready(self) -> None:
-        deadline = time.time() + self.ready_timeout_seconds
-        while time.time() < deadline:
-            status, _ = self._request("GET", "/v1/functions")
-            if status == 200:
-                return
-            time.sleep(0.5)
-        raise RuntimeError("control-plane API not ready on /v1/functions")
+        try:
+            for attempt in Retrying(
+                stop=stop_after_delay(self.ready_timeout_seconds),
+                wait=wait_fixed(0.5),
+            ):
+                with attempt:
+                    status, _ = self._request("GET", "/v1/functions")
+                    if status != 200:
+                        raise RuntimeError(f"not ready: HTTP {status}")
+        except RetryError as exc:
+            raise RuntimeError("control-plane API not ready on /v1/functions") from exc
 
     def _request(
         self,
@@ -125,24 +129,16 @@ class SutPreflight:
         payload: dict[str, object] | None = None,
     ) -> tuple[int, str]:
         url = f"{self.base_url}{path}"
-        data: bytes | None = None
-        headers = {"Accept": "application/json"}
-        if payload is not None:
-            data = json.dumps(payload).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        request = Request(url=url, data=data, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=self.request_timeout_seconds) as response:
-                body = response.read().decode("utf-8")
-                return (int(getattr(response, "status", 0)), body)
-        except HTTPError as exc:
-            body = ""
-            try:
-                body = exc.read().decode("utf-8")
-            except Exception:  # noqa: BLE001
-                body = ""
-            return (exc.code, body)
-        except (OSError, URLError) as exc:
+            response = httpx.request(
+                method,
+                url,
+                json=payload,
+                headers={"Accept": "application/json"},
+                timeout=self.request_timeout_seconds,
+            )
+            return (response.status_code, response.text)
+        except httpx.RequestError as exc:
             raise RuntimeError(f"{method} {path} request failed: {exc}") from exc
 
     def _trim(self, text: str, limit: int = 240) -> str:

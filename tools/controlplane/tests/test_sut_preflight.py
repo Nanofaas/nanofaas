@@ -1,10 +1,55 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 from controlplane_tool.sut_preflight import SutPreflight
+
+
+# ---------------------------------------------------------------------------
+# _request — httpx implementation
+# ---------------------------------------------------------------------------
+
+def test_request_get_returns_status_and_body(monkeypatch) -> None:
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.text = '["foo"]'
+    monkeypatch.setattr("controlplane_tool.sut_preflight.httpx.request", lambda *a, **kw: mock_response)
+    preflight = SutPreflight(base_url="http://127.0.0.1:8080")
+    status, body = preflight._request("GET", "/v1/functions")
+    assert status == 200
+    assert body == '["foo"]'
+
+
+def test_request_post_sends_json_payload(monkeypatch) -> None:
+    captured: list[dict] = []
+
+    def _fake_request(method, url, **kwargs):
+        captured.append({"method": method, "url": url, "kwargs": kwargs})
+        mock = MagicMock(spec=httpx.Response)
+        mock.status_code = 201
+        mock.text = "{}"
+        return mock
+
+    monkeypatch.setattr("controlplane_tool.sut_preflight.httpx.request", _fake_request)
+    preflight = SutPreflight(base_url="http://127.0.0.1:8080")
+    status, body = preflight._request("POST", "/v1/functions", {"name": "echo"})
+    assert status == 201
+    assert captured[0]["method"] == "POST"
+    assert captured[0]["kwargs"]["json"] == {"name": "echo"}
+
+
+def test_request_raises_runtime_error_on_connection_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "controlplane_tool.sut_preflight.httpx.request",
+        lambda *a, **kw: (_ for _ in ()).throw(httpx.RequestError("refused")),
+    )
+    preflight = SutPreflight(base_url="http://127.0.0.1:8080")
+    with pytest.raises(RuntimeError, match="request failed"):
+        preflight._request("GET", "/v1/functions")
 
 
 def test_ensure_fixture_registers_local_execution_function(monkeypatch) -> None:

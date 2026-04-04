@@ -85,58 +85,28 @@ def test_tail_returns_full_content_when_short_enough(tmp_path: Path) -> None:
 
 def test_is_ready_returns_true_on_http_200(tmp_path: Path) -> None:
     mock_response = MagicMock()
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-    mock_response.status = 200
+    mock_response.status_code = 200
     mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch("controlplane_tool.control_plane_runtime.urlopen", return_value=mock_response):
+    with patch("controlplane_tool.control_plane_runtime.httpx.get", return_value=mock_response):
         assert mgr._is_ready("http://127.0.0.1:8080") is True
 
 
 def test_is_ready_returns_false_on_connection_error(tmp_path: Path) -> None:
+    import httpx
     mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch("controlplane_tool.control_plane_runtime.urlopen", side_effect=OSError("refused")):
+    with patch("controlplane_tool.control_plane_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
         assert mgr._is_ready("http://127.0.0.1:8080") is False
 
 
 def test_is_ready_returns_false_on_non_200_status(tmp_path: Path) -> None:
     mock_response = MagicMock()
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-    mock_response.status = 503
+    mock_response.status_code = 503
     mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch("controlplane_tool.control_plane_runtime.urlopen", return_value=mock_response):
+    with patch("controlplane_tool.control_plane_runtime.httpx.get", return_value=mock_response):
         assert mgr._is_ready("http://127.0.0.1:8080") is False
 
 
 # ---------------------------------------------------------------------------
-# _pick_local_port
-# ---------------------------------------------------------------------------
-
-def test_pick_local_port_returns_preferred_when_free(tmp_path: Path) -> None:
-    mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch.object(mgr, "_is_port_free", return_value=True):
-        port = mgr._pick_local_port(preferred=9000)
-    assert port == 9000
-
-
-def test_pick_local_port_falls_back_when_preferred_taken(tmp_path: Path) -> None:
-    mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch.object(mgr, "_is_port_free", return_value=False):
-        port = mgr._pick_local_port(preferred=9000)
-    assert port != 9000
-    assert 1024 < port < 65536
-
-
-def test_pick_local_port_avoids_blocked_ports(tmp_path: Path) -> None:
-    mgr = ControlPlaneRuntimeManager(tmp_path)
-    # preferred is "free" but in blocked set → must pick another
-    with patch.object(mgr, "_is_port_free", return_value=True):
-        port = mgr._pick_local_port(preferred=9000, blocked_ports={9000})
-    # The OS-assigned fallback should not be 9000
-    assert port != 9000
-
-
 # ---------------------------------------------------------------------------
 # cleanup
 # ---------------------------------------------------------------------------

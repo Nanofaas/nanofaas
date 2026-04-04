@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
-import socket
 import subprocess
 import time
-from urllib.error import URLError
-from urllib.request import urlopen
+import httpx
+from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
+
+from controlplane_tool.tool_settings import ToolSettings
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,7 @@ class PrometheusRuntimeManager:
         candidates: list[str] = []
         if self.preferred_url and self.preferred_url.strip():
             candidates.append(self.preferred_url.strip())
-        env_url = os.getenv("NANOFAAS_TOOL_PROMETHEUS_URL", "").strip()
+        env_url = ToolSettings().nanofaas_tool_prometheus_url.strip()
         if env_url:
             candidates.append(env_url)
         candidates.append("http://127.0.0.1:9090")
@@ -116,18 +116,22 @@ class PrometheusRuntimeManager:
     def _is_ready(self, base_url: str) -> bool:
         ready_url = f"{base_url.rstrip('/')}/-/ready"
         try:
-            with urlopen(ready_url, timeout=2.0) as response:
-                return int(getattr(response, "status", 0)) == 200
-        except (OSError, URLError):
+            return httpx.get(ready_url, timeout=2.0).status_code == 200
+        except (httpx.RequestError, httpx.HTTPStatusError):
             return False
 
     def _wait_ready(self, base_url: str) -> bool:
-        start = time.time()
-        while time.time() - start < self.startup_timeout_seconds:
-            if self._is_ready(base_url):
-                return True
-            time.sleep(0.5)
-        return False
+        try:
+            for attempt in Retrying(
+                stop=stop_after_delay(self.startup_timeout_seconds),
+                wait=wait_fixed(0.5),
+            ):
+                with attempt:
+                    if not self._is_ready(base_url):
+                        raise RuntimeError("not ready")
+        except RetryError:
+            return False
+        return True
 
     def _write_config(self, run_dir: Path) -> Path:
         config_dir = run_dir / "metrics" / "prometheus"
@@ -159,20 +163,8 @@ class PrometheusRuntimeManager:
         return spec
 
     def _pick_local_port(self) -> int:
-        if self._is_port_free(9090):
-            return 9090
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind(("127.0.0.1", 0))
-            return int(sock.getsockname()[1])
-
-    def _is_port_free(self, port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("127.0.0.1", port))
-            except OSError:
-                return False
-        return True
+        from controlplane_tool.net_utils import pick_local_port
+        return pick_local_port(preferred=9090)
 
     def _docker(self, args: list[str], check: bool) -> subprocess.CompletedProcess[str]:
         completed = subprocess.run(

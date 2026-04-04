@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from controlplane_tool.metrics import (
@@ -166,30 +167,30 @@ def test_discover_metric_names_extracts_quoted_identifiers(tmp_path: Path) -> No
 # query_prometheus_metric_names
 # ---------------------------------------------------------------------------
 
-def _mock_urlopen(payload: dict):
-    mock_response = MagicMock()
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-    mock_response.read.return_value = json.dumps(payload).encode()
-    return mock_response
+def _mock_httpx_get(payload: dict, status_code: int = 200):
+    mock = MagicMock(spec=httpx.Response)
+    mock.status_code = status_code
+    mock.json.return_value = payload
+    mock.raise_for_status = MagicMock()
+    return mock
 
 
 def test_query_metric_names_returns_set(monkeypatch) -> None:
     payload = {"status": "success", "data": ["foo", "bar", "baz"]}
-    with patch("controlplane_tool.metrics.urlopen", return_value=_mock_urlopen(payload)):
+    with patch("controlplane_tool.metrics.httpx.get", return_value=_mock_httpx_get(payload)):
         names = query_prometheus_metric_names("http://localhost:9090")
     assert names == {"foo", "bar", "baz"}
 
 
 def test_query_metric_names_raises_on_non_success(monkeypatch) -> None:
     payload = {"status": "error", "error": "bad request"}
-    with patch("controlplane_tool.metrics.urlopen", return_value=_mock_urlopen(payload)):
+    with patch("controlplane_tool.metrics.httpx.get", return_value=_mock_httpx_get(payload)):
         with pytest.raises(RuntimeError, match="prometheus api failed"):
             query_prometheus_metric_names("http://localhost:9090")
 
 
 def test_query_metric_names_raises_on_connection_error(monkeypatch) -> None:
-    with patch("controlplane_tool.metrics.urlopen", side_effect=OSError("refused")):
+    with patch("controlplane_tool.metrics.httpx.get", side_effect=httpx.RequestError("refused")):
         with pytest.raises(RuntimeError, match="prometheus api request failed"):
             query_prometheus_metric_names("http://localhost:9090")
 
@@ -211,7 +212,7 @@ def test_query_range_series_merges_label_dimensions(monkeypatch) -> None:
     }
     start = datetime.fromtimestamp(ts - 60, timezone.utc)
     end = datetime.fromtimestamp(ts + 60, timezone.utc)
-    with patch("controlplane_tool.metrics.urlopen", return_value=_mock_urlopen(payload)):
+    with patch("controlplane_tool.metrics.httpx.get", return_value=_mock_httpx_get(payload)):
         points = query_prometheus_range_series("http://localhost:9090", "foo", start, end)
     assert len(points) == 1
     assert points[0]["value"] == pytest.approx(7.0)
@@ -227,7 +228,7 @@ def test_query_range_series_returns_sorted_timestamps(monkeypatch) -> None:
     }
     start = datetime.fromtimestamp(ts1 - 60, timezone.utc)
     end = datetime.fromtimestamp(ts2 + 60, timezone.utc)
-    with patch("controlplane_tool.metrics.urlopen", return_value=_mock_urlopen(payload)):
+    with patch("controlplane_tool.metrics.httpx.get", return_value=_mock_httpx_get(payload)):
         points = query_prometheus_range_series("http://localhost:9090", "foo", start, end)
     assert points[0]["value"] == pytest.approx(1.0)
     assert points[1]["value"] == pytest.approx(2.0)
@@ -237,6 +238,6 @@ def test_query_range_series_returns_empty_on_no_results(monkeypatch) -> None:
     payload = {"status": "success", "data": {"result": []}}
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     end = datetime(2024, 1, 2, tzinfo=timezone.utc)
-    with patch("controlplane_tool.metrics.urlopen", return_value=_mock_urlopen(payload)):
+    with patch("controlplane_tool.metrics.httpx.get", return_value=_mock_httpx_get(payload)):
         points = query_prometheus_range_series("http://localhost:9090", "foo", start, end)
     assert points == []

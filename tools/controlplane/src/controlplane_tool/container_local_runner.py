@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
+
 from controlplane_tool.control_plane_api import ControlPlaneApi
 from controlplane_tool.runtime_primitives import (
     CommandRunner,
@@ -147,24 +149,24 @@ class ContainerLocalE2eRunner:
         return len(names)
 
     def _wait_for_containers(self, function_slug: str, expected: int, max_attempts: int = 60) -> None:
-        import time
-        for _ in range(max_attempts):
-            if self._managed_container_count(function_slug) == expected:
-                return
-            time.sleep(1)
-        raise RuntimeError(f"Timed out waiting for {expected} managed containers for '{function_slug}'")
+        try:
+            for attempt in Retrying(
+                stop=stop_after_attempt(max_attempts),
+                wait=wait_fixed(1),
+            ):
+                with attempt:
+                    if self._managed_container_count(function_slug) != expected:
+                        raise RuntimeError(f"waiting for {expected} containers")
+        except RetryError as exc:
+            raise RuntimeError(
+                f"Timed out waiting for {expected} managed containers for '{function_slug}'"
+            ) from exc
 
     def _cleanup(self, cp_proc: subprocess.Popen[str] | None, function_slug: str, function_name: str) -> None:
         adapter = self.runtime_adapter or "docker"
         try:
-            import urllib.request
-            urllib.request.urlopen(
-                urllib.request.Request(
-                    f"{self._api.base_url}/v1/functions/{function_name}",
-                    method="DELETE",
-                ),
-                timeout=5,
-            )
+            import httpx
+            httpx.delete(f"{self._api.base_url}/v1/functions/{function_name}", timeout=5)
         except Exception:
             pass
         if cp_proc is not None:
@@ -337,15 +339,9 @@ class ContainerLocalE2eRunner:
                 )
                 self._wait_for_containers(function_slug, 0)
 
-                import urllib.request as ur
-                import urllib.error
+                import httpx as _httpx
 
-                req = ur.Request(self._api.function_url(function_name), method="GET")
-                try:
-                    with ur.urlopen(req, timeout=5) as resp:
-                        status = resp.status
-                except urllib.error.HTTPError as exc:
-                    status = exc.code
+                status = _httpx.get(self._api.function_url(function_name), timeout=5).status_code
                 if status != 404:
                     raise RuntimeError(
                         f"Expected 404 after function delete, got {status}"

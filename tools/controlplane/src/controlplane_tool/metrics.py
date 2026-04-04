@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 import re
 from typing import Any
-from urllib.error import URLError
-from urllib.parse import urlencode
-from urllib.request import urlopen
+
+import httpx
 
 _METRIC_NAME = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 _JAVA_METRIC_LITERAL = re.compile(r'"(function_[a-z0-9_]+(?:_ms|_total)?)"')
@@ -90,14 +88,11 @@ def discover_control_plane_metric_names(repo_root: Path) -> set[str]:
 def _prometheus_api_get(
     base_url: str, path: str, params: dict[str, str], timeout_seconds: float = 4.0
 ) -> Any:
-    query = urlencode(params)
-    normalized = base_url.rstrip("/")
-    url = f"{normalized}{path}?{query}" if query else f"{normalized}{path}"
+    url = f"{base_url.rstrip('/')}{path}"
     try:
-        with urlopen(url, timeout=timeout_seconds) as response:
-            payload = response.read().decode("utf-8")
-        data = json.loads(payload)
-    except (OSError, URLError, json.JSONDecodeError) as exc:
+        response = httpx.get(url, params=params, timeout=timeout_seconds)
+        data = response.json()
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
         raise RuntimeError(f"prometheus api request failed for {path}: {exc}") from exc
     if data.get("status") != "success":
         raise RuntimeError(f"prometheus api failed for {path}: {data}")
