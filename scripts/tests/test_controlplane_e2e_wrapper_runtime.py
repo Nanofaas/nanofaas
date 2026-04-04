@@ -44,15 +44,19 @@ def test_cli_deploy_host_wrapper_dry_run_uses_python_runner() -> None:
     assert "e2e-deploy-host-backend.sh" not in output
 
 
-def test_k3s_curl_wrapper_dry_run_leads_to_real_backend() -> None:
+# M11: k3s-curl backend deleted; the dry-run step must NOT show the old backend
+def test_k3s_curl_wrapper_dry_run_no_longer_uses_shell_backend() -> None:
     output = run_script("e2e-k3s-curl.sh")
-    assert "e2e-k3s-curl-backend.sh" in output
+    assert "e2e-k3s-curl-backend.sh" not in output
     assert "K8sE2eTest" not in output
+    assert "k3s-e2e" in output
 
 
-def test_helm_stack_wrapper_dry_run_leads_to_real_backend() -> None:
+# M11: helm-stack backend deleted; the dry-run step must NOT show the old backend
+def test_helm_stack_wrapper_dry_run_no_longer_uses_shell_backend() -> None:
     output = run_script("e2e-k3s-helm.sh")
-    assert "e2e-helm-stack-backend.sh" in output
+    assert "e2e-helm-stack-backend.sh" not in output
+    assert "k3s-e2e" in output
 
 
 def test_k8s_vm_wrapper_dry_run_shows_manifest_property() -> None:

@@ -234,9 +234,15 @@ class E2eRunner:
 
         if request.scenario == "k3s-curl":
             return [
-                self._backend_step(
-                    "Run k3s curl compatibility workflow",
-                    "e2e-k3s-curl-backend.sh",
+                self._step(
+                    "Run k3s curl compatibility workflow (Python)",
+                    [
+                        "uv", "run",
+                        "--project", "tools/controlplane",
+                        "--locked",
+                        "controlplane-tool",
+                        "k3s-e2e", "run", "k3s-curl",
+                    ],
                     env=self._with_manifest_env(request, env),
                 )
             ]
@@ -312,9 +318,15 @@ class E2eRunner:
 
         if request.scenario == "helm-stack":
             return [
-                self._backend_step(
-                    "Run Helm stack compatibility workflow",
-                    "e2e-helm-stack-backend.sh",
+                self._step(
+                    "Run Helm stack compatibility workflow (Python)",
+                    [
+                        "uv", "run",
+                        "--project", "tools/controlplane",
+                        "--locked",
+                        "controlplane-tool",
+                        "k3s-e2e", "run", "helm-stack",
+                    ],
                     env=self._with_manifest_env(
                         request,
                         {**env, "E2E_K3S_HELM_NONINTERACTIVE": "true"},

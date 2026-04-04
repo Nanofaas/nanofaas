@@ -2,7 +2,6 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COMMON = REPO_ROOT / "scripts" / "lib" / "e2e-k3s-common.sh"
 ANSIBLE_DIR = REPO_ROOT / "ops" / "ansible"
 
 
@@ -14,36 +13,17 @@ def test_ansible_layout_exists_for_vm_provisioning():
     assert (ANSIBLE_DIR / "playbooks" / "configure-registry.yml").exists()
 
 
-def test_common_script_exposes_ansible_bootstrap_and_inventory_helpers():
-    script = COMMON.read_text(encoding="utf-8")
-
-    assert "e2e_get_ansible_root()" in script
-    assert "e2e_get_ansible_venv_dir()" in script
-    assert "e2e_get_ansible_bin()" in script
-    assert "e2e_ensure_ansible()" in script
-    assert "e2e_write_ansible_inventory()" in script
-    assert "e2e_run_ansible_playbook()" in script
-    assert "python3 -m pip install --user -r" in script
-    assert "ops/ansible" in script
-
-
-def test_common_script_routes_vm_provisioning_through_ansible_playbooks():
-    script = COMMON.read_text(encoding="utf-8")
-
-    assert "playbooks/provision-base.yml" in script
-    assert "playbooks/provision-k3s.yml" in script
-    assert "playbooks/configure-registry.yml" in script
-    assert "e2e_install_vm_dependencies()" in script
-    assert "e2e_install_k3s()" in script
-    assert "e2e_setup_local_registry()" in script
-    assert "e2e_run_ansible_playbook" in script
+# M11: e2e-k3s-common.sh deleted. Ansible bootstrap/inventory helpers are now
+# owned by AnsibleAdapter in tools/controlplane/src/controlplane_tool/ansible_adapter.py.
+def test_e2e_k3s_common_is_deleted_ansible_helpers_live_in_python() -> None:
+    assert not (REPO_ROOT / "scripts" / "lib" / "e2e-k3s-common.sh").exists(), (
+        "e2e-k3s-common.sh still exists — delete it after Python path is green (M11)"
+    )
 
 
 def test_k3s_provisioning_resolves_latest_release_dynamically():
-    common = COMMON.read_text(encoding="utf-8")
     playbook = (ANSIBLE_DIR / "playbooks" / "provision-k3s.yml").read_text(encoding="utf-8")
 
-    assert "K3S_VERSION:-v" not in common
     assert "https://api.github.com/repos/k3s-io/k3s/releases/latest" in playbook
     assert "k3s_version_override" in playbook
     assert "tag_name" in playbook

@@ -56,20 +56,22 @@ def test_e2e_all_script_delegates_to_tool_all_command() -> None:
     assert "SUITES=(" not in script
 
 
-def test_vm_provisioning_contract_uses_ansible_in_common_library() -> None:
-    common = (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").read_text(encoding="utf-8")
-    assert "e2e_ensure_ansible()" in common
-    assert "e2e_run_ansible_playbook()" in common
-    assert "playbooks/provision-base.yml" in common
-    assert "playbooks/provision-k3s.yml" in common
-    assert "playbooks/configure-registry.yml" in common
+# M11: e2e-k3s-common.sh deleted; VM provisioning is now in Python adapters.
+# ansible_adapter.py and vm_adapter.py own provision-base/k3s/registry behavior.
+def test_vm_provisioning_contract_uses_python_ansible_adapter() -> None:
+    from pathlib import Path as _Path
+    import sys
 
+    tool_src = REPO_ROOT / "tools" / "controlplane" / "src"
+    if str(tool_src) not in sys.path:
+        sys.path.insert(0, str(tool_src))
 
-def test_host_facing_helpers_live_in_common_library() -> None:
-    common = (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").read_text(encoding="utf-8")
-    assert "e2e_export_kubeconfig_to_host()" in common
-    assert "e2e_get_public_host()" in common
-    assert 'public_host=$(e2e_get_public_host)' in common
+    from controlplane_tool.ansible_adapter import AnsibleAdapter  # noqa: PLC0415
+
+    adapter = AnsibleAdapter.__new__(AnsibleAdapter)
+    assert hasattr(adapter, "provision_base")
+    assert hasattr(adapter, "provision_k3s")
+    assert hasattr(adapter, "configure_registry")
 
 
 def test_experiment_scripts_resolve_host_endpoints_through_shared_helpers() -> None:
@@ -102,18 +104,8 @@ def test_vm_wrapper_runs_named_scenario_in_dry_run() -> None:
     assert "Step 1:" in output
 
 
-# M10: cli and cli-host backends are migrated to Python.
-# The remaining shell backends (k3s-curl, helm-stack) still source scenario-manifest.sh until M11.
-def test_remaining_vm_backends_still_source_scenario_manifest_helpers() -> None:
-    backend_names = (
-        "e2e-k3s-curl-backend.sh",
-        "e2e-helm-stack-backend.sh",
-    )
-
-    for backend_name in backend_names:
-        script = (SCRIPTS_DIR / "lib" / backend_name).read_text(encoding="utf-8")
-        assert "scenario-manifest.sh" in script
-        assert "NANOFAAS_SCENARIO_PATH" in script
+# M11: all internal VM shell backends are now migrated to Python.
+# No remaining backends source scenario-manifest.sh (it was deleted in M9).
 
 
 # M9: container-local backend is deleted; Python replaces it.
@@ -150,8 +142,20 @@ def test_cli_host_shell_backend_is_deleted() -> None:
     )
 
 
-def test_k3s_curl_backend_iterates_all_selected_functions() -> None:
-    script = (SCRIPTS_DIR / "lib" / "e2e-k3s-curl-backend.sh").read_text(encoding="utf-8")
+# M11: k3s-curl/helm-stack backends deleted; Python K3sCurlRunner/HelmStackRunner replace them.
+def test_k3s_curl_shell_backend_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-k3s-curl-backend.sh").exists(), (
+        "e2e-k3s-curl-backend.sh still exists — delete it after Python path is green (M11)"
+    )
 
-    assert "scenario_selected_functions" in script
-    assert "for function_key in" in script or "for FUNCTION_NAME in" in script
+
+def test_helm_stack_shell_backend_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-helm-stack-backend.sh").exists(), (
+        "e2e-helm-stack-backend.sh still exists — delete it after Python path is green (M11)"
+    )
+
+
+def test_k3s_common_shell_helper_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").exists(), (
+        "e2e-k3s-common.sh still exists — delete it after Python path is green (M11)"
+    )

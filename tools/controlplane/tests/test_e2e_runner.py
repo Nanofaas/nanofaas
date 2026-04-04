@@ -63,7 +63,7 @@ def test_deploy_host_plan_no_longer_routes_to_shell_backend() -> None:
     )
 
 
-def test_k3s_curl_plan_no_longer_routes_to_k8s_e2e_test() -> None:
+def test_k3s_curl_plan_no_longer_routes_to_shell_backend() -> None:
     plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
         E2eRequest(
             scenario="k3s-curl",
@@ -74,7 +74,22 @@ def test_k3s_curl_plan_no_longer_routes_to_k8s_e2e_test() -> None:
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("K8sE2eTest" in command for command in rendered)
-    assert any("e2e-k3s-curl-backend.sh" in command for command in rendered)
+    assert not any("e2e-k3s-curl-backend.sh" in command for command in rendered)
+    assert any("k3s-e2e" in command for command in rendered)
+
+
+def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
+    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+        E2eRequest(
+            scenario="helm-stack",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    rendered = [" ".join(step.command) for step in plan.steps]
+    assert not any("e2e-helm-stack-backend.sh" in command for command in rendered)
+    assert any("k3s-e2e" in command for command in rendered)
 
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:

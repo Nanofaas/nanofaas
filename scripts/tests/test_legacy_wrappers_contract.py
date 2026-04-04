@@ -9,9 +9,7 @@ SCRIPTS_DIR = ROOT / "scripts"
 INTERNAL_BACKENDS_PENDING_MIGRATION = (
     # M9 complete: e2e-container-local-backend.sh, e2e-deploy-host-backend.sh, scenario-manifest.sh deleted
     # M10 complete: e2e-cli-backend.sh, e2e-cli-host-backend.sh deleted
-    "lib/e2e-k3s-curl-backend.sh",             # M11: replace with k3s_runtime.py
-    "lib/e2e-helm-stack-backend.sh",           # M11: replace with k3s_runtime.py
-    "lib/e2e-k3s-common.sh",                   # M11: absorb into Python adapters
+    # M11 complete: e2e-k3s-curl-backend.sh, e2e-helm-stack-backend.sh, e2e-k3s-common.sh deleted
 )
 
 SHIM_TARGETS = {
