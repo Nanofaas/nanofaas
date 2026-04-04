@@ -41,13 +41,24 @@ def test_e2e_all_vm_plan_bootstraps_shared_vm_once() -> None:
     assert len(ensure_steps) == 1
 
 
-def test_container_local_plan_calls_backend_script() -> None:
+def test_container_local_plan_no_longer_routes_to_shell_backend() -> None:
     plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
         E2eRequest(scenario="container-local", runtime="java")
     )
 
-    assert any(
-        "scripts/lib/e2e-container-local-backend.sh" in " ".join(step.command)
+    assert not any(
+        "e2e-container-local-backend.sh" in " ".join(step.command)
+        for step in plan.steps
+    )
+
+
+def test_deploy_host_plan_no_longer_routes_to_shell_backend() -> None:
+    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+        E2eRequest(scenario="deploy-host", runtime="java")
+    )
+
+    assert not any(
+        "e2e-deploy-host-backend.sh" in " ".join(step.command)
         for step in plan.steps
     )
 

@@ -180,18 +180,30 @@ class E2eRunner:
 
         if request.scenario == "container-local":
             return [
-                self._backend_step(
-                    "Run container-local compatibility workflow",
-                    "e2e-container-local-backend.sh",
+                self._step(
+                    "Run container-local managed DEPLOYMENT flow (Python)",
+                    [
+                        "uv", "run",
+                        "--project", "tools/controlplane",
+                        "--locked",
+                        "controlplane-tool",
+                        "local-e2e", "run", "container-local",
+                    ],
                     env=self._with_manifest_env(request, self._common_env(request)),
                 )
             ]
 
         if request.scenario == "deploy-host":
             return [
-                self._backend_step(
-                    "Run deploy-host compatibility workflow",
-                    "e2e-deploy-host-backend.sh",
+                self._step(
+                    "Run deploy-host E2E flow (Python)",
+                    [
+                        "uv", "run",
+                        "--project", "tools/controlplane",
+                        "--locked",
+                        "controlplane-tool",
+                        "local-e2e", "run", "deploy-host",
+                    ],
                     env=self._with_manifest_env(request, self._common_env(request)),
                 )
             ]

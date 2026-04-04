@@ -7,9 +7,7 @@ SCRIPTS_DIR = ROOT / "scripts"
 # Internal shell backends: these are migration targets that must be deleted by M13.
 # Each entry is tracked here so their removal is tested progressively as M9–M11 land.
 INTERNAL_BACKENDS_PENDING_MIGRATION = (
-    "lib/e2e-container-local-backend.sh",      # M9: replace with local_e2e_runner.py
-    "lib/e2e-deploy-host-backend.sh",          # M9: replace with local_e2e_runner.py
-    "lib/scenario-manifest.sh",               # M9: replace with ResolvedScenario
+    # M9 complete: e2e-container-local-backend.sh, e2e-deploy-host-backend.sh, scenario-manifest.sh deleted
     "lib/e2e-cli-backend.sh",                  # M10: replace with cli_runtime.py
     "lib/e2e-cli-host-backend.sh",             # M10: replace with cli_runtime.py
     "lib/e2e-k3s-curl-backend.sh",             # M11: replace with k3s_runtime.py

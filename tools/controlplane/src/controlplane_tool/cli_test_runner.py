@@ -106,10 +106,20 @@ class CliTestRunner:
             local_registry=request.local_registry,
         )
 
+    def _step_owns_cli_build(self, step: ScenarioPlanStep) -> bool:
+        rendered = " ".join(step.command)
+        # Legacy shell backends (M10: until e2e-cli-backend.sh and e2e-cli-host-backend.sh are deleted)
+        if "/scripts/lib/e2e-" in rendered:
+            return True
+        # Python local-e2e runner (M9+)
+        if "local-e2e" in rendered and "deploy-host" in rendered:
+            return True
+        return False
+
     def _with_cli_build_reuse(self, steps: list[ScenarioPlanStep]) -> list[ScenarioPlanStep]:
         reused_steps: list[ScenarioPlanStep] = []
         for step in steps:
-            if "/scripts/lib/e2e-" in " ".join(step.command):
+            if self._step_owns_cli_build(step):
                 reused_steps.append(
                     ScenarioPlanStep(
                         summary=step.summary,

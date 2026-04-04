@@ -102,10 +102,11 @@ def test_vm_wrapper_runs_named_scenario_in_dry_run() -> None:
     assert "Step 1:" in output
 
 
-def test_backends_source_scenario_manifest_helpers() -> None:
+# M9: container-local and deploy-host backends are migrated to Python.
+# The remaining shell backends (k3s-curl, cli, cli-host, helm-stack)
+# still source scenario-manifest.sh until M10/M11.
+def test_remaining_vm_backends_still_source_scenario_manifest_helpers() -> None:
     backend_names = (
-        "e2e-container-local-backend.sh",
-        "e2e-deploy-host-backend.sh",
         "e2e-k3s-curl-backend.sh",
         "e2e-cli-backend.sh",
         "e2e-cli-host-backend.sh",
@@ -118,16 +119,33 @@ def test_backends_source_scenario_manifest_helpers() -> None:
         assert "NANOFAAS_SCENARIO_PATH" in script
 
 
+# M9: container-local backend is deleted; Python replaces it.
+def test_container_local_shell_backend_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-container-local-backend.sh").exists(), (
+        "e2e-container-local-backend.sh still exists — delete it after Python path is green (M9)"
+    )
+
+
+# M9: deploy-host backend is deleted; Python replaces it.
+def test_deploy_host_shell_backend_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-deploy-host-backend.sh").exists(), (
+        "e2e-deploy-host-backend.sh still exists — delete it after Python path is green (M9)"
+    )
+
+
+# M9: scenario-manifest.sh is deleted; Python uses ResolvedScenario directly.
+def test_scenario_manifest_shell_helper_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "scenario-manifest.sh").exists(), (
+        "scenario-manifest.sh still exists — delete it after Python path is green (M9)"
+    )
+
+
 def test_cli_backends_remain_concrete_workflows() -> None:
     cli_backend = (SCRIPTS_DIR / "lib" / "e2e-cli-backend.sh").read_text(encoding="utf-8")
     host_backend = (SCRIPTS_DIR / "lib" / "e2e-cli-host-backend.sh").read_text(encoding="utf-8")
-    deploy_backend = (SCRIPTS_DIR / "lib" / "e2e-deploy-host-backend.sh").read_text(
-        encoding="utf-8"
-    )
 
     assert "nanofaas fn apply" in cli_backend
     assert "platform install" in host_backend
-    assert 'deploy -f "${WORK_DIR}/function.yaml"' in deploy_backend
 
 
 def test_cli_backend_iterates_all_selected_functions() -> None:
@@ -135,13 +153,6 @@ def test_cli_backend_iterates_all_selected_functions() -> None:
 
     assert "scenario_selected_functions" in script
     assert "for function_key in" in script or "for FUNCTION_NAME in" in script
-
-
-def test_deploy_host_backend_iterates_all_selected_functions() -> None:
-    script = (SCRIPTS_DIR / "lib" / "e2e-deploy-host-backend.sh").read_text(encoding="utf-8")
-
-    assert "scenario_selected_functions" in script
-    assert "scenario_require_single_function" not in script
 
 
 def test_k3s_curl_backend_iterates_all_selected_functions() -> None:
