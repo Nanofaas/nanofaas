@@ -17,9 +17,8 @@ def test_cli_test_runner_unit_scenario_calls_gradle_cli_tests() -> None:
     assert not any("e2e-cli-backend.sh" in command for command in rendered)
 
 
-def test_cli_test_runner_vm_scenario_routes_to_cli_backend_with_manifest(
-    tmp_path: Path,
-) -> None:
+def test_cli_vm_runner_no_longer_uses_shell_backend_script(tmp_path: Path) -> None:
+    """M10: vm scenario must not route to the deleted e2e-cli-backend.sh."""
     plan = CliTestRunner(
         repo_root=Path("/repo"),
         shell=RecordingShell(),
@@ -37,13 +36,11 @@ def test_cli_test_runner_vm_scenario_routes_to_cli_backend_with_manifest(
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert any(":nanofaas-cli:installDist" in command for command in rendered)
-    backend_step = next(
-        step for step in plan.steps if "e2e-cli-backend.sh" in " ".join(step.command)
-    )
-    assert backend_step.env["NANOFAAS_SCENARIO_PATH"].endswith(".json")
+    assert not any("e2e-cli-backend.sh" in command for command in rendered)
 
 
-def test_cli_test_runner_host_platform_routes_to_host_backend() -> None:
+def test_cli_host_platform_runner_no_longer_uses_shell_backend_script() -> None:
+    """M10: host-platform scenario must not route to the deleted e2e-cli-host-backend.sh."""
     plan = CliTestRunner(repo_root=Path("/repo"), shell=RecordingShell()).plan(
         CliTestRequest(
             scenario="host-platform",
@@ -52,7 +49,7 @@ def test_cli_test_runner_host_platform_routes_to_host_backend() -> None:
     )
 
     rendered = [" ".join(step.command) for step in plan.steps]
-    assert any("e2e-cli-host-backend.sh" in command for command in rendered)
+    assert not any("e2e-cli-host-backend.sh" in command for command in rendered)
 
 
 def test_cli_test_runner_host_platform_plan_omits_resolved_functions_for_saved_profile_defaults() -> None:

@@ -108,11 +108,11 @@ class CliTestRunner:
 
     def _step_owns_cli_build(self, step: ScenarioPlanStep) -> bool:
         rendered = " ".join(step.command)
-        # Legacy shell backends (M10: until e2e-cli-backend.sh and e2e-cli-host-backend.sh are deleted)
-        if "/scripts/lib/e2e-" in rendered:
-            return True
-        # Python local-e2e runner (M9+)
+        # Python local-e2e runner (M9+): deploy-host builds CLI on host
         if "local-e2e" in rendered and "deploy-host" in rendered:
+            return True
+        # Python cli-e2e runner (M10+): vm and host-platform build CLI
+        if "cli-e2e" in rendered and ("run" in rendered):
             return True
         return False
 

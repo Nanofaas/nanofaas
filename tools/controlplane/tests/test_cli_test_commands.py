@@ -15,7 +15,8 @@ def test_cli_test_run_vm_dry_run_renders_backend_steps() -> None:
     result = CliRunner().invoke(app, ["cli-test", "run", "vm", "--dry-run"])
 
     assert result.exit_code == 0
-    assert "e2e-cli-backend.sh" in result.stdout
+    assert "cli-e2e" in result.stdout
+    assert "e2e-cli-backend.sh" not in result.stdout
     assert ":nanofaas-cli:installDist" in result.stdout
 
 

@@ -282,18 +282,30 @@ class E2eRunner:
 
         if request.scenario == "cli":
             return [
-                self._backend_step(
-                    "Run CLI compatibility workflow",
-                    "e2e-cli-backend.sh",
+                self._step(
+                    "Run CLI E2E workflow inside VM (Python)",
+                    [
+                        "uv", "run",
+                        "--project", "tools/controlplane",
+                        "--locked",
+                        "controlplane-tool",
+                        "cli-e2e", "run", "vm",
+                    ],
                     env=self._with_manifest_env(request, env),
                 )
             ]
 
         if request.scenario == "cli-host":
             return [
-                self._backend_step(
-                    "Run host CLI compatibility workflow",
-                    "e2e-cli-host-backend.sh",
+                self._step(
+                    "Run host CLI platform lifecycle (Python)",
+                    [
+                        "uv", "run",
+                        "--project", "tools/controlplane",
+                        "--locked",
+                        "controlplane-tool",
+                        "cli-e2e", "run", "host-platform",
+                    ],
                     env=self._with_manifest_env(request, env),
                 )
             ]

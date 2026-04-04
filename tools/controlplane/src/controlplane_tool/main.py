@@ -12,6 +12,7 @@ from controlplane_tool.loadtest_commands import (
     install_loadtest_commands,
     run_loadtest_request,
 )
+from controlplane_tool.cli_e2e_commands import install_cli_e2e_commands
 from controlplane_tool.local_e2e_commands import install_local_e2e_commands
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.profiles import load_profile
@@ -75,6 +76,7 @@ install_e2e_commands(app)
 install_function_commands(app)
 install_loadtest_commands(app)
 install_local_e2e_commands(app)
+install_cli_e2e_commands(app)
 
 
 def main() -> None:

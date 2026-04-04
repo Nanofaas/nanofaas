@@ -102,14 +102,11 @@ def test_vm_wrapper_runs_named_scenario_in_dry_run() -> None:
     assert "Step 1:" in output
 
 
-# M9: container-local and deploy-host backends are migrated to Python.
-# The remaining shell backends (k3s-curl, cli, cli-host, helm-stack)
-# still source scenario-manifest.sh until M10/M11.
+# M10: cli and cli-host backends are migrated to Python.
+# The remaining shell backends (k3s-curl, helm-stack) still source scenario-manifest.sh until M11.
 def test_remaining_vm_backends_still_source_scenario_manifest_helpers() -> None:
     backend_names = (
         "e2e-k3s-curl-backend.sh",
-        "e2e-cli-backend.sh",
-        "e2e-cli-host-backend.sh",
         "e2e-helm-stack-backend.sh",
     )
 
@@ -140,19 +137,17 @@ def test_scenario_manifest_shell_helper_is_deleted() -> None:
     )
 
 
-def test_cli_backends_remain_concrete_workflows() -> None:
-    cli_backend = (SCRIPTS_DIR / "lib" / "e2e-cli-backend.sh").read_text(encoding="utf-8")
-    host_backend = (SCRIPTS_DIR / "lib" / "e2e-cli-host-backend.sh").read_text(encoding="utf-8")
+# M10: CLI backends deleted; Python CliVmRunner/CliHostPlatformRunner replace them.
+def test_cli_shell_backend_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-cli-backend.sh").exists(), (
+        "e2e-cli-backend.sh still exists — delete it after Python path is green (M10)"
+    )
 
-    assert "nanofaas fn apply" in cli_backend
-    assert "platform install" in host_backend
 
-
-def test_cli_backend_iterates_all_selected_functions() -> None:
-    script = (SCRIPTS_DIR / "lib" / "e2e-cli-backend.sh").read_text(encoding="utf-8")
-
-    assert "scenario_selected_functions" in script
-    assert "for function_key in" in script or "for FUNCTION_NAME in" in script
+def test_cli_host_shell_backend_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-cli-host-backend.sh").exists(), (
+        "e2e-cli-host-backend.sh still exists — delete it after Python path is green (M10)"
+    )
 
 
 def test_k3s_curl_backend_iterates_all_selected_functions() -> None:

@@ -8,8 +8,7 @@ SCRIPTS_DIR = ROOT / "scripts"
 # Each entry is tracked here so their removal is tested progressively as M9–M11 land.
 INTERNAL_BACKENDS_PENDING_MIGRATION = (
     # M9 complete: e2e-container-local-backend.sh, e2e-deploy-host-backend.sh, scenario-manifest.sh deleted
-    "lib/e2e-cli-backend.sh",                  # M10: replace with cli_runtime.py
-    "lib/e2e-cli-host-backend.sh",             # M10: replace with cli_runtime.py
+    # M10 complete: e2e-cli-backend.sh, e2e-cli-host-backend.sh deleted
     "lib/e2e-k3s-curl-backend.sh",             # M11: replace with k3s_runtime.py
     "lib/e2e-helm-stack-backend.sh",           # M11: replace with k3s_runtime.py
     "lib/e2e-k3s-common.sh",                   # M11: absorb into Python adapters
