@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-cli-host-backend.sh (M10).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console
+from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 import subprocess
@@ -75,7 +75,7 @@ class CliHostPlatformRunner:
             if not self._cli_bin.exists():
                 raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
             return
-        console.print("[e2e-host-cli] Building nanofaas-cli on host...")
+        step("Building nanofaas-cli on host...")
         subprocess.run(
             ["./gradlew", ":nanofaas-cli:installDist", "--no-daemon", "-q"],
             cwd=str(self.repo_root),
@@ -141,7 +141,7 @@ class CliHostPlatformRunner:
         try:
             self._build_cli_on_host()
 
-            console.print("[e2e-host-cli] Running platform lifecycle from host CLI...")
+            step("Running platform lifecycle from host CLI...")
             install_out = self._run_host_cli(
                 kubeconfig,
                 [
@@ -176,6 +176,6 @@ class CliHostPlatformRunner:
             if rc == 0:
                 raise RuntimeError("platform status unexpectedly succeeded after uninstall")
 
-            console.print("[e2e-host-cli] Host CLI platform lifecycle test: PASSED")
+            success("Host CLI platform lifecycle test:")
         finally:
             kubeconfig.unlink(missing_ok=True)

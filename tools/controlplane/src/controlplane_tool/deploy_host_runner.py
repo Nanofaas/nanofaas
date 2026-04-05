@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-deploy-host-backend.sh (M9).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console
+from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 import subprocess
@@ -79,13 +79,13 @@ class DeployHostE2eRunner:
             if not self._cli_bin.exists():
                 raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
             return
-        console.print("[e2e-deploy-host] Building nanofaas CLI on host...")
+        step("Building nanofaas CLI on host...")
         self._run(["./gradlew", ":nanofaas-cli:installDist", "--no-daemon", "-q"])
         if not self._cli_bin.exists():
             raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
 
     def _start_registry(self, container_name: str, docker: str = "docker") -> None:
-        console.print(f"[e2e-deploy-host] Starting local registry ({container_name}) on port {self.registry_port}")
+        step(f"Starting local registry ({container_name}) on port {self.registry_port}")
         subprocess.run([docker, "rm", "-f", container_name], capture_output=True, check=False)
         subprocess.run(
             [docker, "run", "-d", "--name", container_name, "-p", f"{self.registry_port}:5000", "registry:2"],
@@ -192,7 +192,7 @@ class DeployHostE2eRunner:
                 self._verify_registry_push(image_repo, tag)
                 self._verify_register_request(request_body_path, function_key, image_repo, tag)
 
-            console.print("[e2e-deploy-host] Deploy host E2E: PASSED")
+            success("Deploy host E2E:")
         finally:
             fake_cp.stop()
             self._stop_registry(registry_container, docker)

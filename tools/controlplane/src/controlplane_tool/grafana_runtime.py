@@ -16,7 +16,7 @@ Usage:
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console
+from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 import shutil
@@ -49,12 +49,12 @@ class GrafanaRuntime:
     def start(self) -> None:
         """Start the Grafana Docker Compose stack."""
         if not self.is_docker_available():
-            console.print("[grafana] docker not found, skipping Grafana startup")
+            skip("docker not found, skipping Grafana startup")
             return
         if not self.is_compose_file_available():
-            console.print(f"[grafana] compose file not found: {self._compose_file}, skipping")
+            skip("compose file not found: {self._compose_file}, skipping")
             return
-        console.print(f"[grafana] Starting Grafana stack (PROM_URL={self.prom_url})")
+        step(f"Starting Grafana stack (PROM_URL={self.prom_url})")
         subprocess.run(
             ["docker", "compose", "-f", str(self._compose_file), "up", "-d"],
             check=True,
@@ -65,7 +65,7 @@ class GrafanaRuntime:
         """Stop the Grafana Docker Compose stack."""
         if not self.is_docker_available() or not self.is_compose_file_available():
             return
-        console.print("[grafana] Stopping Grafana stack")
+        step("Stopping Grafana stack")
         subprocess.run(
             ["docker", "compose", "-f", str(self._compose_file), "down"],
             check=False,

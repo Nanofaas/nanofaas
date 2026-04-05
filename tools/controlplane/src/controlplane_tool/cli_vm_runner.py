@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-cli-backend.sh (M10).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console
+from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 from pathlib import Path
@@ -82,7 +82,7 @@ class CliVmRunner:
         )
 
     def _build_artifacts(self) -> None:
-        console.print("[e2e-cli] Building control-plane artifacts")
+        step("Building control-plane artifacts")
         self._vm_exec(
             f"cd {self._remote_dir} && "
             f"./scripts/controlplane.sh jar --profile k8s -- --quiet"
@@ -93,7 +93,7 @@ class CliVmRunner:
         )
 
     def _build_images(self) -> None:
-        console.print("[e2e-cli] Building and pushing images")
+        step("Building and pushing images")
         self._vm_exec(
             f"cd {self._remote_dir} && "
             f"sudo docker build -f control-plane/Dockerfile -t {self._control_image} control-plane/"
@@ -106,7 +106,7 @@ class CliVmRunner:
         self._vm_exec(f"sudo docker push {self._runtime_image}")
 
     def _deploy_platform(self) -> None:
-        console.print("[e2e-cli] Deploying platform to k3s")
+        step("Deploying platform to k3s")
         self._vm_exec(
             f"cd {self._remote_dir} && "
             f"kubectl create namespace {self.namespace} --dry-run=client -o yaml | kubectl apply -f -"
@@ -126,9 +126,9 @@ class CliVmRunner:
 
     def _build_cli(self) -> None:
         if self.skip_cli_build:
-            console.print("[e2e-cli] Skipping CLI build (NANOFAAS_CLI_SKIP_INSTALL_DIST=true)")
+            skip("Skipping CLI build (NANOFAAS_CLI_SKIP_INSTALL_DIST=true)")
             return
-        console.print("[e2e-cli] Building CLI in VM")
+        step("Building CLI in VM")
         self._vm_exec(
             f"cd {self._remote_dir} && "
             f"./gradlew :nanofaas-cli:installDist --no-daemon -q"
@@ -150,7 +150,7 @@ class CliVmRunner:
         functions = _selected_functions(resolved)
         for fn_key in functions:
             fn_image = _function_image(fn_key, resolved, self._runtime_image)
-            console.print(f"[e2e-cli] Testing CLI function lifecycle for '{fn_key}'")
+            step(f"Testing CLI function lifecycle for '{fn_key}'")
             spec = (
                 f"{{\"name\":\"{fn_key}\","
                 f"\"image\":\"{fn_image}\","
@@ -191,4 +191,4 @@ class CliVmRunner:
         self._build_cli()
         endpoint = self._resolve_endpoint()
         self._run_cli_tests(resolved, endpoint)
-        console.print("[e2e-cli] CLI E2E workflow PASSED")
+        success("CLI E2E workflow")

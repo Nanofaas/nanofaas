@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sys
+
 import typer
 from pydantic import ValidationError
+from rich.traceback import install as install_rich_tracebacks
 
 from controlplane_tool.cli_commands import install_cli_commands
 from controlplane_tool.cli_test_commands import install_cli_test_commands
@@ -82,6 +85,12 @@ install_k3s_e2e_commands(app)
 
 
 def main() -> None:
+    install_rich_tracebacks(show_locals=False)
+    # No arguments → launch the interactive Rich TUI
+    if len(sys.argv) == 1:
+        from controlplane_tool.tui_app import NanofaasTUI
+        NanofaasTUI().run()
+        return
     app()
 
 

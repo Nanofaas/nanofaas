@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-helm-stack-backend.sh (M11).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console
+from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 import subprocess
@@ -71,7 +71,7 @@ class HelmStackRunner:
             )
 
         env = self._build_env()
-        console.print("[helm-stack] Running loadtest via Python runner")
+        step("Running loadtest via Python runner")
         subprocess.run(
             [
                 "uv",
@@ -86,7 +86,7 @@ class HelmStackRunner:
             check=True,
             env=env,
         )
-        console.print("[helm-stack] Running autoscaling experiment (Python)")
+        step("Running autoscaling experiment (Python)")
         subprocess.run(
             [
                 "uv",
@@ -100,4 +100,4 @@ class HelmStackRunner:
             check=True,
             env=env,
         )
-        console.print("[helm-stack] Helm stack compatibility workflow: PASSED")
+        success("Helm stack compatibility workflow:")
