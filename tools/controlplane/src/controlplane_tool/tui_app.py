@@ -118,7 +118,7 @@ class NanofaasTUI:
         profile = _ask(
             lambda: questionary.select(
                 "Profilo:",
-                choices=["core", "all", "container-local"],
+                choices=["core", "k8s", "all", "container-local"],
                 default="core",
                 style=_STYLE,
             ).ask()
@@ -283,14 +283,12 @@ class NanofaasTUI:
             runner = K3sCurlRunner(repo_root=repo_root)
             step("Avvio k3s-curl E2E")
             runner.run()
-            success("k3s-curl E2E completato")
 
         elif scenario == "helm-stack":
             from controlplane_tool.helm_stack_runner import HelmStackRunner
             runner = HelmStackRunner(repo_root=repo_root)
             step("Avvio helm-stack E2E")
             runner.run()
-            success("helm-stack E2E completato")
 
         else:  # k8s-vm
             from controlplane_tool.e2e_runner import E2eRunner
@@ -328,7 +326,6 @@ class NanofaasTUI:
         step("Avvio container-local E2E")
         runner = ContainerLocalE2eRunner(repo_root=default_tool_paths().workspace_root)
         runner.run()
-        success("container-local E2E completato")
 
     def _run_deploy_host(self, dry_run: bool) -> None:
         from controlplane_tool.deploy_host_runner import DeployHostE2eRunner
@@ -336,11 +333,8 @@ class NanofaasTUI:
 
         step("Avvio deploy-host E2E")
         runner = DeployHostE2eRunner(repo_root=default_tool_paths().workspace_root)
-        result = runner.run()
-        if result is not None and result.failed:
-            fail("deploy-host E2E fallito")
-        else:
-            success("deploy-host E2E completato")
+        runner.run()
+        success("deploy-host E2E completato")
 
     def _run_generic_e2e(self, scenario: str, dry_run: bool) -> None:
         from controlplane_tool.e2e_runner import E2eRunner
@@ -471,7 +465,7 @@ class NanofaasTUI:
             table.add_column("Family", style="dim")
             table.add_column("Runtime", style="green")
             for fn in functions:
-                table.add_row(fn.key, fn.family, fn.runtime)
+                table.add_row(fn.key, fn.family or "", fn.runtime or "")
             console.print(table)
 
         elif view == "presets":
