@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,16 @@ from controlplane_tool.vm_models import VmRequest
 
 if TYPE_CHECKING:
     from controlplane_tool.ansible_adapter import AnsibleAdapter
+
+
+def _find_user_public_key() -> str | None:
+    """Return the first SSH public key found in ~/.ssh/, or None."""
+    ssh_dir = Path.home() / ".ssh"
+    for name in ("id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub", "id_dsa.pub"):
+        candidate = ssh_dir / name
+        if candidate.exists():
+            return candidate.read_text(encoding="utf-8").strip()
+    return None
 
 
 def _vm_name(request: VmRequest) -> str:
@@ -171,6 +182,23 @@ class VmOrchestrator:
             request.disk,
         ]
 
+    def _launch_with_cloud_init(self, request: VmRequest) -> ShellExecutionResult:
+        """Launch a new Multipass VM, injecting the user's SSH public key via cloud-init."""
+        base_command = self._launch_command(request)
+        public_key = _find_user_public_key()
+        if public_key is None:
+            return self._run(base_command)
+        cloud_init = f"#cloud-config\nssh_authorized_keys:\n  - {public_key}\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", prefix="nanofaas-cloud-init-", delete=False
+        ) as f:
+            f.write(cloud_init)
+            cloud_init_path = f.name
+        try:
+            return self._run([*base_command, "--cloud-init", cloud_init_path])
+        finally:
+            Path(cloud_init_path).unlink(missing_ok=True)
+
     def ensure_running(self, request: VmRequest, *, dry_run: bool = False) -> ShellExecutionResult:
         if request.lifecycle == "external":
             command = ["ssh", f"{request.user}@{request.host}", "true"]
@@ -181,7 +209,7 @@ class VmOrchestrator:
 
         info_result, instance = _read_multipass_instance(self.shell, request)
         if instance is None:
-            return self._run(self._launch_command(request), dry_run=False)
+            return self._launch_with_cloud_init(request)
 
         state = str(instance.get("state", "")).strip().lower()
         if state == "running":
