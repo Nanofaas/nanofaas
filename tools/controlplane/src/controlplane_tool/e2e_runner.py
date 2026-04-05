@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from controlplane_tool.e2e_catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e_models import E2eRequest
@@ -39,11 +41,13 @@ class E2eRunner:
         repo_root: Path,
         shell: ShellBackend | None = None,
         manifest_root: Path | None = None,
+        host_resolver: Callable[[VmRequest], str] | None = None,
     ) -> None:
         self.paths = ToolPaths.repo_root(Path(repo_root))
         self.shell = shell or SubprocessShell()
         self.vm = VmOrchestrator(self.paths.workspace_root, shell=self.shell)
         self.manifest_root = manifest_root or (self.paths.runs_dir / "manifests")
+        self._host_resolver = host_resolver
 
     def _step_from_result(self, summary: str, result: ShellExecutionResult) -> ScenarioPlanStep:
         return ScenarioPlanStep(summary=summary, command=result.command, env=result.env)
@@ -406,10 +410,39 @@ class E2eRunner:
             plans.append(ScenarioPlan(scenario=scenario, request=request, steps=self._local_steps(request)))
         return plans
 
+    # Matches the dry-run placeholder inserted by resolve_connection_host
+    _MULTIPASS_IP_RE = re.compile(r"<multipass-ip:([^>]+)>")
+
+    def _resolve_ip(self, vm_request: VmRequest) -> str:
+        """Resolve the real IP of a VM, using an injected resolver if provided."""
+        if self._host_resolver is not None:
+            return self._host_resolver(vm_request)
+        return self.vm.resolve_multipass_ipv4(vm_request)
+
+    def _resolve_command(
+        self,
+        command: list[str],
+        vm_request: VmRequest | None,
+        cache: dict[str, str],
+    ) -> list[str]:
+        """Substitute <multipass-ip:name> placeholders with real IPs."""
+        if not any(self._MULTIPASS_IP_RE.search(arg) for arg in command):
+            return command
+
+        def _replace(m: re.Match) -> str:
+            key = m.group(1)
+            if key not in cache and vm_request is not None:
+                cache[key] = self._resolve_ip(vm_request)
+            return cache.get(key, m.group(0))
+
+        return [self._MULTIPASS_IP_RE.sub(_replace, arg) for arg in command]
+
     def _execute_steps(self, plan: ScenarioPlan) -> None:
+        ip_cache: dict[str, str] = {}
         for step in plan.steps:
+            command = self._resolve_command(step.command, plan.request.vm, ip_cache)
             result = self.shell.run(
-                step.command,
+                command,
                 cwd=self.paths.workspace_root,
                 env=step.env,
                 dry_run=False,

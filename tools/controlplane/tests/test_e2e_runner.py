@@ -94,7 +94,7 @@ def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
     shell = RecordingShell()
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
 
     runner.run_all(only=["k3s-curl", "k8s-vm"], runtime="java")
 
@@ -104,7 +104,7 @@ def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
 
 def test_run_all_tears_down_vm_when_keep_vm_false() -> None:
     shell = RecordingShell()
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
 
     runner.run_all(only=["k8s-vm"], runtime="java")
 
