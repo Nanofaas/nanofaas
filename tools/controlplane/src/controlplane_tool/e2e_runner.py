@@ -415,7 +415,11 @@ class E2eRunner:
                 dry_run=False,
             )
             if result.return_code != 0:
-                raise RuntimeError(f"Scenario '{plan.request.scenario}' failed at step '{step.summary}'")
+                output = (result.stderr or result.stdout or "").strip()
+                msg = f"Scenario '{plan.request.scenario}' failed at step '{step.summary}' (exit {result.return_code})"
+                if output:
+                    msg += f"\n\n{output}"
+                raise RuntimeError(msg)
 
     def _should_teardown(self, vm_request: VmRequest | None, *, keep_vm: bool) -> bool:
         return vm_request is not None and vm_request.lifecycle == "multipass" and not keep_vm
