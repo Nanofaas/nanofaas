@@ -260,20 +260,16 @@ class NanofaasTUI:
             ).ask()
         )
 
-        dry_run = _ask(
-            lambda: questionary.confirm("Dry-run?", default=False, style=_STYLE).ask()
-        )
-
         if scenario_choice in ("k3s-curl", "helm-stack", "k8s-vm"):
-            self._run_vm_e2e(scenario_choice, dry_run=dry_run)
+            self._run_vm_e2e(scenario_choice)
         elif scenario_choice == "container-local":
-            self._run_container_local(dry_run=dry_run)
+            self._run_container_local()
         elif scenario_choice == "deploy-host":
-            self._run_deploy_host(dry_run=dry_run)
+            self._run_deploy_host()
         else:
-            self._run_generic_e2e(scenario_choice, dry_run=dry_run)
+            self._run_generic_e2e(scenario_choice)
 
-    def _run_vm_e2e(self, scenario: str, dry_run: bool) -> None:
+    def _run_vm_e2e(self, scenario: str) -> None:
         from controlplane_tool.paths import default_tool_paths
 
         repo_root = default_tool_paths().workspace_root
@@ -308,6 +304,11 @@ class NanofaasTUI:
                     style=_STYLE,
                 ).ask()
             )
+            dry_run = _ask(
+                lambda: questionary.confirm(
+                    "Dry-run? (mostra piano senza eseguire)", default=False, style=_STYLE
+                ).ask()
+            )
 
             request = E2eRequest(
                 scenario="k8s-vm",
@@ -315,11 +316,15 @@ class NanofaasTUI:
                 vm=VmRequest(lifecycle="multipass", name=vm_name),
             )
             runner = E2eRunner(repo_root=repo_root)
-            step("Avvio k8s-vm E2E")
-            plan = runner.run(request)
+            if dry_run:
+                step("Piano k8s-vm E2E (dry-run)")
+                plan = runner.plan(request)
+            else:
+                step("Avvio k8s-vm E2E")
+                plan = runner.run(request)
             _show_plan_table(plan)
 
-    def _run_container_local(self, dry_run: bool) -> None:
+    def _run_container_local(self) -> None:
         from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
         from controlplane_tool.paths import default_tool_paths
 
@@ -327,7 +332,7 @@ class NanofaasTUI:
         runner = ContainerLocalE2eRunner(repo_root=default_tool_paths().workspace_root)
         runner.run()
 
-    def _run_deploy_host(self, dry_run: bool) -> None:
+    def _run_deploy_host(self) -> None:
         from controlplane_tool.deploy_host_runner import DeployHostE2eRunner
         from controlplane_tool.paths import default_tool_paths
 
@@ -336,7 +341,7 @@ class NanofaasTUI:
         runner.run()
         success("deploy-host E2E completato")
 
-    def _run_generic_e2e(self, scenario: str, dry_run: bool) -> None:
+    def _run_generic_e2e(self, scenario: str) -> None:
         from controlplane_tool.e2e_runner import E2eRunner
         from controlplane_tool.e2e_models import E2eRequest
         from controlplane_tool.paths import default_tool_paths
