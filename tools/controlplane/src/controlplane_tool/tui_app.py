@@ -103,12 +103,13 @@ class NanofaasTUI:
             lambda: questionary.select(
                 "Azione:",
                 choices=[
-                    questionary.Choice("jar — assemble JARs", "bootJar"),
+                    questionary.Choice("jar — assemble JARs", "jar"),
                     questionary.Choice("build — compile + unit tests", "build"),
                     questionary.Choice("test — unit tests only", "test"),
-                    questionary.Choice("run — avvia control-plane", "bootRun"),
-                    questionary.Choice("image — build OCI image", "bootBuildImage"),
-                    questionary.Choice("native — build GraalVM native", "nativeCompile"),
+                    questionary.Choice("run — avvia control-plane", "run"),
+                    questionary.Choice("image — build OCI image", "image"),
+                    questionary.Choice("native — build GraalVM native", "native"),
+                    questionary.Choice("inspect — mostra configurazione", "inspect"),
                 ],
                 style=_STYLE,
             ).ask()
