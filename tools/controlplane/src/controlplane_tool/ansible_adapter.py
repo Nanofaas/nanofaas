@@ -20,6 +20,7 @@ class AnsibleAdapter:
         repo_root: Path,
         shell: ShellBackend | None = None,
         host_resolver: HostResolver | None = None,
+        private_key_path: Path | None = None,
     ) -> None:
         self.paths = ToolPaths.repo_root(Path(repo_root))
         self.shell = shell or SubprocessShell()
@@ -32,6 +33,7 @@ class AnsibleAdapter:
                 dry_run=dry_run,
             )
         self.host_resolver = host_resolver
+        self.private_key_path = private_key_path
 
     def _inventory_target(self, request: VmRequest, *, dry_run: bool = False) -> str:
         return f"{self.host_resolver(request, dry_run=dry_run)},"
@@ -52,6 +54,8 @@ class AnsibleAdapter:
             "-u",
             request.user,
         ]
+        if self.private_key_path is not None:
+            command.extend(["--private-key", str(self.private_key_path)])
         for key, value in (extra_vars or {}).items():
             command.extend(["-e", f"{key}={value}"])
         command.append(str(playbook))

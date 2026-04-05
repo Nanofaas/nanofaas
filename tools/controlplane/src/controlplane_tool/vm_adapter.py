@@ -17,13 +17,14 @@ if TYPE_CHECKING:
     from controlplane_tool.ansible_adapter import AnsibleAdapter
 
 
-def _find_user_public_key() -> str | None:
-    """Return the first SSH public key found in ~/.ssh/, or None."""
+def _find_user_ssh_keypair() -> tuple[str, Path] | None:
+    """Return (public_key_content, private_key_path) for the first found key pair, or None."""
     ssh_dir = Path.home() / ".ssh"
-    for name in ("id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub", "id_dsa.pub"):
-        candidate = ssh_dir / name
-        if candidate.exists():
-            return candidate.read_text(encoding="utf-8").strip()
+    for name in ("id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"):
+        pub = ssh_dir / f"{name}.pub"
+        priv = ssh_dir / name
+        if pub.exists() and priv.exists():
+            return pub.read_text(encoding="utf-8").strip(), priv
     return None
 
 
@@ -100,6 +101,8 @@ class VmOrchestrator:
         self.repo_root = Path(repo_root)
         self.paths = ToolPaths.repo_root(self.repo_root)
         self.shell = shell or SubprocessShell()
+        keypair = _find_user_ssh_keypair()
+        self._private_key_path: Path | None = keypair[1] if keypair else None
         if ansible is None:
             from controlplane_tool.ansible_adapter import AnsibleAdapter
 
@@ -107,6 +110,7 @@ class VmOrchestrator:
                 self.repo_root,
                 shell=self.shell,
                 host_resolver=self.connection_host,
+                private_key_path=self._private_key_path,
             )
         self.ansible = ansible
 
@@ -185,9 +189,10 @@ class VmOrchestrator:
     def _launch_with_cloud_init(self, request: VmRequest) -> ShellExecutionResult:
         """Launch a new Multipass VM, injecting the user's SSH public key via cloud-init."""
         base_command = self._launch_command(request)
-        public_key = _find_user_public_key()
-        if public_key is None:
+        keypair = _find_user_ssh_keypair()
+        if keypair is None:
             return self._run(base_command)
+        public_key, _ = keypair
         cloud_init = f"#cloud-config\nssh_authorized_keys:\n  - {public_key}\n"
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", prefix="nanofaas-cloud-init-", delete=False
@@ -214,6 +219,11 @@ class VmOrchestrator:
         state = str(instance.get("state", "")).strip().lower()
         if state == "running":
             return info_result
+
+        if state == "deleted":
+            # Soft-deleted VM: purge it so we can relaunch with cloud-init SSH key injection
+            self._run(["multipass", "purge"])
+            return self._launch_with_cloud_init(request)
 
         return self._run(["multipass", "start", self._vm_name(request)], dry_run=False)
 
