@@ -94,6 +94,7 @@ class ContainerLocalE2eRunner:
         return fn.key, fn.image, fn.runtime, fn.family, fn.payload_path
 
     def _build_artifacts(self) -> None:
+        phase("Build")
         step("Building control-plane and function-runtime artifacts")
         self._run(
             [
@@ -201,6 +202,7 @@ class ContainerLocalE2eRunner:
 
         control_plane_jar = self.repo_root / "control-plane" / "build" / "libs" / "app.jar"
 
+        phase("Deploy")
         step("Starting control-plane with container-local provider")
         log_file = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
         cp_proc = subprocess.Popen(
@@ -222,9 +224,10 @@ class ContainerLocalE2eRunner:
         log_file.close()
 
         try:
-            step("Waiting for control-plane readiness")
-            if not wait_for_http_ok(self._api.health_url, max_attempts=90):
-                raise RuntimeError("Control-plane did not become healthy")
+            phase("Verify")
+            with status("Waiting for control-plane readiness"):
+                if not wait_for_http_ok(self._api.health_url, max_attempts=90):
+                    raise RuntimeError("Control-plane did not become healthy")
 
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp = Path(tmp_dir)
@@ -262,10 +265,12 @@ class ContainerLocalE2eRunner:
                 if not endpoint_url:
                     raise RuntimeError("endpointUrl must be present for provider-backed registration")
 
-                self._wait_for_containers(function_slug, 1)
-                health_base = endpoint_url.rstrip("/invoke").rstrip("/")
-                if not wait_for_http_ok(f"{health_base}/health"):
-                    raise RuntimeError("Stable proxy endpoint did not become healthy")
+                with status("Waiting for container to start"):
+                    self._wait_for_containers(function_slug, 1)
+                with status("Waiting for proxy endpoint health"):
+                    health_base = endpoint_url.rstrip("/invoke").rstrip("/")
+                    if not wait_for_http_ok(f"{health_base}/health"):
+                        raise RuntimeError("Stable proxy endpoint did not become healthy")
 
                 invoke_req = tmp / "invoke-request.json"
                 if payload_path:
@@ -309,7 +314,8 @@ class ContainerLocalE2eRunner:
                     check=True,
                 )
                 assert read_json_field(scale_resp, "replicas") == 2
-                self._wait_for_containers(function_slug, 2)
+                with status("Waiting for 2 replicas"):
+                    self._wait_for_containers(function_slug, 2)
 
                 invoke_resp2 = tmp / "invoke-scaled.json"
                 subprocess.run(
@@ -339,12 +345,13 @@ class ContainerLocalE2eRunner:
                     ],
                     check=True,
                 )
-                self._wait_for_containers(function_slug, 0)
+                with status("Waiting for containers to stop"):
+                    self._wait_for_containers(function_slug, 0)
 
                 import httpx as _httpx
 
-                status = _httpx.get(self._api.function_url(function_name), timeout=5).status_code
-                if status != 404:
+                http_status = _httpx.get(self._api.function_url(function_name), timeout=5).status_code
+                if http_status != 404:
                     raise RuntimeError(
                         f"Expected 404 after function delete, got {status}"
                     )

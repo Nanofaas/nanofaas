@@ -75,6 +75,7 @@ class DeployHostE2eRunner:
         return [(fn.key, fn.example_dir) for fn in resolved.functions]
 
     def _build_cli(self, *, skip: bool = False) -> None:
+        phase("Build")
         if skip:
             if not self._cli_bin.exists():
                 raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
@@ -173,6 +174,7 @@ class DeployHostE2eRunner:
         fake_cp = FakeControlPlane(self.control_plane_port, request_body_path)
 
         try:
+            phase("Deploy")
             self._start_registry(registry_container, docker)
             fake_cp.start(work_dir)
             if not wait_for_http_any_status(f"http://127.0.0.1:{self.control_plane_port}/", max_attempts=30):
@@ -180,6 +182,7 @@ class DeployHostE2eRunner:
 
             cp_url = f"http://127.0.0.1:{self.control_plane_port}"
 
+            phase("Verify")
             for function_key, example_dir in selected_functions:
                 image_repo = f"nanofaas/{function_key}"
                 fn_yaml = self._write_function_yaml(work_dir, function_key, image_repo, tag, example_dir)

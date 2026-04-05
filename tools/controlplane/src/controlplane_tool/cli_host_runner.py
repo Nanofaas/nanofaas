@@ -139,8 +139,10 @@ class CliHostPlatformRunner:
         kubeconfig = self._export_kubeconfig()
 
         try:
+            phase("Build")
             self._build_cli_on_host()
 
+            phase("Deploy")
             step("Running platform lifecycle from host CLI...")
             install_out = self._run_host_cli(
                 kubeconfig,
@@ -165,6 +167,7 @@ class CliHostPlatformRunner:
             if f"endpoint\thttp://{public_host}:30080" not in install_out:
                 raise RuntimeError(f"Unexpected endpoint in install output: {install_out}")
 
+            phase("Verify")
             status_out = self._run_host_cli(kubeconfig, ["platform", "status", "-n", self.namespace])
             if "deployment\tnanofaas-control-plane\t1/1" not in status_out:
                 raise RuntimeError(f"Control-plane not ready: {status_out}")

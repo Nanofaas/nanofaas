@@ -77,6 +77,7 @@ class K3sCurlRunner:
         return self.registry.function_runtime_image()
 
     def _build_jars(self) -> None:
+        phase("Build")
         step(f"Building jars (runtime={self.runtime})")
         if self.runtime == "rust":
             self._vm_exec(
@@ -115,6 +116,7 @@ class K3sCurlRunner:
         self._vm_exec(f"sudo docker push {self._runtime_image}")
 
     def _deploy_platform(self) -> None:
+        phase("Deploy")
         step("Deploying platform to k3s")
         self._vm_exec(
             f"kubectl create namespace {self.namespace} --dry-run=client -o yaml | kubectl apply -f -"
@@ -172,6 +174,7 @@ class K3sCurlRunner:
         return self._cached_service_ip
 
     def _verify_health(self) -> None:
+        phase("Verify")
         step("Verifying control-plane health")
         service_ip = self._control_plane_service_ip()
         self._vm_exec(

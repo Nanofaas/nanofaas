@@ -82,6 +82,7 @@ class CliVmRunner:
         )
 
     def _build_artifacts(self) -> None:
+        phase("Build")
         step("Building control-plane artifacts")
         self._vm_exec(
             f"cd {self._remote_dir} && "
@@ -106,6 +107,7 @@ class CliVmRunner:
         self._vm_exec(f"sudo docker push {self._runtime_image}")
 
     def _deploy_platform(self) -> None:
+        phase("Deploy")
         step("Deploying platform to k3s")
         self._vm_exec(
             f"cd {self._remote_dir} && "
@@ -147,6 +149,7 @@ class CliVmRunner:
         resolved: "ResolvedScenario | None",
         endpoint: str,
     ) -> None:
+        phase("Verify")
         functions = _selected_functions(resolved)
         for fn_key in functions:
             fn_image = _function_image(fn_key, resolved, self._runtime_image)

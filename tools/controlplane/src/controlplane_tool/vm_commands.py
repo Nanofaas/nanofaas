@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import typer
 from pydantic import ValidationError
 
+from controlplane_tool.console import console, fail, step
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest
@@ -49,14 +51,14 @@ def _orchestrator() -> VmOrchestrator:
 
 def _emit_result(result, *, dry_run: bool) -> None:
     if dry_run:
-        typer.echo(" ".join(result.command))
+        console.print(" ".join(result.command))
         return
 
     if result.stdout:
-        typer.echo(result.stdout.rstrip())
+        console.print(result.stdout.rstrip())
     if result.return_code != 0:
         if result.stderr:
-            typer.echo(result.stderr.rstrip(), err=True)
+            console.print(result.stderr.rstrip(), file=sys.stderr)
         raise typer.Exit(code=result.return_code)
 
 
@@ -65,10 +67,10 @@ def _execute(action) -> None:
         result = action()
     except ValidationError as exc:
         first_error = exc.errors()[0]["msg"] if exc.errors() else "validation failed"
-        typer.echo(f"Invalid VM request: {first_error}", err=True)
+        fail("Invalid VM request", first_error)
         raise typer.Exit(code=2)
     except ValueError as exc:
-        typer.echo(f"Invalid VM request: {exc}", err=True)
+        fail("Invalid VM request", str(exc))
         raise typer.Exit(code=2)
 
     _emit_result(result["result"], dry_run=result["dry_run"])

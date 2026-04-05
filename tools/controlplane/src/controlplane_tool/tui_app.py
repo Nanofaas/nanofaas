@@ -70,7 +70,7 @@ class NanofaasTUI:
                         "Cosa vuoi fare?",
                         choices=self._MAIN_MENU,
                         style=_STYLE,
-                    ).ask
+                    ).ask()
                 )
                 if choice == "exit":
                     break
@@ -111,7 +111,7 @@ class NanofaasTUI:
                     questionary.Choice("native — build GraalVM native", "nativeCompile"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         profile = _ask(
@@ -120,13 +120,13 @@ class NanofaasTUI:
                 choices=["core", "all", "container-local"],
                 default="core",
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         dry_run = _ask(
             lambda: questionary.confirm(
                 "Dry-run? (mostra solo il comando)", default=False, style=_STYLE
-            ).ask
+            ).ask()
         )
 
         step(f"Eseguo {action}", f"profile={profile}")
@@ -167,7 +167,7 @@ class NanofaasTUI:
                     questionary.Choice("inspect — mostra stato", "inspect"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         lifecycle = _ask(
@@ -176,14 +176,14 @@ class NanofaasTUI:
                 choices=["multipass", "external"],
                 default="multipass",
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         if lifecycle == "multipass":
             name = _ask(
                 lambda: questionary.text(
                     "Nome VM:", default="nanofaas-e2e", style=_STYLE
-                ).ask
+                ).ask()
             )
             host = None
         else:
@@ -191,17 +191,17 @@ class NanofaasTUI:
             host = _ask(
                 lambda: questionary.text(
                     "Host remoto (IP/hostname):", style=_STYLE
-                ).ask
+                ).ask()
             )
 
         user = _ask(
-            lambda: questionary.text("Utente SSH:", default="ubuntu", style=_STYLE).ask
+            lambda: questionary.text("Utente SSH:", default="ubuntu", style=_STYLE).ask()
         )
 
         dry_run = _ask(
             lambda: questionary.confirm(
                 "Dry-run?", default=False, style=_STYLE
-            ).ask
+            ).ask()
         )
 
         request = VmRequest(lifecycle=lifecycle, name=name, host=host, user=user)
@@ -219,7 +219,7 @@ class NanofaasTUI:
             install_helm = _ask(
                 lambda: questionary.confirm(
                     "Installa Helm?", default=False, style=_STYLE
-                ).ask
+                ).ask()
             )
             result = orchestrator.install_dependencies(
                 request, install_helm=install_helm, dry_run=dry_run
@@ -256,11 +256,11 @@ class NanofaasTUI:
                     questionary.Choice("buildpack — buildpack POOL locale", "buildpack"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         dry_run = _ask(
-            lambda: questionary.confirm("Dry-run?", default=False, style=_STYLE).ask
+            lambda: questionary.confirm("Dry-run?", default=False, style=_STYLE).ask()
         )
 
         if scenario_choice in ("k3s-curl", "helm-stack", "k8s-vm"):
@@ -299,7 +299,7 @@ class NanofaasTUI:
             vm_name = _ask(
                 lambda: questionary.text(
                     "Nome VM:", default="nanofaas-e2e", style=_STYLE
-                ).ask
+                ).ask()
             )
             runtime = _ask(
                 lambda: questionary.select(
@@ -307,7 +307,7 @@ class NanofaasTUI:
                     choices=["java", "rust"],
                     default="java",
                     style=_STYLE,
-                ).ask
+                ).ask()
             )
 
             request = E2eRequest(
@@ -349,7 +349,7 @@ class NanofaasTUI:
         runtime = _ask(
             lambda: questionary.select(
                 "Runtime:", choices=["java", "rust"], default="java", style=_STYLE
-            ).ask
+            ).ask()
         )
 
         request = E2eRequest(scenario=scenario, runtime=runtime)
@@ -373,7 +373,7 @@ class NanofaasTUI:
                     questionary.Choice("host-platform — CLI su host vs cluster", "host"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         repo_root = default_tool_paths().workspace_root
@@ -406,7 +406,7 @@ class NanofaasTUI:
                     questionary.Choice("nuovo profilo — wizard interattivo", "new_profile"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         if action == "new_profile":
@@ -418,13 +418,13 @@ class NanofaasTUI:
             use_saved = _ask(
                 lambda: questionary.confirm(
                     "Usa un profilo salvato?", default=True, style=_STYLE
-                ).ask
+                ).ask()
             )
             if use_saved:
                 profile_name = _ask(
                     lambda: questionary.select(
                         "Profilo:", choices=saved, style=_STYLE
-                    ).ask
+                    ).ask()
                 )
                 from controlplane_tool.profiles import load_profile
                 profile = load_profile(profile_name)
@@ -460,7 +460,7 @@ class NanofaasTUI:
                     questionary.Choice("Dettaglio singola funzione", "show"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         if view == "all":
@@ -493,7 +493,7 @@ class NanofaasTUI:
             key = _ask(
                 lambda: questionary.select(
                     "Funzione:", choices=keys, style=_STYLE
-                ).ask
+                ).ask()
             )
             fn = resolve_function_definition(key)
             rows = [
@@ -527,14 +527,14 @@ class NanofaasTUI:
                     questionary.Choice("Elimina profilo", "delete"),
                 ],
                 style=_STYLE,
-            ).ask
+            ).ask()
         )
 
         if action == "new":
             name = _ask(
                 lambda: questionary.text(
                     "Nome profilo:", default="default", style=_STYLE
-                ).ask
+                ).ask()
             )
             profile = self._build_profile_interactive(name)
             dest = save_profile(profile)
@@ -548,7 +548,7 @@ class NanofaasTUI:
             name = _ask(
                 lambda: questionary.select(
                     "Profilo:", choices=saved, style=_STYLE
-                ).ask
+                ).ask()
             )
             profile = load_profile(name)
             _show_profile_table(profile)
@@ -561,12 +561,12 @@ class NanofaasTUI:
             name = _ask(
                 lambda: questionary.select(
                     "Profilo da eliminare:", choices=saved, style=_STYLE
-                ).ask
+                ).ask()
             )
             confirm = _ask(
                 lambda: questionary.confirm(
                     f"Elimina '{name}'?", default=False, style=_STYLE
-                ).ask
+                ).ask()
             )
             if confirm:
                 from controlplane_tool.profiles import profile_path

@@ -71,6 +71,7 @@ class HelmStackRunner:
             )
 
         env = self._build_env()
+        phase("Run")
         step("Running loadtest via Python runner")
         subprocess.run(
             [
