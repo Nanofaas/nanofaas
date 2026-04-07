@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from controlplane_tool.ansible_adapter import AnsibleAdapter
-from controlplane_tool.shell_backend import RecordingShell, ScriptedShell
+from controlplane_tool.shell_backend import RecordingShell
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -31,24 +31,38 @@ def test_configure_registry_sets_expected_extra_vars() -> None:
     assert "registry_host=registry.example.test" in rendered
 
 
-MULTIPASS_INFO_JSON = """{
-  "info": {
-    "nanofaas-e2e": {
-      "ipv4": ["192.168.64.10"],
-      "state": "Running"
-    }
-  }
-}"""
-
-
 def test_provision_base_for_multipass_targets_vm_ip() -> None:
-    shell = ScriptedShell(
-        stdout_map={
-            ("multipass", "info", "nanofaas-e2e", "--format", "json"): MULTIPASS_INFO_JSON,
+    import json
+    from multipass import FakeBackend, MultipassClient
+    from multipass._backend import CommandResult
+
+    name = "nanofaas-e2e"
+    info_payload = {
+        "info": {
+            name: {
+                "state": "Running",
+                "ipv4": ["192.168.64.10"],
+                "image_release": "",
+                "image_hash": "",
+                "cpu_count": 4,
+                "memory": {},
+                "disks": {},
+                "mounts": {},
+            }
         }
+    }
+    backend = FakeBackend({
+        ("multipass", "info", name, "--format", "json"): CommandResult(
+            args=[], returncode=0, stdout=json.dumps(info_payload), stderr=""
+        )
+    })
+    shell = RecordingShell()
+    adapter = AnsibleAdapter(
+        repo_root=Path("/repo"),
+        shell=shell,
+        multipass_client=MultipassClient(backend=backend),
     )
-    adapter = AnsibleAdapter(repo_root=Path("/repo"), shell=shell)
-    request = VmRequest(lifecycle="multipass", name="nanofaas-e2e", user="ubuntu")
+    request = VmRequest(lifecycle="multipass", name=name, user="ubuntu")
 
     adapter.provision_base(request, dry_run=False)
 

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from multipass import MultipassClient
+
 from controlplane_tool.e2e_catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.paths import ToolPaths
@@ -42,10 +44,11 @@ class E2eRunner:
         shell: ShellBackend | None = None,
         manifest_root: Path | None = None,
         host_resolver: Callable[[VmRequest], str] | None = None,
+        multipass_client: MultipassClient | None = None,
     ) -> None:
         self.paths = ToolPaths.repo_root(Path(repo_root))
         self.shell = shell or SubprocessShell()
-        self.vm = VmOrchestrator(self.paths.workspace_root, shell=self.shell)
+        self.vm = VmOrchestrator(self.paths.workspace_root, shell=self.shell, multipass_client=multipass_client)
         self.manifest_root = manifest_root or (self.paths.runs_dir / "manifests")
         self._host_resolver = host_resolver
 

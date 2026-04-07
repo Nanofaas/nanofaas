@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from multipass import MultipassClient
+
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.shell_backend import (
     ShellBackend,
@@ -21,15 +23,17 @@ class AnsibleAdapter:
         shell: ShellBackend | None = None,
         host_resolver: HostResolver | None = None,
         private_key_path: Path | None = None,
+        multipass_client: MultipassClient | None = None,
     ) -> None:
         self.paths = ToolPaths.repo_root(Path(repo_root))
         self.shell = shell or SubprocessShell()
         if host_resolver is None:
             from controlplane_tool.vm_adapter import resolve_connection_host
 
+            client = multipass_client or MultipassClient()
             host_resolver = lambda request, dry_run=False: resolve_connection_host(
                 request,
-                self.shell,
+                client,
                 dry_run=dry_run,
             )
         self.host_resolver = host_resolver

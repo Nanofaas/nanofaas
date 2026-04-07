@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-import json
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from multipass import (
+    MultipassClient,
+    MultipassCommandError,
+    VmNotFoundError,
+    find_ssh_public_key,
+)
 
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.shell_backend import (
@@ -17,14 +22,14 @@ if TYPE_CHECKING:
     from controlplane_tool.ansible_adapter import AnsibleAdapter
 
 
-def _find_user_ssh_keypair() -> tuple[str, Path] | None:
-    """Return (public_key_content, private_key_path) for the first found key pair, or None."""
+def _find_ssh_private_key_path() -> Path | None:
+    """Return the private key path paired with the first found public key, or None."""
     ssh_dir = Path.home() / ".ssh"
     for name in ("id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"):
         pub = ssh_dir / f"{name}.pub"
         priv = ssh_dir / name
         if pub.exists() and priv.exists():
-            return pub.read_text(encoding="utf-8").strip(), priv
+            return priv
     return None
 
 
@@ -32,42 +37,22 @@ def _vm_name(request: VmRequest) -> str:
     return request.name or "nanofaas-e2e"
 
 
-def _multipass_info_command(request: VmRequest) -> list[str]:
-    return ["multipass", "info", _vm_name(request), "--format", "json"]
+def _ok(command: list[str], *, stdout: str = "") -> ShellExecutionResult:
+    return ShellExecutionResult(command=command, return_code=0, stdout=stdout)
 
 
-def _parse_multipass_instance(stdout: str, request: VmRequest) -> dict[str, object] | None:
-    if not stdout.strip():
-        return None
-
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError:
-        return None
-
-    info = payload.get("info")
-    if not isinstance(info, dict):
-        return None
-
-    instance = info.get(_vm_name(request))
-    if not isinstance(instance, dict):
-        return None
-    return instance
-
-
-def _read_multipass_instance(
-    shell: ShellBackend,
-    request: VmRequest,
-) -> tuple[ShellExecutionResult, dict[str, object] | None]:
-    result = shell.run(_multipass_info_command(request))
-    if result.return_code != 0:
-        return result, None
-    return result, _parse_multipass_instance(result.stdout, request)
+def _sdk_error(e: MultipassCommandError) -> ShellExecutionResult:
+    return ShellExecutionResult(
+        command=e.args_list,
+        return_code=e.returncode,
+        stdout=e.stdout,
+        stderr=e.stderr,
+    )
 
 
 def resolve_connection_host(
     request: VmRequest,
-    shell: ShellBackend,
+    client: MultipassClient,
     *,
     dry_run: bool = False,
 ) -> str:
@@ -79,15 +64,13 @@ def resolve_connection_host(
     if dry_run:
         return f"<multipass-ip:{_vm_name(request)}>"
 
-    _result, instance = _read_multipass_instance(shell, request)
-    if instance is None:
+    try:
+        info = client.get_vm(_vm_name(request)).info()
+    except VmNotFoundError:
         raise RuntimeError(f"Unable to resolve Multipass VM '{_vm_name(request)}'")
 
-    ipv4 = instance.get("ipv4")
-    if isinstance(ipv4, list):
-        for candidate in ipv4:
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate
+    if info.ipv4:
+        return info.ipv4[0]
     raise RuntimeError(f"Multipass VM '{_vm_name(request)}' has no IPv4 address")
 
 
@@ -96,13 +79,14 @@ class VmOrchestrator:
         self,
         repo_root: Path,
         shell: ShellBackend | None = None,
-        ansible: AnsibleAdapter | None = None,
+        ansible: "AnsibleAdapter | None" = None,
+        multipass_client: MultipassClient | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.paths = ToolPaths.repo_root(self.repo_root)
         self.shell = shell or SubprocessShell()
-        keypair = _find_user_ssh_keypair()
-        self._private_key_path: Path | None = keypair[1] if keypair else None
+        self._client = multipass_client or MultipassClient()
+        self._private_key_path: Path | None = _find_ssh_private_key_path()
         if ansible is None:
             from controlplane_tool.ansible_adapter import AnsibleAdapter
 
@@ -164,68 +148,35 @@ class VmOrchestrator:
             return f"{remote_dir}/{path.name}"
 
     def resolve_multipass_ipv4(self, request: VmRequest, *, dry_run: bool = False) -> str:
-        return resolve_connection_host(request, self.shell, dry_run=dry_run)
+        return resolve_connection_host(request, self._client, dry_run=dry_run)
 
     def connection_host(self, request: VmRequest, *, dry_run: bool = False) -> str:
-        return resolve_connection_host(request, self.shell, dry_run=dry_run)
+        return resolve_connection_host(request, self._client, dry_run=dry_run)
 
-    def _run(self, command: list[str], *, dry_run: bool = False) -> ShellExecutionResult:
+    def _shell_run(self, command: list[str], *, dry_run: bool = False) -> ShellExecutionResult:
         return self.shell.run(command, cwd=self.paths.workspace_root, dry_run=dry_run)
-
-    def _launch_command(self, request: VmRequest) -> list[str]:
-        return [
-            "multipass",
-            "launch",
-            "--name",
-            self._vm_name(request),
-            "--cpus",
-            str(request.cpus),
-            "--memory",
-            request.memory,
-            "--disk",
-            request.disk,
-        ]
-
-    def _launch_with_cloud_init(self, request: VmRequest) -> ShellExecutionResult:
-        """Launch a new Multipass VM, injecting the user's SSH public key via cloud-init."""
-        base_command = self._launch_command(request)
-        keypair = _find_user_ssh_keypair()
-        if keypair is None:
-            return self._run(base_command)
-        public_key, _ = keypair
-        cloud_init = f"#cloud-config\nssh_authorized_keys:\n  - {public_key}\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", prefix="nanofaas-cloud-init-", delete=False
-        ) as f:
-            f.write(cloud_init)
-            cloud_init_path = f.name
-        try:
-            return self._run([*base_command, "--cloud-init", cloud_init_path])
-        finally:
-            Path(cloud_init_path).unlink(missing_ok=True)
 
     def ensure_running(self, request: VmRequest, *, dry_run: bool = False) -> ShellExecutionResult:
         if request.lifecycle == "external":
-            command = ["ssh", f"{request.user}@{request.host}", "true"]
-            return self._run(command, dry_run=dry_run)
+            return self._shell_run(["ssh", f"{request.user}@{request.host}", "true"], dry_run=dry_run)
+
+        name = self._vm_name(request)
+        launch_cmd = ["multipass", "launch", "--name", name,
+                      "--cpus", str(request.cpus), "--memory", request.memory, "--disk", request.disk]
 
         if dry_run:
-            return self._run(self._launch_command(request), dry_run=True)
+            return _ok(launch_cmd)
 
-        info_result, instance = _read_multipass_instance(self.shell, request)
-        if instance is None:
-            return self._launch_with_cloud_init(request)
-
-        state = str(instance.get("state", "")).strip().lower()
-        if state == "running":
-            return info_result
-
-        if state == "deleted":
-            # Soft-deleted VM: purge it so we can relaunch with cloud-init SSH key injection
-            self._run(["multipass", "purge"])
-            return self._launch_with_cloud_init(request)
-
-        return self._run(["multipass", "start", self._vm_name(request)], dry_run=False)
+        pub_key = find_ssh_public_key()
+        cloud_init_config = {"ssh_authorized_keys": [pub_key]} if pub_key else None
+        self._client.ensure_running(
+            name,
+            cpus=request.cpus,
+            memory=request.memory,
+            disk=request.disk,
+            cloud_init_config=cloud_init_config,
+        )
+        return _ok(launch_cmd)
 
     def sync_project(
         self,
@@ -239,23 +190,22 @@ class VmOrchestrator:
         destination = remote_dir or self._remote_project_dir(request)
 
         if request.lifecycle == "external":
-            command = [
-                "rsync",
-                "-az",
-                "--delete",
-                f"{source}/",
-                f"{request.user}@{request.host}:{destination}/",
-            ]
-            return self._run(command, dry_run=dry_run)
+            return self._shell_run(
+                ["rsync", "-az", "--delete", f"{source}/", f"{request.user}@{request.host}:{destination}/"],
+                dry_run=dry_run,
+            )
 
-        command = [
-            "multipass",
-            "transfer",
-            "-r",
-            str(source),
-            f"{self._vm_name(request)}:{destination}",
-        ]
-        return self._run(command, dry_run=dry_run)
+        name = self._vm_name(request)
+        transfer_cmd = ["multipass", "transfer", "-r", str(source), f"{name}:{destination}"]
+
+        if dry_run:
+            return _ok(transfer_cmd)
+
+        try:
+            self._client.get_vm(name).transfer(str(source), f"{name}:{destination}")
+        except MultipassCommandError as e:
+            return _sdk_error(e)
+        return _ok(transfer_cmd)
 
     def install_dependencies(
         self,
@@ -304,18 +254,41 @@ class VmOrchestrator:
 
     def teardown(self, request: VmRequest, *, dry_run: bool = False) -> ShellExecutionResult:
         if request.lifecycle == "external":
-            return self._run(
+            return self._shell_run(
                 ["echo", "Skipping teardown for external VM lifecycle"],
                 dry_run=dry_run,
             )
 
-        command = ["multipass", "delete", self._vm_name(request)]
-        return self._run(command, dry_run=dry_run)
+        name = self._vm_name(request)
+        if dry_run:
+            return _ok(["multipass", "delete", name])
+
+        try:
+            self._client.get_vm(name).delete()
+        except (VmNotFoundError, MultipassCommandError) as e:
+            if isinstance(e, MultipassCommandError):
+                return _sdk_error(e)
+        return _ok(["multipass", "delete", name])
 
     def inspect(self, request: VmRequest, *, dry_run: bool = False) -> ShellExecutionResult:
         if request.lifecycle == "external":
-            return self._run(["ssh", f"{request.user}@{request.host}", "hostname"], dry_run=dry_run)
-        return self._run(["multipass", "info", self._vm_name(request)], dry_run=dry_run)
+            return self._shell_run(["ssh", f"{request.user}@{request.host}", "hostname"], dry_run=dry_run)
+
+        name = self._vm_name(request)
+        if dry_run:
+            return _ok(["multipass", "info", name])
+
+        try:
+            info = self._client.get_vm(name).info()
+            stdout = (
+                f"Name:  {info.name}\n"
+                f"State: {info.state.value}\n"
+                f"IPv4:  {', '.join(info.ipv4) or '-'}\n"
+                f"Image: {info.image}\n"
+            )
+            return _ok(["multipass", "info", name], stdout=stdout)
+        except MultipassCommandError as e:
+            return _sdk_error(e)
 
     def export_kubeconfig(
         self,
@@ -326,20 +299,21 @@ class VmOrchestrator:
     ) -> ShellExecutionResult:
         kubeconfig_path = self._kubeconfig_path(request)
         if request.lifecycle == "external":
-            command = [
-                "scp",
-                f"{request.user}@{request.host}:{kubeconfig_path}",
-                str(destination),
-            ]
-            return self._run(command, dry_run=dry_run)
+            return self._shell_run(
+                ["scp", f"{request.user}@{request.host}:{kubeconfig_path}", str(destination)],
+                dry_run=dry_run,
+            )
 
-        command = [
-            "multipass",
-            "transfer",
-            f"{self._vm_name(request)}:{kubeconfig_path}",
-            str(destination),
-        ]
-        return self._run(command, dry_run=dry_run)
+        name = self._vm_name(request)
+        transfer_cmd = ["multipass", "transfer", f"{name}:{kubeconfig_path}", str(destination)]
+        if dry_run:
+            return _ok(transfer_cmd)
+
+        try:
+            self._client.get_vm(name).transfer(f"{name}:{kubeconfig_path}", str(destination))
+        except MultipassCommandError as e:
+            return _sdk_error(e)
+        return _ok(transfer_cmd)
 
     def remote_exec(
         self,
@@ -349,19 +323,23 @@ class VmOrchestrator:
         dry_run: bool = False,
     ) -> ShellExecutionResult:
         if request.lifecycle == "external":
-            return self._run(
+            return self._shell_run(
                 ["ssh", f"{request.user}@{request.host}", command],
                 dry_run=dry_run,
             )
-        return self._run(
-            [
-                "multipass",
-                "exec",
-                self._vm_name(request),
-                "--",
-                "bash",
-                "-lc",
-                command,
-            ],
-            dry_run=dry_run,
-        )
+
+        name = self._vm_name(request)
+        exec_cmd = ["multipass", "exec", name, "--", "bash", "-lc", command]
+        if dry_run:
+            return _ok(exec_cmd)
+
+        try:
+            result = self._client.get_vm(name).exec(["bash", "-lc", command])
+            return ShellExecutionResult(
+                command=exec_cmd,
+                return_code=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+        except MultipassCommandError as e:
+            return _sdk_error(e)

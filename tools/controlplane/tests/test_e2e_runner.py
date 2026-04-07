@@ -103,12 +103,22 @@ def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
 
 
 def test_run_all_tears_down_vm_when_keep_vm_false() -> None:
-    shell = RecordingShell()
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
+    from multipass import FakeBackend, MultipassClient
+    from multipass._backend import CommandResult
+
+    backend = FakeBackend()
+    backend.set_default(CommandResult(args=[], returncode=0, stdout="", stderr=""))
+
+    runner = E2eRunner(
+        repo_root=Path("/repo"),
+        shell=RecordingShell(),
+        host_resolver=lambda _: "10.0.0.1",
+        multipass_client=MultipassClient(backend=backend),
+    )
 
     runner.run_all(only=["k8s-vm"], runtime="java")
 
-    assert any(command[:2] == ["multipass", "delete"] for command in shell.commands)
+    assert any("delete" in call for call in backend.calls)
 
 
 def test_plan_tracks_resolved_scenario_selection(tmp_path: Path) -> None:
