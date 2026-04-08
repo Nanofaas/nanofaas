@@ -103,10 +103,30 @@ def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
 
 
 def test_run_all_tears_down_vm_when_keep_vm_false() -> None:
+    import json
     from multipass import FakeBackend, MultipassClient
     from multipass._backend import CommandResult
 
-    backend = FakeBackend()
+    name = "nanofaas-e2e"
+    info_payload = json.dumps({
+        "info": {
+            name: {
+                "state": "Running",
+                "ipv4": ["10.0.0.1"],
+                "image_release": "24.04",
+                "image_hash": "",
+                "cpu_count": 1,
+                "memory": {},
+                "disks": {},
+                "mounts": {},
+            }
+        }
+    })
+    backend = FakeBackend({
+        ("multipass", "info", name, "--format", "json"): CommandResult(
+            args=[], returncode=0, stdout=info_payload, stderr=""
+        ),
+    })
     backend.set_default(CommandResult(args=[], returncode=0, stdout="", stderr=""))
 
     runner = E2eRunner(

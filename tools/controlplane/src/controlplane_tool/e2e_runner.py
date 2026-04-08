@@ -28,6 +28,7 @@ class ScenarioPlanStep:
     summary: str
     command: list[str]
     env: dict[str, str] = field(default_factory=dict)
+    action: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -219,8 +220,15 @@ class E2eRunner:
 
     def _vm_bootstrap_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
         vm_request = self._require_vm(request)
+        ensure_dry = self.vm.ensure_running(vm_request, dry_run=True)
+        ensure_step = ScenarioPlanStep(
+            summary="Ensure VM is running",
+            command=ensure_dry.command,
+            env=ensure_dry.env,
+            action=lambda: self.vm.ensure_running(vm_request, dry_run=False),
+        )
         return [
-            self._step_from_result("Ensure VM is running", self.vm.ensure_running(vm_request, dry_run=True)),
+            ensure_step,
             self._step_from_result(
                 "Provision base VM dependencies",
                 self.vm.install_dependencies(vm_request, install_helm=True, dry_run=True),
@@ -443,6 +451,14 @@ class E2eRunner:
     def _execute_steps(self, plan: ScenarioPlan) -> None:
         ip_cache: dict[str, str] = {}
         for step in plan.steps:
+            if step.action is not None:
+                try:
+                    step.action()
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Scenario '{plan.request.scenario}' failed at step '{step.summary}': {exc}"
+                    ) from exc
+                continue
             command = self._resolve_command(step.command, plan.request.vm, ip_cache)
             result = self.shell.run(
                 command,
