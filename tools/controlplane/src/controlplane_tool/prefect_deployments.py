@@ -31,11 +31,28 @@ _KNOWN_DEPLOYMENTS: dict[str, dict[str, object]] = {
 }
 
 
+def _find_nonzero_return_code(result: object) -> int | None:
+    if isinstance(result, (list, tuple)):
+        for item in result:
+            code = _find_nonzero_return_code(item)
+            if code is not None:
+                return code
+        return None
+
+    return_code = getattr(result, "return_code", None)
+    if isinstance(return_code, int) and return_code != 0:
+        return return_code
+    return None
+
+
 def run_deployment_flow(*, flow_name: str, **parameters: object) -> object:
     flow = resolve_flow_definition(flow_name, **parameters)
     flow_result = run_local_flow(flow.flow_id, flow.run)
     if flow_result.status != "completed":
         raise RuntimeError(flow_result.error or f"{flow.flow_id} failed")
+    return_code = _find_nonzero_return_code(flow_result.result)
+    if return_code is not None:
+        raise RuntimeError(f"{flow.flow_id} failed with exit code {return_code}")
     return flow_result.result
 
 
