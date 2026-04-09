@@ -1,3 +1,31 @@
+"""FastAPI-based runtime server for the nanofaas Python SDK.
+
+This module exposes the ASGI application that hosts Python function handlers.
+On startup it dynamically imports the module specified by the ``HANDLER_MODULE``
+environment variable and expects to find exactly one function decorated with
+:func:`nanofaas.sdk.decorator.nanofaas_function`.
+
+Environment variables
+---------------------
+HANDLER_MODULE
+    Dotted module path of the user handler (e.g. ``mypackage.handler``).
+FUNCTION_NAME
+    Human-readable function name used in log messages and metric labels.
+    Defaults to ``HANDLER_MODULE`` if not set.
+CALLBACK_URL
+    Base URL of the control-plane callback endpoint for async invocations.
+EXECUTION_ID
+    Fallback execution ID used when the ``X-Execution-Id`` header is absent.
+
+Endpoints
+---------
+POST /invoke
+    Execute the registered handler for a single invocation.
+GET  /health
+    Liveness probe; always returns ``{"status": "ok"}``.
+GET  /metrics
+    Prometheus metrics in the text exposition format.
+"""
 import os
 import importlib
 import asyncio
@@ -18,6 +46,17 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """ASGI lifespan handler: import the user handler module on startup.
+
+    Imports the module identified by ``HANDLER_MODULE`` and verifies that it
+    registered a handler via :func:`~nanofaas.sdk.decorator.nanofaas_function`.
+    Logs a warning if no handler was found; logs an error (with traceback) if
+    the import itself fails.
+
+    :param app: The FastAPI application instance (required by the lifespan
+        protocol but unused directly).
+    :type app: fastapi.FastAPI
+    """
     if HANDLER_MODULE:
         try:
             logger.info(f"Loading handler module: {HANDLER_MODULE}")
