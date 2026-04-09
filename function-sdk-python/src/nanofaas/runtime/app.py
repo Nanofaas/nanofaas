@@ -3,7 +3,7 @@
 This module exposes the ASGI application that hosts Python function handlers.
 On startup it dynamically imports the module specified by the ``HANDLER_MODULE``
 environment variable and expects to find exactly one function decorated with
-:func:`nanofaas.sdk.decorator.nanofaas_function`.
+:func:`~nanofaas.sdk.decorator.nanofaas_function`.
 
 Environment variables
 ---------------------
@@ -20,7 +20,11 @@ EXECUTION_ID
 Endpoints
 ---------
 POST /invoke
-    Execute the registered handler for a single invocation.
+    Execute the registered handler for a single invocation. Expects JSON request
+    body with ``input`` field. Returns JSON response with handler output or error.
+    Required headers: ``X-Execution-Id``. Optional headers: ``X-Trace-Id``,
+    ``X-Callback-Url``. Response includes ``X-Cold-Start`` and ``X-Init-Duration-Ms``
+    headers on first invocation.
 GET  /health
     Liveness probe; always returns ``{"status": "ok"}``.
 GET  /metrics
@@ -50,12 +54,14 @@ async def lifespan(app: FastAPI):
 
     Imports the module identified by ``HANDLER_MODULE`` and verifies that it
     registered a handler via :func:`~nanofaas.sdk.decorator.nanofaas_function`.
-    Logs a warning if no handler was found; logs an error (with traceback) if
-    the import itself fails.
+    Logs a warning if no handler was found (via :func:`~nanofaas.sdk.decorator.get_registered_handler`);
+    logs an error (with traceback) if the module import or any initialization fails.
 
     :param app: The FastAPI application instance (required by the lifespan
         protocol but unused directly).
     :type app: fastapi.FastAPI
+    :returns: An async context manager that yields control to FastAPI after startup.
+    :rtype: AsyncContextManager[None]
     """
     if HANDLER_MODULE:
         try:
