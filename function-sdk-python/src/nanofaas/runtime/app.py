@@ -136,6 +136,8 @@ async def send_callback(callback_url: str, execution_id: str, trace_id: str | No
     :param result: JSON-serialisable result payload with keys ``success``,
         ``output``, and ``error``.
     :type result: dict
+    :returns: None.
+    :rtype: None
     """
     if not callback_url:
         return
