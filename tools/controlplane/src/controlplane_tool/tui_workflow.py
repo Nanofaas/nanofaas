@@ -14,9 +14,10 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from controlplane_tool.tui_prefect_bridge import TuiPrefectBridge
 from controlplane_tool.workflow_models import WorkflowEvent
 
-WorkflowState = Literal["pending", "running", "success", "failed"]
+WorkflowState = Literal["pending", "running", "success", "failed", "cancelled"]
 
 
 @dataclass
@@ -39,108 +40,71 @@ class WorkflowDashboard:
     ) -> None:
         self.title = title
         self.summary_lines = list(summary_lines or [])
-        self.steps = [WorkflowStepState(label=label) for label in (planned_steps or [])]
         self.log_limit = log_limit
+        self._bridge = TuiPrefectBridge(
+            planned_steps=planned_steps,
+            log_limit=log_limit,
+        )
+        self.steps: list[WorkflowStepState] = []
         self.log_lines: list[str] = []
         self.show_logs = True
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def append_log(self, message: str) -> None:
-        self.log_lines.append(message)
-        if len(self.log_lines) > self.log_limit:
-            self.log_lines = self.log_lines[-self.log_limit :]
+        self._bridge.append_log(message)
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def toggle_logs(self) -> None:
-        self.show_logs = not self.show_logs
+        self._bridge.toggle_logs()
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def mark_step_running(self, step_index: int) -> None:
-        step = self.steps[step_index - 1]
-        for existing in self.steps:
-            if existing is not step and existing.state == "running":
-                existing.state = "success"
-                existing.finished_at = existing.finished_at or time.time()
-        step.state = "running"
-        step.started_at = step.started_at or time.time()
+        self._bridge.mark_phase_running(step_index)
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def mark_step_success(self, step_index: int) -> None:
-        step = self.steps[step_index - 1]
-        step.state = "success"
-        step.finished_at = time.time()
+        self._bridge.mark_phase_success(step_index)
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def mark_step_failed(self, step_index: int, detail: str = "") -> None:
-        step = self.steps[step_index - 1]
-        step.state = "failed"
-        step.detail = detail or step.detail
-        step.finished_at = time.time()
+        self._bridge.mark_phase_failed(step_index, detail=detail)
+        self.sync_from_snapshot(self._bridge.snapshot())
+
+    def mark_step_cancelled(self, step_index: int, detail: str = "") -> None:
+        self._bridge.mark_phase_cancelled(step_index, detail=detail)
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def upsert_step(self, label: str, *, activate: bool = False, detail: str = "") -> int:
-        for index, step in enumerate(self.steps, start=1):
-            if step.label == label:
-                if detail:
-                    step.detail = detail
-                if activate:
-                    self.mark_step_running(index)
-                return index
-        self.steps.append(WorkflowStepState(label=label, detail=detail))
-        index = len(self.steps)
-        if activate:
-            self.mark_step_running(index)
-        return index
+        phase_index = self._bridge.upsert_phase(label, detail=detail, activate=activate)
+        self.sync_from_snapshot(self._bridge.snapshot())
+        return phase_index
 
-    def complete_running_steps(self, *, failed: bool = False, detail: str = "") -> None:
-        for step in self.steps:
-            if step.state != "running":
-                continue
-            step.state = "failed" if failed else "success"
-            if detail:
-                step.detail = detail
-            step.finished_at = time.time()
+    def complete_running_steps(
+        self,
+        *,
+        state: WorkflowState = "success",
+        detail: str = "",
+    ) -> None:
+        self._bridge.complete_running_phases(status=state, detail=detail)
+        self.sync_from_snapshot(self._bridge.snapshot())
 
     def apply_event(self, event: WorkflowEvent) -> None:
-        if event.kind == "log.line":
-            prefix = "stderr │ " if event.stream == "stderr" else ""
-            self.append_log(f"{prefix}{event.line}")
-            return
-        if event.kind == "phase.started":
-            self.upsert_step(event.title, activate=True)
-            self.append_log(f"[phase] {event.title}")
-            return
-        if event.kind == "task.running":
-            current = next((step for step in self.steps if step.state == "running"), None)
-            if current is None:
-                step_index = self.upsert_step(
-                    event.title or event.task_id or "Task",
-                    activate=True,
-                    detail=event.detail,
-                )
-                current = self.steps[step_index - 1]
-            current.detail = event.detail or current.detail
-            self.append_log(
-                f"[step] {event.title or event.task_id or 'Task'}"
-                + (f" ({event.detail})" if event.detail else "")
+        self._bridge.handle_event(event)
+        self.sync_from_snapshot(self._bridge.snapshot())
+
+    def sync_from_snapshot(self, snapshot) -> None:
+        self.steps = [
+            WorkflowStepState(
+                label=phase.label,
+                state=phase.status,
+                detail=phase.detail,
+                started_at=phase.started_at,
+                finished_at=phase.finished_at,
             )
-            return
-        if event.kind == "task.completed":
-            self.complete_running_steps()
-            self.append_log(
-                f"[ok] {event.title or event.task_id or 'Task'}"
-                + (f" ({event.detail})" if event.detail else "")
-            )
-            return
-        if event.kind == "task.failed":
-            self.complete_running_steps(failed=True, detail=event.detail)
-            self.append_log(
-                f"[fail] {event.title or event.task_id or 'Task'}"
-                + (f" ({event.detail})" if event.detail else "")
-            )
-            return
-        if event.kind == "task.warning":
-            self.append_log(f"[warn] {event.title or event.task_id or 'Task'}")
-            return
-        if event.kind == "task.skipped":
-            self.append_log(f"[skip] {event.title or event.task_id or 'Task'}")
-            return
-        if event.kind == "task.pending":
-            self.upsert_step(event.title or event.task_id or "Task", detail=event.detail)
+            for phase in snapshot.phases
+        ]
+        self.log_lines = list(snapshot.logs)
+        self.show_logs = snapshot.show_logs
 
     def render(self):
         summary = Text("\n".join(self.summary_lines) or "No scenario details.", style="cyan")
@@ -154,6 +118,8 @@ class WorkflowDashboard:
                     icon = "[cyan]●[/]"
                 elif step.state == "success":
                     icon = "[green]✓[/]"
+                elif step.state == "cancelled":
+                    icon = "[yellow]⊘[/]"
                 elif step.state == "failed":
                     icon = "[red]✗[/]"
                 else:

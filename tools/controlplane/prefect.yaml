@@ -1,0 +1,13 @@
+deployments:
+  - name: build-build
+    flow_id: build.build
+    entrypoint: controlplane_tool.prefect_deployments:run_deployment_flow
+    parameters:
+      flow_name: build.build
+      profile: core
+      modules: null
+      extra_gradle_args: []
+      dry_run: false
+    tags:
+      - optional
+      - local-first

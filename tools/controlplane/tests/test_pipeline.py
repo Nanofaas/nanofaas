@@ -59,6 +59,18 @@ class FakePassingAdapter:
     def run_mockk8s_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
         return (True, "mockk8s ok")
 
+    def bootstrap_loadtest(self, profile, request, run_dir):  # noqa: ANN001, ARG002
+        return {"base_url": "http://127.0.0.1:8080"}
+
+    def run_loadtest_k6(self, request, context, run_dir):  # noqa: ANN001, ARG002
+        return (True, "k6 ok")
+
+    def evaluate_metrics_gate(self, profile, request, context, run_dir):  # noqa: ANN001, ARG002
+        return (True, "metrics ok")
+
+    def cleanup_loadtest(self, context):  # noqa: ANN001, ARG002
+        return None
+
 
 def test_pipeline_flow_runs_mockk8s_step_without_name_error(tmp_path: Path) -> None:
     profile = Profile(

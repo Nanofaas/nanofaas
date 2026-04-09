@@ -19,3 +19,18 @@ def test_run_local_flow_returns_normalized_run_metadata() -> None:
     assert isinstance(result.started_at, datetime)
     assert isinstance(result.finished_at, datetime)
     assert result.started_at <= result.finished_at
+
+
+def test_run_local_flow_failure_suppresses_prefect_console_noise(capsys) -> None:
+    def broken_flow() -> str:
+        raise RuntimeError("boom")
+
+    result = run_local_flow("sample.broken", broken_flow)
+
+    captured = capsys.readouterr()
+    assert result.status == "failed"
+    assert result.error == "boom"
+    assert "Beginning flow run" not in captured.out
+    assert "Beginning flow run" not in captured.err
+    assert "EventsWorker" not in captured.out
+    assert "EventsWorker" not in captured.err

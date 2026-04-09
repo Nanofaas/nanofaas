@@ -92,6 +92,8 @@ def has_workflow_sink() -> bool:
 
 def _render_event(event: WorkflowEvent) -> None:
     if event.kind == "log.line":
+        prefix = "stderr │ " if event.stream == "stderr" else ""
+        console.print(f"{prefix}{escape(event.line)}")
         return
     if event.kind == "phase.started":
         console.print()
@@ -117,8 +119,24 @@ def _render_event(event: WorkflowEvent) -> None:
     if event.kind == "task.warning":
         console.print(f"  [yellow]⚠[/]  [yellow]{escape(event.title)}[/]")
         return
+    if event.kind == "task.updated":
+        if event.detail:
+            console.print(
+                f"  [cyan]↺[/] [bold]{escape(event.title)}[/]  [dim]{escape(event.detail)}[/]"
+            )
+        else:
+            console.print(f"  [cyan]↺[/] [bold]{escape(event.title)}[/]")
+        return
     if event.kind == "task.skipped":
         console.print(f"  [dim]⊘  {escape(event.title)}[/]")
+        return
+    if event.kind == "task.cancelled":
+        body = f"[bold yellow]⊘  {escape(event.title)}[/]"
+        if event.detail:
+            body += f"\n\n[dim]{escape(event.detail)}[/]"
+        console.print()
+        console.print(Panel(body, border_style="yellow", padding=(0, 2)))
+        console.print()
         return
     if event.kind == "task.failed":
         body = f"[bold red]✗  {escape(event.title)}[/]"

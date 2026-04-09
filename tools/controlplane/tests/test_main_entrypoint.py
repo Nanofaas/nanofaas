@@ -46,4 +46,6 @@ def test_prefect_runtime_smoke_command_runs_without_api_url(monkeypatch) -> None
     assert result.exit_code == 0
     assert "controlplane.prefect_runtime_smoke" in result.output
     assert "completed" in result.output
+    assert "Beginning flow run" not in result.output
+    assert "EventsWorker" not in result.output
     assert "PREFECT_API_URL" not in os.environ

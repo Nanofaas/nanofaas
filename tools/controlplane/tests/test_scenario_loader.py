@@ -6,7 +6,7 @@ from controlplane_tool.scenario_loader import (
     load_scenario_file,
     overlay_scenario_selection,
 )
-from controlplane_tool.scenario_models import ScenarioLoadConfig, ScenarioSpec
+from controlplane_tool.scenario_models import ScenarioLoadConfig, ScenarioPrefectConfig, ScenarioSpec
 
 
 def test_loader_resolves_function_preset_and_payload_paths() -> None:
@@ -85,3 +85,28 @@ def test_overlay_selection_rejects_when_load_targets_become_empty() -> None:
             namespace=None,
             local_registry="localhost:5000",
         )
+
+
+def test_loader_preserves_optional_prefect_metadata() -> None:
+    scenario = load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml"))
+
+    updated = overlay_scenario_selection(
+        scenario.model_copy(
+            update={
+                "prefect": ScenarioPrefectConfig(
+                    enabled=True,
+                    deployment_name="demo-k8s",
+                    work_pool="local-process",
+                )
+            }
+        ),
+        function_preset=None,
+        functions=["word-stats-java"],
+        runtime="java",
+        namespace=None,
+        local_registry="localhost:5000",
+    )
+
+    assert updated.prefect.enabled is True
+    assert updated.prefect.deployment_name == "demo-k8s"
+    assert updated.prefect.work_pool == "local-process"

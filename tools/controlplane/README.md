@@ -19,6 +19,25 @@ This package provides one control-plane tooling surface for milestone 5:
 - `loadtest list-profiles|show-profile|run|inspect`
 - `tui`
 
+## Local-first execution and optional Prefect deployments
+
+Local execution stays the default. All supported flows can still run directly through the CLI/TUI without a Prefect API server or worker.
+
+Optional remote-readiness artifacts now live alongside the local tooling:
+
+- deployment metadata helper: `tools/controlplane/src/controlplane_tool/prefect_deployments.py`
+- example Prefect config: `tools/controlplane/prefect.yaml`
+- optional profile/scenario metadata blocks: `[prefect]`
+
+The current example deployment is intentionally conservative: it wires `build.build` through a real entrypoint helper that resolves the catalog flow from serializable parameters and then executes it through the same local runtime facade.
+
+The intended split is:
+
+- local developer runs: use `scripts/controlplane.sh ...` or `controlplane-tool ...`
+- optional remote orchestration: reuse the same flow IDs and task metadata through the Prefect helper/config when you decide to wire a work pool later
+
+This is deliberately non-mandatory. If no remote Prefect setup exists, nothing changes in the local execution path.
+
 ## Recommended entrypoints
 
 Use the canonical wrapper for orchestration across build, VM, and E2E flows:

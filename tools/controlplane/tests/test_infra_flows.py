@@ -87,3 +87,40 @@ def test_pipeline_flow_runs_mockk8s_path() -> None:
     mockk8s_step = next(step for step in result.steps if step.name == "test_e2e_mockk8s")
     assert mockk8s_step.status == "passed"
     assert mockk8s_step.detail == "mockk8s ok"
+
+
+def test_pipeline_flow_falls_back_to_legacy_metrics_adapter() -> None:
+    class FakeAdapter:
+        def preflight(self, profile: Profile) -> list[str]:  # noqa: ARG002
+            return []
+
+        def compile(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
+            return (True, "compile ok")
+
+        def build_image(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
+            return (True, "image ok")
+
+        def run_api_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
+            return (True, "api ok")
+
+        def run_mockk8s_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
+            return (True, "mockk8s ok")
+
+        def run_metrics_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
+            return (True, "legacy metrics ok")
+
+    profile = Profile(
+        name="qa",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
+        modules=[],
+        tests=TestsConfig(enabled=True, api=False, e2e_mockk8s=False, metrics=True),
+        report=ReportConfig(title="qa"),
+    )
+
+    flow = build_pipeline_flow(profile, adapter=FakeAdapter(), runs_root=Path("/tmp"))
+    result = flow.run()
+
+    metrics_step = next(step for step in result.steps if step.name == "test_metrics_prometheus_k6")
+    assert result.final_status == "passed"
+    assert metrics_step.status == "passed"
+    assert metrics_step.detail == "legacy metrics ok"

@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from threading import Thread
 
 from controlplane_tool.console import (
+    _render_event,
     bind_workflow_context,
     bind_workflow_sink,
     fail,
@@ -13,6 +14,7 @@ from controlplane_tool.console import (
     warning,
     workflow_log,
 )
+from controlplane_tool.workflow_events import build_log_event, build_task_event, normalize_task_state
 from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent
 
 
@@ -80,3 +82,43 @@ def test_workflow_log_from_background_thread_uses_bound_sink() -> None:
     assert sink.events[0].task_id == "images.build_core"
     assert sink.events[0].task_run_id == "task-run-123"
     assert sink.events[0].line == "stream line"
+
+
+def test_render_event_shows_cancelled_tasks(capsys) -> None:
+    _render_event(
+        normalize_task_state(
+            flow_id="e2e.k8s_vm",
+            task_id="images.build_core",
+            state_name="Cancelled",
+            title="Build core images",
+        )
+    )
+
+    captured = capsys.readouterr()
+    assert "Build core images" in captured.out
+
+
+def test_render_event_shows_updated_tasks_and_log_lines(capsys) -> None:
+    _render_event(
+        build_task_event(
+            kind="task.updated",
+            flow_id="e2e.k8s_vm",
+            task_id="images.build_core",
+            title="Build core images",
+            detail="50%",
+        )
+    )
+    _render_event(
+        build_log_event(
+            flow_id="e2e.k8s_vm",
+            task_id="images.build_core",
+            line="docker push ok",
+            stream="stderr",
+        )
+    )
+
+    captured = capsys.readouterr()
+    assert "Build core images" in captured.out
+    assert "50%" in captured.out
+    assert "stderr" in captured.out
+    assert "docker push ok" in captured.out

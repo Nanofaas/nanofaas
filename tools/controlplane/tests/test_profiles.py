@@ -10,7 +10,7 @@ from controlplane_tool.models import (
     ScenarioSelectionConfig,
     TestsConfig,
 )
-from controlplane_tool.profiles import load_profile, save_profile
+from controlplane_tool.profiles import load_profile, load_profile_prefect_config, save_profile
 
 
 def test_profile_roundtrip(tmp_path: Path) -> None:
@@ -88,3 +88,30 @@ def test_profile_roundtrip_with_loadtest_defaults(tmp_path: Path) -> None:
     assert loaded.loadtest.default_load_profile == "smoke"
     assert loaded.loadtest.metrics_gate_mode == "warn"
     assert loaded.loadtest.scenario_file == "tools/controlplane/scenarios/k8s-demo-java.toml"
+
+
+def test_profile_loader_reads_optional_prefect_metadata(tmp_path: Path) -> None:
+    profile_path = tmp_path / "prefect-ready.toml"
+    profile_path.write_text(
+        """
+name = "prefect-ready"
+
+[control_plane]
+implementation = "java"
+build_mode = "native"
+
+[prefect]
+enabled = true
+work_pool = "local-process"
+tags = ["e2e", "optional"]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    prefect = load_profile_prefect_config("prefect-ready", root=tmp_path)
+
+    assert prefect is not None
+    assert prefect.enabled is True
+    assert prefect.work_pool == "local-process"
+    assert prefect.tags == ["e2e", "optional"]

@@ -226,6 +226,15 @@ def build_pipeline_flow(
             "metrics": metrics,
         }
 
+    def _supports_structured_loadtest(adapter: object) -> bool:
+        required_methods = (
+            "bootstrap_loadtest",
+            "run_loadtest_k6",
+            "evaluate_metrics_gate",
+            "cleanup_loadtest",
+        )
+        return all(callable(getattr(adapter, name, None)) for name in required_methods)
+
     def _finalize(result: RunResult) -> RunResult:
         payload = _summary_payload(result)
         (result.run_dir / "summary.json").write_text(
@@ -287,15 +296,21 @@ def build_pipeline_flow(
 
         if profile.tests.enabled and profile.tests.metrics:
             start = time.time()
-            loadtest_result = LoadtestRunner(adapter=active_adapter).run(
-                _loadtest_request(profile),
-                runs_root=run_dir.parent,
-            )
+            if _supports_structured_loadtest(active_adapter):
+                loadtest_result = LoadtestRunner(adapter=active_adapter).run(
+                    _loadtest_request(profile),
+                    runs_root=run_dir.parent,
+                )
+                detail = f"loadtest runner: {loadtest_result.final_status} ({loadtest_result.run_dir})"
+                step_status = "passed" if loadtest_result.final_status == "passed" else "failed"
+            else:
+                ok, detail = active_adapter.run_metrics_tests(profile, run_dir)
+                step_status = "passed" if ok else "failed"
             steps.append(
                 StepResult(
                     name="test_metrics_prometheus_k6",
-                    status="passed" if loadtest_result.final_status == "passed" else "failed",
-                    detail=f"loadtest runner: {loadtest_result.final_status} ({loadtest_result.run_dir})",
+                    status=step_status,
+                    detail=detail,
                     duration_ms=int((time.time() - start) * 1000),
                 )
             )
