@@ -13,6 +13,7 @@ from controlplane_tool.build_tasks import (
     build_image_task,
     compile_task,
     preflight_task,
+    mockk8s_tests_task,
     run_gradle_action_task,
 )
 from controlplane_tool.loadtest_catalog import resolve_load_profile

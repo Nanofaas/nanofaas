@@ -57,7 +57,33 @@ class FakePassingAdapter:
         raise AssertionError("api tests must not run")
 
     def run_mockk8s_tests(self, profile: Profile, run_dir: Path) -> tuple[bool, str]:  # noqa: ARG002
-        raise AssertionError("mockk8s tests must not run")
+        return (True, "mockk8s ok")
+
+
+def test_pipeline_flow_runs_mockk8s_step_without_name_error(tmp_path: Path) -> None:
+    profile = Profile(
+        name="mockk8s",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
+        modules=[],
+        tests=TestsConfig(enabled=True, api=False, e2e_mockk8s=True, metrics=False),
+        report=ReportConfig(title="mockk8s"),
+    )
+
+    flow = pipeline_mod.build_pipeline_flow(profile, adapter=FakePassingAdapter(), runs_root=tmp_path)
+
+    result = flow.run()
+
+    assert result.final_status == "passed"
+    assert [step.name for step in result.steps] == [
+        "preflight",
+        "compile",
+        "docker_image",
+        "test_api",
+        "test_e2e_mockk8s",
+        "test_metrics_prometheus_k6",
+    ]
+    mockk8s_step = next(step for step in result.steps if step.name == "test_e2e_mockk8s")
+    assert mockk8s_step.status == "passed"
 
 
 def test_pipeline_run_delegates_metrics_load_flow_to_loadtest_runner(
