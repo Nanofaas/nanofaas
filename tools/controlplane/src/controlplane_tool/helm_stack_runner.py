@@ -10,10 +10,10 @@ from __future__ import annotations
 from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
-import subprocess
 from pathlib import Path
 
 from controlplane_tool.registry_runtime import LocalRegistry
+from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
 
 
@@ -39,6 +39,7 @@ class HelmStackRunner:
         self.registry = LocalRegistry(local_registry)
         self.runtime = runtime
         self.noninteractive = noninteractive
+        self._shell = SubprocessShell()
 
     def _build_env(self) -> dict[str, str]:
         vm = self.vm_request
@@ -73,7 +74,7 @@ class HelmStackRunner:
         env = self._build_env()
         phase("Run")
         step("Running loadtest via Python runner")
-        subprocess.run(
+        loadtest = self._shell.run(
             [
                 "uv",
                 "run",
@@ -84,11 +85,13 @@ class HelmStackRunner:
                 "loadtest",
                 "run",
             ],
-            check=True,
+            dry_run=False,
             env=env,
         )
+        if loadtest.return_code != 0:
+            raise RuntimeError(loadtest.stderr or loadtest.stdout or "loadtest failed")
         step("Running autoscaling experiment (Python)")
-        subprocess.run(
+        autoscaling = self._shell.run(
             [
                 "uv",
                 "run",
@@ -98,7 +101,9 @@ class HelmStackRunner:
                 "python",
                 str(self.repo_root / "experiments" / "autoscaling.py"),
             ],
-            check=True,
+            dry_run=False,
             env=env,
         )
+        if autoscaling.return_code != 0:
+            raise RuntimeError(autoscaling.stderr or autoscaling.stdout or "autoscaling failed")
         success("Helm stack compatibility workflow:")

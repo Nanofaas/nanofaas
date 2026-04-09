@@ -8,7 +8,6 @@ Extracted from adapters.py (ShellCommandAdapter) to satisfy single-responsibilit
 from __future__ import annotations
 
 import shutil
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +16,7 @@ from controlplane_tool.build_requests import BuildRequest
 from controlplane_tool.gradle_planner import build_gradle_command
 from controlplane_tool.mockk8s import default_mockk8s_test_selectors
 from controlplane_tool.models import Profile
+from controlplane_tool.shell_backend import SubprocessShell
 
 
 @dataclass(frozen=True)
@@ -36,25 +36,24 @@ def run_logged(
     """Run *command* inside *repo_root*, appending stdout/stderr to *run_dir/log_name*."""
     log_path = run_dir / log_name
     start = time.time()
+    shell = SubprocessShell()
     with log_path.open("a", encoding="utf-8") as log_file:
         log_file.write(f"$ {' '.join(command)}\n")
-        completed = subprocess.run(
+        completed = shell.run(
             command,
             cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
+            dry_run=False,
         )
         if completed.stdout:
             log_file.write(completed.stdout)
         if completed.stderr:
             log_file.write(completed.stderr)
     duration_ms = int((time.time() - start) * 1000)
-    if completed.returncode == 0:
+    if completed.return_code == 0:
         return CommandResult(ok=True, detail=f"ok ({duration_ms} ms)")
     return CommandResult(
         ok=False,
-        detail=f"exit={completed.returncode} ({duration_ms} ms), see {log_path.name}",
+        detail=f"exit={completed.return_code} ({duration_ms} ms), see {log_path.name}",
     )
 
 

@@ -96,3 +96,23 @@ def test_loadtest_runner_executes_every_selected_target(tmp_path: Path) -> None:
 
     assert "word-stats-java" in result.steps[-1].detail
     assert "json-transform-java" in result.steps[-1].detail
+
+
+def test_loadtest_runner_emits_step_progress_events(tmp_path: Path) -> None:
+    adapter = FakeAdapter()
+    events = []
+
+    LoadtestRunner(adapter=adapter).run(_request(), runs_root=tmp_path, event_listener=events.append)
+
+    assert [(event.step_name, event.status) for event in events] == [
+        ("preflight", "running"),
+        ("preflight", "passed"),
+        ("bootstrap", "running"),
+        ("bootstrap", "passed"),
+        ("load_k6", "running"),
+        ("load_k6", "passed"),
+        ("metrics_gate", "running"),
+        ("metrics_gate", "passed"),
+        ("report", "running"),
+        ("report", "passed"),
+    ]

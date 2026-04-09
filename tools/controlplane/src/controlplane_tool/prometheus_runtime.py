@@ -7,6 +7,7 @@ import time
 import httpx
 from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
 
+from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 from controlplane_tool.tool_settings import ToolSettings
 
 
@@ -166,15 +167,13 @@ class PrometheusRuntimeManager:
         from controlplane_tool.net_utils import pick_local_port
         return pick_local_port(preferred=9090)
 
-    def _docker(self, args: list[str], check: bool) -> subprocess.CompletedProcess[str]:
-        completed = subprocess.run(
+    def _docker(self, args: list[str], check: bool) -> ShellExecutionResult:
+        completed = SubprocessShell().run(
             [self.docker_bin, *args],
             cwd=self.repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
+            dry_run=False,
         )
-        if check and completed.returncode != 0:
+        if check and completed.return_code != 0:
             detail = completed.stderr.strip() or completed.stdout.strip() or "docker command failed"
             raise RuntimeError(f"{' '.join([self.docker_bin, *args])}: {detail}")
         return completed

@@ -8,6 +8,7 @@ import sys
 import httpx
 from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
 
+from controlplane_tool.process_streaming import spawn_logged_process
 from controlplane_tool.tool_settings import ToolSettings
 
 
@@ -37,7 +38,6 @@ class MockK8sRuntimeManager:
         port = self._pick_local_port()
         log_path = run_dir / "mockk8s-runtime.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_file = log_path.open("a", encoding="utf-8")
         env = os.environ.copy()
         src_root = Path(__file__).resolve().parents[1]
         existing_pythonpath = env.get("PYTHONPATH", "").strip()
@@ -45,7 +45,7 @@ class MockK8sRuntimeManager:
             env["PYTHONPATH"] = f"{src_root}{os.pathsep}{existing_pythonpath}"
         else:
             env["PYTHONPATH"] = str(src_root)
-        process = subprocess.Popen(
+        process = spawn_logged_process(
             [
                 sys.executable,
                 "-m",
@@ -57,11 +57,8 @@ class MockK8sRuntimeManager:
             ],
             cwd=self.repo_root,
             env=env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
+            log_path=log_path,
         )
-        log_file.close()
 
         url = f"http://127.0.0.1:{port}"
         if not self._wait_ready(url):

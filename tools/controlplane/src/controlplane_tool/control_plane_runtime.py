@@ -9,6 +9,7 @@ from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
 
 from controlplane_tool.build_requests import BuildRequest
 from controlplane_tool.gradle_planner import build_gradle_command
+from controlplane_tool.process_streaming import spawn_logged_process
 from controlplane_tool.tool_settings import ToolSettings
 
 
@@ -62,7 +63,6 @@ class ControlPlaneRuntimeManager:
         management_url = f"http://127.0.0.1:{management_port}"
         log_path = run_dir / "control-plane-runtime.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_file = log_path.open("a", encoding="utf-8")
 
         env = os.environ.copy()
         env.update(
@@ -83,15 +83,12 @@ class ControlPlaneRuntimeManager:
             request=BuildRequest(action="run", profile="k8s"),
             extra_gradle_args=["--console=plain"],
         )
-        process = subprocess.Popen(
+        process = spawn_logged_process(
             command,
             cwd=self.repo_root,
             env=env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
+            log_path=log_path,
         )
-        log_file.close()
 
         if not self._wait_ready(base_url, process=process):
             self.cleanup(

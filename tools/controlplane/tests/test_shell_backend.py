@@ -4,6 +4,7 @@ Tests for shell_backend.py — ShellExecutionResult, SubprocessShell, RecordingS
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -89,6 +90,23 @@ def test_subprocess_shell_passes_cwd_to_subprocess(tmp_path: Path) -> None:
         shell.run(["ls"], cwd=tmp_path)
     call_kwargs = mock_run.call_args[1]
     assert call_kwargs["cwd"] == tmp_path
+
+
+def test_subprocess_shell_streams_output_to_listener() -> None:
+    streamed: list[tuple[str, str]] = []
+    shell = SubprocessShell(output_listener=lambda stream, line: streamed.append((stream, line)))
+
+    result = shell.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; print('hello'); print('warn', file=sys.stderr)",
+        ]
+    )
+
+    assert result.return_code == 0
+    assert ("stdout", "hello") in streamed
+    assert ("stderr", "warn") in streamed
 
 
 # ---------------------------------------------------------------------------

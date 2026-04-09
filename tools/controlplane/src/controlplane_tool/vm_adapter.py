@@ -332,14 +332,4 @@ class VmOrchestrator:
         exec_cmd = ["multipass", "exec", name, "--", "bash", "-lc", command]
         if dry_run:
             return _ok(exec_cmd)
-
-        try:
-            result = self._client.get_vm(name).exec(["bash", "-lc", command])
-            return ShellExecutionResult(
-                command=exec_cmd,
-                return_code=result.returncode,
-                stdout=result.stdout,
-                stderr=result.stderr,
-            )
-        except MultipassCommandError as e:
-            return _sdk_error(e)
+        return self._shell_run(exec_cmd, dry_run=False)

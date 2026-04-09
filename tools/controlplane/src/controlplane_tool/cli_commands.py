@@ -13,6 +13,7 @@ from controlplane_tool.gradle_planner import (
     plan_module_matrix_commands,
 )
 from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.shell_backend import SubprocessShell
 
 CLI_CONTEXT_SETTINGS = {
     "allow_extra_args": True,
@@ -30,6 +31,7 @@ class CommandExecutionResult:
 class GradleCommandExecutor:
     def __init__(self, repo_root: Path | None = None) -> None:
         self.repo_root = repo_root or default_tool_paths().workspace_root
+        self._shell = SubprocessShell()
 
     def _build_command(
         self,
@@ -62,14 +64,10 @@ class GradleCommandExecutor:
         if dry_run:
             return CommandExecutionResult(command=command, return_code=0, dry_run=True)
 
-        completed = subprocess.run(
-            command,
-            cwd=self.repo_root,
-            check=False,
-        )
+        completed = self._shell.run(command, cwd=self.repo_root, dry_run=False)
         return CommandExecutionResult(
             command=command,
-            return_code=completed.returncode,
+            return_code=completed.return_code,
             dry_run=False,
         )
 
@@ -92,13 +90,9 @@ class GradleCommandExecutor:
             return commands, 0
 
         for command in commands:
-            completed = subprocess.run(
-                command,
-                cwd=self.repo_root,
-                check=False,
-            )
-            if completed.returncode != 0:
-                return commands, completed.returncode
+            completed = self._shell.run(command, cwd=self.repo_root, dry_run=False)
+            if completed.return_code != 0:
+                return commands, completed.return_code
         return commands, 0
 
 

@@ -22,6 +22,7 @@ from controlplane_tool.scenario_runtime import (
     wait_for_http_any_status,
     wait_for_http_ok,
 )
+from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
@@ -57,16 +58,19 @@ class DeployHostE2eRunner:
             / "bin"
             / "nanofaas"
         )
+        self._shell = SubprocessShell()
 
-    def _run(self, command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+    def _run(self, command: list[str], *, check: bool = True) -> ShellExecutionResult:
+        result = self._shell.run(
             command,
-            cwd=str(self.repo_root),
-            text=True,
-            capture_output=True,
-            check=check,
+            cwd=self.repo_root,
             env=os.environ.copy(),
+            dry_run=False,
         )
+        if check and result.return_code != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "command failed"
+            raise RuntimeError(f"{' '.join(command)}: {detail}")
+        return result
 
     def _resolve_functions(self, resolved: "ResolvedScenario | None") -> list[tuple[str, Path | None]]:
         """Return [(function_key, example_dir_or_None)] for selected functions."""
@@ -87,17 +91,16 @@ class DeployHostE2eRunner:
 
     def _start_registry(self, container_name: str, docker: str = "docker") -> None:
         step(f"Starting local registry ({container_name}) on port {self.registry_port}")
-        subprocess.run([docker, "rm", "-f", container_name], capture_output=True, check=False)
-        subprocess.run(
+        self._run([docker, "rm", "-f", container_name], check=False)
+        self._run(
             [docker, "run", "-d", "--name", container_name, "-p", f"{self.registry_port}:5000", "registry:2"],
             check=True,
-            capture_output=True,
         )
         if not wait_for_http_ok(f"http://127.0.0.1:{self.registry_port}/v2/", max_attempts=40):
             raise RuntimeError(f"Registry did not become ready on port {self.registry_port}")
 
     def _stop_registry(self, container_name: str, docker: str = "docker") -> None:
-        subprocess.run([docker, "rm", "-f", container_name], capture_output=True, check=False)
+        self._run([docker, "rm", "-f", container_name], check=False)
 
     def _write_function_yaml(
         self,
@@ -187,10 +190,9 @@ class DeployHostE2eRunner:
                 image_repo = f"nanofaas/{function_key}"
                 fn_yaml = self._write_function_yaml(work_dir, function_key, image_repo, tag, example_dir)
                 request_body_path.unlink(missing_ok=True)
-                subprocess.run(
+                self._run(
                     [str(self._cli_bin), "--endpoint", cp_url, "deploy", "-f", str(fn_yaml)],
                     check=True,
-                    cwd=str(self.repo_root),
                 )
                 self._verify_registry_push(image_repo, tag)
                 self._verify_register_request(request_body_path, function_key, image_repo, tag)

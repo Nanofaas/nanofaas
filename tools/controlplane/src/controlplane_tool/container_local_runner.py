@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 
 from controlplane_tool.control_plane_api import ControlPlaneApi
+from controlplane_tool.process_streaming import spawn_logged_process
 from controlplane_tool.runtime_primitives import (
     CommandRunner,
     ContainerRuntimeOps,
@@ -30,6 +31,7 @@ from controlplane_tool.scenario_runtime import (
     select_container_runtime,
     wait_for_http_ok,
 )
+from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
@@ -59,21 +61,23 @@ class ContainerLocalE2eRunner:
         self.runtime_adapter = runtime_adapter
         self.control_plane_modules = control_plane_modules
         self._runner = CommandRunner(repo_root=self.repo_root)
+        self._shell = SubprocessShell()
         self._api = ControlPlaneApi(
             base_url=f"http://127.0.0.1:{self.api_port}",
             mgmt_port=self.mgmt_port,
         )
 
-    def _run(self, command: list[str], *, check: bool = True, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+    def _run(self, command: list[str], *, check: bool = True, **kwargs: object) -> ShellExecutionResult:
+        _ = kwargs
+        result = self._shell.run(
             command,
-            cwd=str(self.repo_root),
-            text=True,
-            capture_output=True,
-            check=check,
+            cwd=self.repo_root,
             env=os.environ.copy(),
-            **kwargs,
+            dry_run=False,
         )
+        if check and result.return_code != 0:
+            raise RuntimeError(result.stderr or result.stdout or "command failed")
+        return result
 
     def _resolve_function(
         self,
@@ -142,11 +146,9 @@ class ContainerLocalE2eRunner:
 
     def _managed_container_count(self, function_slug: str) -> int:
         adapter = self.runtime_adapter or "docker"
-        result = subprocess.run(
+        result = self._shell.run(
             [adapter, "ps", "-a", "--filter", f"name=nanofaas-{function_slug}-r", "--format", "{{.Names}}"],
-            text=True,
-            capture_output=True,
-            check=False,
+            dry_run=False,
         )
         names = [n for n in result.stdout.splitlines() if n.strip()]
         return len(names)
@@ -179,10 +181,9 @@ class ContainerLocalE2eRunner:
             except Exception:
                 cp_proc.kill()
         for suffix in ("r1", "r2", "r3"):
-            subprocess.run(
+            self._shell.run(
                 [adapter, "rm", "-f", f"nanofaas-{function_slug}-{suffix}"],
-                capture_output=True,
-                check=False,
+                dry_run=False,
             )
 
     def run(self, scenario_file: Path | None = None) -> None:
@@ -204,8 +205,8 @@ class ContainerLocalE2eRunner:
 
         phase("Deploy")
         step("Starting control-plane with container-local provider")
-        log_file = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
-        cp_proc = subprocess.Popen(
+        cp_log_path = Path(tempfile.mktemp(suffix=".log"))
+        cp_proc = spawn_logged_process(
             [
                 "java",
                 "-jar",
@@ -217,11 +218,9 @@ class ContainerLocalE2eRunner:
                 f"--nanofaas.container-local.runtime-adapter={adapter}",
                 "--nanofaas.container-local.bind-host=127.0.0.1",
             ],
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            cwd=str(self.repo_root),
+            cwd=self.repo_root,
+            log_path=cp_log_path,
         )
-        log_file.close()
 
         try:
             phase("Verify")

@@ -15,6 +15,8 @@ from pathlib import Path
 import httpx
 from tenacity import RetryError, Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
+from controlplane_tool.process_streaming import spawn_logged_process
+
 
 def wait_for_http_ok(url: str, max_attempts: int = 60, interval_seconds: float = 1.0) -> bool:
     """Poll *url* until it returns HTTP 2xx.  Returns True on success, False on timeout."""
@@ -109,14 +111,13 @@ http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 """,
             encoding="utf-8",
         )
-        with log.open("w") as log_fh:
-            import os
-            self._proc = subprocess.Popen(
-                ["python3", str(script)],
-                stdout=log_fh,
-                stderr=log_fh,
-                env=os.environ.copy(),
-            )
+        import os
+        self._proc = spawn_logged_process(
+            ["python3", str(script)],
+            cwd=work_dir,
+            env=os.environ.copy(),
+            log_path=log,
+        )
 
     def stop(self) -> None:
         if self._proc is not None:

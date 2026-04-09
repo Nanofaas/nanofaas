@@ -10,10 +10,9 @@ from __future__ import annotations
 from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
-import subprocess
 from pathlib import Path
 
-from controlplane_tool.shell_backend import SubprocessShell
+from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
 
@@ -76,11 +75,13 @@ class CliHostPlatformRunner:
                 raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
             return
         step("Building nanofaas-cli on host...")
-        subprocess.run(
+        result = self._shell.run(
             ["./gradlew", ":nanofaas-cli:installDist", "--no-daemon", "-q"],
-            cwd=str(self.repo_root),
-            check=True,
+            cwd=self.repo_root,
+            dry_run=False,
         )
+        if result.return_code != 0:
+            raise RuntimeError(result.stderr or result.stdout or "CLI build failed")
         if not self._cli_bin.exists():
             raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
 
@@ -103,27 +104,25 @@ class CliHostPlatformRunner:
 
     def _run_host_cli(self, kubeconfig: Path, command: list[str]) -> str:
         env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
-        result = subprocess.run(
+        result = self._shell.run(
             [str(self._cli_bin), *command],
-            cwd=str(self.repo_root),
-            text=True,
-            capture_output=True,
+            cwd=self.repo_root,
             env=env,
+            dry_run=False,
         )
-        if result.returncode != 0:
+        if result.return_code != 0:
             raise RuntimeError(f"CLI command failed: {command}\n{result.stderr}")
         return result.stdout.strip()
 
     def _run_host_cli_allow_fail(self, kubeconfig: Path, command: list[str]) -> tuple[int, str]:
         env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
-        result = subprocess.run(
+        result = self._shell.run(
             [str(self._cli_bin), *command],
-            cwd=str(self.repo_root),
-            text=True,
-            capture_output=True,
+            cwd=self.repo_root,
             env=env,
+            dry_run=False,
         )
-        return result.returncode, result.stdout.strip()
+        return result.return_code, result.stdout.strip()
 
     def run(self, scenario_file: Path | None = None) -> None:
         _ = scenario_file  # host-platform does not use scenario selection

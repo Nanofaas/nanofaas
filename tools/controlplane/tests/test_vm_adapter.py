@@ -125,3 +125,16 @@ def test_ensure_running_starts_stopped_vm() -> None:
 
     assert result.return_code == 0
     assert any(call == ["multipass", "start", name] for call in backend.calls)
+
+
+def test_remote_exec_for_multipass_routes_through_shell_backend() -> None:
+    shell = RecordingShell()
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=shell)
+
+    orchestrator.remote_exec(
+        VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        command="echo hello",
+        dry_run=False,
+    )
+
+    assert shell.commands == [["multipass", "exec", "nanofaas-e2e", "--", "bash", "-lc", "echo hello"]]

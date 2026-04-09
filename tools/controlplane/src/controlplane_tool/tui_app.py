@@ -9,16 +9,18 @@ from __future__ import annotations
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import questionary
 from questionary import Style
+from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
-from controlplane_tool.console import console, fail, header, phase, skip, step, success, warning
+from controlplane_tool.console import bind_workflow_sink, console, fail, header, phase, skip, step, success, warning
+from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard, WorkflowKeyListener
 
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
 _STYLE = Style(
@@ -67,7 +69,7 @@ class NanofaasTUI:
             while True:
                 choice = _ask(
                     lambda: questionary.select(
-                        "Cosa vuoi fare?",
+                        "What would you like to do?",
                         choices=self._MAIN_MENU,
                         style=_STYLE,
                     ).ask()
@@ -92,6 +94,75 @@ class NanofaasTUI:
             pass
         console.print("\n[dim]Bye.[/]\n")
 
+    def _run_live_workflow(
+        self,
+        *,
+        title: str,
+        summary_lines: list[str],
+        planned_steps: list[str] | None,
+        action: Callable[[WorkflowDashboard, TuiWorkflowSink], Any],
+    ) -> Any:
+        dashboard = WorkflowDashboard(
+            title=title,
+            summary_lines=[*summary_lines, "Hotkeys: l toggle logs"],
+            planned_steps=planned_steps,
+        )
+        live: Live | None = None
+
+        def _refresh() -> None:
+            if live is not None:
+                live.update(dashboard.render(), refresh=True)
+
+        sink = TuiWorkflowSink(dashboard, refresh=_refresh)
+        key_listener = WorkflowKeyListener(
+            lambda key: (
+                dashboard.toggle_logs(),
+                _refresh(),
+            )
+            if key.lower() == "l"
+            else None
+        )
+        with Live(dashboard.render(), console=console, refresh_per_second=8, transient=False) as active_live:
+            live = active_live
+            active_live.update(dashboard.render(), refresh=True)
+            key_listener.start()
+            try:
+                with bind_workflow_sink(sink):
+                    return action(dashboard, sink)
+            finally:
+                key_listener.stop()
+
+    def _apply_e2e_step_event(self, dashboard: WorkflowDashboard, event: Any) -> None:
+        if event.status == "running":
+            dashboard.mark_step_running(event.step_index)
+            dashboard.append_log(f"[start] {event.step.summary}")
+            return
+        if event.status == "success":
+            dashboard.mark_step_success(event.step_index)
+            dashboard.append_log(f"[done] {event.step.summary}")
+            return
+        dashboard.mark_step_failed(event.step_index, event.error or "")
+        dashboard.append_log(
+            f"[fail] {event.step.summary}" + (f" ({event.error})" if event.error else "")
+        )
+
+    def _apply_loadtest_step_event(self, dashboard: WorkflowDashboard, event: Any) -> None:
+        step_index = dashboard.upsert_step(event.step_name)
+        if event.status == "running":
+            dashboard.mark_step_running(step_index)
+            dashboard.append_log(f"[start] {event.step_name}")
+            return
+        if event.status == "passed":
+            dashboard.mark_step_success(step_index)
+            dashboard.append_log(
+                f"[done] {event.step_name}" + (f" ({event.detail})" if event.detail else "")
+            )
+            return
+        dashboard.mark_step_failed(step_index, event.detail)
+        dashboard.append_log(
+            f"[fail] {event.step_name}" + (f" ({event.detail})" if event.detail else "")
+        )
+
     # ── BUILD ─────────────────────────────────────────────────────────────────
 
     def _build_menu(self) -> None:
@@ -101,15 +172,15 @@ class NanofaasTUI:
 
         action = _ask(
             lambda: questionary.select(
-                "Azione:",
+                "Action:",
                 choices=[
                     questionary.Choice("jar — assemble JARs", "jar"),
                     questionary.Choice("build — compile + unit tests", "build"),
                     questionary.Choice("test — unit tests only", "test"),
-                    questionary.Choice("run — avvia control-plane", "run"),
+                    questionary.Choice("run — start control-plane", "run"),
                     questionary.Choice("image — build OCI image", "image"),
                     questionary.Choice("native — build GraalVM native", "native"),
-                    questionary.Choice("inspect — mostra configurazione", "inspect"),
+                    questionary.Choice("inspect — show configuration", "inspect"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -117,7 +188,7 @@ class NanofaasTUI:
 
         profile = _ask(
             lambda: questionary.select(
-                "Profilo:",
+                "Profile:",
                 choices=["core", "k8s", "all", "container-local"],
                 default="core",
                 style=_STYLE,
@@ -126,26 +197,45 @@ class NanofaasTUI:
 
         dry_run = _ask(
             lambda: questionary.confirm(
-                "Dry-run? (mostra solo il comando)", default=False, style=_STYLE
+                "Dry-run? (show command only)", default=False, style=_STYLE
             ).ask()
         )
-
-        step(f"Eseguo {action}", f"profile={profile}")
         executor = GradleCommandExecutor()
-        result = executor.execute(
-            action=action,
-            profile=profile,
-            modules=None,
-            extra_gradle_args=[],
-            dry_run=dry_run,
-        )
-
         if dry_run:
-            console.print(Panel(" ".join(result.command), title="Comando", border_style="dim"))
-        elif result.return_code == 0:
-            success(f"{action} completato")
-        else:
-            fail(f"{action} fallito", detail=f"exit code {result.return_code}")
+            result = executor.execute(
+                action=action,
+                profile=profile,
+                modules=None,
+                extra_gradle_args=[],
+                dry_run=True,
+            )
+            console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
+            return
+
+        def _run_build_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            step(f"Running {action}", f"profile={profile}")
+            result = executor.execute(
+                action=action,
+                profile=profile,
+                modules=None,
+                extra_gradle_args=[],
+                dry_run=False,
+            )
+            if result.return_code == 0:
+                success(f"{action} completed")
+                return result
+            fail(f"{action} failed", detail=f"exit code {result.return_code}")
+            raise RuntimeError(f"{action} failed (exit code {result.return_code})")
+
+        self._run_live_workflow(
+            title="Build & Test",
+            summary_lines=[
+                f"Action: {action}",
+                f"Profile: {profile}",
+            ],
+            planned_steps=[f"{action}"],
+            action=_run_build_workflow,
+        )
 
     # ── VM ────────────────────────────────────────────────────────────────────
 
@@ -158,14 +248,14 @@ class NanofaasTUI:
 
         action = _ask(
             lambda: questionary.select(
-                "Azione:",
+                "Action:",
                 choices=[
-                    questionary.Choice("up — avvia / provisiona", "up"),
-                    questionary.Choice("down — spegni e cancella", "down"),
-                    questionary.Choice("sync — sincronizza il progetto", "sync"),
-                    questionary.Choice("provision-base — installa dipendenze base", "provision-base"),
-                    questionary.Choice("provision-k3s — installa k3s", "provision-k3s"),
-                    questionary.Choice("inspect — mostra stato", "inspect"),
+                    questionary.Choice("up — start / provision", "up"),
+                    questionary.Choice("down — stop and delete", "down"),
+                    questionary.Choice("sync — sync project", "sync"),
+                    questionary.Choice("provision-base — install base dependencies", "provision-base"),
+                    questionary.Choice("provision-k3s — install k3s", "provision-k3s"),
+                    questionary.Choice("inspect — show status", "inspect"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -183,7 +273,7 @@ class NanofaasTUI:
         if lifecycle == "multipass":
             name = _ask(
                 lambda: questionary.text(
-                    "Nome VM:", default="nanofaas-e2e", style=_STYLE
+                    "VM Name:", default="nanofaas-e2e", style=_STYLE
                 ).ask()
             )
             host = None
@@ -191,12 +281,12 @@ class NanofaasTUI:
             name = None
             host = _ask(
                 lambda: questionary.text(
-                    "Host remoto (IP/hostname):", style=_STYLE
+                    "Remote host (IP/hostname):", style=_STYLE
                 ).ask()
             )
 
         user = _ask(
-            lambda: questionary.text("Utente SSH:", default="ubuntu", style=_STYLE).ask()
+            lambda: questionary.text("SSH User:", default="ubuntu", style=_STYLE).ask()
         )
 
         dry_run = _ask(
@@ -208,36 +298,98 @@ class NanofaasTUI:
         request = VmRequest(lifecycle=lifecycle, name=name, host=host, user=user)
         orchestrator = VmOrchestrator(default_tool_paths().workspace_root)
 
-        step(f"Eseguo vm {action}", f"lifecycle={lifecycle}")
-
         if action == "up":
-            result = orchestrator.ensure_running(request, dry_run=dry_run)
+            if dry_run:
+                result = orchestrator.ensure_running(request, dry_run=True)
+            else:
+                result = None
         elif action == "down":
-            result = orchestrator.teardown(request, dry_run=dry_run)
+            if dry_run:
+                result = orchestrator.teardown(request, dry_run=True)
+            else:
+                result = None
         elif action == "sync":
-            result = orchestrator.sync_project(request, dry_run=dry_run)
+            if dry_run:
+                result = orchestrator.sync_project(request, dry_run=True)
+            else:
+                result = None
         elif action == "provision-base":
             install_helm = _ask(
                 lambda: questionary.confirm(
-                    "Installa Helm?", default=False, style=_STYLE
+                    "Install Helm?", default=False, style=_STYLE
                 ).ask()
             )
-            result = orchestrator.install_dependencies(
-                request, install_helm=install_helm, dry_run=dry_run
-            )
+            if dry_run:
+                result = orchestrator.install_dependencies(
+                    request, install_helm=install_helm, dry_run=True
+                )
+            else:
+                result = None
         elif action == "provision-k3s":
-            result = orchestrator.install_k3s(request, dry_run=dry_run)
+            if dry_run:
+                result = orchestrator.install_k3s(request, dry_run=True)
+            else:
+                result = None
         else:  # inspect
-            result = orchestrator.inspect(request, dry_run=dry_run)
+            if dry_run:
+                result = orchestrator.inspect(request, dry_run=True)
+            else:
+                result = None
 
         if dry_run:
-            console.print(Panel(" ".join(result.command), title="Comando", border_style="dim"))
-        elif result.return_code == 0:
-            if result.stdout:
-                console.print(Panel(escape(result.stdout.strip()), title="Output", border_style="dim"))
-            success(f"vm {action} completato")
-        else:
-            fail(f"vm {action} fallito", detail=result.stderr or f"exit code {result.return_code}")
+            console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
+            return
+
+        action_label = {
+            "up": "Ensure VM is running",
+            "down": "Teardown VM",
+            "sync": "Sync project to VM",
+            "provision-base": "Provision base dependencies",
+            "provision-k3s": "Install k3s",
+            "inspect": "Inspect VM",
+        }[action]
+
+        def _run_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            step(f"Running vm {action}", f"lifecycle={lifecycle}")
+            if action == "up":
+                live_result = orchestrator.ensure_running(request, dry_run=False)
+            elif action == "down":
+                live_result = orchestrator.teardown(request, dry_run=False)
+            elif action == "sync":
+                live_result = orchestrator.sync_project(request, dry_run=False)
+            elif action == "provision-base":
+                live_result = orchestrator.install_dependencies(
+                    request,
+                    install_helm=install_helm,
+                    dry_run=False,
+                )
+            elif action == "provision-k3s":
+                live_result = orchestrator.install_k3s(request, dry_run=False)
+            else:
+                live_result = orchestrator.inspect(request, dry_run=False)
+
+            if live_result.stdout:
+                dashboard.append_log(live_result.stdout.strip())
+            if live_result.stderr:
+                dashboard.append_log(live_result.stderr.strip())
+
+            if live_result.return_code == 0:
+                success(f"vm {action} completed")
+                return live_result
+            fail(f"vm {action} failed", detail=live_result.stderr or f"exit code {live_result.return_code}")
+            raise RuntimeError(live_result.stderr or f"vm {action} failed")
+
+        self._run_live_workflow(
+            title="VM Management",
+            summary_lines=[
+                f"Action: {action}",
+                f"Lifecycle: {lifecycle}",
+                f"VM: {name or host or 'default'}",
+                f"User: {user}",
+            ],
+            planned_steps=[action_label],
+            action=_run_vm_workflow,
+        )
 
     # ── E2E ───────────────────────────────────────────────────────────────────
 
@@ -248,13 +400,13 @@ class NanofaasTUI:
             lambda: questionary.select(
                 "Scenario:",
                 choices=[
-                    questionary.Choice("k8s-vm  — deploy su k3s in Multipass VM", "k8s-vm"),
-                    questionary.Choice("k3s-curl — test curl-based in VM", "k3s-curl"),
+                    questionary.Choice("k8s-vm — deploy to k3s in Multipass VM", "k8s-vm"),
+                    questionary.Choice("k3s-curl — curl-based tests in VM", "k3s-curl"),
                     questionary.Choice("helm-stack — Helm stack compatibility", "helm-stack"),
-                    questionary.Choice("container-local — managed DEPLOYMENT locale", "container-local"),
-                    questionary.Choice("deploy-host — deploy-host con registry locale", "deploy-host"),
-                    questionary.Choice("docker — POOL locale con Docker", "docker"),
-                    questionary.Choice("buildpack — buildpack POOL locale", "buildpack"),
+                    questionary.Choice("container-local — local managed DEPLOYMENT", "container-local"),
+                    questionary.Choice("deploy-host — deploy-host with local registry", "deploy-host"),
+                    questionary.Choice("docker — local POOL with Docker", "docker"),
+                    questionary.Choice("buildpack — local POOL with buildpack", "buildpack"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -277,14 +429,32 @@ class NanofaasTUI:
         if scenario == "k3s-curl":
             from controlplane_tool.k3s_curl_runner import K3sCurlRunner
             runner = K3sCurlRunner(repo_root=repo_root)
-            step("Avvio k3s-curl E2E")
-            runner.run()
+
+            def _run_k3s_curl_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step("Running k3s-curl E2E")
+                runner.run()
+
+            self._run_live_workflow(
+                title="E2E Scenarios",
+                summary_lines=[f"Scenario: {scenario}"],
+                planned_steps=["Build", "Deploy", "Verify"],
+                action=_run_k3s_curl_workflow,
+            )
 
         elif scenario == "helm-stack":
             from controlplane_tool.helm_stack_runner import HelmStackRunner
             runner = HelmStackRunner(repo_root=repo_root)
-            step("Avvio helm-stack E2E")
-            runner.run()
+
+            def _run_helm_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step("Running helm-stack E2E")
+                runner.run()
+
+            self._run_live_workflow(
+                title="E2E Scenarios",
+                summary_lines=[f"Scenario: {scenario}"],
+                planned_steps=["Run"],
+                action=_run_helm_stack_workflow,
+            )
 
         else:  # k8s-vm
             from controlplane_tool.e2e_runner import E2eRunner
@@ -293,12 +463,12 @@ class NanofaasTUI:
 
             vm_name = _ask(
                 lambda: questionary.text(
-                    "Nome VM:", default="nanofaas-e2e", style=_STYLE
+                    "VM Name:", default="nanofaas-e2e", style=_STYLE
                 ).ask()
             )
             runtime = _ask(
                 lambda: questionary.select(
-                    "Runtime control-plane:",
+                    "Control-plane runtime:",
                     choices=["java", "rust"],
                     default="java",
                     style=_STYLE,
@@ -306,7 +476,7 @@ class NanofaasTUI:
             )
             dry_run = _ask(
                 lambda: questionary.confirm(
-                    "Dry-run? (mostra piano senza eseguire)", default=False, style=_STYLE
+                    "Dry-run? (show plan without executing)", default=False, style=_STYLE
                 ).ask()
             )
 
@@ -317,29 +487,74 @@ class NanofaasTUI:
             )
             runner = E2eRunner(repo_root=repo_root)
             if dry_run:
-                step("Piano k8s-vm E2E (dry-run)")
                 plan = runner.plan(request)
-            else:
-                step("Avvio k8s-vm E2E")
-                plan = runner.run(request)
-            _show_plan_table(plan)
+                step("k8s-vm E2E plan (dry-run)")
+                _show_plan_table(plan)
+                return
+
+            plan = runner.plan(request)
+
+            def _run_k8s_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                dashboard.append_log("Starting k8s-vm workflow")
+                sink._update()
+
+                def _on_event(event: Any) -> None:
+                    self._apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
+                try:
+                    runner.execute(plan, event_listener=_on_event)
+                except Exception as exc:
+                    dashboard.append_log(str(exc))
+                    sink._update()
+                    raise
+                success("k8s-vm E2E completed")
+                return plan
+
+            self._run_live_workflow(
+                title="E2E Scenarios",
+                summary_lines=[
+                    "Scenario: k8s-vm",
+                    f"VM Name: {vm_name}",
+                    f"Control-plane runtime: {runtime}",
+                ],
+                planned_steps=[step.summary for step in plan.steps],
+                action=_run_k8s_vm_workflow,
+            )
 
     def _run_container_local(self) -> None:
         from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
         from controlplane_tool.paths import default_tool_paths
 
-        step("Avvio container-local E2E")
         runner = ContainerLocalE2eRunner(repo_root=default_tool_paths().workspace_root)
-        runner.run()
+
+        def _run_container_local_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            step("Running container-local E2E")
+            runner.run()
+
+        self._run_live_workflow(
+            title="E2E Scenarios",
+            summary_lines=["Scenario: container-local"],
+            planned_steps=["Build", "Deploy", "Verify"],
+            action=_run_container_local_workflow,
+        )
 
     def _run_deploy_host(self) -> None:
         from controlplane_tool.deploy_host_runner import DeployHostE2eRunner
         from controlplane_tool.paths import default_tool_paths
 
-        step("Avvio deploy-host E2E")
         runner = DeployHostE2eRunner(repo_root=default_tool_paths().workspace_root)
-        runner.run()
-        success("deploy-host E2E completato")
+
+        def _run_deploy_host_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            step("Running deploy-host E2E")
+            runner.run()
+
+        self._run_live_workflow(
+            title="E2E Scenarios",
+            summary_lines=["Scenario: deploy-host"],
+            planned_steps=["Build", "Deploy", "Verify"],
+            action=_run_deploy_host_workflow,
+        )
 
     def _run_generic_e2e(self, scenario: str) -> None:
         from controlplane_tool.e2e_runner import E2eRunner
@@ -354,9 +569,29 @@ class NanofaasTUI:
 
         request = E2eRequest(scenario=scenario, runtime=runtime)
         runner = E2eRunner(repo_root=default_tool_paths().workspace_root)
-        step(f"Avvio E2E scenario={scenario}")
-        plan = runner.run(request)
-        _show_plan_table(plan)
+        plan = runner.plan(request)
+
+        def _run_generic_e2e_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            dashboard.append_log(f"Starting E2E scenario={scenario}")
+            sink._update()
+
+            def _on_event(event: Any) -> None:
+                self._apply_e2e_step_event(dashboard, event)
+                sink._update()
+
+            runner.execute(plan, event_listener=_on_event)
+            success(f"{scenario} E2E completed")
+            return plan
+
+        self._run_live_workflow(
+            title="E2E Scenarios",
+            summary_lines=[
+                f"Scenario: {scenario}",
+                f"Runtime: {runtime}",
+            ],
+            planned_steps=[step.summary for step in plan.steps],
+            action=_run_generic_e2e_workflow,
+        )
 
     # ── CLI E2E ───────────────────────────────────────────────────────────────
 
@@ -369,8 +604,8 @@ class NanofaasTUI:
             lambda: questionary.select(
                 "Runner:",
                 choices=[
-                    questionary.Choice("vm — CLI E2E su VM k3s", "vm"),
-                    questionary.Choice("host-platform — CLI su host vs cluster", "host"),
+                    questionary.Choice("vm — CLI E2E on k3s VM", "vm"),
+                    questionary.Choice("host-platform — CLI on host vs cluster", "host"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -380,14 +615,32 @@ class NanofaasTUI:
 
         if runner_choice == "vm":
             from controlplane_tool.cli_vm_runner import CliVmRunner
-            step("Avvio CLI VM E2E")
-            CliVmRunner(repo_root=repo_root).run()
-            success("CLI VM E2E completato")
+            runner = CliVmRunner(repo_root=repo_root)
+
+            def _run_cli_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step("Running CLI VM E2E")
+                runner.run()
+
+            self._run_live_workflow(
+                title="CLI E2E",
+                summary_lines=["Runner: vm"],
+                planned_steps=["Build", "Deploy", "Verify"],
+                action=_run_cli_vm_workflow,
+            )
         else:
             from controlplane_tool.cli_host_runner import CliHostPlatformRunner
-            step("Avvio CLI Host Platform E2E")
-            CliHostPlatformRunner(repo_root=repo_root).run()
-            success("CLI Host Platform E2E completato")
+            runner = CliHostPlatformRunner(repo_root=repo_root)
+
+            def _run_cli_host_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step("Running CLI Host Platform E2E")
+                runner.run()
+
+            self._run_live_workflow(
+                title="CLI E2E",
+                summary_lines=["Runner: host-platform"],
+                planned_steps=["Build", "Deploy", "Verify"],
+                action=_run_cli_host_workflow,
+            )
 
     # ── LOAD TEST ─────────────────────────────────────────────────────────────
 
@@ -399,11 +652,11 @@ class NanofaasTUI:
 
         action = _ask(
             lambda: questionary.select(
-                "Azione:",
+                "Action:",
                 choices=[
-                    questionary.Choice("run — esegui load test con profilo", "run"),
-                    questionary.Choice("plan — mostra piano senza eseguire", "plan"),
-                    questionary.Choice("nuovo profilo — wizard interattivo", "new_profile"),
+                    questionary.Choice("run — run load test with profile", "run"),
+                    questionary.Choice("plan — show plan without executing", "plan"),
+                    questionary.Choice("new profile — interactive wizard", "new_profile"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -417,13 +670,13 @@ class NanofaasTUI:
         if saved:
             use_saved = _ask(
                 lambda: questionary.confirm(
-                    "Usa un profilo salvato?", default=True, style=_STYLE
+                    "Use a saved profile?", default=True, style=_STYLE
                 ).ask()
             )
             if use_saved:
                 profile_name = _ask(
                     lambda: questionary.select(
-                        "Profilo:", choices=saved, style=_STYLE
+                        "Profile:", choices=saved, style=_STYLE
                     ).ask()
                 )
                 from controlplane_tool.profiles import load_profile
@@ -431,18 +684,43 @@ class NanofaasTUI:
             else:
                 profile = self._build_profile_interactive("default")
         else:
-            warning("Nessun profilo salvato trovato, apertura wizard…")
+            warning("No saved profiles found, launching wizard...")
             profile = self._build_profile_interactive("default")
 
-        from controlplane_tool.loadtest_commands import build_loadtest_request, run_loadtest_request
+        from controlplane_tool.loadtest_commands import build_loadtest_request
+        from controlplane_tool.loadtest_runner import LoadtestRunner
         request = build_loadtest_request(profile=profile)
 
         if action == "plan":
             _show_loadtest_plan(request)
         else:
-            step("Avvio load test")
-            run_loadtest_request(request, dry_run=False)
-            success("Load test completato")
+            def _run_loadtest_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                runner = LoadtestRunner()
+
+                def _on_event(event: Any) -> None:
+                    self._apply_loadtest_step_event(dashboard, event)
+                    sink._update()
+
+                result = runner.run(request, event_listener=_on_event)
+                dashboard.append_log(f"Summary: {result.run_dir / 'summary.json'}")
+                dashboard.append_log(f"Report: {result.run_dir / 'report.html'}")
+                sink._update()
+                if result.final_status == "passed":
+                    success("Load test completed")
+                    return result
+                fail("Load test failed", detail=str(result.run_dir))
+                raise RuntimeError(f"load test failed: {result.run_dir}")
+
+            self._run_live_workflow(
+                title="Load Testing",
+                summary_lines=[
+                    f"Profile: {request.profile.name}",
+                    f"Scenario: {request.scenario.name}",
+                    f"Load profile: {request.load_profile.name}",
+                ],
+                planned_steps=["preflight", "bootstrap", "load_k6", "metrics_gate", "report"],
+                action=_run_loadtest_workflow,
+            )
 
     # ── FUNCTIONS ─────────────────────────────────────────────────────────────
 
@@ -453,11 +731,11 @@ class NanofaasTUI:
 
         view = _ask(
             lambda: questionary.select(
-                "Visualizza:",
+                "View:",
                 choices=[
-                    questionary.Choice("Tutte le funzioni", "all"),
-                    questionary.Choice("Preset", "presets"),
-                    questionary.Choice("Dettaglio singola funzione", "show"),
+                    questionary.Choice("All functions", "all"),
+                    questionary.Choice("Presets", "presets"),
+                    questionary.Choice("Function detail", "show"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -465,7 +743,7 @@ class NanofaasTUI:
 
         if view == "all":
             functions = list_functions()
-            table = Table(title="Funzioni disponibili", border_style="cyan dim")
+            table = Table(title="Available functions", border_style="cyan dim")
             table.add_column("Key", style="cyan bold")
             table.add_column("Family", style="dim")
             table.add_column("Runtime", style="green")
@@ -475,10 +753,10 @@ class NanofaasTUI:
 
         elif view == "presets":
             presets = list_function_presets()
-            table = Table(title="Preset disponibili", border_style="cyan dim")
-            table.add_column("Nome", style="cyan bold")
-            table.add_column("Descrizione", style="dim")
-            table.add_column("Funzioni", style="green")
+            table = Table(title="Available presets", border_style="cyan dim")
+            table.add_column("Name", style="cyan bold")
+            table.add_column("Description", style="dim")
+            table.add_column("Functions", style="green")
             for preset in presets:
                 keys = ", ".join(f.key for f in preset.functions)
                 table.add_row(preset.name, preset.description or "", keys)
@@ -492,7 +770,7 @@ class NanofaasTUI:
             keys = [fn.key for fn in list_functions()]
             key = _ask(
                 lambda: questionary.select(
-                    "Funzione:", choices=keys, style=_STYLE
+                    "Function:", choices=keys, style=_STYLE
                 ).ask()
             )
             fn = resolve_function_definition(key)
@@ -504,9 +782,9 @@ class NanofaasTUI:
                 ("Default image", str(getattr(fn, "default_image", "—") or "—")),
                 ("Payload file", str(getattr(fn, "default_payload_file", "—") or "—")),
             ]
-            table = Table(title=f"Funzione: {fn.key}", border_style="cyan dim", show_header=False)
-            table.add_column("Campo", style="dim")
-            table.add_column("Valore", style="cyan")
+            table = Table(title=f"Function: {fn.key}", border_style="cyan dim", show_header=False)
+            table.add_column("Field", style="dim")
+            table.add_column("Value", style="cyan")
             for label, value in rows:
                 table.add_row(label, escape(str(value)))
             console.print(table)
@@ -520,11 +798,11 @@ class NanofaasTUI:
 
         action = _ask(
             lambda: questionary.select(
-                "Azione:",
+                "Action:",
                 choices=[
-                    questionary.Choice("Crea nuovo profilo", "new"),
-                    questionary.Choice("Visualizza profilo esistente", "show"),
-                    questionary.Choice("Elimina profilo", "delete"),
+                    questionary.Choice("Create new profile", "new"),
+                    questionary.Choice("View existing profile", "show"),
+                    questionary.Choice("Delete profile", "delete"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -533,21 +811,21 @@ class NanofaasTUI:
         if action == "new":
             name = _ask(
                 lambda: questionary.text(
-                    "Nome profilo:", default="default", style=_STYLE
+                    "Profile name:", default="default", style=_STYLE
                 ).ask()
             )
             profile = self._build_profile_interactive(name)
             dest = save_profile(profile)
-            success(f"Profilo '{name}' salvato", detail=str(dest))
+            success(f"Profile '{name}' saved", detail=str(dest))
 
         elif action == "show":
             saved = list_profiles()
             if not saved:
-                warning("Nessun profilo salvato.")
+                warning("No saved profiles.")
                 return
             name = _ask(
                 lambda: questionary.select(
-                    "Profilo:", choices=saved, style=_STYLE
+                    "Profile:", choices=saved, style=_STYLE
                 ).ask()
             )
             profile = load_profile(name)
@@ -556,22 +834,22 @@ class NanofaasTUI:
         else:  # delete
             saved = list_profiles()
             if not saved:
-                warning("Nessun profilo salvato.")
+                warning("No saved profiles.")
                 return
             name = _ask(
                 lambda: questionary.select(
-                    "Profilo da eliminare:", choices=saved, style=_STYLE
+                    "Profile to delete:", choices=saved, style=_STYLE
                 ).ask()
             )
             confirm = _ask(
                 lambda: questionary.confirm(
-                    f"Elimina '{name}'?", default=False, style=_STYLE
+                    f"Delete '{name}'?", default=False, style=_STYLE
                 ).ask()
             )
             if confirm:
                 from controlplane_tool.profiles import profile_path
                 profile_path(name).unlink(missing_ok=True)
-                success(f"Profilo '{name}' eliminato")
+                success(f"Profile '{name}' deleted")
 
     def _build_profile_interactive(self, name: str) -> Any:
         from controlplane_tool.tui import build_profile_interactive
@@ -588,23 +866,23 @@ def _show_plan_table(plan: Any) -> None:
     # Try to show steps/phases as a table
     steps = getattr(plan, "steps", None) or getattr(plan, "phases", None)
     if steps:
-        table = Table(title="Piano di esecuzione", border_style="cyan dim")
+        table = Table(title="Execution plan", border_style="cyan dim")
         table.add_column("#", style="dim", justify="right")
         table.add_column("Step", style="cyan")
-        table.add_column("Stato", justify="center")
+        table.add_column("Status", justify="center")
         for i, s in enumerate(steps, 1):
             label = getattr(s, "name", None) or getattr(s, "label", None) or str(s)
             status_val = getattr(s, "status", "—")
             table.add_row(str(i), escape(str(label)), escape(str(status_val)))
         console.print(table)
     else:
-        console.print(Panel(escape(str(plan)), title="Piano", border_style="dim"))
+        console.print(Panel(escape(str(plan)), title="Plan", border_style="dim"))
 
 
 def _show_loadtest_plan(request: Any) -> None:
-    table = Table(title="Piano Load Test", border_style="cyan dim", show_header=False)
-    table.add_column("Campo", style="dim")
-    table.add_column("Valore", style="cyan")
+    table = Table(title="Load Test Plan", border_style="cyan dim", show_header=False)
+    table.add_column("Field", style="dim")
+    table.add_column("Value", style="cyan")
     for attr in ("load_profile", "scenario", "metrics_gate", "runs_root"):
         val = getattr(request, attr, None)
         if val is not None:
@@ -614,12 +892,12 @@ def _show_loadtest_plan(request: Any) -> None:
 
 def _show_profile_table(profile: Any) -> None:
     table = Table(
-        title=f"Profilo: {escape(profile.name)}",
+        title=f"Profile: {escape(profile.name)}",
         border_style="cyan dim",
         show_header=False,
     )
-    table.add_column("Campo", style="dim")
-    table.add_column("Valore", style="cyan")
+    table.add_column("Field", style="dim")
+    table.add_column("Value", style="cyan")
     cp = getattr(profile, "control_plane", None)
     if cp:
         table.add_row("implementation", escape(str(getattr(cp, "implementation", "—"))))

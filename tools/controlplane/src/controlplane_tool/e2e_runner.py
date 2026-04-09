@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 from multipass import MultipassClient
 
@@ -36,6 +36,18 @@ class ScenarioPlan:
     scenario: ScenarioDefinition
     request: E2eRequest
     steps: list[ScenarioPlanStep]
+
+
+ScenarioExecutionStatus = Literal["running", "success", "failed"]
+
+
+@dataclass(frozen=True)
+class ScenarioStepEvent:
+    step_index: int
+    total_steps: int
+    step: ScenarioPlanStep
+    status: ScenarioExecutionStatus
+    error: str | None = None
 
 
 class E2eRunner:
@@ -272,11 +284,20 @@ class E2eRunner:
                     )
                     + " "
                 )
+            control_image = f"{request.local_registry}/nanofaas/control-plane:e2e"
+            runtime_image = f"{request.local_registry}/nanofaas/function-runtime:e2e"
             return [
                 self._remote_exec_step(
                     "Build control-plane and runtime images in VM",
                     vm_request,
-                    f"cd {remote_dir} && ./scripts/controlplane.sh image --profile k8s -- -PcontrolPlaneImage={request.local_registry}/nanofaas/control-plane:e2e",
+                    (
+                        f"cd {remote_dir} && "
+                        f"./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage "
+                        f"-PcontrolPlaneImage={control_image} "
+                        f"-PfunctionRuntimeImage={runtime_image} --no-daemon && "
+                        f"docker push {control_image} && "
+                        f"docker push {runtime_image}"
+                    ),
                 ),
                 self._remote_exec_step(
                     "Run K8sE2eTest in VM",
@@ -285,16 +306,14 @@ class E2eRunner:
                         [
                             f"cd {remote_dir} &&",
                             f"KUBECONFIG={kubeconfig_path}",
-                            "./scripts/controlplane.sh",
-                            "test",
-                            "--profile",
-                            "k8s",
-                            "--modules",
-                            "all",
-                            "--",
+                            f"CONTROL_PLANE_IMAGE={control_image}",
+                            f"FUNCTION_RUNTIME_IMAGE={runtime_image}",
+                            f"NANOFAAS_HELM_CHART={remote_dir}/helm/nanofaas",
+                            "./gradlew",
+                            ":control-plane-modules:k8s-deployment-provider:test",
                             f"{manifest_property}-PrunE2e",
                             "--tests",
-                            "it.unimib.datai.nanofaas.controlplane.e2e.K8sE2eTest",
+                            "it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest",
                             "--no-daemon",
                         ]
                     ),
@@ -448,16 +467,65 @@ class E2eRunner:
 
         return [self._MULTIPASS_IP_RE.sub(_replace, arg) for arg in command]
 
-    def _execute_steps(self, plan: ScenarioPlan) -> None:
+    def _emit_event(
+        self,
+        event_listener: Callable[[ScenarioStepEvent], None] | None,
+        *,
+        step_index: int,
+        total_steps: int,
+        step: ScenarioPlanStep,
+        status: ScenarioExecutionStatus,
+        error: str | None = None,
+    ) -> None:
+        if event_listener is None:
+            return
+        event_listener(
+            ScenarioStepEvent(
+                step_index=step_index,
+                total_steps=total_steps,
+                step=step,
+                status=status,
+                error=error,
+            )
+        )
+
+    def _execute_steps(
+        self,
+        plan: ScenarioPlan,
+        event_listener: Callable[[ScenarioStepEvent], None] | None = None,
+    ) -> None:
         ip_cache: dict[str, str] = {}
-        for step in plan.steps:
+        total_steps = len(plan.steps)
+        for step_index, step in enumerate(plan.steps, start=1):
+            self._emit_event(
+                event_listener,
+                step_index=step_index,
+                total_steps=total_steps,
+                step=step,
+                status="running",
+            )
             if step.action is not None:
                 try:
                     step.action()
                 except Exception as exc:
+                    self._emit_event(
+                        event_listener,
+                        step_index=step_index,
+                        total_steps=total_steps,
+                        step=step,
+                        status="failed",
+                        error=str(exc),
+                    )
                     raise RuntimeError(
                         f"Scenario '{plan.request.scenario}' failed at step '{step.summary}': {exc}"
                     ) from exc
+                self._emit_event(
+                    event_listener,
+                    step_index=step_index,
+                    total_steps=total_steps,
+                    step=step,
+                    status="success",
+                )
                 continue
             command = self._resolve_command(step.command, plan.request.vm, ip_cache)
             result = self.shell.run(
@@ -468,10 +536,25 @@ class E2eRunner:
             )
             if result.return_code != 0:
                 output = (result.stderr or result.stdout or "").strip()
+                self._emit_event(
+                    event_listener,
+                    step_index=step_index,
+                    total_steps=total_steps,
+                    step=step,
+                    status="failed",
+                    error=output or f"exit {result.return_code}",
+                )
                 msg = f"Scenario '{plan.request.scenario}' failed at step '{step.summary}' (exit {result.return_code})"
                 if output:
                     msg += f"\n\n{output}"
                 raise RuntimeError(msg)
+            self._emit_event(
+                event_listener,
+                step_index=step_index,
+                total_steps=total_steps,
+                step=step,
+                status="success",
+            )
 
     def _should_teardown(self, vm_request: VmRequest | None, *, keep_vm: bool) -> bool:
         return vm_request is not None and vm_request.lifecycle == "multipass" and not keep_vm
@@ -489,16 +572,26 @@ class E2eRunner:
         if isinstance(commands, list):
             del commands[initial_count:]
 
+    def execute(
+        self,
+        plan: ScenarioPlan,
+        *,
+        event_listener: Callable[[ScenarioStepEvent], None] | None = None,
+    ) -> None:
+        succeeded = False
+        try:
+            self._execute_steps(plan, event_listener=event_listener)
+            succeeded = True
+        finally:
+            if succeeded and self._should_teardown(plan.request.vm, keep_vm=plan.request.keep_vm):
+                self.vm.teardown(plan.request.vm)
+
     def run(self, request: E2eRequest) -> ScenarioPlan:
         initial_count = self._recorded_command_count()
         plan = self.plan(request)
         self._discard_planning_commands(initial_count)
-        try:
-            self._execute_steps(plan)
-            return plan
-        finally:
-            if self._should_teardown(request.vm, keep_vm=request.keep_vm):
-                self.vm.teardown(request.vm)
+        self.execute(plan)
+        return plan
 
     def run_all(
         self,
@@ -526,10 +619,12 @@ class E2eRunner:
             (plan.request.vm for plan in plans if plan.request.vm is not None),
             None,
         )
+        succeeded = False
         try:
             for plan in plans:
                 self._execute_steps(plan)
+            succeeded = True
             return plans
         finally:
-            if self._should_teardown(shared_vm_request, keep_vm=keep_vm):
+            if succeeded and self._should_teardown(shared_vm_request, keep_vm=keep_vm):
                 self.vm.teardown(shared_vm_request)

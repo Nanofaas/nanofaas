@@ -1,11 +1,11 @@
 from pathlib import Path
 
 from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.e2e_runner import E2eRunner
+from controlplane_tool.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
 from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario_models import ScenarioSpec
-from controlplane_tool.shell_backend import RecordingShell
+from controlplane_tool.shell_backend import RecordingShell, ScriptedShell
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -204,3 +204,53 @@ def test_k8s_vm_plan_exports_remote_manifest_to_test_command(tmp_path: Path) -> 
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert any("nanofaas.e2e.scenarioManifest" in command for command in rendered)
+
+
+def test_execute_emits_step_progress_events() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    plan = ScenarioPlan(
+        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
+        request=E2eRequest(scenario="docker", runtime="java"),
+        steps=[
+            ScenarioPlanStep(summary="First step", command=["echo", "one"]),
+            ScenarioPlanStep(summary="Second step", command=["echo", "two"]),
+        ],
+    )
+
+    events = []
+
+    runner.execute(plan, event_listener=events.append)
+
+    assert [(event.step_index, event.status, event.step.summary) for event in events] == [
+        (1, "running", "First step"),
+        (1, "success", "First step"),
+        (2, "running", "Second step"),
+        (2, "success", "Second step"),
+    ]
+
+
+def test_execute_emits_failure_event_when_step_fails() -> None:
+    shell = ScriptedShell(
+        return_code_map={("false",): 7},
+        stderr_map={("false",): "kaboom"},
+    )
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
+    plan = ScenarioPlan(
+        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
+        request=E2eRequest(scenario="docker", runtime="java"),
+        steps=[ScenarioPlanStep(summary="Broken step", command=["false"])],
+    )
+
+    events = []
+
+    try:
+        runner.execute(plan, event_listener=events.append)
+    except RuntimeError as exc:
+        assert "Broken step" in str(exc)
+    else:
+        raise AssertionError("expected runner.execute() to fail")
+
+    assert [(event.step_index, event.status, event.step.summary) for event in events] == [
+        (1, "running", "Broken step"),
+        (1, "failed", "Broken step"),
+    ]
