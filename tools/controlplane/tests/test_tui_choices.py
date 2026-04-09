@@ -1,5 +1,11 @@
+from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
+
 from controlplane_tool.module_catalog import module_choices
+from controlplane_tool.prefect_models import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
+from controlplane_tool.tui_app import NanofaasTUI
 
 
 def test_module_catalog_has_descriptions() -> None:
@@ -132,3 +138,219 @@ def test_tui_can_save_default_cli_test_scenario(monkeypatch) -> None:
     profile = build_profile_interactive(profile_name="demo-java")
 
     assert profile.cli_test.default_scenario == "vm"
+
+
+def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
+    now = datetime.now(UTC)
+    return FlowRunResult.completed(
+        flow_id=flow_id,
+        flow_run_id="flow-run-1",
+        orchestrator_backend="prefect-local",
+        started_at=now,
+        finished_at=now,
+        result=result,
+    )
+
+
+def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["provision-base", "multipass", "nanofaas-e2e", "ubuntu", False, False])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_vm_flow(flow_id, **kwargs):  # noqa: ANN001
+        called["built_flow_id"] = flow_id
+        called["dry_run"] = kwargs["dry_run"]
+        return LocalFlowDefinition(flow_id=flow_id, task_ids=[flow_id], run=lambda: SimpleNamespace(stdout="", stderr="", return_code=0))
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["flow_result"] = flow()
+        return _completed_flow_result(flow_id, called["flow_result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        called["planned_steps"] = planned_steps
+        return action(SimpleNamespace(append_log=lambda message: None), SimpleNamespace(_update=lambda: None))
+
+    monkeypatch.setattr(tui_app, "build_vm_flow", fake_build_vm_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._vm_menu()
+
+    assert called["built_flow_id"] == "vm.provision_base"
+    assert called["flow_id"] == "vm.provision_base"
+    assert called["dry_run"] is False
+    assert called["title"] == "VM Management"
+
+
+def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monkeypatch) -> None:
+    import pytest
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_vm_flow(flow_id, **kwargs):  # noqa: ANN001
+        return LocalFlowDefinition(
+            flow_id=flow_id,
+            task_ids=[flow_id],
+            run=lambda: SimpleNamespace(stdout="", stderr="vm failed", return_code=17),
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        return _completed_flow_result(flow_id, flow())
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_vm_flow", fake_build_vm_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    with pytest.raises(RuntimeError, match="vm failed"):
+        NanofaasTUI()._vm_menu()
+
+
+def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeypatch) -> None:
+    import pytest
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
+    log_lines: list[str] = []
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_vm_flow(flow_id, **kwargs):  # noqa: ANN001
+        return LocalFlowDefinition(
+            flow_id=flow_id,
+            task_ids=[flow_id],
+            run=lambda: SimpleNamespace(stdout="vm stdout", stderr="vm stderr", return_code=17),
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        return _completed_flow_result(flow_id, flow())
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: log_lines.append(message))
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_vm_flow", fake_build_vm_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    with pytest.raises(RuntimeError, match="vm stderr"):
+        NanofaasTUI()._vm_menu()
+
+    assert "vm stdout" in log_lines
+    assert "vm stderr" in log_lines
+
+
+def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: "run")
+    monkeypatch.setattr(tui_app, "list_profiles", lambda: [])
+    monkeypatch.setattr(NanofaasTUI, "_build_profile_interactive", lambda self, name: SimpleNamespace(name=name))
+    monkeypatch.setattr(
+        tui_app,
+        "build_loadtest_request",
+        lambda profile: SimpleNamespace(
+            name="demo-loadtest",
+            profile=SimpleNamespace(name="default"),
+            scenario=SimpleNamespace(name="k8s-vm"),
+            load_profile=SimpleNamespace(name="quick"),
+        ),
+    )
+
+    run_result = SimpleNamespace(
+        final_status="passed",
+        run_dir=Path("/tmp/loadtest-run"),
+    )
+
+    def fake_build_loadtest_flow(load_profile_name, **kwargs):  # noqa: ANN001
+        called["built_flow_id"] = f"loadtest.{load_profile_name}"
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(
+            flow_id=f"loadtest.{load_profile_name}",
+            task_ids=["loadtest.bootstrap"],
+            run=lambda: run_result,
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        return _completed_flow_result(flow_id, flow())
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_loadtest_flow", fake_build_loadtest_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._loadtest_menu()
+
+    assert called["built_flow_id"] == "loadtest.quick"
+    assert called["flow_id"] == "loadtest.quick"
+    assert called["title"] == "Load Testing"
+
+
+def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+
+    answers = iter(["nanofaas-e2e", "java", False])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Ensure VM is running"),
+            SimpleNamespace(summary="Run K8sE2eTest in VM"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+    monkeypatch.setattr(
+        e2e_runner.E2eRunner,
+        "execute",
+        lambda self, plan, event_listener=None: (_ for _ in ()).throw(AssertionError("direct execute must not be called")),
+    )
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.k8s_vm", task_ids=["vm.ensure_running"], run=lambda: "ok")
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["result"] = flow()
+        return _completed_flow_result(flow_id, called["result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_vm_e2e("k8s-vm")
+
+    assert called["scenario"] == "k8s-vm"
+    assert called["flow_id"] == "e2e.k8s_vm"
+    assert called["planned_steps"] == ["Ensure VM is running", "Run K8sE2eTest in VM"]
