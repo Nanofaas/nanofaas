@@ -19,6 +19,7 @@ from controlplane_tool.cli_e2e_commands import install_cli_e2e_commands
 from controlplane_tool.k3s_e2e_commands import install_k3s_e2e_commands
 from controlplane_tool.local_e2e_commands import install_local_e2e_commands
 from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.profiles import load_profile
 from controlplane_tool.tui import build_and_save_profile
 from controlplane_tool.vm_commands import install_vm_commands
@@ -71,6 +72,14 @@ def tui(
     )
     typer.echo(message)
     run_loadtest_request(build_loadtest_request(profile=profile), dry_run=False)
+
+
+@app.command("prefect-runtime-smoke", hidden=True)
+def prefect_runtime_smoke() -> None:
+    result = run_local_flow("controlplane.prefect_runtime_smoke", lambda: "ok")
+    typer.echo(
+        f"{result.flow_id} {result.status} {result.orchestrator_backend} {result.flow_run_id}"
+    )
 
 
 install_cli_commands(app)
