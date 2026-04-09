@@ -1,14 +1,11 @@
 package it.unimib.datai.nanofaas.modules.k8s.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Service;
-import io.fabric8.kubernetes.api.model.ServiceBuilder;
 import io.fabric8.kubernetes.api.model.Endpoints;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.LocalPortForward;
@@ -40,13 +37,20 @@ class K8sE2eTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static KubernetesClient client;
 
+    private static final String HELM_RELEASE = "nanofaas-test";
+
     @BeforeAll
-    static void setupCluster() {
+    static void setupCluster() throws Exception {
         String kubeconfig = System.getenv("KUBECONFIG");
         assumeTrue(kubeconfig != null && !kubeconfig.isBlank(),
             "KUBECONFIG not set. Run scripts/e2e-k8s-vm.sh or export a valid k3s kubeconfig.");
         assumeTrue(Files.exists(Path.of(kubeconfig)),
             "KUBECONFIG file not found at: " + kubeconfig);
+
+        String chartPath = System.getenv("NANOFAAS_HELM_CHART");
+        assumeTrue(chartPath != null && !chartPath.isBlank(),
+            "NANOFAAS_HELM_CHART not set (path to helm/nanofaas chart directory).");
+        assumeTrue(Files.exists(Path.of(chartPath)), "Helm chart not found at: " + chartPath);
 
         client = new KubernetesClientBuilder().build();
         assumeTrue(client.getConfiguration() != null && client.getConfiguration().getMasterUrl() != null,
@@ -59,15 +63,82 @@ class K8sE2eTest {
                 .build();
         client.namespaces().resource(namespace).createOrReplace();
 
-        client.apps().deployments().inNamespace(namespace()).resource(controlPlaneDeployment()).createOrReplace();
-        client.services().inNamespace(namespace()).resource(controlPlaneService()).createOrReplace();
+        // Split image "repo:tag" (rightmost colon) into repository and tag.
+        String[] parts = CONTROL_IMAGE.split(":(?=[^:]*$)", 2);
+        String imageRepo = parts[0];
+        String imageTag = parts.length > 1 ? parts[1] : "latest";
 
-        awaitDeploymentReady("control-plane");
+        Path valuesFile = Files.createTempFile("nanofaas-e2e-values-", ".yaml");
+        String valuesYaml = ""
+                + "namespace:\n"
+                + "  create: false\n"
+                + "  name: " + namespace() + "\n"
+                + "controlPlane:\n"
+                + "  image:\n"
+                + "    repository: " + imageRepo + "\n"
+                + "    tag: " + imageTag + "\n"
+                + "    pullPolicy: IfNotPresent\n"
+                + "  extraEnv:\n"
+                + "    - name: NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND\n"
+                + "      value: k8s\n"
+                + "    - name: NANOFAAS_K8S_CALLBACK_URL\n"
+                + "      value: http://control-plane." + namespace() + ".svc.cluster.local:8080/v1/internal/executions\n"
+                + "    - name: SYNC_QUEUE_ENABLED\n"
+                + "      value: \"true\"\n"
+                + "    - name: NANOFAAS_SYNC_QUEUE_ENABLED\n"
+                + "      value: \"true\"\n"
+                + "    - name: SYNC_QUEUE_ADMISSION_ENABLED\n"
+                + "      value: \"false\"\n"
+                + "    - name: SYNC_QUEUE_MAX_DEPTH\n"
+                + "      value: \"1\"\n"
+                + "    - name: NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY\n"
+                + "      value: \"1\"\n"
+                + "    - name: SYNC_QUEUE_MAX_ESTIMATED_WAIT\n"
+                + "      value: 2s\n"
+                + "    - name: SYNC_QUEUE_MAX_QUEUE_WAIT\n"
+                + "      value: 5s\n"
+                + "    - name: SYNC_QUEUE_RETRY_AFTER_SECONDS\n"
+                + "      value: \"2\"\n"
+                + "    - name: SYNC_QUEUE_THROUGHPUT_WINDOW\n"
+                + "      value: 10s\n"
+                + "    - name: SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES\n"
+                + "      value: \"1\"\n"
+                + "demos:\n"
+                + "  enabled: false\n"
+                + "prometheus:\n"
+                + "  create: false\n";
+        Files.writeString(valuesFile, valuesYaml);
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "helm", "upgrade", "--install", HELM_RELEASE, chartPath,
+                    "--namespace", namespace(),
+                    "-f", valuesFile.toString(),
+                    "--wait", "--timeout", "5m"
+            );
+            pb.inheritIO();
+            int rc = pb.start().waitFor();
+            if (rc != 0) {
+                throw new IllegalStateException("helm upgrade --install failed with exit code " + rc);
+            }
+        } finally {
+            Files.deleteIfExists(valuesFile);
+        }
+
+        awaitDeploymentReady("nanofaas-control-plane");
         awaitServiceReady("control-plane");
     }
 
     @AfterAll
     static void cleanup() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "helm", "uninstall", HELM_RELEASE, "--namespace", namespace());
+            pb.inheritIO();
+            pb.start().waitFor();
+        } catch (Exception ignored) {
+            // best-effort cleanup
+        }
         if (client != null) {
             client.namespaces().withName(namespace()).delete();
             client.close();
@@ -345,122 +416,6 @@ class K8sE2eTest {
                 subset.getAddresses() != null && !subset.getAddresses().isEmpty());
     }
 
-    private static Deployment controlPlaneDeployment() {
-        return new DeploymentBuilder()
-                .withNewMetadata()
-                .withName("control-plane")
-                .addToLabels("app", "control-plane")
-                .endMetadata()
-                .withNewSpec()
-                .withReplicas(1)
-                .withNewSelector().addToMatchLabels("app", "control-plane").endSelector()
-                .withNewTemplate()
-                .withNewMetadata().addToLabels("app", "control-plane").endMetadata()
-                .withNewSpec()
-                .addNewContainer()
-                .withName("control-plane")
-                .withImage(CONTROL_IMAGE)
-                .addNewPort().withContainerPort(8080).endPort()
-                .addNewPort().withContainerPort(8081).endPort()
-                .addNewEnv().withName("POD_NAMESPACE").withValue(namespace()).endEnv()
-                .addNewEnv()
-                .withName("NANOFAAS_K8S_CALLBACK_URL")
-                .withValue("http://control-plane." + namespace() + ".svc.cluster.local:8080/v1/internal/executions")
-                .endEnv()
-                .addNewEnv().withName("NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND").withValue("k8s").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_ENABLED").withValue("true").endEnv()
-                .addNewEnv().withName("NANOFAAS_SYNC_QUEUE_ENABLED").withValue("true").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_ADMISSION_ENABLED").withValue("false").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_MAX_DEPTH").withValue("1").endEnv()
-                .addNewEnv().withName("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY").withValue("1").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_MAX_ESTIMATED_WAIT").withValue("2s").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_MAX_QUEUE_WAIT").withValue("5s").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_RETRY_AFTER_SECONDS").withValue("2").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_THROUGHPUT_WINDOW").withValue("10s").endEnv()
-                .addNewEnv().withName("SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES").withValue("1").endEnv()
-                .withNewReadinessProbe()
-                .withNewHttpGet()
-                .withPath("/actuator/health/readiness")
-                .withPort(new IntOrString(8081))
-                .endHttpGet()
-                .withInitialDelaySeconds(10)
-                .withPeriodSeconds(5)
-                .withTimeoutSeconds(3)
-                .withFailureThreshold(3)
-                .endReadinessProbe()
-                .withNewLivenessProbe()
-                .withNewHttpGet()
-                .withPath("/actuator/health/liveness")
-                .withPort(new IntOrString(8081))
-                .endHttpGet()
-                .withInitialDelaySeconds(15)
-                .withPeriodSeconds(10)
-                .withTimeoutSeconds(3)
-                .withFailureThreshold(3)
-                .endLivenessProbe()
-                .endContainer()
-                .endSpec()
-                .endTemplate()
-                .endSpec()
-                .build();
-    }
-
-    private static Service controlPlaneService() {
-        return new ServiceBuilder()
-                .withNewMetadata()
-                .withName("control-plane")
-                .endMetadata()
-                .withNewSpec()
-                .addToSelector("app", "control-plane")
-                .addNewPort().withName("http").withPort(8080).withTargetPort(new IntOrString(8080)).endPort()
-                .addNewPort().withName("mgmt").withPort(8081).withTargetPort(new IntOrString(8081)).endPort()
-                .endSpec()
-                .build();
-    }
-
-    private static Deployment functionRuntimeDeployment() {
-        return new DeploymentBuilder()
-                .withNewMetadata()
-                .withName("function-runtime")
-                .addToLabels("app", "function-runtime")
-                .endMetadata()
-                .withNewSpec()
-                .withReplicas(1)
-                .withNewSelector().addToMatchLabels("app", "function-runtime").endSelector()
-                .withNewTemplate()
-                .withNewMetadata().addToLabels("app", "function-runtime").endMetadata()
-                .withNewSpec()
-                .addNewContainer()
-                .withName("function-runtime")
-                .withImage(RUNTIME_IMAGE)
-                .addNewPort().withContainerPort(8080).endPort()
-                .withNewReadinessProbe()
-                .withNewHttpGet()
-                .withPath("/actuator/health")
-                .withPort(new IntOrString(8080))
-                .endHttpGet()
-                .withInitialDelaySeconds(10)
-                .withPeriodSeconds(5)
-                .endReadinessProbe()
-                .endContainer()
-                .endSpec()
-                .endTemplate()
-                .endSpec()
-                .build();
-    }
-
-    private static Service functionRuntimeService() {
-        return new ServiceBuilder()
-                .withNewMetadata()
-                .withName("function-runtime")
-                .endMetadata()
-                .withNewSpec()
-                .addToSelector("app", "function-runtime")
-                .addNewPort().withName("http").withPort(8080).withTargetPort(new IntOrString(8080)).endPort()
-                .endSpec()
-                .build();
-    }
-
     private static void awaitHealth(int port, String path) {
         Awaitility.await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() ->
                 RestAssured.get("http://localhost:" + port + path)
@@ -470,7 +425,7 @@ class K8sE2eTest {
     }
 
     private static void awaitControlPlaneReady() {
-        awaitDeploymentReady("control-plane");
+        awaitDeploymentReady("nanofaas-control-plane");
         awaitServiceReady("control-plane");
     }
 

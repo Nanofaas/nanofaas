@@ -13,7 +13,9 @@ class VmRequest(BaseModel):
     user: str = "ubuntu"
     home: str | None = None
     cpus: int = 4
-    memory: str = "8G"
+    # GraalVM native-image builds for the control-plane need >8G during code generation;
+    # 12G gives enough headroom without starving the host.
+    memory: str = "12G"
     disk: str = "30G"
 
     @model_validator(mode="after")
@@ -32,7 +34,7 @@ class _VmEnvSettings(BaseSettings):
     e2e_vm_user: str = "ubuntu"
     e2e_vm_home: str | None = None
     cpus: int = 4
-    memory: str = "8G"
+    memory: str = "12G"
     disk: str = "30G"
 
 
