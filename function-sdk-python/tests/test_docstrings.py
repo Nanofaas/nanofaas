@@ -60,6 +60,10 @@ def test_app_module_docstring():
     import nanofaas.runtime.app as m
     assert m.__doc__ and m.__doc__.strip()
 
+def test_app_instance_docstring():
+    from nanofaas.runtime.app import app
+    assert app.__doc__ and app.__doc__.strip()
+
 def test_lifespan_docstring():
     from nanofaas.runtime.app import lifespan
     assert lifespan.__doc__ and lifespan.__doc__.strip()
