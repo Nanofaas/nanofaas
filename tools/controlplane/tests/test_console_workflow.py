@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from threading import Thread
 
 from controlplane_tool.console import (
+    bind_workflow_context,
     bind_workflow_sink,
     fail,
     phase,
@@ -12,46 +13,30 @@ from controlplane_tool.console import (
     warning,
     workflow_log,
 )
+from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent
 
 
 class _FakeSink:
     def __init__(self) -> None:
-        self.events: list[tuple[str, str, str]] = []
+        self.events: list[WorkflowEvent] = []
+        self.status_events: list[tuple[str, str]] = []
 
-    def phase(self, label: str) -> None:
-        self.events.append(("phase", label, ""))
-
-    def step(self, label: str, detail: str = "") -> None:
-        self.events.append(("step", label, detail))
-
-    def success(self, label: str, detail: str = "") -> None:
-        self.events.append(("success", label, detail))
-
-    def warning(self, label: str) -> None:
-        self.events.append(("warning", label, ""))
-
-    def skip(self, label: str) -> None:
-        self.events.append(("skip", label, ""))
-
-    def fail(self, label: str, detail: str = "") -> None:
-        self.events.append(("fail", label, detail))
-
-    def log(self, message: str, stream: str = "stdout") -> None:
-        self.events.append(("log", stream, message))
+    def emit(self, event: WorkflowEvent) -> None:
+        self.events.append(event)
 
     @contextmanager
     def status(self, label: str):
-        self.events.append(("status-start", label, ""))
+        self.status_events.append(("start", label))
         try:
             yield
         finally:
-            self.events.append(("status-end", label, ""))
+            self.status_events.append(("end", label))
 
 
 def test_bind_workflow_sink_routes_console_helpers() -> None:
     sink = _FakeSink()
 
-    with bind_workflow_sink(sink):
+    with bind_workflow_sink(sink), bind_workflow_context(WorkflowContext(flow_id="workflow.console")):
         phase("Build")
         step("Compile", "profile=k8s")
         warning("Using cached dependencies")
@@ -61,24 +46,37 @@ def test_bind_workflow_sink_routes_console_helpers() -> None:
         success("Workflow completed", "exit code 0")
         fail("Workflow failed", "exit code 1")
 
-    assert sink.events == [
-        ("phase", "Build", ""),
-        ("step", "Compile", "profile=k8s"),
-        ("warning", "Using cached dependencies", ""),
-        ("skip", "Skip optional image build", ""),
-        ("status-start", "Waiting for readiness", ""),
-        ("status-end", "Waiting for readiness", ""),
-        ("success", "Workflow completed", "exit code 0"),
-        ("fail", "Workflow failed", "exit code 1"),
+    assert [event.kind for event in sink.events] == [
+        "phase.started",
+        "task.running",
+        "task.warning",
+        "task.skipped",
+        "task.completed",
+        "task.failed",
+    ]
+    assert sink.events[1].title == "Compile"
+    assert sink.events[1].detail == "profile=k8s"
+    assert sink.status_events == [
+        ("start", "Waiting for readiness"),
+        ("end", "Waiting for readiness"),
     ]
 
 
 def test_workflow_log_from_background_thread_uses_bound_sink() -> None:
     sink = _FakeSink()
+    context = WorkflowContext(
+        flow_id="e2e.k8s_vm",
+        task_id="images.build_core",
+        task_run_id="task-run-123",
+    )
 
-    with bind_workflow_sink(sink):
+    with bind_workflow_sink(sink), bind_workflow_context(context):
         thread = Thread(target=lambda: workflow_log("stream line", stream="stdout"))
         thread.start()
         thread.join()
 
-    assert ("log", "stdout", "stream line") in sink.events
+    assert len(sink.events) == 1
+    assert sink.events[0].kind == "log.line"
+    assert sink.events[0].task_id == "images.build_core"
+    assert sink.events[0].task_run_id == "task-run-123"
+    assert sink.events[0].line == "stream line"

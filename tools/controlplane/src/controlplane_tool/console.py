@@ -16,6 +16,13 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.text import Text
 
+from controlplane_tool.workflow_events import (
+    build_log_event,
+    build_phase_event,
+    build_task_event,
+)
+from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent
+
 # Singleton — shared across all modules.
 console = Console(highlight=False)
 _workflow_sink_var: ContextVar["WorkflowSink | None"] = ContextVar(
@@ -23,6 +30,11 @@ _workflow_sink_var: ContextVar["WorkflowSink | None"] = ContextVar(
     default=None,
 )
 _workflow_sink_shared: "WorkflowSink | None" = None
+_workflow_context_var: ContextVar[WorkflowContext | None] = ContextVar(
+    "workflow_context",
+    default=None,
+)
+_workflow_context_shared: WorkflowContext | None = None
 
 _LOGO = r"""
  ███╗   ██╗ █████╗ ███╗   ██╗ ██████╗ ███████╗ █████╗  █████╗ ███████╗
@@ -35,21 +47,9 @@ _LOGO = r"""
 
 
 class WorkflowSink(Protocol):
-    def phase(self, label: str) -> None: ...
-
-    def step(self, label: str, detail: str = "") -> None: ...
-
-    def success(self, label: str, detail: str = "") -> None: ...
-
-    def warning(self, label: str) -> None: ...
-
-    def skip(self, label: str) -> None: ...
-
-    def fail(self, label: str, detail: str = "") -> None: ...
+    def emit(self, event: WorkflowEvent) -> None: ...
 
     def status(self, label: str) -> ContextManager[None]: ...
-
-    def log(self, message: str, stream: str = "stdout") -> None: ...
 
 
 @contextmanager
@@ -65,19 +65,91 @@ def bind_workflow_sink(sink: WorkflowSink) -> Generator[None, None, None]:
         _workflow_sink_shared = previous_shared
 
 
+@contextmanager
+def bind_workflow_context(context: WorkflowContext) -> Generator[None, None, None]:
+    global _workflow_context_shared
+    previous_shared = _workflow_context_shared
+    _workflow_context_shared = context
+    token = _workflow_context_var.set(context)
+    try:
+        yield
+    finally:
+        _workflow_context_var.reset(token)
+        _workflow_context_shared = previous_shared
+
+
 def _workflow_sink() -> WorkflowSink | None:
     return _workflow_sink_var.get() or _workflow_sink_shared
+
+
+def _workflow_context() -> WorkflowContext | None:
+    return _workflow_context_var.get() or _workflow_context_shared
 
 
 def has_workflow_sink() -> bool:
     return _workflow_sink() is not None
 
 
-def workflow_log(message: str, *, stream: str = "stdout") -> None:
-    sink = _workflow_sink()
-    if sink is None:
+def _render_event(event: WorkflowEvent) -> None:
+    if event.kind == "log.line":
         return
-    sink.log(message, stream=stream)
+    if event.kind == "phase.started":
+        console.print()
+        console.print(Rule(f"[bold cyan]{escape(event.title)}[/]", style="cyan dim"))
+        console.print()
+        return
+    if event.kind == "task.running":
+        if event.detail:
+            console.print(
+                f"  [cyan]▸[/] [bold]{escape(event.title)}[/]  [dim]{escape(event.detail)}[/]"
+            )
+        else:
+            console.print(f"  [cyan]▸[/] [bold]{escape(event.title)}[/]")
+        return
+    if event.kind == "task.completed":
+        body = f"[bold green]✓  {escape(event.title)}[/]"
+        if event.detail:
+            body += f"\n\n[dim]{escape(event.detail)}[/]"
+        console.print()
+        console.print(Panel(body, border_style="green", padding=(0, 2)))
+        console.print()
+        return
+    if event.kind == "task.warning":
+        console.print(f"  [yellow]⚠[/]  [yellow]{escape(event.title)}[/]")
+        return
+    if event.kind == "task.skipped":
+        console.print(f"  [dim]⊘  {escape(event.title)}[/]")
+        return
+    if event.kind == "task.failed":
+        body = f"[bold red]✗  {escape(event.title)}[/]"
+        if event.detail:
+            body += f"\n\n[dim]{escape(event.detail)}[/]"
+        console.print()
+        console.print(Panel(body, border_style="red", padding=(0, 2)))
+        console.print()
+
+
+def _emit_workflow_event(event: WorkflowEvent) -> None:
+    sink = _workflow_sink()
+    if sink is not None:
+        sink.emit(event)
+        return
+    _render_event(event)
+
+
+def workflow_log(
+    message: str,
+    *,
+    stream: str = "stdout",
+    context: WorkflowContext | None = None,
+) -> None:
+    _emit_workflow_event(
+        build_log_event(
+            line=message,
+            stream=stream,
+            context=context or _workflow_context(),
+        )
+    )
 
 
 def header(subtitle: str = "controlplane tool") -> None:
@@ -97,71 +169,65 @@ def header(subtitle: str = "controlplane tool") -> None:
 
 def phase(label: str) -> None:
     """Major workflow phase separator."""
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.phase(label)
-        return
-    console.print()
-    console.print(Rule(f"[bold cyan]{escape(label)}[/]", style="cyan dim"))
-    console.print()
+    _emit_workflow_event(build_phase_event(label, context=_workflow_context()))
 
 
 def step(label: str, detail: str = "") -> None:
     """A single step within a phase."""
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.step(label, detail)
-        return
-    if detail:
-        console.print(f"  [cyan]▸[/] [bold]{escape(label)}[/]  [dim]{escape(detail)}[/]")
-    else:
-        console.print(f"  [cyan]▸[/] [bold]{escape(label)}[/]")
+    _emit_workflow_event(
+        build_task_event(
+            kind="task.running",
+            title=label,
+            detail=detail,
+            context=_workflow_context(),
+        )
+    )
 
 
 def success(label: str, detail: str = "") -> None:
     """Green success panel for workflow completion."""
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.success(label, detail)
-        return
-    body = f"[bold green]✓  {escape(label)}[/]"
-    if detail:
-        body += f"\n\n[dim]{escape(detail)}[/]"
-    console.print()
-    console.print(Panel(body, border_style="green", padding=(0, 2)))
-    console.print()
+    _emit_workflow_event(
+        build_task_event(
+            kind="task.completed",
+            title=label,
+            detail=detail,
+            context=_workflow_context(),
+        )
+    )
 
 
 def warning(label: str) -> None:
     """Non-fatal yellow warning."""
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.warning(label)
-        return
-    console.print(f"  [yellow]⚠[/]  [yellow]{escape(label)}[/]")
+    _emit_workflow_event(
+        build_task_event(
+            kind="task.warning",
+            title=label,
+            context=_workflow_context(),
+        )
+    )
 
 
 def skip(label: str) -> None:
     """Dimmed skip message."""
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.skip(label)
-        return
-    console.print(f"  [dim]⊘  {escape(label)}[/]")
+    _emit_workflow_event(
+        build_task_event(
+            kind="task.skipped",
+            title=label,
+            context=_workflow_context(),
+        )
+    )
 
 
 def fail(label: str, detail: str = "") -> None:
     """Red failure panel."""
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.fail(label, detail)
-        return
-    body = f"[bold red]✗  {escape(label)}[/]"
-    if detail:
-        body += f"\n\n[dim]{escape(detail)}[/]"
-    console.print()
-    console.print(Panel(body, border_style="red", padding=(0, 2)))
-    console.print()
+    _emit_workflow_event(
+        build_task_event(
+            kind="task.failed",
+            title=label,
+            detail=detail,
+            context=_workflow_context(),
+        )
+    )
 
 
 @contextmanager

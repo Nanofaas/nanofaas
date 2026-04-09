@@ -1,6 +1,7 @@
 from rich.console import Console
 
 from controlplane_tool.tui_workflow import WorkflowDashboard
+from controlplane_tool.workflow_events import build_log_event, build_phase_event, build_task_event
 
 
 def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
@@ -18,8 +19,23 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
         ],
     )
 
-    dashboard.mark_step_running(1)
-    dashboard.append_log("Bootstrapping VM")
+    dashboard.apply_event(build_phase_event("Ensure VM is running", flow_id="e2e.k8s_vm"))
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k8s_vm",
+            task_id="vm.ensure_running",
+            title="Ensure VM is running",
+        )
+    )
+    dashboard.apply_event(
+        build_log_event(
+            flow_id="e2e.k8s_vm",
+            task_id="vm.ensure_running",
+            task_run_id="task-run-1",
+            line="Bootstrapping VM",
+        )
+    )
 
     console = Console(record=True, width=140)
     console.print(dashboard.render())

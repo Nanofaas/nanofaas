@@ -14,6 +14,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from controlplane_tool.workflow_models import WorkflowEvent
+
 WorkflowState = Literal["pending", "running", "success", "failed"]
 
 
@@ -93,6 +95,53 @@ class WorkflowDashboard:
                 step.detail = detail
             step.finished_at = time.time()
 
+    def apply_event(self, event: WorkflowEvent) -> None:
+        if event.kind == "log.line":
+            prefix = "stderr │ " if event.stream == "stderr" else ""
+            self.append_log(f"{prefix}{event.line}")
+            return
+        if event.kind == "phase.started":
+            self.upsert_step(event.title, activate=True)
+            self.append_log(f"[phase] {event.title}")
+            return
+        if event.kind == "task.running":
+            current = next((step for step in self.steps if step.state == "running"), None)
+            if current is None:
+                step_index = self.upsert_step(
+                    event.title or event.task_id or "Task",
+                    activate=True,
+                    detail=event.detail,
+                )
+                current = self.steps[step_index - 1]
+            current.detail = event.detail or current.detail
+            self.append_log(
+                f"[step] {event.title or event.task_id or 'Task'}"
+                + (f" ({event.detail})" if event.detail else "")
+            )
+            return
+        if event.kind == "task.completed":
+            self.complete_running_steps()
+            self.append_log(
+                f"[ok] {event.title or event.task_id or 'Task'}"
+                + (f" ({event.detail})" if event.detail else "")
+            )
+            return
+        if event.kind == "task.failed":
+            self.complete_running_steps(failed=True, detail=event.detail)
+            self.append_log(
+                f"[fail] {event.title or event.task_id or 'Task'}"
+                + (f" ({event.detail})" if event.detail else "")
+            )
+            return
+        if event.kind == "task.warning":
+            self.append_log(f"[warn] {event.title or event.task_id or 'Task'}")
+            return
+        if event.kind == "task.skipped":
+            self.append_log(f"[skip] {event.title or event.task_id or 'Task'}")
+            return
+        if event.kind == "task.pending":
+            self.upsert_step(event.title or event.task_id or "Task", detail=event.detail)
+
     def render(self):
         summary = Text("\n".join(self.summary_lines) or "No scenario details.", style="cyan")
         summary_panel = Panel(summary, title=self.title, border_style="cyan dim")
@@ -145,50 +194,8 @@ class TuiWorkflowSink:
     def _update(self) -> None:
         self._refresh()
 
-    def log(self, message: str, stream: str = "stdout") -> None:
-        prefix = "stderr │ " if stream == "stderr" else ""
-        self.dashboard.append_log(f"{prefix}{message}")
-        self._update()
-
-    def phase(self, label: str) -> None:
-        self.dashboard.upsert_step(label, activate=True)
-        self.dashboard.append_log(f"[phase] {label}")
-        self._update()
-
-    def step(self, label: str, detail: str = "") -> None:
-        current = next((step for step in self.dashboard.steps if step.state == "running"), None)
-        if current is None:
-            pending_index = next(
-                (index for index, step in enumerate(self.dashboard.steps, start=1) if step.state == "pending"),
-                None,
-            )
-            if pending_index is not None:
-                self.dashboard.mark_step_running(pending_index)
-                current = self.dashboard.steps[pending_index - 1]
-            else:
-                self.dashboard.upsert_step(label, activate=True)
-                current = self.dashboard.steps[-1]
-        if current is not None:
-            current.detail = detail or label
-        self.dashboard.append_log(f"[step] {label}" + (f" ({detail})" if detail else ""))
-        self._update()
-
-    def success(self, label: str, detail: str = "") -> None:
-        self.dashboard.complete_running_steps()
-        self.dashboard.append_log(f"[ok] {label}" + (f" ({detail})" if detail else ""))
-        self._update()
-
-    def warning(self, label: str) -> None:
-        self.dashboard.append_log(f"[warn] {label}")
-        self._update()
-
-    def skip(self, label: str) -> None:
-        self.dashboard.append_log(f"[skip] {label}")
-        self._update()
-
-    def fail(self, label: str, detail: str = "") -> None:
-        self.dashboard.complete_running_steps(failed=True, detail=detail)
-        self.dashboard.append_log(f"[fail] {label}" + (f" ({detail})" if detail else ""))
+    def emit(self, event: WorkflowEvent) -> None:
+        self.dashboard.apply_event(event)
         self._update()
 
     @contextmanager
