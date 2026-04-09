@@ -28,6 +28,30 @@ class K6Ops:
             args.extend(["--stage", f"{stage.duration}:{stage.target}"])
         return args
 
+    def _build_target_command(
+        self,
+        *,
+        request: LoadtestRequest,
+        context: object,
+        target_function: str,
+        k6_script: Path,
+        k6_summary: Path,
+    ) -> list[str]:
+        return [
+            "k6",
+            "run",
+            "--summary-export",
+            str(k6_summary),
+            *self._k6_stage_args(request.load_profile),
+            "-e",
+            f"NANOFAAS_URL={context.base_url}",  # type: ignore[union-attr]
+            "-e",
+            f"NANOFAAS_FUNCTION={target_function}",
+            "-e",
+            f"NANOFAAS_SCENARIO_MANIFEST={context.scenario_manifest_path}",  # type: ignore[union-attr]
+            str(k6_script),
+        ]
+
     def run_loadtest_k6(
         self,
         request: LoadtestRequest,
@@ -49,20 +73,13 @@ class K6Ops:
             target_metrics_dir = metrics_dir / target_function
             target_metrics_dir.mkdir(parents=True, exist_ok=True)
             k6_summary = target_metrics_dir / "k6-summary.json"
-            command = [
-                "k6",
-                "run",
-                "--summary-export",
-                str(k6_summary),
-                *self._k6_stage_args(request.load_profile),
-                "-e",
-                f"NANOFAAS_URL={context.base_url}",  # type: ignore[union-attr]
-                "-e",
-                f"NANOFAAS_FUNCTION={target_function}",
-                "-e",
-                f"NANOFAAS_SCENARIO_MANIFEST={context.scenario_manifest_path}",  # type: ignore[union-attr]
-                str(k6_script),
-            ]
+            command = self._build_target_command(
+                request=request,
+                context=context,
+                target_function=target_function,
+                k6_script=k6_script,
+                k6_summary=k6_summary,
+            )
             result = self._run(command, run_dir, "test.log")
             target_results.append(
                 TargetRunResult(

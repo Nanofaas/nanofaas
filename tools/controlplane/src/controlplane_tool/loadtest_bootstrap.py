@@ -110,8 +110,7 @@ class LoadtestBootstrap:
         request: LoadtestRequest,
         run_dir: Path,
     ) -> LoadtestBootstrapContext:
-        metrics_dir = run_dir / "metrics"
-        metrics_dir.mkdir(parents=True, exist_ok=True)
+        self._ensure_metrics_dir(run_dir)
         mockk8s_manager = self._create_mockk8s_manager(profile)
         control_plane_manager = self._create_control_plane_manager(profile)
         prometheus_manager = self._create_prometheus_manager(profile)
@@ -174,3 +173,8 @@ class LoadtestBootstrap:
             context.control_plane_manager.cleanup(context.control_plane_session)
         if context.mockk8s_session is not None:
             context.mockk8s_manager.cleanup(context.mockk8s_session)
+
+    def _ensure_metrics_dir(self, run_dir: Path) -> Path:
+        metrics_dir = run_dir / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        return metrics_dir

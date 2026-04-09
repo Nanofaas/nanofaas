@@ -7,6 +7,7 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.loadtest_catalog import list_load_profiles, resolve_load_profile
+from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate, effective_required_metrics
 from controlplane_tool.loadtest_runner import LoadtestRunner
 from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
@@ -239,7 +240,11 @@ def _build_request_or_exit(
         raise typer.Exit(code=2) from exc
 
 
-def render_loadtest_plan(request: LoadtestRequest) -> list[str]:
+def render_loadtest_plan(
+    request: LoadtestRequest,
+    *,
+    flow_task_ids: list[str] | None = None,
+) -> list[str]:
     lines = [
         f"Loadtest: {request.name}",
         f"Scenario: {request.scenario.name}",
@@ -255,6 +260,9 @@ def render_loadtest_plan(request: LoadtestRequest) -> list[str]:
         lines.append("Metrics gate: " + ", ".join(request.metrics_gate.required_metrics))
     if request.scenario.source_path is not None:
         lines.append(f"Scenario file: {request.scenario.source_path}")
+    if flow_task_ids:
+        lines.append("Flow tasks:")
+        lines.extend(f"  - {task_id}" for task_id in flow_task_ids)
     return lines
 
 
@@ -265,7 +273,8 @@ def run_loadtest_request(
     runner: LoadtestRunner | None = None,
 ) -> None:
     if dry_run:
-        for line in render_loadtest_plan(request):
+        flow = build_loadtest_flow(request.load_profile.name)
+        for line in render_loadtest_plan(request, flow_task_ids=flow.task_ids):
             typer.echo(line)
         return
 

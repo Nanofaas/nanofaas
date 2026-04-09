@@ -60,6 +60,23 @@ def test_loadtest_run_dry_run_shows_effective_metrics_gate_for_saved_profile() -
     assert "function_dispatch_total" in result.stdout
 
 
+def test_loadtest_run_dry_run_shows_prefect_flow_tasks() -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "loadtest",
+            "run",
+            "--scenario-file",
+            "tools/controlplane/scenarios/k8s-demo-java.toml",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "loadtest.bootstrap" in result.stdout
+    assert "metrics.evaluate_gate" in result.stdout
+
+
 def test_loadtest_run_missing_saved_profile_exits_with_clean_cli_error() -> None:
     result = CliRunner().invoke(
         app,

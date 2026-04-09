@@ -115,7 +115,7 @@ class PrometheusRuntimeManager:
         return normalized.rstrip("/")
 
     def _is_ready(self, base_url: str) -> bool:
-        ready_url = f"{base_url.rstrip('/')}/-/ready"
+        ready_url = self._ready_url(base_url)
         try:
             return httpx.get(ready_url, timeout=2.0).status_code == 200
         except (httpx.RequestError, httpx.HTTPStatusError):
@@ -138,23 +138,7 @@ class PrometheusRuntimeManager:
         config_dir = run_dir / "metrics" / "prometheus"
         config_dir.mkdir(parents=True, exist_ok=True)
         destination = config_dir / "prometheus.yml"
-        destination.write_text(
-            "\n".join(
-                [
-                    "global:",
-                    "  scrape_interval: 1s",
-                    "  evaluation_interval: 1s",
-                    "",
-                    "scrape_configs:",
-                    "  - job_name: control-plane",
-                    "    metrics_path: /actuator/prometheus",
-                    "    static_configs:",
-                    f"      - targets: ['{self.scrape_target}']",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
+        destination.write_text(self._render_config(), encoding="utf-8")
         return destination
 
     def _bind_mount_spec(self, source: Path, target: str, readonly: bool) -> str:
@@ -183,3 +167,22 @@ class PrometheusRuntimeManager:
         if probe.returncode == 0:
             return
         self._docker(["pull", self.image], check=True)
+
+    def _ready_url(self, base_url: str) -> str:
+        return f"{base_url.rstrip('/')}/-/ready"
+
+    def _render_config(self) -> str:
+        return "\n".join(
+            [
+                "global:",
+                "  scrape_interval: 1s",
+                "  evaluation_interval: 1s",
+                "",
+                "scrape_configs:",
+                "  - job_name: control-plane",
+                "    metrics_path: /actuator/prometheus",
+                "    static_configs:",
+                f"      - targets: ['{self.scrape_target}']",
+                "",
+            ]
+        )

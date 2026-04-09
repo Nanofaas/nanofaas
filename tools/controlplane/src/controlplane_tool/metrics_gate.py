@@ -47,6 +47,41 @@ def _query_series_with_aliases(
     return []
 
 
+def _write_metrics_artifacts(
+    *,
+    metrics_dir: Path,
+    series: dict[str, list[dict[str, float | str]]],
+    context: object,
+    request: LoadtestRequest,
+    configured_required_metrics: list[str],
+    gate_required_metrics: list[str],
+    observed_run_metrics: set[str],
+    available_metrics: set[str],
+    missing: list[str],
+) -> None:
+    (metrics_dir / "series.json").write_text(json.dumps(series, indent=2), encoding="utf-8")
+    (metrics_dir / "observed-metrics.json").write_text(
+        json.dumps(
+            {
+                "source": "prometheus-api",
+                "endpoint": context.prometheus_url,  # type: ignore[union-attr]
+                "owned_container": bool(
+                    getattr(context.prometheus_session, "owned_container_name", None)  # type: ignore[union-attr]
+                ),
+                "scenario_manifest": str(context.scenario_manifest_path),  # type: ignore[union-attr]
+                "load_profile": request.load_profile.name,
+                "observed_run_window": sorted(observed_run_metrics),
+                "available_in_prometheus": sorted(available_metrics),
+                "required_gate": gate_required_metrics,
+                "required_configured": configured_required_metrics,
+                "missing": missing,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def evaluate_metrics_gate(
     profile: Profile,
     request: LoadtestRequest,
@@ -98,26 +133,16 @@ def evaluate_metrics_gate(
     except RuntimeError as exc:
         return (False, f"prometheus metrics query failed: {exc}")
 
-    (metrics_dir / "series.json").write_text(json.dumps(series, indent=2), encoding="utf-8")
-    (metrics_dir / "observed-metrics.json").write_text(
-        json.dumps(
-            {
-                "source": "prometheus-api",
-                "endpoint": context.prometheus_url,  # type: ignore[union-attr]
-                "owned_container": bool(
-                    getattr(context.prometheus_session, "owned_container_name", None)  # type: ignore[union-attr]
-                ),
-                "scenario_manifest": str(context.scenario_manifest_path),  # type: ignore[union-attr]
-                "load_profile": request.load_profile.name,
-                "observed_run_window": sorted(observed_run_metrics),
-                "available_in_prometheus": sorted(available_metrics),
-                "required_gate": gate_required_metrics,
-                "required_configured": configured_required_metrics,
-                "missing": missing,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
+    _write_metrics_artifacts(
+        metrics_dir=metrics_dir,
+        series=series,
+        context=context,
+        request=request,
+        configured_required_metrics=configured_required_metrics,
+        gate_required_metrics=gate_required_metrics,
+        observed_run_metrics=observed_run_metrics,
+        available_metrics=available_metrics,
+        missing=missing,
     )
 
     if missing and request.metrics_gate.mode == "off":

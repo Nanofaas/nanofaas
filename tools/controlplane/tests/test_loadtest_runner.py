@@ -116,3 +116,19 @@ def test_loadtest_runner_emits_step_progress_events(tmp_path: Path) -> None:
         ("report", "running"),
         ("report", "passed"),
     ]
+
+
+def test_loadtest_runner_no_longer_inlines_process_sequencing() -> None:
+    source = (
+        Path(__file__).resolve().parents[3]
+        / "tools"
+        / "controlplane"
+        / "src"
+        / "controlplane_tool"
+        / "loadtest_runner.py"
+    ).read_text(encoding="utf-8")
+
+    assert "bootstrap_loadtest(" not in source
+    assert "run_loadtest_k6(" not in source
+    assert "evaluate_metrics_gate(" not in source
+    assert "cleanup_loadtest(" not in source

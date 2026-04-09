@@ -16,7 +16,7 @@ Usage:
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from controlplane_tool.console import step, skip
 
 import os
 import shutil
@@ -56,7 +56,7 @@ class GrafanaRuntime:
             return
         step(f"Starting Grafana stack (PROM_URL={self.prom_url})")
         subprocess.run(
-            ["docker", "compose", "-f", str(self._compose_file), "up", "-d"],
+            self._compose_command("up", "-d"),
             check=True,
             env={"PROM_URL": self.prom_url, **os.environ},
         )
@@ -67,8 +67,9 @@ class GrafanaRuntime:
             return
         step("Stopping Grafana stack")
         subprocess.run(
-            ["docker", "compose", "-f", str(self._compose_file), "down"],
+            self._compose_command("down"),
             check=False,
         )
 
-
+    def _compose_command(self, *args: str) -> list[str]:
+        return ["docker", "compose", "-f", str(self._compose_file), *args]
