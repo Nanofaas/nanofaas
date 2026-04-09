@@ -46,6 +46,41 @@ Run the runtime:
 HANDLER_MODULE=my_handler uv run -m uvicorn nanofaas.runtime.app:app --port 8080
 ```
 
+## Documentation
+
+All SDK modules include comprehensive pydoc-compatible docstrings with parameter descriptions, return types, and usage examples. Access documentation via `pydoc`:
+
+### Core SDK Modules
+
+```bash
+# Handler decorator and registration
+python -m pydoc nanofaas.sdk.decorator
+
+# Execution context (execution ID, trace ID, logger)
+python -m pydoc nanofaas.sdk.context
+
+# Structured JSON logging configuration
+python -m pydoc nanofaas.sdk.logging
+
+# FastAPI runtime server and endpoints
+python -m pydoc nanofaas.runtime.app
+```
+
+### Examples
+
+View the `nanofaas_function` decorator documentation:
+```bash
+python -m pydoc nanofaas.sdk.decorator.nanofaas_function
+```
+
+View context management functions:
+```bash
+python -m pydoc nanofaas.sdk.context.get_execution_id
+python -m pydoc nanofaas.sdk.context.set_context
+```
+
+Documentation is also available in IDEs (VS Code, PyCharm) via docstring tooltips and autocomplete hints.
+
 ## Testing
 
 Run tests with `uv`:
