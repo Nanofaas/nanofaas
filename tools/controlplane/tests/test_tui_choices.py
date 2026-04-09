@@ -332,6 +332,7 @@ def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) ->
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
+        called["event_listener"] = kwargs.get("event_listener")
         return LocalFlowDefinition(flow_id="e2e.k8s_vm", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
@@ -353,4 +354,5 @@ def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) ->
 
     assert called["scenario"] == "k8s-vm"
     assert called["flow_id"] == "e2e.k8s_vm"
+    assert callable(called["event_listener"])
     assert called["planned_steps"] == ["Ensure VM is running", "Run K8sE2eTest in VM"]

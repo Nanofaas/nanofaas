@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from controlplane_tool.e2e_runner import E2eRunner
@@ -75,6 +76,7 @@ def build_scenario_flow(
     *,
     repo_root: Path,
     request=None,
+    event_listener: Callable[[object], None] | None = None,
     scenario_file: Path | None = None,
     namespace: str = "nanofaas-e2e",
     local_registry: str = "localhost:5000",
@@ -95,7 +97,7 @@ def build_scenario_flow(
         return LocalFlowDefinition(
             flow_id=flow_id,
             task_ids=scenario_task_ids(scenario),
-            run=lambda: E2eRunner(repo_root).run(request),
+            run=lambda: E2eRunner(repo_root).run(request, event_listener=event_listener),
         )
 
     if scenario == "k8s-vm":

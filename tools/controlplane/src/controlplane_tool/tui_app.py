@@ -507,13 +507,18 @@ class NanofaasTUI:
                 return
 
             plan = runner.plan(request)
-            flow = build_scenario_flow(
-                "k8s-vm",
-                repo_root=repo_root,
-                request=request,
-            )
 
             def _run_k8s_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                def _on_event(event: Any) -> None:
+                    self._apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
+                flow = build_scenario_flow(
+                    "k8s-vm",
+                    repo_root=repo_root,
+                    request=request,
+                    event_listener=_on_event,
+                )
                 dashboard.append_log("Starting k8s-vm workflow")
                 sink._update()
                 self._run_shared_flow(flow)
@@ -575,15 +580,20 @@ class NanofaasTUI:
         )
 
         request = E2eRequest(scenario=scenario, runtime=runtime)
-        flow = build_scenario_flow(
-            scenario,
-            repo_root=default_tool_paths().workspace_root,
-            request=request,
-        )
         from controlplane_tool.e2e_runner import E2eRunner
         plan = E2eRunner(repo_root=default_tool_paths().workspace_root).plan(request)
 
         def _run_generic_e2e_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            def _on_event(event: Any) -> None:
+                self._apply_e2e_step_event(dashboard, event)
+                sink._update()
+
+            flow = build_scenario_flow(
+                scenario,
+                repo_root=default_tool_paths().workspace_root,
+                request=request,
+                event_listener=_on_event,
+            )
             dashboard.append_log(f"Starting E2E scenario={scenario}")
             sink._update()
             self._run_shared_flow(flow)

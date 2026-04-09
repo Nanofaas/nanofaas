@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import controlplane_tool.scenario_flows as scenario_flows_mod
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.vm_models import VmRequest
@@ -41,6 +42,35 @@ def test_cli_vm_flow_reuses_build_and_helm_deploy_tasks() -> None:
 def test_k8s_vm_flow_requires_request_for_executable_definition() -> None:
     with pytest.raises(ValueError):
         build_scenario_flow("k8s-vm", repo_root=Path("/repo"))
+
+
+def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        scenario_flows_mod.E2eRunner,
+        "run",
+        lambda self, request, event_listener=None: called.update(  # noqa: ANN001
+            {"request": request, "event_listener": event_listener}
+        ) or "ok",
+    )
+    request = E2eRequest(
+        scenario="k8s-vm",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+    listener = lambda event: None  # noqa: ARG005,E731
+
+    flow = build_scenario_flow(
+        "k8s-vm",
+        repo_root=Path("/repo"),
+        request=request,
+        event_listener=listener,
+    )
+
+    assert flow.run() == "ok"
+    assert called["request"] is request
+    assert called["event_listener"] is listener
 
 
 def test_runner_modules_no_longer_inline_docker_and_helm_orchestration() -> None:

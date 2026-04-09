@@ -591,11 +591,16 @@ class E2eRunner:
             if succeeded and self._should_teardown(plan.request.vm, keep_vm=plan.request.keep_vm):
                 self.vm.teardown(plan.request.vm)
 
-    def run(self, request: E2eRequest) -> ScenarioPlan:
+    def run(
+        self,
+        request: E2eRequest,
+        *,
+        event_listener: Callable[[ScenarioStepEvent], None] | None = None,
+    ) -> ScenarioPlan:
         initial_count = self._recorded_command_count()
         plan = self.plan(request)
         self._discard_planning_commands(initial_count)
-        self.execute(plan)
+        self.execute(plan, event_listener=event_listener)
         return plan
 
     def run_all(
