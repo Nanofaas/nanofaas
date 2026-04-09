@@ -117,6 +117,26 @@ _first_invocation = True
 _cold_start_lock = threading.Lock()
 
 async def send_callback(callback_url: str, execution_id: str, trace_id: str | None, result: dict):
+    """Send an invocation result to the control-plane callback endpoint.
+
+    Performs up to three HTTP POST attempts with exponential-ish back-off
+    (0.1 s then 0.5 s, then a final immediate attempt). The HTTP call is
+    offloaded to a thread-pool via :func:`asyncio.to_thread` to avoid
+    blocking the event loop.
+
+    :param callback_url: Base URL of the control-plane; trailing slash is
+        stripped automatically.
+    :type callback_url: str
+    :param execution_id: Unique identifier of the execution being completed;
+        appended to *callback_url* as ``/<execution_id>:complete``.
+    :type execution_id: str
+    :param trace_id: Optional distributed-tracing ID forwarded as the
+        ``X-Trace-Id`` request header.
+    :type trace_id: str | None
+    :param result: JSON-serialisable result payload with keys ``success``,
+        ``output``, and ``error``.
+    :type result: dict
+    """
     if not callback_url:
         return
 
@@ -162,6 +182,39 @@ async def invoke(
     x_trace_id: str | None = Header(None),
     x_callback_url: str | None = Header(None)
 ):
+    """Handle a single function invocation request.
+
+    Reads the JSON request body, extracts the ``input`` field, and calls the
+    registered handler. Both synchronous and asynchronous handlers are
+    supported. On success, returns the handler output as JSON; on failure,
+    returns HTTP 500 with the exception message.
+
+    Cold-start detection: the first invocation appends ``X-Cold-Start: true``
+    and ``X-Init-Duration-Ms`` to the response headers and increments the
+    ``runtime_cold_start_total`` Prometheus counter.
+
+    When a callback URL is available (from the ``X-Callback-Url`` header or
+    the ``CALLBACK_URL`` environment variable), the result is forwarded
+    asynchronously via :func:`send_callback` as a background task.
+
+    :param request: The incoming FastAPI request object.
+    :type request: fastapi.Request
+    :param background_tasks: FastAPI background task registry used for async
+        callback dispatch.
+    :type background_tasks: fastapi.BackgroundTasks
+    :param x_execution_id: Value of the ``X-Execution-Id`` header.
+    :type x_execution_id: str | None
+    :param x_trace_id: Value of the ``X-Trace-Id`` header.
+    :type x_trace_id: str | None
+    :param x_callback_url: Value of the ``X-Callback-Url`` header; overrides
+        ``CALLBACK_URL`` for this request.
+    :type x_callback_url: str | None
+    :returns: JSON response with the handler output, or an error body on
+        failure.
+    :rtype: fastapi.responses.JSONResponse
+    :raises HTTPException: 400 if no execution ID is available; 500 if no
+        handler is registered.
+    """
     execution_id = x_execution_id or DEFAULT_EXECUTION_ID
     trace_id = x_trace_id
     callback_url = x_callback_url or CALLBACK_URL
@@ -231,8 +284,18 @@ async def invoke(
 
 @app.get("/health")
 def health():
+    """Return a simple liveness status.
+
+    :returns: A dictionary ``{"status": "ok"}``.
+    :rtype: dict
+    """
     return {"status": "ok"}
 
 @app.get("/metrics")
 def metrics():
+    """Expose Prometheus metrics in the text exposition format.
+
+    :returns: A plain-text response containing all registered metric families.
+    :rtype: fastapi.responses.Response
+    """
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
