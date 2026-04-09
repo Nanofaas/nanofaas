@@ -19,6 +19,8 @@ from typing import Annotated, Optional
 import typer
 
 from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
+from controlplane_tool.prefect_runtime import run_local_flow
+from controlplane_tool.scenario_flows import build_scenario_flow
 
 local_e2e_app = typer.Typer(
     help="Run local E2E scenarios using the Python-native runtime (M9+).",
@@ -49,17 +51,18 @@ def run_container_local(
     resolved_scenario_file = scenario_path_from_env(scenario_file)
 
     repo_root = default_tool_paths().workspace_root
-    runner = ContainerLocalE2eRunner(
-        repo_root,
+    flow = build_scenario_flow(
+        "container-local",
+        repo_root=repo_root,
+        scenario_file=resolved_scenario_file,
         api_port=api_port,
         mgmt_port=mgmt_port,
         runtime_adapter=runtime_adapter,
         control_plane_modules=modules,
     )
-    try:
-        runner.run(scenario_file=resolved_scenario_file)
-    except Exception as exc:
-        typer.echo(f"[e2e-container-local] FAIL: {exc}", err=True)
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[e2e-container-local] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 
@@ -84,15 +87,17 @@ def run_deploy_host(
         skip_cli_build = True
 
     repo_root = default_tool_paths().workspace_root
-    runner = DeployHostE2eRunner(
-        repo_root,
+    flow = build_scenario_flow(
+        "deploy-host",
+        repo_root=repo_root,
+        scenario_file=resolved_scenario_file,
+        skip_cli_build=skip_cli_build,
         registry_port=registry_port,
         control_plane_port=control_plane_port,
     )
-    try:
-        runner.run(scenario_file=resolved_scenario_file, skip_cli_build=skip_cli_build)
-    except Exception as exc:
-        typer.echo(f"[e2e-deploy-host] FAIL: {exc}", err=True)
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[e2e-deploy-host] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 

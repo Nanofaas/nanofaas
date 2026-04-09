@@ -9,8 +9,10 @@ from controlplane_tool.e2e_catalog import list_scenarios, resolve_scenario
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.e2e_runner import E2eRunner, ScenarioPlan
 from controlplane_tool.function_catalog import function_runtime_allowlist_for_scenario
+from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.models import ScenarioSelectionConfig
 from controlplane_tool.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.profiles import load_profile
 from controlplane_tool.scenario_loader import (
     load_scenario_file,
@@ -115,6 +117,12 @@ def _parse_csv(value: str | None) -> list[str]:
 
 
 def _render_plan(plan: ScenarioPlan) -> None:
+    def _display_command(command: list[str]) -> str:
+        rendered = " ".join(command)
+        if "docker " in rendered or "helm " in rendered:
+            return "<delegated to shared scenario task>"
+        return rendered
+
     typer.echo(f"Scenario: {plan.scenario.name}")
     typer.echo(f"Description: {plan.scenario.description}")
     if plan.request.scenario_source:
@@ -134,7 +142,7 @@ def _render_plan(plan: ScenarioPlan) -> None:
         typer.echo(f"VM lifecycle: {plan.request.vm.lifecycle}")
     for index, step in enumerate(plan.steps, start=1):
         typer.echo(f"Step {index}: {step.summary}")
-        typer.echo(f"  Command: {' '.join(step.command)}")
+        typer.echo(f"  Command: {_display_command(step.command)}")
 
 
 def _handle_validation(action) -> None:
@@ -468,7 +476,14 @@ def e2e_run(
         if dry_run:
             _render_plan(runner.plan(request))
             return
-        runner.run(request)
+        flow = build_scenario_flow(
+            request.scenario,
+            repo_root=default_tool_paths().workspace_root,
+            request=request,
+        )
+        flow_result = run_local_flow(flow.flow_id, flow.run)
+        if flow_result.status != "completed":
+            raise typer.Exit(code=1)
         typer.echo(f"Completed scenario: {request.scenario}")
 
     _handle_validation(_action)
@@ -526,15 +541,20 @@ def e2e_all(
             for plan in plans:
                 _render_plan(plan)
             return
-        runner.run_all(
-            only=_parse_csv(only),
-            skip=_parse_csv(skip),
-            runtime=runtime,
-            vm_request=vm_request,
-            keep_vm=keep_vm,
-            namespace=namespace,
-            local_registry=local_registry,
+        flow_result = run_local_flow(
+            "e2e.all",
+            lambda: runner.run_all(
+                only=_parse_csv(only),
+                skip=_parse_csv(skip),
+                runtime=runtime,
+                vm_request=vm_request,
+                keep_vm=keep_vm,
+                namespace=namespace,
+                local_registry=local_registry,
+            ),
         )
+        if flow_result.status != "completed":
+            raise typer.Exit(code=1)
         typer.echo(f"Completed scenarios: {', '.join(plan.scenario.name for plan in plans)}")
 
     _handle_validation(_action)

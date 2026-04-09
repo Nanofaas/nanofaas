@@ -18,6 +18,8 @@ from typing import Annotated, Optional
 import typer
 
 from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
+from controlplane_tool.prefect_runtime import run_local_flow
+from controlplane_tool.scenario_flows import build_scenario_flow
 
 k3s_e2e_app = typer.Typer(
     help="Run VM/K3s-backed E2E scenarios using the Python-native runtime (M11+).",
@@ -45,16 +47,17 @@ def run_k3s_curl(
     resolved_runtime = os.getenv("CONTROL_PLANE_RUNTIME", runtime)
 
     repo_root = default_tool_paths().workspace_root
-    runner = K3sCurlRunner(
-        repo_root,
+    flow = build_scenario_flow(
+        "k3s-curl",
+        repo_root=repo_root,
+        scenario_file=resolved_scenario_file,
         namespace=namespace,
         local_registry=local_registry,
         runtime=resolved_runtime,
     )
-    try:
-        runner.run(scenario_file=resolved_scenario_file)
-    except Exception as exc:
-        typer.echo(f"[k3s-curl] FAIL: {exc}", err=True)
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[k3s-curl] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 
@@ -71,17 +74,17 @@ def run_helm_stack(
     noninteractive = os.getenv("E2E_K3S_HELM_NONINTERACTIVE", "").lower() == "true"
 
     repo_root = default_tool_paths().workspace_root
-    runner = HelmStackRunner(
-        repo_root,
+    flow = build_scenario_flow(
+        "helm-stack",
+        repo_root=repo_root,
         namespace=namespace,
         local_registry=local_registry,
         runtime=resolved_runtime,
         noninteractive=noninteractive,
     )
-    try:
-        runner.run()
-    except Exception as exc:
-        typer.echo(f"[helm-stack] FAIL: {exc}", err=True)
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[helm-stack] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 

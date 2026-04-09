@@ -1,7 +1,9 @@
 from pathlib import Path
+from datetime import UTC, datetime
 
 from typer.testing import CliRunner
 
+from controlplane_tool.prefect_models import FlowRunResult
 from controlplane_tool.e2e_commands import _resolve_run_request
 from controlplane_tool.main import app
 
@@ -184,3 +186,27 @@ def test_e2e_explicit_functions_override_saved_profile_defaults(monkeypatch) -> 
     assert result.exit_code == 0
     assert "word-stats-go" in result.stdout
     assert "json-transform-java" not in result.stdout
+
+
+def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
+    runner = CliRunner()
+    called: dict[str, str] = {}
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        now = datetime.now(UTC)
+        return FlowRunResult.completed(
+            flow_id=flow_id,
+            flow_run_id="flow-run-1",
+            orchestrator_backend="none",
+            started_at=now,
+            finished_at=now,
+            result=None,
+        )
+
+    monkeypatch.setattr("controlplane_tool.e2e_commands.run_local_flow", fake_run_local_flow)
+
+    result = runner.invoke(app, ["e2e", "run", "k8s-vm"])
+
+    assert result.exit_code == 0
+    assert called["flow_id"] == "e2e.k8s_vm"

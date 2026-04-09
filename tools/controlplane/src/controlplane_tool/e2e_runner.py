@@ -14,6 +14,10 @@ from controlplane_tool.scenario_manifest import (
     scenario_manifest_system_property_arg,
     write_scenario_manifest,
 )
+from controlplane_tool.scenario_tasks import (
+    build_core_images_vm_script,
+    k8s_e2e_test_vm_script,
+)
 from controlplane_tool.shell_backend import (
     ShellBackend,
     ShellExecutionResult,
@@ -248,8 +252,20 @@ class E2eRunner:
             self._step_from_result("Sync project to VM", self.vm.sync_project(vm_request, dry_run=True)),
             self._step_from_result("Install k3s", self.vm.install_k3s(vm_request, dry_run=True)),
             self._step_from_result(
-                "Configure local registry",
-                self.vm.setup_registry(vm_request, registry=request.local_registry, dry_run=True),
+                "Ensure registry container",
+                self.vm.ensure_registry_container(
+                    vm_request,
+                    registry=request.local_registry,
+                    dry_run=True,
+                ),
+            ),
+            self._step_from_result(
+                "Configure k3s registry",
+                self.vm.configure_k3s_registry(
+                    vm_request,
+                    registry=request.local_registry,
+                    dry_run=True,
+                ),
             ),
         ]
 
@@ -275,47 +291,36 @@ class E2eRunner:
             ]
 
         if request.scenario == "k8s-vm":
-            manifest_property = ""
             manifest_path = self._manifest_path(request)
-            if manifest_path is not None:
-                manifest_property = (
-                    scenario_manifest_system_property_arg(
-                        self._remote_manifest_path(vm_request, manifest_path)
-                    )
-                    + " "
-                )
             control_image = f"{request.local_registry}/nanofaas/control-plane:e2e"
             runtime_image = f"{request.local_registry}/nanofaas/function-runtime:e2e"
+            remote_manifest_path = (
+                self._remote_manifest_path(vm_request, manifest_path)
+                if manifest_path is not None
+                else None
+            )
             return [
                 self._remote_exec_step(
                     "Build control-plane and runtime images in VM",
                     vm_request,
-                    (
-                        f"cd {remote_dir} && "
-                        f"./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage "
-                        f"-PcontrolPlaneImage={control_image} "
-                        f"-PfunctionRuntimeImage={runtime_image} --no-daemon && "
-                        f"docker push {control_image} && "
-                        f"docker push {runtime_image}"
+                    build_core_images_vm_script(
+                        remote_dir=remote_dir,
+                        control_image=control_image,
+                        runtime_image=runtime_image,
+                        runtime=request.runtime,
+                        mode="gradle_bootbuildimage",
+                        sudo=False,
                     ),
                 ),
                 self._remote_exec_step(
                     "Run K8sE2eTest in VM",
                     vm_request,
-                    " ".join(
-                        [
-                            f"cd {remote_dir} &&",
-                            f"KUBECONFIG={kubeconfig_path}",
-                            f"CONTROL_PLANE_IMAGE={control_image}",
-                            f"FUNCTION_RUNTIME_IMAGE={runtime_image}",
-                            f"NANOFAAS_HELM_CHART={remote_dir}/helm/nanofaas",
-                            "./gradlew",
-                            ":control-plane-modules:k8s-deployment-provider:test",
-                            f"{manifest_property}-PrunE2e",
-                            "--tests",
-                            "it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest",
-                            "--no-daemon",
-                        ]
+                    k8s_e2e_test_vm_script(
+                        remote_dir=remote_dir,
+                        kubeconfig_path=kubeconfig_path,
+                        control_image=control_image,
+                        runtime_image=runtime_image,
+                        remote_manifest_path=remote_manifest_path,
                     ),
                 ),
             ]

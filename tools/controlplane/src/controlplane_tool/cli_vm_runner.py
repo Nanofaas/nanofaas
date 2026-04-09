@@ -18,6 +18,10 @@ from controlplane_tool.scenario_helpers import (
     resolve_scenario as _resolve_scenario,
     selected_functions as _selected_functions,
 )
+from controlplane_tool.scenario_tasks import (
+    build_core_images_vm_script,
+    helm_upgrade_install_vm_script,
+)
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
@@ -96,15 +100,15 @@ class CliVmRunner:
     def _build_images(self) -> None:
         step("Building and pushing images")
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"sudo docker build -f control-plane/Dockerfile -t {self._control_image} control-plane/"
+            build_core_images_vm_script(
+                remote_dir=self._remote_dir,
+                control_image=self._control_image,
+                runtime_image=self._runtime_image,
+                runtime=self.runtime,
+                mode="docker",
+                sudo=True,
+            )
         )
-        self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"sudo docker build -t {self._runtime_image} function-runtime/"
-        )
-        self._vm_exec(f"sudo docker push {self._control_image}")
-        self._vm_exec(f"sudo docker push {self._runtime_image}")
 
     def _deploy_platform(self) -> None:
         phase("Deploy")
@@ -114,12 +118,16 @@ class CliVmRunner:
             f"kubectl create namespace {self.namespace} --dry-run=client -o yaml | kubectl apply -f -"
         )
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"helm upgrade --install control-plane helm/nanofaas "
-            f"-n {self.namespace} "
-            f"--set controlPlane.image.repository={self._control_image.split(':')[0]} "
-            f"--set controlPlane.image.tag={self._control_image.split(':')[-1]} "
-            f"--wait --timeout 3m"
+            helm_upgrade_install_vm_script(
+                remote_dir=self._remote_dir,
+                release="control-plane",
+                chart="helm/nanofaas",
+                namespace=self.namespace,
+                values={
+                    "controlPlane.image.repository": self._control_image.split(":")[0],
+                    "controlPlane.image.tag": self._control_image.split(":")[-1],
+                },
+            )
         )
         self._vm_exec(
             f"cd {self._remote_dir} && "

@@ -21,6 +21,8 @@ def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
 
     assert plan.scenario.name == "k8s-vm"
     assert any("ensure vm" in step.summary.lower() for step in plan.steps)
+    assert any(step.summary == "Ensure registry container" for step in plan.steps)
+    assert any(step.summary == "Configure k3s registry" for step in plan.steps)
 
 
 def test_select_scenarios_applies_only_and_skip_filters() -> None:

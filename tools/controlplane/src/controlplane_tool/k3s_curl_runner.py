@@ -26,6 +26,12 @@ from controlplane_tool.scenario_helpers import (
     resolve_scenario as _resolve_scenario,
     selected_functions as _selected_functions,
 )
+from controlplane_tool.scenario_tasks import (
+    build_core_images_vm_script,
+    build_function_image_vm_script,
+    helm_upgrade_install_vm_script,
+    push_image_vm_script,
+)
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
@@ -94,26 +100,16 @@ class K3sCurlRunner:
 
     def _build_images(self) -> None:
         step("Building and pushing core images")
-        if self.runtime == "rust":
-            self._vm_exec(
-                f"cd {self._remote_dir} && "
-                f"cargo build --release --manifest-path control-plane-rust/Cargo.toml 2>/dev/null || true"
-            )
-            self._vm_exec(
-                f"cd {self._remote_dir} && "
-                f"sudo docker build -f control-plane-rust/Dockerfile -t {self._control_image} control-plane-rust/"
-            )
-        else:
-            self._vm_exec(
-                f"cd {self._remote_dir} && "
-                f"sudo docker build -f control-plane/Dockerfile -t {self._control_image} control-plane/"
-            )
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"sudo docker build -t {self._runtime_image} function-runtime/"
+            build_core_images_vm_script(
+                remote_dir=self._remote_dir,
+                control_image=self._control_image,
+                runtime_image=self._runtime_image,
+                runtime=self.runtime,
+                mode="docker",
+                sudo=True,
+            )
         )
-        self._vm_exec(f"sudo docker push {self._control_image}")
-        self._vm_exec(f"sudo docker push {self._runtime_image}")
 
     def _deploy_platform(self) -> None:
         phase("Deploy")
@@ -124,14 +120,18 @@ class K3sCurlRunner:
         cp_repo = self._control_image.rsplit(":", 1)[0]
         cp_tag = self._control_image.rsplit(":", 1)[-1]
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"helm upgrade --install control-plane helm/nanofaas "
-            f"-n {self.namespace} "
-            f"--set controlPlane.image.repository={cp_repo} "
-            f"--set controlPlane.image.tag={cp_tag} "
-            f"--set controlPlane.image.pullPolicy=Always "
-            f"--set syncQueue.enabled=false "
-            f"--wait --timeout 3m"
+            helm_upgrade_install_vm_script(
+                remote_dir=self._remote_dir,
+                release="control-plane",
+                chart="helm/nanofaas",
+                namespace=self.namespace,
+                values={
+                    "controlPlane.image.repository": cp_repo,
+                    "controlPlane.image.tag": cp_tag,
+                    "controlPlane.image.pullPolicy": "Always",
+                    "syncQueue.enabled": "false",
+                },
+            )
         )
         self._vm_exec(
             f"kubectl rollout restart deployment/control-plane -n {self.namespace} || true"
@@ -139,22 +139,29 @@ class K3sCurlRunner:
         fr_repo = self._runtime_image.rsplit(":", 1)[0]
         fr_tag = self._runtime_image.rsplit(":", 1)[-1]
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"helm upgrade --install function-runtime helm/nanofaas-runtime "
-            f"-n {self.namespace} "
-            f"--set functionRuntime.image.repository={fr_repo} "
-            f"--set functionRuntime.image.tag={fr_tag} "
-            f"--set functionRuntime.image.pullPolicy=Always "
-            f"--wait --timeout 3m 2>/dev/null || "
-            f"kubectl apply -n {self.namespace} -f "
-            f"<(cat <<'YAML'\n"
-            f"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: function-runtime\n"
-            f"  namespace: {self.namespace}\n  labels:\n    app: function-runtime\n"
-            f"spec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: function-runtime\n"
-            f"  template:\n    metadata:\n      labels:\n        app: function-runtime\n"
-            f"    spec:\n      containers:\n      - name: function-runtime\n"
-            f"        image: {self._runtime_image}\n        imagePullPolicy: Always\n"
-            f"        ports:\n        - containerPort: 8080\nYAML\n)"
+            helm_upgrade_install_vm_script(
+                remote_dir=self._remote_dir,
+                release="function-runtime",
+                chart="helm/nanofaas-runtime",
+                namespace=self.namespace,
+                values={
+                    "functionRuntime.image.repository": fr_repo,
+                    "functionRuntime.image.tag": fr_tag,
+                    "functionRuntime.image.pullPolicy": "Always",
+                },
+            )
+            + " 2>/dev/null || "
+            + (
+                f"kubectl apply -n {self.namespace} -f "
+                f"<(cat <<'YAML'\n"
+                f"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: function-runtime\n"
+                f"  namespace: {self.namespace}\n  labels:\n    app: function-runtime\n"
+                f"spec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: function-runtime\n"
+                f"  template:\n    metadata:\n      labels:\n        app: function-runtime\n"
+                f"    spec:\n      containers:\n      - name: function-runtime\n"
+                f"        image: {self._runtime_image}\n        imagePullPolicy: Always\n"
+                f"        ports:\n        - containerPort: 8080\nYAML\n)"
+            )
         )
 
     def _wait_for_deployment(self, name: str, timeout: int = 180) -> None:
@@ -194,25 +201,15 @@ class K3sCurlRunner:
         if family is None:
             return
         remote = self._remote_dir
-        if rt == "java":
-            self._vm_exec(
-                f"cd {remote} && "
-                f"./gradlew :examples:java:{family}:bootBuildImage "
-                f"-PfunctionImage={fn_image} --no-daemon -q"
+        self._vm_exec(
+            build_function_image_vm_script(
+                remote_dir=remote,
+                image=fn_image,
+                runtime_kind=rt,
+                family=family,
+                sudo=True,
             )
-        elif rt == "java-lite":
-            self._vm_exec(
-                f"cd {remote} && "
-                f"sudo docker build -t {fn_image} -f examples/java/{family}-lite/Dockerfile ."
-            )
-        elif rt in ("go", "python", "exec"):
-            lang = "go" if rt == "go" else ("python" if rt == "python" else "bash")
-            self._vm_exec(
-                f"cd {remote} && "
-                f"sudo docker build -t {fn_image} -f examples/{lang}/{family}/Dockerfile ."
-            )
-        else:
-            raise RuntimeError(f"Unsupported function runtime: {rt!r}")
+        )
 
     def _kubectl_curl(self, method: str, path: str, body_json: str | None = None) -> str:
         url = f"http://{self._control_plane_service_ip()}:8080{path}"
@@ -292,7 +289,7 @@ class K3sCurlRunner:
         step(f"Running function workflow for '{fn_key}'")
         self._build_function_image(fn_key, fn_image, resolved)
         if resolved is not None:
-            self._vm_exec(f"sudo docker push {fn_image}")
+            self._vm_exec(push_image_vm_script(remote_dir=self._remote_dir, image=fn_image, sudo=True))
         self._register_function(fn_key, fn_image)
         payload = _function_payload(fn_key, resolved)
         self._invoke_function(fn_key, payload)

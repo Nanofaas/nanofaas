@@ -18,6 +18,8 @@ from typing import Annotated, Optional
 import typer
 
 from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
+from controlplane_tool.prefect_runtime import run_local_flow
+from controlplane_tool.scenario_flows import build_scenario_flow
 
 cli_e2e_app = typer.Typer(
     help="Run CLI E2E scenarios using the Python-native runtime (M10+).",
@@ -49,16 +51,17 @@ def run_vm(
         skip_cli_build = True
 
     repo_root = default_tool_paths().workspace_root
-    runner = CliVmRunner(
-        repo_root,
+    flow = build_scenario_flow(
+        "cli",
+        repo_root=repo_root,
+        scenario_file=resolved_scenario_file,
         namespace=namespace,
         local_registry=local_registry,
         skip_cli_build=skip_cli_build,
     )
-    try:
-        runner.run(scenario_file=resolved_scenario_file)
-    except Exception as exc:
-        typer.echo(f"[e2e-cli] FAIL: {exc}", err=True)
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[e2e-cli] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 
@@ -83,17 +86,18 @@ def run_host_platform(
         skip_cli_build = True
 
     repo_root = default_tool_paths().workspace_root
-    runner = CliHostPlatformRunner(
-        repo_root,
+    flow = build_scenario_flow(
+        "cli-host",
+        repo_root=repo_root,
+        scenario_file=scenario_file,
         namespace=namespace,
-        release=release,
         local_registry=local_registry,
+        release=release,
         skip_cli_build=skip_cli_build,
     )
-    try:
-        runner.run(scenario_file=scenario_file)
-    except Exception as exc:
-        typer.echo(f"[e2e-host-cli] FAIL: {exc}", err=True)
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[e2e-host-cli] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 
