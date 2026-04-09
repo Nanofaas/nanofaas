@@ -245,10 +245,45 @@ class VmOrchestrator:
         container_name: str = "nanofaas-e2e-registry",
         dry_run: bool = False,
     ) -> ShellExecutionResult:
-        return self.ansible.configure_registry(
+        ensure_result = self.ensure_registry_container(
             request,
             registry=registry,
             container_name=container_name,
+            dry_run=dry_run,
+        )
+        if ensure_result.return_code != 0:
+            return ensure_result
+        return self.configure_k3s_registry(
+            request,
+            registry=registry,
+            dry_run=dry_run,
+        )
+
+    def ensure_registry_container(
+        self,
+        request: VmRequest,
+        *,
+        registry: str = "localhost:5000",
+        container_name: str = "nanofaas-e2e-registry",
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        return self.ansible.ensure_registry_container(
+            request,
+            registry=registry,
+            container_name=container_name,
+            dry_run=dry_run,
+        )
+
+    def configure_k3s_registry(
+        self,
+        request: VmRequest,
+        *,
+        registry: str = "localhost:5000",
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        return self.ansible.configure_k3s_registry(
+            request,
+            registry=registry,
             dry_run=dry_run,
         )
 

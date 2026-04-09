@@ -23,3 +23,10 @@ class LocalRegistry:
 
     def function_runtime_image(self, tag: str = "e2e") -> str:
         return self.image("nanofaas/function-runtime", tag)
+
+    @staticmethod
+    def split_image_ref(image: str) -> tuple[str, str]:
+        repository, separator, tag = image.rpartition(":")
+        if not separator:
+            return image, "latest"
+        return repository, tag

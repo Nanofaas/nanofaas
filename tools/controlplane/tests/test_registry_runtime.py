@@ -6,6 +6,8 @@ pushes to the local registry and what Helm chart values expect.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from controlplane_tool.registry_runtime import LocalRegistry
 
 
@@ -49,3 +51,14 @@ def test_local_registry_address_used_directly_in_image() -> None:
     registry = LocalRegistry("192.168.64.2:5000")
     img = registry.image("my/repo", "tag")
     assert img.startswith("192.168.64.2:5000/")
+
+
+def test_registry_playbooks_split_container_runtime_and_k3s_configuration() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    ensure_registry = (repo_root / "ops/ansible/playbooks/ensure-registry.yml").read_text(encoding="utf-8")
+    configure_k3s = (repo_root / "ops/ansible/playbooks/configure-k3s-registry.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "/etc/rancher/k3s/registries.yaml" not in ensure_registry
+    assert "docker run" not in configure_k3s

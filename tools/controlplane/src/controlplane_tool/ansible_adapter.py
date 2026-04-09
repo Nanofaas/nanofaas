@@ -66,6 +66,22 @@ class AnsibleAdapter:
         env = {"ANSIBLE_CONFIG": str(self.paths.ansible_root / "ansible.cfg")}
         return command, env
 
+    def _registry_extra_vars(
+        self,
+        *,
+        registry: str,
+        container_name: str | None = None,
+    ) -> dict[str, str]:
+        registry_host, registry_port = registry.rsplit(":", 1)
+        extra_vars = {
+            "registry": registry,
+            "registry_host": registry_host,
+            "registry_port": registry_port,
+        }
+        if container_name is not None:
+            extra_vars["registry_container_name"] = container_name
+        return extra_vars
+
     def provision_base(
         self,
         request: VmRequest,
@@ -118,6 +134,50 @@ class AnsibleAdapter:
             dry_run=dry_run,
         )
 
+    def ensure_registry_container(
+        self,
+        request: VmRequest,
+        *,
+        registry: str,
+        container_name: str = "nanofaas-e2e-registry",
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        command, env = self._build_command(
+            "ensure-registry.yml",
+            request,
+            extra_vars=self._registry_extra_vars(
+                registry=registry,
+                container_name=container_name,
+            ),
+            dry_run=dry_run,
+        )
+        return self.shell.run(
+            command,
+            cwd=self.paths.workspace_root,
+            env=env,
+            dry_run=dry_run,
+        )
+
+    def configure_k3s_registry(
+        self,
+        request: VmRequest,
+        *,
+        registry: str,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        command, env = self._build_command(
+            "configure-k3s-registry.yml",
+            request,
+            extra_vars=self._registry_extra_vars(registry=registry),
+            dry_run=dry_run,
+        )
+        return self.shell.run(
+            command,
+            cwd=self.paths.workspace_root,
+            env=env,
+            dry_run=dry_run,
+        )
+
     def configure_registry(
         self,
         request: VmRequest,
@@ -126,21 +186,16 @@ class AnsibleAdapter:
         container_name: str = "nanofaas-e2e-registry",
         dry_run: bool = False,
     ) -> ShellExecutionResult:
-        registry_host, registry_port = registry.rsplit(":", 1)
-        command, env = self._build_command(
-            "configure-registry.yml",
+        ensure_result = self.ensure_registry_container(
             request,
-            extra_vars={
-                "registry": registry,
-                "registry_host": registry_host,
-                "registry_port": registry_port,
-                "registry_container_name": container_name,
-            },
+            registry=registry,
+            container_name=container_name,
             dry_run=dry_run,
         )
-        return self.shell.run(
-            command,
-            cwd=self.paths.workspace_root,
-            env=env,
+        if ensure_result.return_code != 0:
+            return ensure_result
+        return self.configure_k3s_registry(
+            request,
+            registry=registry,
             dry_run=dry_run,
         )

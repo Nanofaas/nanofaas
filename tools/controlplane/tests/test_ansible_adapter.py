@@ -18,17 +18,37 @@ def test_provision_base_uses_ops_ansible_root() -> None:
     assert "vm.example.test," in command
 
 
-def test_configure_registry_sets_expected_extra_vars() -> None:
+def test_ensure_registry_container_sets_expected_extra_vars() -> None:
     shell = RecordingShell()
     adapter = AnsibleAdapter(repo_root=Path("/repo"), shell=shell)
     request = VmRequest(lifecycle="external", host="vm.example.test", user="dev")
 
-    adapter.configure_registry(request, registry="registry.example.test:5000", dry_run=True)
+    adapter.ensure_registry_container(
+        request,
+        registry="registry.example.test:5000",
+        dry_run=True,
+    )
 
     rendered = " ".join(shell.commands[0])
-    assert "configure-registry.yml" in rendered
-    assert "registry=registry.example.test:5000" in rendered
+    assert "ensure-registry.yml" in rendered
     assert "registry_host=registry.example.test" in rendered
+
+
+def test_configure_k3s_registry_sets_expected_extra_vars() -> None:
+    shell = RecordingShell()
+    adapter = AnsibleAdapter(repo_root=Path("/repo"), shell=shell)
+    request = VmRequest(lifecycle="external", host="vm.example.test", user="dev")
+
+    adapter.configure_k3s_registry(
+        request,
+        registry="registry.example.test:5000",
+        dry_run=True,
+    )
+
+    rendered = " ".join(shell.commands[0])
+    assert "configure-k3s-registry.yml" in rendered
+    assert "registry=registry.example.test:5000" in rendered
+    assert "registry_port=5000" in rendered
 
 
 def test_provision_base_for_multipass_targets_vm_ip() -> None:

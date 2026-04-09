@@ -138,3 +138,10 @@ def test_remote_exec_for_multipass_routes_through_shell_backend() -> None:
     )
 
     assert shell.commands == [["multipass", "exec", "nanofaas-e2e", "--", "bash", "-lc", "echo hello"]]
+
+
+def test_vm_adapter_exposes_registry_container_and_k3s_registry_as_separate_operations() -> None:
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=RecordingShell())
+
+    assert orchestrator.ensure_registry_container is not None
+    assert orchestrator.configure_k3s_registry is not None

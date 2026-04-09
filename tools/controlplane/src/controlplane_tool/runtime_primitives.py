@@ -48,6 +48,26 @@ class CommandRunner:
         )
 
 
+@dataclass(frozen=True)
+class PlannedCommand:
+    command: list[str]
+    cwd: Path
+    env: dict[str, str] = field(default_factory=dict)
+
+    def run(
+        self,
+        runner: CommandRunner,
+        *,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        return runner.run(
+            self.command,
+            cwd=self.cwd,
+            env=self.env,
+            dry_run=dry_run,
+        )
+
+
 @dataclass
 class ContainerRuntimeOps:
     """Docker-compatible runtime operations (docker / podman / nerdctl)."""
