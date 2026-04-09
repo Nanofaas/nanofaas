@@ -45,7 +45,7 @@ def _make_resolved(functions: list[dict]):
     fns = [_make_fn(**fn) for fn in functions]
     return ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         runtime="java",
         functions=fns,
     )
@@ -201,6 +201,53 @@ def test_k3s_curl_runner_service_ip_raises_when_empty(tmp_path, monkeypatch) -> 
         runner._control_plane_service_ip()
 
 
+def test_k3s_curl_runner_waits_for_managed_function_before_invoking(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    resolved = _make_resolved([
+        {"key": "word-stats-java", "family": "word-stats", "image": "localhost:5000/nanofaas/java-word-stats:e2e"}
+    ])
+
+    calls: list[tuple[str, str]] = []
+
+    runner._register_function = lambda fn_key, fn_image: calls.append(("register", fn_key))  # type: ignore[method-assign]
+    runner._invoke_function = lambda fn_key, payload: calls.append(("invoke", fn_key))  # type: ignore[method-assign]
+    runner._enqueue_function = lambda fn_key, payload: (calls.append(("enqueue", fn_key)) or "exec-1")  # type: ignore[method-assign]
+    runner._poll_execution = lambda exec_id: calls.append(("poll", exec_id))  # type: ignore[method-assign]
+    runner._await_managed_function_ready = lambda fn_key: calls.append(("wait", fn_key))  # type: ignore[method-assign]
+
+    runner._run_function_workflow("word-stats-java", resolved)
+
+    assert calls == [
+        ("register", "word-stats-java"),
+        ("wait", "word-stats-java"),
+        ("invoke", "word-stats-java"),
+        ("enqueue", "word-stats-java"),
+        ("poll", "exec-1"),
+    ]
+
+
+def test_k3s_curl_runner_retries_sync_invoke_until_success(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    responses = iter([
+        '{"executionId":"one","status":"error","error":{"code":"POOL_ERROR","message":"Connection refused"}}',
+        '{"executionId":"one","status":"success","output":{"wordCount":3},"error":null}',
+    ])
+    calls: list[tuple[str, str]] = []
+
+    def fake_kubectl_curl(method: str, path: str, body_json: str | None = None) -> str:
+        calls.append((method, path))
+        return next(responses)
+
+    runner._kubectl_curl = fake_kubectl_curl  # type: ignore[method-assign]
+
+    runner._invoke_function("word-stats-java", '{"input":{"text":"nano faas nano","topN":2}}')
+
+    assert calls == [
+        ("POST", "/v1/functions/word-stats-java:invoke"),
+        ("POST", "/v1/functions/word-stats-java:invoke"),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # HelmStackRunner tests
 # ---------------------------------------------------------------------------
@@ -265,7 +312,7 @@ def test_helm_stack_runner_run_invokes_python_loadtest_runner(tmp_path, monkeypa
 
     calls: list[list[str]] = []
 
-    def fake_run(cmd, *, check, env):
+    def fake_run(cmd, **kwargs):
         calls.append(cmd)
         return MagicMock(returncode=0)
 
@@ -286,7 +333,7 @@ def test_helm_stack_runner_run_invokes_autoscaling_script(tmp_path, monkeypatch)
 
     calls: list[list[str]] = []
 
-    def fake_run(cmd, *, check, env):
+    def fake_run(cmd, **kwargs):
         calls.append(cmd)
         return MagicMock(returncode=0)
 
