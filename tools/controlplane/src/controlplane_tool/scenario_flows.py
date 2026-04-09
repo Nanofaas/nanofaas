@@ -10,27 +10,26 @@ from controlplane_tool.prefect_models import LocalFlowDefinition
 _SCENARIO_TASK_IDS_MAP = {
     "container-local": ["tests.run_container_local"],
     "deploy-host": ["tests.run_deploy_host"],
-    "k3s-curl": [
+    "k3s-junit-curl": [
         "vm.ensure_running",
         "vm.provision_base",
         "repo.sync_to_vm",
-        "k3s.install",
         "registry.ensure_container",
-        "k3s.configure_registry",
         "images.build_core",
+        "images.build_selected_functions",
+        "k3s.install",
+        "k3s.configure_registry",
+        "k8s.ensure_namespace",
         "helm.deploy_control_plane",
         "helm.deploy_function_runtime",
-        "tests.run_k3s_curl",
-    ],
-    "k8s-vm": [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "k3s.install",
-        "registry.ensure_container",
-        "k3s.configure_registry",
-        "images.build_core",
-        "tests.run_k8s_e2e",
+        "k8s.wait_control_plane_ready",
+        "k8s.wait_function_runtime_ready",
+        "tests.run_k3s_curl_checks",
+        "tests.run_k8s_junit",
+        "helm.uninstall_function_runtime",
+        "helm.uninstall_control_plane",
+        "k8s.delete_namespace",
+        "vm.down",
     ],
     "cli": [
         "vm.ensure_running",
@@ -100,8 +99,8 @@ def build_scenario_flow(
             run=lambda: E2eRunner(repo_root).run(request, event_listener=event_listener),
         )
 
-    if scenario == "k8s-vm":
-        raise ValueError("scenario 'k8s-vm' requires an executable request")
+    if scenario == "k3s-junit-curl":
+        raise ValueError("scenario 'k3s-junit-curl' requires an executable request")
 
     if scenario == "container-local":
         from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
@@ -159,19 +158,6 @@ def build_scenario_flow(
                 local_registry=local_registry,
                 runtime=runtime,
                 skip_cli_build=skip_cli_build,
-            ).run(scenario_file=scenario_file),
-        )
-    if scenario == "k3s-curl":
-        from controlplane_tool.k3s_curl_runner import K3sCurlRunner
-
-        return LocalFlowDefinition(
-            flow_id=flow_id,
-            task_ids=scenario_task_ids(scenario),
-            run=lambda: K3sCurlRunner(
-                repo_root,
-                namespace=namespace,
-                local_registry=local_registry,
-                runtime=runtime,
             ).run(scenario_file=scenario_file),
         )
     if scenario == "helm-stack":

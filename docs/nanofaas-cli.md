@@ -247,7 +247,7 @@ scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --d
 ./scripts/e2e-cli.sh
 
 # Keep VM for debugging
-KEEP_VM=true ./scripts/e2e-cli.sh
+./scripts/e2e-cli.sh --no-cleanup-vm
 ```
 
 Use `scripts/controlplane.sh cli-test ...` as the canonical product surface for CLI validation. `host-platform` is intentionally platform-only and ignores saved function selections, while `vm` and `deploy-host` execute the full resolved function set. Missing saved profiles or scenario files surface as validation failures with exit code 2. The legacy `scripts/e2e-cli.sh` entrypoint remains available as a compatibility wrapper over `scripts/controlplane.sh cli-test run vm`. VM-backed flows still require Multipass only when `E2E_VM_LIFECYCLE=multipass`. See [docs/testing.md](testing.md) for configuration options and debugging instructions.

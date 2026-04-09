@@ -1,8 +1,6 @@
 package it.unimib.datai.nanofaas.modules.k8s.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.fabric8.kubernetes.api.model.Namespace;
-import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.Endpoints;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
@@ -28,119 +26,37 @@ import java.util.Optional;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class K8sE2eTest {
     private static final String DEFAULT_NS = System.getenv().getOrDefault("NANOFAAS_E2E_NAMESPACE", "nanofaas-e2e");
-    private static final String CONTROL_IMAGE = System.getenv().getOrDefault("CONTROL_PLANE_IMAGE", "nanofaas/control-plane:e2e");
     private static final String RUNTIME_IMAGE = System.getenv().getOrDefault("FUNCTION_RUNTIME_IMAGE", "nanofaas/function-runtime:e2e");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static KubernetesClient client;
-
-    private static final String HELM_RELEASE = "nanofaas-test";
 
     @BeforeAll
     static void setupCluster() throws Exception {
         String kubeconfig = System.getenv("KUBECONFIG");
         assumeTrue(kubeconfig != null && !kubeconfig.isBlank(),
-            "KUBECONFIG not set. Run scripts/e2e-k8s-vm.sh or export a valid k3s kubeconfig.");
+            "KUBECONFIG not set. Run controlplane-tool e2e run k3s-junit-curl or export a valid k3s kubeconfig.");
         assumeTrue(Files.exists(Path.of(kubeconfig)),
             "KUBECONFIG file not found at: " + kubeconfig);
-
-        String chartPath = System.getenv("NANOFAAS_HELM_CHART");
-        assumeTrue(chartPath != null && !chartPath.isBlank(),
-            "NANOFAAS_HELM_CHART not set (path to helm/nanofaas chart directory).");
-        assumeTrue(Files.exists(Path.of(chartPath)), "Helm chart not found at: " + chartPath);
 
         client = new KubernetesClientBuilder().build();
         assumeTrue(client.getConfiguration() != null && client.getConfiguration().getMasterUrl() != null,
             "Kubernetes client not configured. Check KUBECONFIG.");
-
-        Namespace namespace = new NamespaceBuilder()
-                .withNewMetadata()
-                .withName(namespace())
-                .endMetadata()
-                .build();
-        client.namespaces().resource(namespace).createOrReplace();
-
-        // Split image "repo:tag" (rightmost colon) into repository and tag.
-        String[] parts = CONTROL_IMAGE.split(":(?=[^:]*$)", 2);
-        String imageRepo = parts[0];
-        String imageTag = parts.length > 1 ? parts[1] : "latest";
-
-        Path valuesFile = Files.createTempFile("nanofaas-e2e-values-", ".yaml");
-        String valuesYaml = ""
-                + "namespace:\n"
-                + "  create: false\n"
-                + "  name: " + namespace() + "\n"
-                + "controlPlane:\n"
-                + "  image:\n"
-                + "    repository: " + imageRepo + "\n"
-                + "    tag: " + imageTag + "\n"
-                + "    pullPolicy: IfNotPresent\n"
-                + "  extraEnv:\n"
-                + "    - name: NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND\n"
-                + "      value: k8s\n"
-                + "    - name: NANOFAAS_K8S_CALLBACK_URL\n"
-                + "      value: http://control-plane." + namespace() + ".svc.cluster.local:8080/v1/internal/executions\n"
-                + "    - name: SYNC_QUEUE_ENABLED\n"
-                + "      value: \"true\"\n"
-                + "    - name: NANOFAAS_SYNC_QUEUE_ENABLED\n"
-                + "      value: \"true\"\n"
-                + "    - name: SYNC_QUEUE_ADMISSION_ENABLED\n"
-                + "      value: \"false\"\n"
-                + "    - name: SYNC_QUEUE_MAX_DEPTH\n"
-                + "      value: \"1\"\n"
-                + "    - name: NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY\n"
-                + "      value: \"1\"\n"
-                + "    - name: SYNC_QUEUE_MAX_ESTIMATED_WAIT\n"
-                + "      value: 2s\n"
-                + "    - name: SYNC_QUEUE_MAX_QUEUE_WAIT\n"
-                + "      value: 5s\n"
-                + "    - name: SYNC_QUEUE_RETRY_AFTER_SECONDS\n"
-                + "      value: \"2\"\n"
-                + "    - name: SYNC_QUEUE_THROUGHPUT_WINDOW\n"
-                + "      value: 10s\n"
-                + "    - name: SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES\n"
-                + "      value: \"1\"\n"
-                + "demos:\n"
-                + "  enabled: false\n"
-                + "prometheus:\n"
-                + "  create: false\n";
-        Files.writeString(valuesFile, valuesYaml);
-
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "helm", "upgrade", "--install", HELM_RELEASE, chartPath,
-                    "--namespace", namespace(),
-                    "-f", valuesFile.toString(),
-                    "--wait", "--timeout", "5m"
-            );
-            pb.inheritIO();
-            int rc = pb.start().waitFor();
-            if (rc != 0) {
-                throw new IllegalStateException("helm upgrade --install failed with exit code " + rc);
-            }
-        } finally {
-            Files.deleteIfExists(valuesFile);
-        }
-
+        assertNotNull(
+                client.namespaces().withName(namespace()).get(),
+                "expected namespace to be created by the Python runner");
         awaitDeploymentReady("nanofaas-control-plane");
+        awaitDeploymentReady("function-runtime");
         awaitServiceReady("control-plane");
     }
 
     @AfterAll
     static void cleanup() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "helm", "uninstall", HELM_RELEASE, "--namespace", namespace());
-            pb.inheritIO();
-            pb.start().waitFor();
-        } catch (Exception ignored) {
-            // best-effort cleanup
-        }
         if (client != null) {
-            client.namespaces().withName(namespace()).delete();
             client.close();
         }
     }

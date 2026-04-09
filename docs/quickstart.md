@@ -19,9 +19,9 @@
   - Fully automated:
     - `./gradlew k8sE2e`
   - Canonical orchestration entrypoint:
-    - `./scripts/controlplane.sh e2e run k8s-vm`
+    - `./scripts/controlplane.sh e2e run k3s-junit-curl`
   - Optional env for sizing/debug:
-    - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
+    - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`
   - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
   - The k8s E2E test will fail if `KUBECONFIG` is missing or invalid.
   - Alias task:
@@ -41,8 +41,8 @@
   - `scripts/controlplane.sh --help`
 - VM/E2E examples:
   - `scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run`
-  - `scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run`
-  - `scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run`
+  - `scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run`
+  - `scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run`
 - Use the unified non-interactive wrapper for control-plane Gradle actions:
   - `scripts/controlplane.sh build --profile core --dry-run`
   - `scripts/controlplane.sh image --profile all --dry-run`

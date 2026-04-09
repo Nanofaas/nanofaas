@@ -118,4 +118,13 @@ def test_ansible_playbooks_exist_for_vm_provisioning() -> None:
     assert (ansible_dir / "ansible.cfg").exists()
     assert (ansible_dir / "playbooks" / "provision-base.yml").exists()
     assert (ansible_dir / "playbooks" / "provision-k3s.yml").exists()
-    assert (ansible_dir / "playbooks" / "configure-registry.yml").exists()
+    assert (ansible_dir / "playbooks" / "ensure-registry.yml").exists()
+    assert (ansible_dir / "playbooks" / "configure-k3s-registry.yml").exists()
+
+
+def test_helm_control_plane_template_quotes_extra_env_values() -> None:
+    template = (
+        REPO_ROOT / "helm" / "nanofaas" / "templates" / "control-plane-deployment.yaml"
+    ).read_text(encoding="utf-8")
+    assert "{{- range $env := . }}" in template
+    assert "value: {{ $env.value | quote }}" in template

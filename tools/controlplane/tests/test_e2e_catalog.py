@@ -7,8 +7,7 @@ def test_catalog_lists_expected_suite_names() -> None:
         "docker",
         "buildpack",
         "container-local",
-        "k3s-curl",
-        "k8s-vm",
+        "k3s-junit-curl",
         "cli",
         "cli-host",
         "deploy-host",
@@ -16,8 +15,8 @@ def test_catalog_lists_expected_suite_names() -> None:
     ]
 
 
-def test_k8s_vm_scenario_is_vm_backed() -> None:
-    scenario = resolve_scenario("k8s-vm")
+def test_k3s_junit_curl_scenario_is_vm_backed() -> None:
+    scenario = resolve_scenario("k3s-junit-curl")
     assert scenario.requires_vm is True
 
 
@@ -26,6 +25,6 @@ def test_container_local_selection_mode_is_single() -> None:
     assert scenario.selection_mode == "single"
 
 
-def test_k3s_curl_selection_mode_is_multi() -> None:
-    scenario = resolve_scenario("k3s-curl")
+def test_k3s_junit_curl_selection_mode_is_multi() -> None:
+    scenario = resolve_scenario("k3s-junit-curl")
     assert scenario.selection_mode == "multi"

@@ -87,8 +87,8 @@ scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
-scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
 scripts/e2e-loadtest.sh --profile demo-java --dry-run
@@ -98,10 +98,10 @@ Behavioral notes for the repaired milestone 3 contract:
 
 - VM provisioning targets the resolved VM host over SSH/Ansible; dry-run plans no longer fall back to `localhost` for VM-backed playbooks.
 - `scripts/controlplane.sh e2e all ...` reuses one shared VM session across VM-backed scenarios instead of looping over isolated per-scenario VM startups.
-- `--keep-vm` keeps Multipass VMs available for debugging after `run` or `all`; with `E2E_VM_LIFECYCLE=external`, teardown is always skipped.
-- `container-local`, `deploy-host`, `k3s-curl`, `cli`, `cli-host`, and `helm-stack` route through compatibility backends that execute concrete workflows instead of placeholder `echo` steps.
+- `--no-cleanup-vm` keeps Multipass VMs available for debugging after `run` or `all`; with `E2E_VM_LIFECYCLE=external`, teardown is always skipped.
+- `container-local`, `deploy-host`, `k3s-junit-curl`, `cli`, `cli-host`, and `helm-stack` route through concrete workflows instead of placeholder `echo` steps.
 - `container-local` is intentionally a single-function managed-deployment verification path; multi-function presets are rejected in CLI validation before the backend runs.
-- `k3s-curl` consumes the full selected function set in manifest mode, so presets such as `demo-java` are exercised end-to-end instead of being reduced to the first function.
+- `k3s-junit-curl` consumes the full selected function set in manifest mode, so presets such as `demo-java` are exercised end-to-end instead of being reduced to the first function.
 
 Loadtest is now a first-class workflow:
 
@@ -148,7 +148,7 @@ E2E_KUBECONFIG_SERVER=<optional-https-server-url>
 Examples:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-junit-curl.sh
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
@@ -178,7 +178,7 @@ scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 ./scripts/e2e-cli.sh
 
 # Keep VM for debugging
-KEEP_VM=true ./scripts/e2e-cli.sh
+./scripts/e2e-cli.sh --no-cleanup-vm
 ```
 
 **What it does:**
@@ -211,7 +211,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 | `MEMORY` | `8G` | VM memory |
 | `DISK` | `30G` | VM disk size |
 | `NAMESPACE` | `nanofaas-e2e` | Kubernetes namespace |
-| `KEEP_VM` | `false` | Keep VM after script exits |
+| `--no-cleanup-vm` | disabled | Keep VM after script exits |
 | `K3S_VERSION` | latest official release | Optional k3s pin; otherwise resolved dynamically at run time |
 
 **Typical duration:** ~10 minutes (mostly VM setup and Gradle build).
@@ -220,7 +220,7 @@ KEEP_VM=true ./scripts/e2e-cli.sh
 
 ```bash
 # Run with preserved VM
-KEEP_VM=true ./scripts/e2e-cli.sh
+./scripts/e2e-cli.sh --no-cleanup-vm
 
 # SSH into the VM
 ssh <user>@<vm-host>
@@ -245,15 +245,14 @@ if [[ "${E2E_VM_LIFECYCLE:-multipass}" == "multipass" ]]; then
 fi
 ```
 
-### K3s Curl E2E (`scripts/e2e-k3s-curl.sh`)
+### K3s JUnit Curl E2E (`scripts/e2e-k3s-junit-curl.sh`)
 
-Tests the control-plane REST API with `curl` against a k3s cluster.
-Covers the core HTTP API (register, invoke, enqueue, get execution status).
-The script is a wrapper over `scripts/controlplane.sh e2e run k3s-curl`.
+Deploys the shared Helm stack on k3s, runs the curl-based API checks, then runs `K8sE2eTest` against the same installation.
+The script is a wrapper over `scripts/controlplane.sh e2e run k3s-junit-curl`.
 
 ```bash
-./scripts/e2e-k3s-curl.sh
-KEEP_VM=true ./scripts/e2e-k3s-curl.sh    # keep VM for debugging
+./scripts/e2e-k3s-junit-curl.sh
+./scripts/e2e-k3s-junit-curl.sh --no-cleanup-vm
 ```
 
 ### Docker E2E (`scripts/e2e.sh`)
@@ -281,14 +280,11 @@ The script is a wrapper over `scripts/controlplane.sh e2e run buildpack`.
 
 ### Kubernetes E2E (JUnit on k3s)
 
-JUnit-based E2E that runs in a dedicated VM with k3s.
-The compatibility script is a wrapper over `scripts/controlplane.sh e2e run k8s-vm`.
+JUnit-based E2E now runs as the second verifier inside `k3s-junit-curl`, against a stack that was already installed by the Python runner.
 
 ```bash
-# Full run (provision VM, install k3s, build/push images to local registry, run test)
-./scripts/e2e-k8s-vm.sh
-
-# Gradle alias
+scripts/controlplane.sh e2e run k3s-junit-curl
+./scripts/e2e-k3s-junit-curl.sh
 ./gradlew k8sE2e
 ```
 
@@ -387,11 +383,11 @@ scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
 ```
 
 Scenario specs live under `tools/controlplane/scenarios/`.
@@ -402,7 +398,7 @@ Additional selection semantics:
 
 - `helm-stack` built-in defaults resolve the `demo-loadtest` preset, so dry-run and live plans exclude unsupported Go functions.
 - explicit CLI selection on top of a scenario file or saved profile preserves inherited payloads, namespace, and `load.profile`, then narrows `load.targets` to the selected subset.
-- `k8s-vm` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
+- `k3s-junit-curl` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
 
 For metric time-series collection during a tooling run, the tool now auto-manages Prometheus:
 - no interactive URL prompt is shown in the wizard,
@@ -471,9 +467,9 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | CLI E2E | All CLI commands | SSH key; Multipass optional for managed VM lifecycle | `./scripts/e2e-cli.sh` |
 | Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | SSH key + Helm on host; Multipass optional | `./scripts/e2e-cli-host-platform.sh` |
 | Host CLI Deploy E2E | Host-only deploy build+push+register | Docker + Python 3 | `./scripts/e2e-cli-deploy-host.sh` |
-| K3s Curl E2E | REST API | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-curl.sh` |
+| K3s JUnit Curl E2E | Shared Helm deploy + curl API checks + `K8sE2eTest` | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-junit-curl.sh` |
 | Docker E2E | Core flow | Docker | `./scripts/e2e.sh` |
 | Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/e2e-buildpack.sh` |
-| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k8s-vm.sh` or `./gradlew k8sE2e` |
+| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-junit-curl.sh` or `./gradlew k8sE2e` |
 | Load test | Performance | SSH + k6; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-helm.sh && ./scripts/e2e-loadtest.sh` |
 | Control-plane module matrix | Compile-time module compatibility | JDK 21 | `./scripts/test-control-plane-module-combinations.sh` |

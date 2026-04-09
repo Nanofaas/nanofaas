@@ -52,11 +52,11 @@ scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
-scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
-scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest show-profile quick
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
@@ -67,7 +67,7 @@ scripts/e2e-loadtest.sh --profile demo-java --dry-run
 
 `scripts/controlplane.sh loadtest run ...` is the first-class load generation surface. `scripts/e2e-loadtest.sh` is intentionally narrower: it is a compatibility wrapper over `experiments/e2e-loadtest.sh` for the legacy Helm/Grafana/parity workflow, and registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`.
 
-For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH operations and treats `e2e all` as one shared VM session with one final teardown point. Use `--keep-vm` to preserve a Multipass VM after the run; external VM lifecycle mode is always preserved.
+For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH operations and treats `e2e all` as one shared VM session with one final teardown point. Use `--no-cleanup-vm` to preserve a Multipass VM after the run; external VM lifecycle mode is always preserved.
 
 Use the canonical wrapper for saved-profile / interactive runs as well:
 
@@ -133,21 +133,21 @@ Scenario defaults are scenario-aware:
 
 - `container-local` is intentionally single-function; multi-function presets such as `demo-java` are rejected before the backend starts.
 - `helm-stack` defaults to `demo-loadtest`, which excludes Go functions because the Helm/loadtest compatibility backend does not exercise Go.
-- `k3s-curl` consumes the full resolved function selection in manifest mode instead of silently collapsing to the first entry.
+- `k3s-junit-curl` consumes the full resolved function selection in manifest mode instead of silently collapsing to the first entry.
 - unsupported selections such as `scripts/controlplane.sh e2e run helm-stack --functions word-stats-go --dry-run` fail in CLI validation before the backend starts.
 
-For `k8s-vm`, the resolved manifest is not only rendered in dry-run output. The real VM command now passes `-Dnanofaas.e2e.scenarioManifest=...` into `K8sE2eTest`, so the selected functions and payloads are consumed inside the VM execution path.
+For `k3s-junit-curl`, the resolved manifest is not only rendered in dry-run output. The real VM command now passes `-Dnanofaas.e2e.scenarioManifest=...` into `K8sE2eTest`, so the selected functions and payloads are consumed inside the VM execution path.
 
 Examples:
 
 ```bash
 scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run k3s-curl --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run helm-stack --functions word-stats-java,json-transform-java --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
 ```
 
 ## Artifacts

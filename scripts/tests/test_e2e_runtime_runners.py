@@ -31,8 +31,7 @@ def test_legacy_runner_scripts_delegate_to_controlplane_e2e_run() -> None:
         "e2e.sh": "docker",
         "e2e-buildpack.sh": "buildpack",
         "e2e-container-local.sh": "container-local",
-        "e2e-k3s-curl.sh": "k3s-curl",
-        "e2e-k8s-vm.sh": "k8s-vm",
+        "e2e-k3s-junit-curl.sh": "k3s-junit-curl",
         "e2e-k3s-helm.sh": "helm-stack",
     }
     legacy_markers = (
@@ -84,15 +83,14 @@ def test_cold_start_experiment_script_resolves_shared_helpers() -> None:
 
 
 def test_e2e_all_wrapper_passes_through_filters_and_dry_run() -> None:
-    output = run_script("e2e-all.sh", "--only", "k3s-curl,k8s-vm", "--dry-run")
-    assert "Scenario: k3s-curl" in output
-    assert "Scenario: k8s-vm" in output
+    output = run_script("e2e-all.sh", "--only", "k3s-junit-curl", "--dry-run")
+    assert "Scenario: k3s-junit-curl" in output
     assert "Scenario: docker" not in output
 
 
 def test_vm_wrapper_runs_named_scenario_in_dry_run() -> None:
-    output = run_script("e2e-k8s-vm.sh", "--dry-run")
-    assert "Scenario: k8s-vm" in output
+    output = run_script("e2e-k3s-junit-curl.sh", "--dry-run")
+    assert "Scenario: k3s-junit-curl" in output
     assert "Step 1:" in output
 
 

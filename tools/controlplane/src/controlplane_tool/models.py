@@ -18,8 +18,7 @@ ScenarioName = Literal[
     "docker",
     "buildpack",
     "container-local",
-    "k3s-curl",
-    "k8s-vm",
+    "k3s-junit-curl",
     "cli",
     "cli-host",
     "deploy-host",
@@ -28,8 +27,7 @@ ScenarioName = Literal[
 
 VM_BACKED_SCENARIOS = frozenset(
     {
-        "k3s-curl",
-        "k8s-vm",
+        "k3s-junit-curl",
         "cli",
         "cli-host",
         "helm-stack",

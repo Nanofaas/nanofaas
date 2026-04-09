@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 from controlplane_tool.registry_runtime import LocalRegistry
-from controlplane_tool.shell_backend import SubprocessShell
+from controlplane_tool.shell_backend import ShellBackend, SubprocessShell
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
 
 
@@ -32,6 +32,7 @@ class HelmStackRunner:
         local_registry: str = "localhost:5000",
         runtime: str = "java",
         noninteractive: bool = True,
+        shell: ShellBackend | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.vm_request = vm_request or vm_request_from_env()
@@ -39,7 +40,7 @@ class HelmStackRunner:
         self.registry = LocalRegistry(local_registry)
         self.runtime = runtime
         self.noninteractive = noninteractive
-        self._shell = SubprocessShell()
+        self._shell = shell or SubprocessShell()
 
     def _build_env(self) -> dict[str, str]:
         vm = self.vm_request

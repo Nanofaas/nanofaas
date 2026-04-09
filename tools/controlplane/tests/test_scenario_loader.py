@@ -12,7 +12,7 @@ from controlplane_tool.scenario_models import ScenarioLoadConfig, ScenarioPrefec
 def test_loader_resolves_function_preset_and_payload_paths() -> None:
     scenario = load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml"))
 
-    assert scenario.base_scenario == "k8s-vm"
+    assert scenario.base_scenario == "k3s-junit-curl"
     assert scenario.function_preset == "demo-java"
     assert [function.key for function in scenario.functions] == [
         "word-stats-java",
@@ -35,7 +35,7 @@ def test_loader_rejects_both_functions_and_function_preset() -> None:
     with pytest.raises(ValueError, match="exactly one of"):
         ScenarioSpec(
             name="bad",
-            base_scenario="k8s-vm",
+            base_scenario="k3s-junit-curl",
             runtime="java",
             function_preset="demo-java",
             functions=["word-stats-java"],
@@ -46,7 +46,7 @@ def test_loader_rejects_load_targets_outside_selected_functions() -> None:
     with pytest.raises(ValueError, match="subset of the selected functions"):
         ScenarioSpec(
             name="bad-targets",
-            base_scenario="k8s-vm",
+            base_scenario="k3s-junit-curl",
             runtime="java",
             functions=["word-stats-java"],
             load=ScenarioLoadConfig(targets=["json-transform-java"]),
@@ -75,7 +75,7 @@ def test_overlay_selection_rejects_when_load_targets_become_empty() -> None:
 
     with pytest.raises(
         ValueError,
-        match="selected functions do not satisfy load targets for scenario 'k8s-vm'",
+        match="selected functions do not satisfy load targets for scenario 'k3s-junit-curl'",
     ):
         overlay_scenario_selection(
             base,

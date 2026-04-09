@@ -120,8 +120,8 @@ def test_profile_modules_list() -> None:
 # models.py — VM_BACKED_SCENARIOS
 # ---------------------------------------------------------------------------
 
-def test_vm_backed_scenarios_includes_k3s_curl() -> None:
-    assert "k3s-curl" in VM_BACKED_SCENARIOS
+def test_vm_backed_scenarios_includes_k3s_junit_curl() -> None:
+    assert "k3s-junit-curl" in VM_BACKED_SCENARIOS
 
 
 def test_vm_backed_scenarios_excludes_docker() -> None:
@@ -136,7 +136,7 @@ def test_scenario_spec_requires_exactly_one_of_preset_or_functions() -> None:
     with pytest.raises(ValidationError, match="exactly one"):
         ScenarioSpec(
             name="test",
-            base_scenario="k8s-vm",
+            base_scenario="k3s-junit-curl",
             function_preset=None,
             functions=[],
         )
@@ -146,7 +146,7 @@ def test_scenario_spec_rejects_both_preset_and_functions() -> None:
     with pytest.raises(ValidationError, match="exactly one"):
         ScenarioSpec(
             name="test",
-            base_scenario="k8s-vm",
+            base_scenario="k3s-junit-curl",
             function_preset="basic",
             functions=["echo-test"],
         )
@@ -155,7 +155,7 @@ def test_scenario_spec_rejects_both_preset_and_functions() -> None:
 def test_scenario_spec_accepts_single_preset() -> None:
     spec = ScenarioSpec(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         function_preset="demo-java",
     )
     assert spec.function_preset == "demo-java"
@@ -164,7 +164,7 @@ def test_scenario_spec_accepts_single_preset() -> None:
 def test_scenario_spec_accepts_single_functions_list() -> None:
     spec = ScenarioSpec(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         functions=["word-stats-java"],
     )
     assert spec.functions == ["word-stats-java"]
@@ -174,7 +174,7 @@ def test_scenario_spec_rejects_invalid_load_target() -> None:
     with pytest.raises(ValidationError, match="load.targets must be a subset"):
         ScenarioSpec(
             name="test",
-            base_scenario="k8s-vm",
+            base_scenario="k3s-junit-curl",
             functions=["word-stats-java"],
             load=ScenarioLoadConfig(targets=["json-transform-java"]),
         )
@@ -193,7 +193,7 @@ def _make_fn(key: str, runtime: str = "java") -> ResolvedFunction:
 def test_resolved_scenario_selected_runtimes() -> None:
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         functions=[_make_fn("fn-a", "java"), _make_fn("fn-b", "python")],
     )
     assert resolved.selected_runtimes() == {"java", "python"}
@@ -202,7 +202,7 @@ def test_resolved_scenario_selected_runtimes() -> None:
 def test_resolved_scenario_payload_overrides_converts_to_strings(tmp_path: Path) -> None:
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         payloads={"fn-a": tmp_path / "payload.json"},
     )
     overrides = resolved.payload_overrides()
@@ -210,7 +210,7 @@ def test_resolved_scenario_payload_overrides_converts_to_strings(tmp_path: Path)
 
 
 def test_resolved_scenario_default_registry() -> None:
-    resolved = ResolvedScenario(name="test", base_scenario="k8s-vm")
+    resolved = ResolvedScenario(name="test", base_scenario="k3s-junit-curl")
     assert resolved.local_registry == "localhost:5000"
 
 

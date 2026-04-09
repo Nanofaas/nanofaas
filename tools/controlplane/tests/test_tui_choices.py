@@ -76,7 +76,7 @@ def test_tui_no_longer_prompts_for_prometheus_url(monkeypatch) -> None:
 def test_tui_can_save_default_function_preset(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
-    select_answers = iter(["java", "native", "quick", "preset", "k8s-vm", "demo-java"])
+    select_answers = iter(["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java"])
     confirm_answers = iter([True, True, True, True, True, False])
 
     monkeypatch.setattr(
@@ -103,14 +103,14 @@ def test_tui_can_save_default_function_preset(monkeypatch) -> None:
     profile = build_profile_interactive(profile_name="demo-java")
 
     assert profile.scenario.function_preset == "demo-java"
-    assert profile.scenario.base_scenario == "k8s-vm"
+    assert profile.scenario.base_scenario == "k3s-junit-curl"
 
 
 def test_tui_can_save_default_cli_test_scenario(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
     select_answers = iter(
-        ["java", "native", "quick", "preset", "k8s-vm", "demo-java", "vm"]
+        ["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "vm"]
     )
     confirm_answers = iter([True, True, True, True, True, True])
 
@@ -267,7 +267,7 @@ def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) ->
         lambda profile: SimpleNamespace(
             name="demo-loadtest",
             profile=SimpleNamespace(name="default"),
-            scenario=SimpleNamespace(name="k8s-vm"),
+            scenario=SimpleNamespace(name="k3s-junit-curl"),
             load_profile=SimpleNamespace(name="quick"),
         ),
     )
@@ -307,11 +307,11 @@ def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) ->
     assert called["title"] == "Load Testing"
 
 
-def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) -> None:
+def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
     import controlplane_tool.e2e_runner as e2e_runner
 
-    answers = iter(["nanofaas-e2e", "java", False])
+    answers = iter(["nanofaas-e2e", "java", True, False])
     called: dict[str, object] = {}
 
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
@@ -319,7 +319,7 @@ def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) ->
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run K8sE2eTest in VM"),
+            SimpleNamespace(summary="Run k3s-junit-curl verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -333,7 +333,7 @@ def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) ->
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
         called["event_listener"] = kwargs.get("event_listener")
-        return LocalFlowDefinition(flow_id="e2e.k8s_vm", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -350,9 +350,16 @@ def test_tui_k8s_vm_scenario_runs_shared_flow_not_direct_execute(monkeypatch) ->
     monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e("k8s-vm")
+    NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
 
-    assert called["scenario"] == "k8s-vm"
-    assert called["flow_id"] == "e2e.k8s_vm"
+    assert called["scenario"] == "k3s-junit-curl"
+    assert called["flow_id"] == "e2e.k3s_junit_curl"
     assert callable(called["event_listener"])
-    assert called["planned_steps"] == ["Ensure VM is running", "Run K8sE2eTest in VM"]
+    assert called["request"].cleanup_vm is True
+    assert called["request"].function_preset == "demo-java"
+    assert called["request"].resolved_scenario is not None
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-java",
+        "json-transform-java",
+    ]
+    assert called["planned_steps"] == ["Ensure VM is running", "Run k3s-junit-curl verification"]

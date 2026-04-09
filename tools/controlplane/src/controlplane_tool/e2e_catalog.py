@@ -40,14 +40,8 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         selection_mode="single",
     ),
     ScenarioDefinition(
-        name="k3s-curl",
-        description="k3s flow with curl-driven validation.",
-        requires_vm=True,
-        supported_runtimes=("java", "rust"),
-    ),
-    ScenarioDefinition(
-        name="k8s-vm",
-        description="K8sE2eTest executed against a VM-backed k3s cluster.",
+        name="k3s-junit-curl",
+        description="Shared k3s Helm deployment with curl and JUnit validation.",
         requires_vm=True,
         supported_runtimes=("java", "rust"),
     ),

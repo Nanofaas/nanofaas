@@ -10,7 +10,8 @@ def test_ansible_layout_exists_for_vm_provisioning():
     assert (ANSIBLE_DIR / "requirements.txt").exists()
     assert (ANSIBLE_DIR / "playbooks" / "provision-base.yml").exists()
     assert (ANSIBLE_DIR / "playbooks" / "provision-k3s.yml").exists()
-    assert (ANSIBLE_DIR / "playbooks" / "configure-registry.yml").exists()
+    assert (ANSIBLE_DIR / "playbooks" / "ensure-registry.yml").exists()
+    assert (ANSIBLE_DIR / "playbooks" / "configure-k3s-registry.yml").exists()
 
 
 # M11: e2e-k3s-common.sh deleted. Ansible bootstrap/inventory helpers are now
@@ -31,7 +32,7 @@ def test_k3s_provisioning_resolves_latest_release_dynamically():
 
 def test_ansible_playbooks_preserve_idempotence_guards_for_helm_and_registry():
     base = (ANSIBLE_DIR / "playbooks" / "provision-base.yml").read_text(encoding="utf-8")
-    registry = (ANSIBLE_DIR / "playbooks" / "configure-registry.yml").read_text(encoding="utf-8")
+    registry = (ANSIBLE_DIR / "playbooks" / "ensure-registry.yml").read_text(encoding="utf-8")
 
     assert '("v" ~ helm_version)' in base
     assert 'docker port {{ registry_container_name }} 5000/tcp' in registry

@@ -27,11 +27,11 @@ Milestone 3 also exposes VM lifecycle and E2E orchestration through the same pro
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh vm provision-base --lifecycle external --host vm.example.test --user dev --dry-run
 scripts/controlplane.sh e2e list
-scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
-scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 ```
 
-For VM-backed E2E plans, the tool resolves the actual SSH target for Ansible/SSH operations and no longer plans against `localhost`. `e2e all` computes one shared VM bootstrap block for VM-backed scenarios, then runs scenario-specific workflows on top of that session. `--keep-vm` skips final Multipass teardown; external VM lifecycle mode is never torn down by the tool.
+For VM-backed E2E plans, the tool resolves the actual SSH target for Ansible/SSH operations and no longer plans against `localhost`. `e2e all` computes one shared VM bootstrap block for VM-backed scenarios, then runs scenario-specific workflows on top of that session. `--no-cleanup-vm` preserves the installed stack and VM state for debugging; external VM lifecycle mode is never destroyed by the tool.
 
 Operational Ansible assets are now canonical under `ops/ansible/`.
 

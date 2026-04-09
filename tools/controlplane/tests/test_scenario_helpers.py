@@ -36,7 +36,7 @@ def _make_resolved(*fn_dicts):
     fns = [_make_fn(**d) for d in fn_dicts]
     return ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         runtime="java",
         functions=fns,
     )
@@ -176,7 +176,7 @@ def test_function_payload_reads_scenario_level_payloads(tmp_path) -> None:
 
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         runtime="java",
         functions=[_make_fn("echo-test")],
         payloads={"echo-test": payload_file},

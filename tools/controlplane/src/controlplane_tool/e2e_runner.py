@@ -10,13 +10,19 @@ from multipass import MultipassClient
 from controlplane_tool.e2e_catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.paths import ToolPaths
+from controlplane_tool.k3s_curl_runner import K3sCurlRunner
 from controlplane_tool.scenario_manifest import (
-    scenario_manifest_system_property_arg,
     write_scenario_manifest,
 )
 from controlplane_tool.scenario_tasks import (
     build_core_images_vm_script,
+    build_function_images_vm_script,
+    helm_uninstall_vm_script,
+    helm_upgrade_install_vm_script,
     k8s_e2e_test_vm_script,
+    kubectl_create_namespace_vm_script,
+    kubectl_delete_namespace_vm_script,
+    kubectl_rollout_status_vm_script,
 )
 from controlplane_tool.shell_backend import (
     ShellBackend,
@@ -157,6 +163,88 @@ class E2eRunner:
             env["E2E_VM_HOME"] = vm_request.home
         return env
 
+    def _effective_namespace(self, request: E2eRequest) -> str:
+        if request.namespace:
+            return request.namespace
+        if request.resolved_scenario is not None and request.resolved_scenario.namespace:
+            return request.resolved_scenario.namespace
+        return "nanofaas-e2e"
+
+    def _control_image(self, request: E2eRequest) -> str:
+        return f"{request.local_registry}/nanofaas/control-plane:e2e"
+
+    def _runtime_image(self, request: E2eRequest) -> str:
+        return f"{request.local_registry}/nanofaas/function-runtime:e2e"
+
+    def _image_parts(self, image: str) -> tuple[str, str]:
+        repository, separator, tag = image.rpartition(":")
+        if not separator:
+            return image, "latest"
+        return repository, tag
+
+    def _function_image_specs(self, request: E2eRequest) -> list[tuple[str, str, str]]:
+        resolved = request.resolved_scenario
+        if resolved is None:
+            return []
+
+        function_specs: list[tuple[str, str, str]] = []
+        for function in resolved.functions:
+            if function.runtime == "fixture" or function.family is None:
+                continue
+            image = function.image or self._runtime_image(request)
+            function_specs.append((image, function.runtime, function.family))
+        return function_specs
+
+    def _control_plane_helm_values(self, request: E2eRequest) -> dict[str, str]:
+        namespace = self._effective_namespace(request)
+        repository, tag = self._image_parts(self._control_image(request))
+        callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
+        values = {
+            "namespace.create": "false",
+            "namespace.name": namespace,
+            "controlPlane.image.repository": repository,
+            "controlPlane.image.tag": tag,
+            "controlPlane.image.pullPolicy": "Always",
+            "demos.enabled": "false",
+            "prometheus.create": "false",
+        }
+        extra_env = [
+            ("NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND", "k8s"),
+            ("NANOFAAS_K8S_CALLBACK_URL", callback_url),
+            ("SYNC_QUEUE_ENABLED", "true"),
+            ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+            ("SYNC_QUEUE_ADMISSION_ENABLED", "false"),
+            ("SYNC_QUEUE_MAX_DEPTH", "1"),
+            ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+            ("SYNC_QUEUE_MAX_ESTIMATED_WAIT", "2s"),
+            ("SYNC_QUEUE_MAX_QUEUE_WAIT", "5s"),
+            ("SYNC_QUEUE_RETRY_AFTER_SECONDS", "2"),
+            ("SYNC_QUEUE_THROUGHPUT_WINDOW", "10s"),
+            ("SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES", "1"),
+        ]
+        for index, (name, value) in enumerate(extra_env):
+            values[f"controlPlane.extraEnv[{index}].name"] = name
+            values[f"controlPlane.extraEnv[{index}].value"] = value
+        return values
+
+    def _function_runtime_helm_values(self, request: E2eRequest) -> dict[str, str]:
+        repository, tag = self._image_parts(self._runtime_image(request))
+        return {
+            "functionRuntime.image.repository": repository,
+            "functionRuntime.image.tag": tag,
+            "functionRuntime.image.pullPolicy": "Always",
+        }
+
+    def _k3s_curl_runner(self, request: E2eRequest) -> K3sCurlRunner:
+        return K3sCurlRunner(
+            self.paths.workspace_root,
+            vm_request=self._require_vm(request),
+            namespace=self._effective_namespace(request),
+            local_registry=request.local_registry,
+            runtime=request.runtime,
+            shell=self.shell,
+        )
+
     def _local_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
         if request.scenario == "docker":
             return [
@@ -234,6 +322,219 @@ class E2eRunner:
 
         raise ValueError(f"Unsupported local scenario: {request.scenario}")
 
+    def _k3s_junit_curl_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
+        vm_request = self._require_vm(request)
+        remote_dir = self.vm.remote_project_dir(vm_request)
+        kubeconfig_path = self.vm.kubeconfig_path(vm_request)
+        namespace = self._effective_namespace(request)
+        manifest_path = self._manifest_path(request)
+        remote_manifest_path = (
+            self._remote_manifest_path(vm_request, manifest_path)
+            if manifest_path is not None
+            else None
+        )
+        control_image = self._control_image(request)
+        runtime_image = self._runtime_image(request)
+        function_image_specs = self._function_image_specs(request)
+        verifier = self._k3s_curl_runner(request)
+
+        ensure_dry = self.vm.ensure_running(vm_request, dry_run=True)
+        ensure_step = ScenarioPlanStep(
+            summary="Ensure VM is running",
+            command=ensure_dry.command,
+            env=ensure_dry.env,
+            action=lambda: self.vm.ensure_running(vm_request, dry_run=False),
+        )
+
+        if function_image_specs:
+            build_selected_functions_step = self._remote_exec_step(
+                "Build selected function images in VM",
+                vm_request,
+                build_function_images_vm_script(
+                    remote_dir=remote_dir,
+                    functions=function_image_specs,
+                    sudo=True,
+                    push=True,
+                ),
+            )
+        else:
+            build_selected_functions_step = self._step(
+                "Build selected function images in VM",
+                ["echo", "No selected function images to build"],
+            )
+
+        if request.cleanup_vm:
+            uninstall_runtime_step = self._remote_exec_step(
+                "Uninstall function-runtime Helm release",
+                vm_request,
+                helm_uninstall_vm_script(
+                    remote_dir=remote_dir,
+                    release="function-runtime",
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            )
+            uninstall_control_plane_step = self._remote_exec_step(
+                "Uninstall control-plane Helm release",
+                vm_request,
+                helm_uninstall_vm_script(
+                    remote_dir=remote_dir,
+                    release="control-plane",
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            )
+            delete_namespace_step = self._remote_exec_step(
+                "Delete E2E namespace",
+                vm_request,
+                kubectl_delete_namespace_vm_script(
+                    remote_dir=remote_dir,
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            )
+            teardown_dry = self.vm.teardown(vm_request, dry_run=True)
+            teardown_step = ScenarioPlanStep(
+                summary="Teardown VM",
+                command=teardown_dry.command,
+                env=teardown_dry.env,
+                action=lambda: self.vm.teardown(vm_request, dry_run=False),
+            )
+        else:
+            uninstall_runtime_step = self._step(
+                "Uninstall function-runtime Helm release",
+                ["echo", "Skipping function-runtime cleanup (--no-cleanup-vm)"],
+            )
+            uninstall_control_plane_step = self._step(
+                "Uninstall control-plane Helm release",
+                ["echo", "Skipping control-plane cleanup (--no-cleanup-vm)"],
+            )
+            delete_namespace_step = self._step(
+                "Delete E2E namespace",
+                ["echo", "Skipping namespace cleanup (--no-cleanup-vm)"],
+            )
+            teardown_step = self._step(
+                "Teardown VM",
+                ["echo", "Skipping VM teardown (--no-cleanup-vm)"],
+            )
+
+        return [
+            ensure_step,
+            self._step_from_result(
+                "Provision base VM dependencies",
+                self.vm.install_dependencies(vm_request, install_helm=True, dry_run=True),
+            ),
+            self._step_from_result("Sync project to VM", self.vm.sync_project(vm_request, dry_run=True)),
+            self._step_from_result(
+                "Ensure registry container",
+                self.vm.ensure_registry_container(
+                    vm_request,
+                    registry=request.local_registry,
+                    dry_run=True,
+                ),
+            ),
+            self._remote_exec_step(
+                "Build control-plane and runtime images in VM",
+                vm_request,
+                build_core_images_vm_script(
+                    remote_dir=remote_dir,
+                    control_image=control_image,
+                    runtime_image=runtime_image,
+                    runtime=request.runtime,
+                    mode="docker",
+                    sudo=True,
+                    build_jars=True,
+                ),
+            ),
+            build_selected_functions_step,
+            self._step_from_result("Install k3s", self.vm.install_k3s(vm_request, dry_run=True)),
+            self._step_from_result(
+                "Configure k3s registry",
+                self.vm.configure_k3s_registry(
+                    vm_request,
+                    registry=request.local_registry,
+                    dry_run=True,
+                ),
+            ),
+            self._remote_exec_step(
+                "Ensure E2E namespace exists",
+                vm_request,
+                kubectl_create_namespace_vm_script(
+                    remote_dir=remote_dir,
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            ),
+            self._remote_exec_step(
+                "Deploy control-plane via Helm",
+                vm_request,
+                helm_upgrade_install_vm_script(
+                    remote_dir=remote_dir,
+                    release="control-plane",
+                    chart="helm/nanofaas",
+                    namespace=namespace,
+                    values=self._control_plane_helm_values(request),
+                    kubeconfig_path=kubeconfig_path,
+                    timeout="5m",
+                ),
+            ),
+            self._remote_exec_step(
+                "Deploy function-runtime via Helm",
+                vm_request,
+                helm_upgrade_install_vm_script(
+                    remote_dir=remote_dir,
+                    release="function-runtime",
+                    chart="helm/nanofaas-runtime",
+                    namespace=namespace,
+                    values=self._function_runtime_helm_values(request),
+                    kubeconfig_path=kubeconfig_path,
+                    timeout="3m",
+                ),
+            ),
+            self._remote_exec_step(
+                "Wait for control-plane deployment",
+                vm_request,
+                kubectl_rollout_status_vm_script(
+                    remote_dir=remote_dir,
+                    namespace=namespace,
+                    deployment="nanofaas-control-plane",
+                    kubeconfig_path=kubeconfig_path,
+                    timeout=180,
+                ),
+            ),
+            self._remote_exec_step(
+                "Wait for function-runtime deployment",
+                vm_request,
+                kubectl_rollout_status_vm_script(
+                    remote_dir=remote_dir,
+                    namespace=namespace,
+                    deployment="function-runtime",
+                    kubeconfig_path=kubeconfig_path,
+                    timeout=120,
+                ),
+            ),
+            ScenarioPlanStep(
+                summary="Run k3s-junit-curl verification",
+                command=["python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"],
+                action=lambda: verifier.verify_existing_stack(request.resolved_scenario),
+            ),
+            self._remote_exec_step(
+                "Run K8sE2eTest in VM",
+                vm_request,
+                k8s_e2e_test_vm_script(
+                    remote_dir=remote_dir,
+                    kubeconfig_path=kubeconfig_path,
+                    runtime_image=runtime_image,
+                    namespace=namespace,
+                    remote_manifest_path=remote_manifest_path,
+                ),
+            ),
+            uninstall_runtime_step,
+            uninstall_control_plane_step,
+            delete_namespace_step,
+            teardown_step,
+        ]
+
     def _vm_bootstrap_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
         vm_request = self._require_vm(request)
         ensure_dry = self.vm.ensure_running(vm_request, dry_run=True)
@@ -271,59 +572,10 @@ class E2eRunner:
 
     def _vm_scenario_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
         vm_request = self._require_vm(request)
-        remote_dir = self.vm.remote_project_dir(vm_request)
-        kubeconfig_path = self.vm.kubeconfig_path(vm_request)
         env = self._vm_env(request)
 
-        if request.scenario == "k3s-curl":
-            return [
-                self._step(
-                    "Run k3s curl compatibility workflow (Python)",
-                    [
-                        "uv", "run",
-                        "--project", "tools/controlplane",
-                        "--locked",
-                        "controlplane-tool",
-                        "k3s-e2e", "run", "k3s-curl",
-                    ],
-                    env=self._with_manifest_env(request, env),
-                )
-            ]
-
-        if request.scenario == "k8s-vm":
-            manifest_path = self._manifest_path(request)
-            control_image = f"{request.local_registry}/nanofaas/control-plane:e2e"
-            runtime_image = f"{request.local_registry}/nanofaas/function-runtime:e2e"
-            remote_manifest_path = (
-                self._remote_manifest_path(vm_request, manifest_path)
-                if manifest_path is not None
-                else None
-            )
-            return [
-                self._remote_exec_step(
-                    "Build control-plane and runtime images in VM",
-                    vm_request,
-                    build_core_images_vm_script(
-                        remote_dir=remote_dir,
-                        control_image=control_image,
-                        runtime_image=runtime_image,
-                        runtime=request.runtime,
-                        mode="gradle_bootbuildimage",
-                        sudo=False,
-                    ),
-                ),
-                self._remote_exec_step(
-                    "Run K8sE2eTest in VM",
-                    vm_request,
-                    k8s_e2e_test_vm_script(
-                        remote_dir=remote_dir,
-                        kubeconfig_path=kubeconfig_path,
-                        control_image=control_image,
-                        runtime_image=runtime_image,
-                        remote_manifest_path=remote_manifest_path,
-                    ),
-                ),
-            ]
+        if request.scenario == "k3s-junit-curl":
+            return self._k3s_junit_curl_steps(request)
 
         if request.scenario == "cli":
             return [
@@ -356,20 +608,25 @@ class E2eRunner:
             ]
 
         if request.scenario == "helm-stack":
+            from controlplane_tool.helm_stack_runner import HelmStackRunner
+
             return [
-                self._step(
-                    "Run Helm stack compatibility workflow (Python)",
-                    [
-                        "uv", "run",
-                        "--project", "tools/controlplane",
-                        "--locked",
-                        "controlplane-tool",
-                        "k3s-e2e", "run", "helm-stack",
-                    ],
+                ScenarioPlanStep(
+                    summary="Run Helm stack compatibility workflow (Python)",
+                    command=["python", "-m", "controlplane_tool.helm_stack_runner", "run"],
                     env=self._with_manifest_env(
                         request,
                         {**env, "E2E_K3S_HELM_NONINTERACTIVE": "true"},
                     ),
+                    action=lambda: HelmStackRunner(
+                        self.paths.workspace_root,
+                        vm_request=vm_request,
+                        namespace=self._effective_namespace(request),
+                        local_registry=request.local_registry,
+                        runtime=request.runtime,
+                        noninteractive=True,
+                        shell=self.shell,
+                    ).run(),
                 )
             ]
 
@@ -381,6 +638,8 @@ class E2eRunner:
         *,
         include_bootstrap: bool = True,
     ) -> list[ScenarioPlanStep]:
+        if request.scenario == "k3s-junit-curl":
+            return self._k3s_junit_curl_steps(request)
         steps = []
         if include_bootstrap:
             steps.extend(self._vm_bootstrap_steps(request))
@@ -407,7 +666,7 @@ class E2eRunner:
         skip: list[str] | None = None,
         runtime: str = "java",
         vm_request: VmRequest | None = None,
-        keep_vm: bool = False,
+        cleanup_vm: bool = True,
         namespace: str | None = None,
         local_registry: str = "localhost:5000",
     ) -> list[ScenarioPlan]:
@@ -416,8 +675,19 @@ class E2eRunner:
         plans: list[ScenarioPlan] = []
         shared_vm_request = vm_request
         vm_bootstrap_planned = False
+        selected_scenarios = [
+            scenario
+            for scenario in list_scenarios()
+            if (not only_set or scenario.name in only_set)
+            and scenario.name not in skip_set
+            and runtime in scenario.supported_runtimes
+        ]
+        last_vm_index = max(
+            (index for index, scenario in enumerate(selected_scenarios) if scenario.requires_vm),
+            default=-1,
+        )
 
-        for scenario in list_scenarios():
+        for index, scenario in enumerate(selected_scenarios):
             if only_set and scenario.name not in only_set:
                 continue
             if scenario.name in skip_set:
@@ -432,7 +702,7 @@ class E2eRunner:
                 scenario=scenario.name,
                 runtime=runtime,
                 vm=shared_vm_request if scenario.requires_vm else None,
-                keep_vm=keep_vm,
+                cleanup_vm=cleanup_vm if index == last_vm_index else False,
                 namespace=namespace,
                 local_registry=local_registry,
             )
@@ -561,8 +831,12 @@ class E2eRunner:
                 status="success",
             )
 
-    def _should_teardown(self, vm_request: VmRequest | None, *, keep_vm: bool) -> bool:
-        return vm_request is not None and vm_request.lifecycle == "multipass" and not keep_vm
+    def _should_teardown(self, request: E2eRequest | None) -> bool:
+        if request is None or request.vm is None:
+            return False
+        if request.scenario == "k3s-junit-curl":
+            return False
+        return request.vm.lifecycle == "multipass" and request.cleanup_vm
 
     def _recorded_command_count(self) -> int | None:
         commands = getattr(self.shell, "commands", None)
@@ -588,7 +862,7 @@ class E2eRunner:
             self._execute_steps(plan, event_listener=event_listener)
             succeeded = True
         finally:
-            if succeeded and self._should_teardown(plan.request.vm, keep_vm=plan.request.keep_vm):
+            if succeeded and self._should_teardown(plan.request):
                 self.vm.teardown(plan.request.vm)
 
     def run(
@@ -610,7 +884,7 @@ class E2eRunner:
         skip: list[str] | None = None,
         runtime: str = "java",
         vm_request: VmRequest | None = None,
-        keep_vm: bool = False,
+        cleanup_vm: bool = True,
         namespace: str | None = None,
         local_registry: str = "localhost:5000",
     ) -> list[ScenarioPlan]:
@@ -620,7 +894,7 @@ class E2eRunner:
             skip=skip,
             runtime=runtime,
             vm_request=vm_request,
-            keep_vm=keep_vm,
+            cleanup_vm=cleanup_vm,
             namespace=namespace,
             local_registry=local_registry,
         )
@@ -636,5 +910,6 @@ class E2eRunner:
             succeeded = True
             return plans
         finally:
-            if succeeded and self._should_teardown(shared_vm_request, keep_vm=keep_vm):
+            final_request = plans[-1].request if plans else None
+            if succeeded and self._should_teardown(final_request):
                 self.vm.teardown(shared_vm_request)

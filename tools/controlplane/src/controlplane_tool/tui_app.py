@@ -412,8 +412,10 @@ class NanofaasTUI:
             lambda: questionary.select(
                 "Scenario:",
                 choices=[
-                    questionary.Choice("k8s-vm — deploy to k3s in Multipass VM", "k8s-vm"),
-                    questionary.Choice("k3s-curl — curl-based tests in VM", "k3s-curl"),
+                    questionary.Choice(
+                        "k3s-junit-curl — shared Helm deploy with curl + JUnit verification",
+                        "k3s-junit-curl",
+                    ),
                     questionary.Choice("helm-stack — Helm stack compatibility", "helm-stack"),
                     questionary.Choice("container-local — local managed DEPLOYMENT", "container-local"),
                     questionary.Choice("deploy-host — deploy-host with local registry", "deploy-host"),
@@ -424,7 +426,7 @@ class NanofaasTUI:
             ).ask()
         )
 
-        if scenario_choice in ("k3s-curl", "helm-stack", "k8s-vm"):
+        if scenario_choice in ("k3s-junit-curl", "helm-stack"):
             self._run_vm_e2e(scenario_choice)
         elif scenario_choice == "container-local":
             self._run_container_local()
@@ -436,24 +438,7 @@ class NanofaasTUI:
     def _run_vm_e2e(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
 
-        if scenario == "k3s-curl":
-            def _run_k3s_curl_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-                step("Running k3s-curl E2E")
-                flow = build_scenario_flow(
-                    "k3s-curl",
-                    repo_root=repo_root,
-                )
-                self._run_shared_flow(flow)
-                success("k3s-curl E2E completed")
-
-            self._run_live_workflow(
-                title="E2E Scenarios",
-                summary_lines=[f"Scenario: {scenario}"],
-                planned_steps=["Build", "Deploy", "Verify"],
-                action=_run_k3s_curl_workflow,
-            )
-
-        elif scenario == "helm-stack":
+        if scenario == "helm-stack":
             def _run_helm_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 step("Running helm-stack E2E")
                 flow = build_scenario_flow(
@@ -470,10 +455,9 @@ class NanofaasTUI:
                 action=_run_helm_stack_workflow,
             )
 
-        else:  # k8s-vm
-            from controlplane_tool.e2e_models import E2eRequest
-            from controlplane_tool.vm_models import VmRequest
+        else:  # k3s-junit-curl
             from controlplane_tool.e2e_runner import E2eRunner
+            from controlplane_tool.e2e_commands import _resolve_run_request
 
             vm_name = _ask(
                 lambda: questionary.text(
@@ -488,21 +472,42 @@ class NanofaasTUI:
                     style=_STYLE,
                 ).ask()
             )
+            cleanup_vm = _ask(
+                lambda: questionary.confirm(
+                    "Cleanup VM at end?",
+                    default=True,
+                    style=_STYLE,
+                ).ask()
+            )
             dry_run = _ask(
                 lambda: questionary.confirm(
                     "Dry-run? (show plan without executing)", default=False, style=_STYLE
                 ).ask()
             )
 
-            request = E2eRequest(
-                scenario="k8s-vm",
+            request = _resolve_run_request(
+                scenario="k3s-junit-curl",
                 runtime=runtime,
-                vm=VmRequest(lifecycle="multipass", name=vm_name),
+                lifecycle="multipass",
+                name=vm_name,
+                host=None,
+                user="ubuntu",
+                home=None,
+                cpus=4,
+                memory="12G",
+                disk="30G",
+                cleanup_vm=cleanup_vm,
+                namespace=None,
+                local_registry=None,
+                function_preset=None,
+                functions_csv=None,
+                scenario_file=None,
+                saved_profile=None,
             )
             runner = E2eRunner(repo_root=repo_root)
             if dry_run:
                 plan = runner.plan(request)
-                step("k8s-vm E2E plan (dry-run)")
+                step("k3s-junit-curl E2E plan (dry-run)")
                 _show_plan_table(plan)
                 return
 
@@ -514,23 +519,24 @@ class NanofaasTUI:
                     sink._update()
 
                 flow = build_scenario_flow(
-                    "k8s-vm",
+                    "k3s-junit-curl",
                     repo_root=repo_root,
                     request=request,
                     event_listener=_on_event,
                 )
-                dashboard.append_log("Starting k8s-vm workflow")
+                dashboard.append_log("Starting k3s-junit-curl workflow")
                 sink._update()
                 self._run_shared_flow(flow)
-                success("k8s-vm E2E completed")
+                success("k3s-junit-curl E2E completed")
                 return plan
 
             self._run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=[
-                    "Scenario: k8s-vm",
+                    "Scenario: k3s-junit-curl",
                     f"VM Name: {vm_name}",
                     f"Control-plane runtime: {runtime}",
+                    f"Cleanup VM at end: {'yes' if cleanup_vm else 'no'}",
                 ],
                 planned_steps=[step.summary for step in plan.steps],
                 action=_run_k8s_vm_workflow,

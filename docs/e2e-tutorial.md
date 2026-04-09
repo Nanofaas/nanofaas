@@ -42,9 +42,9 @@ use the controlplane tool directly:
 
 ```bash
 scripts/controlplane.sh functions list
-scripts/controlplane.sh e2e run k3s-curl --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
-scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
 scripts/e2e-loadtest.sh --profile demo-java --dry-run
@@ -111,7 +111,7 @@ On completion, you'll see:
 | `CPUS` | `4` | VM CPU count |
 | `MEMORY` | `8G` | VM memory |
 | `DISK` | `30G` | VM disk size |
-| `KEEP_VM` | `true` | Keep VM after script exits |
+| `--no-cleanup-vm` | disabled | Keep VM after script exits |
 | `SKIP_BUILD` | `false` | Skip build if images already exist |
 | `LOCAL_REGISTRY` | `localhost:5000` | Local in-VM registry used by k3s pulls |
 | `K3S_VERSION` | latest official release | Optional explicit k3s pin |
@@ -134,7 +134,7 @@ E2E_KUBECONFIG_SERVER=<optional-https-server-url>
 Examples:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-curl
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-junit-curl
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 

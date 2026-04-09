@@ -48,7 +48,7 @@ def test_cli_selected_functions_reads_from_resolved() -> None:
 
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         runtime="java",
         functions=[_rf("fn-a"), _rf("fn-b")],
     )
@@ -64,7 +64,7 @@ def test_cli_function_image_returns_custom_image_from_resolved() -> None:
 
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k8s-vm",
+        base_scenario="k3s-junit-curl",
         runtime="java",
         functions=[_rf("echo-test", image="custom/echo:v1")],
     )

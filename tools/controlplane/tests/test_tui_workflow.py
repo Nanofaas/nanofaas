@@ -14,7 +14,7 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
         summary_lines=[
-            "Scenario: k8s-vm",
+            "Scenario: k3s-junit-curl",
             "VM Name: nanofaas-e2e",
             "Runtime: java",
         ],
@@ -25,18 +25,18 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
         ],
     )
 
-    dashboard.apply_event(build_phase_event("Ensure VM is running", flow_id="e2e.k8s_vm"))
+    dashboard.apply_event(build_phase_event("Ensure VM is running", flow_id="e2e.k3s_junit_curl"))
     dashboard.apply_event(
         build_task_event(
             kind="task.running",
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="vm.ensure_running",
             title="Ensure VM is running",
         )
     )
     dashboard.apply_event(
         build_log_event(
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="vm.ensure_running",
             task_run_id="task-run-1",
             line="Bootstrapping VM",
@@ -56,7 +56,7 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
 def test_workflow_dashboard_can_hide_log_panel() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
-        summary_lines=["Scenario: k8s-vm"],
+        summary_lines=["Scenario: k3s-junit-curl"],
         planned_steps=["Ensure VM is running"],
     )
     dashboard.append_log("Bootstrapping VM")
@@ -73,12 +73,12 @@ def test_workflow_dashboard_can_hide_log_panel() -> None:
 def test_workflow_dashboard_marks_cancelled_task_visible() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
-        summary_lines=["Scenario: k8s-vm"],
+        summary_lines=["Scenario: k3s-junit-curl"],
     )
 
     dashboard.apply_event(
         normalize_task_state(
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="vm.ensure_running",
             state_name="Cancelled",
             title="Ensure VM is running",
@@ -96,13 +96,13 @@ def test_workflow_dashboard_marks_cancelled_task_visible() -> None:
 def test_workflow_dashboard_tracks_task_updated_detail() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
-        summary_lines=["Scenario: k8s-vm"],
+        summary_lines=["Scenario: k3s-junit-curl"],
     )
 
     dashboard.apply_event(
         build_task_event(
             kind="task.updated",
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="images.build_core",
             title="Build core images",
             detail="50%",
@@ -118,7 +118,7 @@ def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs
     bridge.handle_event(
         build_task_event(
             kind="task.updated",
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="images.build_core",
             title="Build core images",
             detail="building",
@@ -126,7 +126,7 @@ def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs
     )
     bridge.handle_event(
         build_log_event(
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="images.build_core",
             line="docker push ok",
         )
@@ -134,7 +134,7 @@ def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs
     bridge.handle_event(
         build_task_event(
             kind="task.cancelled",
-            flow_id="e2e.k8s_vm",
+            flow_id="e2e.k3s_junit_curl",
             task_id="images.build_core",
             title="Build core images",
             detail="cancelled by user",
@@ -143,7 +143,7 @@ def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs
 
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
-        summary_lines=["Scenario: k8s-vm"],
+        summary_lines=["Scenario: k3s-junit-curl"],
     )
     dashboard.sync_from_snapshot(bridge.snapshot())
 
@@ -159,7 +159,7 @@ def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs
 def test_workflow_dashboard_mark_step_running_advances_single_active_step() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
-        summary_lines=["Scenario: k8s-vm"],
+        summary_lines=["Scenario: k3s-junit-curl"],
         planned_steps=["Ensure VM is running", "Build core images"],
     )
 

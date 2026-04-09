@@ -11,6 +11,6 @@ def test_manifest_writer_serializes_absolute_payload_paths(tmp_path: Path) -> No
     manifest_path = write_scenario_manifest(scenario, root=tmp_path)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    assert payload["baseScenario"] == "k8s-vm"
+    assert payload["baseScenario"] == "k3s-junit-curl"
     assert payload["functions"][0]["key"] == "word-stats-java"
     assert payload["functions"][0]["payloadPath"].endswith("word-stats-sample.json")

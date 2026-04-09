@@ -88,7 +88,7 @@ class LoadtestBootstrap:
         scenario = resolve_scenario_spec(
             ScenarioSpec(
                 name=f"{profile.name}-metrics",
-                base_scenario=profile.scenario.base_scenario or "k8s-vm",
+                base_scenario=profile.scenario.base_scenario or "k3s-junit-curl",
                 runtime=profile.control_plane.implementation,
                 function_preset=profile.scenario.function_preset or "metrics-smoke",
                 functions=list(profile.scenario.functions),

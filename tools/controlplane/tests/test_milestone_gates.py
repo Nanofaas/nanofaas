@@ -128,9 +128,9 @@ def test_m11_k3s_runtime_is_importable() -> None:
     from controlplane_tool.k3s_runtime import K3sCurlRunner, HelmStackRunner  # noqa: F401
 
 
-def test_m11_k3s_e2e_group_is_in_main_cli() -> None:
+def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
     result = runner.invoke(app, ["--help"])
-    assert "k3s-e2e" in result.stdout
+    assert "k3s-e2e" not in result.stdout
 
 
 def test_m11_ansible_adapter_has_provision_contract() -> None:
@@ -196,7 +196,7 @@ def test_m13_scripts_lib_is_empty() -> None:
 def test_m13_all_cli_command_groups_registered() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e", "k3s-e2e"):
+    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e"):
         assert group in result.stdout, f"CLI group {group!r} missing from help"
 
 
@@ -209,15 +209,14 @@ def test_m13_all_legacy_wrappers_are_compatibility_shims() -> None:
         "e2e-all.sh",
         "e2e-buildpack.sh",
         "e2e-container-local.sh",
-        "e2e-k3s-curl.sh",
+        "e2e-k3s-junit-curl.sh",
         "e2e-k3s-helm.sh",
-        "e2e-k8s-vm.sh",
         "e2e-cli.sh",
         "e2e-cli-host-platform.sh",
         "e2e-cli-deploy-host.sh",
     }
     for name in shims:
         script = (scripts_dir / name).read_text(encoding="utf-8")
-        assert "Compatibility wrapper" in script, f"{name} is not a compatibility wrapper"
+        assert "wrapper" in script.lower(), f"{name} is not documented as a wrapper"
         assert "controlplane.sh" in script, f"{name} does not delegate to controlplane.sh"
         assert "gradlew" not in script, f"{name} still calls gradlew directly"

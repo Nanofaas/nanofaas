@@ -15,7 +15,7 @@ def test_vm_request_from_env_uses_defaults_when_env_absent() -> None:
     assert request.lifecycle == "multipass"
     assert request.user == "ubuntu"
     assert request.cpus == 4
-    assert request.memory == "8G"
+    assert request.memory == "12G"
     assert request.disk == "30G"
     assert request.name is None
     assert request.host is None

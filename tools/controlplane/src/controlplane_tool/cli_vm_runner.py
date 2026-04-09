@@ -10,6 +10,7 @@ from __future__ import annotations
 from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,8 @@ from controlplane_tool.scenario_helpers import (
 from controlplane_tool.scenario_tasks import (
     build_core_images_vm_script,
     helm_upgrade_install_vm_script,
+    kubectl_create_namespace_vm_script,
+    kubectl_rollout_status_vm_script,
 )
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
@@ -77,6 +80,10 @@ class CliVmRunner:
     def _cli_bin_dir(self) -> str:
         return f"{self._remote_dir}/nanofaas-cli/build/install/nanofaas-cli/bin"
 
+    @property
+    def _kubeconfig_path(self) -> str:
+        return self._vm.kubeconfig_path(self.vm_request)
+
     def _cli_exec(self, command: str, endpoint: str) -> str:
         return self._vm_exec(
             f"export PATH=$PATH:{self._cli_bin_dir}; "
@@ -114,8 +121,11 @@ class CliVmRunner:
         phase("Deploy")
         step("Deploying platform to k3s")
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"kubectl create namespace {self.namespace} --dry-run=client -o yaml | kubectl apply -f -"
+            kubectl_create_namespace_vm_script(
+                remote_dir=self._remote_dir,
+                namespace=self.namespace,
+                kubeconfig_path=self._kubeconfig_path,
+            )
         )
         self._vm_exec(
             helm_upgrade_install_vm_script(
@@ -127,11 +137,17 @@ class CliVmRunner:
                     "controlPlane.image.repository": self._control_image.split(":")[0],
                     "controlPlane.image.tag": self._control_image.split(":")[-1],
                 },
+                kubeconfig_path=self._kubeconfig_path,
             )
         )
         self._vm_exec(
-            f"cd {self._remote_dir} && "
-            f"kubectl rollout status deployment/function-runtime -n {self.namespace} --timeout=2m"
+            kubectl_rollout_status_vm_script(
+                remote_dir=self._remote_dir,
+                namespace=self.namespace,
+                deployment="function-runtime",
+                kubeconfig_path=self._kubeconfig_path,
+                timeout=120,
+            )
         )
 
     def _build_cli(self) -> None:
@@ -146,6 +162,7 @@ class CliVmRunner:
 
     def _resolve_endpoint(self) -> str:
         cluster_ip = self._vm_exec(
+            f"KUBECONFIG={shlex.quote(self._kubeconfig_path)} "
             f"kubectl get svc control-plane -n {self.namespace} -o jsonpath='{{.spec.clusterIP}}'"
         )
         if not cluster_ip:

@@ -13,29 +13,30 @@ def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = runner.plan(
         E2eRequest(
-            scenario="k8s-vm",
+            scenario="k3s-junit-curl",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         )
     )
 
-    assert plan.scenario.name == "k8s-vm"
+    assert plan.scenario.name == "k3s-junit-curl"
     assert any("ensure vm" in step.summary.lower() for step in plan.steps)
     assert any(step.summary == "Ensure registry container" for step in plan.steps)
     assert any(step.summary == "Configure k3s registry" for step in plan.steps)
+    assert any(step.summary == "Deploy control-plane via Helm" for step in plan.steps)
 
 
 def test_select_scenarios_applies_only_and_skip_filters() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plans = runner.plan_all(only=["k3s-curl", "k8s-vm"], skip=["k8s-vm"])
+    plans = runner.plan_all(only=["k3s-junit-curl", "docker"], skip=["docker"])
 
-    assert [plan.scenario.name for plan in plans] == ["k3s-curl"]
+    assert [plan.scenario.name for plan in plans] == ["k3s-junit-curl"]
 
 
 def test_e2e_all_vm_plan_bootstraps_shared_vm_once() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
 
-    plans = runner.plan_all(only=["k3s-curl", "k8s-vm"])
+    plans = runner.plan_all(only=["k3s-junit-curl"])
 
     ensure_steps = [
         step for scenario in plans for step in scenario.steps if "Ensure VM is running" == step.summary
@@ -65,19 +66,19 @@ def test_deploy_host_plan_no_longer_routes_to_shell_backend() -> None:
     )
 
 
-def test_k3s_curl_plan_no_longer_routes_to_shell_backend() -> None:
+def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
     plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
         E2eRequest(
-            scenario="k3s-curl",
+            scenario="k3s-junit-curl",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         )
     )
 
     rendered = [" ".join(step.command) for step in plan.steps]
-    assert not any("K8sE2eTest" in command for command in rendered)
     assert not any("e2e-k3s-curl-backend.sh" in command for command in rendered)
-    assert any("k3s-e2e" in command for command in rendered)
+    assert any("K8sE2eTest" in command for command in rendered)
+    assert any("controlplane_tool.k3s_curl_runner" in command for command in rendered)
 
 
 def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
@@ -91,20 +92,25 @@ def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("e2e-helm-stack-backend.sh" in command for command in rendered)
-    assert any("k3s-e2e" in command for command in rendered)
+    assert any("Helm stack compatibility workflow" in step.summary for step in plan.steps)
 
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
     shell = RecordingShell()
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
+    runner._k3s_curl_runner = lambda request: type(  # type: ignore[method-assign]
+        "_Verifier",
+        (),
+        {"verify_existing_stack": staticmethod(lambda resolved: None)},
+    )()
 
-    runner.run_all(only=["k3s-curl", "k8s-vm"], runtime="java")
+    runner.run_all(only=["k3s-junit-curl"], runtime="java")
 
     launches = [command for command in shell.commands if command[:2] == ["multipass", "launch"]]
     assert len(launches) <= 1
 
 
-def test_run_all_tears_down_vm_when_keep_vm_false() -> None:
+def test_run_all_tears_down_vm_when_cleanup_vm_true() -> None:
     import json
     from multipass import FakeBackend, MultipassClient
     from multipass._backend import CommandResult
@@ -137,8 +143,13 @@ def test_run_all_tears_down_vm_when_keep_vm_false() -> None:
         host_resolver=lambda _: "10.0.0.1",
         multipass_client=MultipassClient(backend=backend),
     )
+    runner._k3s_curl_runner = lambda request: type(  # type: ignore[method-assign]
+        "_Verifier",
+        (),
+        {"verify_existing_stack": staticmethod(lambda resolved: None)},
+    )()
 
-    runner.run_all(only=["k8s-vm"], runtime="java")
+    runner.run_all(only=["k3s-junit-curl"], runtime="java")
 
     assert any("delete" in call for call in backend.calls)
 
@@ -147,7 +158,7 @@ def test_plan_tracks_resolved_scenario_selection(tmp_path: Path) -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(
         E2eRequest(
-            scenario="k8s-vm",
+            scenario="k3s-junit-curl",
             runtime="java",
             function_preset="demo-java",
             resolved_scenario=load_scenario_file(
@@ -169,7 +180,7 @@ def test_runner_writes_manifest_and_exports_it_to_backend(tmp_path: Path) -> Non
     resolved = resolve_scenario_spec(
         ScenarioSpec(
             name="k3s-demo-java",
-            base_scenario="k3s-curl",
+            base_scenario="k3s-junit-curl",
             runtime="java",
             function_preset="demo-java",
         )
@@ -177,7 +188,7 @@ def test_runner_writes_manifest_and_exports_it_to_backend(tmp_path: Path) -> Non
 
     plan = runner.plan(
         E2eRequest(
-            scenario="k3s-curl",
+            scenario="k3s-junit-curl",
             runtime="java",
             function_preset="demo-java",
             resolved_scenario=resolved,
@@ -185,16 +196,17 @@ def test_runner_writes_manifest_and_exports_it_to_backend(tmp_path: Path) -> Non
         )
     )
 
-    backend_step = plan.steps[-1]
-    assert backend_step.env["NANOFAAS_SCENARIO_PATH"].endswith(".json")
-    assert Path(backend_step.env["NANOFAAS_SCENARIO_PATH"]).exists()
+    manifest_files = list(tmp_path.glob("*.json"))
+    assert manifest_files
+    rendered = [" ".join(step.command) for step in plan.steps]
+    assert any("nanofaas.e2e.scenarioManifest" in command for command in rendered)
 
 
-def test_k8s_vm_plan_exports_remote_manifest_to_test_command(tmp_path: Path) -> None:
+def test_k3s_junit_curl_plan_exports_remote_manifest_to_test_command(tmp_path: Path) -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(
         E2eRequest(
-            scenario="k8s-vm",
+            scenario="k3s-junit-curl",
             runtime="java",
             function_preset="demo-java",
             resolved_scenario=load_scenario_file(
@@ -206,6 +218,29 @@ def test_k8s_vm_plan_exports_remote_manifest_to_test_command(tmp_path: Path) -> 
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert any("nanofaas.e2e.scenarioManifest" in command for command in rendered)
+
+
+def test_k3s_junit_curl_plan_binds_user_kubeconfig_for_cluster_steps() -> None:
+    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+        E2eRequest(
+            scenario="k3s-junit-curl",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    rendered = [" ".join(step.command) for step in plan.steps]
+    assert any(
+        step.summary == "Ensure E2E namespace exists"
+        and "KUBECONFIG=/home/ubuntu/.kube/config" in " ".join(step.command)
+        for step in plan.steps
+    )
+    assert any(
+        step.summary == "Deploy control-plane via Helm"
+        and "KUBECONFIG=/home/ubuntu/.kube/config" in " ".join(step.command)
+        for step in plan.steps
+    )
+    assert any("KUBECONFIG=/home/ubuntu/.kube/config" in command for command in rendered)
 
 
 def test_execute_emits_step_progress_events() -> None:

@@ -21,7 +21,7 @@ def test_resolve_workspace_path_prefers_active_worktree_root(
     workspace_root = tmp_path / "workspace"
     scenario_path = workspace_root / "tools" / "controlplane" / "scenarios" / "demo.toml"
     scenario_path.parent.mkdir(parents=True, exist_ok=True)
-    scenario_path.write_text('name = "demo"\nbase_scenario = "k8s-vm"\nruntime = "java"\n', encoding="utf-8")
+    scenario_path.write_text('name = "demo"\nbase_scenario = "k3s-junit-curl"\nruntime = "java"\n', encoding="utf-8")
 
     monkeypatch.setattr(
         "controlplane_tool.paths.default_tool_paths",

@@ -93,7 +93,7 @@ def resolve_flow_definition(flow_name: str, **kwargs: Any) -> LocalFlowDefinitio
             skip = kwargs.get("skip")
             runtime = kwargs.get("runtime", "java")
             vm_request = kwargs.get("vm_request")
-            keep_vm = kwargs.get("keep_vm", False)
+            cleanup_vm = kwargs.get("cleanup_vm", True)
             namespace = kwargs.get("namespace")
             local_registry = kwargs.get("local_registry", "localhost:5000")
             scenarios = kwargs.get("scenarios") or []
@@ -105,7 +105,7 @@ def resolve_flow_definition(flow_name: str, **kwargs: Any) -> LocalFlowDefinitio
                     skip=skip,
                     runtime=runtime,
                     vm_request=vm_request,
-                    keep_vm=keep_vm,
+                    cleanup_vm=cleanup_vm,
                     namespace=namespace,
                     local_registry=local_registry,
                 ),

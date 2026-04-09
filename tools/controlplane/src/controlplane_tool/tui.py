@@ -72,7 +72,7 @@ def _prompt_scenario_selection() -> ScenarioSelectionConfig:
             questionary.Choice(scenario.name, value=scenario.name)
             for scenario in list_scenarios()
         ],
-        default="k8s-vm",
+        default="k3s-junit-curl",
     ).ask()
     if base_scenario is None:
         raise typer.Exit(code=1)

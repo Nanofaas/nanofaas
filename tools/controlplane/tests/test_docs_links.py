@@ -43,7 +43,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert PIPELINE_ALIAS not in root_readme
 
     assert "scripts/controlplane.sh matrix" in testing
-    assert "scripts/controlplane.sh e2e run k8s-vm" in testing
+    assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in testing

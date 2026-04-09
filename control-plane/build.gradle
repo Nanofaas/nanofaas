@@ -116,9 +116,9 @@ graalvmNative {
     }
 }
 
-def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-k3s-e2e').toString()
+def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-k3s-junit-curl').toString()
 def k8sNamespace = (project.findProperty('k8sNamespace') ?: System.getenv('NANOFAAS_E2E_NAMESPACE') ?: 'nanofaas-e2e').toString()
-def k8sKeepVm = (project.findProperty('k8sKeepVm') ?: System.getenv('KEEP_VM') ?: 'false').toString()
+def k8sCleanupVm = (project.findProperty('k8sCleanupVm') ?: System.getenv('CLEANUP_VM') ?: 'true').toString().toBoolean()
 def k8sCpus = project.findProperty('k8sCpus') ?: System.getenv('CPUS')
 def k8sMemory = project.findProperty('k8sMemory') ?: System.getenv('MEMORY')
 def k8sDisk = project.findProperty('k8sDisk') ?: System.getenv('DISK')
@@ -127,7 +127,6 @@ def k8sRemoteDir = project.findProperty('k8sRemoteDir') ?: System.getenv('REMOTE
 def k8sEnv = [
         VM_NAME: k8sVmName,
         NANOFAAS_E2E_NAMESPACE: k8sNamespace,
-        KEEP_VM: k8sKeepVm
 ]
 if (k8sCpus) {
     k8sEnv.CPUS = k8sCpus.toString()
@@ -141,12 +140,16 @@ if (k8sDisk) {
 if (k8sRemoteDir) {
     k8sEnv.REMOTE_DIR = k8sRemoteDir.toString()
 }
+def k8sE2eCommand = ['bash', 'scripts/e2e-k3s-junit-curl.sh']
+if (!k8sCleanupVm) {
+    k8sE2eCommand << '--no-cleanup-vm'
+}
 
 tasks.register('k8sE2eTest', Exec) {
     group = 'verification'
-    description = 'Run K8sE2eTest in a Multipass VM with k3s.'
+    description = 'Run the fused k3s-junit-curl E2E scenario in a Multipass VM.'
     workingDir = rootProject.projectDir
-    commandLine 'bash', 'scripts/e2e-k8s-vm.sh'
+    commandLine k8sE2eCommand
     environment k8sEnv
 }
 

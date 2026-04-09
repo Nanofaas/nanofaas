@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Canonical control-plane orchestration wrapper
 ./scripts/controlplane.sh --help
 ./scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
-./scripts/controlplane.sh e2e run k8s-vm --lifecycle multipass --dry-run
-./scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+./scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
+./scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 
 # Build all modules
 ./gradlew build
@@ -30,14 +30,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # CLI E2E (full CLI against k3s, 47 tests)
 ./scripts/controlplane.sh cli-test run vm
-KEEP_VM=true ./scripts/controlplane.sh cli-test run vm
+./scripts/controlplane.sh cli-test run vm --no-cleanup-vm
 
 # K3s E2E with Curl (self-contained Multipass VM)
-./scripts/controlplane.sh e2e run k3s-curl
-KEEP_VM=true ./scripts/controlplane.sh e2e run k3s-curl
+./scripts/controlplane.sh e2e run k3s-junit-curl
+./scripts/controlplane.sh e2e run k3s-junit-curl --no-cleanup-vm
 
 # Kubernetes E2E (k3s in Multipass)
-./scripts/controlplane.sh e2e run k8s-vm
+./scripts/controlplane.sh e2e run k3s-junit-curl
 # or:
 ./gradlew k8sE2e
 

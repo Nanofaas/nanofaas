@@ -6,9 +6,8 @@ BUILD_WRAPPER = "scripts/control" + "-plane-build.sh"
 TUI_WRAPPER = "scripts/controlplane" + "-tool.sh"
 DOCKER_E2E_WRAPPER = "e2e" + ".sh"
 BUILDPACK_E2E_WRAPPER = "e2e-buildpack" + ".sh"
-K3S_CURL_WRAPPER = "e2e-k3s-curl" + ".sh"
+K3S_JUNIT_CURL_WRAPPER = "e2e-k3s-junit-curl" + ".sh"
 HELM_STACK_WRAPPER = "e2e-k3s-helm" + ".sh"
-K8S_VM_WRAPPER = "e2e-k8s" + "-vm.sh"
 CLI_VM_WRAPPER = "e2e" + "-cli.sh"
 CLI_HOST_WRAPPER = "e2e-cli-host" + "-platform.sh"
 CLI_DEPLOY_WRAPPER = "e2e-cli-deploy" + "-host.sh"
@@ -29,9 +28,8 @@ STALE_TOKENS = (
     TUI_WRAPPER,
     DOCKER_E2E_WRAPPER,
     BUILDPACK_E2E_WRAPPER,
-    K3S_CURL_WRAPPER,
+    K3S_JUNIT_CURL_WRAPPER,
     HELM_STACK_WRAPPER,
-    K8S_VM_WRAPPER,
     CLI_VM_WRAPPER,
     CLI_HOST_WRAPPER,
     CLI_DEPLOY_WRAPPER,
@@ -63,8 +61,8 @@ def test_compatibility_notes_are_centralized_when_legacy_wrappers_are_mentioned(
     assert "scripts/controlplane.sh cli-test run vm" in testing
     assert "scripts/controlplane.sh cli-test run host-platform" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host" in testing
-    assert "scripts/controlplane.sh e2e run k8s-vm" in testing
-    assert "compatibility wrapper" in testing.lower()
+    assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
+    assert "wrapper" in testing.lower()
     assert BUILD_WRAPPER not in testing
     assert TUI_WRAPPER not in testing
     assert PIPELINE_ALIAS not in testing

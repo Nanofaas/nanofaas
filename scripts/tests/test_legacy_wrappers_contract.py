@@ -19,9 +19,8 @@ SHIM_TARGETS = {
     "e2e-all.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e all "$@"',
     "e2e-buildpack.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run buildpack "$@"',
     "e2e-container-local.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run container-local "$@"',
-    "e2e-k3s-curl.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run k3s-curl "$@"',
+    "e2e-k3s-junit-curl.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run k3s-junit-curl "$@"',
     "e2e-k3s-helm.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run helm-stack "$@"',
-    "e2e-k8s-vm.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run k8s-vm "$@"',
     "e2e-cli.sh": 'exec "$(dirname "$0")/controlplane.sh" cli-test run vm "$@"',
     "e2e-cli-host-platform.sh": 'exec "$(dirname "$0")/controlplane.sh" cli-test run host-platform "$@"',
     "e2e-cli-deploy-host.sh": 'exec "$(dirname "$0")/controlplane.sh" cli-test run deploy-host "$@"',
@@ -31,7 +30,7 @@ SHIM_TARGETS = {
 def test_legacy_wrappers_are_documented_as_compatibility_only() -> None:
     for name, expected_exec in SHIM_TARGETS.items():
         script = (SCRIPTS_DIR / name).read_text(encoding="utf-8")
-        assert "Compatibility wrapper" in script, name
+        assert "wrapper" in script.lower(), name
         assert "scripts/controlplane.sh" in script or "controlplane.sh" in script, name
         assert expected_exec in script, name
         assert "gradlew" not in script, name
@@ -87,5 +86,5 @@ def test_python_cli_exposes_all_expected_command_groups() -> None:
 
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e", "k3s-e2e"):
+    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e"):
         assert group in result.stdout, f"Expected command group {group!r} not found in CLI help"

@@ -20,7 +20,7 @@
 - `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/` — build Python runtime image.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `scripts/e2e.sh` and `scripts/e2e-buildpack.sh` — run local E2E suites.
-- `scripts/e2e-k8s-vm.sh` — provision a Multipass VM with k3s and run `K8sE2eTest`.
+- `scripts/e2e-k3s-junit-curl.sh` — provision a Multipass VM with k3s, deploy via Helm, run curl checks, and then run `K8sE2eTest`.
 
 ## Coding Style & Naming Conventions
 
@@ -32,7 +32,7 @@
 
 - JUnit 5 is the primary framework; tests are named `*Test.java`.
 - E2E tests use Testcontainers, RestAssured, and Fabric8; ensure Docker/compatible runtime is available.
-- K8s E2E (`K8sE2eTest`) runs via `scripts/e2e-k8s-vm.sh` on a real k3s cluster in Multipass.
+- K8s E2E (`K8sE2eTest`) runs via `scripts/e2e-k3s-junit-curl.sh` on a real k3s cluster in Multipass.
 
 ## Project Constraints & Requirements (FaaS MVP)
 

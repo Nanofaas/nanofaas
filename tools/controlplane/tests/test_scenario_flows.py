@@ -10,12 +10,12 @@ from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.vm_models import VmRequest
 
 
-def test_k8s_vm_flow_uses_reusable_vm_and_deploy_tasks() -> None:
+def test_k3s_junit_curl_flow_uses_reusable_vm_build_and_deploy_tasks() -> None:
     flow = build_scenario_flow(
-        "k8s-vm",
+        "k3s-junit-curl",
         repo_root=Path("/repo"),
         request=E2eRequest(
-            scenario="k8s-vm",
+            scenario="k3s-junit-curl",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         ),
@@ -25,11 +25,22 @@ def test_k8s_vm_flow_uses_reusable_vm_and_deploy_tasks() -> None:
         "vm.ensure_running",
         "vm.provision_base",
         "repo.sync_to_vm",
-        "k3s.install",
         "registry.ensure_container",
-        "k3s.configure_registry",
         "images.build_core",
-        "tests.run_k8s_e2e",
+        "images.build_selected_functions",
+        "k3s.install",
+        "k3s.configure_registry",
+        "k8s.ensure_namespace",
+        "helm.deploy_control_plane",
+        "helm.deploy_function_runtime",
+        "k8s.wait_control_plane_ready",
+        "k8s.wait_function_runtime_ready",
+        "tests.run_k3s_curl_checks",
+        "tests.run_k8s_junit",
+        "helm.uninstall_function_runtime",
+        "helm.uninstall_control_plane",
+        "k8s.delete_namespace",
+        "vm.down",
     ]
 
 
@@ -39,9 +50,9 @@ def test_cli_vm_flow_reuses_build_and_helm_deploy_tasks() -> None:
     assert "helm.deploy_control_plane" in flow.task_ids
 
 
-def test_k8s_vm_flow_requires_request_for_executable_definition() -> None:
+def test_k3s_junit_curl_flow_requires_request_for_executable_definition() -> None:
     with pytest.raises(ValueError):
-        build_scenario_flow("k8s-vm", repo_root=Path("/repo"))
+        build_scenario_flow("k3s-junit-curl", repo_root=Path("/repo"))
 
 
 def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> None:
@@ -55,14 +66,14 @@ def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> No
         ) or "ok",
     )
     request = E2eRequest(
-        scenario="k8s-vm",
+        scenario="k3s-junit-curl",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
     listener = lambda event: None  # noqa: ARG005,E731
 
     flow = build_scenario_flow(
-        "k8s-vm",
+        "k3s-junit-curl",
         repo_root=Path("/repo"),
         request=request,
         event_listener=listener,

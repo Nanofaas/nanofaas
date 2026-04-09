@@ -49,11 +49,11 @@ scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k8s-vm --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
-scripts/controlplane.sh e2e run k8s-vm --saved-profile demo-java --dry-run
-scripts/controlplane.sh e2e all --only k3s-curl,k8s-vm --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
 scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run
@@ -63,7 +63,7 @@ scripts/controlplane.sh tui --profile-name dev
 
 Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`.
 
-For VM-backed scenarios, provisioning is executed against the resolved VM host over SSH/Ansible rather than `localhost`. `scripts/controlplane.sh e2e all ...` plans one shared VM bootstrap block for VM-backed scenarios, reuses that session across scenarios, and tears the Multipass VM down once at the end unless `--keep-vm` is set. When `E2E_VM_LIFECYCLE=external`, the tool never attempts VM teardown.
+For VM-backed scenarios, provisioning is executed against the resolved VM host over SSH/Ansible rather than `localhost`. `scripts/controlplane.sh e2e all ...` plans one shared VM bootstrap block for VM-backed scenarios, reuses that session across scenarios, and tears the Multipass VM down once at the end unless `--no-cleanup-vm` is set. When `E2E_VM_LIFECYCLE=external`, the tool never attempts VM teardown.
 
 The canonical operational asset root for VM provisioning is `ops/ansible/`.
 
@@ -80,7 +80,7 @@ Function/scenario selection precedence for `scripts/controlplane.sh e2e run` is:
 2. `--scenario-file`
 3. `--saved-profile`
 
-When a CLI override is layered on top of a scenario file or saved profile, the tool preserves the inherited scenario metadata and shrinks payload/load selections to the chosen function subset. `helm-stack` defaults to the backend-safe `demo-loadtest` preset, and unsupported Go selections are rejected before the compatibility backend runs. For `k8s-vm`, the resolved selection is forwarded into the VM via `-Dnanofaas.e2e.scenarioManifest=...`, so the executed `K8sE2eTest` consumes the same manifest shown by dry-run output.
+When a CLI override is layered on top of a scenario file or saved profile, the tool preserves the inherited scenario metadata and shrinks payload/load selections to the chosen function subset. `helm-stack` defaults to the backend-safe `demo-loadtest` preset, and unsupported Go selections are rejected before the compatibility backend runs. For `k3s-junit-curl`, the resolved selection is forwarded into the VM via `-Dnanofaas.e2e.scenarioManifest=...`, so the executed `K8sE2eTest` consumes the same manifest shown by dry-run output.
 
 The repository ships `tools/controlplane/profiles/demo-java.toml` as a ready-to-run example profile.
 Saved profiles can also persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario from the profile.
@@ -158,20 +158,20 @@ E2E (buildpacks):
 E2E (Kubernetes VM + k3s):
 ```bash
 ./gradlew k8sE2e
-./scripts/controlplane.sh e2e run k8s-vm
+./scripts/controlplane.sh e2e run k3s-junit-curl
 ```
 
 VM-based E2E can also target an existing local or remote VM over SSH/SCP:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-curl
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-junit-curl
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
 Supported external-VM variables:
 `E2E_VM_LIFECYCLE=external`, `E2E_VM_HOST`, `E2E_VM_USER`, `E2E_VM_HOME`, `E2E_KUBECONFIG_PATH`, `E2E_REMOTE_PROJECT_DIR`, `E2E_PUBLIC_HOST`, `E2E_KUBECONFIG_SERVER`.
 SSH/SCP are always used for remote command execution and file transfer. VM provisioning is driven by Ansible over SSH for both `multipass` and `external` lifecycle modes. If `ansible-playbook` is not already installed on the host, the scripts bootstrap it idempotently in a local virtualenv and fall back to a user-site `pip` install when `python3 -m venv` is unavailable. k3s defaults to the latest official release at run time; set `K3S_VERSION` only when you need to pin a specific version. Multipass is used only for VM lifecycle when `E2E_VM_LIFECYCLE=multipass`.
-For wrapper-driven VM scenarios, `KEEP_VM=true` maps to the tool-level `--keep-vm` behavior: keep Multipass instances for debugging, but never delete external VMs.
+For wrapper-driven VM scenarios, `--no-cleanup-vm` preserves the installed stack for debugging, but external VMs are never deleted by the tool.
 Most top-level `scripts/e2e*.sh` files remain compatibility shims over `scripts/controlplane.sh`; `scripts/e2e-loadtest.sh` is the intentional exception because it preserves the legacy Helm/Grafana/parity workflow via `experiments/e2e-loadtest.sh`, while `scripts/e2e-loadtest-registry.sh` owns registry-summary flows such as `--summary-only`.
 
 E2E/module matrix (control-plane optional modules compile):

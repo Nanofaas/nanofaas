@@ -19,7 +19,7 @@ class E2eRequest(BaseModel):
     scenario_source: str | None = None
     resolved_scenario: ResolvedScenario | None = None
     vm: VmRequest | None = None
-    keep_vm: bool = False
+    cleanup_vm: bool = True
     namespace: str | None = None
     local_registry: str = "localhost:5000"
 

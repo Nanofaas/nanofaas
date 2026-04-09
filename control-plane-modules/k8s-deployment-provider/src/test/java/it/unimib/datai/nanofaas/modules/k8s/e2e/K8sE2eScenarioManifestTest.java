@@ -20,7 +20,7 @@ class K8sE2eScenarioManifestTest {
                 """
                 {
                   "name": "k8s-demo-java",
-                  "baseScenario": "k8s-vm",
+                  "baseScenario": "k3s-junit-curl",
                   "runtime": "java",
                   "namespace": "nanofaas-e2e-alt",
                   "functions": [

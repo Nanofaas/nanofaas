@@ -12,12 +12,12 @@ def test_e2e_list_prints_known_scenarios() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["e2e", "list"])
     assert result.exit_code == 0
-    assert "k8s-vm" in result.stdout
+    assert "k3s-junit-curl" in result.stdout
 
 
 def test_e2e_run_dry_run_prints_planned_steps() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["e2e", "run", "k3s-curl", "--dry-run"])
+    result = runner.invoke(app, ["e2e", "run", "k3s-junit-curl", "--dry-run"])
     assert result.exit_code == 0
     assert "scenario" in result.stdout.lower()
     assert "step" in result.stdout.lower()
@@ -27,7 +27,7 @@ def test_e2e_run_dry_run_renders_resolved_functions() -> None:
     runner = CliRunner()
     result = runner.invoke(
         app,
-        ["e2e", "run", "k8s-vm", "--function-preset", "demo-java", "--dry-run"],
+        ["e2e", "run", "k3s-junit-curl", "--function-preset", "demo-java", "--dry-run"],
     )
     assert result.exit_code == 0
     assert "word-stats-java" in result.stdout
@@ -46,7 +46,7 @@ def test_e2e_run_dry_run_shows_catalog_flow_tasks(monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(
         app,
-        ["e2e", "run", "k8s-vm", "--function-preset", "demo-java", "--dry-run"],
+        ["e2e", "run", "k3s-junit-curl", "--function-preset", "demo-java", "--dry-run"],
     )
 
     assert result.exit_code == 0
@@ -88,7 +88,7 @@ def test_e2e_run_accepts_scenario_file_without_positional_scenario() -> None:
         ],
     )
     assert result.exit_code == 0
-    assert "k8s-vm" in result.stdout
+    assert "k3s-junit-curl" in result.stdout
     assert "scenario source" in result.stdout.lower()
 
 
@@ -104,7 +104,7 @@ def test_cli_function_override_preserves_scenario_file_load_targets() -> None:
         cpus=4,
         memory="8G",
         disk="30G",
-        keep_vm=False,
+        cleanup_vm=True,
         namespace=None,
         local_registry=None,
         function_preset=None,
@@ -120,10 +120,9 @@ def test_cli_function_override_preserves_scenario_file_load_targets() -> None:
 
 def test_e2e_all_dry_run_honors_only_filter() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["e2e", "all", "--only", "k3s-curl,k8s-vm", "--dry-run"])
+    result = runner.invoke(app, ["e2e", "all", "--only", "k3s-junit-curl", "--dry-run"])
     assert result.exit_code == 0
-    assert "k3s-curl" in result.stdout
-    assert "k8s-vm" in result.stdout
+    assert "k3s-junit-curl" in result.stdout
     assert "docker" not in result.stdout
 
 
@@ -180,9 +179,9 @@ def test_e2e_explicit_functions_override_saved_profile_defaults(monkeypatch) -> 
         "load_profile",
         lambda name: Profile(
             name=name,
-            control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
-            scenario=ScenarioSelectionConfig(
-                base_scenario="k8s-vm",
+                control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
+                scenario=ScenarioSelectionConfig(
+                base_scenario="k3s-junit-curl",
                 function_preset="demo-java",
             ),
         ),
@@ -194,7 +193,7 @@ def test_e2e_explicit_functions_override_saved_profile_defaults(monkeypatch) -> 
         [
             "e2e",
             "run",
-            "k8s-vm",
+            "k3s-junit-curl",
             "--saved-profile",
             "demo-java",
             "--functions",
@@ -225,10 +224,10 @@ def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
 
     monkeypatch.setattr("controlplane_tool.e2e_commands.run_local_flow", fake_run_local_flow)
 
-    result = runner.invoke(app, ["e2e", "run", "k8s-vm"])
+    result = runner.invoke(app, ["e2e", "run", "k3s-junit-curl"])
 
     assert result.exit_code == 0
-    assert called["flow_id"] == "e2e.k8s_vm"
+    assert called["flow_id"] == "e2e.k3s_junit_curl"
 
 
 def test_e2e_all_executes_shared_catalog_flow(monkeypatch) -> None:
@@ -244,7 +243,7 @@ def test_e2e_all_executes_shared_catalog_flow(monkeypatch) -> None:
             (),
             {
                 "flow_id": "e2e.all",
-                "task_ids": ["vm.ensure_running", "tests.run_k8s_e2e"],
+                "task_ids": ["vm.ensure_running", "tests.run_k3s_curl_checks"],
                 "run": staticmethod(lambda: ["ok"]),
             },
         )()
@@ -264,8 +263,17 @@ def test_e2e_all_executes_shared_catalog_flow(monkeypatch) -> None:
     monkeypatch.setattr(e2e_commands, "resolve_flow_definition", fake_resolve_flow_definition)
     monkeypatch.setattr(e2e_commands, "run_local_flow", fake_run_local_flow)
 
-    result = runner.invoke(app, ["e2e", "all", "--only", "k8s-vm"])
+    result = runner.invoke(app, ["e2e", "all", "--only", "k3s-junit-curl"])
 
     assert result.exit_code == 0
     assert called["flow_name"] == "e2e.all"
     assert called["flow_id"] == "e2e.all"
+
+
+def test_e2e_run_exposes_cleanup_vm_switches() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["e2e", "run", "--help"])
+
+    assert result.exit_code == 0
+    assert "--cleanup-vm" in result.stdout
+    assert "--no-cleanup-vm" in result.stdout

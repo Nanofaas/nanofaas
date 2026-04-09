@@ -1,5 +1,5 @@
 name = "k8s-demo-java"
-base_scenario = "k8s-vm"
+base_scenario = "k3s-junit-curl"
 runtime = "java"
 function_preset = "demo-java"
 namespace = "nanofaas-e2e"

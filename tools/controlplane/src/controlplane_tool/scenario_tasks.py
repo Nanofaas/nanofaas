@@ -27,6 +27,16 @@ def _with_sudo(command: list[str], *, sudo: bool) -> list[str]:
     return ["sudo", *command] if sudo else command
 
 
+def _with_kubeconfig(
+    command: list[str],
+    *,
+    kubeconfig_path: str | None,
+) -> list[str] | str:
+    if kubeconfig_path is None:
+        return command
+    return f"KUBECONFIG={shlex.quote(kubeconfig_path)} {_shell_join(command)}"
+
+
 def build_core_images_vm_script(
     *,
     remote_dir: str,
@@ -35,6 +45,7 @@ def build_core_images_vm_script(
     runtime: str = "java",
     mode: str = "docker",
     sudo: bool = True,
+    build_jars: bool = False,
 ) -> str:
     image_ops = ImageOps(Path(remote_dir))
     commands: list[list[str] | str] = []
@@ -51,6 +62,26 @@ def build_core_images_vm_script(
             ]
         )
     else:
+        if build_jars:
+            if runtime == "rust":
+                commands.append(
+                    [
+                        "./gradlew",
+                        ":function-runtime:bootJar",
+                        "--no-daemon",
+                        "-q",
+                    ]
+                )
+            else:
+                commands.append(
+                    [
+                        "./gradlew",
+                        ":control-plane:bootJar",
+                        ":function-runtime:bootJar",
+                        "--no-daemon",
+                        "-q",
+                    ]
+                )
         if runtime == "rust":
             commands.append("cargo build --release --manifest-path control-plane-rust/Cargo.toml 2>/dev/null || true")
             control_context = Path("control-plane-rust")
@@ -144,6 +175,36 @@ def push_image_vm_script(
     )
 
 
+def build_function_images_vm_script(
+    *,
+    remote_dir: str,
+    functions: list[tuple[str, str, str]],
+    sudo: bool = True,
+    push: bool = True,
+) -> str:
+    commands: list[list[str] | str] = []
+    prefix = f"cd {shlex.quote(remote_dir)} && "
+    for image, runtime_kind, family in functions:
+        commands.append(
+            build_function_image_vm_script(
+                remote_dir=remote_dir,
+                image=image,
+                runtime_kind=runtime_kind,
+                family=family,
+                sudo=sudo,
+            ).removeprefix(prefix)
+        )
+        if push:
+            commands.append(
+                push_image_vm_script(
+                    remote_dir=remote_dir,
+                    image=image,
+                    sudo=sudo,
+                ).removeprefix(prefix)
+            )
+    return _render_remote_script(remote_dir=remote_dir, commands=commands)
+
+
 def helm_upgrade_install_vm_script(
     *,
     remote_dir: str,
@@ -151,6 +212,7 @@ def helm_upgrade_install_vm_script(
     chart: str,
     namespace: str,
     values: dict[str, str],
+    kubeconfig_path: str | None = None,
     timeout: str = "3m",
 ) -> str:
     command = HelmOps(Path(remote_dir)).upgrade_install(
@@ -161,15 +223,105 @@ def helm_upgrade_install_vm_script(
         wait=True,
         timeout=timeout,
     ).command
-    return _render_remote_script(remote_dir=remote_dir, commands=[command])
+    return _render_remote_script(
+        remote_dir=remote_dir,
+        commands=[_with_kubeconfig(command, kubeconfig_path=kubeconfig_path)],
+    )
+
+
+def helm_uninstall_vm_script(
+    *,
+    remote_dir: str,
+    release: str,
+    namespace: str,
+    kubeconfig_path: str | None = None,
+) -> str:
+    return _render_remote_script(
+        remote_dir=remote_dir,
+        commands=[
+            _with_kubeconfig(
+                ["helm", "uninstall", release, "-n", namespace],
+                kubeconfig_path=kubeconfig_path,
+            )
+        ],
+    )
+
+
+def kubectl_create_namespace_vm_script(
+    *,
+    remote_dir: str,
+    namespace: str,
+    kubeconfig_path: str | None = None,
+) -> str:
+    namespace_quoted = shlex.quote(namespace)
+    if kubeconfig_path is None:
+        command = (
+            f"kubectl create namespace {namespace_quoted} --dry-run=client -o yaml | "
+            "kubectl apply -f -"
+        )
+    else:
+        kubeconfig_quoted = shlex.quote(kubeconfig_path)
+        command = (
+            f"KUBECONFIG={kubeconfig_quoted} kubectl create namespace {namespace_quoted} "
+            "--dry-run=client -o yaml | "
+            f"KUBECONFIG={kubeconfig_quoted} kubectl apply -f -"
+        )
+    return _render_remote_script(
+        remote_dir=remote_dir,
+        commands=[command],
+    )
+
+
+def kubectl_delete_namespace_vm_script(
+    *,
+    remote_dir: str,
+    namespace: str,
+    kubeconfig_path: str | None = None,
+) -> str:
+    return _render_remote_script(
+        remote_dir=remote_dir,
+        commands=[
+            _with_kubeconfig(
+                ["kubectl", "delete", "namespace", namespace, "--ignore-not-found=true", "--wait=false"],
+                kubeconfig_path=kubeconfig_path,
+            )
+        ],
+    )
+
+
+def kubectl_rollout_status_vm_script(
+    *,
+    remote_dir: str,
+    namespace: str,
+    deployment: str,
+    kubeconfig_path: str | None = None,
+    timeout: int = 180,
+) -> str:
+    return _render_remote_script(
+        remote_dir=remote_dir,
+        commands=[
+            _with_kubeconfig(
+                [
+                    "kubectl",
+                    "rollout",
+                    "status",
+                    f"deployment/{deployment}",
+                    "-n",
+                    namespace,
+                    f"--timeout={timeout}s",
+                ],
+                kubeconfig_path=kubeconfig_path,
+            )
+        ],
+    )
 
 
 def k8s_e2e_test_vm_script(
     *,
     remote_dir: str,
     kubeconfig_path: str,
-    control_image: str,
     runtime_image: str,
+    namespace: str,
     remote_manifest_path: str | None = None,
 ) -> str:
     manifest_property = ""
@@ -177,9 +329,8 @@ def k8s_e2e_test_vm_script(
         manifest_property = f"-Dnanofaas.e2e.scenarioManifest={shlex.quote(remote_manifest_path)} "
     command = (
         f"KUBECONFIG={shlex.quote(kubeconfig_path)} "
-        f"CONTROL_PLANE_IMAGE={shlex.quote(control_image)} "
         f"FUNCTION_RUNTIME_IMAGE={shlex.quote(runtime_image)} "
-        f"NANOFAAS_HELM_CHART={shlex.quote(remote_dir)}/helm/nanofaas "
+        f"NANOFAAS_E2E_NAMESPACE={shlex.quote(namespace)} "
         f"./gradlew :control-plane-modules:k8s-deployment-provider:test "
         f"{manifest_property}-PrunE2e --tests "
         "it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest --no-daemon"
