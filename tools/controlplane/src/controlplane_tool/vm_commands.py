@@ -7,7 +7,9 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.console import console, fail, step
+from controlplane_tool.infra_flows import build_vm_flow
 from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest
 
@@ -50,6 +52,11 @@ def _orchestrator() -> VmOrchestrator:
 
 
 def _emit_result(result, *, dry_run: bool) -> None:
+    if isinstance(result, list):
+        for item in result:
+            _emit_result(item, dry_run=dry_run)
+        return
+
     if dry_run:
         console.print(" ".join(result.command))
         return
@@ -74,6 +81,13 @@ def _execute(action) -> None:
         raise typer.Exit(code=2)
 
     _emit_result(result["result"], dry_run=result["dry_run"])
+
+
+def _run_flow_result(flow) -> object:  # noqa: ANN001
+    flow_result = run_local_flow(flow.flow_id, flow.run)
+    if flow_result.status != "completed" or flow_result.result is None:
+        raise typer.Exit(code=1)
+    return flow_result.result
 
 
 def _vm_request_options(
@@ -112,9 +126,15 @@ def vm_up(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.up",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().ensure_running(request, dry_run=dry_run),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)
@@ -135,13 +155,16 @@ def vm_sync(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.sync",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            remote_dir=remote_dir,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().sync_project(
-                request,
-                remote_dir=remote_dir,
-                dry_run=dry_run,
-            ),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)
@@ -163,14 +186,17 @@ def vm_provision_base(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.provision_base",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            install_helm=install_helm,
+            helm_version=helm_version,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().install_dependencies(
-                request,
-                install_helm=install_helm,
-                helm_version=helm_version,
-                dry_run=dry_run,
-            ),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)
@@ -192,14 +218,17 @@ def vm_provision_k3s(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.provision_k3s",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            kubeconfig_path=kubeconfig_path,
+            k3s_version=k3s_version,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().install_k3s(
-                request,
-                kubeconfig_path=kubeconfig_path,
-                k3s_version=k3s_version,
-                dry_run=dry_run,
-            ),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)
@@ -221,14 +250,17 @@ def vm_registry(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.registry",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            registry=registry,
+            container_name=container_name,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().setup_registry(
-                request,
-                registry=registry,
-                container_name=container_name,
-                dry_run=dry_run,
-            ),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)
@@ -248,9 +280,15 @@ def vm_down(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.down",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().teardown(request, dry_run=dry_run),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)
@@ -270,9 +308,15 @@ def vm_inspect(
 ) -> None:
     def _action() -> dict[str, object]:
         request = _vm_request_options(lifecycle, name, host, user, home, cpus, memory, disk)
+        flow = build_vm_flow(
+            "vm.inspect",
+            request=request,
+            repo_root=default_tool_paths().workspace_root,
+            dry_run=dry_run,
+        )
         return {
             "dry_run": dry_run,
-            "result": _orchestrator().inspect(request, dry_run=dry_run),
+            "result": _run_flow_result(flow),
         }
 
     _execute(_action)

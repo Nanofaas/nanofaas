@@ -1,32 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 
 import typer
 from pydantic import ValidationError
 
 from controlplane_tool.build_requests import BuildRequest
+from controlplane_tool.build_tasks import CommandExecutionResult
 from controlplane_tool.gradle_planner import (
     build_gradle_command,
     plan_module_matrix_commands,
 )
+from controlplane_tool.infra_flows import build_gradle_action_flow
 from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.shell_backend import SubprocessShell
 
 CLI_CONTEXT_SETTINGS = {
     "allow_extra_args": True,
     "ignore_unknown_options": True,
 }
-
-
-@dataclass(frozen=True)
-class CommandExecutionResult:
-    command: list[str]
-    return_code: int
-    dry_run: bool
-
 
 class GradleCommandExecutor:
     def __init__(self, repo_root: Path | None = None) -> None:
@@ -115,18 +108,22 @@ def _run_gradle_action(
     extra_gradle_arg: list[str] | None,
 ) -> None:
     try:
-        result = GradleCommandExecutor().execute(
+        flow = build_gradle_action_flow(
             action=action,
             profile=profile,
             modules=modules,
             extra_gradle_args=_combined_extra_gradle_args(ctx, extra_gradle_arg),
             dry_run=dry_run,
         )
+        flow_result = run_local_flow(flow.flow_id, flow.run)
     except ValidationError as exc:
         first_error = exc.errors()[0]["msg"] if exc.errors() else "validation failed"
         typer.echo(f"Invalid build request: {first_error}", err=True)
         raise typer.Exit(code=2)
 
+    result = flow_result.result
+    if flow_result.status != "completed" or result is None:
+        raise typer.Exit(code=1)
     if result.dry_run:
         typer.echo(" ".join(result.command))
         return

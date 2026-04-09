@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, TypeVar
@@ -59,3 +60,10 @@ class FlowRunResult(Generic[T]):
             status="failed",
             error=error,
         )
+
+
+@dataclass(slots=True)
+class LocalFlowDefinition(Generic[T]):
+    flow_id: str
+    task_ids: list[str]
+    run: Callable[[], T]

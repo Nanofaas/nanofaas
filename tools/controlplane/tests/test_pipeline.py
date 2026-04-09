@@ -1,7 +1,9 @@
 from pathlib import Path
+from datetime import UTC, datetime
 
 import controlplane_tool.pipeline as pipeline_mod
 from controlplane_tool.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
+from controlplane_tool.prefect_models import FlowRunResult
 from controlplane_tool.pipeline import PipelineRunner
 
 
@@ -88,7 +90,7 @@ def test_pipeline_run_delegates_metrics_load_flow_to_loadtest_runner(
                 ],
             )
 
-    monkeypatch.setattr(pipeline_mod, "LoadtestRunner", RecordingLoadtestRunner)
+    monkeypatch.setattr("controlplane_tool.infra_flows.LoadtestRunner", RecordingLoadtestRunner)
     profile = Profile(
         name="metrics",
         control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
@@ -112,3 +114,43 @@ def test_pipeline_run_delegates_metrics_load_flow_to_loadtest_runner(
     metrics_step = next(step for step in result.steps if step.name == "test_metrics_prometheus_k6")
     assert metrics_step.status == "passed"
     assert "loadtest" in metrics_step.detail
+
+
+def test_pipeline_runner_executes_shared_prefect_flow(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    called: dict[str, str] = {}
+    profile = Profile(
+        name="pipeline",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
+        modules=[],
+        tests=TestsConfig(enabled=False, api=False, e2e_mockk8s=False, metrics=False),
+        report=ReportConfig(title="pipeline"),
+    )
+
+    expected = pipeline_mod.RunResult(
+        profile_name=profile.name,
+        run_dir=tmp_path / "run",
+        final_status="passed",
+        steps=[],
+    )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        now = datetime.now(UTC)
+        return FlowRunResult.completed(
+            flow_id=flow_id,
+            flow_run_id="flow-run-1",
+            orchestrator_backend="none",
+            started_at=now,
+            finished_at=now,
+            result=expected,
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run_local_flow", fake_run_local_flow)
+
+    result = PipelineRunner(adapter=FakePassingAdapter()).run(profile, runs_root=tmp_path)
+
+    assert called["flow_id"] == "infra.pipeline"
+    assert result is expected
