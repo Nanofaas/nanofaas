@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 
 from controlplane_tool.adapters import ShellCommandAdapter
+from controlplane_tool.flow_catalog import resolve_flow_definition
 from controlplane_tool.infra_flows import build_pipeline_flow
 from controlplane_tool.models import Profile
 from controlplane_tool.prefect_runtime import run_local_flow
@@ -18,7 +19,12 @@ class PipelineRunner:
         self.adapter = adapter or ShellCommandAdapter()
 
     def run(self, profile: Profile, runs_root: Path | None = None) -> RunResult:
-        flow = build_pipeline_flow(profile, adapter=self.adapter, runs_root=runs_root)
+        flow = resolve_flow_definition(
+            "infra.pipeline",
+            profile=profile,
+            adapter=self.adapter,
+            runs_root=runs_root,
+        )
         flow_result = run_local_flow(flow.flow_id, flow.run)
         if flow_result.status != "completed" or flow_result.result is None:
             raise RuntimeError(flow_result.error or "pipeline flow failed")

@@ -40,6 +40,29 @@ from controlplane_tool.vm_tasks import (
 )
 
 
+def vm_flow_task_ids(flow_id: str) -> list[str]:
+    if flow_id == "vm.registry":
+        return ["registry.ensure_container", "k3s.configure_registry"]
+    return [flow_id]
+
+
+def gradle_action_task_ids(action: str) -> list[str]:
+    return [f"build.{action}"]
+
+
+def pipeline_task_ids(profile: Profile) -> list[str]:
+    task_ids = [
+        "preflight.check",
+        "build.compile",
+        "images.build_control_plane",
+        "tests.run_api",
+        "tests.run_mockk8s",
+    ]
+    if profile.tests.enabled and profile.tests.metrics:
+        task_ids.append("loadtest.run")
+    return task_ids
+
+
 def build_vm_flow(
     flow_id: str,
     *,
@@ -56,7 +79,6 @@ def build_vm_flow(
     orchestrator: VmOrchestrator | None = None,
 ) -> LocalFlowDefinition[object]:
     active_orchestrator = orchestrator or VmOrchestrator(repo_root)
-    task_id = flow_id
 
     def _run() -> object:
         if flow_id == "vm.up":
@@ -109,11 +131,7 @@ def build_vm_flow(
             return inspect_vm_task(orchestrator=active_orchestrator, request=request, dry_run=dry_run)
         raise ValueError(f"Unsupported VM flow: {flow_id}")
 
-    if flow_id == "vm.registry":
-        task_ids = ["registry.ensure_container", "k3s.configure_registry"]
-    else:
-        task_ids = [task_id]
-    return LocalFlowDefinition(flow_id=flow_id, task_ids=task_ids, run=_run)
+    return LocalFlowDefinition(flow_id=flow_id, task_ids=vm_flow_task_ids(flow_id), run=_run)
 
 
 def build_gradle_action_flow(
@@ -131,7 +149,7 @@ def build_gradle_action_flow(
     flow_id = f"build.{action}"
     return LocalFlowDefinition(
         flow_id=flow_id,
-        task_ids=[flow_id],
+        task_ids=gradle_action_task_ids(action),
         run=lambda: run_gradle_action_task(
             executor=active_executor,
             action=action,
@@ -179,15 +197,7 @@ def build_pipeline_flow(
 ) -> LocalFlowDefinition[RunResult]:
     active_adapter = adapter or ShellCommandAdapter()
     root = runs_root or default_tool_paths().runs_dir
-    task_ids = [
-        "preflight.check",
-        "build.compile",
-        "images.build_control_plane",
-        "tests.run_api",
-        "tests.run_mockk8s",
-    ]
-    if profile.tests.enabled and profile.tests.metrics:
-        task_ids.append("loadtest.run")
+    task_ids = pipeline_task_ids(profile)
 
     def _run_step(name: str, fn: object, run_dir: Path) -> StepResult:
         start = time.time()

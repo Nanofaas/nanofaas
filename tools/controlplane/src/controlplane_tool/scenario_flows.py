@@ -6,6 +6,70 @@ from controlplane_tool.e2e_runner import E2eRunner
 from controlplane_tool.prefect_models import LocalFlowDefinition
 
 
+_SCENARIO_TASK_IDS_MAP = {
+    "container-local": ["tests.run_container_local"],
+    "deploy-host": ["tests.run_deploy_host"],
+    "k3s-curl": [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "k3s.install",
+        "registry.ensure_container",
+        "k3s.configure_registry",
+        "images.build_core",
+        "helm.deploy_control_plane",
+        "helm.deploy_function_runtime",
+        "tests.run_k3s_curl",
+    ],
+    "k8s-vm": [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "k3s.install",
+        "registry.ensure_container",
+        "k3s.configure_registry",
+        "images.build_core",
+        "tests.run_k8s_e2e",
+    ],
+    "cli": [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "k3s.install",
+        "registry.ensure_container",
+        "k3s.configure_registry",
+        "images.build_core",
+        "helm.deploy_control_plane",
+        "tests.run_cli_vm",
+    ],
+    "cli-host": [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "k3s.install",
+        "registry.ensure_container",
+        "k3s.configure_registry",
+        "images.build_core",
+        "helm.deploy_control_plane",
+        "tests.run_cli_host_platform",
+    ],
+    "helm-stack": [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "k3s.install",
+        "registry.ensure_container",
+        "k3s.configure_registry",
+        "loadtest.run",
+        "experiments.autoscaling",
+    ],
+}
+
+
+def scenario_task_ids(scenario: str) -> list[str]:
+    return list(_SCENARIO_TASK_IDS_MAP.get(scenario, [f"tests.run_{scenario.replace('-', '_')}"]))
+
+
 def build_scenario_flow(
     scenario: str,
     *,
@@ -27,85 +91,22 @@ def build_scenario_flow(
 ) -> LocalFlowDefinition[object]:
     flow_id = f"e2e.{scenario.replace('-', '_')}"
 
-    task_ids_map = {
-        "container-local": ["tests.run_container_local"],
-        "deploy-host": ["tests.run_deploy_host"],
-        "k3s-curl": [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "k3s.install",
-            "k3s.configure_registry",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
-            "tests.run_k3s_curl",
-        ],
-        "k8s-vm": [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "k3s.install",
-            "k3s.configure_registry",
-            "tests.run_k8s_e2e",
-        ],
-        "cli": [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "k3s.install",
-            "k3s.configure_registry",
-            "helm.deploy_control_plane",
-            "tests.run_cli_vm",
-        ],
-        "cli-host": [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "k3s.install",
-            "k3s.configure_registry",
-            "helm.deploy_control_plane",
-            "tests.run_cli_host_platform",
-        ],
-        "helm-stack": [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "k3s.install",
-            "k3s.configure_registry",
-            "loadtest.run",
-            "experiments.autoscaling",
-        ],
-    }
-
     if request is not None:
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map.get(scenario, [f"tests.run_{scenario.replace('-', '_')}"]),
+            task_ids=scenario_task_ids(scenario),
             run=lambda: E2eRunner(repo_root).run(request),
         )
 
     if scenario == "k8s-vm":
-        return LocalFlowDefinition(
-            flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
-            run=lambda: None,
-        )
+        raise ValueError("scenario 'k8s-vm' requires an executable request")
 
     if scenario == "container-local":
         from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
 
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
+            task_ids=scenario_task_ids(scenario),
             run=lambda: ContainerLocalE2eRunner(
                 repo_root,
                 api_port=api_port,
@@ -119,7 +120,7 @@ def build_scenario_flow(
 
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
+            task_ids=scenario_task_ids(scenario),
             run=lambda: DeployHostE2eRunner(
                 repo_root,
                 registry_port=registry_port,
@@ -134,7 +135,7 @@ def build_scenario_flow(
 
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
+            task_ids=scenario_task_ids(scenario),
             run=lambda: CliVmRunner(
                 repo_root,
                 namespace=namespace,
@@ -148,7 +149,7 @@ def build_scenario_flow(
 
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
+            task_ids=scenario_task_ids(scenario),
             run=lambda: CliHostPlatformRunner(
                 repo_root,
                 namespace=namespace,
@@ -163,7 +164,7 @@ def build_scenario_flow(
 
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
+            task_ids=scenario_task_ids(scenario),
             run=lambda: K3sCurlRunner(
                 repo_root,
                 namespace=namespace,
@@ -176,7 +177,7 @@ def build_scenario_flow(
 
         return LocalFlowDefinition(
             flow_id=flow_id,
-            task_ids=task_ids_map[scenario],
+            task_ids=scenario_task_ids(scenario),
             run=lambda: HelmStackRunner(
                 repo_root,
                 namespace=namespace,

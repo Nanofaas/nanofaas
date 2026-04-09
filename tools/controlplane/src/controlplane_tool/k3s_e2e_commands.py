@@ -17,9 +17,9 @@ from typing import Annotated, Optional
 
 import typer
 
+from controlplane_tool.flow_catalog import resolve_flow_definition
 from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
 from controlplane_tool.prefect_runtime import run_local_flow
-from controlplane_tool.scenario_flows import build_scenario_flow
 
 k3s_e2e_app = typer.Typer(
     help="Run VM/K3s-backed E2E scenarios using the Python-native runtime (M11+).",
@@ -47,8 +47,8 @@ def run_k3s_curl(
     resolved_runtime = os.getenv("CONTROL_PLANE_RUNTIME", runtime)
 
     repo_root = default_tool_paths().workspace_root
-    flow = build_scenario_flow(
-        "k3s-curl",
+    flow = resolve_flow_definition(
+        "e2e.k3s-curl",
         repo_root=repo_root,
         scenario_file=resolved_scenario_file,
         namespace=namespace,
@@ -74,8 +74,8 @@ def run_helm_stack(
     noninteractive = os.getenv("E2E_K3S_HELM_NONINTERACTIVE", "").lower() == "true"
 
     repo_root = default_tool_paths().workspace_root
-    flow = build_scenario_flow(
-        "helm-stack",
+    flow = resolve_flow_definition(
+        "e2e.helm-stack",
         repo_root=repo_root,
         namespace=namespace,
         local_registry=local_registry,

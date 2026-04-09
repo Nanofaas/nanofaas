@@ -34,6 +34,25 @@ def test_e2e_run_dry_run_renders_resolved_functions() -> None:
     assert "json-transform-java" in result.stdout
 
 
+def test_e2e_run_dry_run_shows_catalog_flow_tasks(monkeypatch) -> None:
+    import controlplane_tool.e2e_commands as e2e_commands
+
+    monkeypatch.setattr(
+        e2e_commands,
+        "resolve_flow_task_ids",
+        lambda flow_name, **kwargs: ["catalog.task_id"],
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["e2e", "run", "k8s-vm", "--function-preset", "demo-java", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert "catalog.task_id" in result.stdout
+
+
 def test_helm_stack_default_selection_uses_supported_loadtest_functions() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["e2e", "run", "helm-stack", "--dry-run"])
@@ -210,3 +229,43 @@ def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert called["flow_id"] == "e2e.k8s_vm"
+
+
+def test_e2e_all_executes_shared_catalog_flow(monkeypatch) -> None:
+    import controlplane_tool.e2e_commands as e2e_commands
+
+    runner = CliRunner()
+    called: dict[str, str] = {}
+
+    def fake_resolve_flow_definition(flow_name, **kwargs):  # noqa: ANN001
+        called["flow_name"] = flow_name
+        return type(
+            "_Flow",
+            (),
+            {
+                "flow_id": "e2e.all",
+                "task_ids": ["vm.ensure_running", "tests.run_k8s_e2e"],
+                "run": staticmethod(lambda: ["ok"]),
+            },
+        )()
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        now = datetime.now(UTC)
+        return FlowRunResult.completed(
+            flow_id=flow_id,
+            flow_run_id="flow-run-1",
+            orchestrator_backend="none",
+            started_at=now,
+            finished_at=now,
+            result=flow(),
+        )
+
+    monkeypatch.setattr(e2e_commands, "resolve_flow_definition", fake_resolve_flow_definition)
+    monkeypatch.setattr(e2e_commands, "run_local_flow", fake_run_local_flow)
+
+    result = runner.invoke(app, ["e2e", "all", "--only", "k8s-vm"])
+
+    assert result.exit_code == 0
+    assert called["flow_name"] == "e2e.all"
+    assert called["flow_id"] == "e2e.all"

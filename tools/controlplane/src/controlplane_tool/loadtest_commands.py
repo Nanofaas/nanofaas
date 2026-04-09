@@ -6,8 +6,8 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
+from controlplane_tool.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
 from controlplane_tool.loadtest_catalog import list_load_profiles, resolve_load_profile
-from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate, effective_required_metrics
 from controlplane_tool.loadtest_runner import LoadtestRunner
 from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
@@ -273,12 +273,26 @@ def run_loadtest_request(
     runner: LoadtestRunner | None = None,
 ) -> None:
     if dry_run:
-        flow = build_loadtest_flow(request.load_profile.name)
-        for line in render_loadtest_plan(request, flow_task_ids=flow.task_ids):
+        for line in render_loadtest_plan(
+            request,
+            flow_task_ids=resolve_flow_task_ids(f"loadtest.{request.load_profile.name}"),
+        ):
             typer.echo(line)
         return
 
-    result = (runner or LoadtestRunner()).run(request)
+    if runner is not None:
+        result = runner.run(request)
+    else:
+        from controlplane_tool.prefect_runtime import run_local_flow
+
+        flow = resolve_flow_definition(
+            f"loadtest.{request.load_profile.name}",
+            request=request,
+        )
+        flow_result = run_local_flow(flow.flow_id, flow.run)
+        if flow_result.status != "completed" or flow_result.result is None:
+            raise typer.Exit(code=1)
+        result = flow_result.result
     typer.echo(f"Run status: {result.final_status}")
     typer.echo(f"Summary: {result.run_dir / 'summary.json'}")
     typer.echo(f"Report: {result.run_dir / 'report.html'}")

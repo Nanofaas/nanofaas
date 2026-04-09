@@ -77,6 +77,30 @@ def test_loadtest_run_dry_run_shows_prefect_flow_tasks() -> None:
     assert "metrics.evaluate_gate" in result.stdout
 
 
+def test_loadtest_run_dry_run_reads_flow_tasks_from_catalog(monkeypatch) -> None:
+    import controlplane_tool.loadtest_commands as loadtest_commands
+
+    monkeypatch.setattr(
+        loadtest_commands,
+        "resolve_flow_task_ids",
+        lambda flow_name, **kwargs: ["catalog.loadtest.task"],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "loadtest",
+            "run",
+            "--scenario-file",
+            "tools/controlplane/scenarios/k8s-demo-java.toml",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "catalog.loadtest.task" in result.stdout
+
+
 def test_loadtest_run_missing_saved_profile_exits_with_clean_cli_error() -> None:
     result = CliRunner().invoke(
         app,

@@ -7,11 +7,11 @@ from pydantic import ValidationError
 
 from controlplane_tool.build_requests import BuildRequest
 from controlplane_tool.build_tasks import CommandExecutionResult
+from controlplane_tool.flow_catalog import resolve_flow_definition
 from controlplane_tool.gradle_planner import (
     build_gradle_command,
     plan_module_matrix_commands,
 )
-from controlplane_tool.infra_flows import build_gradle_action_flow
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.shell_backend import SubprocessShell
@@ -108,8 +108,8 @@ def _run_gradle_action(
     extra_gradle_arg: list[str] | None,
 ) -> None:
     try:
-        flow = build_gradle_action_flow(
-            action=action,
+        flow = resolve_flow_definition(
+            f"build.{action}",
             profile=profile,
             modules=modules,
             extra_gradle_args=_combined_extra_gradle_args(ctx, extra_gradle_arg),

@@ -18,9 +18,9 @@ from typing import Annotated, Optional
 
 import typer
 
+from controlplane_tool.flow_catalog import resolve_flow_definition
 from controlplane_tool.paths import default_tool_paths, scenario_path_from_env
 from controlplane_tool.prefect_runtime import run_local_flow
-from controlplane_tool.scenario_flows import build_scenario_flow
 
 local_e2e_app = typer.Typer(
     help="Run local E2E scenarios using the Python-native runtime (M9+).",
@@ -51,8 +51,8 @@ def run_container_local(
     resolved_scenario_file = scenario_path_from_env(scenario_file)
 
     repo_root = default_tool_paths().workspace_root
-    flow = build_scenario_flow(
-        "container-local",
+    flow = resolve_flow_definition(
+        "e2e.container-local",
         repo_root=repo_root,
         scenario_file=resolved_scenario_file,
         api_port=api_port,
@@ -87,8 +87,8 @@ def run_deploy_host(
         skip_cli_build = True
 
     repo_root = default_tool_paths().workspace_root
-    flow = build_scenario_flow(
-        "deploy-host",
+    flow = resolve_flow_definition(
+        "e2e.deploy-host",
         repo_root=repo_root,
         scenario_file=resolved_scenario_file,
         skip_cli_build=skip_cli_build,

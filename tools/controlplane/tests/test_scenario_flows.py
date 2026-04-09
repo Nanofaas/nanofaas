@@ -2,20 +2,32 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.scenario_flows import build_scenario_flow
+from controlplane_tool.vm_models import VmRequest
 
 
 def test_k8s_vm_flow_uses_reusable_vm_and_deploy_tasks() -> None:
-    flow = build_scenario_flow("k8s-vm", repo_root=Path("/repo"))
+    flow = build_scenario_flow(
+        "k8s-vm",
+        repo_root=Path("/repo"),
+        request=E2eRequest(
+            scenario="k8s-vm",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        ),
+    )
 
     assert flow.task_ids == [
         "vm.ensure_running",
         "vm.provision_base",
         "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
         "k3s.install",
+        "registry.ensure_container",
         "k3s.configure_registry",
+        "images.build_core",
         "tests.run_k8s_e2e",
     ]
 
@@ -24,6 +36,11 @@ def test_cli_vm_flow_reuses_build_and_helm_deploy_tasks() -> None:
     flow = build_scenario_flow("cli", repo_root=Path("/repo"))
 
     assert "helm.deploy_control_plane" in flow.task_ids
+
+
+def test_k8s_vm_flow_requires_request_for_executable_definition() -> None:
+    with pytest.raises(ValueError):
+        build_scenario_flow("k8s-vm", repo_root=Path("/repo"))
 
 
 def test_runner_modules_no_longer_inline_docker_and_helm_orchestration() -> None:
