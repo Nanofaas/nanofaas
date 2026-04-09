@@ -5,8 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Provides execution context for nanofaas functions.
- * Values are populated by the runtime's {@code TraceLoggingFilter} via SLF4J MDC.
+ * Reads request-scoped metadata that the runtime installs into SLF4J MDC before handler code runs.
+ *
+ * <p>Handlers use this helper when they need execution or trace identifiers without threading
+ * those values through every method signature. The data exists only for the lifetime of the
+ * current request thread; it is not application state and it disappears when the request scope
+ * ends.</p>
  */
 public final class FunctionContext {
 

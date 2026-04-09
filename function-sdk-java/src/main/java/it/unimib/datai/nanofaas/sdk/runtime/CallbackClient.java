@@ -1,6 +1,3 @@
-// Parallel implementation exists in function-sdk-java-lite (same retry logic, different HTTP stack:
-// java.net.http.HttpClient instead of Spring RestClient). Keep retry constants and URL-building
-// logic in sync when modifying.
 package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
@@ -13,6 +10,16 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+/**
+ * Delivers invoke results back to the control plane.
+ *
+ * <p>Callbacks are part of the request contract, not background best effort work. The Java SDK
+ * keeps the retry policy and URL construction explicit here so the runtime can finish the request
+ * lifecycle only after the control plane has a chance to receive the outcome.</p>
+ *
+ * <p>Parallel implementation exists in {@code function-sdk-java-lite} with the same retry logic
+ * but a different HTTP stack. Keep retry constants and URL-building logic in sync when modifying.</p>
+ */
 @Component
 public class CallbackClient {
     private static final Logger log = LoggerFactory.getLogger(CallbackClient.class);

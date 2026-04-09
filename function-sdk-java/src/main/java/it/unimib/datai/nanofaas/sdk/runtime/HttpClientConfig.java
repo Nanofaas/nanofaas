@@ -8,6 +8,13 @@ import org.springframework.web.client.RestClient;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
+/**
+ * Builds the outbound HTTP client used for callback delivery.
+ *
+ * <p>Callback posting is part of the invoke lifecycle, so connection setup and read timeouts
+ * directly affect handler latency. The runtime keeps this client separate so callback behavior is
+ * explicit and bounded instead of inheriting arbitrary defaults from the host application.</p>
+ */
 @Configuration
 public class HttpClientConfig {
 

@@ -7,8 +7,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 
 /**
- * Auto-configuration that activates the nanofaas function runtime components.
- * Scans the SDK runtime package for controllers, filters, and clients.
+ * Auto-configures the Java SDK runtime inside a Spring Boot application.
+ *
+ * <p>This is the wiring layer that lets a function author depend on the SDK without manually
+ * registering the runtime controllers, filters, clients, or settings. The runtime is driven by
+ * environment variables provided by the control plane or the one-shot launcher, so the
+ * configuration centralizes that startup contract in one place.</p>
  */
 @AutoConfiguration
 @ComponentScan("it.unimib.datai.nanofaas.sdk.runtime")

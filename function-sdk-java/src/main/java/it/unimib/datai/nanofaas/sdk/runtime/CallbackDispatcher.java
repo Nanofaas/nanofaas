@@ -14,6 +14,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Asynchronously hands callback delivery off to a bounded worker pool.
+ *
+ * <p>The dispatcher exists so the invoke path can return while callback delivery is still being
+ * attempted, but it keeps the queue and worker count bounded so callback pressure cannot grow
+ * without limit inside the function container.</p>
+ */
 @Component
 public class CallbackDispatcher {
     private static final Logger log = LoggerFactory.getLogger(CallbackDispatcher.class);

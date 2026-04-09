@@ -5,6 +5,13 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * Resolves the single active {@link FunctionHandler} bean that the runtime should execute.
+ *
+ * <p>The registry exists because the handler is discovered through Spring bean registration, but
+ * the runtime needs exactly one active implementation at request time. When multiple handlers are
+ * present, the {@code FUNCTION_HANDLER} setting selects the bean name to use.</p>
+ */
 @Component
 public class HandlerRegistry {
 

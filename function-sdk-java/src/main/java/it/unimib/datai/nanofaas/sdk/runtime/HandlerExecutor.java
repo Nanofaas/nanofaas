@@ -9,8 +9,11 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.*;
 
 /**
- * Executes a FunctionHandler with a configurable timeout.
- * Uses virtual threads (Java 21) to avoid blocking carrier threads.
+ * Executes the active handler within the runtime timeout boundary.
+ *
+ * <p>The executor isolates handler work from the request thread, enforces the configured timeout,
+ * and uses virtual threads so blocking handler code does not pin a carrier thread while the invoke
+ * lifecycle is still open.</p>
  */
 @Component
 public class HandlerExecutor {

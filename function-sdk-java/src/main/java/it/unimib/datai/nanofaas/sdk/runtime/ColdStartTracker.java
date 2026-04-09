@@ -7,6 +7,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Component
+/**
+ * Captures the first-request boundary for cold-start metadata.
+ *
+ * <p>The tracker marks when the first request arrives so the invoke controller can report whether
+ * the current execution observed a cold start and how long initialization took before work began.
+ * This state is scoped to the container lifetime, not to the Spring application shutdown path.</p>
+ */
 public class ColdStartTracker {
 
     private final AtomicBoolean firstInvocation = new AtomicBoolean(true);

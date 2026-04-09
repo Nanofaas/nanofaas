@@ -10,6 +10,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * Copies execution metadata into SLF4J MDC for the duration of the request.
+ *
+ * <p>This is what keeps logs from the runtime and downstream handler code correlated with the
+ * same trace and execution identifiers. The filter runs on each request and clears the MDC when
+ * the request completes so the values do not leak across invocations.</p>
+ */
 @Component
 public class TraceLoggingFilter extends OncePerRequestFilter {
     private final RuntimeSettings runtimeSettings;

@@ -11,6 +11,14 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
+/**
+ * Handles the control-plane invoke request for a single function execution.
+ *
+ * <p>The control plane calls {@code /invoke}; this controller resolves the effective execution and
+ * trace context, rejects requests that arrive without an execution identifier, tracks cold-start
+ * state, dispatches the active handler, and posts the result back to the control plane as a
+ * callback.</p>
+ */
 @RestController
 public class InvokeController {
     private static final Logger log = LoggerFactory.getLogger(InvokeController.class);

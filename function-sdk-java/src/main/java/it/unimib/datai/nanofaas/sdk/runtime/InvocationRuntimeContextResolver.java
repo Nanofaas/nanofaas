@@ -2,6 +2,13 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 
 import org.springframework.stereotype.Component;
 
+/**
+ * Normalizes request headers and environment values into a request-local runtime context.
+ *
+ * <p>Warm invocations may supply execution metadata in headers while one-shot mode relies on the
+ * environment populated before startup. This resolver keeps the precedence rules in one place so
+ * the rest of the pipeline works with a single normalized view.</p>
+ */
 @Component
 public class InvocationRuntimeContextResolver {
 
