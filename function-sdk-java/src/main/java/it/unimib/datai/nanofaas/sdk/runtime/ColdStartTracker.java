@@ -6,6 +6,14 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Tracks whether the current container has served its first invocation.
+ *
+ * <p>The controller uses this component to decide when to emit cold-start response headers. It
+ * exists because the runtime needs a durable process-local signal that outlives a single request but
+ * resets with the container. The tracker depends only on wall-clock time and atomic state; no other
+ * runtime component should write to it.</p>
+ */
 @Component
 public class ColdStartTracker {
 

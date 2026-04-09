@@ -7,8 +7,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 
 /**
- * Auto-configuration that activates the nanofaas function runtime components.
- * Scans the SDK runtime package for controllers, filters, and clients.
+ * Auto-configures the nanoFaaS Java runtime inside a Spring Boot application.
+ *
+ * <p>This component exists so function authors only need to add the SDK dependency and annotate
+ * their handler. Spring Boot imports this configuration, scans the runtime package, and wires the
+ * invoke/health/metrics/callback stack without hand-written bootstrap code.</p>
+ *
+ * <p>Environment assumptions: the control plane or container entrypoint provides execution and
+ * callback metadata through env vars. In warm mode, these settings may be supplemented or
+ * overridden by request headers, but the bootstrap still starts from the same env-driven contract.</p>
  */
 @AutoConfiguration
 @ComponentScan("it.unimib.datai.nanofaas.sdk.runtime")

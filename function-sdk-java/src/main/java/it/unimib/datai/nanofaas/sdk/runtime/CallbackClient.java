@@ -1,6 +1,3 @@
-// Parallel implementation exists in function-sdk-java-lite (same retry logic, different HTTP stack:
-// java.net.http.HttpClient instead of Spring RestClient). Keep retry constants and URL-building
-// logic in sync when modifying.
 package it.unimib.datai.nanofaas.sdk.runtime;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
@@ -13,6 +10,18 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+/**
+ * Posts invocation results back to the control plane.
+ *
+ * <p>The controller uses this client after every invocation, successful or failed, because callback
+ * delivery is part of the function contract. This class depends on outbound HTTP being available
+ * and on {@code CALLBACK_URL} being configured. It also mirrors the lightweight Java-Lite runtime
+ * implementation, so retry policy and callback URL normalization should stay aligned across both
+ * modules.</p>
+ *
+ * <p>Lifecycle boundary: a client instance lives for the process, but each callback attempt is
+ * scoped to one invocation and may terminate early on permanent 4xx failures or queue shutdown.</p>
+ */
 @Component
 public class CallbackClient {
     private static final Logger log = LoggerFactory.getLogger(CallbackClient.class);

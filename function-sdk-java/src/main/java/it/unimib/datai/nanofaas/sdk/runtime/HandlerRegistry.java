@@ -5,6 +5,14 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * Resolves the single active handler bean for the runtime invocation path.
+ *
+ * <p>The control plane never calls this component directly; it is used by
+ * {@link InvokeController} to locate the function implementation after Spring has built the
+ * application context. The registry enforces the runtime assumption that either exactly one handler
+ * bean exists or the user has chosen one explicitly via {@code FUNCTION_HANDLER}.</p>
+ */
 @Component
 public class HandlerRegistry {
 

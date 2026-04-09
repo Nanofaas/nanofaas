@@ -8,6 +8,14 @@ import org.springframework.web.client.RestClient;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
+/**
+ * Shared HTTP client for callback delivery.
+ *
+ * <p>The callback path is part of the function request lifecycle, so this client is configured in
+ * the SDK rather than left to user code. The runtime depends on outbound HTTP working with bounded
+ * connect/read timeouts; otherwise callback delivery can hold the invocation open longer than
+ * expected.</p>
+ */
 @Configuration
 public class HttpClientConfig {
 

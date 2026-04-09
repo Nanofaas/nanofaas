@@ -9,8 +9,14 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.*;
 
 /**
- * Executes a FunctionHandler with a configurable timeout.
- * Uses virtual threads (Java 21) to avoid blocking carrier threads.
+ * Runs the user handler under a bounded timeout.
+ *
+ * <p>This component exists to isolate handler latency from the rest of the runtime. The controller
+ * depends on it to enforce the invocation timeout boundary, and the runtime uses virtual threads so
+ * blocking user code does not pin the carrier thread pool.</p>
+ *
+ * <p>Lifecycle boundary: execution ends when the handler returns, throws, or exceeds the configured
+ * timeout. Any cleanup after that belongs to the controller or callback dispatcher.</p>
  */
 @Component
 public class HandlerExecutor {
@@ -24,13 +30,6 @@ public class HandlerExecutor {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
-    /**
-     * Executes handler.handle(request) within the configured timeout.
-     *
-     * @throws TimeoutException     if the handler exceeds the timeout
-     * @throws InterruptedException if the calling thread is interrupted
-     * @throws Exception            any exception thrown by the handler
-     */
     public Object execute(FunctionHandler handler, InvocationRequest request) throws Exception {
         Future<Object> future = executor.submit(() -> handler.handle(request));
         try {

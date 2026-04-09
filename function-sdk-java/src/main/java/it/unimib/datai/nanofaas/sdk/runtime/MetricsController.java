@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Prometheus scrape endpoint.
  *
- * <p>Spring Boot Actuator already exposes {@code /actuator/prometheus}, but we also expose
- * {@code /metrics} for compatibility with lightweight watchdogs and generic Prometheus setups.</p>
+ * <p>This endpoint exists because function containers need a stable scrape path that external
+ * watchdogs can discover without knowing Spring Actuator internals. It depends on the Prometheus
+ * registry being present, but it remains part of the runtime contract even when the registry is not
+ * configured.</p>
  */
 @RestController
 public class MetricsController {

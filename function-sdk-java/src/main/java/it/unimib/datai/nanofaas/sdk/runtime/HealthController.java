@@ -9,8 +9,10 @@ import java.util.Map;
 /**
  * Simple health endpoint for watchdog defaults and K8s probes.
  *
- * <p>We intentionally expose {@code GET /health} (not only {@code /actuator/health}) so that
- * lightweight watchdogs and generic probes can work without Spring-specific paths.</p>
+ * <p>This endpoint exists because the function container is often probed by generic watchdogs that
+ * should not need Spring Actuator conventions. It depends on no other runtime state and is intended
+ * to stay alive for the full life of the container, independent of handler registration or callback
+ * success.</p>
  */
 @RestController
 public class HealthController {
@@ -20,4 +22,3 @@ public class HealthController {
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 }
-
