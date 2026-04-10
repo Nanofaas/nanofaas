@@ -20,8 +20,8 @@ from controlplane_tool.scenario_runtime import (
     FakeControlPlane,
     select_container_runtime,
     wait_for_http_any_status,
-    wait_for_http_ok,
 )
+from controlplane_tool.registry_runtime import ensure_local_registry
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 
 if TYPE_CHECKING:
@@ -91,13 +91,13 @@ class DeployHostE2eRunner:
 
     def _start_registry(self, container_name: str, docker: str = "docker") -> None:
         step(f"Starting local registry ({container_name}) on port {self.registry_port}")
-        self._run([docker, "rm", "-f", container_name], check=False)
-        self._run(
-            [docker, "run", "-d", "--name", container_name, "-p", f"{self.registry_port}:5000", "registry:2"],
-            check=True,
+        _ = docker
+        result = ensure_local_registry(
+            registry=f"localhost:{self.registry_port}",
+            container_name=container_name,
         )
-        if not wait_for_http_ok(f"http://127.0.0.1:{self.registry_port}/v2/", max_attempts=40):
-            raise RuntimeError(f"Registry did not become ready on port {self.registry_port}")
+        if result.return_code != 0:
+            raise RuntimeError(result.stderr or result.stdout or "registry failed")
 
     def _stop_registry(self, container_name: str, docker: str = "docker") -> None:
         self._run([docker, "rm", "-f", container_name], check=False)

@@ -5,6 +5,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, model_validator
 
 from controlplane_tool.models import RuntimeKind, ScenarioName, VM_BACKED_SCENARIOS
+from controlplane_tool.registry_runtime import default_registry_url
 from controlplane_tool.scenario_models import ResolvedScenario
 from controlplane_tool.vm_models import VmRequest
 
@@ -21,7 +22,7 @@ class E2eRequest(BaseModel):
     vm: VmRequest | None = None
     cleanup_vm: bool = True
     namespace: str | None = None
-    local_registry: str = "localhost:5000"
+    local_registry: str = Field(default_factory=default_registry_url)
 
     @model_validator(mode="after")
     def validate_scenario_requirements(self) -> "E2eRequest":

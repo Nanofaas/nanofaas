@@ -10,3 +10,4 @@ class ToolSettings(BaseSettings):
     nanofaas_tool_control_plane_management_url: str = ""
     nanofaas_tool_prometheus_url: str = ""
     nanofaas_tool_mockk8s_url: str = ""
+    nanofaas_tool_registry_url: str = ""

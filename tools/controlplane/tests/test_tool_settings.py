@@ -35,3 +35,11 @@ def test_tool_settings_reads_management_url(monkeypatch) -> None:
     from controlplane_tool.tool_settings import ToolSettings
     s = ToolSettings()
     assert s.nanofaas_tool_control_plane_management_url == "http://mgmt.example.test:8081"
+
+
+def test_tool_settings_reads_registry_url(monkeypatch) -> None:
+    monkeypatch.setenv("NANOFAAS_TOOL_REGISTRY_URL", "localhost:5001")
+    from controlplane_tool.tool_settings import ToolSettings
+
+    s = ToolSettings()
+    assert s.nanofaas_tool_registry_url == "localhost:5001"

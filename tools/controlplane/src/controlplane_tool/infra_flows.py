@@ -21,6 +21,7 @@ from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
 from controlplane_tool.loadtest_runner import LoadtestRunner
 from controlplane_tool.models import Profile
 from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.registry_runtime import default_registry_url
 from controlplane_tool.prefect_models import LocalFlowDefinition
 from controlplane_tool.report import render_report
 from controlplane_tool.run_models import RunResult, StepResult
@@ -74,7 +75,7 @@ def build_vm_flow(
     helm_version: str = "3.16.4",
     kubeconfig_path: str | None = None,
     k3s_version: str | None = None,
-    registry: str = "localhost:5000",
+    registry: str = "",
     container_name: str = "nanofaas-e2e-registry",
     orchestrator: VmOrchestrator | None = None,
 ) -> LocalFlowDefinition[object]:
@@ -110,7 +111,7 @@ def build_vm_flow(
             ensure_result = ensure_registry_container_task(
                 orchestrator=active_orchestrator,
                 request=request,
-                registry=registry,
+                registry=registry or default_registry_url(),
                 container_name=container_name,
                 dry_run=dry_run,
             )
@@ -120,7 +121,7 @@ def build_vm_flow(
                     configure_k3s_registry_task(
                         orchestrator=active_orchestrator,
                         request=request,
-                        registry=registry,
+                        registry=registry or default_registry_url(),
                         dry_run=dry_run,
                     )
                 )

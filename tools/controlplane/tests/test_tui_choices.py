@@ -253,6 +253,33 @@ def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeyp
     assert "vm stderr" in log_lines
 
 
+def test_tui_main_menu_includes_registry_entry() -> None:
+    assert any(choice.value == "registry" for choice in NanofaasTUI._MAIN_MENU if hasattr(choice, "value"))
+
+
+def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    from controlplane_tool.registry_runtime import default_registry_url
+
+    answers = iter(["start"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    monkeypatch.setattr(tui_app, "ensure_local_registry", lambda **kwargs: called.update(kwargs) or object())
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        called["planned_steps"] = planned_steps
+        return action(SimpleNamespace(append_log=lambda message: None), SimpleNamespace(_update=lambda: None))
+
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._registry_menu()
+
+    assert called["title"] == "Registry"
+    assert called["registry"] == default_registry_url()
+
+
 def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 

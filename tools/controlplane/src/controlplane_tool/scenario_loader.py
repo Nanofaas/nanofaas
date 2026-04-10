@@ -5,6 +5,7 @@ import tomllib
 
 from controlplane_tool.function_catalog import resolve_function_definition, resolve_function_preset
 from controlplane_tool.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.registry_runtime import default_registry_url
 from controlplane_tool.scenario_models import (
     ResolvedFunction,
     ResolvedScenario,
@@ -61,7 +62,7 @@ def resolve_scenario_spec(spec: ScenarioSpec, *, source_path: Path | None = None
     else:
         definitions = [resolve_function_definition(key) for key in spec.functions]
 
-    local_registry = spec.local_registry or "localhost:5000"
+    local_registry = spec.local_registry or default_registry_url()
     payloads: dict[str, Path] = {}
     resolved_functions: list[ResolvedFunction] = []
 

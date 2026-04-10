@@ -214,6 +214,12 @@ def test_resolved_scenario_default_registry() -> None:
     assert resolved.local_registry == "localhost:5000"
 
 
+def test_resolved_scenario_prefers_registry_url_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("NANOFAAS_TOOL_REGISTRY_URL", "localhost:5001")
+    resolved = ResolvedScenario(name="test", base_scenario="k3s-junit-curl")
+    assert resolved.local_registry == "localhost:5001"
+
+
 # ---------------------------------------------------------------------------
 # scenario_models.py — ResolvedFunction
 # ---------------------------------------------------------------------------

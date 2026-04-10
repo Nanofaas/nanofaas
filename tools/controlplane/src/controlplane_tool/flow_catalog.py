@@ -12,6 +12,7 @@ from controlplane_tool.infra_flows import (
 )
 from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.prefect_models import LocalFlowDefinition
+from controlplane_tool.registry_runtime import default_registry_url
 from controlplane_tool.scenario_flows import build_scenario_flow, scenario_task_ids
 
 
@@ -76,7 +77,7 @@ def resolve_flow_definition(flow_name: str, **kwargs: Any) -> LocalFlowDefinitio
             helm_version=kwargs.get("helm_version", "3.16.4"),
             kubeconfig_path=kwargs.get("kubeconfig_path"),
             k3s_version=kwargs.get("k3s_version"),
-            registry=kwargs.get("registry", "localhost:5000"),
+            registry=kwargs.get("registry", default_registry_url()),
             container_name=kwargs.get("container_name", "nanofaas-e2e-registry"),
             orchestrator=kwargs.get("orchestrator"),
         )
@@ -95,7 +96,7 @@ def resolve_flow_definition(flow_name: str, **kwargs: Any) -> LocalFlowDefinitio
             vm_request = kwargs.get("vm_request")
             cleanup_vm = kwargs.get("cleanup_vm", True)
             namespace = kwargs.get("namespace")
-            local_registry = kwargs.get("local_registry", "localhost:5000")
+            local_registry = kwargs.get("local_registry", default_registry_url())
             scenarios = kwargs.get("scenarios") or []
             return LocalFlowDefinition(
                 flow_id="e2e.all",
@@ -116,7 +117,7 @@ def resolve_flow_definition(flow_name: str, **kwargs: Any) -> LocalFlowDefinitio
             request=kwargs.get("request"),
             scenario_file=kwargs.get("scenario_file"),
             namespace=kwargs.get("namespace", "nanofaas-e2e"),
-            local_registry=kwargs.get("local_registry", "localhost:5000"),
+            local_registry=kwargs.get("local_registry", default_registry_url()),
             runtime=kwargs.get("runtime", "java"),
             skip_cli_build=kwargs.get("skip_cli_build", False),
             release=kwargs.get("release", "nanofaas-host-cli-e2e"),

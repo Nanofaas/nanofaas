@@ -27,6 +27,13 @@ def test_local_scenario_accepts_absent_vm_config() -> None:
     assert request.vm is None
 
 
+def test_e2e_request_uses_registry_url_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("NANOFAAS_TOOL_REGISTRY_URL", "localhost:5001")
+    request = E2eRequest(scenario="docker")
+
+    assert request.local_registry == "localhost:5001"
+
+
 def test_e2e_request_accepts_function_preset() -> None:
     request = E2eRequest(
         scenario="k3s-junit-curl",

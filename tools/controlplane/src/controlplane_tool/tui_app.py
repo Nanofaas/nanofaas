@@ -24,6 +24,7 @@ from controlplane_tool.infra_flows import build_vm_flow
 from controlplane_tool.loadtest_commands import build_loadtest_request
 from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.registry_runtime import default_registry_url, ensure_local_registry
 from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.profiles import list_profiles, load_profile
 from controlplane_tool.scenario_flows import build_scenario_flow
@@ -61,6 +62,7 @@ class NanofaasTUI:
     _MAIN_MENU = [
         questionary.Choice("🏗  Build & Test", "build"),
         questionary.Choice("🖥  VM Management", "vm"),
+        questionary.Choice("🗄  Registry", "registry"),
         questionary.Choice("🧪  E2E Scenarios", "e2e"),
         questionary.Choice("🖥  CLI E2E", "cli_e2e"),
         questionary.Choice("📊  Load Testing", "loadtest"),
@@ -87,6 +89,7 @@ class NanofaasTUI:
                     {
                         "build": self._build_menu,
                         "vm": self._vm_menu,
+                        "registry": self._registry_menu,
                         "e2e": self._e2e_menu,
                         "cli_e2e": self._cli_e2e_menu,
                         "loadtest": self._loadtest_menu,
@@ -401,6 +404,56 @@ class NanofaasTUI:
             ],
             planned_steps=[action_label],
             action=_run_vm_workflow,
+        )
+
+    # ── REGISTRY ─────────────────────────────────────────────────────────────
+
+    def _registry_menu(self) -> None:
+        phase("Registry")
+
+        action = _ask(
+            lambda: questionary.select(
+                "Action:",
+                choices=[
+                    questionary.Choice(
+                        "start — start Docker Desktop if present and run registry",
+                        "start",
+                    ),
+                    questionary.Choice("back", "back"),
+                ],
+                default="start",
+                style=_STYLE,
+            ).ask()
+        )
+        if action == "back":
+            return
+
+        registry = default_registry_url()
+
+        def _run_registry_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            step("Starting local registry", registry)
+            result = ensure_local_registry(registry=registry)
+            self._append_command_result_logs(dashboard, result)
+            return_code = getattr(result, "return_code", 0)
+            if return_code != 0:
+                detail = (
+                    getattr(result, "stderr", "")
+                    or getattr(result, "stdout", "")
+                    or f"exit code {return_code}"
+                )
+                fail("Registry start failed", detail=detail)
+                raise RuntimeError(detail)
+            success("Registry ready", detail=registry)
+            return result
+
+        self._run_live_workflow(
+            title="Registry",
+            summary_lines=[f"Registry URL: {registry}"],
+            planned_steps=[
+                "Start Docker Desktop (if present)",
+                "Start local registry",
+            ],
+            action=_run_registry_workflow,
         )
 
     # ── E2E ───────────────────────────────────────────────────────────────────

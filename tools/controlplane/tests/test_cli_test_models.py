@@ -32,6 +32,14 @@ def test_cli_test_request_allows_selection_and_vm_for_non_unit_flows() -> None:
     assert request.function_preset == "demo-java"
 
 
+def test_cli_test_request_uses_registry_url_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("NANOFAAS_TOOL_REGISTRY_URL", "localhost:5001")
+
+    request = CliTestRequest(scenario="unit")
+
+    assert request.local_registry == "localhost:5001"
+
+
 def test_cli_test_request_rejects_selection_for_host_platform() -> None:
     with pytest.raises(ValidationError, match="does not accept function selection"):
         CliTestRequest(

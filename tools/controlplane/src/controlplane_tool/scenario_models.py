@@ -11,6 +11,7 @@ from controlplane_tool.function_catalog import (
     resolve_function_preset,
 )
 from controlplane_tool.models import LoadProfile, RuntimeKind, ScenarioName
+from controlplane_tool.registry_runtime import default_registry_url
 
 
 class ScenarioInvokeConfig(BaseModel):
@@ -39,7 +40,7 @@ class ScenarioSpec(BaseModel):
     function_preset: str | None = None
     functions: list[str] = Field(default_factory=list)
     namespace: str | None = None
-    local_registry: str | None = None
+    local_registry: str | None = Field(default_factory=default_registry_url)
     payloads: dict[str, str] = Field(default_factory=dict)
     invoke: ScenarioInvokeConfig = Field(default_factory=ScenarioInvokeConfig)
     load: ScenarioLoadConfig = Field(default_factory=ScenarioLoadConfig)
@@ -104,7 +105,7 @@ class ResolvedScenario(BaseModel):
     functions: list[ResolvedFunction] = Field(default_factory=list)
     function_keys: list[str] = Field(default_factory=list)
     namespace: str | None = None
-    local_registry: str = "localhost:5000"
+    local_registry: str = Field(default_factory=default_registry_url)
     payloads: dict[str, Path] = Field(default_factory=dict)
     invoke: ScenarioInvokeConfig = Field(default_factory=ScenarioInvokeConfig)
     load: ScenarioLoadConfig = Field(default_factory=ScenarioLoadConfig)

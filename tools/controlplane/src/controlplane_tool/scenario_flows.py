@@ -5,6 +5,7 @@ from pathlib import Path
 
 from controlplane_tool.e2e_runner import E2eRunner
 from controlplane_tool.prefect_models import LocalFlowDefinition
+from controlplane_tool.registry_runtime import default_registry_url
 
 
 _SCENARIO_TASK_IDS_MAP = {
@@ -78,7 +79,7 @@ def build_scenario_flow(
     event_listener: Callable[[object], None] | None = None,
     scenario_file: Path | None = None,
     namespace: str = "nanofaas-e2e",
-    local_registry: str = "localhost:5000",
+    local_registry: str = "",
     runtime: str = "java",
     skip_cli_build: bool = False,
     release: str = "nanofaas-host-cli-e2e",
@@ -140,7 +141,7 @@ def build_scenario_flow(
             run=lambda: CliVmRunner(
                 repo_root,
                 namespace=namespace,
-                local_registry=local_registry,
+                local_registry=local_registry or default_registry_url(),
                 runtime=runtime,
                 skip_cli_build=skip_cli_build,
             ).run(scenario_file=scenario_file),
@@ -155,7 +156,7 @@ def build_scenario_flow(
                 repo_root,
                 namespace=namespace,
                 release=release,
-                local_registry=local_registry,
+                local_registry=local_registry or default_registry_url(),
                 runtime=runtime,
                 skip_cli_build=skip_cli_build,
             ).run(scenario_file=scenario_file),
@@ -169,7 +170,7 @@ def build_scenario_flow(
             run=lambda: HelmStackRunner(
                 repo_root,
                 namespace=namespace,
-                local_registry=local_registry,
+                local_registry=local_registry or default_registry_url(),
                 runtime=runtime,
                 noninteractive=noninteractive,
             ).run(),
