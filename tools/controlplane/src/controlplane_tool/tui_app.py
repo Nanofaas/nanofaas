@@ -193,7 +193,7 @@ class NanofaasTUI:
             dashboard.mark_step_success(event.step_index)
             dashboard.append_log(f"[done] {event.step.summary}")
             return
-        dashboard.mark_step_failed(event.step_index, event.error or "")
+        dashboard.mark_step_failed(event.step_index)
         dashboard.append_log(
             f"[fail] {event.step.summary}" + (f" ({event.error})" if event.error else "")
         )
@@ -521,7 +521,8 @@ class NanofaasTUI:
                     self._apply_e2e_step_event(dashboard, event)
                     sink._update()
 
-                step("Running helm-stack E2E")
+                dashboard.append_log("Starting helm-stack workflow")
+                sink._update()
                 flow = build_scenario_flow(
                     "helm-stack",
                     repo_root=repo_root,
@@ -529,7 +530,8 @@ class NanofaasTUI:
                     event_listener=_on_event,
                 )
                 self._run_shared_flow(flow)
-                success("helm-stack E2E completed")
+                dashboard.append_log("helm-stack E2E completed")
+                sink._update()
 
             self._run_live_workflow(
                 title="E2E Scenarios",

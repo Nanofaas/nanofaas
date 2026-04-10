@@ -2,10 +2,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from controlplane_tool.console import bind_workflow_sink
+from controlplane_tool.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
 from controlplane_tool.module_catalog import module_choices
 from controlplane_tool.prefect_models import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
 from controlplane_tool.tui_app import NanofaasTUI
+from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard
 
 
 def test_module_catalog_has_descriptions() -> None:
@@ -469,6 +472,123 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
         "Run loadtest via Python runner",
         "Run autoscaling experiment (Python)",
     ]
+
+
+def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+
+    captured: dict[str, object] = {}
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Ensure VM is running"),
+            SimpleNamespace(summary="Provision base VM dependencies"),
+            SimpleNamespace(summary="Sync project to VM"),
+            SimpleNamespace(summary="Ensure registry container"),
+            SimpleNamespace(summary="Build control-plane and runtime images in VM"),
+            SimpleNamespace(summary="Build selected function images in VM"),
+            SimpleNamespace(summary="Install k3s"),
+            SimpleNamespace(summary="Configure k3s registry"),
+            SimpleNamespace(summary="Ensure E2E namespace exists"),
+            SimpleNamespace(summary="Deploy control-plane via Helm"),
+            SimpleNamespace(summary="Deploy function-runtime via Helm"),
+            SimpleNamespace(summary="Wait for control-plane deployment"),
+            SimpleNamespace(summary="Wait for function-runtime deployment"),
+            SimpleNamespace(summary="Run loadtest via Python runner"),
+            SimpleNamespace(summary="Run autoscaling experiment (Python)"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        event_listener = kwargs["event_listener"]
+
+        def _run() -> str:
+            step = ScenarioPlanStep(summary="Ensure VM is running", command=["echo", "noop"])
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=1,
+                    total_steps=15,
+                    step=step,
+                    status="running",
+                )
+            )
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=1,
+                    total_steps=15,
+                    step=step,
+                    status="success",
+                )
+            )
+            return "ok"
+
+        return LocalFlowDefinition(
+            flow_id="e2e.helm_stack",
+            task_ids=["vm.ensure_running"],
+            run=_run,
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        return _completed_flow_result(flow_id, flow())
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = WorkflowDashboard(
+            title=title,
+            summary_lines=summary_lines,
+            planned_steps=planned_steps,
+        )
+        sink = TuiWorkflowSink(dashboard)
+        with bind_workflow_sink(sink):
+            action(dashboard, sink)
+        captured["steps"] = [(step.label, step.state) for step in dashboard.steps]
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_vm_e2e("helm-stack")
+
+    assert captured["steps"] == [
+        ("Ensure VM is running", "success"),
+        ("Provision base VM dependencies", "pending"),
+        ("Sync project to VM", "pending"),
+        ("Ensure registry container", "pending"),
+        ("Build control-plane and runtime images in VM", "pending"),
+        ("Build selected function images in VM", "pending"),
+        ("Install k3s", "pending"),
+        ("Configure k3s registry", "pending"),
+        ("Ensure E2E namespace exists", "pending"),
+        ("Deploy control-plane via Helm", "pending"),
+        ("Deploy function-runtime via Helm", "pending"),
+        ("Wait for control-plane deployment", "pending"),
+        ("Wait for function-runtime deployment", "pending"),
+        ("Run loadtest via Python runner", "pending"),
+        ("Run autoscaling experiment (Python)", "pending"),
+    ]
+
+
+def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
+    dashboard = WorkflowDashboard(
+        title="E2E Scenarios",
+        summary_lines=["Scenario: helm-stack"],
+        planned_steps=["Run autoscaling experiment (Python)"],
+    )
+    event = ScenarioStepEvent(
+        step_index=1,
+        total_steps=1,
+        step=ScenarioPlanStep(summary="Run autoscaling experiment (Python)", command=["python"]),
+        status="failed",
+        error="very long traceback line 1\nline 2",
+    )
+
+    NanofaasTUI()._apply_e2e_step_event(dashboard, event)
+
+    assert [(step.label, step.state, step.detail) for step in dashboard.steps] == [
+        ("Run autoscaling experiment (Python)", "failed", "")
+    ]
+    assert any("[fail] Run autoscaling experiment (Python)" in line for line in dashboard.log_lines)
 
 
 def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> None:

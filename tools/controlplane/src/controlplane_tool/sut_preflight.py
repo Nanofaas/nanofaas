@@ -156,7 +156,8 @@ class SutPreflight:
             return None
         if not isinstance(data, dict):
             return None
-        value = data.get("executionMode")
-        if isinstance(value, str):
-            return value
+        for key in ("effectiveExecutionMode", "requestedExecutionMode", "executionMode"):
+            value = data.get(key)
+            if isinstance(value, str):
+                return value
         return None

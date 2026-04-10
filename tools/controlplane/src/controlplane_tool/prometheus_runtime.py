@@ -164,7 +164,8 @@ class PrometheusRuntimeManager:
 
     def _ensure_image_available(self) -> None:
         probe = self._docker(["image", "inspect", self.image], check=False)
-        if probe.returncode == 0:
+        return_code = getattr(probe, "return_code", getattr(probe, "returncode", None))
+        if return_code == 0:
             return
         self._docker(["pull", self.image], check=True)
 

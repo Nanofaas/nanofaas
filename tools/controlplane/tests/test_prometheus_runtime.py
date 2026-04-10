@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 
 from controlplane_tool.prometheus_runtime import PrometheusRuntimeManager, PrometheusSession
+from controlplane_tool.shell_backend import ShellExecutionResult
 
 
 def test_ensure_prometheus_uses_existing_endpoint(tmp_path: Path, monkeypatch) -> None:
@@ -60,6 +61,33 @@ def test_ensure_prometheus_starts_container_when_unavailable(
     assert any(command and command[0] == "run" for command in commands)
     config_path = run_dir / "metrics" / "prometheus" / "prometheus.yml"
     assert config_path.exists()
+
+
+def test_ensure_prometheus_accepts_shell_execution_result_from_docker_probe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    manager = PrometheusRuntimeManager(repo_root=tmp_path)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    commands: list[list[str]] = []
+
+    def _fake_docker(args: list[str], check: bool):  # noqa: ARG001
+        commands.append(args)
+        if args[:2] == ["image", "inspect"]:
+            return ShellExecutionResult(command=["docker", *args], return_code=1)
+        return ShellExecutionResult(command=["docker", *args], return_code=0)
+
+    monkeypatch.setattr(manager, "_docker", _fake_docker)
+    monkeypatch.setattr(manager, "_is_ready", lambda base_url: False)  # noqa: ARG005
+    monkeypatch.setattr(manager, "_pick_local_port", lambda: 19092)
+    monkeypatch.setattr(manager, "_wait_ready", lambda base_url: True)  # noqa: ARG005
+
+    session = manager.ensure_available(run_dir=run_dir)
+
+    assert session.url == "http://127.0.0.1:19092"
+    assert ["image", "inspect", "prom/prometheus"] in commands
+    assert ["pull", "prom/prometheus"] in commands
 
 
 def test_cleanup_stops_owned_container_only(tmp_path: Path, monkeypatch) -> None:

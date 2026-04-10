@@ -5,7 +5,7 @@ from controlplane_tool.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanSt
 from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario_models import ScenarioSpec
-from controlplane_tool.shell_backend import RecordingShell, ScriptedShell
+from controlplane_tool.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -147,6 +147,39 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
         "Run loadtest via Python runner",
         "Run autoscaling experiment (Python)",
     ]
+
+
+def test_helm_stack_execute_resolves_vm_host_for_autoscaling_env() -> None:
+    class CapturingShell(ShellBackend):
+        def __init__(self) -> None:
+            self.calls: list[tuple[list[str], dict[str, str]]] = []
+
+        def run(self, command, *, cwd=None, env=None, dry_run=False):  # noqa: ANN001
+            self.calls.append((list(command), dict(env or {})))
+            return ShellExecutionResult(command=list(command), return_code=0, env=dict(env or {}), dry_run=dry_run)
+
+    shell = CapturingShell()
+    runner = E2eRunner(
+        repo_root=Path("/repo"),
+        shell=shell,
+        host_resolver=lambda _: "10.0.0.1",
+    )
+    plan = runner.plan(
+        E2eRequest(
+            scenario="helm-stack",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    runner.execute(plan)
+
+    autoscaling_call = next(
+        env for command, env in shell.calls if "experiments/autoscaling.py" in " ".join(command)
+    )
+    assert autoscaling_call["NAMESPACE"] == "nanofaas-e2e"
+    assert autoscaling_call["E2E_VM_HOST"] == "10.0.0.1"
+    assert autoscaling_call["E2E_PUBLIC_HOST"] == "10.0.0.1"
 
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:

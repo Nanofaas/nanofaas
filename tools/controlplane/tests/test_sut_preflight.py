@@ -138,3 +138,28 @@ def test_ensure_fixture_verifies_demo_deployment_function(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="deployment demo verification failed"):
         preflight.ensure_fixture()
+
+
+def test_ensure_fixture_accepts_effective_execution_mode_from_function_response(monkeypatch) -> None:
+    preflight = SutPreflight(base_url="http://127.0.0.1:8080", fixture_name="tool-metrics-echo")
+
+    def _fake_request(method: str, path: str, payload=None):
+        if method == "GET" and path == "/v1/functions":
+            return (200, "[]")
+        if method == "GET" and path == "/v1/functions/tool-metrics-echo":
+            return (200, '{"name":"tool-metrics-echo"}')
+        if method == "POST" and path == "/v1/functions/tool-metrics-echo:invoke":
+            return (200, '{"status":"success","output":{"probe":"ok"}}')
+        if method == "GET" and path == "/v1/functions/demo-word-stats-deployment":
+            return (
+                200,
+                '{"name":"demo-word-stats-deployment","requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT"}',
+            )
+        raise AssertionError(f"unexpected request: {method} {path}")
+
+    monkeypatch.setattr(preflight, "_request", _fake_request)
+
+    result = preflight.ensure_fixture()
+
+    assert result.function_name == "tool-metrics-echo"
+    assert result.warmup_status_code == 200

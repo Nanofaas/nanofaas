@@ -15,10 +15,12 @@ Usage:
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -77,12 +79,14 @@ class AutoscalingExperiment:
 
     def run(self) -> None:
         """Run all phases. Raises SystemExit(1) on failure."""
-        self._preflight()
-        self._phase_a_register()
-        self._phase_b_baseline()
-        self._phase_c_load_and_scaleup()
-        self._phase_d_scaledown()
-        self._phase_e_report()
+        cluster_api_url = self._cluster_api_url()
+        with self._host_api_url_context() as host_api_url:
+            self._preflight(host_api_url)
+            self._phase_a_register(cluster_api_url)
+            self._phase_b_baseline()
+            self._phase_c_load_and_scaleup(host_api_url)
+            self._phase_d_scaledown()
+            self._phase_e_report()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -107,11 +111,10 @@ class AutoscalingExperiment:
         )
         return result.stdout.strip()
 
-    def _nanofaas_url(self) -> str:
+    def _resolve_public_host(self) -> str:
         env_url = os.getenv("E2E_VM_HOST") or os.getenv("E2E_PUBLIC_HOST")
         if env_url:
-            host = env_url.rstrip("/")
-            return f"http://{host}:30080" if "://" not in host else f"{host}:30080"
+            return env_url.rstrip("/").removeprefix("http://").removeprefix("https://")
         ip = self._vm_exec(
             f"multipass info {self.vm_name} --format json 2>/dev/null "
             f"| python3 -c \"import json,sys; d=json.load(sys.stdin); "
@@ -121,11 +124,163 @@ class AutoscalingExperiment:
             ip = self._vm_exec(
                 f"multipass info {self.vm_name} 2>/dev/null | grep IPv4 | awk '{{print $2}}'"
             )
-        return f"http://{ip}:30080"
+        return ip
+
+    def _kubeconfig_env_prefix(self) -> str:
+        kubeconfig_path = os.getenv("E2E_KUBECONFIG_PATH", "").strip()
+        if not kubeconfig_path:
+            return ""
+        return f"KUBECONFIG={kubeconfig_path} "
+
+    def _control_plane_service_type(self) -> str:
+        service_type = self._vm_exec(
+            f"{self._kubeconfig_env_prefix()}kubectl get svc control-plane -n {self.namespace} "
+            f"-o jsonpath='{{.spec.type}}' 2>/dev/null"
+        ).strip()
+        return service_type or "ClusterIP"
+
+    def _control_plane_cluster_ip(self) -> str:
+        cluster_ip = self._vm_exec(
+            f"{self._kubeconfig_env_prefix()}kubectl get svc control-plane -n {self.namespace} "
+            f"-o jsonpath='{{.spec.clusterIP}}' 2>/dev/null"
+        ).strip()
+        if not cluster_ip:
+            raise RuntimeError("Failed to resolve control-plane ClusterIP")
+        return cluster_ip
+
+    def _control_plane_http_node_port(self) -> str:
+        return self._vm_exec(
+            f"{self._kubeconfig_env_prefix()}kubectl get svc control-plane -n {self.namespace} "
+            f"-o jsonpath='{{.spec.ports[0].nodePort}}' 2>/dev/null"
+        ).strip()
+
+    def _cluster_api_url(self) -> str:
+        return f"http://{self._control_plane_cluster_ip()}:8080"
+
+    def _pick_port_forward_port(self) -> int:
+        try:
+            from controlplane_tool.net_utils import pick_local_port
+
+            return pick_local_port(preferred=18080)
+        except Exception:
+            import socket
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("127.0.0.1", 0))
+                return int(sock.getsockname()[1])
+
+    def _rewrite_kubeconfig_server(self, kubeconfig_path: Path, public_host: str) -> None:
+        content = kubeconfig_path.read_text(encoding="utf-8")
+        rewritten = content.replace(
+            "server: https://127.0.0.1:6443",
+            f"server: https://{public_host}:6443",
+        ).replace(
+            "server: https://localhost:6443",
+            f"server: https://{public_host}:6443",
+        )
+        kubeconfig_path.write_text(rewritten, encoding="utf-8")
+
+    def _export_host_kubeconfig(self, public_host: str) -> Path:
+        fd, temp_path = tempfile.mkstemp(prefix="nanofaas-autoscaling-", suffix=".yaml")
+        os.close(fd)
+        destination = Path(temp_path)
+
+        remote_kubeconfig = os.getenv("E2E_KUBECONFIG_PATH", "/home/ubuntu/.kube/config")
+        vm_lifecycle = os.getenv("E2E_VM_LIFECYCLE", "").strip().lower()
+        vm_user = os.getenv("E2E_VM_USER", "ubuntu")
+        if vm_lifecycle == "external":
+            result = subprocess.run(
+                ["scp", f"{vm_user}@{public_host}:{remote_kubeconfig}", str(destination)],
+                capture_output=True,
+                text=True,
+            )
+        else:
+            result = subprocess.run(
+                ["multipass", "transfer", f"{self.vm_name}:{remote_kubeconfig}", str(destination)],
+                capture_output=True,
+                text=True,
+            )
+        if result.returncode != 0:
+            destination.unlink(missing_ok=True)
+            raise RuntimeError(result.stderr or result.stdout or "Failed to export kubeconfig")
+        self._rewrite_kubeconfig_server(destination, public_host)
+        return destination
+
+    def _start_port_forward(self, kubeconfig_path: Path, local_port: int) -> subprocess.Popen[str]:
+        return subprocess.Popen(
+            [
+                shutil.which("kubectl") or "kubectl",
+                "--kubeconfig",
+                str(kubeconfig_path),
+                "-n",
+                self.namespace,
+                "port-forward",
+                "svc/control-plane",
+                f"{local_port}:8080",
+                "--address",
+                "127.0.0.1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    def _wait_for_port_forward(self, proc: subprocess.Popen[str], local_url: str) -> None:
+        deadline = time.time() + 10
+        probe_url = f"{local_url}/v1/functions"
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate()
+                raise RuntimeError(
+                    stderr.strip() or stdout.strip() or "kubectl port-forward exited unexpectedly"
+                )
+            if self._is_url_reachable(probe_url):
+                return
+            time.sleep(0.2)
+        proc.terminate()
+        try:
+            stdout, stderr = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+        raise RuntimeError(
+            stderr.strip() or stdout.strip() or f"Timed out waiting for port-forward to {probe_url}"
+        )
+
+    @contextlib.contextmanager
+    def _host_api_url_context(self):
+        service_type = self._control_plane_service_type()
+        if service_type == "NodePort":
+            host = self._resolve_public_host()
+            port = self._control_plane_http_node_port() or "30080"
+            yield f"http://{host}:{port}"
+            return
+
+        kubectl = shutil.which("kubectl")
+        if not kubectl:
+            raise RuntimeError("kubectl is required on the host to reach a ClusterIP control-plane service")
+
+        public_host = self._resolve_public_host()
+        kubeconfig_path = self._export_host_kubeconfig(public_host)
+        local_port = self._pick_port_forward_port()
+        proc = self._start_port_forward(kubeconfig_path, local_port)
+        local_url = f"http://127.0.0.1:{local_port}"
+        try:
+            self._wait_for_port_forward(proc, local_url)
+            yield local_url
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+            kubeconfig_path.unlink(missing_ok=True)
 
     def _get_ready_replicas(self, deploy_name: str) -> int:
         raw = self._vm_exec(
-            f"kubectl get deployment {deploy_name} -n {self.namespace} "
+            f"{self._kubeconfig_env_prefix()}kubectl get deployment {deploy_name} -n {self.namespace} "
             f"-o jsonpath='{{.status.readyReplicas}}' 2>/dev/null || echo 0"
         )
         try:
@@ -135,7 +290,7 @@ class AutoscalingExperiment:
 
     def _get_desired_replicas(self, deploy_name: str) -> int:
         raw = self._vm_exec(
-            f"kubectl get deployment {deploy_name} -n {self.namespace} "
+            f"{self._kubeconfig_env_prefix()}kubectl get deployment {deploy_name} -n {self.namespace} "
             f"-o jsonpath='{{.spec.replicas}}' 2>/dev/null || echo 0"
         )
         try:
@@ -165,7 +320,7 @@ class AutoscalingExperiment:
     # Phases
     # ------------------------------------------------------------------
 
-    def _preflight(self) -> None:
+    def _preflight(self, nanofaas_url: str) -> None:
         self._log("Pre-flight checks...")
 
         if not shutil.which("k6"):
@@ -175,7 +330,6 @@ class AutoscalingExperiment:
             )
             sys.exit(1)
 
-        nanofaas_url = self._nanofaas_url()
         if not self._is_url_reachable(f"{nanofaas_url}/v1/functions"):
             self._log(f"ERROR: Cannot reach {nanofaas_url}/v1/functions")
             self._log("Is nanofaas running? Run ./scripts/e2e-k3s-helm.sh first.")
@@ -184,8 +338,8 @@ class AutoscalingExperiment:
         self._log(f"  API reachable at {nanofaas_url}")
         self._log(f"  Runtime: {self.control_plane_runtime}")
 
-    def _phase_a_register(self) -> None:
-        nanofaas_url = self._nanofaas_url()
+    def _phase_a_register(self, nanofaas_url: str | None = None) -> None:
+        nanofaas_url = nanofaas_url or self._cluster_api_url()
         self._log("")
         self._log("━━━ Phase A: Register function with scaling config ━━━")
 
@@ -222,7 +376,7 @@ class AutoscalingExperiment:
         self._log("  Waiting for deployment to be created...")
         for _ in range(30):
             result = self._vm_exec(
-                f"kubectl get deployment {self.deploy_name} -n {self.namespace} "
+                f"{self._kubeconfig_env_prefix()}kubectl get deployment {self.deploy_name} -n {self.namespace} "
                 f">/dev/null 2>&1 && echo ok || echo missing"
             )
             if result == "ok":
@@ -248,8 +402,7 @@ class AutoscalingExperiment:
         self._log(f"  Baseline: desired={desired}, ready={replicas}")
         self._pass(f"Baseline recorded (desired={desired}, ready={replicas})")
 
-    def _phase_c_load_and_scaleup(self) -> None:
-        nanofaas_url = self._nanofaas_url()
+    def _phase_c_load_and_scaleup(self, nanofaas_url: str) -> None:
         self._log("")
         self._log("━━━ Phase C: Apply load and verify scale-up ━━━")
 
@@ -351,7 +504,8 @@ class AutoscalingExperiment:
             self._log("ERROR: AUTOSCALING TEST FAILED")
             self._log("Control-plane logs (last 30 lines):")
             self._vm_exec(
-                f"kubectl logs -n {self.namespace} -l app=control-plane --tail=30 2>/dev/null || true"
+                f"{self._kubeconfig_env_prefix()}kubectl logs -n {self.namespace} "
+                f"-l app=nanofaas-control-plane --tail=30 2>/dev/null || true"
             )
             self._log("k6 output (last 20 lines):")
             k6_log = Path("/tmp/k6-autoscaling.log")

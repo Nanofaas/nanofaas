@@ -134,9 +134,8 @@ class E2eRunner:
         env = {
             "CONTROL_PLANE_RUNTIME": request.runtime,
             "LOCAL_REGISTRY": request.local_registry,
+            "NAMESPACE": self._effective_namespace(request),
         }
-        if request.namespace:
-            env["NAMESPACE"] = request.namespace
         return env
 
     def _vm_env(self, request: E2eRequest) -> dict[str, str]:
@@ -159,6 +158,10 @@ class E2eRunner:
         if vm_request.host:
             env["E2E_VM_HOST"] = vm_request.host
             env["E2E_PUBLIC_HOST"] = vm_request.host
+        elif vm_request.lifecycle == "multipass":
+            placeholder = f"<multipass-ip:{self.vm.vm_name(vm_request)}>"
+            env["E2E_VM_HOST"] = placeholder
+            env["E2E_PUBLIC_HOST"] = placeholder
         if vm_request.home:
             env["E2E_VM_HOME"] = vm_request.home
         return env
@@ -755,6 +758,20 @@ class E2eRunner:
             return self._host_resolver(vm_request)
         return self.vm.resolve_multipass_ipv4(vm_request)
 
+    def _resolve_placeholder_text(
+        self,
+        value: str,
+        vm_request: VmRequest | None,
+        cache: dict[str, str],
+    ) -> str:
+        def _replace(m: re.Match) -> str:
+            key = m.group(1)
+            if key not in cache and vm_request is not None:
+                cache[key] = self._resolve_ip(vm_request)
+            return cache.get(key, m.group(0))
+
+        return self._MULTIPASS_IP_RE.sub(_replace, value)
+
     def _resolve_command(
         self,
         command: list[str],
@@ -764,14 +781,20 @@ class E2eRunner:
         """Substitute <multipass-ip:name> placeholders with real IPs."""
         if not any(self._MULTIPASS_IP_RE.search(arg) for arg in command):
             return command
+        return [self._resolve_placeholder_text(arg, vm_request, cache) for arg in command]
 
-        def _replace(m: re.Match) -> str:
-            key = m.group(1)
-            if key not in cache and vm_request is not None:
-                cache[key] = self._resolve_ip(vm_request)
-            return cache.get(key, m.group(0))
-
-        return [self._MULTIPASS_IP_RE.sub(_replace, arg) for arg in command]
+    def _resolve_env(
+        self,
+        env: dict[str, str],
+        vm_request: VmRequest | None,
+        cache: dict[str, str],
+    ) -> dict[str, str]:
+        if not any(self._MULTIPASS_IP_RE.search(value) for value in env.values()):
+            return env
+        return {
+            key: self._resolve_placeholder_text(value, vm_request, cache)
+            for key, value in env.items()
+        }
 
     def _emit_event(
         self,
@@ -834,10 +857,11 @@ class E2eRunner:
                 )
                 continue
             command = self._resolve_command(step.command, plan.request.vm, ip_cache)
+            env = self._resolve_env(step.env, plan.request.vm, ip_cache)
             result = self.shell.run(
                 command,
                 cwd=self.paths.workspace_root,
-                env=step.env,
+                env=env,
                 dry_run=False,
             )
             if result.return_code != 0:
