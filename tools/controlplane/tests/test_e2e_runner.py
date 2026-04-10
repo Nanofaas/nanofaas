@@ -92,7 +92,61 @@ def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("e2e-helm-stack-backend.sh" in command for command in rendered)
-    assert any("Helm stack compatibility workflow" in step.summary for step in plan.steps)
+
+
+def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    vm_request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+
+    k3s_plan = runner.plan(
+        E2eRequest(
+            scenario="k3s-junit-curl",
+            runtime="java",
+            vm=vm_request,
+        )
+    )
+    helm_stack_plan = runner.plan(
+        E2eRequest(
+            scenario="helm-stack",
+            runtime="java",
+            vm=vm_request,
+        )
+    )
+
+    shared_prefix = [
+        "Ensure VM is running",
+        "Provision base VM dependencies",
+        "Sync project to VM",
+        "Ensure registry container",
+        "Build control-plane and runtime images in VM",
+        "Build selected function images in VM",
+        "Install k3s",
+        "Configure k3s registry",
+        "Ensure E2E namespace exists",
+        "Deploy control-plane via Helm",
+        "Deploy function-runtime via Helm",
+        "Wait for control-plane deployment",
+        "Wait for function-runtime deployment",
+    ]
+
+    assert [step.summary for step in helm_stack_plan.steps[: len(shared_prefix)]] == shared_prefix
+    assert [step.summary for step in k3s_plan.steps[: len(shared_prefix)]] == shared_prefix
+
+
+def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    plan = runner.plan(
+        E2eRequest(
+            scenario="helm-stack",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    assert [step.summary for step in plan.steps[-2:]] == [
+        "Run loadtest via Python runner",
+        "Run autoscaling experiment (Python)",
+    ]
 
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:

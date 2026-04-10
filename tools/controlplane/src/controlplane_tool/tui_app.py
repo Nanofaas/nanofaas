@@ -492,11 +492,41 @@ class NanofaasTUI:
         repo_root = default_tool_paths().workspace_root
 
         if scenario == "helm-stack":
+            from controlplane_tool.e2e_commands import _resolve_run_request
+            from controlplane_tool.e2e_runner import E2eRunner
+
+            request = _resolve_run_request(
+                scenario="helm-stack",
+                runtime="java",
+                lifecycle="multipass",
+                name="nanofaas-e2e",
+                host=None,
+                user="ubuntu",
+                home=None,
+                cpus=4,
+                memory="12G",
+                disk="30G",
+                cleanup_vm=False,
+                namespace=None,
+                local_registry=None,
+                function_preset=None,
+                functions_csv=None,
+                scenario_file=None,
+                saved_profile=None,
+            )
+            plan = E2eRunner(repo_root=repo_root).plan(request)
+
             def _run_helm_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                def _on_event(event: Any) -> None:
+                    self._apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
                 step("Running helm-stack E2E")
                 flow = build_scenario_flow(
                     "helm-stack",
                     repo_root=repo_root,
+                    request=request,
+                    event_listener=_on_event,
                 )
                 self._run_shared_flow(flow)
                 success("helm-stack E2E completed")
@@ -504,7 +534,7 @@ class NanofaasTUI:
             self._run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=[f"Scenario: {scenario}"],
-                planned_steps=["Run"],
+                planned_steps=[step.summary for step in plan.steps],
                 action=_run_helm_stack_workflow,
             )
 

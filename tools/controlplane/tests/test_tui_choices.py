@@ -390,3 +390,114 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
         "json-transform-java",
     ]
     assert called["planned_steps"] == ["Ensure VM is running", "Run k3s-junit-curl verification"]
+
+
+def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+
+    called: dict[str, object] = {}
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Ensure VM is running"),
+            SimpleNamespace(summary="Provision base VM dependencies"),
+            SimpleNamespace(summary="Sync project to VM"),
+            SimpleNamespace(summary="Ensure registry container"),
+            SimpleNamespace(summary="Build control-plane and runtime images in VM"),
+            SimpleNamespace(summary="Build selected function images in VM"),
+            SimpleNamespace(summary="Install k3s"),
+            SimpleNamespace(summary="Configure k3s registry"),
+            SimpleNamespace(summary="Ensure E2E namespace exists"),
+            SimpleNamespace(summary="Deploy control-plane via Helm"),
+            SimpleNamespace(summary="Deploy function-runtime via Helm"),
+            SimpleNamespace(summary="Wait for control-plane deployment"),
+            SimpleNamespace(summary="Wait for function-runtime deployment"),
+            SimpleNamespace(summary="Run loadtest via Python runner"),
+            SimpleNamespace(summary="Run autoscaling experiment (Python)"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        called["event_listener"] = kwargs.get("event_listener")
+        return LocalFlowDefinition(
+            flow_id="e2e.helm_stack",
+            task_ids=["vm.ensure_running", "loadtest.run"],
+            run=lambda: "ok",
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["result"] = flow()
+        return _completed_flow_result(flow_id, called["result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        called["summary_lines"] = summary_lines
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_vm_e2e("helm-stack")
+
+    assert called["scenario"] == "helm-stack"
+    assert called["flow_id"] == "e2e.helm_stack"
+    assert callable(called["event_listener"])
+    assert called["summary_lines"] == ["Scenario: helm-stack"]
+    assert called["planned_steps"] == [
+        "Ensure VM is running",
+        "Provision base VM dependencies",
+        "Sync project to VM",
+        "Ensure registry container",
+        "Build control-plane and runtime images in VM",
+        "Build selected function images in VM",
+        "Install k3s",
+        "Configure k3s registry",
+        "Ensure E2E namespace exists",
+        "Deploy control-plane via Helm",
+        "Deploy function-runtime via Helm",
+        "Wait for control-plane deployment",
+        "Wait for function-runtime deployment",
+        "Run loadtest via Python runner",
+        "Run autoscaling experiment (Python)",
+    ]
+
+
+def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        tui_app,
+        "_ask",
+        lambda prompt_fn: {
+            "Scenario:": "helm-stack",
+            "VM Name:": "nanofaas-e2e",
+            "Control-plane runtime:": "java",
+            "Cleanup VM at end?": False,
+            "Dry-run? (show plan without executing)": True,
+        }[str(prompt_fn().message)],
+    )
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.helm_stack", task_ids=["vm.ensure_running"], run=lambda: "ok")
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+
+    NanofaasTUI()._run_vm_e2e("helm-stack")
+
+    request = called["request"]
+    assert request.function_preset == "demo-loadtest"
+    assert request.resolved_scenario is not None
+    assert request.resolved_scenario.base_scenario == "helm-stack"

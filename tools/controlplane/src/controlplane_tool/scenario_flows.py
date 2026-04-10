@@ -4,8 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from controlplane_tool.e2e_runner import E2eRunner
+from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.prefect_models import LocalFlowDefinition
 from controlplane_tool.registry_runtime import default_registry_url
+from controlplane_tool.vm_models import vm_request_from_env
 
 
 _SCENARIO_TASK_IDS_MAP = {
@@ -58,9 +60,16 @@ _SCENARIO_TASK_IDS_MAP = {
         "vm.ensure_running",
         "vm.provision_base",
         "repo.sync_to_vm",
-        "k3s.install",
         "registry.ensure_container",
+        "images.build_core",
+        "images.build_selected_functions",
+        "k3s.install",
         "k3s.configure_registry",
+        "k8s.ensure_namespace",
+        "helm.deploy_control_plane",
+        "helm.deploy_function_runtime",
+        "k8s.wait_control_plane_ready",
+        "k8s.wait_function_runtime_ready",
         "loadtest.run",
         "experiments.autoscaling",
     ],
@@ -162,18 +171,20 @@ def build_scenario_flow(
             ).run(scenario_file=scenario_file),
         )
     if scenario == "helm-stack":
-        from controlplane_tool.helm_stack_runner import HelmStackRunner
+        e2e_request = E2eRequest(
+            scenario="helm-stack",
+            runtime=runtime,
+            vm=vm_request_from_env(),
+            helm_noninteractive=noninteractive,
+            namespace=namespace,
+            local_registry=local_registry or default_registry_url(),
+            cleanup_vm=False,
+        )
 
         return LocalFlowDefinition(
             flow_id=flow_id,
             task_ids=scenario_task_ids(scenario),
-            run=lambda: HelmStackRunner(
-                repo_root,
-                namespace=namespace,
-                local_registry=local_registry or default_registry_url(),
-                runtime=runtime,
-                noninteractive=noninteractive,
-            ).run(),
+            run=lambda: E2eRunner(repo_root).run(e2e_request, event_listener=event_listener),
         )
 
     raise ValueError(f"Unsupported scenario flow: {scenario}")

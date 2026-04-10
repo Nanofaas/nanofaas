@@ -322,21 +322,14 @@ class E2eRunner:
 
         raise ValueError(f"Unsupported local scenario: {request.scenario}")
 
-    def _k3s_junit_curl_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
+    def _k3s_vm_prelude_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
         vm_request = self._require_vm(request)
         remote_dir = self.vm.remote_project_dir(vm_request)
         kubeconfig_path = self.vm.kubeconfig_path(vm_request)
         namespace = self._effective_namespace(request)
-        manifest_path = self._manifest_path(request)
-        remote_manifest_path = (
-            self._remote_manifest_path(vm_request, manifest_path)
-            if manifest_path is not None
-            else None
-        )
         control_image = self._control_image(request)
         runtime_image = self._runtime_image(request)
         function_image_specs = self._function_image_specs(request)
-        verifier = self._k3s_curl_runner(request)
 
         ensure_dry = self.vm.ensure_running(vm_request, dry_run=True)
         ensure_step = ScenarioPlanStep(
@@ -361,61 +354,6 @@ class E2eRunner:
             build_selected_functions_step = self._step(
                 "Build selected function images in VM",
                 ["echo", "No selected function images to build"],
-            )
-
-        if request.cleanup_vm:
-            uninstall_runtime_step = self._remote_exec_step(
-                "Uninstall function-runtime Helm release",
-                vm_request,
-                helm_uninstall_vm_script(
-                    remote_dir=remote_dir,
-                    release="function-runtime",
-                    namespace=namespace,
-                    kubeconfig_path=kubeconfig_path,
-                ),
-            )
-            uninstall_control_plane_step = self._remote_exec_step(
-                "Uninstall control-plane Helm release",
-                vm_request,
-                helm_uninstall_vm_script(
-                    remote_dir=remote_dir,
-                    release="control-plane",
-                    namespace=namespace,
-                    kubeconfig_path=kubeconfig_path,
-                ),
-            )
-            delete_namespace_step = self._remote_exec_step(
-                "Delete E2E namespace",
-                vm_request,
-                kubectl_delete_namespace_vm_script(
-                    remote_dir=remote_dir,
-                    namespace=namespace,
-                    kubeconfig_path=kubeconfig_path,
-                ),
-            )
-            teardown_dry = self.vm.teardown(vm_request, dry_run=True)
-            teardown_step = ScenarioPlanStep(
-                summary="Teardown VM",
-                command=teardown_dry.command,
-                env=teardown_dry.env,
-                action=lambda: self.vm.teardown(vm_request, dry_run=False),
-            )
-        else:
-            uninstall_runtime_step = self._step(
-                "Uninstall function-runtime Helm release",
-                ["echo", "Skipping function-runtime cleanup (--no-cleanup-vm)"],
-            )
-            uninstall_control_plane_step = self._step(
-                "Uninstall control-plane Helm release",
-                ["echo", "Skipping control-plane cleanup (--no-cleanup-vm)"],
-            )
-            delete_namespace_step = self._step(
-                "Delete E2E namespace",
-                ["echo", "Skipping namespace cleanup (--no-cleanup-vm)"],
-            )
-            teardown_step = self._step(
-                "Teardown VM",
-                ["echo", "Skipping VM teardown (--no-cleanup-vm)"],
             )
 
         return [
@@ -513,6 +451,78 @@ class E2eRunner:
                     timeout=120,
                 ),
             ),
+        ]
+
+    def _k3s_junit_curl_tail_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
+        vm_request = self._require_vm(request)
+        remote_dir = self.vm.remote_project_dir(vm_request)
+        kubeconfig_path = self.vm.kubeconfig_path(vm_request)
+        namespace = self._effective_namespace(request)
+        manifest_path = self._manifest_path(request)
+        remote_manifest_path = (
+            self._remote_manifest_path(vm_request, manifest_path)
+            if manifest_path is not None
+            else None
+        )
+        runtime_image = self._runtime_image(request)
+        verifier = self._k3s_curl_runner(request)
+
+        if request.cleanup_vm:
+            uninstall_runtime_step = self._remote_exec_step(
+                "Uninstall function-runtime Helm release",
+                vm_request,
+                helm_uninstall_vm_script(
+                    remote_dir=remote_dir,
+                    release="function-runtime",
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            )
+            uninstall_control_plane_step = self._remote_exec_step(
+                "Uninstall control-plane Helm release",
+                vm_request,
+                helm_uninstall_vm_script(
+                    remote_dir=remote_dir,
+                    release="control-plane",
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            )
+            delete_namespace_step = self._remote_exec_step(
+                "Delete E2E namespace",
+                vm_request,
+                kubectl_delete_namespace_vm_script(
+                    remote_dir=remote_dir,
+                    namespace=namespace,
+                    kubeconfig_path=kubeconfig_path,
+                ),
+            )
+            teardown_dry = self.vm.teardown(vm_request, dry_run=True)
+            teardown_step = ScenarioPlanStep(
+                summary="Teardown VM",
+                command=teardown_dry.command,
+                env=teardown_dry.env,
+                action=lambda: self.vm.teardown(vm_request, dry_run=False),
+            )
+        else:
+            uninstall_runtime_step = self._step(
+                "Uninstall function-runtime Helm release",
+                ["echo", "Skipping function-runtime cleanup (--no-cleanup-vm)"],
+            )
+            uninstall_control_plane_step = self._step(
+                "Uninstall control-plane Helm release",
+                ["echo", "Skipping control-plane cleanup (--no-cleanup-vm)"],
+            )
+            delete_namespace_step = self._step(
+                "Delete E2E namespace",
+                ["echo", "Skipping namespace cleanup (--no-cleanup-vm)"],
+            )
+            teardown_step = self._step(
+                "Teardown VM",
+                ["echo", "Skipping VM teardown (--no-cleanup-vm)"],
+            )
+
+        return [
             ScenarioPlanStep(
                 summary="Run k3s-junit-curl verification",
                 command=["python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"],
@@ -533,6 +543,48 @@ class E2eRunner:
             uninstall_control_plane_step,
             delete_namespace_step,
             teardown_step,
+        ]
+
+    def _k3s_junit_curl_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
+        return [
+            *self._k3s_vm_prelude_steps(request),
+            *self._k3s_junit_curl_tail_steps(request),
+        ]
+
+    def _helm_stack_tail_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
+        vm_env = self._vm_env(request)
+        if request.helm_noninteractive:
+            vm_env = {**vm_env, "E2E_K3S_HELM_NONINTERACTIVE": "true"}
+        vm_env = self._with_manifest_env(request, vm_env)
+        controlplane_tool_project = self.paths.workspace_root / "tools" / "controlplane"
+        return [
+            self._step(
+                "Run loadtest via Python runner",
+                [
+                    "uv",
+                    "run",
+                    "--project",
+                    str(controlplane_tool_project),
+                    "--locked",
+                    "controlplane-tool",
+                    "loadtest",
+                    "run",
+                ],
+                env=vm_env,
+            ),
+            self._step(
+                "Run autoscaling experiment (Python)",
+                [
+                    "uv",
+                    "run",
+                    "--project",
+                    str(controlplane_tool_project),
+                    "--locked",
+                    "python",
+                    str(self.paths.workspace_root / "experiments" / "autoscaling.py"),
+                ],
+                env=vm_env,
+            ),
         ]
 
     def _vm_bootstrap_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
@@ -571,9 +623,6 @@ class E2eRunner:
         ]
 
     def _vm_scenario_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
-        vm_request = self._require_vm(request)
-        env = self._vm_env(request)
-
         if request.scenario == "k3s-junit-curl":
             return self._k3s_junit_curl_steps(request)
 
@@ -588,7 +637,7 @@ class E2eRunner:
                         "controlplane-tool",
                         "cli-e2e", "run", "vm",
                     ],
-                    env=self._with_manifest_env(request, env),
+                    env=self._with_manifest_env(request, self._vm_env(request)),
                 )
             ]
 
@@ -603,32 +652,9 @@ class E2eRunner:
                         "controlplane-tool",
                         "cli-e2e", "run", "host-platform",
                     ],
-                    env=self._with_manifest_env(request, env),
+                    env=self._with_manifest_env(request, self._vm_env(request)),
                 )
-            ]
-
-        if request.scenario == "helm-stack":
-            from controlplane_tool.helm_stack_runner import HelmStackRunner
-
-            return [
-                ScenarioPlanStep(
-                    summary="Run Helm stack compatibility workflow (Python)",
-                    command=["python", "-m", "controlplane_tool.helm_stack_runner", "run"],
-                    env=self._with_manifest_env(
-                        request,
-                        {**env, "E2E_K3S_HELM_NONINTERACTIVE": "true"},
-                    ),
-                    action=lambda: HelmStackRunner(
-                        self.paths.workspace_root,
-                        vm_request=vm_request,
-                        namespace=self._effective_namespace(request),
-                        local_registry=request.local_registry,
-                        runtime=request.runtime,
-                        noninteractive=True,
-                        shell=self.shell,
-                    ).run(),
-                )
-            ]
+        ]
 
         raise ValueError(f"Unsupported VM-backed scenario: {request.scenario}")
 
@@ -640,6 +666,11 @@ class E2eRunner:
     ) -> list[ScenarioPlanStep]:
         if request.scenario == "k3s-junit-curl":
             return self._k3s_junit_curl_steps(request)
+        if request.scenario == "helm-stack":
+            return [
+                *self._k3s_vm_prelude_steps(request),
+                *self._helm_stack_tail_steps(request),
+            ]
         steps = []
         if include_bootstrap:
             steps.extend(self._vm_bootstrap_steps(request))

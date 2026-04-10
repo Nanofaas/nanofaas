@@ -21,6 +21,7 @@ class E2eRequest(BaseModel):
     resolved_scenario: ResolvedScenario | None = None
     vm: VmRequest | None = None
     cleanup_vm: bool = True
+    helm_noninteractive: bool = True
     namespace: str | None = None
     local_registry: str = Field(default_factory=default_registry_url)
 

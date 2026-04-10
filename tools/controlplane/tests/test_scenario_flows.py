@@ -95,3 +95,59 @@ def test_runner_modules_no_longer_inline_docker_and_helm_orchestration() -> None
         assert "docker build" not in source
         assert "docker push" not in source
         assert "helm upgrade --install" not in source
+
+
+def test_helm_stack_flow_shares_k3s_junit_curl_prefix() -> None:
+    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
+
+    assert flow.task_ids == [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "registry.ensure_container",
+        "images.build_core",
+        "images.build_selected_functions",
+        "k3s.install",
+        "k3s.configure_registry",
+        "k8s.ensure_namespace",
+        "helm.deploy_control_plane",
+        "helm.deploy_function_runtime",
+        "k8s.wait_control_plane_ready",
+        "k8s.wait_function_runtime_ready",
+        "loadtest.run",
+        "experiments.autoscaling",
+    ]
+
+
+def test_helm_stack_flow_routes_through_python_e2e_runner(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        scenario_flows_mod.E2eRunner,
+        "run",
+        lambda self, request, event_listener=None: called.update(  # noqa: ANN001
+            {"request": request, "event_listener": event_listener}
+        ) or "ok",
+    )
+
+    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
+
+    assert flow.run() == "ok"
+    assert called["request"].scenario == "helm-stack"
+
+
+def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        scenario_flows_mod.E2eRunner,
+        "run",
+        lambda self, request, event_listener=None: called.update(  # noqa: ANN001
+            {"request": request, "event_listener": event_listener}
+        ) or "ok",
+    )
+
+    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"), noninteractive=False)
+
+    assert flow.run() == "ok"
+    assert called["request"].helm_noninteractive is False
