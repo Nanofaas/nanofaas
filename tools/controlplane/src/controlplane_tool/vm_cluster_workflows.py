@@ -1,3 +1,10 @@
+"""Shared image/value builders for scenario component planners.
+
+This module still carries a legacy compatibility bridge for the current
+E2eRunner prelude path, but the reusable planning logic now lives in the
+scenario_components package.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -113,6 +120,7 @@ def build_vm_cluster_prelude_plan(
     runtime: str,
     resolved_scenario: ResolvedScenario | None,
 ) -> VmClusterPreludePlan:
+    # Legacy bridge until E2eRunner is moved onto the component library.
     remote_dir = vm.remote_project_dir(vm_request)
     kubeconfig_path = vm.kubeconfig_path(vm_request)
     resolved_control_image = control_image(local_registry)

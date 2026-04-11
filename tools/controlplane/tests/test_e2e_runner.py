@@ -6,7 +6,9 @@ from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario_models import ScenarioSpec
 from controlplane_tool.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
+from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.vm_cluster_workflows import build_vm_cluster_prelude_plan
 
 
 def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
@@ -131,6 +133,25 @@ def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
 
     assert [step.summary for step in helm_stack_plan.steps[: len(shared_prefix)]] == shared_prefix
     assert [step.summary for step in k3s_plan.steps[: len(shared_prefix)]] == shared_prefix
+
+
+def test_vm_cluster_prelude_plan_keeps_shared_image_and_helm_values() -> None:
+    resolved_scenario = load_scenario_file(
+        Path("tools/controlplane/scenarios/k8s-demo-java.toml")
+    )
+    vm = VmOrchestrator(repo_root=Path("/repo"), shell=RecordingShell())
+    prelude = build_vm_cluster_prelude_plan(
+        vm=vm,
+        vm_request=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        namespace="nanofaas-e2e",
+        local_registry="localhost:5000",
+        runtime="java",
+        resolved_scenario=resolved_scenario,
+    )
+
+    assert "localhost:5000/nanofaas/control-plane:e2e" in prelude.build_core_script
+    assert "localhost:5000/nanofaas/function-runtime:e2e" in prelude.build_core_script
+    assert "functionRuntime.image.repository" in prelude.deploy_function_runtime_script
 
 
 def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
