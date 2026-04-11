@@ -6,7 +6,7 @@ from controlplane_tool.scenario_components.models import ScenarioRecipe
 _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
     "k3s-junit-curl": ScenarioRecipe(
         name="k3s-junit-curl",
-        component_ids=[
+        component_ids=(
             "vm.ensure_running",
             "vm.provision_base",
             "repo.sync_to_vm",
@@ -26,12 +26,12 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
             "helm.uninstall_control_plane",
             "k8s.delete_namespace",
             "vm.down",
-        ],
+        ),
         requires_managed_vm=True,
     ),
     "helm-stack": ScenarioRecipe(
         name="helm-stack",
-        component_ids=[
+        component_ids=(
             "vm.ensure_running",
             "vm.provision_base",
             "repo.sync_to_vm",
@@ -47,12 +47,12 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
             "k8s.wait_function_runtime_ready",
             "loadtest.run",
             "experiments.autoscaling",
-        ],
+        ),
         requires_managed_vm=True,
     ),
     "cli-stack": ScenarioRecipe(
         name="cli-stack",
-        component_ids=[
+        component_ids=(
             "vm.ensure_running",
             "vm.provision_base",
             "repo.sync_to_vm",
@@ -71,7 +71,7 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
             "tests.delete_cli_stack_functions",
             "tests.uninstall_cli_stack_platform",
             "tests.verify_cli_stack_status_fails",
-        ],
+        ),
         requires_managed_vm=True,
     ),
 }
@@ -85,6 +85,6 @@ def build_scenario_recipe(name: str) -> ScenarioRecipe:
 
     return ScenarioRecipe(
         name=recipe.name,
-        component_ids=list(recipe.component_ids),
+        component_ids=tuple(recipe.component_ids),
         requires_managed_vm=recipe.requires_managed_vm,
     )

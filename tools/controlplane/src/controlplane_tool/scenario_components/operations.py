@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
+
+
+def _empty_env() -> Mapping[str, str]:
+    return MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,4 +18,4 @@ class ScenarioOperation:
 @dataclass(frozen=True, slots=True)
 class RemoteCommandOperation(ScenarioOperation):
     argv: tuple[str, ...]
-    env: Mapping[str, str] = field(default_factory=dict)
+    env: Mapping[str, str] = field(default_factory=_empty_env)

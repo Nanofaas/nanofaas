@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from controlplane_tool.scenario_components.operations import ScenarioOperation
 
 
-def _noop_planner(_: object) -> tuple[ScenarioOperation, ...]:
-    return ()
+def _planner_not_implemented(_: object) -> tuple[ScenarioOperation, ...]:
+    raise NotImplementedError("ScenarioComponentDefinition.planner is not implemented")
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +15,7 @@ class ScenarioComponentDefinition:
     component_id: str
     summary: str
     planner: Callable[[object], tuple[ScenarioOperation, ...]] = field(
-        default=_noop_planner,
+        default=_planner_not_implemented,
         repr=False,
         compare=False,
     )
@@ -24,5 +24,5 @@ class ScenarioComponentDefinition:
 @dataclass(frozen=True, slots=True)
 class ScenarioRecipe:
     name: str
-    component_ids: list[str]
+    component_ids: tuple[str, ...]
     requires_managed_vm: bool = True
