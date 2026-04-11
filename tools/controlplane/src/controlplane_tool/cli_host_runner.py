@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 
 from controlplane_tool.scenario_components import cli as cli_components
-from controlplane_tool.cli_platform_workflow import platform_uninstall_command
 from controlplane_tool.scenario_components.cli import CliComponentContext
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
@@ -123,8 +122,8 @@ class CliHostPlatformRunner:
         return self._first_operation_command(cli_components.plan_platform_status(self._plan_context()))
 
     def _platform_uninstall_command(self) -> list[str]:
-        return list(
-            platform_uninstall_command(release=self.release, namespace=self.namespace)
+        return self._first_operation_command(
+            cli_components._plan_platform_uninstall(self._plan_context())
         )
 
     def _run_host_cli(self, kubeconfig: Path, command: list[str]) -> str:

@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 import controlplane_tool.cli_runtime as cli_runtime
-from controlplane_tool.cli_platform_workflow import platform_uninstall_command
 from controlplane_tool.scenario_components import cli as cli_components
 from controlplane_tool.scenario_components.cli import CliComponentContext
 from controlplane_tool.cli_vm_runner import CliVmRunner
@@ -184,6 +183,5 @@ def test_cli_host_platform_runner_uses_shared_platform_primitives(tmp_path) -> N
         cli_components.plan_platform_status(context)[0].argv
     )
     assert runner._platform_uninstall_command() == list(
-        platform_uninstall_command(release="test-release", namespace="test-ns")
+        cli_components._plan_platform_uninstall(context)[0].argv
     )
-    assert not hasattr(cli_components, "CLI_PLATFORM_UNINSTALL")

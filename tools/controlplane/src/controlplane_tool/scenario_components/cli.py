@@ -86,6 +86,17 @@ def plan_platform_status(context: CliComponentContext) -> tuple[RemoteCommandOpe
     )
 
 
+def _plan_platform_uninstall(context: CliComponentContext) -> tuple[RemoteCommandOperation, ...]:
+    return (
+        RemoteCommandOperation(
+            operation_id="cli.platform_uninstall",
+            summary="Uninstall nanofaas platform with CLI",
+            argv=("platform", "uninstall", "--release", context.release, "-n", context.namespace),
+            env=_frozen_env(),
+        ),
+    )
+
+
 def plan_fn_apply_selected(context: CliComponentContext) -> tuple[RemoteCommandOperation, ...]:
     operations: list[RemoteCommandOperation] = []
     for fn_key in _selected_function_keys(context):
