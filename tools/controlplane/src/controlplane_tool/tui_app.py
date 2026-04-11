@@ -28,6 +28,7 @@ from controlplane_tool.registry_runtime import default_registry_url, ensure_loca
 from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.profiles import list_profiles, load_profile
 from controlplane_tool.scenario_flows import build_scenario_flow
+from controlplane_tool.cli_stack_runner import CliStackRunner
 from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard, WorkflowKeyListener
 
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
@@ -711,7 +712,8 @@ class NanofaasTUI:
                 "Runner:",
                 choices=[
                     questionary.Choice("vm — CLI E2E on k3s VM", "vm"),
-                    questionary.Choice("host-platform — CLI on host vs cluster", "host"),
+                    questionary.Choice("cli-stack — Dedicated CLI stack flow in VM", "cli-stack"),
+                    questionary.Choice("host-platform — CLI on host vs cluster", "host-platform"),
                 ],
                 style=_STYLE,
             ).ask()
@@ -735,7 +737,35 @@ class NanofaasTUI:
                 planned_steps=["Build", "Deploy", "Verify"],
                 action=_run_cli_vm_workflow,
             )
-        else:
+            return
+
+        if runner_choice == "cli-stack":
+            planned_steps = [
+                planned_step.summary
+                for planned_step in CliStackRunner(
+                    repo_root,
+                    local_registry=default_registry_url(),
+                ).plan_steps()
+            ]
+
+            def _run_cli_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step("Running CLI stack E2E")
+                flow = build_scenario_flow(
+                    "cli-stack",
+                    repo_root=repo_root,
+                )
+                self._run_shared_flow(flow)
+                success("CLI stack E2E completed")
+
+            self._run_live_workflow(
+                title="CLI E2E",
+                summary_lines=["Runner: cli-stack"],
+                planned_steps=planned_steps,
+                action=_run_cli_stack_workflow,
+            )
+            return
+
+        if runner_choice == "host-platform":
             def _run_cli_host_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 step("Running CLI Host Platform E2E")
                 flow = build_scenario_flow(
@@ -751,6 +781,9 @@ class NanofaasTUI:
                 planned_steps=["Build", "Deploy", "Verify"],
                 action=_run_cli_host_workflow,
             )
+            return
+
+        raise ValueError(f"Unsupported CLI E2E runner: {runner_choice}")
 
     # ── LOAD TEST ─────────────────────────────────────────────────────────────
 

@@ -177,6 +177,30 @@ def test_tui_can_save_cli_stack_as_default_cli_test_scenario(monkeypatch) -> Non
     assert profile.cli_test.default_scenario == "cli-stack"
 
 
+def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["cli-stack"])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        captured["title"] = title
+        captured["summary_lines"] = summary_lines
+        captured["planned_steps"] = planned_steps
+        return None
+
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert captured["title"] == "CLI E2E"
+    assert captured["summary_lines"] == ["Runner: cli-stack"]
+    assert "Build nanofaas-cli installDist in VM" in captured["planned_steps"]
+    assert "Verify cli-stack status fails" in captured["planned_steps"]
+
+
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
     now = datetime.now(UTC)
     return FlowRunResult.completed(

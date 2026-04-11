@@ -47,6 +47,7 @@ scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
@@ -84,7 +85,7 @@ When a CLI override is layered on top of a scenario file or saved profile, the t
 
 The repository ships `tools/controlplane/profiles/demo-java.toml` as a ready-to-run example profile.
 Saved profiles can also persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario from the profile.
-Within `cli-test`, `host-platform` is intentionally platform-only and ignores saved function selections, while `vm` validates every selected function from the resolved manifest and `deploy-host` iterates the full selected set on the host. Missing saved profiles or scenario files fail fast with exit code 2.
+Within `cli-test`, `cli-stack` is the canonical VM-backed CLI stack scenario: it builds the CLI in the VM, installs Helm, k3s, and the registry there, then validates function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`. `host-platform` remains intentionally platform-only and ignores saved function selections, while `vm` preserves the legacy in-VM CLI path and `deploy-host` iterates the full selected set on the host. Missing saved profiles or scenario files fail fast with exit code 2.
 
 ## Build images (buildpacks)
 

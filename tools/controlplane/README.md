@@ -50,6 +50,7 @@ scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
@@ -127,7 +128,7 @@ CLI validation saved profiles can also persist:
 - `cli_test.default_scenario`
 
 That lets the same saved profile drive `scripts/controlplane.sh cli-test run --saved-profile <name>` without repeating the scenario name on the command line.
-`host-platform` is intentionally platform-only, so saved-profile runtime and namespace defaults still apply there but function selections do not. `vm` validates every function in the resolved selection, `deploy-host` builds, pushes, and registers every selected function on the host, and missing saved profiles or scenario files fail validation with exit code 2.
+`cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the local registry there, then validates function build/push/apply/invoke/enqueue/delete together with `platform install/status/uninstall`. `host-platform` is intentionally platform-only, so saved-profile runtime and namespace defaults still apply there but function selections do not. `vm` preserves the legacy in-VM CLI validation path, `deploy-host` builds, pushes, and registers every selected function on the host, and missing saved profiles or scenario files fail validation with exit code 2.
 
 Scenario defaults are scenario-aware:
 

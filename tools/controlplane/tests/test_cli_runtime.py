@@ -13,6 +13,11 @@ import pytest
 import controlplane_tool.cli_runtime as cli_runtime
 from controlplane_tool.cli_vm_runner import CliVmRunner
 from controlplane_tool.cli_host_runner import CliHostPlatformRunner
+from controlplane_tool.cli_platform_workflow import (
+    platform_install_command,
+    platform_status_command,
+    platform_uninstall_command,
+)
 from controlplane_tool.scenario_helpers import (
     function_image as _function_image,
     selected_functions as _selected_functions,
@@ -155,3 +160,26 @@ def test_cli_host_platform_runner_resolves_external_host_from_vm_request(tmp_pat
         mp.delenv("E2E_VM_HOST", raising=False)
         host = runner._resolve_public_host()
     assert host == "10.0.0.10"
+
+
+def test_cli_host_platform_runner_uses_shared_platform_primitives(tmp_path) -> None:
+    vm_req = _make_vm_request()
+    runner = CliHostPlatformRunner(
+        tmp_path,
+        vm_request=vm_req,
+        namespace="test-ns",
+        release="test-release",
+        local_registry="myreg:5001",
+    )
+
+    assert runner._platform_install_command() == platform_install_command(
+        repo_root=tmp_path,
+        release="test-release",
+        namespace="test-ns",
+        control_plane_image="myreg:5001/nanofaas/control-plane:e2e",
+    )
+    assert runner._platform_status_command() == platform_status_command("test-ns")
+    assert runner._platform_uninstall_command() == platform_uninstall_command(
+        release="test-release",
+        namespace="test-ns",
+    )

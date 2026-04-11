@@ -37,6 +37,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh vm up" in root_readme
     assert "scripts/controlplane.sh cli-test list" in root_readme
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in root_readme
+    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in root_readme
     assert "scripts/controlplane.sh build --profile container-local --dry-run" in root_readme
     assert BUILD_WRAPPER not in root_readme
     assert TUI_WRAPPER not in root_readme
@@ -45,6 +46,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh matrix" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in testing
+    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run host-platform --function-preset" not in testing
@@ -54,6 +56,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh tui --profile-name dev --use-saved-profile" in testing
     assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
     assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in testing
+    assert "cli-stack is the canonical VM-backed CLI stack scenario" in testing
     assert BUILD_WRAPPER not in testing
     assert TUI_WRAPPER not in testing
     assert PIPELINE_ALIAS not in testing
@@ -62,6 +65,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test list" in tool_readme
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in tool_readme
+    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh loadtest show-profile quick" in tool_readme
     assert "scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run" in tool_readme

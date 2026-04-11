@@ -85,6 +85,7 @@ scripts/controlplane.sh e2e list
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
@@ -114,6 +115,7 @@ CLI validation is also first-class:
 
 - `scripts/controlplane.sh cli-test list|inspect|run` is the canonical interface for `nanofaas-cli` validation.
 - saved profiles can persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario directly from the profile.
+- `cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the registry there, then exercises function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`.
 - `vm` validates and executes every function in the resolved selection, and `deploy-host` iterates the same full function set when it builds, pushes, and registers host-side deploy fixtures.
 - `host-platform` is intentionally platform-only: saved-profile runtime and namespace defaults still apply, but function selections are ignored for that scenario.
 - missing saved profiles or scenario files are reported as CLI validation failures with exit code 2.
@@ -215,6 +217,23 @@ scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 | `K3S_VERSION` | latest official release | Optional k3s pin; otherwise resolved dynamically at run time |
 
 **Typical duration:** ~10 minutes (mostly VM setup and Gradle build).
+
+### CLI Stack E2E
+
+Dedicated VM-backed CLI evaluation where the VM itself becomes the full test surface:
+cli-stack is the canonical VM-backed CLI stack scenario.
+- compiles `nanofaas-cli` inside the VM
+- installs Helm inside the VM
+- installs k3s inside the VM
+- installs and wires a local registry inside the VM for k3s
+- validates CLI-driven `platform install/status/uninstall`
+- validates selected function image build/push/apply/list/invoke/enqueue/delete through the CLI
+
+The canonical entrypoint is `scripts/controlplane.sh cli-test run cli-stack`.
+
+```bash
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
+```
 
 **Debugging a failure:**
 
@@ -381,6 +400,7 @@ scripts/controlplane.sh functions show-preset demo-java
 scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
@@ -464,7 +484,8 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | Suite | Scope | Requires | Command |
 |-------|-------|----------|---------|
 | Unit tests | All modules | JDK 21 | `./gradlew test` |
-| CLI E2E | All CLI commands | SSH key; Multipass optional for managed VM lifecycle | `./scripts/e2e-cli.sh` |
+| CLI E2E | Legacy in-VM CLI validation path | SSH key; Multipass optional for managed VM lifecycle | `./scripts/e2e-cli.sh` |
+| CLI Stack E2E | Canonical VM-backed CLI stack validation | SSH key; Multipass optional for managed VM lifecycle | `scripts/controlplane.sh cli-test run cli-stack` |
 | Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | SSH key + Helm on host; Multipass optional | `./scripts/e2e-cli-host-platform.sh` |
 | Host CLI Deploy E2E | Host-only deploy build+push+register | Docker + Python 3 | `./scripts/e2e-cli-deploy-host.sh` |
 | K3s JUnit Curl E2E | Shared Helm deploy + curl API checks + `K8sE2eTest` | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-junit-curl.sh` |

@@ -12,6 +12,11 @@ from controlplane_tool.console import console, phase, step, success, warning, sk
 import os
 from pathlib import Path
 
+from controlplane_tool.cli_platform_workflow import (
+    platform_install_command,
+    platform_status_command,
+    platform_uninstall_command,
+)
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
@@ -102,6 +107,20 @@ class CliHostPlatformRunner:
         self._vm.export_kubeconfig(self.vm_request, destination=dest)
         return dest
 
+    def _platform_install_command(self) -> list[str]:
+        return platform_install_command(
+            repo_root=self.repo_root,
+            release=self.release,
+            namespace=self.namespace,
+            control_plane_image=self._control_image,
+        )
+
+    def _platform_status_command(self) -> list[str]:
+        return platform_status_command(self.namespace)
+
+    def _platform_uninstall_command(self) -> list[str]:
+        return platform_uninstall_command(release=self.release, namespace=self.namespace)
+
     def _run_host_cli(self, kubeconfig: Path, command: list[str]) -> str:
         env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
         result = self._shell.run(
@@ -145,36 +164,18 @@ class CliHostPlatformRunner:
             step("Running platform lifecycle from host CLI...")
             install_out = self._run_host_cli(
                 kubeconfig,
-                [
-                    "platform",
-                    "install",
-                    "--release",
-                    self.release,
-                    "-n",
-                    self.namespace,
-                    "--chart",
-                    str(self.repo_root / "helm" / "nanofaas"),
-                    "--control-plane-repository",
-                    self._control_image.split(":")[0],
-                    "--control-plane-tag",
-                    self._control_image.split(":")[-1],
-                    "--control-plane-pull-policy",
-                    "Always",
-                    "--demos-enabled=false",
-                ],
+                self._platform_install_command(),
             )
             if f"endpoint\thttp://{public_host}:30080" not in install_out:
                 raise RuntimeError(f"Unexpected endpoint in install output: {install_out}")
 
             phase("Verify")
-            status_out = self._run_host_cli(kubeconfig, ["platform", "status", "-n", self.namespace])
+            status_out = self._run_host_cli(kubeconfig, self._platform_status_command())
             if "deployment\tnanofaas-control-plane\t1/1" not in status_out:
                 raise RuntimeError(f"Control-plane not ready: {status_out}")
 
-            self._run_host_cli(
-                kubeconfig, ["platform", "uninstall", "--release", self.release, "-n", self.namespace]
-            )
-            rc, _ = self._run_host_cli_allow_fail(kubeconfig, ["platform", "status", "-n", self.namespace])
+            self._run_host_cli(kubeconfig, self._platform_uninstall_command())
+            rc, _ = self._run_host_cli_allow_fail(kubeconfig, self._platform_status_command())
             if rc == 0:
                 raise RuntimeError("platform status unexpectedly succeeded after uninstall")
 

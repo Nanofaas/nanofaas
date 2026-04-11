@@ -59,6 +59,7 @@ def test_compatibility_notes_are_centralized_when_legacy_wrappers_are_mentioned(
     cli_doc = (ROOT / "docs" / "nanofaas-cli.md").read_text(encoding="utf-8")
 
     assert "scripts/controlplane.sh cli-test run vm" in testing
+    assert "scripts/controlplane.sh cli-test run cli-stack" in testing
     assert "scripts/controlplane.sh cli-test run host-platform" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
@@ -68,5 +69,6 @@ def test_compatibility_notes_are_centralized_when_legacy_wrappers_are_mentioned(
     assert PIPELINE_ALIAS not in testing
 
     assert "scripts/controlplane.sh cli-test run vm" in cli_doc
+    assert "scripts/controlplane.sh cli-test run cli-stack" not in cli_doc
     assert "compatibility wrapper" in cli_doc.lower()
     assert PIPELINE_ALIAS not in cli_doc
