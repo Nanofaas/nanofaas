@@ -7,9 +7,10 @@ from controlplane_tool.paths import ToolPaths
 from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation, ScenarioOperation
+from controlplane_tool.vm_models import VmRequest
 
 
-def _remote_home(vm_request) -> str:
+def _remote_home(vm_request: VmRequest) -> str:
     if vm_request.home:
         return vm_request.home
     if vm_request.user == "root":
@@ -17,15 +18,15 @@ def _remote_home(vm_request) -> str:
     return f"/home/{vm_request.user}"
 
 
-def _remote_project_dir(vm_request) -> str:
+def _remote_project_dir(vm_request: VmRequest) -> str:
     return f"{_remote_home(vm_request)}/nanofaas"
 
 
-def _kubeconfig_path(vm_request) -> str:
+def _kubeconfig_path(vm_request: VmRequest) -> str:
     return f"{_remote_home(vm_request)}/.kube/config"
 
 
-def _inventory_target(vm_request) -> str:
+def _inventory_target(vm_request: VmRequest) -> str:
     if vm_request.lifecycle == "external":
         if vm_request.host is None:
             raise ValueError("external VM lifecycle requires a host")
@@ -163,6 +164,41 @@ def plan_registry_ensure_container(
     )
 
 
+def plan_k3s_install(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
+    vm_request = context.vm_request
+    return (
+        _ansible_operation(
+            context=context,
+            operation_id="k3s.install",
+            summary="Install k3s",
+            playbook_name="provision-k3s.yml",
+            extra_vars={
+                "vm_user": vm_request.user,
+                "kubeconfig_path": _kubeconfig_path(vm_request),
+            },
+        ),
+    )
+
+
+def plan_k3s_configure_registry(
+    context: ScenarioExecutionContext,
+) -> tuple[ScenarioOperation, ...]:
+    registry_host, registry_port = context.local_registry.rsplit(":", 1)
+    return (
+        _ansible_operation(
+            context=context,
+            operation_id="k3s.configure_registry",
+            summary="Configure k3s registry access",
+            playbook_name="configure-k3s-registry.yml",
+            extra_vars={
+                "registry": context.local_registry,
+                "registry_host": registry_host,
+                "registry_port": registry_port,
+            },
+        ),
+    )
+
+
 VM_ENSURE_RUNNING = ScenarioComponentDefinition(
     component_id="vm.ensure_running",
     summary="Ensure VM is running",
@@ -185,4 +221,16 @@ REGISTRY_ENSURE_CONTAINER = ScenarioComponentDefinition(
     component_id="registry.ensure_container",
     summary="Ensure local registry container is running",
     planner=plan_registry_ensure_container,
+)
+
+K3S_INSTALL = ScenarioComponentDefinition(
+    component_id="k3s.install",
+    summary="Install k3s",
+    planner=plan_k3s_install,
+)
+
+K3S_CONFIGURE_REGISTRY = ScenarioComponentDefinition(
+    component_id="k3s.configure_registry",
+    summary="Configure k3s registry access",
+    planner=plan_k3s_configure_registry,
 )

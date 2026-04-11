@@ -1,5 +1,24 @@
 from __future__ import annotations
 
+from controlplane_tool.scenario_components.bootstrap import (
+    K3S_CONFIGURE_REGISTRY,
+    K3S_INSTALL,
+    REGISTRY_ENSURE_CONTAINER,
+    REPO_SYNC_TO_VM,
+    VM_ENSURE_RUNNING,
+    VM_PROVISION_BASE,
+)
+from controlplane_tool.scenario_components.helm import (
+    HELM_DEPLOY_CONTROL_PLANE,
+    HELM_DEPLOY_FUNCTION_RUNTIME,
+    K8S_ENSURE_NAMESPACE,
+    K8S_WAIT_CONTROL_PLANE_READY,
+    K8S_WAIT_FUNCTION_RUNTIME_READY,
+)
+from controlplane_tool.scenario_components.images import (
+    BUILD_CORE,
+    BUILD_SELECTED_FUNCTIONS,
+)
 from controlplane_tool.scenario_components.models import ScenarioComponentDefinition, ScenarioRecipe
 
 
@@ -8,43 +27,19 @@ def _component(component_id: str, summary: str) -> ScenarioComponentDefinition:
 
 
 _COMPONENT_LIBRARY: dict[str, ScenarioComponentDefinition] = {
-    "vm.ensure_running": _component("vm.ensure_running", "Ensure VM is running"),
-    "vm.provision_base": _component("vm.provision_base", "Provision base VM dependencies"),
-    "repo.sync_to_vm": _component("repo.sync_to_vm", "Sync repository into VM"),
-    "registry.ensure_container": _component(
-        "registry.ensure_container",
-        "Ensure local registry container is running",
-    ),
-    "images.build_core": _component("images.build_core", "Build core images"),
-    "images.build_selected_functions": _component(
-        "images.build_selected_functions",
-        "Build selected function images",
-    ),
-    "k3s.install": _component("k3s.install", "Install k3s"),
-    "k3s.configure_registry": _component(
-        "k3s.configure_registry",
-        "Configure k3s registry access",
-    ),
-    "k8s.ensure_namespace": _component(
-        "k8s.ensure_namespace",
-        "Ensure Kubernetes namespace exists",
-    ),
-    "helm.deploy_control_plane": _component(
-        "helm.deploy_control_plane",
-        "Deploy control plane with Helm",
-    ),
-    "helm.deploy_function_runtime": _component(
-        "helm.deploy_function_runtime",
-        "Deploy function runtime with Helm",
-    ),
-    "k8s.wait_control_plane_ready": _component(
-        "k8s.wait_control_plane_ready",
-        "Wait for control plane readiness",
-    ),
-    "k8s.wait_function_runtime_ready": _component(
-        "k8s.wait_function_runtime_ready",
-        "Wait for function runtime readiness",
-    ),
+    VM_ENSURE_RUNNING.component_id: VM_ENSURE_RUNNING,
+    VM_PROVISION_BASE.component_id: VM_PROVISION_BASE,
+    REPO_SYNC_TO_VM.component_id: REPO_SYNC_TO_VM,
+    REGISTRY_ENSURE_CONTAINER.component_id: REGISTRY_ENSURE_CONTAINER,
+    BUILD_CORE.component_id: BUILD_CORE,
+    BUILD_SELECTED_FUNCTIONS.component_id: BUILD_SELECTED_FUNCTIONS,
+    K3S_INSTALL.component_id: K3S_INSTALL,
+    K3S_CONFIGURE_REGISTRY.component_id: K3S_CONFIGURE_REGISTRY,
+    K8S_ENSURE_NAMESPACE.component_id: K8S_ENSURE_NAMESPACE,
+    HELM_DEPLOY_CONTROL_PLANE.component_id: HELM_DEPLOY_CONTROL_PLANE,
+    HELM_DEPLOY_FUNCTION_RUNTIME.component_id: HELM_DEPLOY_FUNCTION_RUNTIME,
+    K8S_WAIT_CONTROL_PLANE_READY.component_id: K8S_WAIT_CONTROL_PLANE_READY,
+    K8S_WAIT_FUNCTION_RUNTIME_READY.component_id: K8S_WAIT_FUNCTION_RUNTIME_READY,
     "tests.run_k3s_curl_checks": _component(
         "tests.run_k3s_curl_checks",
         "Run k3s curl checks",

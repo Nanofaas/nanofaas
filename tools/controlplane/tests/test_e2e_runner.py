@@ -154,6 +154,26 @@ def test_vm_cluster_prelude_plan_keeps_shared_image_and_helm_values() -> None:
     assert "functionRuntime.image.repository" in prelude.deploy_function_runtime_script
 
 
+def test_vm_cluster_prelude_plan_uses_k3s_component_planners() -> None:
+    resolved_scenario = load_scenario_file(
+        Path("tools/controlplane/scenarios/k8s-demo-java.toml")
+    )
+    vm = VmOrchestrator(repo_root=Path("/repo"), shell=RecordingShell())
+    prelude = build_vm_cluster_prelude_plan(
+        vm=vm,
+        vm_request=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        namespace="nanofaas-e2e",
+        local_registry="localhost:5000",
+        runtime="java",
+        resolved_scenario=resolved_scenario,
+    )
+
+    assert prelude.install_k3s.command[0] == "ansible-playbook"
+    assert "provision-k3s.yml" in prelude.install_k3s.command[-1]
+    assert prelude.configure_registry.command[0] == "ansible-playbook"
+    assert "configure-k3s-registry.yml" in prelude.configure_registry.command[-1]
+
+
 def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = runner.plan(

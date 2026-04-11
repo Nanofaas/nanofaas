@@ -1,22 +1,19 @@
 """Shared image/value builders for scenario component planners.
 
-This module still carries a legacy compatibility bridge for the current
-E2eRunner prelude path, but the reusable planning logic now lives in the
-scenario_components package.
+This module keeps a thin legacy bridge for the existing E2eRunner prelude
+path, but the reusable bootstrap logic now lives in scenario_components.
 """
 
 from __future__ import annotations
 
+import shlex
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any, cast
 
+from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
+from controlplane_tool.scenario_components.operations import RemoteCommandOperation
 from controlplane_tool.scenario_models import ResolvedScenario
-from controlplane_tool.scenario_tasks import (
-    build_core_images_vm_script,
-    build_function_images_vm_script,
-    helm_upgrade_install_vm_script,
-    kubectl_create_namespace_vm_script,
-    kubectl_rollout_status_vm_script,
-)
 from controlplane_tool.shell_backend import ShellExecutionResult
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest
@@ -111,6 +108,35 @@ class VmClusterPreludePlan:
     wait_function_runtime_script: str
 
 
+def _shell_result(operation: RemoteCommandOperation) -> ShellExecutionResult:
+    return ShellExecutionResult(
+        command=list(operation.argv),
+        return_code=0,
+        stdout="",
+        stderr="",
+        env=dict(operation.env),
+        dry_run=True,
+    )
+
+
+def _render_operation(operation: RemoteCommandOperation, *, remote_dir: str | None = None) -> str:
+    prefixes = [f"{name}={shlex.quote(value)}" for name, value in operation.env.items()]
+    command = shlex.join(list(operation.argv))
+    rendered = " ".join([*prefixes, command]) if prefixes else command
+    if remote_dir is None:
+        return rendered
+    return f"cd {shlex.quote(remote_dir)} && {rendered}"
+
+
+def _render_operations(
+    operations: Iterable[RemoteCommandOperation],
+    *,
+    remote_dir: str | None = None,
+) -> str:
+    rendered = [_render_operation(operation, remote_dir=remote_dir) for operation in operations]
+    return " && ".join(rendered)
+
+
 def build_vm_cluster_prelude_plan(
     *,
     vm: VmOrchestrator,
@@ -121,88 +147,89 @@ def build_vm_cluster_prelude_plan(
     resolved_scenario: ResolvedScenario | None,
 ) -> VmClusterPreludePlan:
     # Legacy bridge until E2eRunner is moved onto the component library.
-    remote_dir = vm.remote_project_dir(vm_request)
-    kubeconfig_path = vm.kubeconfig_path(vm_request)
-    resolved_control_image = control_image(local_registry)
-    resolved_runtime_image = runtime_image(local_registry)
-    selected_function_specs = function_image_specs(resolved_scenario, resolved_runtime_image)
+    from controlplane_tool.scenario_components import bootstrap as bootstrap_components
+    from controlplane_tool.scenario_components import helm as helm_components
+    from controlplane_tool.scenario_components import images as image_components
 
-    build_selected_functions_script = (
-        build_function_images_vm_script(
-            remote_dir=remote_dir,
-            functions=selected_function_specs,
-            sudo=True,
-            push=True,
+    scenario_context = ScenarioExecutionContext(
+        repo_root=vm.repo_root,
+        request=cast(Any, vm_request),
+        scenario_name="legacy",
+        runtime=runtime,
+        namespace=namespace,
+        local_registry=local_registry,
+        resolved_scenario=resolved_scenario,
+        vm_request=vm_request,
+    )
+    remote_dir = vm.remote_project_dir(vm_request)
+    bootstrap_plan = {
+        operation.operation_id: operation
+        for operation in (
+            *bootstrap_components.plan_vm_ensure_running(scenario_context),
+            *bootstrap_components.plan_vm_provision_base(scenario_context),
+            *bootstrap_components.plan_repo_sync_to_vm(scenario_context),
+            *bootstrap_components.plan_registry_ensure_container(scenario_context),
+            *bootstrap_components.plan_k3s_install(scenario_context),
+            *bootstrap_components.plan_k3s_configure_registry(scenario_context),
         )
-        if selected_function_specs
-        else None
+    }
+    image_plan = {
+        operation.operation_id: operation
+        for operation in (
+            *image_components.plan_build_core(scenario_context),
+            *image_components.plan_build_selected_functions(scenario_context),
+        )
+    }
+    helm_plan = {
+        operation.operation_id: operation
+        for operation in (
+            *helm_components.plan_ensure_namespace(scenario_context),
+            *helm_components.plan_deploy_control_plane(scenario_context),
+            *helm_components.plan_deploy_function_runtime(scenario_context),
+            *helm_components.plan_wait_control_plane_ready(scenario_context),
+            *helm_components.plan_wait_function_runtime_ready(scenario_context),
+        )
+    }
+    selected_function_operations = tuple(
+        operation
+        for operation in image_plan.values()
+        if operation.operation_id.startswith("images.build_selected_functions.")
     )
 
     return VmClusterPreludePlan(
-        ensure_running=vm.ensure_running(vm_request, dry_run=True),
-        install_dependencies=vm.install_dependencies(vm_request, install_helm=True, dry_run=True),
-        sync_project=vm.sync_project(vm_request, dry_run=True),
-        ensure_registry=vm.ensure_registry_container(
-            vm_request,
-            registry=local_registry,
-            dry_run=True,
-        ),
-        build_core_script=build_core_images_vm_script(
+        ensure_running=_shell_result(bootstrap_plan["vm.ensure_running"]),
+        install_dependencies=_shell_result(bootstrap_plan["vm.provision_base"]),
+        sync_project=_shell_result(bootstrap_plan["repo.sync_to_vm"]),
+        ensure_registry=_shell_result(bootstrap_plan["registry.ensure_container"]),
+        build_core_script=_render_operations(
+            (image_plan["images.build_core.boot_jars"], image_plan["images.build_core.control_image"], image_plan["images.build_core.runtime_image"], image_plan["images.build_core.push_control_image"], image_plan["images.build_core.push_runtime_image"]),
             remote_dir=remote_dir,
-            control_image=resolved_control_image,
-            runtime_image=resolved_runtime_image,
-            runtime=runtime,
-            mode="docker",
-            sudo=True,
-            build_jars=True,
         ),
-        build_selected_functions_script=build_selected_functions_script,
-        install_k3s=vm.install_k3s(vm_request, dry_run=True),
-        configure_registry=vm.configure_k3s_registry(
-            vm_request,
-            registry=local_registry,
-            dry_run=True,
+        build_selected_functions_script=(
+            _render_operations(selected_function_operations, remote_dir=remote_dir)
+            if selected_function_operations
+            else None
         ),
-        create_namespace_script=kubectl_create_namespace_vm_script(
+        install_k3s=_shell_result(bootstrap_plan["k3s.install"]),
+        configure_registry=_shell_result(bootstrap_plan["k3s.configure_registry"]),
+        create_namespace_script=_render_operations(
+            (helm_plan["k8s.ensure_namespace"],),
             remote_dir=remote_dir,
-            namespace=namespace,
-            kubeconfig_path=kubeconfig_path,
         ),
-        deploy_control_plane_script=helm_upgrade_install_vm_script(
+        deploy_control_plane_script=_render_operations(
+            (helm_plan["helm.deploy_control_plane"],),
             remote_dir=remote_dir,
-            release="control-plane",
-            chart="helm/nanofaas",
-            namespace=namespace,
-            values=control_plane_helm_values(
-                namespace=namespace,
-                control_plane_image=resolved_control_image,
-            ),
-            kubeconfig_path=kubeconfig_path,
-            timeout="5m",
         ),
-        deploy_function_runtime_script=helm_upgrade_install_vm_script(
+        deploy_function_runtime_script=_render_operations(
+            (helm_plan["helm.deploy_function_runtime"],),
             remote_dir=remote_dir,
-            release="function-runtime",
-            chart="helm/nanofaas-runtime",
-            namespace=namespace,
-            values=function_runtime_helm_values(
-                function_runtime_image=resolved_runtime_image,
-            ),
-            kubeconfig_path=kubeconfig_path,
-            timeout="3m",
         ),
-        wait_control_plane_script=kubectl_rollout_status_vm_script(
+        wait_control_plane_script=_render_operations(
+            (helm_plan["k8s.wait_control_plane_ready"],),
             remote_dir=remote_dir,
-            namespace=namespace,
-            deployment="nanofaas-control-plane",
-            kubeconfig_path=kubeconfig_path,
-            timeout=180,
         ),
-        wait_function_runtime_script=kubectl_rollout_status_vm_script(
+        wait_function_runtime_script=_render_operations(
+            (helm_plan["k8s.wait_function_runtime_ready"],),
             remote_dir=remote_dir,
-            namespace=namespace,
-            deployment="function-runtime",
-            kubeconfig_path=kubeconfig_path,
-            timeout=120,
         ),
     )

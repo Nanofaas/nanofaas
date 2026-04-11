@@ -70,6 +70,24 @@ def test_registry_component_planner_uses_vm_remote_ansible_operation() -> None:
     assert not any(part.startswith("bash") for part in operation.argv)
 
 
+def test_k3s_component_planners_return_typed_remote_operations() -> None:
+    context = _managed_context()
+
+    install_operations = bootstrap.plan_k3s_install(context)
+    configure_operations = bootstrap.plan_k3s_configure_registry(context)
+
+    assert len(install_operations) == 1
+    assert len(configure_operations) == 1
+    assert isinstance(install_operations[0], RemoteCommandOperation)
+    assert isinstance(configure_operations[0], RemoteCommandOperation)
+    assert install_operations[0].operation_id == "k3s.install"
+    assert configure_operations[0].operation_id == "k3s.configure_registry"
+    assert install_operations[0].argv[0] == "ansible-playbook"
+    assert configure_operations[0].argv[0] == "ansible-playbook"
+    assert "provision-k3s.yml" in install_operations[0].argv[-1]
+    assert "configure-k3s-registry.yml" in configure_operations[0].argv[-1]
+
+
 def test_image_component_planners_return_typed_operations_for_selected_functions() -> None:
     resolved_scenario = ResolvedScenario(
         name="demo-java",
@@ -123,6 +141,16 @@ def test_helm_component_planners_use_namespace_and_helm_values() -> None:
     assert "nanofaas-stack" in " ".join(runtime_operations[0].argv)
     assert wait_control_plane_operations[0].argv[:3] == ("kubectl", "rollout", "status")
     assert wait_runtime_operations[0].argv[:3] == ("kubectl", "rollout", "status")
+
+
+def test_compose_recipe_wires_concrete_component_planners() -> None:
+    recipe = build_scenario_recipe("helm-stack")
+    components = {component.component_id: component for component in compose_recipe(recipe)}
+
+    assert components["k3s.install"].planner is bootstrap.plan_k3s_install
+    assert components["k3s.configure_registry"].planner is bootstrap.plan_k3s_configure_registry
+    assert components["helm.deploy_control_plane"].planner is helm.plan_deploy_control_plane
+    assert components["images.build_core"].planner is images.plan_build_core
 
 
 def test_compose_recipe_returns_ordered_component_definitions() -> None:
