@@ -8,6 +8,24 @@ from controlplane_tool.scenario_components.bootstrap import (
     VM_ENSURE_RUNNING,
     VM_PROVISION_BASE,
 )
+from controlplane_tool.scenario_components.cleanup import (
+    DELETE_NAMESPACE,
+    UNINSTALL_CONTROL_PLANE,
+    UNINSTALL_FUNCTION_RUNTIME,
+    VERIFY_CLI_PLATFORM_STATUS_FAILS,
+    VM_DOWN,
+)
+from controlplane_tool.scenario_components.cli import (
+    CLI_BUILD_INSTALL_DIST,
+    CLI_FN_APPLY_SELECTED,
+    CLI_FN_DELETE_SELECTED,
+    CLI_FN_ENQUEUE_SELECTED,
+    CLI_FN_INVOKE_SELECTED,
+    CLI_FN_LIST_SELECTED,
+    CLI_PLATFORM_INSTALL,
+    CLI_PLATFORM_STATUS,
+    CLI_PLATFORM_UNINSTALL,
+)
 from controlplane_tool.scenario_components.helm import (
     HELM_DEPLOY_CONTROL_PLANE,
     HELM_DEPLOY_FUNCTION_RUNTIME,
@@ -40,6 +58,20 @@ _COMPONENT_LIBRARY: dict[str, ScenarioComponentDefinition] = {
     HELM_DEPLOY_FUNCTION_RUNTIME.component_id: HELM_DEPLOY_FUNCTION_RUNTIME,
     K8S_WAIT_CONTROL_PLANE_READY.component_id: K8S_WAIT_CONTROL_PLANE_READY,
     K8S_WAIT_FUNCTION_RUNTIME_READY.component_id: K8S_WAIT_FUNCTION_RUNTIME_READY,
+    CLI_BUILD_INSTALL_DIST.component_id: CLI_BUILD_INSTALL_DIST,
+    CLI_PLATFORM_INSTALL.component_id: CLI_PLATFORM_INSTALL,
+    CLI_PLATFORM_STATUS.component_id: CLI_PLATFORM_STATUS,
+    CLI_PLATFORM_UNINSTALL.component_id: CLI_PLATFORM_UNINSTALL,
+    CLI_FN_APPLY_SELECTED.component_id: CLI_FN_APPLY_SELECTED,
+    CLI_FN_LIST_SELECTED.component_id: CLI_FN_LIST_SELECTED,
+    CLI_FN_INVOKE_SELECTED.component_id: CLI_FN_INVOKE_SELECTED,
+    CLI_FN_ENQUEUE_SELECTED.component_id: CLI_FN_ENQUEUE_SELECTED,
+    CLI_FN_DELETE_SELECTED.component_id: CLI_FN_DELETE_SELECTED,
+    UNINSTALL_CONTROL_PLANE.component_id: UNINSTALL_CONTROL_PLANE,
+    UNINSTALL_FUNCTION_RUNTIME.component_id: UNINSTALL_FUNCTION_RUNTIME,
+    DELETE_NAMESPACE.component_id: DELETE_NAMESPACE,
+    VERIFY_CLI_PLATFORM_STATUS_FAILS.component_id: VERIFY_CLI_PLATFORM_STATUS_FAILS,
+    VM_DOWN.component_id: VM_DOWN,
     "tests.run_k3s_curl_checks": _component(
         "tests.run_k3s_curl_checks",
         "Run k3s curl checks",
@@ -48,63 +80,10 @@ _COMPONENT_LIBRARY: dict[str, ScenarioComponentDefinition] = {
         "tests.run_k8s_junit",
         "Run Kubernetes JUnit checks",
     ),
-    "helm.uninstall_function_runtime": _component(
-        "helm.uninstall_function_runtime",
-        "Uninstall function runtime",
-    ),
-    "helm.uninstall_control_plane": _component(
-        "helm.uninstall_control_plane",
-        "Uninstall control plane",
-    ),
-    "k8s.delete_namespace": _component(
-        "k8s.delete_namespace",
-        "Delete Kubernetes namespace",
-    ),
-    "vm.down": _component("vm.down", "Stop VM"),
     "loadtest.run": _component("loadtest.run", "Run load test"),
     "experiments.autoscaling": _component(
         "experiments.autoscaling",
         "Verify autoscaling experiment",
-    ),
-    "tests.build_cli_stack_cli": _component(
-        "tests.build_cli_stack_cli",
-        "Build CLI for CLI stack",
-    ),
-    "tests.install_cli_stack_platform": _component(
-        "tests.install_cli_stack_platform",
-        "Install nanofaas platform with CLI",
-    ),
-    "tests.status_cli_stack_platform": _component(
-        "tests.status_cli_stack_platform",
-        "Check nanofaas platform status",
-    ),
-    "tests.apply_cli_stack_functions": _component(
-        "tests.apply_cli_stack_functions",
-        "Apply CLI stack functions",
-    ),
-    "tests.list_cli_stack_functions": _component(
-        "tests.list_cli_stack_functions",
-        "List CLI stack functions",
-    ),
-    "tests.invoke_cli_stack_functions": _component(
-        "tests.invoke_cli_stack_functions",
-        "Invoke CLI stack functions",
-    ),
-    "tests.enqueue_cli_stack_functions": _component(
-        "tests.enqueue_cli_stack_functions",
-        "Enqueue CLI stack functions",
-    ),
-    "tests.delete_cli_stack_functions": _component(
-        "tests.delete_cli_stack_functions",
-        "Delete CLI stack functions",
-    ),
-    "tests.uninstall_cli_stack_platform": _component(
-        "tests.uninstall_cli_stack_platform",
-        "Uninstall nanofaas platform with CLI",
-    ),
-    "tests.verify_cli_stack_status_fails": _component(
-        "tests.verify_cli_stack_status_fails",
-        "Verify platform status fails after uninstall",
     ),
 }
 

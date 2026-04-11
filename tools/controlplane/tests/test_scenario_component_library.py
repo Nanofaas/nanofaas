@@ -214,4 +214,4 @@ def test_build_scenario_recipe_returns_isolated_component_ids() -> None:
     task_ids.append("extra.component")
 
     assert "extra.component" not in recipe.component_ids
-    assert recipe.component_ids[-1] == "tests.verify_cli_stack_status_fails"
+    assert recipe.component_ids[-1] == "vm.down"

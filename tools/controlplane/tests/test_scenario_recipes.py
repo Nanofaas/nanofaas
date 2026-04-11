@@ -21,16 +21,19 @@ def test_cli_stack_recipe_is_independent_and_self_bootstrapping() -> None:
         "k3s.configure_registry",
         "images.build_core",
         "images.build_selected_functions",
-        "tests.build_cli_stack_cli",
-        "tests.install_cli_stack_platform",
-        "tests.status_cli_stack_platform",
-        "tests.apply_cli_stack_functions",
-        "tests.list_cli_stack_functions",
-        "tests.invoke_cli_stack_functions",
-        "tests.enqueue_cli_stack_functions",
-        "tests.delete_cli_stack_functions",
-        "tests.uninstall_cli_stack_platform",
-        "tests.verify_cli_stack_status_fails",
+        "cli.build_install_dist",
+        "cli.platform_install",
+        "cli.platform_status",
+        "cli.fn_apply_selected",
+        "cli.fn_list_selected",
+        "cli.fn_invoke_selected",
+        "cli.fn_enqueue_selected",
+        "cli.fn_delete_selected",
+        "cleanup.uninstall_control_plane",
+        "cleanup.uninstall_function_runtime",
+        "cleanup.delete_namespace",
+        "cleanup.verify_cli_platform_status_fails",
+        "vm.down",
     ]:
         assert component_id in recipe.component_ids
 
@@ -45,14 +48,14 @@ def test_cli_stack_recipe_is_independent_and_self_bootstrapping() -> None:
             "k3s.configure_registry",
         ],
     )
-    assert recipe.component_ids.index("tests.build_cli_stack_cli") < recipe.component_ids.index(
-        "tests.install_cli_stack_platform"
+    assert recipe.component_ids.index("cli.build_install_dist") < recipe.component_ids.index(
+        "cli.platform_install"
     )
-    assert recipe.component_ids.index("tests.install_cli_stack_platform") < recipe.component_ids.index(
-        "tests.status_cli_stack_platform"
+    assert recipe.component_ids.index("cli.platform_install") < recipe.component_ids.index(
+        "cli.platform_status"
     )
-    assert recipe.component_ids.index("tests.uninstall_cli_stack_platform") < recipe.component_ids.index(
-        "tests.verify_cli_stack_status_fails"
+    assert recipe.component_ids.index("cleanup.uninstall_control_plane") < recipe.component_ids.index(
+        "cleanup.verify_cli_platform_status_fails"
     )
 
 
@@ -88,6 +91,6 @@ def test_helm_stack_recipe_and_cli_stack_recipe_share_components_without_sharing
     )
     assert "loadtest.run" in helm_recipe.component_ids
     assert "experiments.autoscaling" in helm_recipe.component_ids
-    assert "tests.build_cli_stack_cli" in cli_recipe.component_ids
-    assert "tests.verify_cli_stack_status_fails" in cli_recipe.component_ids
+    assert "cli.build_install_dist" in cli_recipe.component_ids
+    assert "cleanup.verify_cli_platform_status_fails" in cli_recipe.component_ids
     assert helm_recipe.component_ids != cli_recipe.component_ids

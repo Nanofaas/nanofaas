@@ -7,19 +7,28 @@ Mirrors the logic of the deleted e2e-cli-host-backend.sh (M10).
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 from pathlib import Path
 
-from controlplane_tool.cli_platform_workflow import (
-    platform_install_command,
-    platform_status_command,
-    platform_uninstall_command,
-)
+from controlplane_tool.scenario_components import cli as cli_components
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
+
+
+@dataclass(frozen=True, slots=True)
+class _CliPlanContext:
+    repo_root: Path
+    release: str
+    namespace: str
+    local_registry: str
+    runtime: str
+    resolved_scenario: object | None
+    vm_request: VmRequest
 
 
 class CliHostPlatformRunner:
@@ -60,9 +69,25 @@ class CliHostPlatformRunner:
             / "nanofaas"
         )
 
-    @property
-    def _control_image(self) -> str:
-        return f"{self.local_registry}/nanofaas/control-plane:e2e"
+    def _plan_context(self) -> _CliPlanContext:
+        return _CliPlanContext(
+            repo_root=self.repo_root,
+            release=self.release,
+            namespace=self.namespace,
+            local_registry=self.local_registry,
+            runtime=self.runtime,
+            resolved_scenario=None,
+            vm_request=self.vm_request,
+        )
+
+    def _first_operation_command(self, operations: tuple[object, ...]) -> list[str]:
+        if not operations:
+            raise RuntimeError("shared CLI planner returned no operations")
+        operation = operations[0]
+        argv = getattr(operation, "argv", None)
+        if argv is None:
+            raise RuntimeError("shared CLI planner returned an invalid operation")
+        return list(argv)
 
     @property
     def _remote_dir(self) -> str:
@@ -81,7 +106,7 @@ class CliHostPlatformRunner:
             return
         step("Building nanofaas-cli on host...")
         result = self._shell.run(
-            ["./gradlew", ":nanofaas-cli:installDist", "--no-daemon", "-q"],
+            self._first_operation_command(cli_components.plan_build_install_dist(self._plan_context())),
             cwd=self.repo_root,
             dry_run=False,
         )
@@ -108,18 +133,13 @@ class CliHostPlatformRunner:
         return dest
 
     def _platform_install_command(self) -> list[str]:
-        return platform_install_command(
-            repo_root=self.repo_root,
-            release=self.release,
-            namespace=self.namespace,
-            control_plane_image=self._control_image,
-        )
+        return self._first_operation_command(cli_components.plan_platform_install(self._plan_context()))
 
     def _platform_status_command(self) -> list[str]:
-        return platform_status_command(self.namespace)
+        return self._first_operation_command(cli_components.plan_platform_status(self._plan_context()))
 
     def _platform_uninstall_command(self) -> list[str]:
-        return platform_uninstall_command(release=self.release, namespace=self.namespace)
+        return self._first_operation_command(cli_components.plan_platform_uninstall(self._plan_context()))
 
     def _run_host_cli(self, kubeconfig: Path, command: list[str]) -> str:
         env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
