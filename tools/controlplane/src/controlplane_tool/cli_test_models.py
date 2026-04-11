@@ -12,6 +12,7 @@ from controlplane_tool.vm_models import VmRequest
 
 CliTestGradleTask = Literal[":nanofaas-cli:test", ":nanofaas-cli:installDist"]
 
+CLI_TEST_VM_BACKED_SCENARIOS = frozenset({"vm", "cli-stack", "host-platform"})
 CLI_TEST_FUNCTION_SELECTION_SCENARIOS = frozenset(
     {"vm", "cli-stack", "deploy-host"}
 )
