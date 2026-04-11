@@ -4,23 +4,38 @@ import pytest
 from pydantic import ValidationError
 
 from controlplane_tool.cli_test_models import CliTestRequest
+from controlplane_tool.scenario_components.environment import resolve_scenario_environment
 from controlplane_tool.vm_models import VmRequest
 
 
-def test_cli_test_request_requires_vm_for_vm_backed_scenarios() -> None:
-    with pytest.raises(ValidationError, match="vm configuration is required"):
-        CliTestRequest(scenario="vm")
+def test_cli_test_request_allows_missing_vm_for_vm_backed_scenarios() -> None:
+    request = CliTestRequest(scenario="vm")
+
+    assert request.vm is None
 
 
-def test_cli_test_request_accepts_selection_for_cli_stack_vm_scenario() -> None:
+def test_cli_test_request_cli_stack_can_be_resolved_without_vm() -> None:
     request = CliTestRequest(
         scenario="cli-stack",
         function_preset="demo-java",
-        vm=VmRequest(lifecycle="multipass"),
+        vm=None,
     )
 
     assert request.scenario == "cli-stack"
     assert request.function_preset == "demo-java"
+
+
+def test_cli_test_request_cli_stack_environment_is_managed(tmp_path: Path) -> None:
+    request = CliTestRequest(
+        scenario="cli-stack",
+        function_preset="demo-java",
+        vm=None,
+    )
+
+    context = resolve_scenario_environment(repo_root=tmp_path, request=request)
+
+    assert context.request is request
+    assert context.vm_request == VmRequest(lifecycle="multipass", name="nanofaas-e2e")
 
 
 def test_cli_test_request_rejects_function_selection_for_unit() -> None:

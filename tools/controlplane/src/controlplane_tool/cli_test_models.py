@@ -12,7 +12,6 @@ from controlplane_tool.vm_models import VmRequest
 
 CliTestGradleTask = Literal[":nanofaas-cli:test", ":nanofaas-cli:installDist"]
 
-CLI_TEST_VM_BACKED_SCENARIOS = frozenset({"vm", "cli-stack", "host-platform"})
 CLI_TEST_FUNCTION_SELECTION_SCENARIOS = frozenset(
     {"vm", "cli-stack", "deploy-host"}
 )
@@ -38,8 +37,6 @@ class CliTestRequest(BaseModel):
             raise ValueError(
                 "function selection must use only one of function_preset or functions"
             )
-        if self.scenario in CLI_TEST_VM_BACKED_SCENARIOS and self.vm is None:
-            raise ValueError(f"vm configuration is required for scenario '{self.scenario}'")
 
         has_function_selection = any(
             (
