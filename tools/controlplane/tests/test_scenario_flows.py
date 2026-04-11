@@ -50,6 +50,48 @@ def test_cli_vm_flow_reuses_build_and_helm_deploy_tasks() -> None:
     assert "helm.deploy_control_plane" in flow.task_ids
 
 
+def test_cli_stack_flow_uses_dedicated_cli_stack_task_order() -> None:
+    flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
+
+    assert flow.task_ids == [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "registry.ensure_container",
+        "k3s.install",
+        "k3s.configure_registry",
+        "images.build_core",
+        "images.build_selected_functions",
+        "tests.build_cli_stack_cli",
+        "tests.install_cli_stack_platform",
+        "tests.status_cli_stack_platform",
+        "tests.apply_cli_stack_functions",
+        "tests.list_cli_stack_functions",
+        "tests.invoke_cli_stack_functions",
+        "tests.enqueue_cli_stack_functions",
+        "tests.delete_cli_stack_functions",
+        "tests.uninstall_cli_stack_platform",
+        "tests.verify_cli_stack_status_fails",
+    ]
+
+
+def test_cli_stack_flow_routes_through_python_e2e_runner(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        scenario_flows_mod.E2eRunner,
+        "run",
+        lambda self, request, event_listener=None: called.update(  # noqa: ANN001
+            {"request": request, "event_listener": event_listener}
+        ) or "ok",
+    )
+
+    flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
+
+    assert flow.run() == "ok"
+    assert called["request"].scenario == "cli-stack"
+
+
 def test_k3s_junit_curl_flow_requires_request_for_executable_definition() -> None:
     with pytest.raises(ValueError):
         build_scenario_flow("k3s-junit-curl", repo_root=Path("/repo"))

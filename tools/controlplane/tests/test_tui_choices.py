@@ -143,6 +143,40 @@ def test_tui_can_save_default_cli_test_scenario(monkeypatch) -> None:
     assert profile.cli_test.default_scenario == "vm"
 
 
+def test_tui_can_save_cli_stack_as_default_cli_test_scenario(monkeypatch) -> None:
+    import controlplane_tool.tui as tui
+
+    select_answers = iter(
+        ["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "cli-stack"]
+    )
+    confirm_answers = iter([True, True, True, True, True, True])
+
+    monkeypatch.setattr(
+        tui.questionary,
+        "select",
+        lambda *args, **kwargs: _Prompt(next(select_answers)),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "checkbox",
+        lambda *args, **kwargs: _Prompt(["autoscaler"]),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt("word-stats-java,json-transform-java"),
+    )
+
+    profile = build_profile_interactive(profile_name="demo-java")
+
+    assert profile.cli_test.default_scenario == "cli-stack"
+
+
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
     now = datetime.now(UTC)
     return FlowRunResult.completed(

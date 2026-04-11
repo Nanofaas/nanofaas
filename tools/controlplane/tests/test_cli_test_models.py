@@ -12,6 +12,17 @@ def test_cli_test_request_requires_vm_for_vm_backed_scenarios() -> None:
         CliTestRequest(scenario="vm")
 
 
+def test_cli_test_request_accepts_selection_for_cli_stack_vm_scenario() -> None:
+    request = CliTestRequest(
+        scenario="cli-stack",
+        function_preset="demo-java",
+        vm=VmRequest(lifecycle="multipass"),
+    )
+
+    assert request.scenario == "cli-stack"
+    assert request.function_preset == "demo-java"
+
+
 def test_cli_test_request_rejects_function_selection_for_unit() -> None:
     with pytest.raises(ValidationError, match="does not accept function selection"):
         CliTestRequest(

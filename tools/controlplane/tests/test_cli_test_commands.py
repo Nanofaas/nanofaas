@@ -8,6 +8,7 @@ def test_cli_test_group_lists_known_scenarios() -> None:
 
     assert result.exit_code == 0
     assert "vm" in result.stdout
+    assert "cli-stack" in result.stdout
     assert "deploy-host" in result.stdout
 
 
@@ -18,6 +19,20 @@ def test_cli_test_run_vm_dry_run_renders_backend_steps() -> None:
     assert "cli-e2e" in result.stdout
     assert "e2e-cli-backend.sh" not in result.stdout
     assert ":nanofaas-cli:installDist" in result.stdout
+
+
+def test_cli_test_run_cli_stack_dry_run_shows_cli_stack_tail() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["cli-test", "run", "cli-stack", "--function-preset", "demo-java", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert "Scenario: cli-stack" in result.stdout
+    assert "Build nanofaas-cli installDist" in result.stdout
+    assert "install nanofaas into k3s" in result.stdout.lower()
+    assert "platform status" in result.stdout.lower()
+    assert "verify cli-stack status fails" in result.stdout.lower()
 
 
 def test_cli_test_inspect_shows_gradle_task_and_vm_requirement() -> None:

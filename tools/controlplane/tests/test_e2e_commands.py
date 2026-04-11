@@ -13,6 +13,7 @@ def test_e2e_list_prints_known_scenarios() -> None:
     result = runner.invoke(app, ["e2e", "list"])
     assert result.exit_code == 0
     assert "k3s-junit-curl" in result.stdout
+    assert "cli-stack" in result.stdout
 
 
 def test_e2e_run_dry_run_prints_planned_steps() -> None:

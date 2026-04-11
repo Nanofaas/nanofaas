@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import controlplane_tool.cli_runtime as cli_runtime
 from controlplane_tool.cli_vm_runner import CliVmRunner
 from controlplane_tool.cli_host_runner import CliHostPlatformRunner
 from controlplane_tool.scenario_helpers import (
@@ -109,6 +110,10 @@ def test_cli_vm_runner_runtime_image_uses_local_registry(tmp_path) -> None:
     vm_req = _make_vm_request()
     runner = CliVmRunner(tmp_path, vm_request=vm_req, local_registry="myreg:5001")
     assert runner._runtime_image.startswith("myreg:5001/")
+
+
+def test_cli_runtime_re_exports_dedicated_cli_stack_runner() -> None:
+    assert hasattr(cli_runtime, "CliStackRunner")
 
 
 # ---------------------------------------------------------------------------

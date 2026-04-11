@@ -9,6 +9,7 @@ def test_catalog_lists_expected_suite_names() -> None:
         "container-local",
         "k3s-junit-curl",
         "cli",
+        "cli-stack",
         "cli-host",
         "deploy-host",
         "helm-stack",
