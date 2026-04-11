@@ -15,5 +15,9 @@ def test_environment_resolver_creates_managed_vm_when_request_has_none(
 
     context = resolve_scenario_environment(repo_root=tmp_path, request=request)
 
+    assert context.repo_root == tmp_path
+    assert context.request is request
+    assert request.vm is None
     assert context.vm_request is not None
     assert context.vm_request.lifecycle == "multipass"
+    assert context.vm_request.name == "nanofaas-e2e"
