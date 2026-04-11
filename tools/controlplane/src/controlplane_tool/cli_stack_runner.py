@@ -9,13 +9,15 @@ import os
 import shlex
 from pathlib import Path
 
+from controlplane_tool.e2e_models import E2eRequest
+from controlplane_tool.e2e_runner import ScenarioPlanStep, plan_recipe_steps
 from controlplane_tool.cli_platform_workflow import (
     platform_install_command,
     platform_status_command,
     platform_uninstall_command,
 )
 from controlplane_tool.console import phase, step, success
-from controlplane_tool.e2e_runner import ScenarioPlanStep
+from controlplane_tool.scenario_components.environment import default_managed_vm_request
 from controlplane_tool.scenario_helpers import (
     function_image as _function_image,
     function_payload as _function_payload,
@@ -29,7 +31,7 @@ from controlplane_tool.scenario_tasks import (
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_cluster_workflows import control_image, function_image_specs, runtime_image
-from controlplane_tool.vm_models import VmRequest, vm_request_from_env
+from controlplane_tool.vm_models import VmRequest
 
 
 class CliStackRunner:
@@ -47,7 +49,7 @@ class CliStackRunner:
         skip_cli_build: bool = False,
     ) -> None:
         self.repo_root = Path(repo_root)
-        self.vm_request = vm_request or vm_request_from_env()
+        self.vm_request = vm_request or default_managed_vm_request()
         self.namespace = namespace
         self.release = release
         self.local_registry = local_registry
@@ -107,174 +109,23 @@ class CliStackRunner:
         )
 
     def plan_steps(self, resolved_scenario=None) -> list[ScenarioPlanStep]:
-        selected_functions = _selected_functions(resolved_scenario)
-        function_specs = function_image_specs(resolved_scenario, self._runtime_image)
-
-        build_functions_script = (
-            build_function_images_vm_script(
-                remote_dir=self._remote_dir,
-                functions=function_specs,
-                sudo=True,
-                push=True,
-            )
-            if function_specs
-            else f"cd {shlex.quote(self._remote_dir)} && echo 'No selected function images to build'"
+        request = E2eRequest(
+            scenario="cli-stack",
+            runtime=self.runtime,
+            resolved_scenario=resolved_scenario,
+            vm=self.vm_request,
+            namespace=self.namespace,
+            local_registry=self.local_registry,
         )
-
-        install_command = shlex.join(
-            platform_install_command(
-                repo_root=self.repo_root,
-                release=self.release,
-                namespace=self.namespace,
-                control_plane_image=self._control_image,
-            )
+        return plan_recipe_steps(
+            self.repo_root,
+            request,
+            "cli-stack",
+            release=self.release,
         )
-        status_command = shlex.join(platform_status_command(self.namespace))
-        uninstall_command = shlex.join(
-            platform_uninstall_command(release=self.release, namespace=self.namespace)
-        )
-
-        build_cli_step = (
-            self._remote_exec_step(
-                "Build nanofaas-cli installDist in VM",
-                f"cd {shlex.quote(self._remote_dir)} && ./gradlew :nanofaas-cli:installDist --no-daemon -q",
-            )
-            if not self.skip_cli_build
-            else self._remote_exec_step(
-                "Build nanofaas-cli installDist in VM",
-                f"test -x {shlex.quote(self._cli_bin_dir + '/nanofaas')}",
-            )
-        )
-
-        apply_lines = [f"cd {shlex.quote(self._remote_dir)}", self._cli_env_prefix(endpoint=self._cluster_endpoint_expr())]
-        list_lines = [f"cd {shlex.quote(self._remote_dir)}", self._cli_env_prefix(endpoint=self._cluster_endpoint_expr()), "out=$(nanofaas fn list)", 'printf "%s\\n" "$out"']
-        invoke_lines = [f"cd {shlex.quote(self._remote_dir)}", self._cli_env_prefix(endpoint=self._cluster_endpoint_expr())]
-        enqueue_lines = [f"cd {shlex.quote(self._remote_dir)}", self._cli_env_prefix(endpoint=self._cluster_endpoint_expr())]
-        delete_lines = [f"cd {shlex.quote(self._remote_dir)}", self._cli_env_prefix(endpoint=self._cluster_endpoint_expr())]
-
-        for fn_key in selected_functions:
-            image = _function_image(fn_key, resolved_scenario, self._runtime_image)
-            payload = _function_payload(fn_key, resolved_scenario, default_message="hello-from-cli-stack")
-            spec = (
-                f'{{"name":"{fn_key}","image":"{image}","timeoutMs":5000,'
-                '"concurrency":2,"queueSize":20,"maxRetries":3,"executionMode":"DEPLOYMENT"}'
-            )
-            apply_lines.extend(
-                [
-                    f"printf '%s' {shlex.quote(spec)} > /tmp/{shlex.quote(fn_key)}.json",
-                    f"nanofaas fn apply -f /tmp/{shlex.quote(fn_key)}.json",
-                ]
-            )
-            list_lines.append(f'printf "%s\\n" "$out" | grep -q {shlex.quote(fn_key)}')
-            invoke_lines.extend(
-                [
-                    f"invoke_out=$(nanofaas invoke {shlex.quote(fn_key)} -d {shlex.quote(payload)})",
-                    'printf "%s\\n" "$invoke_out"',
-                    'printf "%s\\n" "$invoke_out" | grep -q \'"success"\'',
-                ]
-            )
-            enqueue_lines.extend(
-                [
-                    f"enqueue_out=$(nanofaas enqueue {shlex.quote(fn_key)} -d {shlex.quote(payload)})",
-                    'printf "%s\\n" "$enqueue_out"',
-                    'printf "%s\\n" "$enqueue_out" | grep -q \'"executionId"\'',
-                ]
-            )
-            delete_lines.append(f"nanofaas fn delete {shlex.quote(fn_key)}")
-
-        return [
-            self._remote_exec_step(
-                "Build control-plane and runtime images in VM",
-                build_core_images_vm_script(
-                    remote_dir=self._remote_dir,
-                    control_image=self._control_image,
-                    runtime_image=self._runtime_image,
-                    runtime=self.runtime,
-                    mode="docker",
-                    sudo=True,
-                    build_jars=True,
-                ),
-            ),
-            self._remote_exec_step(
-                "Build selected function images in VM",
-                build_functions_script,
-            ),
-            build_cli_step,
-            self._remote_exec_step(
-                "Install nanofaas into k3s through the CLI",
-                " && ".join(
-                    [
-                        f"cd {shlex.quote(self._remote_dir)}",
-                        self._cli_env_prefix(),
-                        f'install_out=$({install_command})',
-                        'printf "%s\\n" "$install_out"',
-                        f'printf "%s\\n" "$install_out" | grep -q {shlex.quote(f"endpoint\\thttp://{self._resolve_public_host()}:30080")}',
-                    ]
-                ),
-            ),
-            self._remote_exec_step(
-                "Run platform status",
-                " && ".join(
-                    [
-                        f"cd {shlex.quote(self._remote_dir)}",
-                        self._cli_env_prefix(),
-                        f'status_out=$({status_command})',
-                        'printf "%s\\n" "$status_out"',
-                        'printf "%s\\n" "$status_out" | grep -q $\'deployment\\tnanofaas-control-plane\\t1/1\'',
-                    ]
-                ),
-            ),
-            self._remote_exec_step(
-                "Apply or register the selected functions",
-                " && ".join(apply_lines),
-            ),
-            self._remote_exec_step(
-                "Run fn list",
-                " && ".join(list_lines),
-            ),
-            self._remote_exec_step(
-                "Run synchronous invoke checks",
-                " && ".join(invoke_lines),
-            ),
-            self._remote_exec_step(
-                "Run enqueue checks",
-                " && ".join(enqueue_lines),
-            ),
-            self._remote_exec_step(
-                "Delete the selected functions",
-                " && ".join(delete_lines),
-            ),
-            self._remote_exec_step(
-                "Uninstall nanofaas",
-                " && ".join(
-                    [
-                        f"cd {shlex.quote(self._remote_dir)}",
-                        self._cli_env_prefix(),
-                        uninstall_command,
-                    ]
-                ),
-            ),
-            self._remote_exec_step(
-                "Verify cli-stack status fails",
-                " && ".join(
-                    [
-                        f"cd {shlex.quote(self._remote_dir)}",
-                        self._cli_env_prefix(),
-                        f"if {status_command}; then exit 1; fi",
-                    ]
-                ),
-            ),
-        ]
 
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
-        skip_bootstrap = os.getenv("E2E_SKIP_VM_BOOTSTRAP", "").lower() == "true"
-        if not skip_bootstrap:
-            raise RuntimeError(
-                "CliStackRunner requires VM to be bootstrapped. "
-                "Set E2E_SKIP_VM_BOOTSTRAP=true and ensure VM is running, or use cli-test/e2e orchestration."
-            )
-
         phase("Verify")
         for planned_step in self.plan_steps(resolved):
             step(planned_step.summary)

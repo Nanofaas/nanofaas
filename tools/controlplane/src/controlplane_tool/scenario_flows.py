@@ -7,97 +7,16 @@ from controlplane_tool.e2e_runner import E2eRunner
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.prefect_models import LocalFlowDefinition
 from controlplane_tool.registry_runtime import default_registry_url
-from controlplane_tool.vm_models import vm_request_from_env
-
-
-_SCENARIO_TASK_IDS_MAP = {
-    "container-local": ["tests.run_container_local"],
-    "deploy-host": ["tests.run_deploy_host"],
-    "k3s-junit-curl": [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
-        "images.build_selected_functions",
-        "k3s.install",
-        "k3s.configure_registry",
-        "k8s.ensure_namespace",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-        "k8s.wait_control_plane_ready",
-        "k8s.wait_function_runtime_ready",
-        "tests.run_k3s_curl_checks",
-        "tests.run_k8s_junit",
-        "helm.uninstall_function_runtime",
-        "helm.uninstall_control_plane",
-        "k8s.delete_namespace",
-        "vm.down",
-    ],
-    "cli": [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "k3s.install",
-        "registry.ensure_container",
-        "k3s.configure_registry",
-        "images.build_core",
-        "helm.deploy_control_plane",
-        "tests.run_cli_vm",
-    ],
-    "cli-stack": [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "k3s.install",
-        "k3s.configure_registry",
-        "images.build_core",
-        "images.build_selected_functions",
-        "tests.build_cli_stack_cli",
-        "tests.install_cli_stack_platform",
-        "tests.status_cli_stack_platform",
-        "tests.apply_cli_stack_functions",
-        "tests.list_cli_stack_functions",
-        "tests.invoke_cli_stack_functions",
-        "tests.enqueue_cli_stack_functions",
-        "tests.delete_cli_stack_functions",
-        "tests.uninstall_cli_stack_platform",
-        "tests.verify_cli_stack_status_fails",
-    ],
-    "cli-host": [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "k3s.install",
-        "registry.ensure_container",
-        "k3s.configure_registry",
-        "images.build_core",
-        "helm.deploy_control_plane",
-        "tests.run_cli_host_platform",
-    ],
-    "helm-stack": [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
-        "images.build_selected_functions",
-        "k3s.install",
-        "k3s.configure_registry",
-        "k8s.ensure_namespace",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-        "k8s.wait_control_plane_ready",
-        "k8s.wait_function_runtime_ready",
-        "loadtest.run",
-        "experiments.autoscaling",
-    ],
-}
+from controlplane_tool.scenario_components.environment import default_managed_vm_request
+from controlplane_tool.scenario_components.composer import compose_recipe
+from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 
 
 def scenario_task_ids(scenario: str) -> list[str]:
-    return list(_SCENARIO_TASK_IDS_MAP.get(scenario, [f"tests.run_{scenario.replace('-', '_')}"]))
+    if scenario in {"container-local", "deploy-host", "cli", "cli-host"}:
+        return [f"tests.run_{scenario.replace('-', '_')}"]
+    recipe = build_scenario_recipe(scenario)
+    return [component.component_id for component in compose_recipe(recipe)]
 
 
 def build_scenario_flow(
@@ -208,7 +127,7 @@ def build_scenario_flow(
         e2e_request = E2eRequest(
             scenario="helm-stack",
             runtime=runtime,
-            vm=vm_request_from_env(),
+            vm=default_managed_vm_request(),
             helm_noninteractive=noninteractive,
             namespace=namespace,
             local_registry=local_registry or default_registry_url(),

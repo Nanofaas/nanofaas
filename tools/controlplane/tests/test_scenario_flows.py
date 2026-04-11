@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import controlplane_tool.scenario_flows as scenario_flows_mod
 from controlplane_tool.e2e_models import E2eRequest
+from controlplane_tool.e2e_runner import E2eRunner
+from controlplane_tool.scenario_components.composer import compose_recipe
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.vm_models import VmRequest
@@ -26,116 +29,22 @@ def test_k3s_junit_curl_flow_uses_reusable_vm_build_and_deploy_tasks() -> None:
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         ),
     )
+    recipe = build_scenario_recipe("k3s-junit-curl")
 
-    for component_id in [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
-        "images.build_selected_functions",
-        "k3s.install",
-        "k3s.configure_registry",
-        "k8s.ensure_namespace",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-        "k8s.wait_control_plane_ready",
-        "k8s.wait_function_runtime_ready",
-        "tests.run_k3s_curl_checks",
-        "tests.run_k8s_junit",
-        "helm.uninstall_function_runtime",
-        "helm.uninstall_control_plane",
-        "k8s.delete_namespace",
-        "vm.down",
-    ]:
-        assert component_id in flow.task_ids
-
-    _assert_order(
-        flow.task_ids,
-        [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "k8s.ensure_namespace",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
-            "k8s.wait_control_plane_ready",
-            "k8s.wait_function_runtime_ready",
-        ],
-    )
-    assert flow.task_ids.index("helm.uninstall_function_runtime") < flow.task_ids.index(
-        "helm.uninstall_control_plane"
-    )
-    assert flow.task_ids.index("helm.uninstall_control_plane") < flow.task_ids.index(
-        "k8s.delete_namespace"
-    )
-    assert flow.task_ids.index("k8s.delete_namespace") < flow.task_ids.index("vm.down")
+    assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
 def test_cli_vm_flow_reuses_build_and_helm_deploy_tasks() -> None:
     flow = build_scenario_flow("cli", repo_root=Path("/repo"))
 
-    assert "helm.deploy_control_plane" in flow.task_ids
+    assert flow.task_ids == ["tests.run_cli"]
 
 
 def test_cli_stack_flow_uses_dedicated_cli_stack_task_order() -> None:
     flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
+    recipe = build_scenario_recipe("cli-stack")
 
-    for component_id in [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "k3s.install",
-        "k3s.configure_registry",
-        "images.build_core",
-        "images.build_selected_functions",
-        "tests.build_cli_stack_cli",
-        "tests.install_cli_stack_platform",
-        "tests.status_cli_stack_platform",
-        "tests.apply_cli_stack_functions",
-        "tests.list_cli_stack_functions",
-        "tests.invoke_cli_stack_functions",
-        "tests.enqueue_cli_stack_functions",
-        "tests.delete_cli_stack_functions",
-        "tests.uninstall_cli_stack_platform",
-        "tests.verify_cli_stack_status_fails",
-    ]:
-        assert component_id in flow.task_ids
-
-    _assert_order(
-        flow.task_ids,
-        [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "k3s.install",
-            "k3s.configure_registry",
-            "images.build_core",
-            "images.build_selected_functions",
-            "tests.build_cli_stack_cli",
-            "tests.install_cli_stack_platform",
-            "tests.status_cli_stack_platform",
-        ],
-    )
-    assert flow.task_ids.index("tests.apply_cli_stack_functions") < flow.task_ids.index(
-        "tests.list_cli_stack_functions"
-    )
-    assert flow.task_ids.index("tests.list_cli_stack_functions") < flow.task_ids.index(
-        "tests.invoke_cli_stack_functions"
-    )
-    assert flow.task_ids.index("tests.enqueue_cli_stack_functions") < flow.task_ids.index(
-        "tests.delete_cli_stack_functions"
-    )
-    assert flow.task_ids.index("tests.uninstall_cli_stack_platform") < flow.task_ids.index(
-        "tests.verify_cli_stack_status_fails"
-    )
+    assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
 def test_cli_stack_flow_uses_dedicated_vm_runner(monkeypatch) -> None:
@@ -161,9 +70,30 @@ def test_cli_stack_flow_task_ids_are_derived_from_the_recipe() -> None:
     flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
     recipe = build_scenario_recipe("cli-stack")
 
-    assert len(flow.task_ids) == len(recipe.component_ids)
-    assert flow.task_ids[0] == recipe.component_ids[0]
-    assert flow.task_ids[-1] == recipe.component_ids[-1]
+    assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
+
+
+def test_cli_stack_flow_task_ids_follow_recipe_composition(monkeypatch) -> None:
+    monkeypatch.setattr(
+        scenario_flows_mod,
+        "build_scenario_recipe",
+        lambda name: SimpleNamespace(name=name),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        scenario_flows_mod,
+        "compose_recipe",
+        lambda recipe: [
+            SimpleNamespace(component_id="first.component"),
+            SimpleNamespace(component_id="second.component"),
+        ],
+        raising=False,
+    )
+
+    assert scenario_flows_mod.scenario_task_ids("cli-stack") == [
+        "first.component",
+        "second.component",
+    ]
 
 
 def test_k3s_junit_curl_flow_task_ids_are_derived_from_the_recipe() -> None:
@@ -178,9 +108,20 @@ def test_k3s_junit_curl_flow_task_ids_are_derived_from_the_recipe() -> None:
     )
     recipe = build_scenario_recipe("k3s-junit-curl")
 
-    assert len(flow.task_ids) == len(recipe.component_ids)
-    assert flow.task_ids[0] == recipe.component_ids[0]
-    assert flow.task_ids[-1] == recipe.component_ids[-1]
+    assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
+
+
+def test_k3s_junit_curl_request_without_vm_gets_managed_vm_context() -> None:
+    plan = E2eRunner(repo_root=Path("/repo")).plan(
+        E2eRequest(
+            scenario="k3s-junit-curl",
+            runtime="java",
+            vm=None,
+        )
+    )
+
+    assert plan.request.vm is not None
+    assert plan.request.vm.lifecycle == "multipass"
 
 
 def test_cli_stack_flow_no_longer_needs_a_preexisting_vm_request() -> None:
@@ -226,45 +167,32 @@ def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> No
 
 def test_helm_stack_flow_shares_k3s_junit_curl_prefix() -> None:
     flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
+    recipe = build_scenario_recipe("helm-stack")
 
-    for component_id in [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
-        "images.build_selected_functions",
-        "k3s.install",
-        "k3s.configure_registry",
-        "k8s.ensure_namespace",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-        "k8s.wait_control_plane_ready",
-        "k8s.wait_function_runtime_ready",
-        "loadtest.run",
-        "experiments.autoscaling",
-    ]:
-        assert component_id in flow.task_ids
+    assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
-    _assert_order(
-        flow.task_ids,
-        [
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "k8s.ensure_namespace",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
-            "k8s.wait_control_plane_ready",
-            "k8s.wait_function_runtime_ready",
-        ],
+
+def test_helm_stack_flow_task_ids_follow_recipe_composition(monkeypatch) -> None:
+    monkeypatch.setattr(
+        scenario_flows_mod,
+        "build_scenario_recipe",
+        lambda name: SimpleNamespace(name=name),
+        raising=False,
     )
-    assert flow.task_ids.index("loadtest.run") < flow.task_ids.index("experiments.autoscaling")
+    monkeypatch.setattr(
+        scenario_flows_mod,
+        "compose_recipe",
+        lambda recipe: [
+            SimpleNamespace(component_id="first.component"),
+            SimpleNamespace(component_id="second.component"),
+        ],
+        raising=False,
+    )
+
+    assert scenario_flows_mod.scenario_task_ids("helm-stack") == [
+        "first.component",
+        "second.component",
+    ]
 
 
 def test_helm_stack_flow_routes_through_python_e2e_runner(monkeypatch) -> None:

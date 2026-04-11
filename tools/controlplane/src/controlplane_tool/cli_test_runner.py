@@ -144,10 +144,26 @@ class CliTestRunner:
 
     def plan(self, request: CliTestRequest) -> CliTestPlan:
         scenario = resolve_cli_test_scenario(request.scenario)
-        steps = [self._gradle_step(scenario)]
         if request.scenario == "cli-stack":
-            steps.extend(self._cli_stack_steps(request))
-            return CliTestPlan(scenario=scenario, request=request, steps=steps)
+            runner = CliStackRunner(
+                self.paths.workspace_root,
+                vm_request=request.vm,
+                namespace=request.namespace or "nanofaas-cli-stack-e2e",
+                local_registry=request.local_registry,
+                runtime=request.runtime,
+                skip_cli_build=False,
+            )
+            plan_request = (
+                request
+                if request.vm is not None
+                else request.model_copy(update={"vm": runner.vm_request})
+            )
+            return CliTestPlan(
+                scenario=scenario,
+                request=plan_request,
+                steps=runner.plan_steps(request.resolved_scenario),
+            )
+        steps = [self._gradle_step(scenario)]
         if scenario.legacy_e2e_scenario is not None:
             e2e_plan = self.e2e_runner.plan(self._as_e2e_request(request, scenario))
             steps.extend(self._with_cli_build_reuse(e2e_plan.steps))
@@ -161,5 +177,8 @@ class CliTestRunner:
             self._execute_steps(plan)
             return plan
         finally:
-            if self._should_teardown(request.vm, keep_vm=request.keep_vm):
+            if plan.request.scenario != "cli-stack" and self._should_teardown(
+                request.vm,
+                keep_vm=request.keep_vm,
+            ):
                 self.e2e_runner.vm.teardown(request.vm)

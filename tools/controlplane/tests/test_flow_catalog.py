@@ -1,9 +1,12 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import controlplane_tool.flow_catalog as flow_catalog_mod
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
+from controlplane_tool.scenario_components.composer import compose_recipe
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.vm_models import VmRequest
 
@@ -29,63 +32,46 @@ def test_flow_catalog_resolves_k3s_junit_curl_to_executable_flow_definition() ->
 
 def test_flow_catalog_exposes_task_ids_without_executable_placeholder() -> None:
     task_ids = resolve_flow_task_ids("e2e.k3s-junit-curl")
+    recipe = build_scenario_recipe("k3s-junit-curl")
 
-    for component_id in [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
-        "images.build_selected_functions",
-        "k3s.install",
-        "k3s.configure_registry",
-        "k8s.ensure_namespace",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-        "k8s.wait_control_plane_ready",
-        "k8s.wait_function_runtime_ready",
-        "tests.run_k3s_curl_checks",
-        "tests.run_k8s_junit",
-        "helm.uninstall_function_runtime",
-        "helm.uninstall_control_plane",
-        "k8s.delete_namespace",
-        "vm.down",
-    ]:
-        assert component_id in task_ids
-
-    assert task_ids.index("vm.ensure_running") < task_ids.index("vm.provision_base")
-    assert task_ids.index("vm.provision_base") < task_ids.index("repo.sync_to_vm")
-    assert task_ids.index("k8s.wait_control_plane_ready") < task_ids.index(
-        "k8s.wait_function_runtime_ready"
-    )
-    assert task_ids.index("helm.uninstall_function_runtime") < task_ids.index(
-        "helm.uninstall_control_plane"
-    )
-    assert task_ids.index("k8s.delete_namespace") < task_ids.index("vm.down")
+    assert task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
 def test_flow_catalog_resolves_cli_stack_task_ids() -> None:
     recipe = build_scenario_recipe("cli-stack")
     task_ids = resolve_flow_task_ids("e2e.cli-stack")
 
-    assert len(task_ids) == len(recipe.component_ids)
-    assert task_ids[0] == "vm.ensure_running"
-    assert task_ids[-1] == "tests.verify_cli_stack_status_fails"
-    assert task_ids.index("tests.build_cli_stack_cli") < task_ids.index(
-        "tests.install_cli_stack_platform"
-    )
-    assert task_ids.index("tests.uninstall_cli_stack_platform") < task_ids.index(
-        "tests.verify_cli_stack_status_fails"
-    )
+    assert task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
 def test_flow_catalog_resolves_k3s_junit_curl_from_recipe() -> None:
     recipe = build_scenario_recipe("k3s-junit-curl")
     task_ids = resolve_flow_task_ids("e2e.k3s-junit-curl")
 
-    assert len(task_ids) == len(recipe.component_ids)
-    assert task_ids[0] == recipe.component_ids[0]
-    assert task_ids[-1] == recipe.component_ids[-1]
+    assert task_ids == [component.component_id for component in compose_recipe(recipe)]
+
+
+def test_flow_catalog_helm_stack_task_ids_follow_recipe_composition(monkeypatch) -> None:
+    monkeypatch.setattr(
+        flow_catalog_mod,
+        "build_scenario_recipe",
+        lambda name: SimpleNamespace(name=name),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        flow_catalog_mod,
+        "compose_recipe",
+        lambda recipe: [
+            SimpleNamespace(component_id="first.component"),
+            SimpleNamespace(component_id="second.component"),
+        ],
+        raising=False,
+    )
+
+    assert resolve_flow_task_ids("e2e.helm-stack") == [
+        "first.component",
+        "second.component",
+    ]
 
 
 def test_requestless_runtime_scenario_definition_is_not_silently_executable() -> None:

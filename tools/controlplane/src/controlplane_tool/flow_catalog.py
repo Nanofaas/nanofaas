@@ -13,7 +13,9 @@ from controlplane_tool.infra_flows import (
 from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.prefect_models import LocalFlowDefinition
 from controlplane_tool.registry_runtime import default_registry_url
-from controlplane_tool.scenario_flows import build_scenario_flow, scenario_task_ids
+from controlplane_tool.scenario_components.composer import compose_recipe
+from controlplane_tool.scenario_components.recipes import build_scenario_recipe
+from controlplane_tool.scenario_flows import build_scenario_flow
 
 
 def _unique_task_ids(task_ids: list[str]) -> list[str]:
@@ -25,6 +27,11 @@ def _unique_task_ids(task_ids: list[str]) -> list[str]:
         seen.add(task_id)
         ordered.append(task_id)
     return ordered
+
+
+def _scenario_task_ids(scenario: str) -> list[str]:
+    recipe = build_scenario_recipe(scenario)
+    return [component.component_id for component in compose_recipe(recipe)]
 
 
 def resolve_flow_task_ids(flow_name: str, **kwargs: Any) -> list[str]:
@@ -42,9 +49,9 @@ def resolve_flow_task_ids(flow_name: str, **kwargs: Any) -> list[str]:
             scenarios = list(kwargs.get("scenarios") or [])
             task_ids: list[str] = []
             for scenario in scenarios:
-                task_ids.extend(scenario_task_ids(scenario))
+                task_ids.extend(_scenario_task_ids(scenario))
             return _unique_task_ids(task_ids)
-        return scenario_task_ids(flow_name.removeprefix("e2e."))
+        return _scenario_task_ids(flow_name.removeprefix("e2e."))
     if flow_name.startswith("loadtest."):
         return [
             "loadtest.bootstrap",

@@ -11,6 +11,17 @@ from controlplane_tool.e2e_catalog import ScenarioDefinition, list_scenarios, re
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.k3s_curl_runner import K3sCurlRunner
+from controlplane_tool.scenario_components.cli import CliComponentContext
+from controlplane_tool.scenario_components.composer import compose_recipe
+from controlplane_tool.scenario_components.environment import (
+    ScenarioExecutionContext,
+    resolve_scenario_environment,
+)
+from controlplane_tool.scenario_components.operations import (
+    RemoteCommandOperation,
+    ScenarioOperation,
+)
+from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_manifest import (
     write_scenario_manifest,
 )
@@ -59,6 +70,89 @@ class ScenarioStepEvent:
     step: ScenarioPlanStep
     status: ScenarioExecutionStatus
     error: str | None = None
+
+
+def _scenario_plan_step_from_operation(operation: ScenarioOperation) -> ScenarioPlanStep:
+    if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
+        raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
+    summary_overrides = {
+        "cli.build_install_dist": "Build nanofaas-cli installDist in VM",
+        "cli.platform_install": "Install nanofaas into k3s through the CLI",
+        "cli.platform_status": "Run platform status",
+        "repo.sync_to_vm": "Sync project to VM",
+        "registry.ensure_container": "Ensure registry container",
+        "k8s.ensure_namespace": "Ensure E2E namespace exists",
+        "k3s.configure_registry": "Configure k3s registry",
+        "helm.deploy_control_plane": "Deploy control-plane via Helm",
+        "helm.deploy_function_runtime": "Deploy function-runtime via Helm",
+        "k8s.wait_control_plane_ready": "Wait for control-plane deployment",
+        "k8s.wait_function_runtime_ready": "Wait for function-runtime deployment",
+        "cleanup.uninstall_control_plane": "Uninstall control-plane Helm release",
+        "cleanup.uninstall_function_runtime": "Uninstall function-runtime Helm release",
+        "cleanup.delete_namespace": "Delete E2E namespace",
+        "cleanup.verify_cli_platform_status_fails": "Verify cli-stack status fails",
+    }
+    return ScenarioPlanStep(
+        summary=summary_overrides.get(operation.operation_id, operation.summary),
+        command=list(operation.argv),
+        env=dict(operation.env),
+    )
+
+
+def plan_recipe_steps(
+    repo_root: Path,
+    request: E2eRequest,
+    scenario_name: str,
+    *,
+    release: str | None = None,
+    manifest_root: Path | None = None,
+) -> list[ScenarioPlanStep]:
+    context: ScenarioExecutionContext = resolve_scenario_environment(repo_root, request)
+    recipe = build_scenario_recipe(scenario_name)
+    runner = E2eRunner(repo_root, manifest_root=manifest_root)
+    namespace = context.namespace
+    if namespace is None and context.resolved_scenario is not None:
+        namespace = context.resolved_scenario.namespace
+    if namespace is None:
+        namespace = "nanofaas-e2e"
+    cli_context = CliComponentContext(
+        repo_root=repo_root,
+        release=release or "nanofaas-cli-stack-e2e",
+        namespace=namespace,
+        local_registry=context.local_registry,
+        resolved_scenario=context.resolved_scenario,
+    )
+    steps: list[ScenarioPlanStep] = []
+    k3s_junit_tail: list[ScenarioPlanStep] | None = None
+    helm_stack_tail: list[ScenarioPlanStep] | None = None
+    for component in compose_recipe(recipe):
+        planner_context: object = cli_context if component.component_id.startswith("cli.") else context
+        try:
+            operations = component.planner(planner_context)
+        except NotImplementedError:
+            if component.component_id == "tests.run_k3s_curl_checks":
+                if k3s_junit_tail is None:
+                    k3s_junit_tail = runner._k3s_junit_curl_tail_steps(request)
+                steps.append(k3s_junit_tail[0])
+                continue
+            if component.component_id == "tests.run_k8s_junit":
+                if k3s_junit_tail is None:
+                    k3s_junit_tail = runner._k3s_junit_curl_tail_steps(request)
+                steps.append(k3s_junit_tail[1])
+                continue
+            if component.component_id == "loadtest.run":
+                if helm_stack_tail is None:
+                    helm_stack_tail = runner._helm_stack_tail_steps(request)
+                steps.append(helm_stack_tail[0])
+                continue
+            if component.component_id == "experiments.autoscaling":
+                if helm_stack_tail is None:
+                    helm_stack_tail = runner._helm_stack_tail_steps(request)
+                steps.append(helm_stack_tail[1])
+                continue
+            raise
+        steps.extend(_scenario_plan_step_from_operation(operation) for operation in operations)
+    return steps
 
 
 class E2eRunner:
@@ -584,6 +678,23 @@ class E2eRunner:
             raise ValueError(
                 f"Scenario '{request.scenario}' does not support runtime '{request.runtime}'"
             )
+        if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack"}:
+            plan_request = request
+            if request.vm is None:
+                context = resolve_scenario_environment(self.paths.workspace_root, request)
+                plan_request = request.model_copy(update={"vm": context.vm_request})
+            if request.scenario == "cli-stack":
+                plan_request = plan_request.model_copy(update={"cleanup_vm": False})
+            return ScenarioPlan(
+                scenario=scenario,
+                request=plan_request,
+                steps=plan_recipe_steps(
+                    self.paths.workspace_root,
+                    plan_request,
+                    request.scenario,
+                    manifest_root=self.manifest_root,
+                ),
+            )
         steps = (
             self._vm_backed_steps(request)
             if scenario.requires_vm
@@ -787,7 +898,7 @@ class E2eRunner:
     def _should_teardown(self, request: E2eRequest | None) -> bool:
         if request is None or request.vm is None:
             return False
-        if request.scenario == "k3s-junit-curl":
+        if request.scenario in {"k3s-junit-curl", "cli-stack"}:
             return False
         return request.vm.lifecycle == "multipass" and request.cleanup_vm
 
