@@ -7,12 +7,13 @@ un-bootstrapped VMs. They must use vm_request_from_env() for env-based construct
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 import controlplane_tool.cli_runtime as cli_runtime
+from controlplane_tool.cli_platform_workflow import platform_uninstall_command
 from controlplane_tool.scenario_components import cli as cli_components
+from controlplane_tool.scenario_components.cli import CliComponentContext
 from controlplane_tool.cli_vm_runner import CliVmRunner
 from controlplane_tool.cli_host_runner import CliHostPlatformRunner
 from controlplane_tool.scenario_helpers import (
@@ -168,15 +169,12 @@ def test_cli_host_platform_runner_uses_shared_platform_primitives(tmp_path) -> N
         release="test-release",
         local_registry="myreg:5001",
     )
-    context = SimpleNamespace(
+    context = CliComponentContext(
         repo_root=tmp_path,
         release="test-release",
         namespace="test-ns",
         local_registry="myreg:5001",
-        scenario_name="host-platform",
-        runtime="java",
         resolved_scenario=None,
-        vm_request=vm_req,
     )
 
     assert runner._platform_install_command() == list(
@@ -186,5 +184,6 @@ def test_cli_host_platform_runner_uses_shared_platform_primitives(tmp_path) -> N
         cli_components.plan_platform_status(context)[0].argv
     )
     assert runner._platform_uninstall_command() == list(
-        cli_components.plan_platform_uninstall(context)[0].argv
+        platform_uninstall_command(release="test-release", namespace="test-ns")
     )
+    assert not hasattr(cli_components, "CLI_PLATFORM_UNINSTALL")

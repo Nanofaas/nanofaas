@@ -24,7 +24,6 @@ from controlplane_tool.scenario_components.cli import (
     CLI_FN_LIST_SELECTED,
     CLI_PLATFORM_INSTALL,
     CLI_PLATFORM_STATUS,
-    CLI_PLATFORM_UNINSTALL,
 )
 from controlplane_tool.scenario_components.helm import (
     HELM_DEPLOY_CONTROL_PLANE,
@@ -61,7 +60,6 @@ _COMPONENT_LIBRARY: dict[str, ScenarioComponentDefinition] = {
     CLI_BUILD_INSTALL_DIST.component_id: CLI_BUILD_INSTALL_DIST,
     CLI_PLATFORM_INSTALL.component_id: CLI_PLATFORM_INSTALL,
     CLI_PLATFORM_STATUS.component_id: CLI_PLATFORM_STATUS,
-    CLI_PLATFORM_UNINSTALL.component_id: CLI_PLATFORM_UNINSTALL,
     CLI_FN_APPLY_SELECTED.component_id: CLI_FN_APPLY_SELECTED,
     CLI_FN_LIST_SELECTED.component_id: CLI_FN_LIST_SELECTED,
     CLI_FN_INVOKE_SELECTED.component_id: CLI_FN_INVOKE_SELECTED,

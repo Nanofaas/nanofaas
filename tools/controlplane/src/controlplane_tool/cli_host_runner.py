@@ -7,28 +7,18 @@ Mirrors the logic of the deleted e2e-cli-host-backend.sh (M10).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
 
 import os
 from pathlib import Path
 
 from controlplane_tool.scenario_components import cli as cli_components
+from controlplane_tool.cli_platform_workflow import platform_uninstall_command
+from controlplane_tool.scenario_components.cli import CliComponentContext
+from controlplane_tool.scenario_components.operations import RemoteCommandOperation
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
-
-
-@dataclass(frozen=True, slots=True)
-class _CliPlanContext:
-    repo_root: Path
-    release: str
-    namespace: str
-    local_registry: str
-    runtime: str
-    resolved_scenario: object | None
-    vm_request: VmRequest
 
 
 class CliHostPlatformRunner:
@@ -69,25 +59,19 @@ class CliHostPlatformRunner:
             / "nanofaas"
         )
 
-    def _plan_context(self) -> _CliPlanContext:
-        return _CliPlanContext(
+    def _plan_context(self) -> CliComponentContext:
+        return CliComponentContext(
             repo_root=self.repo_root,
             release=self.release,
             namespace=self.namespace,
             local_registry=self.local_registry,
-            runtime=self.runtime,
             resolved_scenario=None,
-            vm_request=self.vm_request,
         )
 
-    def _first_operation_command(self, operations: tuple[object, ...]) -> list[str]:
+    def _first_operation_command(self, operations: tuple[RemoteCommandOperation, ...]) -> list[str]:
         if not operations:
             raise RuntimeError("shared CLI planner returned no operations")
-        operation = operations[0]
-        argv = getattr(operation, "argv", None)
-        if argv is None:
-            raise RuntimeError("shared CLI planner returned an invalid operation")
-        return list(argv)
+        return list(operations[0].argv)
 
     @property
     def _remote_dir(self) -> str:
@@ -139,7 +123,9 @@ class CliHostPlatformRunner:
         return self._first_operation_command(cli_components.plan_platform_status(self._plan_context()))
 
     def _platform_uninstall_command(self) -> list[str]:
-        return self._first_operation_command(cli_components.plan_platform_uninstall(self._plan_context()))
+        return list(
+            platform_uninstall_command(release=self.release, namespace=self.namespace)
+        )
 
     def _run_host_cli(self, kubeconfig: Path, command: list[str]) -> str:
         env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
