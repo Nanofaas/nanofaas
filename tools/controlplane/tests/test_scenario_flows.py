@@ -75,21 +75,23 @@ def test_cli_stack_flow_uses_dedicated_cli_stack_task_order() -> None:
     ]
 
 
-def test_cli_stack_flow_routes_through_python_e2e_runner(monkeypatch) -> None:
+def test_cli_stack_flow_uses_dedicated_vm_runner(monkeypatch) -> None:
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(
-        scenario_flows_mod.E2eRunner,
-        "run",
-        lambda self, request, event_listener=None: called.update(  # noqa: ANN001
-            {"request": request, "event_listener": event_listener}
-        ) or "ok",
-    )
+    class _Runner:
+        def __init__(self, *args, **kwargs):  # noqa: ANN002,ANN003
+            called["init"] = kwargs
+
+        def run(self, scenario_file=None):  # noqa: ANN001
+            called["scenario_file"] = scenario_file
+            return "ok"
+
+    monkeypatch.setattr("controlplane_tool.cli_stack_runner.CliStackRunner", _Runner)
 
     flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
 
     assert flow.run() == "ok"
-    assert called["request"].scenario == "cli-stack"
+    assert called["init"]["namespace"] == "nanofaas-e2e"
 
 
 def test_k3s_junit_curl_flow_requires_request_for_executable_definition() -> None:

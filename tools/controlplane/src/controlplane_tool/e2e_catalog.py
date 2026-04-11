@@ -52,6 +52,13 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         supported_runtimes=("java", "rust"),
     ),
     ScenarioDefinition(
+        name="cli-stack",
+        description="Dedicated VM-backed CLI evaluation flow over k3s.",
+        requires_vm=True,
+        supported_runtimes=("java", "rust"),
+        uses_host_cli=True,
+    ),
+    ScenarioDefinition(
         name="cli-host",
         description="Host CLI driving a VM-backed platform install.",
         requires_vm=True,

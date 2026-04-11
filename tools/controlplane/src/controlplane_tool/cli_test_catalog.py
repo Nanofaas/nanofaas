@@ -32,6 +32,14 @@ _SCENARIOS: tuple[CliTestScenarioDefinition, ...] = (
         legacy_e2e_scenario="cli",
     ),
     CliTestScenarioDefinition(
+        name="cli-stack",
+        description="Run the dedicated VM-backed CLI stack evaluation flow.",
+        requires_vm=True,
+        accepts_function_selection=True,
+        gradle_task=":nanofaas-cli:installDist",
+        legacy_e2e_scenario="cli-stack",
+    ),
+    CliTestScenarioDefinition(
         name="host-platform",
         description="Run the host CLI platform workflow against a VM-backed platform.",
         requires_vm=True,

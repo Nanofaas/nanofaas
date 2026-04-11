@@ -13,13 +13,14 @@ ProfileName = Literal["core", "k8s", "container-local", "all"]
 VmLifecycle = Literal["multipass", "external"]
 RuntimeKind = Literal["java", "rust"]
 FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "fixture"]
-CliTestScenarioName = Literal["unit", "vm", "host-platform", "deploy-host"]
+CliTestScenarioName = Literal["unit", "vm", "cli-stack", "host-platform", "deploy-host"]
 ScenarioName = Literal[
     "docker",
     "buildpack",
     "container-local",
     "k3s-junit-curl",
     "cli",
+    "cli-stack",
     "cli-host",
     "deploy-host",
     "helm-stack",
@@ -29,6 +30,7 @@ VM_BACKED_SCENARIOS = frozenset(
     {
         "k3s-junit-curl",
         "cli",
+        "cli-stack",
         "cli-host",
         "helm-stack",
     }

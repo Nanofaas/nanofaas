@@ -45,6 +45,26 @@ _SCENARIO_TASK_IDS_MAP = {
         "helm.deploy_control_plane",
         "tests.run_cli_vm",
     ],
+    "cli-stack": [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "registry.ensure_container",
+        "k3s.install",
+        "k3s.configure_registry",
+        "images.build_core",
+        "images.build_selected_functions",
+        "tests.build_cli_stack_cli",
+        "tests.install_cli_stack_platform",
+        "tests.status_cli_stack_platform",
+        "tests.apply_cli_stack_functions",
+        "tests.list_cli_stack_functions",
+        "tests.invoke_cli_stack_functions",
+        "tests.enqueue_cli_stack_functions",
+        "tests.delete_cli_stack_functions",
+        "tests.uninstall_cli_stack_platform",
+        "tests.verify_cli_stack_status_fails",
+    ],
     "cli-host": [
         "vm.ensure_running",
         "vm.provision_base",
@@ -148,6 +168,20 @@ def build_scenario_flow(
             flow_id=flow_id,
             task_ids=scenario_task_ids(scenario),
             run=lambda: CliVmRunner(
+                repo_root,
+                namespace=namespace,
+                local_registry=local_registry or default_registry_url(),
+                runtime=runtime,
+                skip_cli_build=skip_cli_build,
+            ).run(scenario_file=scenario_file),
+        )
+    if scenario == "cli-stack":
+        from controlplane_tool.cli_stack_runner import CliStackRunner
+
+        return LocalFlowDefinition(
+            flow_id=flow_id,
+            task_ids=scenario_task_ids(scenario),
+            run=lambda: CliStackRunner(
                 repo_root,
                 namespace=namespace,
                 local_registry=local_registry or default_registry_url(),

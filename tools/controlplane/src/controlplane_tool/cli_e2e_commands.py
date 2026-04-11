@@ -7,6 +7,7 @@ These commands replace the shell backends deleted in M10.
 
 Usage:
     controlplane-tool cli-e2e run vm             [--scenario-file PATH] [--skip-cli-build]
+    controlplane-tool cli-e2e run cli-stack      [--scenario-file PATH] [--skip-cli-build]
     controlplane-tool cli-e2e run host-platform  [--scenario-file PATH] [--skip-cli-build]
 """
 from __future__ import annotations
@@ -98,6 +99,39 @@ def run_host_platform(
     result = run_local_flow(flow.flow_id, flow.run)
     if result.status != "completed":
         typer.echo(f"[e2e-host-cli] FAIL: {result.error or result.status}", err=True)
+        raise typer.Exit(code=1)
+
+
+@_run_app.command("cli-stack")
+def run_cli_stack(
+    scenario_file: Annotated[
+        Optional[Path],
+        typer.Option("--scenario-file", help="Resolved scenario manifest JSON path."),
+    ] = None,
+    namespace: Annotated[str, typer.Option(help="Kubernetes namespace.")] = "nanofaas-cli-stack-e2e",
+    local_registry: Annotated[str, typer.Option(help="Local image registry.")] = "localhost:5000",
+    skip_cli_build: Annotated[
+        bool,
+        typer.Option("--skip-cli-build", help="Skip :nanofaas-cli:installDist in VM."),
+    ] = False,
+) -> None:
+    """Run the dedicated VM-backed CLI stack workflow (Python-native)."""
+    resolved_scenario_file = scenario_path_from_env(scenario_file)
+    if os.getenv("NANOFAAS_CLI_SKIP_INSTALL_DIST", "").lower() == "true":
+        skip_cli_build = True
+
+    repo_root = default_tool_paths().workspace_root
+    flow = resolve_flow_definition(
+        "e2e.cli-stack",
+        repo_root=repo_root,
+        scenario_file=resolved_scenario_file,
+        namespace=namespace,
+        local_registry=local_registry,
+        skip_cli_build=skip_cli_build,
+    )
+    result = run_local_flow(flow.flow_id, flow.run)
+    if result.status != "completed":
+        typer.echo(f"[e2e-cli-stack] FAIL: {result.error or result.status}", err=True)
         raise typer.Exit(code=1)
 
 

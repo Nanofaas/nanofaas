@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from controlplane_tool.cli_stack_runner import CliStackRunner
 from controlplane_tool.cli_test_catalog import (
     CliTestScenarioDefinition,
     resolve_cli_test_scenario,
@@ -77,6 +78,16 @@ class CliTestRunner:
             command=["./gradlew", scenario.gradle_task, "--no-daemon"],
         )
 
+    def _cli_stack_steps(self, request: CliTestRequest) -> list[ScenarioPlanStep]:
+        return CliStackRunner(
+            self.paths.workspace_root,
+            vm_request=request.vm,
+            namespace=request.namespace or "nanofaas-cli-stack-e2e",
+            local_registry=request.local_registry,
+            runtime=request.runtime,
+            skip_cli_build=False,
+        ).plan_steps(request.resolved_scenario)
+
     def _as_e2e_request(
         self,
         request: CliTestRequest,
@@ -134,6 +145,9 @@ class CliTestRunner:
     def plan(self, request: CliTestRequest) -> CliTestPlan:
         scenario = resolve_cli_test_scenario(request.scenario)
         steps = [self._gradle_step(scenario)]
+        if request.scenario == "cli-stack":
+            steps.extend(self._cli_stack_steps(request))
+            return CliTestPlan(scenario=scenario, request=request, steps=steps)
         if scenario.legacy_e2e_scenario is not None:
             e2e_plan = self.e2e_runner.plan(self._as_e2e_request(request, scenario))
             steps.extend(self._with_cli_build_reuse(e2e_plan.steps))

@@ -83,7 +83,7 @@ def _build_request(
     resolved_scenario: ResolvedScenario | None = None,
 ) -> E2eRequest:
     vm = None
-    if scenario in {"k3s-junit-curl", "cli", "cli-host", "helm-stack"}:
+    if scenario in {"k3s-junit-curl", "cli", "cli-stack", "cli-host", "helm-stack"}:
         vm = _build_vm_request(
             lifecycle=lifecycle,
             name=name,
@@ -166,6 +166,8 @@ def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
     if scenario == "helm-stack":
         return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-loadtest")
+    if scenario == "cli-stack":
+        return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
     return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
 
 
