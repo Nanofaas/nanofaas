@@ -1,6 +1,3 @@
-import pytest
-from pydantic import ValidationError
-
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.vm_models import VmRequest
 
@@ -17,9 +14,10 @@ def test_e2e_request_tracks_scenario_runtime_and_vm_config() -> None:
     assert request.cleanup_vm is True
 
 
-def test_vm_backed_scenario_requires_vm_config() -> None:
-    with pytest.raises(ValidationError, match="vm"):
-        E2eRequest(scenario="k3s-junit-curl")
+def test_vm_backed_scenario_allows_missing_vm_config() -> None:
+    request = E2eRequest(scenario="k3s-junit-curl")
+
+    assert request.vm is None
 
 
 def test_local_scenario_accepts_absent_vm_config() -> None:

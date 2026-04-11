@@ -121,6 +121,7 @@ def build_vm_cluster_prelude_plan(
         local_registry=local_registry,
         resolved_scenario=resolved_scenario,
         vm_request=vm_request,
+        cleanup_vm=True,
     )
     remote_dir = vm.remote_project_dir(vm_request)
     bootstrap_plan = {

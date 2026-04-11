@@ -4,6 +4,8 @@ from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
 from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.scenario_loader import resolve_scenario_spec
+from controlplane_tool.scenario_components.composer import compose_recipe
+from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_models import ScenarioSpec
 from controlplane_tool.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
 from controlplane_tool.vm_adapter import VmOrchestrator
@@ -115,24 +117,32 @@ def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
         )
     )
 
-    shared_prefix = [
-        "Ensure VM is running",
-        "Provision base VM dependencies",
-        "Sync project to VM",
-        "Ensure registry container",
-        "Build control-plane and runtime images in VM",
-        "Build selected function images in VM",
-        "Install k3s",
-        "Configure k3s registry",
-        "Ensure E2E namespace exists",
-        "Deploy control-plane via Helm",
-        "Deploy function-runtime via Helm",
-        "Wait for control-plane deployment",
-        "Wait for function-runtime deployment",
-    ]
+    k3s_recipe_ids = [component.component_id for component in compose_recipe(build_scenario_recipe("k3s-junit-curl"))]
+    helm_recipe_ids = [component.component_id for component in compose_recipe(build_scenario_recipe("helm-stack"))]
+    shared_prefix_length = 0
+    for lhs, rhs in zip(k3s_recipe_ids, helm_recipe_ids):
+        if lhs != rhs:
+            break
+        shared_prefix_length += 1
 
-    assert [step.summary for step in helm_stack_plan.steps[: len(shared_prefix)]] == shared_prefix
-    assert [step.summary for step in k3s_plan.steps[: len(shared_prefix)]] == shared_prefix
+    assert k3s_recipe_ids[:shared_prefix_length] == helm_recipe_ids[:shared_prefix_length]
+    assert helm_recipe_ids[shared_prefix_length:] == [
+        "loadtest.run",
+        "experiments.autoscaling",
+    ]
+    shared_step_prefix = 0
+    for lhs, rhs in zip(k3s_plan.steps, helm_stack_plan.steps):
+        if lhs.summary != rhs.summary:
+            break
+        shared_step_prefix += 1
+
+    assert [step.summary for step in helm_stack_plan.steps[:shared_step_prefix]] == [
+        step.summary for step in k3s_plan.steps[:shared_step_prefix]
+    ]
+    assert [step.summary for step in helm_stack_plan.steps[shared_step_prefix:]] == [
+        "Run loadtest via Python runner",
+        "Run autoscaling experiment (Python)",
+    ]
 
 
 def test_vm_cluster_prelude_plan_keeps_shared_image_and_helm_values() -> None:
@@ -357,18 +367,17 @@ def test_k3s_junit_curl_plan_binds_user_kubeconfig_for_cluster_steps() -> None:
         )
     )
 
-    rendered = [" ".join(step.command) for step in plan.steps]
     assert any(
         step.summary == "Ensure E2E namespace exists"
-        and "KUBECONFIG=/home/ubuntu/.kube/config" in " ".join(step.command)
+        and step.env["KUBECONFIG"] == "/home/ubuntu/.kube/config"
         for step in plan.steps
     )
     assert any(
         step.summary == "Deploy control-plane via Helm"
-        and "KUBECONFIG=/home/ubuntu/.kube/config" in " ".join(step.command)
+        and step.env["KUBECONFIG"] == "/home/ubuntu/.kube/config"
         for step in plan.steps
     )
-    assert any("KUBECONFIG=/home/ubuntu/.kube/config" in command for command in rendered)
+    assert any(step.env.get("KUBECONFIG") == "/home/ubuntu/.kube/config" for step in plan.steps)
 
 
 def test_execute_emits_step_progress_events() -> None:

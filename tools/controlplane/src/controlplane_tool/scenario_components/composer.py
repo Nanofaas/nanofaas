@@ -36,11 +36,25 @@ from controlplane_tool.scenario_components.images import (
     BUILD_CORE,
     BUILD_SELECTED_FUNCTIONS,
 )
-from controlplane_tool.scenario_components.models import ScenarioComponentDefinition, ScenarioRecipe
+from controlplane_tool.scenario_components.verification import (
+    plan_autoscaling_experiment,
+    plan_loadtest_run,
+    plan_run_k3s_curl_checks,
+    plan_run_k8s_junit,
+)
+from controlplane_tool.scenario_components.models import (
+    ScenarioComponentDefinition,
+    ScenarioRecipe,
+    _planner_not_implemented,
+)
 
 
-def _component(component_id: str, summary: str) -> ScenarioComponentDefinition:
-    return ScenarioComponentDefinition(component_id=component_id, summary=summary)
+def _component(
+    component_id: str,
+    summary: str,
+    planner=_planner_not_implemented,
+) -> ScenarioComponentDefinition:
+    return ScenarioComponentDefinition(component_id=component_id, summary=summary, planner=planner)
 
 
 _COMPONENT_LIBRARY: dict[str, ScenarioComponentDefinition] = {
@@ -73,15 +87,18 @@ _COMPONENT_LIBRARY: dict[str, ScenarioComponentDefinition] = {
     "tests.run_k3s_curl_checks": _component(
         "tests.run_k3s_curl_checks",
         "Run k3s curl checks",
+        plan_run_k3s_curl_checks,
     ),
     "tests.run_k8s_junit": _component(
         "tests.run_k8s_junit",
         "Run Kubernetes JUnit checks",
+        plan_run_k8s_junit,
     ),
-    "loadtest.run": _component("loadtest.run", "Run load test"),
+    "loadtest.run": _component("loadtest.run", "Run load test", plan_loadtest_run),
     "experiments.autoscaling": _component(
         "experiments.autoscaling",
         "Verify autoscaling experiment",
+        plan_autoscaling_experiment,
     ),
 }
 

@@ -72,7 +72,12 @@ class ScenarioStepEvent:
     error: str | None = None
 
 
-def _scenario_plan_step_from_operation(operation: ScenarioOperation) -> ScenarioPlanStep:
+def _scenario_plan_step_from_operation(
+    operation: ScenarioOperation,
+    *,
+    runner: "E2eRunner",
+    request: E2eRequest,
+) -> ScenarioPlanStep:
     if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
         raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
     summary_overrides = {
@@ -92,6 +97,20 @@ def _scenario_plan_step_from_operation(operation: ScenarioOperation) -> Scenario
         "cleanup.delete_namespace": "Delete E2E namespace",
         "cleanup.verify_cli_platform_status_fails": "Verify cli-stack status fails",
     }
+    if operation.operation_id == "tests.run_k3s_curl_checks":
+        return ScenarioPlanStep(
+            summary=summary_overrides.get(operation.operation_id, operation.summary),
+            command=list(operation.argv),
+            env=dict(operation.env),
+            action=lambda: runner._k3s_curl_runner(request).verify_existing_stack(
+                request.resolved_scenario
+            ),
+        )
+    if operation.operation_id == "vm.down" and not request.cleanup_vm:
+        return ScenarioPlanStep(
+            summary=summary_overrides.get(operation.operation_id, operation.summary),
+            command=["echo", "Skipping VM teardown (--no-cleanup-vm)"],
+        )
     return ScenarioPlanStep(
         summary=summary_overrides.get(operation.operation_id, operation.summary),
         command=list(operation.argv),
@@ -104,12 +123,17 @@ def plan_recipe_steps(
     request: E2eRequest,
     scenario_name: str,
     *,
+    shell: ShellBackend | None = None,
     release: str | None = None,
     manifest_root: Path | None = None,
 ) -> list[ScenarioPlanStep]:
-    context: ScenarioExecutionContext = resolve_scenario_environment(repo_root, request)
+    context: ScenarioExecutionContext = resolve_scenario_environment(
+        repo_root,
+        request,
+        manifest_root=manifest_root,
+    )
     recipe = build_scenario_recipe(scenario_name)
-    runner = E2eRunner(repo_root, manifest_root=manifest_root)
+    runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root)
     namespace = context.namespace
     if namespace is None and context.resolved_scenario is not None:
         namespace = context.resolved_scenario.namespace
@@ -123,35 +147,13 @@ def plan_recipe_steps(
         resolved_scenario=context.resolved_scenario,
     )
     steps: list[ScenarioPlanStep] = []
-    k3s_junit_tail: list[ScenarioPlanStep] | None = None
-    helm_stack_tail: list[ScenarioPlanStep] | None = None
     for component in compose_recipe(recipe):
         planner_context: object = cli_context if component.component_id.startswith("cli.") else context
-        try:
-            operations = component.planner(planner_context)
-        except NotImplementedError:
-            if component.component_id == "tests.run_k3s_curl_checks":
-                if k3s_junit_tail is None:
-                    k3s_junit_tail = runner._k3s_junit_curl_tail_steps(request)
-                steps.append(k3s_junit_tail[0])
-                continue
-            if component.component_id == "tests.run_k8s_junit":
-                if k3s_junit_tail is None:
-                    k3s_junit_tail = runner._k3s_junit_curl_tail_steps(request)
-                steps.append(k3s_junit_tail[1])
-                continue
-            if component.component_id == "loadtest.run":
-                if helm_stack_tail is None:
-                    helm_stack_tail = runner._helm_stack_tail_steps(request)
-                steps.append(helm_stack_tail[0])
-                continue
-            if component.component_id == "experiments.autoscaling":
-                if helm_stack_tail is None:
-                    helm_stack_tail = runner._helm_stack_tail_steps(request)
-                steps.append(helm_stack_tail[1])
-                continue
-            raise
-        steps.extend(_scenario_plan_step_from_operation(operation) for operation in operations)
+        operations = component.planner(planner_context)
+        steps.extend(
+            _scenario_plan_step_from_operation(operation, runner=runner, request=request)
+            for operation in operations
+        )
     return steps
 
 
@@ -680,11 +682,10 @@ class E2eRunner:
             )
         if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack"}:
             plan_request = request
-            if request.vm is None:
+            recipe = build_scenario_recipe(request.scenario)
+            if request.vm is None and recipe.requires_managed_vm:
                 context = resolve_scenario_environment(self.paths.workspace_root, request)
                 plan_request = request.model_copy(update={"vm": context.vm_request})
-            if request.scenario == "cli-stack":
-                plan_request = plan_request.model_copy(update={"cleanup_vm": False})
             return ScenarioPlan(
                 scenario=scenario,
                 request=plan_request,
@@ -692,6 +693,7 @@ class E2eRunner:
                     self.paths.workspace_root,
                     plan_request,
                     request.scenario,
+                    shell=self.shell,
                     manifest_root=self.manifest_root,
                 ),
             )
@@ -898,9 +900,13 @@ class E2eRunner:
     def _should_teardown(self, request: E2eRequest | None) -> bool:
         if request is None or request.vm is None:
             return False
-        if request.scenario in {"k3s-junit-curl", "cli-stack"}:
+        if request.vm.lifecycle != "multipass" or not request.cleanup_vm:
             return False
-        return request.vm.lifecycle == "multipass" and request.cleanup_vm
+        try:
+            recipe = build_scenario_recipe(request.scenario)
+        except ValueError:
+            return True
+        return "vm.down" not in recipe.component_ids
 
     def _recorded_command_count(self) -> int | None:
         commands = getattr(self.shell, "commands", None)
