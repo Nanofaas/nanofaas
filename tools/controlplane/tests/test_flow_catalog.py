@@ -4,6 +4,7 @@ import pytest
 
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
+from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -53,28 +54,17 @@ def test_flow_catalog_exposes_task_ids_without_executable_placeholder() -> None:
 
 
 def test_flow_catalog_resolves_cli_stack_task_ids() -> None:
+    recipe = build_scenario_recipe("cli-stack")
     task_ids = resolve_flow_task_ids("e2e.cli-stack")
 
-    assert task_ids == [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "k3s.install",
-        "k3s.configure_registry",
-        "images.build_core",
-        "images.build_selected_functions",
-        "tests.build_cli_stack_cli",
-        "tests.install_cli_stack_platform",
-        "tests.status_cli_stack_platform",
-        "tests.apply_cli_stack_functions",
-        "tests.list_cli_stack_functions",
-        "tests.invoke_cli_stack_functions",
-        "tests.enqueue_cli_stack_functions",
-        "tests.delete_cli_stack_functions",
-        "tests.uninstall_cli_stack_platform",
-        "tests.verify_cli_stack_status_fails",
-    ]
+    assert task_ids == recipe.component_ids
+
+
+def test_flow_catalog_resolves_k3s_junit_curl_from_recipe() -> None:
+    recipe = build_scenario_recipe("k3s-junit-curl")
+    task_ids = resolve_flow_task_ids("e2e.k3s-junit-curl")
+
+    assert task_ids == recipe.component_ids
 
 
 def test_requestless_runtime_scenario_definition_is_not_silently_executable() -> None:

@@ -6,6 +6,7 @@ import pytest
 
 import controlplane_tool.scenario_flows as scenario_flows_mod
 from controlplane_tool.e2e_models import E2eRequest
+from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.vm_models import VmRequest
 
@@ -92,6 +93,35 @@ def test_cli_stack_flow_uses_dedicated_vm_runner(monkeypatch) -> None:
 
     assert flow.run() == "ok"
     assert called["init"]["namespace"] == "nanofaas-e2e"
+
+
+def test_cli_stack_flow_task_ids_are_derived_from_the_recipe() -> None:
+    flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
+    recipe = build_scenario_recipe("cli-stack")
+
+    assert flow.task_ids == recipe.component_ids
+
+
+def test_k3s_junit_curl_flow_task_ids_are_derived_from_the_recipe() -> None:
+    flow = build_scenario_flow(
+        "k3s-junit-curl",
+        repo_root=Path("/repo"),
+        request=E2eRequest(
+            scenario="k3s-junit-curl",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        ),
+    )
+    recipe = build_scenario_recipe("k3s-junit-curl")
+
+    assert flow.task_ids == recipe.component_ids
+
+
+def test_cli_stack_flow_no_longer_needs_a_preexisting_vm_request() -> None:
+    flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
+
+    assert flow.flow_id == "e2e.cli_stack"
+    assert flow.task_ids[0] == "vm.ensure_running"
 
 
 def test_k3s_junit_curl_flow_requires_request_for_executable_definition() -> None:
