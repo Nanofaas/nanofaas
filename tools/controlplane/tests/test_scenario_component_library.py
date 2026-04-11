@@ -15,17 +15,19 @@ from controlplane_tool.scenario_components.models import ScenarioRecipe
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_models import ResolvedFunction, ResolvedScenario
+from controlplane_tool.vm_models import VmRequest
 
 
 def _managed_context(
     *,
     scenario: str = "helm-stack",
     namespace: str | None = "nanofaas-e2e",
+    runtime: str = "java",
     resolved_scenario: ResolvedScenario | None = None,
 ):
     request = E2eRequest(
         scenario=scenario,
-        runtime="java",
+        runtime=runtime,
         namespace=namespace,
         resolved_scenario=resolved_scenario,
         vm=None,
@@ -54,6 +56,22 @@ def test_bootstrap_component_planners_return_typed_remote_operations(
     assert all(isinstance(operation, RemoteCommandOperation) for operation in operations)
     assert operations[0].operation_id == expected_operation_id
     assert operations[0].argv[: len(expected_prefix)] == expected_prefix
+
+
+def test_bootstrap_component_planners_cover_external_vm_branch() -> None:
+    request = E2eRequest(
+        scenario="docker",
+        runtime="java",
+        vm=VmRequest(lifecycle="external", host="10.0.0.10", user="ubuntu"),
+    )
+    context = resolve_scenario_environment(repo_root=Path("/repo"), request=request)
+
+    ensure_operations = bootstrap.plan_vm_ensure_running(context)
+    sync_operations = bootstrap.plan_repo_sync_to_vm(context)
+
+    assert ensure_operations[0].argv[:3] == ("ssh", "ubuntu@10.0.0.10", "true")
+    assert sync_operations[0].argv[:4] == ("rsync", "-az", "--delete", "/repo/")
+    assert "ubuntu@10.0.0.10:/home/ubuntu/nanofaas/" in sync_operations[0].argv[-1]
 
 
 def test_registry_component_planner_uses_vm_remote_ansible_operation() -> None:
@@ -116,6 +134,21 @@ def test_image_component_planners_return_typed_operations_for_selected_functions
     )
     assert any(context.local_registry in " ".join(operation.argv) for operation in core_operations)
     assert any("word-stats" in " ".join(operation.argv) for operation in selected_operations)
+
+
+def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
+    context = _managed_context(runtime="rust")
+
+    core_operations = images.plan_build_core(context)
+
+    assert core_operations[0].argv[:5] == (
+        "cargo",
+        "build",
+        "--release",
+        "--manifest-path",
+        "control-plane-rust/Cargo.toml",
+    )
+    assert any("control-plane-rust/Dockerfile" in " ".join(operation.argv) for operation in core_operations)
 
 
 def test_helm_component_planners_use_namespace_and_helm_values() -> None:

@@ -7,11 +7,30 @@ from types import MappingProxyType
 from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation, ScenarioOperation
-from controlplane_tool.vm_cluster_workflows import (
-    control_image,
-    function_image_specs,
-    runtime_image,
-)
+
+
+def control_image(local_registry: str) -> str:
+    return f"{local_registry}/nanofaas/control-plane:e2e"
+
+
+def runtime_image(local_registry: str) -> str:
+    return f"{local_registry}/nanofaas/function-runtime:e2e"
+
+
+def function_image_specs(
+    resolved_scenario,
+    fallback_runtime_image: str,
+) -> list[tuple[str, str, str]]:
+    if resolved_scenario is None:
+        return []
+
+    function_specs: list[tuple[str, str, str]] = []
+    for function in resolved_scenario.functions:
+        if function.runtime == "fixture" or function.family is None:
+            continue
+        image = function.image or fallback_runtime_image
+        function_specs.append((image, function.runtime, function.family))
+    return function_specs
 
 
 def _frozen_env() -> Mapping[str, str]:

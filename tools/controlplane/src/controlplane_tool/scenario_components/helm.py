@@ -6,12 +6,55 @@ from types import MappingProxyType
 from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation, ScenarioOperation
-from controlplane_tool.vm_cluster_workflows import (
-    control_plane_helm_values,
-    control_image,
-    function_runtime_helm_values,
-    runtime_image,
-)
+from controlplane_tool.scenario_components.images import control_image, runtime_image
+
+
+def _image_parts(image: str) -> tuple[str, str]:
+    repository, separator, tag = image.rpartition(":")
+    if not separator:
+        return image, "latest"
+    return repository, tag
+
+
+def control_plane_helm_values(*, namespace: str, control_plane_image: str) -> dict[str, str]:
+    repository, tag = _image_parts(control_plane_image)
+    callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
+    values = {
+        "namespace.create": "false",
+        "namespace.name": namespace,
+        "controlPlane.image.repository": repository,
+        "controlPlane.image.tag": tag,
+        "controlPlane.image.pullPolicy": "Always",
+        "demos.enabled": "false",
+        "prometheus.create": "false",
+    }
+    extra_env = [
+        ("NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND", "k8s"),
+        ("NANOFAAS_K8S_CALLBACK_URL", callback_url),
+        ("SYNC_QUEUE_ENABLED", "true"),
+        ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
+        ("SYNC_QUEUE_ADMISSION_ENABLED", "false"),
+        ("SYNC_QUEUE_MAX_DEPTH", "1"),
+        ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
+        ("SYNC_QUEUE_MAX_ESTIMATED_WAIT", "2s"),
+        ("SYNC_QUEUE_MAX_QUEUE_WAIT", "5s"),
+        ("SYNC_QUEUE_RETRY_AFTER_SECONDS", "2"),
+        ("SYNC_QUEUE_THROUGHPUT_WINDOW", "10s"),
+        ("SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES", "1"),
+    ]
+    for index, (name, value) in enumerate(extra_env):
+        values[f"controlPlane.extraEnv[{index}].name"] = name
+        values[f"controlPlane.extraEnv[{index}].value"] = value
+    return values
+
+
+def function_runtime_helm_values(*, function_runtime_image: str) -> dict[str, str]:
+    repository, tag = _image_parts(function_runtime_image)
+    return {
+        "functionRuntime.image.repository": repository,
+        "functionRuntime.image.tag": tag,
+        "functionRuntime.image.pullPolicy": "Always",
+    }
 
 
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
