@@ -94,6 +94,7 @@ def plan_ensure_namespace(context: ScenarioExecutionContext) -> tuple[ScenarioOp
             summary="Ensure Kubernetes namespace exists",
             argv=("kubectl", "create", "namespace", namespace),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 
@@ -122,6 +123,7 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
                 *_set_args(values),
             ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 
@@ -151,6 +153,7 @@ def plan_deploy_function_runtime(
                 *_set_args(values),
             ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 
@@ -174,6 +177,7 @@ def plan_wait_control_plane_ready(
                 "180s",
             ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 
@@ -197,6 +201,7 @@ def plan_wait_function_runtime_ready(
                 "120s",
             ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 

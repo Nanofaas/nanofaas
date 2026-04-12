@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
@@ -92,9 +94,19 @@ def plan_recipe_steps(
         resolved_scenario=context.resolved_scenario,
     )
     vm_request = context.vm_request
+    remote_dir = runner.vm.remote_project_dir(vm_request)
 
     def _on_ensure_running() -> None:
         runner.vm.ensure_running(vm_request)
+
+    def _on_remote_exec(argv: tuple[str, ...], env: Mapping[str, str]) -> None:
+        env_prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
+        cmd = shlex.join(list(argv))
+        full_cmd = f"{env_prefix} {cmd}".strip() if env_prefix else cmd
+        full_cmd_with_dir = f"cd {shlex.quote(remote_dir)} && {full_cmd}"
+        result = runner.vm.remote_exec(vm_request, command=full_cmd_with_dir)
+        if result.return_code != 0:
+            raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
 
     steps: list[ScenarioPlanStep] = []
     for component in compose_recipe(recipe):
@@ -108,6 +120,7 @@ def plan_recipe_steps(
                     request.resolved_scenario
                 ),
                 on_ensure_running=_on_ensure_running,
+                on_remote_exec=_on_remote_exec,
             )
         )
     return steps

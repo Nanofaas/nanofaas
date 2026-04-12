@@ -38,6 +38,7 @@ def plan_uninstall_control_plane(context: ScenarioExecutionContext) -> tuple[Sce
             summary="Uninstall control plane with Helm",
             argv=("helm", "uninstall", "control-plane", "-n", namespace),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 
@@ -52,6 +53,7 @@ def plan_uninstall_function_runtime(
             summary="Uninstall function runtime with Helm",
             argv=("helm", "uninstall", "function-runtime", "-n", namespace),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 
@@ -64,6 +66,7 @@ def plan_delete_namespace(context: ScenarioExecutionContext) -> tuple[ScenarioOp
             summary="Delete Kubernetes namespace",
             argv=("kubectl", "delete", "namespace", namespace, "--ignore-not-found=true", "--wait=false"),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 

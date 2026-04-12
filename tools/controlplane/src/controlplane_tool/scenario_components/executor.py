@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from controlplane_tool.e2e_models import E2eRequest
@@ -42,10 +42,20 @@ def operation_to_plan_step(
     request: E2eRequest,
     on_k3s_curl_verify: Callable[[], None] | None = None,
     on_ensure_running: Callable[[], None] | None = None,
+    on_remote_exec: Callable[[tuple[str, ...], Mapping[str, str]], None] | None = None,
 ) -> ScenarioPlanStep:
     if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
         raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
     summary = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
+    if operation.execution_target == "vm" and on_remote_exec is not None:
+        argv = operation.argv
+        env = operation.env
+        return ScenarioPlanStep(
+            summary=summary,
+            command=list(argv),
+            env=dict(env),
+            action=lambda: on_remote_exec(argv, env),
+        )
     if operation.operation_id == "vm.ensure_running" and on_ensure_running is not None:
         return ScenarioPlanStep(
             summary=summary,
@@ -80,6 +90,7 @@ def operations_to_plan_steps(
     request: E2eRequest,
     on_k3s_curl_verify: Callable[[], None] | None = None,
     on_ensure_running: Callable[[], None] | None = None,
+    on_remote_exec: Callable[[tuple[str, ...], Mapping[str, str]], None] | None = None,
 ) -> list[ScenarioPlanStep]:
     return [
         operation_to_plan_step(
@@ -87,6 +98,7 @@ def operations_to_plan_steps(
             request=request,
             on_k3s_curl_verify=on_k3s_curl_verify,
             on_ensure_running=on_ensure_running,
+            on_remote_exec=on_remote_exec,
         )
         for operation in operations
     ]

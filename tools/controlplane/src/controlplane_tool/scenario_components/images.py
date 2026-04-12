@@ -75,6 +75,7 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                     "control-plane-rust/Cargo.toml",
                 ),
                 env=_frozen_env(),
+                execution_target="vm",
             )
         )
     else:
@@ -90,6 +91,7 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                     "-q",
                 ),
                 env=_frozen_env(),
+                execution_target="vm",
             )
         )
 
@@ -108,6 +110,7 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                     control_context,
                 ),
                 env=_frozen_env(),
+                execution_target="vm",
             ),
             RemoteCommandOperation(
                 operation_id="images.build_core.runtime_image",
@@ -122,18 +125,21 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                     "function-runtime",
                 ),
                 env=_frozen_env(),
+                execution_target="vm",
             ),
             RemoteCommandOperation(
                 operation_id="images.build_core.push_control_image",
                 summary="Push control-plane image",
                 argv=("docker", "push", control_plane_image),
                 env=_frozen_env(),
+                execution_target="vm",
             ),
             RemoteCommandOperation(
                 operation_id="images.build_core.push_runtime_image",
                 summary="Push function-runtime image",
                 argv=("docker", "push", function_runtime_image),
                 env=_frozen_env(),
+                execution_target="vm",
             ),
         ]
     )
@@ -162,6 +168,7 @@ def plan_build_selected_functions(
                         "-q",
                     ),
                     env=_frozen_env(),
+                    execution_target="vm",
                 )
             )
             continue
@@ -180,6 +187,7 @@ def plan_build_selected_functions(
                     ".",
                 ),
                 env=_frozen_env(),
+                execution_target="vm",
             )
         )
     return tuple(operations)
