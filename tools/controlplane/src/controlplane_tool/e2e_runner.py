@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -103,11 +102,7 @@ def plan_recipe_steps(
         runner.vm.teardown(vm_request)
 
     def _on_remote_exec(argv: tuple[str, ...], env: Mapping[str, str]) -> None:
-        env_prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
-        cmd = shlex.join(list(argv))
-        full_cmd = f"{env_prefix} {cmd}".strip() if env_prefix else cmd
-        full_cmd_with_dir = f"cd {shlex.quote(remote_dir)} && {full_cmd}"
-        result = runner.vm.remote_exec(vm_request, command=full_cmd_with_dir)
+        result = runner.vm.exec_argv(vm_request, argv, env=dict(env), cwd=remote_dir)
         if result.return_code != 0:
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
 

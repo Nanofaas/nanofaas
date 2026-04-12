@@ -382,6 +382,30 @@ class VmOrchestrator:
             return _sdk_error(e)
         return _ok(transfer_cmd)
 
+    def exec_argv(
+        self,
+        request: VmRequest,
+        argv: tuple[str, ...] | list[str],
+        *,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        """Execute a structured command inside the VM without bash string construction.
+
+        Builds the minimal bash prologue (cd + export) from structured arguments so
+        callers never need to construct shell strings themselves.  The bash boundary
+        is confined to this single method.
+        """
+        parts: list[str] = []
+        if cwd:
+            parts.append(f"cd {shlex.quote(cwd)}")
+        for k, v in (env or {}).items():
+            parts.append(f"export {k}={shlex.quote(v)}")
+        parts.append(shlex.join(list(argv)))
+        command = " && ".join(parts)
+        return self.remote_exec(request, command=command, dry_run=dry_run)
+
     def remote_exec(
         self,
         request: VmRequest,
