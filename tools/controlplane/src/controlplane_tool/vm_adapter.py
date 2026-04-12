@@ -393,18 +393,32 @@ class VmOrchestrator:
     ) -> ShellExecutionResult:
         """Execute a structured command inside the VM without bash string construction.
 
-        Builds the minimal bash prologue (cd + export) from structured arguments so
-        callers never need to construct shell strings themselves.  The bash boundary
-        is confined to this single method.
+        Delegates to MultipassVM.exec_structured, which confines the bash boundary to
+        the SDK.  For external VMs, falls back to remote_exec with a shell string built
+        by the SDK-equivalent logic.
         """
-        parts: list[str] = []
-        if cwd:
-            parts.append(f"cd {shlex.quote(cwd)}")
-        for k, v in (env or {}).items():
-            parts.append(f"export {k}={shlex.quote(v)}")
-        parts.append(shlex.join(list(argv)))
-        command = " && ".join(parts)
-        return self.remote_exec(request, command=command, dry_run=dry_run)
+        if request.lifecycle == "external":
+            # External VMs use SSH; replicate the same prologue logic here.
+            parts: list[str] = []
+            if cwd:
+                parts.append(f"cd {shlex.quote(cwd)}")
+            for k, v in (env or {}).items():
+                parts.append(f"export {k}={shlex.quote(v)}")
+            parts.append(shlex.join(list(argv)))
+            command = " && ".join(parts)
+            return self.remote_exec(request, command=command, dry_run=dry_run)
+
+        name = self._vm_name(request)
+        exec_cmd = ["multipass", "exec", name, "--", "bash", "-lc", "<structured>"]
+        if dry_run:
+            return _ok(exec_cmd)
+        result = self._client.get_vm(name).exec_structured(list(argv), env=env, cwd=cwd)
+        return ShellExecutionResult(
+            command=exec_cmd,
+            return_code=result.returncode,
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+        )
 
     def remote_exec(
         self,

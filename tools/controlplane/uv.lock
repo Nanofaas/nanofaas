@@ -420,7 +420,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.4" },
-    { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=699d360" },
+    { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=83b3704" },
     { name = "plotly", specifier = ">=5.24.1" },
     { name = "prefect", specifier = ">=3,<4" },
     { name = "pydantic", specifier = ">=2.9.2" },
@@ -1124,8 +1124,8 @@ wheels = [
 
 [[package]]
 name = "multipass-sdk"
-version = "0.4.0"
-source = { git = "https://github.com/miciav/multipass-sdk.git?rev=699d360#699d3600788d4bc2cb6bf66ccd54dc7aed89fdec" }
+version = "0.5.0"
+source = { git = "https://github.com/miciav/multipass-sdk.git?rev=83b3704#83b3704b2c37e50c09773cd97073f691cd4d3faa" }
 dependencies = [
     { name = "haikunator" },
     { name = "pyyaml" },

@@ -219,6 +219,60 @@ def test_vm_orchestrator_sets_private_key_none_when_no_on_disk_match(
     assert orchestrator.ansible.private_key_path is None
 
 
+def test_exec_argv_multipass_delegates_to_sdk_exec_structured() -> None:
+    name = "nanofaas-e2e"
+    backend = FakeBackend()
+    backend.set_default(_ok())
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), multipass_client=MultipassClient(backend=backend))
+
+    result = orchestrator.exec_argv(
+        VmRequest(lifecycle="multipass", name=name),
+        ["docker", "build", "-t", "myimage", "."],
+        env={"DOCKER_BUILDKIT": "1"},
+        cwd="/srv/project",
+    )
+
+    assert result.return_code == 0
+    # The SDK routes through multipass exec <name> -- bash -lc <cmd>
+    exec_calls = [c for c in backend.calls if c[:4] == ["multipass", "exec", name, "--"]]
+    assert len(exec_calls) == 1
+    shell_cmd = exec_calls[0][-1]
+    assert "/srv/project" in shell_cmd
+    assert "DOCKER_BUILDKIT" in shell_cmd
+    assert "docker build -t myimage ." in shell_cmd
+
+
+def test_exec_argv_external_vm_builds_shell_string_and_runs_via_ssh() -> None:
+    shell = RecordingShell()
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=shell)
+
+    orchestrator.exec_argv(
+        VmRequest(lifecycle="external", host="vm.example.test", user="dev"),
+        ["echo", "hello world"],
+        cwd="/tmp",
+        dry_run=False,
+    )
+
+    assert len(shell.commands) == 1
+    cmd = shell.commands[0]
+    assert cmd[0] == "ssh"
+    assert "dev@vm.example.test" in cmd
+    shell_str = cmd[-1]
+    assert "cd /tmp" in shell_str
+    assert "echo 'hello world'" in shell_str
+
+
+def test_exec_argv_multipass_dry_run_returns_placeholder_command() -> None:
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"))
+    request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+
+    result = orchestrator.exec_argv(request, ["make", "build"], dry_run=True)
+
+    assert result.return_code == 0
+    assert "multipass" in result.command
+    assert "exec" in result.command
+
+
 def test_ensure_running_repairs_authorized_keys_for_existing_multipass_vm() -> None:
     name = "nanofaas-e2e"
     public_key = "ssh-ed25519 AAAA test@example"

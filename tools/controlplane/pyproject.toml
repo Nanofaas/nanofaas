@@ -15,7 +15,7 @@ dependencies = [
     "pydantic-settings>=2.5",
     "flask>=3.0",
     "rich>=13.8",
-    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@699d360",
+    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
     "prefect>=3,<4",
 ]
 
