@@ -753,19 +753,27 @@ class NanofaasTUI:
             return
 
         if runner_choice == "cli-stack":
-            planned_steps = [
-                planned_step.summary
-                for planned_step in CliStackRunner(
-                    repo_root,
-                    local_registry=default_registry_url(),
-                ).plan_steps()
-            ]
+            from controlplane_tool.e2e_runner import E2eRunner
+            from controlplane_tool.e2e_models import E2eRequest
+            from controlplane_tool.scenario_components.environment import default_managed_vm_request
+
+            cli_stack_request = E2eRequest(
+                scenario="cli-stack",
+                vm=default_managed_vm_request(),
+                local_registry=default_registry_url(),
+            )
+            cli_stack_plan = E2eRunner(repo_root).plan(cli_stack_request)
 
             def _run_cli_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                def _on_event(event: Any) -> None:
+                    self._apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
                 step("Running CLI stack E2E")
                 flow = build_scenario_flow(
                     "cli-stack",
                     repo_root=repo_root,
+                    event_listener=_on_event,
                 )
                 self._run_shared_flow(flow)
                 success("CLI stack E2E completed")
@@ -776,7 +784,7 @@ class NanofaasTUI:
                     "Runner: cli-stack",
                     "Mode: canonical self-bootstrapping VM-backed CLI stack",
                 ],
-                planned_steps=planned_steps,
+                planned_steps=[s.summary for s in cli_stack_plan.steps],
                 action=_run_cli_stack_workflow,
             )
             return

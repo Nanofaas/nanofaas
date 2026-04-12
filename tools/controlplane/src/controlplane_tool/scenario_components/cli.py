@@ -29,9 +29,22 @@ def _endpoint(namespace: str) -> str:
     return f"http://control-plane.{namespace}.svc.cluster.local:8080"
 
 
+def _cli_bin_dir(context: CliComponentContext) -> Path:
+    return context.repo_root / "nanofaas-cli" / "build" / "install" / "nanofaas-cli" / "bin"
+
+
+def _cli_bin(context: CliComponentContext, cmd: str) -> str:
+    return str(_cli_bin_dir(context) / cmd)
+
+
+def _kubeconfig_path(context: CliComponentContext) -> str:
+    return str(Path(context.repo_root).parent / ".kube" / "config")
+
+
 def _cli_env(context: CliComponentContext) -> Mapping[str, str]:
     return _frozen_env(
         {
+            "KUBECONFIG": _kubeconfig_path(context),
             "NANOFAAS_NAMESPACE": context.namespace,
             "NANOFAAS_ENDPOINT": _endpoint(context.namespace),
         }
@@ -59,31 +72,33 @@ def plan_build_install_dist(_: CliComponentContext) -> tuple[RemoteCommandOperat
 
 
 def plan_platform_install(context: CliComponentContext) -> tuple[RemoteCommandOperation, ...]:
+    raw_cmd = platform_install_command(
+        repo_root=context.repo_root,
+        release=context.release,
+        namespace=context.namespace,
+        control_plane_image=f"{context.local_registry}/nanofaas/control-plane:e2e",
+    )
+    argv = (_cli_bin(context, raw_cmd[0]), *raw_cmd[1:])
     return (
         RemoteCommandOperation(
             operation_id="cli.platform_install",
             summary="Install nanofaas platform with CLI",
-            argv=tuple(
-                platform_install_command(
-                    repo_root=context.repo_root,
-                    release=context.release,
-                    namespace=context.namespace,
-                    control_plane_image=f"{context.local_registry}/nanofaas/control-plane:e2e",
-                )
-            ),
-            env=_frozen_env(),
+            argv=tuple(argv),
+            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
         ),
     )
 
 
 def plan_platform_status(context: CliComponentContext) -> tuple[RemoteCommandOperation, ...]:
+    raw_cmd = platform_status_command(context.namespace)
+    argv = (_cli_bin(context, raw_cmd[0]), *raw_cmd[1:])
     return (
         RemoteCommandOperation(
             operation_id="cli.platform_status",
             summary="Check nanofaas platform status",
-            argv=tuple(platform_status_command(context.namespace)),
-            env=_frozen_env(),
+            argv=tuple(argv),
+            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
         ),
     )
@@ -94,8 +109,8 @@ def _plan_platform_uninstall(context: CliComponentContext) -> tuple[RemoteComman
         RemoteCommandOperation(
             operation_id="cli.platform_uninstall",
             summary="Uninstall nanofaas platform with CLI",
-            argv=("platform", "uninstall", "--release", context.release, "-n", context.namespace),
-            env=_frozen_env(),
+            argv=(_cli_bin(context, "platform"), "uninstall", "--release", context.release, "-n", context.namespace),
+            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
         ),
     )
@@ -113,7 +128,7 @@ def plan_fn_apply_selected(context: CliComponentContext) -> tuple[RemoteCommandO
             RemoteCommandOperation(
                 operation_id=f"cli.fn_apply_selected.{fn_key}",
                 summary=f"Apply selected function '{fn_key}'",
-                argv=("fn", "apply", "-f", _apply_manifest_path(fn_key)),
+                argv=(_cli_bin(context, "fn"), "apply", "-f", _apply_manifest_path(fn_key)),
                 env=_frozen_env(
                     {
                         **dict(_cli_env(context)),
@@ -131,7 +146,7 @@ def plan_fn_list_selected(context: CliComponentContext) -> tuple[RemoteCommandOp
         RemoteCommandOperation(
             operation_id="cli.fn_list_selected",
             summary="List selected functions",
-            argv=("fn", "list"),
+            argv=(_cli_bin(context, "fn"), "list"),
             env=_cli_env(context),
             execution_target="vm",
         ),
@@ -150,7 +165,7 @@ def plan_fn_invoke_selected(context: CliComponentContext) -> tuple[RemoteCommand
             RemoteCommandOperation(
                 operation_id=f"cli.fn_invoke_selected.{fn_key}",
                 summary=f"Invoke selected function '{fn_key}'",
-                argv=("invoke", fn_key, "-d", payload),
+                argv=(_cli_bin(context, "invoke"), fn_key, "-d", payload),
                 env=_cli_env(context),
                 execution_target="vm",
             )
@@ -170,7 +185,7 @@ def plan_fn_enqueue_selected(context: CliComponentContext) -> tuple[RemoteComman
             RemoteCommandOperation(
                 operation_id=f"cli.fn_enqueue_selected.{fn_key}",
                 summary=f"Enqueue selected function '{fn_key}'",
-                argv=("enqueue", fn_key, "-d", payload),
+                argv=(_cli_bin(context, "enqueue"), fn_key, "-d", payload),
                 env=_cli_env(context),
                 execution_target="vm",
             )
@@ -185,7 +200,7 @@ def plan_fn_delete_selected(context: CliComponentContext) -> tuple[RemoteCommand
             RemoteCommandOperation(
                 operation_id=f"cli.fn_delete_selected.{fn_key}",
                 summary=f"Delete selected function '{fn_key}'",
-                argv=("fn", "delete", fn_key),
+                argv=(_cli_bin(context, "fn"), "delete", fn_key),
                 env=_cli_env(context),
                 execution_target="vm",
             )
