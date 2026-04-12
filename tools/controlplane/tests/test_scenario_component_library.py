@@ -166,9 +166,7 @@ def test_helm_component_planners_use_namespace_and_helm_values() -> None:
         isinstance(operation, RemoteCommandOperation) for operation in control_plane_operations
     )
     assert all(isinstance(operation, RemoteCommandOperation) for operation in runtime_operations)
-    # Namespace is created idempotently by helm upgrade --create-namespace
-    assert "--create-namespace" in control_plane_operations[0].argv
-    assert "--create-namespace" in runtime_operations[0].argv
+    # Namespace is created by the chart (namespace.create=true)
     assert "helm" in control_plane_operations[0].argv[0]
     assert "nanofaas-stack" in " ".join(control_plane_operations[0].argv)
     assert "nanofaas-stack" in " ".join(runtime_operations[0].argv)
