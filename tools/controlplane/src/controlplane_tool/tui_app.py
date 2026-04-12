@@ -467,10 +467,13 @@ class NanofaasTUI:
                 "Scenario:",
                 choices=[
                     questionary.Choice(
-                        "k3s-junit-curl — shared Helm deploy with curl + JUnit verification",
+                        "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
                         "k3s-junit-curl",
                     ),
-                    questionary.Choice("helm-stack — Helm stack compatibility", "helm-stack"),
+                    questionary.Choice(
+                        "helm-stack — self-bootstrapping VM stack for Helm compatibility",
+                        "helm-stack",
+                    ),
                     questionary.Choice("container-local — local managed DEPLOYMENT", "container-local"),
                     questionary.Choice("deploy-host — deploy-host with local registry", "deploy-host"),
                     questionary.Choice("docker — local POOL with Docker", "docker"),
@@ -536,7 +539,10 @@ class NanofaasTUI:
 
             self._run_live_workflow(
                 title="E2E Scenarios",
-                summary_lines=[f"Scenario: {scenario}"],
+                summary_lines=[
+                    f"Scenario: {scenario}",
+                    "Mode: self-bootstrapping VM-backed scenario",
+                ],
                 planned_steps=[step.summary for step in plan.steps],
                 action=_run_helm_stack_workflow,
             )
@@ -620,6 +626,7 @@ class NanofaasTUI:
                 title="E2E Scenarios",
                 summary_lines=[
                     "Scenario: k3s-junit-curl",
+                    "Mode: self-bootstrapping VM-backed scenario",
                     f"VM Name: {vm_name}",
                     f"Control-plane runtime: {runtime}",
                     f"Cleanup VM at end: {'yes' if cleanup_vm else 'no'}",
@@ -712,8 +719,14 @@ class NanofaasTUI:
                 "Runner:",
                 choices=[
                     questionary.Choice("vm — CLI E2E on k3s VM", "vm"),
-                    questionary.Choice("cli-stack — Dedicated CLI stack flow in VM", "cli-stack"),
-                    questionary.Choice("host-platform — CLI on host vs cluster", "host-platform"),
+                    questionary.Choice(
+                        "cli-stack — canonical self-bootstrapping CLI stack in VM",
+                        "cli-stack",
+                    ),
+                    questionary.Choice(
+                        "host-platform — compatibility path, CLI on host vs cluster",
+                        "host-platform",
+                    ),
                 ],
                 style=_STYLE,
             ).ask()
@@ -733,7 +746,7 @@ class NanofaasTUI:
 
             self._run_live_workflow(
                 title="CLI E2E",
-                summary_lines=["Runner: vm"],
+                summary_lines=["Runner: vm", "Mode: legacy in-VM CLI validation path"],
                 planned_steps=["Build", "Deploy", "Verify"],
                 action=_run_cli_vm_workflow,
             )
@@ -759,7 +772,10 @@ class NanofaasTUI:
 
             self._run_live_workflow(
                 title="CLI E2E",
-                summary_lines=["Runner: cli-stack"],
+                summary_lines=[
+                    "Runner: cli-stack",
+                    "Mode: canonical self-bootstrapping VM-backed CLI stack",
+                ],
                 planned_steps=planned_steps,
                 action=_run_cli_stack_workflow,
             )
@@ -777,7 +793,10 @@ class NanofaasTUI:
 
             self._run_live_workflow(
                 title="CLI E2E",
-                summary_lines=["Runner: host-platform"],
+                summary_lines=[
+                    "Runner: host-platform",
+                    "Mode: compatibility path; platform-only on host vs cluster",
+                ],
                 planned_steps=["Build", "Deploy", "Verify"],
                 action=_run_cli_host_workflow,
             )

@@ -196,9 +196,56 @@ def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
     NanofaasTUI()._cli_e2e_menu()
 
     assert captured["title"] == "CLI E2E"
-    assert captured["summary_lines"] == ["Runner: cli-stack"]
+    assert captured["summary_lines"] == [
+        "Runner: cli-stack",
+        "Mode: canonical self-bootstrapping VM-backed CLI stack",
+    ]
     assert "Build nanofaas-cli installDist in VM" in captured["planned_steps"]
     assert "Verify cli-stack status fails" in captured["planned_steps"]
+
+
+def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["host-platform"])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        captured["title"] = title
+        captured["summary_lines"] = summary_lines
+        captured["planned_steps"] = planned_steps
+        return None
+
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert captured["title"] == "CLI E2E"
+    assert captured["summary_lines"] == [
+        "Runner: host-platform",
+        "Mode: compatibility path; platform-only on host vs cluster",
+    ]
+
+
+def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {}
+
+    def fake_select(*args, **kwargs):  # noqa: ANN001
+        captured["choices"] = [choice.title for choice in kwargs["choices"]]
+        return _Prompt("container-local")
+
+    monkeypatch.setattr(tui_app.questionary, "select", fake_select)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+    monkeypatch.setattr(NanofaasTUI, "_run_container_local", lambda self: None)
+
+    NanofaasTUI()._e2e_menu()
+
+    assert "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
+    assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
 
 
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
@@ -512,7 +559,10 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
     assert called["scenario"] == "helm-stack"
     assert called["flow_id"] == "e2e.helm_stack"
     assert callable(called["event_listener"])
-    assert called["summary_lines"] == ["Scenario: helm-stack"]
+    assert called["summary_lines"] == [
+        "Scenario: helm-stack",
+        "Mode: self-bootstrapping VM-backed scenario",
+    ]
     assert called["planned_steps"] == [
         "Ensure VM is running",
         "Provision base VM dependencies",

@@ -115,9 +115,10 @@ CLI validation is also first-class:
 
 - `scripts/controlplane.sh cli-test list|inspect|run` is the canonical interface for `nanofaas-cli` validation.
 - saved profiles can persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario directly from the profile.
+- `k3s-junit-curl`, `helm-stack`, and `cli-stack` are self-bootstrapping VM-backed scenarios: when no VM request is provided, the tool creates and configures a managed VM and installs scenario-specific software there instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`.
 - `cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the registry there, then exercises function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`.
 - `vm` validates and executes every function in the resolved selection, and `deploy-host` iterates the same full function set when it builds, pushes, and registers host-side deploy fixtures.
-- `host-platform` is intentionally platform-only: saved-profile runtime and namespace defaults still apply, but function selections are ignored for that scenario.
+- `host-platform` is a compatibility path and intentionally platform-only: saved-profile runtime and namespace defaults still apply, but function selections are ignored for that scenario.
 - missing saved profiles or scenario files are reported as CLI validation failures with exit code 2.
 - `scripts/e2e-cli.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run vm`.
 - `scripts/e2e-cli-host-platform.sh` is a compatibility wrapper over `scripts/controlplane.sh cli-test run host-platform`.

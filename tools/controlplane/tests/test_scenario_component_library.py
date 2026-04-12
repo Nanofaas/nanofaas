@@ -7,6 +7,7 @@ import pytest
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.scenario_components import bootstrap, helm, images
 from controlplane_tool.scenario_components.environment import resolve_scenario_environment
+from controlplane_tool.scenario_components.executor import operation_to_plan_step
 from controlplane_tool.scenario_components.composer import (
     compose_recipe,
     recipe_task_ids,
@@ -215,3 +216,17 @@ def test_build_scenario_recipe_returns_isolated_component_ids() -> None:
 
     assert "extra.component" not in recipe.component_ids
     assert recipe.component_ids[-1] == "vm.down"
+
+
+def test_operation_executor_translates_typed_operations_to_plan_steps() -> None:
+    request = E2eRequest(scenario="cli-stack", cleanup_vm=False)
+    operation = RemoteCommandOperation(
+        operation_id="vm.down",
+        summary="Tear down VM",
+        argv=("multipass", "delete", "nanofaas-e2e"),
+    )
+
+    step = operation_to_plan_step(operation, request=request)
+
+    assert step.summary == "Tear down VM"
+    assert step.command == ["echo", "Skipping VM teardown (--no-cleanup-vm)"]

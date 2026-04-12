@@ -85,6 +85,7 @@ When a CLI override is layered on top of a scenario file or saved profile, the t
 
 The repository ships `tools/controlplane/profiles/demo-java.toml` as a ready-to-run example profile.
 Saved profiles can also persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario from the profile.
+`k3s-junit-curl`, `helm-stack`, and `cli-stack` are the self-bootstrapping VM-backed scenarios. When you do not pass an explicit VM request, the controlplane tool creates and configures a managed VM and installs scenario-specific software inside that VM instead of assuming host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`.
 Within `cli-test`, `cli-stack` is the canonical VM-backed CLI stack scenario: it builds the CLI in the VM, installs Helm, k3s, and the registry there, then validates function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`. `host-platform` remains intentionally platform-only and ignores saved function selections, while `vm` preserves the legacy in-VM CLI path and `deploy-host` iterates the full selected set on the host. Missing saved profiles or scenario files fail fast with exit code 2.
 
 ## Build images (buildpacks)

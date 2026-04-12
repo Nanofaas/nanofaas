@@ -1,5 +1,4 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -44,6 +43,10 @@ def test_flow_catalog_resolves_cli_stack_task_ids() -> None:
     assert task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
+def test_flow_catalog_resolves_container_local_task_ids_from_legacy_mapping() -> None:
+    assert resolve_flow_task_ids("e2e.container-local") == ["tests.run_container_local"]
+
+
 def test_flow_catalog_resolves_k3s_junit_curl_from_recipe() -> None:
     recipe = build_scenario_recipe("k3s-junit-curl")
     task_ids = resolve_flow_task_ids("e2e.k3s-junit-curl")
@@ -54,17 +57,8 @@ def test_flow_catalog_resolves_k3s_junit_curl_from_recipe() -> None:
 def test_flow_catalog_helm_stack_task_ids_follow_recipe_composition(monkeypatch) -> None:
     monkeypatch.setattr(
         flow_catalog_mod,
-        "build_scenario_recipe",
-        lambda name: SimpleNamespace(name=name),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        flow_catalog_mod,
-        "compose_recipe",
-        lambda recipe: [
-            SimpleNamespace(component_id="first.component"),
-            SimpleNamespace(component_id="second.component"),
-        ],
+        "scenario_task_ids",
+        lambda scenario: ["first.component", "second.component"],
         raising=False,
     )
 

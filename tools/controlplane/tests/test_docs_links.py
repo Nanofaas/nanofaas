@@ -53,6 +53,9 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh cli-test run host-platform --scenario-file" not in testing
     assert "multi-function presets are rejected in CLI validation" in testing
     assert "presets such as `demo-java` are exercised end-to-end" in testing
+    assert "self-bootstrapping VM-backed scenarios" in testing
+    assert "instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`" in testing
+    assert "host-platform` is a compatibility path" in testing
     assert "scripts/controlplane.sh tui --profile-name dev --use-saved-profile" in testing
     assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
     assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in testing
@@ -67,6 +70,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
+    assert "self-bootstrapping VM-backed scenarios" in tool_readme
+    assert "instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`" in tool_readme
     assert "scripts/controlplane.sh loadtest show-profile quick" in tool_readme
     assert "scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh vm up" in tool_readme
@@ -86,3 +91,6 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
 
     assert "scripts/controlplane.sh cli-test run vm" in cli_doc
     assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in cli_doc
+
+    assert "self-bootstrapping VM-backed scenarios" in root_readme
+    assert "installs scenario-specific software inside that VM" in root_readme

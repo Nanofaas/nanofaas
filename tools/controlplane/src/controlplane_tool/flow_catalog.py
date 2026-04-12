@@ -13,9 +13,7 @@ from controlplane_tool.infra_flows import (
 from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.prefect_models import LocalFlowDefinition
 from controlplane_tool.registry_runtime import default_registry_url
-from controlplane_tool.scenario_components.composer import compose_recipe
-from controlplane_tool.scenario_components.recipes import build_scenario_recipe
-from controlplane_tool.scenario_flows import build_scenario_flow
+from controlplane_tool.scenario_flows import build_scenario_flow, scenario_task_ids
 
 
 def _unique_task_ids(task_ids: list[str]) -> list[str]:
@@ -30,8 +28,7 @@ def _unique_task_ids(task_ids: list[str]) -> list[str]:
 
 
 def _scenario_task_ids(scenario: str) -> list[str]:
-    recipe = build_scenario_recipe(scenario)
-    return [component.component_id for component in compose_recipe(recipe)]
+    return scenario_task_ids(scenario)
 
 
 def resolve_flow_task_ids(flow_name: str, **kwargs: Any) -> list[str]:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -17,9 +17,9 @@ from controlplane_tool.scenario_components.environment import (
     ScenarioExecutionContext,
     resolve_scenario_environment,
 )
-from controlplane_tool.scenario_components.operations import (
-    RemoteCommandOperation,
-    ScenarioOperation,
+from controlplane_tool.scenario_components.executor import (
+    ScenarioPlanStep,
+    operations_to_plan_steps,
 )
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_manifest import (
@@ -46,14 +46,6 @@ from controlplane_tool.vm_models import VmRequest
 
 
 @dataclass(frozen=True)
-class ScenarioPlanStep:
-    summary: str
-    command: list[str]
-    env: dict[str, str] = field(default_factory=dict)
-    action: Callable[[], None] | None = None
-
-
-@dataclass(frozen=True)
 class ScenarioPlan:
     scenario: ScenarioDefinition
     request: E2eRequest
@@ -70,53 +62,6 @@ class ScenarioStepEvent:
     step: ScenarioPlanStep
     status: ScenarioExecutionStatus
     error: str | None = None
-
-
-def _scenario_plan_step_from_operation(
-    operation: ScenarioOperation,
-    *,
-    runner: "E2eRunner",
-    request: E2eRequest,
-) -> ScenarioPlanStep:
-    if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
-        raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
-    summary_overrides = {
-        "cli.build_install_dist": "Build nanofaas-cli installDist in VM",
-        "cli.platform_install": "Install nanofaas into k3s through the CLI",
-        "cli.platform_status": "Run platform status",
-        "repo.sync_to_vm": "Sync project to VM",
-        "registry.ensure_container": "Ensure registry container",
-        "k8s.ensure_namespace": "Ensure E2E namespace exists",
-        "k3s.configure_registry": "Configure k3s registry",
-        "helm.deploy_control_plane": "Deploy control-plane via Helm",
-        "helm.deploy_function_runtime": "Deploy function-runtime via Helm",
-        "k8s.wait_control_plane_ready": "Wait for control-plane deployment",
-        "k8s.wait_function_runtime_ready": "Wait for function-runtime deployment",
-        "cleanup.uninstall_control_plane": "Uninstall control-plane Helm release",
-        "cleanup.uninstall_function_runtime": "Uninstall function-runtime Helm release",
-        "cleanup.delete_namespace": "Delete E2E namespace",
-        "cleanup.verify_cli_platform_status_fails": "Verify cli-stack status fails",
-    }
-    if operation.operation_id == "tests.run_k3s_curl_checks":
-        return ScenarioPlanStep(
-            summary=summary_overrides.get(operation.operation_id, operation.summary),
-            command=list(operation.argv),
-            env=dict(operation.env),
-            action=lambda: runner._k3s_curl_runner(request).verify_existing_stack(
-                request.resolved_scenario
-            ),
-        )
-    if operation.operation_id == "vm.down" and not request.cleanup_vm:
-        return ScenarioPlanStep(
-            summary=summary_overrides.get(operation.operation_id, operation.summary),
-            command=["echo", "Skipping VM teardown (--no-cleanup-vm)"],
-        )
-    return ScenarioPlanStep(
-        summary=summary_overrides.get(operation.operation_id, operation.summary),
-        command=list(operation.argv),
-        env=dict(operation.env),
-    )
-
 
 def plan_recipe_steps(
     repo_root: Path,
@@ -151,8 +96,13 @@ def plan_recipe_steps(
         planner_context: object = cli_context if component.component_id.startswith("cli.") else context
         operations = component.planner(planner_context)
         steps.extend(
-            _scenario_plan_step_from_operation(operation, runner=runner, request=request)
-            for operation in operations
+            operations_to_plan_steps(
+                operations,
+                request=request,
+                on_k3s_curl_verify=lambda: runner._k3s_curl_runner(request).verify_existing_stack(
+                    request.resolved_scenario
+                ),
+            )
         )
     return steps
 

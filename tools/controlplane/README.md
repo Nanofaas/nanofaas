@@ -128,6 +128,7 @@ CLI validation saved profiles can also persist:
 - `cli_test.default_scenario`
 
 That lets the same saved profile drive `scripts/controlplane.sh cli-test run --saved-profile <name>` without repeating the scenario name on the command line.
+`k3s-junit-curl`, `helm-stack`, and `cli-stack` are the self-bootstrapping VM-backed scenarios. When no explicit VM request is provided, the controlplane tool creates and configures a managed VM and installs scenario-specific software inside that VM instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`.
 `cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the local registry there, then validates function build/push/apply/invoke/enqueue/delete together with `platform install/status/uninstall`. `host-platform` is intentionally platform-only, so saved-profile runtime and namespace defaults still apply there but function selections do not. `vm` preserves the legacy in-VM CLI validation path, `deploy-host` builds, pushes, and registers every selected function on the host, and missing saved profiles or scenario files fail validation with exit code 2.
 
 Scenario defaults are scenario-aware:
