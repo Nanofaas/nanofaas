@@ -20,7 +20,7 @@ def control_plane_helm_values(*, namespace: str, control_plane_image: str) -> di
     repository, tag = _image_parts(control_plane_image)
     callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
     values = {
-        "namespace.create": "true",
+        "namespace.create": "false",
         "namespace.name": namespace,
         "controlPlane.image.repository": repository,
         "controlPlane.image.tag": tag,
@@ -104,6 +104,7 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
                 "helm/nanofaas",
                 "-n",
                 namespace,
+                "--create-namespace",
                 "--wait",
                 "--timeout",
                 "5m",
@@ -134,6 +135,7 @@ def plan_deploy_function_runtime(
                 "helm/nanofaas-runtime",
                 "-n",
                 namespace,
+                "--create-namespace",
                 "--wait",
                 "--timeout",
                 "3m",
