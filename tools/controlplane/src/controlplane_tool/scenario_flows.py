@@ -95,18 +95,18 @@ def build_scenario_flow(
             ).run(scenario_file=scenario_file),
         )
     if scenario == "cli-stack":
-        from controlplane_tool.cli_stack_runner import CliStackRunner
-
+        e2e_request = E2eRequest(
+            scenario="cli-stack",
+            runtime=runtime,
+            vm=default_managed_vm_request(),
+            namespace=namespace,
+            local_registry=local_registry or default_registry_url(),
+            cleanup_vm=False,
+        )
         return LocalFlowDefinition(
             flow_id=flow_id,
             task_ids=scenario_task_ids(scenario),
-            run=lambda: CliStackRunner(
-                repo_root,
-                namespace=namespace,
-                local_registry=local_registry or default_registry_url(),
-                runtime=runtime,
-                skip_cli_build=skip_cli_build,
-            ).run(scenario_file=scenario_file),
+            run=lambda: E2eRunner(repo_root).run(e2e_request, event_listener=event_listener),
         )
     if scenario == "cli-host":
         from controlplane_tool.cli_host_runner import CliHostPlatformRunner
