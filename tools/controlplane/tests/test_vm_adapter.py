@@ -219,24 +219,23 @@ def test_vm_orchestrator_sets_private_key_none_when_no_on_disk_match(
     assert orchestrator.ansible.private_key_path is None
 
 
-def test_exec_argv_multipass_delegates_to_sdk_exec_structured() -> None:
+def test_exec_argv_multipass_builds_shell_command_and_routes_via_shell_backend() -> None:
+    shell = RecordingShell()
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=shell)
     name = "nanofaas-e2e"
-    backend = FakeBackend()
-    backend.set_default(_ok())
-    orchestrator = VmOrchestrator(repo_root=Path("/repo"), multipass_client=MultipassClient(backend=backend))
 
-    result = orchestrator.exec_argv(
+    orchestrator.exec_argv(
         VmRequest(lifecycle="multipass", name=name),
         ["docker", "build", "-t", "myimage", "."],
         env={"DOCKER_BUILDKIT": "1"},
         cwd="/srv/project",
     )
 
-    assert result.return_code == 0
-    # The SDK routes through multipass exec <name> -- bash -lc <cmd>
-    exec_calls = [c for c in backend.calls if c[:4] == ["multipass", "exec", name, "--"]]
-    assert len(exec_calls) == 1
-    shell_cmd = exec_calls[0][-1]
+    assert len(shell.commands) == 1
+    cmd = shell.commands[0]
+    # Routes through shell backend as multipass exec <name> -- bash -lc <script>
+    assert cmd[:4] == ["multipass", "exec", name, "--"]
+    shell_cmd = cmd[-1]
     assert "/srv/project" in shell_cmd
     assert "DOCKER_BUILDKIT" in shell_cmd
     assert "docker build -t myimage ." in shell_cmd

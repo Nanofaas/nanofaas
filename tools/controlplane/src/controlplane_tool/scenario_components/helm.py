@@ -86,19 +86,6 @@ def _set_args(values: Mapping[str, str]) -> tuple[str, ...]:
     return tuple(args)
 
 
-def plan_ensure_namespace(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
-    namespace = _effective_namespace(context)
-    return (
-        RemoteCommandOperation(
-            operation_id="k8s.ensure_namespace",
-            summary="Ensure Kubernetes namespace exists",
-            argv=("kubectl", "create", "namespace", namespace),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
 def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
     namespace = _effective_namespace(context)
     values = control_plane_helm_values(
@@ -117,6 +104,7 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
                 "helm/nanofaas",
                 "-n",
                 namespace,
+                "--create-namespace",
                 "--wait",
                 "--timeout",
                 "5m",
@@ -147,6 +135,7 @@ def plan_deploy_function_runtime(
                 "helm/nanofaas-runtime",
                 "-n",
                 namespace,
+                "--create-namespace",
                 "--wait",
                 "--timeout",
                 "3m",
@@ -205,12 +194,6 @@ def plan_wait_function_runtime_ready(
         ),
     )
 
-
-K8S_ENSURE_NAMESPACE = ScenarioComponentDefinition(
-    component_id="k8s.ensure_namespace",
-    summary="Ensure Kubernetes namespace exists",
-    planner=plan_ensure_namespace,
-)
 
 HELM_DEPLOY_CONTROL_PLANE = ScenarioComponentDefinition(
     component_id="helm.deploy_control_plane",

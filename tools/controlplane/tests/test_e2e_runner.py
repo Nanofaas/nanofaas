@@ -368,11 +368,6 @@ def test_k3s_junit_curl_plan_binds_user_kubeconfig_for_cluster_steps() -> None:
     )
 
     assert any(
-        step.summary == "Ensure E2E namespace exists"
-        and step.env["KUBECONFIG"] == "/home/ubuntu/.kube/config"
-        for step in plan.steps
-    )
-    assert any(
         step.summary == "Deploy control-plane via Helm"
         and step.env["KUBECONFIG"] == "/home/ubuntu/.kube/config"
         for step in plan.steps

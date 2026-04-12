@@ -390,11 +390,6 @@ class E2eRunner:
                 prelude.configure_registry,
             ),
             self._remote_exec_step(
-                "Ensure E2E namespace exists",
-                vm_request,
-                prelude.create_namespace_script,
-            ),
-            self._remote_exec_step(
                 "Deploy control-plane via Helm",
                 vm_request,
                 prelude.deploy_control_plane_script,

@@ -155,21 +155,20 @@ def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
 def test_helm_component_planners_use_namespace_and_helm_values() -> None:
     context = _managed_context(namespace="nanofaas-stack")
 
-    namespace_operations = helm.plan_ensure_namespace(context)
     control_plane_operations = helm.plan_deploy_control_plane(context)
     runtime_operations = helm.plan_deploy_function_runtime(context)
     wait_control_plane_operations = helm.plan_wait_control_plane_ready(context)
     wait_runtime_operations = helm.plan_wait_function_runtime_ready(context)
 
-    assert namespace_operations and control_plane_operations and runtime_operations
+    assert control_plane_operations and runtime_operations
     assert wait_control_plane_operations and wait_runtime_operations
-    assert all(isinstance(operation, RemoteCommandOperation) for operation in namespace_operations)
     assert all(
         isinstance(operation, RemoteCommandOperation) for operation in control_plane_operations
     )
     assert all(isinstance(operation, RemoteCommandOperation) for operation in runtime_operations)
-    assert namespace_operations[0].argv[:3] == ("kubectl", "create", "namespace")
-    assert "nanofaas-stack" in namespace_operations[0].argv
+    # Namespace is created idempotently by helm upgrade --create-namespace
+    assert "--create-namespace" in control_plane_operations[0].argv
+    assert "--create-namespace" in runtime_operations[0].argv
     assert "helm" in control_plane_operations[0].argv[0]
     assert "nanofaas-stack" in " ".join(control_plane_operations[0].argv)
     assert "nanofaas-stack" in " ".join(runtime_operations[0].argv)

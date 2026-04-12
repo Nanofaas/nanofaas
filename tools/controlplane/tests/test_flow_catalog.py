@@ -96,5 +96,5 @@ def test_flow_catalog_e2e_all_task_ids_do_not_duplicate_shared_vm_bootstrap() ->
 
     assert task_ids.count("vm.ensure_running") == 1
     assert task_ids.count("vm.down") == 1
-    assert task_ids.index("vm.ensure_running") < task_ids.index("k8s.ensure_namespace")
+    assert task_ids.index("vm.ensure_running") < task_ids.index("helm.deploy_control_plane")
     assert task_ids.index("tests.run_k3s_curl_checks") < task_ids.index("vm.down")

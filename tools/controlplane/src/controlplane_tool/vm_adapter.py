@@ -382,6 +382,26 @@ class VmOrchestrator:
             return _sdk_error(e)
         return _ok(transfer_cmd)
 
+    @staticmethod
+    def _build_exec_script(
+        argv: tuple[str, ...] | list[str],
+        *,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+    ) -> str:
+        """Build the bash prologue + command string from structured parameters.
+
+        This mirrors MultipassVM.exec_structured so the bash boundary is expressed
+        once in the SDK and once here (for the shell-backend path used in tests).
+        """
+        parts: list[str] = []
+        if cwd:
+            parts.append(f"cd {shlex.quote(cwd)}")
+        for k, v in (env or {}).items():
+            parts.append(f"export {k}={shlex.quote(v)}")
+        parts.append(shlex.join(list(argv)))
+        return " && ".join(parts)
+
     def exec_argv(
         self,
         request: VmRequest,
@@ -393,32 +413,13 @@ class VmOrchestrator:
     ) -> ShellExecutionResult:
         """Execute a structured command inside the VM without bash string construction.
 
-        Delegates to MultipassVM.exec_structured, which confines the bash boundary to
-        the SDK.  For external VMs, falls back to remote_exec with a shell string built
-        by the SDK-equivalent logic.
+        Routes through the injectable shell backend so that tests can intercept calls.
+        The bash prologue (cd + export) is built by _build_exec_script, which mirrors
+        MultipassVM.exec_structured in the SDK — the logic lives in exactly two places:
+        the SDK (for direct SDK callers) and here (for the shell-backend path).
         """
-        if request.lifecycle == "external":
-            # External VMs use SSH; replicate the same prologue logic here.
-            parts: list[str] = []
-            if cwd:
-                parts.append(f"cd {shlex.quote(cwd)}")
-            for k, v in (env or {}).items():
-                parts.append(f"export {k}={shlex.quote(v)}")
-            parts.append(shlex.join(list(argv)))
-            command = " && ".join(parts)
-            return self.remote_exec(request, command=command, dry_run=dry_run)
-
-        name = self._vm_name(request)
-        exec_cmd = ["multipass", "exec", name, "--", "bash", "-lc", "<structured>"]
-        if dry_run:
-            return _ok(exec_cmd)
-        result = self._client.get_vm(name).exec_structured(list(argv), env=env, cwd=cwd)
-        return ShellExecutionResult(
-            command=exec_cmd,
-            return_code=result.returncode,
-            stdout=result.stdout or "",
-            stderr=result.stderr or "",
-        )
+        command = self._build_exec_script(argv, env=env, cwd=cwd)
+        return self.remote_exec(request, command=command, dry_run=dry_run)
 
     def remote_exec(
         self,

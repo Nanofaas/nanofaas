@@ -67,7 +67,6 @@ class VmClusterPreludePlan:
     build_selected_functions_script: str | None
     install_k3s: ShellExecutionResult
     configure_registry: ShellExecutionResult
-    create_namespace_script: str
     deploy_control_plane_script: str
     deploy_function_runtime_script: str
     wait_control_plane_script: str
@@ -145,7 +144,6 @@ def build_vm_cluster_prelude_plan(
     helm_plan = {
         operation.operation_id: operation
         for operation in (
-            *helm_components.plan_ensure_namespace(scenario_context),
             *helm_components.plan_deploy_control_plane(scenario_context),
             *helm_components.plan_deploy_function_runtime(scenario_context),
             *helm_components.plan_wait_control_plane_ready(scenario_context),
@@ -180,10 +178,6 @@ def build_vm_cluster_prelude_plan(
         ),
         install_k3s=_shell_result(bootstrap_plan["k3s.install"]),
         configure_registry=_shell_result(bootstrap_plan["k3s.configure_registry"]),
-        create_namespace_script=_render_operations(
-            (helm_plan["k8s.ensure_namespace"],),
-            remote_dir=remote_dir,
-        ),
         deploy_control_plane_script=_render_operations(
             (helm_plan["helm.deploy_control_plane"],),
             remote_dir=remote_dir,
