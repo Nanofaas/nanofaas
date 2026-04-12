@@ -41,10 +41,18 @@ def operation_to_plan_step(
     *,
     request: E2eRequest,
     on_k3s_curl_verify: Callable[[], None] | None = None,
+    on_ensure_running: Callable[[], None] | None = None,
 ) -> ScenarioPlanStep:
     if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
         raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
     summary = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
+    if operation.operation_id == "vm.ensure_running" and on_ensure_running is not None:
+        return ScenarioPlanStep(
+            summary=summary,
+            command=list(operation.argv),
+            env=dict(operation.env),
+            action=on_ensure_running,
+        )
     if operation.operation_id == "tests.run_k3s_curl_checks":
         if on_k3s_curl_verify is None:  # pragma: no cover - defensive
             raise ValueError("tests.run_k3s_curl_checks requires a verification callback")
@@ -71,12 +79,14 @@ def operations_to_plan_steps(
     *,
     request: E2eRequest,
     on_k3s_curl_verify: Callable[[], None] | None = None,
+    on_ensure_running: Callable[[], None] | None = None,
 ) -> list[ScenarioPlanStep]:
     return [
         operation_to_plan_step(
             operation,
             request=request,
             on_k3s_curl_verify=on_k3s_curl_verify,
+            on_ensure_running=on_ensure_running,
         )
         for operation in operations
     ]

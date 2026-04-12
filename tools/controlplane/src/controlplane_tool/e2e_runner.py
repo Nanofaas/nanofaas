@@ -91,6 +91,11 @@ def plan_recipe_steps(
         local_registry=context.local_registry,
         resolved_scenario=context.resolved_scenario,
     )
+    vm_request = context.vm_request
+
+    def _on_ensure_running() -> None:
+        runner.vm.ensure_running(vm_request)
+
     steps: list[ScenarioPlanStep] = []
     for component in compose_recipe(recipe):
         planner_context: object = cli_context if component.component_id.startswith("cli.") else context
@@ -102,6 +107,7 @@ def plan_recipe_steps(
                 on_k3s_curl_verify=lambda: runner._k3s_curl_runner(request).verify_existing_stack(
                     request.resolved_scenario
                 ),
+                on_ensure_running=_on_ensure_running,
             )
         )
     return steps

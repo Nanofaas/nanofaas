@@ -1,14 +1,10 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from multipass import (
-    MultipassClient,
-    MultipassCommandError,
-    VmNotFoundError,
-    find_ssh_public_key,
-)
+from multipass import MultipassClient, MultipassCommandError, VmNotFoundError, find_ssh_public_key
 
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.shell_backend import (
@@ -22,13 +18,18 @@ if TYPE_CHECKING:
     from controlplane_tool.ansible_adapter import AnsibleAdapter
 
 
-def _find_ssh_private_key_path() -> Path | None:
-    """Return the private key path paired with the first found public key, or None."""
+def _find_ssh_private_key_path(public_key: str | None = None) -> Path | None:
+    """Return the private key path matching the chosen public key, or the first usable key."""
     ssh_dir = Path.home() / ".ssh"
+    normalized_public_key = public_key.strip() if public_key else None
     for name in ("id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"):
         pub = ssh_dir / f"{name}.pub"
         priv = ssh_dir / name
         if pub.exists() and priv.exists():
+            if normalized_public_key is not None:
+                if pub.read_text(encoding="utf-8").strip() == normalized_public_key:
+                    return priv
+                continue
             return priv
     return None
 
@@ -86,7 +87,8 @@ class VmOrchestrator:
         self.paths = ToolPaths.repo_root(self.repo_root)
         self.shell = shell or SubprocessShell()
         self._client = multipass_client or MultipassClient()
-        self._private_key_path: Path | None = _find_ssh_private_key_path()
+        self._ssh_public_key: str | None = find_ssh_public_key()
+        self._private_key_path: Path | None = _find_ssh_private_key_path(self._ssh_public_key)
         if ansible is None:
             from controlplane_tool.ansible_adapter import AnsibleAdapter
 
@@ -156,6 +158,32 @@ class VmOrchestrator:
     def _shell_run(self, command: list[str], *, dry_run: bool = False) -> ShellExecutionResult:
         return self.shell.run(command, cwd=self.paths.workspace_root, dry_run=dry_run)
 
+    def _ensure_multipass_authorized_key(self, request: VmRequest) -> None:
+        if not self._ssh_public_key:
+            return
+        name = self._vm_name(request)
+        remote_home = self._remote_home(request)
+        authorized_keys = f"{remote_home}/.ssh/authorized_keys"
+        quoted_key = shlex.quote(self._ssh_public_key)
+        if request.user == "root":
+            command = (
+                f"install -d -m 700 {shlex.quote(remote_home)}/.ssh && "
+                f"touch {shlex.quote(authorized_keys)} && "
+                f"chmod 600 {shlex.quote(authorized_keys)} && "
+                f"grep -qxF {quoted_key} {shlex.quote(authorized_keys)} || "
+                f"printf '%s\\n' {quoted_key} >> {shlex.quote(authorized_keys)}"
+            )
+        else:
+            command = (
+                f"sudo install -d -m 700 -o {shlex.quote(request.user)} -g {shlex.quote(request.user)} {shlex.quote(remote_home)}/.ssh && "
+                f"sudo touch {shlex.quote(authorized_keys)} && "
+                f"sudo chown {shlex.quote(request.user)}:{shlex.quote(request.user)} {shlex.quote(authorized_keys)} && "
+                f"sudo chmod 600 {shlex.quote(authorized_keys)} && "
+                f"sudo -u {shlex.quote(request.user)} bash -lc "
+                f"\"grep -qxF {quoted_key} {shlex.quote(authorized_keys)} || printf '%s\\\\n' {quoted_key} >> {shlex.quote(authorized_keys)}\""
+            )
+        self._client.get_vm(name).exec(["bash", "-lc", command])
+
     def ensure_running(self, request: VmRequest, *, dry_run: bool = False) -> ShellExecutionResult:
         if request.lifecycle == "external":
             return self._shell_run(["ssh", f"{request.user}@{request.host}", "true"], dry_run=dry_run)
@@ -167,8 +195,11 @@ class VmOrchestrator:
         if dry_run:
             return _ok(launch_cmd)
 
-        pub_key = find_ssh_public_key()
-        cloud_init_config = {"ssh_authorized_keys": [pub_key]} if pub_key else None
+        cloud_init_config = (
+            {"ssh_authorized_keys": [self._ssh_public_key]}
+            if self._ssh_public_key
+            else None
+        )
         self._client.ensure_running(
             name,
             cpus=request.cpus,
@@ -176,6 +207,7 @@ class VmOrchestrator:
             disk=request.disk,
             cloud_init_config=cloud_init_config,
         )
+        self._ensure_multipass_authorized_key(request)
         return _ok(launch_cmd)
 
     def sync_project(

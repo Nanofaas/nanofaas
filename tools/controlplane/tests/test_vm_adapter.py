@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from multipass import FakeBackend, MultipassClient
 from multipass._backend import CommandResult
 
@@ -73,12 +74,14 @@ def test_ensure_running_is_idempotent_for_existing_multipass_vm() -> None:
     backend = FakeBackend({
         ("multipass", "info", name, "--format", "json"): _info_result(name, state="Running", ipv4=["192.168.64.10"]),
     })
+    backend.set_default(_ok())
     orchestrator = VmOrchestrator(repo_root=Path("/repo"), multipass_client=MultipassClient(backend=backend))
 
     result = orchestrator.ensure_running(VmRequest(lifecycle="multipass", name=name))
 
     assert result.return_code == 0
     assert not any("launch" in " ".join(call) for call in backend.calls)
+    assert any(call[:4] == ["multipass", "exec", name, "--"] for call in backend.calls)
 
 
 def test_ensure_running_launches_when_vm_not_found() -> None:
@@ -119,12 +122,19 @@ def test_ensure_running_starts_stopped_vm() -> None:
         ("multipass", "info", name, "--format", "json"): _info_result(name, state="Stopped"),
         ("multipass", "start", name): _ok(),
     })
+    backend.set_default(_ok())
     orchestrator = VmOrchestrator(repo_root=Path("/repo"), multipass_client=MultipassClient(backend=backend))
+    orchestrator._ssh_public_key = "ssh-ed25519 AAAA test@example"
 
     result = orchestrator.ensure_running(VmRequest(lifecycle="multipass", name=name))
 
     assert result.return_code == 0
     assert any(call == ["multipass", "start", name] for call in backend.calls)
+    assert any(
+        call[:4] == ["multipass", "exec", name, "--"]
+        and "/home/ubuntu/.ssh/authorized_keys" in call[-1]
+        for call in backend.calls
+    )
 
 
 def test_remote_exec_for_multipass_routes_through_shell_backend() -> None:
@@ -145,3 +155,85 @@ def test_vm_adapter_exposes_registry_container_and_k3s_registry_as_separate_oper
 
     assert orchestrator.ensure_registry_container is not None
     assert orchestrator.configure_k3s_registry is not None
+
+
+def test_vm_orchestrator_matches_ansible_private_key_to_multipass_public_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    ed25519_private = ssh_dir / "id_ed25519"
+    ed25519_public = ssh_dir / "id_ed25519.pub"
+    rsa_private = ssh_dir / "id_rsa"
+    rsa_public = ssh_dir / "id_rsa.pub"
+    ed25519_private.write_text("ed25519-private", encoding="utf-8")
+    ed25519_public.write_text("ssh-ed25519 AAAA first@example\n", encoding="utf-8")
+    rsa_private.write_text("rsa-private", encoding="utf-8")
+    rsa_public.write_text("ssh-rsa BBBB second@example\n", encoding="utf-8")
+
+    monkeypatch.setattr("controlplane_tool.vm_adapter.Path.home", lambda: tmp_path)
+    monkeypatch.setattr(
+        "controlplane_tool.vm_adapter.find_ssh_public_key",
+        lambda: "ssh-rsa BBBB second@example",
+    )
+
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=RecordingShell())
+
+    assert orchestrator.ansible.private_key_path == rsa_private
+
+
+def test_vm_orchestrator_sets_private_key_none_when_no_on_disk_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public key injected into the VM but private key lives in SSH agent (not on disk).
+
+    When find_ssh_public_key() returns a key that has no matching on-disk private key,
+    _private_key_path must be None so Ansible omits --private-key and falls back to the
+    SSH agent, which holds the actual private key.  The old fallback returned the first
+    complete key pair on disk, mismatching what was authorized in the VM.
+    """
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    # Only the public key is present (hardware/agent key — private part is not on disk)
+    agent_pub = ssh_dir / "id_ed25519.pub"
+    agent_pub.write_text("ssh-ed25519 AAAA agent@example\n", encoding="utf-8")
+    # A complete rsa pair also exists (but must NOT be chosen as the Ansible key)
+    rsa_private = ssh_dir / "id_rsa"
+    rsa_public = ssh_dir / "id_rsa.pub"
+    rsa_private.write_text("rsa-private", encoding="utf-8")
+    rsa_public.write_text("ssh-rsa BBBB other@example\n", encoding="utf-8")
+
+    monkeypatch.setattr("controlplane_tool.vm_adapter.Path.home", lambda: tmp_path)
+    monkeypatch.setattr(
+        "controlplane_tool.vm_adapter.find_ssh_public_key",
+        lambda: "ssh-ed25519 AAAA agent@example",
+    )
+
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=RecordingShell())
+
+    # The public key that will be injected into the VM
+    assert orchestrator._ssh_public_key == "ssh-ed25519 AAAA agent@example"
+    # No on-disk private key matches → None so Ansible uses the SSH agent
+    assert orchestrator.ansible.private_key_path is None
+
+
+def test_ensure_running_repairs_authorized_keys_for_existing_multipass_vm() -> None:
+    name = "nanofaas-e2e"
+    public_key = "ssh-ed25519 AAAA test@example"
+    backend = FakeBackend({
+        ("multipass", "info", name, "--format", "json"): _info_result(name, state="Running", ipv4=["192.168.64.10"]),
+    })
+    backend.set_default(_ok())
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), multipass_client=MultipassClient(backend=backend))
+    orchestrator._ssh_public_key = public_key
+
+    result = orchestrator.ensure_running(VmRequest(lifecycle="multipass", name=name))
+
+    assert result.return_code == 0
+    assert any(
+        call[:4] == ["multipass", "exec", name, "--"]
+        and "/home/ubuntu/.ssh/authorized_keys" in call[-1]
+        for call in backend.calls
+    )

@@ -3,10 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from multipass import find_ssh_public_key
+
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation, ScenarioOperation
+from controlplane_tool.vm_adapter import _find_ssh_private_key_path
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -51,12 +54,16 @@ def _ansible_operation(
     for key, value in extra_vars.items():
         extra_args.extend(["-e", f"{key}={value}"])
 
+    private_key = _find_ssh_private_key_path(find_ssh_public_key())
+    private_key_args: list[str] = ["--private-key", str(private_key)] if private_key is not None else []
+
     command: list[str] = [
         "ansible-playbook",
         "-i",
         _inventory_target(context.vm_request),
         "-u",
         context.vm_request.user,
+        *private_key_args,
         *extra_args,
         str(paths.ansible_root / "playbooks" / playbook_name),
     ]
