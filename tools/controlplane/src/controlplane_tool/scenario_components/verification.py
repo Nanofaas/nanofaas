@@ -102,6 +102,7 @@ def plan_verify_cli_platform_status_fails(context: ScenarioExecutionContext) -> 
             summary="Verify CLI platform status fails after cleanup",
             argv=tuple(platform_status_command(namespace)),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
+            execution_target="vm",
         ),
     )
 

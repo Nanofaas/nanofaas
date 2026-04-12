@@ -99,6 +99,9 @@ def plan_recipe_steps(
     def _on_ensure_running() -> None:
         runner.vm.ensure_running(vm_request)
 
+    def _on_vm_down() -> None:
+        runner.vm.teardown(vm_request)
+
     def _on_remote_exec(argv: tuple[str, ...], env: Mapping[str, str]) -> None:
         env_prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
         cmd = shlex.join(list(argv))
@@ -107,6 +110,14 @@ def plan_recipe_steps(
         result = runner.vm.remote_exec(vm_request, command=full_cmd_with_dir)
         if result.return_code != 0:
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
+
+    cli_context = CliComponentContext(
+        repo_root=Path(remote_dir),
+        release=cli_context.release,
+        namespace=cli_context.namespace,
+        local_registry=cli_context.local_registry,
+        resolved_scenario=cli_context.resolved_scenario,
+    )
 
     steps: list[ScenarioPlanStep] = []
     for component in compose_recipe(recipe):
@@ -120,6 +131,7 @@ def plan_recipe_steps(
                     request.resolved_scenario
                 ),
                 on_ensure_running=_on_ensure_running,
+                on_vm_down=_on_vm_down,
                 on_remote_exec=_on_remote_exec,
             )
         )

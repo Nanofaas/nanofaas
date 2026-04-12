@@ -42,6 +42,7 @@ def operation_to_plan_step(
     request: E2eRequest,
     on_k3s_curl_verify: Callable[[], None] | None = None,
     on_ensure_running: Callable[[], None] | None = None,
+    on_vm_down: Callable[[], None] | None = None,
     on_remote_exec: Callable[[tuple[str, ...], Mapping[str, str]], None] | None = None,
 ) -> ScenarioPlanStep:
     if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
@@ -72,11 +73,19 @@ def operation_to_plan_step(
             env=dict(operation.env),
             action=on_k3s_curl_verify,
         )
-    if operation.operation_id == "vm.down" and not request.cleanup_vm:
-        return ScenarioPlanStep(
-            summary=summary,
-            command=["echo", "Skipping VM teardown (--no-cleanup-vm)"],
-        )
+    if operation.operation_id == "vm.down":
+        if not request.cleanup_vm:
+            return ScenarioPlanStep(
+                summary=summary,
+                command=["echo", "Skipping VM teardown (--no-cleanup-vm)"],
+            )
+        if on_vm_down is not None:
+            return ScenarioPlanStep(
+                summary=summary,
+                command=list(operation.argv),
+                env=dict(operation.env),
+                action=on_vm_down,
+            )
     return ScenarioPlanStep(
         summary=summary,
         command=list(operation.argv),
@@ -90,6 +99,7 @@ def operations_to_plan_steps(
     request: E2eRequest,
     on_k3s_curl_verify: Callable[[], None] | None = None,
     on_ensure_running: Callable[[], None] | None = None,
+    on_vm_down: Callable[[], None] | None = None,
     on_remote_exec: Callable[[tuple[str, ...], Mapping[str, str]], None] | None = None,
 ) -> list[ScenarioPlanStep]:
     return [
@@ -98,6 +108,7 @@ def operations_to_plan_steps(
             request=request,
             on_k3s_curl_verify=on_k3s_curl_verify,
             on_ensure_running=on_ensure_running,
+            on_vm_down=on_vm_down,
             on_remote_exec=on_remote_exec,
         )
         for operation in operations

@@ -53,6 +53,7 @@ def plan_build_install_dist(_: CliComponentContext) -> tuple[RemoteCommandOperat
             summary="Build nanofaas-cli installDist",
             argv=("./gradlew", ":nanofaas-cli:installDist", "--no-daemon", "-q"),
             env=_frozen_env(),
+            execution_target="vm",
         ),
     )
 
@@ -71,6 +72,7 @@ def plan_platform_install(context: CliComponentContext) -> tuple[RemoteCommandOp
                 )
             ),
             env=_frozen_env(),
+            execution_target="vm",
         ),
     )
 
@@ -82,6 +84,7 @@ def plan_platform_status(context: CliComponentContext) -> tuple[RemoteCommandOpe
             summary="Check nanofaas platform status",
             argv=tuple(platform_status_command(context.namespace)),
             env=_frozen_env(),
+            execution_target="vm",
         ),
     )
 
@@ -93,6 +96,7 @@ def _plan_platform_uninstall(context: CliComponentContext) -> tuple[RemoteComman
             summary="Uninstall nanofaas platform with CLI",
             argv=("platform", "uninstall", "--release", context.release, "-n", context.namespace),
             env=_frozen_env(),
+            execution_target="vm",
         ),
     )
 
@@ -116,6 +120,7 @@ def plan_fn_apply_selected(context: CliComponentContext) -> tuple[RemoteCommandO
                         "NANOFAAS_FUNCTION_IMAGE": image,
                     }
                 ),
+                execution_target="vm",
             )
         )
     return tuple(operations)
@@ -128,6 +133,7 @@ def plan_fn_list_selected(context: CliComponentContext) -> tuple[RemoteCommandOp
             summary="List selected functions",
             argv=("fn", "list"),
             env=_cli_env(context),
+            execution_target="vm",
         ),
     )
 
@@ -146,6 +152,7 @@ def plan_fn_invoke_selected(context: CliComponentContext) -> tuple[RemoteCommand
                 summary=f"Invoke selected function '{fn_key}'",
                 argv=("invoke", fn_key, "-d", payload),
                 env=_cli_env(context),
+                execution_target="vm",
             )
         )
     return tuple(operations)
@@ -165,6 +172,7 @@ def plan_fn_enqueue_selected(context: CliComponentContext) -> tuple[RemoteComman
                 summary=f"Enqueue selected function '{fn_key}'",
                 argv=("enqueue", fn_key, "-d", payload),
                 env=_cli_env(context),
+                execution_target="vm",
             )
         )
     return tuple(operations)
@@ -179,6 +187,7 @@ def plan_fn_delete_selected(context: CliComponentContext) -> tuple[RemoteCommand
                 summary=f"Delete selected function '{fn_key}'",
                 argv=("fn", "delete", fn_key),
                 env=_cli_env(context),
+                execution_target="vm",
             )
         )
     return tuple(operations)
