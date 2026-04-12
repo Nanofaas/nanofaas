@@ -20,16 +20,17 @@ def runtime_image(local_registry: str) -> str:
 def function_image_specs(
     resolved_scenario,
     fallback_runtime_image: str,
-) -> list[tuple[str, str, str]]:
+) -> list[tuple[str, str, str, str]]:
+    """Return (image, runtime_kind, family, fn_key) for each buildable function."""
     if resolved_scenario is None:
         return []
 
-    function_specs: list[tuple[str, str, str]] = []
+    function_specs: list[tuple[str, str, str, str]] = []
     for function in resolved_scenario.functions:
         if function.runtime == "fixture" or function.family is None:
             continue
         image = function.image or fallback_runtime_image
-        function_specs.append((image, function.runtime, function.family))
+        function_specs.append((image, function.runtime, function.family, function.key))
     return function_specs
 
 
@@ -154,12 +155,12 @@ def plan_build_selected_functions(
         runtime_image(context.local_registry),
     )
     operations: list[ScenarioOperation] = []
-    for image, runtime_kind, family in selected_specs:
+    for image, runtime_kind, family, fn_key in selected_specs:
         if runtime_kind == "java":
             operations.append(
                 RemoteCommandOperation(
-                    operation_id=f"images.build_selected_functions.{family}",
-                    summary=f"Build {family} function image",
+                    operation_id=f"images.build_selected_functions.{fn_key}",
+                    summary=f"Build {fn_key} function image",
                     argv=(
                         "./gradlew",
                         f":examples:java:{family}:bootBuildImage",
@@ -173,8 +174,8 @@ def plan_build_selected_functions(
             )
             operations.append(
                 RemoteCommandOperation(
-                    operation_id=f"images.push_selected_functions.{family}",
-                    summary=f"Push {family} function image",
+                    operation_id=f"images.push_selected_functions.{fn_key}",
+                    summary=f"Push {fn_key} function image",
                     argv=("docker", "push", image),
                     env=_frozen_env(),
                     execution_target="vm",
@@ -184,8 +185,8 @@ def plan_build_selected_functions(
 
         operations.append(
             RemoteCommandOperation(
-                operation_id=f"images.build_selected_functions.{family}",
-                summary=f"Build {family} function image",
+                operation_id=f"images.build_selected_functions.{fn_key}",
+                summary=f"Build {fn_key} function image",
                 argv=(
                     "docker",
                     "build",
@@ -201,8 +202,8 @@ def plan_build_selected_functions(
         )
         operations.append(
             RemoteCommandOperation(
-                operation_id=f"images.push_selected_functions.{family}",
-                summary=f"Push {family} function image",
+                operation_id=f"images.push_selected_functions.{fn_key}",
+                summary=f"Push {fn_key} function image",
                 argv=("docker", "push", image),
                 env=_frozen_env(),
                 execution_target="vm",
