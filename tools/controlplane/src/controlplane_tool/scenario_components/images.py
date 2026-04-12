@@ -171,6 +171,15 @@ def plan_build_selected_functions(
                     execution_target="vm",
                 )
             )
+            operations.append(
+                RemoteCommandOperation(
+                    operation_id=f"images.push_selected_functions.{family}",
+                    summary=f"Push {family} function image",
+                    argv=("docker", "push", image),
+                    env=_frozen_env(),
+                    execution_target="vm",
+                )
+            )
             continue
 
         operations.append(
@@ -186,6 +195,15 @@ def plan_build_selected_functions(
                     image,
                     ".",
                 ),
+                env=_frozen_env(),
+                execution_target="vm",
+            )
+        )
+        operations.append(
+            RemoteCommandOperation(
+                operation_id=f"images.push_selected_functions.{family}",
+                summary=f"Push {family} function image",
+                argv=("docker", "push", image),
                 env=_frozen_env(),
                 execution_target="vm",
             )
