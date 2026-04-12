@@ -94,14 +94,13 @@ def _managed_vm_env(context: ScenarioExecutionContext) -> Mapping[str, str]:
     return _frozen_env(env)
 
 
-def _cli_bin(context: ScenarioExecutionContext, cmd: str) -> str:
-    return f"{_remote_project_dir(context)}/nanofaas-cli/build/install/nanofaas-cli/bin/{cmd}"
+def _cli_binary(context: ScenarioExecutionContext) -> str:
+    return f"{_remote_project_dir(context)}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli"
 
 
 def plan_verify_cli_platform_status_fails(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
     namespace = _namespace(context)
-    raw_cmd = platform_status_command(namespace)
-    argv = (_cli_bin(context, raw_cmd[0]), *raw_cmd[1:])
+    argv = (_cli_binary(context), *platform_status_command(namespace))
     return (
         RemoteCommandOperation(
             operation_id="cleanup.verify_cli_platform_status_fails",
