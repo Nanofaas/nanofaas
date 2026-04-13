@@ -282,6 +282,7 @@ def test_parentless_task_event_does_not_attach_to_active_row() -> None:
         planned_steps=[
             "Run k3s-junit-curl verification",
             "Teardown VM",
+            "Verify",
         ]
     )
 
@@ -308,3 +309,5 @@ def test_parentless_task_event_does_not_attach_to_active_row() -> None:
     assert snapshot.phases[0].children == []
     assert snapshot.phases[1].task_id is None
     assert snapshot.phases[1].label == "Teardown VM"
+    assert snapshot.phases[2].task_id is None
+    assert snapshot.phases[2].label == "Verify"

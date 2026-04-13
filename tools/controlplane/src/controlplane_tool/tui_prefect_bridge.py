@@ -177,7 +177,7 @@ class TuiPrefectBridge:
                     parent,
                     event.title or event.task_id or "Task",
                     task_id=event.task_id,
-                        detail=event.detail,
+                    detail=event.detail,
                 )
         if not self._phases:
             return self._upsert_top_level_phase(
@@ -185,12 +185,12 @@ class TuiPrefectBridge:
                 task_id=event.task_id,
                 detail=event.detail,
             )
-        if event.title is None:
-            return None
-        phase = self._match_planned_top_level_phase(event.title)
+        phase = self._next_unassigned_top_level_phase()
         if phase is None:
             return None
-        self._sync_phase_metadata(phase, event.title, event.task_id, event.detail)
+        if event.title and event.title != phase.label:
+            return None
+        self._sync_phase_metadata(phase, event.title or phase.label, event.task_id, event.detail)
         return phase
 
     def _upsert_top_level_phase(
@@ -217,12 +217,6 @@ class TuiPrefectBridge:
     def _next_unassigned_top_level_phase(self) -> TuiPhaseSnapshot | None:
         for phase in self._phases:
             if phase.parent_task_id is None and phase.task_id is None:
-                return phase
-        return None
-
-    def _match_planned_top_level_phase(self, label: str) -> TuiPhaseSnapshot | None:
-        for phase in self._phases:
-            if phase.parent_task_id is None and phase.task_id is None and phase.label == label:
                 return phase
         return None
 
