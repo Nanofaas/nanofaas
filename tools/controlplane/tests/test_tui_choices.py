@@ -681,6 +681,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
     import controlplane_tool.tui_app as tui_app
     import controlplane_tool.e2e_runner as e2e_runner
     from controlplane_tool.console import phase, step
+    from rich.console import Console
 
     captured: dict[str, object] = {}
 
@@ -737,6 +738,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
             self.renderable = renderable
 
         def __enter__(self):
+            captured["live"] = self
             return self
 
         def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
@@ -755,23 +757,21 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
         def stop(self) -> None:
             return None
 
-    original_complete_running_steps = WorkflowDashboard.complete_running_steps
-
-    def record_complete_running_steps(self, *args, **kwargs):  # noqa: ANN001
-        result = original_complete_running_steps(self, *args, **kwargs)
-        captured["state_by_label"] = {step.label: step.state for step in self.steps}
-        return result
-
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
     monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(tui_app, "Live", _FakeLive)
     monkeypatch.setattr(tui_app, "WorkflowKeyListener", _FakeKeyListener)
-    monkeypatch.setattr(WorkflowDashboard, "complete_running_steps", record_complete_running_steps)
 
     NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
 
-    assert captured["state_by_label"]["Run k3s-junit-curl verification"] == "success"
-    assert captured["state_by_label"]["Verify"] == "running"
+    console = Console(record=True, width=140)
+    console.print(captured["live"].renderable)
+    text = console.export_text()
+
+    assert "Run k3s-junit-curl verification" in text
+    assert "✓ 2. Verify" not in text
+    assert "✓ 3. Verifying control-plane health" not in text
+    assert "✓ 4. Verifying Prometheus metrics" not in text
 
 def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
     dashboard = WorkflowDashboard(

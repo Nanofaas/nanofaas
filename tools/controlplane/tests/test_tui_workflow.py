@@ -258,3 +258,46 @@ def test_teardown_row_stays_pending_until_parent_cleanup_step_completes() -> Non
 
     assert dashboard.steps[-1].label == "Teardown VM"
     assert dashboard.steps[-1].state == "pending"
+
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.completed",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_k3s_curl_checks",
+            title="Run k3s-junit-curl verification",
+        )
+    )
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.completed",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="cleanup.uninstall_function_runtime",
+            title="Uninstall function-runtime Helm release",
+        )
+    )
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.completed",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="cleanup.uninstall_control_plane",
+            title="Uninstall control-plane Helm release",
+        )
+    )
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.completed",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="cleanup.delete_namespace",
+            title="Delete E2E namespace",
+        )
+    )
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.completed",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="vm.teardown",
+            title="Teardown VM",
+        )
+    )
+
+    assert dashboard.steps[-1].state == "success"
