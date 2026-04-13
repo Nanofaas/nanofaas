@@ -311,3 +311,32 @@ def test_parentless_task_event_does_not_attach_to_active_row() -> None:
     assert snapshot.phases[1].label == "Teardown VM"
     assert snapshot.phases[2].task_id is None
     assert snapshot.phases[2].label == "Verify"
+
+
+def test_unresolved_parent_task_does_not_fall_back_to_planned_row() -> None:
+    bridge = TuiPrefectBridge(
+        planned_steps=[
+            "Run k3s-junit-curl verification",
+            "Teardown VM",
+            "Verify",
+        ]
+    )
+
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.control_plane_health",
+            parent_task_id="tests.missing_parent",
+            title="Verify",
+            detail="Verifying control-plane health",
+        )
+    )
+
+    snapshot = bridge.snapshot()
+    assert [phase.task_id for phase in snapshot.phases] == [None, None, None]
+    assert [phase.label for phase in snapshot.phases] == [
+        "Run k3s-junit-curl verification",
+        "Teardown VM",
+        "Verify",
+    ]

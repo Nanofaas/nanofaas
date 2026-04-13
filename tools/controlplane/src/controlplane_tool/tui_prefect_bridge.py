@@ -166,19 +166,24 @@ class TuiPrefectBridge:
         self,
         event: WorkflowEvent,
     ) -> TuiPhaseSnapshot | None:
+        if event.parent_task_id:
+            parent = self._phase_by_task_id.get(event.parent_task_id)
+            if parent is None:
+                return None
+            phase = self._phase_by_task_id.get(event.task_id or "")
+            if phase is not None:
+                self._sync_phase_metadata(phase, event.title or phase.label, event.task_id, event.detail)
+                return phase
+            return self._ensure_child_phase(
+                parent,
+                event.title or event.task_id or "Task",
+                task_id=event.task_id,
+                detail=event.detail,
+            )
         phase = self._phase_by_task_id.get(event.task_id or "")
         if phase is not None:
             self._sync_phase_metadata(phase, event.title or phase.label, event.task_id, event.detail)
             return phase
-        if event.parent_task_id:
-            parent = self._phase_by_task_id.get(event.parent_task_id)
-            if parent is not None:
-                return self._ensure_child_phase(
-                    parent,
-                    event.title or event.task_id or "Task",
-                    task_id=event.task_id,
-                    detail=event.detail,
-                )
         if not self._phases:
             return self._upsert_top_level_phase(
                 event.title or event.task_id or "Task",
