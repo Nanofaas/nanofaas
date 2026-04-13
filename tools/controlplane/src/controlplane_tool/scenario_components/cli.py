@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,11 +26,6 @@ class CliComponentContext:
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
     return MappingProxyType(dict(env or {}))
 
-
-def _endpoint(namespace: str) -> str:
-    return f"http://control-plane.{namespace}.svc.cluster.local:8080"
-
-
 def _cli_binary(context: CliComponentContext) -> str:
     """Full path to the nanofaas-cli binary produced by :nanofaas-cli:installDist."""
     return str(
@@ -45,7 +42,6 @@ def _cli_env(context: CliComponentContext) -> Mapping[str, str]:
         {
             "KUBECONFIG": _kubeconfig_path(context),
             "NANOFAAS_NAMESPACE": context.namespace,
-            "NANOFAAS_ENDPOINT": _endpoint(context.namespace),
         }
     )
 
@@ -56,6 +52,21 @@ def _selected_function_keys(context: CliComponentContext) -> list[str]:
 
 def _apply_manifest_path(fn_key: str) -> str:
     return f"/tmp/{fn_key}.json"
+
+
+def _apply_manifest_spec(fn_key: str, image: str) -> str:
+    return json.dumps(
+        {
+            "name": fn_key,
+            "image": image,
+            "timeoutMs": 5000,
+            "concurrency": 2,
+            "queueSize": 20,
+            "maxRetries": 3,
+            "executionMode": "DEPLOYMENT",
+        },
+        separators=(",", ":"),
+    )
 
 
 def plan_build_install_dist(_: CliComponentContext) -> tuple[RemoteCommandOperation, ...]:
@@ -123,11 +134,17 @@ def plan_fn_apply_selected(context: CliComponentContext) -> tuple[RemoteCommandO
             context.resolved_scenario,
             f"{context.local_registry}/nanofaas/function-runtime:e2e",
         )
+        manifest_path = _apply_manifest_path(fn_key)
+        manifest_spec = _apply_manifest_spec(fn_key, image)
+        command = (
+            f"printf '%s' {shlex.quote(manifest_spec)} > {shlex.quote(manifest_path)} && "
+            f"{shlex.quote(_cli_binary(context))} fn apply -f {shlex.quote(manifest_path)}"
+        )
         operations.append(
             RemoteCommandOperation(
                 operation_id=f"cli.fn_apply_selected.{fn_key}",
                 summary=f"Apply selected function '{fn_key}'",
-                argv=(_cli_binary(context), "fn", "apply", "-f", _apply_manifest_path(fn_key)),
+                argv=("bash", "-lc", command),
                 env=_frozen_env(
                     {
                         **dict(_cli_env(context)),

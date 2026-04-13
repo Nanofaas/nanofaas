@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.scenario_components import bootstrap, helm, images
+from controlplane_tool.scenario_components import bootstrap, cleanup, helm, images
 from controlplane_tool.scenario_components.environment import resolve_scenario_environment
 from controlplane_tool.scenario_components.executor import operation_to_plan_step
 from controlplane_tool.scenario_components.composer import (
@@ -176,6 +176,14 @@ def test_helm_component_planners_use_namespace_and_helm_values() -> None:
     assert wait_runtime_operations[0].argv[:3] == ("kubectl", "rollout", "status")
 
 
+def test_cli_stack_cleanup_uses_cli_release_name() -> None:
+    context = _managed_context(scenario="cli-stack")
+
+    operations = cleanup.plan_uninstall_control_plane(context)
+
+    assert operations[0].argv[:3] == ("helm", "uninstall", "nanofaas-cli-stack-e2e")
+
+
 def test_compose_recipe_wires_concrete_component_planners() -> None:
     recipe = build_scenario_recipe("helm-stack")
     components = {component.component_id: component for component in compose_recipe(recipe)}
@@ -229,3 +237,21 @@ def test_operation_executor_translates_typed_operations_to_plan_steps() -> None:
 
     assert step.summary == "Tear down VM"
     assert step.command == ["echo", "Skipping VM teardown (--no-cleanup-vm)"]
+
+
+def test_operation_executor_inverts_cli_cleanup_status_check() -> None:
+    request = E2eRequest(scenario="cli-stack")
+    operation = RemoteCommandOperation(
+        operation_id="cleanup.verify_cli_platform_status_fails",
+        summary="Verify CLI platform status fails after cleanup",
+        argv=("nanofaas-cli", "platform", "status", "-n", "nanofaas-cli-stack-e2e"),
+        execution_target="vm",
+    )
+
+    step = operation_to_plan_step(
+        operation,
+        request=request,
+        on_remote_exec=lambda argv, env: (_ for _ in ()).throw(RuntimeError("expected failure")),  # noqa: ARG005
+    )
+
+    step.action()

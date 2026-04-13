@@ -63,6 +63,7 @@ def test_cli_stack_flow_routes_through_e2e_runner(monkeypatch) -> None:
     assert flow.run() == "ok"
     assert called["request"].scenario == "cli-stack"
     assert called["request"].vm is not None
+    assert called["request"].namespace == "nanofaas-cli-stack-e2e"
 
 
 def test_cli_stack_flow_task_ids_are_derived_from_the_recipe() -> None:

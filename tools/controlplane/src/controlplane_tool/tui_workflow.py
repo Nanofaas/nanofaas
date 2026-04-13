@@ -106,12 +106,37 @@ class WorkflowDashboard:
         self.log_lines = list(snapshot.logs)
         self.show_logs = snapshot.show_logs
 
+    @staticmethod
+    def _step_duration_seconds(step: WorkflowStepState) -> float | None:
+        if step.started_at is None:
+            return None
+        end = step.finished_at if step.finished_at is not None else time.time()
+        duration = max(0.0, end - step.started_at)
+        return duration
+
+    def _format_step_duration(self, step: WorkflowStepState) -> str:
+        duration = self._step_duration_seconds(step)
+        if duration is None:
+            return ""
+        return f"{duration:.1f}s"
+
+    def _summary_panel_height(self) -> int:
+        return max(1, len(self.summary_lines) or 1) + 2
+
+    def _phases_panel_height(self) -> int:
+        return max(1, len(self.steps)) + 2
+
+    def _log_panel_height(self) -> int:
+        return self._summary_panel_height() + self._phases_panel_height()
+
     def render(self):
         summary = Text("\n".join(self.summary_lines) or "No scenario details.", style="cyan")
         summary_panel = Panel(summary, title=self.title, border_style="cyan dim")
 
         phases = Table.grid(padding=(0, 1))
         phases.expand = True
+        phases.add_column(ratio=1)
+        phases.add_column(justify="right", no_wrap=True)
         if self.steps:
             for index, step in enumerate(self.steps, start=1):
                 if step.state == "running":
@@ -125,20 +150,30 @@ class WorkflowDashboard:
                 else:
                     icon = "[dim]○[/]"
                 detail = f" [dim]{step.detail}[/]" if step.detail else ""
-                phases.add_row(f"{icon} {index}. [bold]{step.label}[/]{detail}")
+                duration = self._format_step_duration(step)
+                phases.add_row(
+                    f"{icon} {index}. [bold]{step.label}[/]{detail}",
+                    f"[dim]{duration}[/]" if duration else "",
+                )
         else:
-            phases.add_row("[dim]Waiting for workflow steps...[/]")
+            phases.add_row("[dim]Waiting for workflow steps...[/]", "")
         phases_panel = Panel(phases, title="Execution Phases", border_style="cyan dim")
 
+        max_log_lines = max(1, self._log_panel_height() - 2)
         log_body = (
-            Text("\n".join(self.log_lines[-24:]))
+            Text("\n".join(self.log_lines[-max_log_lines:]))
             if self.log_lines
             else Text("No log output yet.", style="dim")
         )
         if not self.show_logs:
             return Group(summary_panel, phases_panel)
 
-        log_panel = Panel(log_body, title="Execution Log", border_style="cyan dim")
+        log_panel = Panel(
+            log_body,
+            title="Execution Log",
+            border_style="cyan dim",
+            height=self._log_panel_height(),
+        )
 
         layout = Table.grid(expand=True)
         layout.add_column(ratio=5)

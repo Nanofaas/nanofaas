@@ -95,11 +95,14 @@ def build_scenario_flow(
             ).run(scenario_file=scenario_file),
         )
     if scenario == "cli-stack":
+        effective_namespace = (
+            "nanofaas-cli-stack-e2e" if namespace == "nanofaas-e2e" else namespace
+        )
         e2e_request = E2eRequest(
             scenario="cli-stack",
             runtime=runtime,
             vm=default_managed_vm_request(),
-            namespace=namespace,
+            namespace=effective_namespace,
             local_registry=local_registry or default_registry_url(),
             cleanup_vm=False,
         )

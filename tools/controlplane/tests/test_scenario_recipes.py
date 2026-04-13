@@ -30,12 +30,12 @@ def test_cli_stack_recipe_is_independent_and_self_bootstrapping() -> None:
         "cli.fn_enqueue_selected",
         "cli.fn_delete_selected",
         "cleanup.uninstall_control_plane",
-        "cleanup.uninstall_function_runtime",
         "cleanup.delete_namespace",
         "cleanup.verify_cli_platform_status_fails",
         "vm.down",
     ]:
         assert component_id in recipe.component_ids
+    assert "cleanup.uninstall_function_runtime" not in recipe.component_ids
 
     _assert_order(
         recipe.component_ids,
@@ -93,5 +93,6 @@ def test_helm_stack_recipe_and_cli_stack_recipe_share_components_without_sharing
     assert "experiments.autoscaling" in helm_recipe.component_ids
     assert "cli.build_install_dist" in cli_recipe.component_ids
     assert "cli.platform_uninstall" not in cli_recipe.component_ids
+    assert "cleanup.uninstall_function_runtime" not in cli_recipe.component_ids
     assert "cleanup.verify_cli_platform_status_fails" in cli_recipe.component_ids
     assert helm_recipe.component_ids != cli_recipe.component_ids

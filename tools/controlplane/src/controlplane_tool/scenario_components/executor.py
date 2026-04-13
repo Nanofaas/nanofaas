@@ -44,17 +44,34 @@ def operation_to_plan_step(
     on_vm_down: Callable[[], None] | None = None,
     on_remote_exec: Callable[[tuple[str, ...], Mapping[str, str]], None] | None = None,
 ) -> ScenarioPlanStep:
+    def _expect_remote_failure(
+        argv: tuple[str, ...],
+        env: Mapping[str, str],
+    ) -> None:
+        if on_remote_exec is None:  # pragma: no cover - defensive
+            raise ValueError("cleanup.verify_cli_platform_status_fails requires a remote execution callback")
+        try:
+            on_remote_exec(argv, env)
+        except RuntimeError:
+            return
+        raise RuntimeError("platform status unexpectedly succeeded after cleanup")
+
     if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
         raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
     summary = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
     if operation.execution_target == "vm" and on_remote_exec is not None:
         argv = operation.argv
         env = operation.env
+        action = (
+            (lambda: _expect_remote_failure(argv, env))
+            if operation.operation_id == "cleanup.verify_cli_platform_status_fails"
+            else (lambda: on_remote_exec(argv, env))
+        )
         return ScenarioPlanStep(
             summary=summary,
             command=list(argv),
             env=dict(env),
-            action=lambda: on_remote_exec(argv, env),
+            action=action,
         )
     if operation.operation_id == "vm.ensure_running" and on_ensure_running is not None:
         return ScenarioPlanStep(

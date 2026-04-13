@@ -24,6 +24,7 @@ class ScenarioExecutionContext:
     vm_request: VmRequest
     cleanup_vm: bool
     manifest_path: Path | None = None
+    release: str | None = None
 
 
 def default_managed_vm_request() -> VmRequest:
@@ -50,12 +51,17 @@ def resolve_scenario_environment(
     request: E2eRequest | CliTestRequest,
     *,
     manifest_root: Path | None = None,
+    release: str | None = None,
 ) -> ScenarioExecutionContext:
     manifest_path = (
         write_scenario_manifest(request.resolved_scenario, root=manifest_root)
         if manifest_root is not None and request.resolved_scenario is not None
         else None
     )
+    effective_release = release
+    if effective_release is None and request.scenario == "cli-stack":
+        effective_release = "nanofaas-cli-stack-e2e"
+
     return ScenarioExecutionContext(
         repo_root=repo_root,
         request=request,
@@ -67,4 +73,5 @@ def resolve_scenario_environment(
         vm_request=_managed_vm_request(request),
         cleanup_vm=getattr(request, "cleanup_vm", True),
         manifest_path=manifest_path,
+        release=effective_release,
     )

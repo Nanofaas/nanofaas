@@ -1,7 +1,7 @@
 from rich.console import Console
 
 from controlplane_tool.tui_prefect_bridge import TuiPrefectBridge
-from controlplane_tool.tui_workflow import WorkflowDashboard
+from controlplane_tool.tui_workflow import WorkflowDashboard, WorkflowStepState
 from controlplane_tool.workflow_events import (
     build_log_event,
     build_phase_event,
@@ -168,3 +168,56 @@ def test_workflow_dashboard_mark_step_running_advances_single_active_step() -> N
 
     assert dashboard.steps[0].state == "success"
     assert dashboard.steps[1].state == "running"
+
+
+def test_workflow_dashboard_renders_step_durations_right_aligned() -> None:
+    dashboard = WorkflowDashboard(
+        title="E2E Scenarios",
+        summary_lines=["Scenario: cli-stack"],
+    )
+    dashboard.steps = [
+        WorkflowStepState(
+            label="Short task",
+            state="success",
+            started_at=10.0,
+            finished_at=11.0,
+        ),
+        WorkflowStepState(
+            label="Longer task",
+            state="success",
+            started_at=20.0,
+            finished_at=32.3,
+        ),
+    ]
+
+    console = Console(record=True, width=100)
+    console.print(dashboard.render())
+    text = console.export_text()
+    short_line = next(line for line in text.splitlines() if "Short task" in line)
+    long_line = next(line for line in text.splitlines() if "Longer task" in line)
+    short_phase_line = short_line.split("││", 1)[0]
+    long_phase_line = long_line.split("││", 1)[0]
+
+    assert "1.0s" in short_line
+    assert "12.3s" in long_line
+    assert short_phase_line.rstrip().endswith("1.0s")
+    assert long_phase_line.rstrip().endswith("12.3s")
+
+
+def test_workflow_dashboard_keeps_log_panel_bottom_aligned_with_phases() -> None:
+    dashboard = WorkflowDashboard(
+        title="E2E Scenarios",
+        summary_lines=["Scenario: cli-stack", "Runner: cli-stack"],
+    )
+    dashboard.steps = [
+        WorkflowStepState(label="Step 1", state="success", started_at=0.0, finished_at=1.0),
+        WorkflowStepState(label="Step 2", state="pending"),
+    ]
+    dashboard.log_lines = ["only one line"]
+
+    console = Console(record=True, width=100)
+    console.print(dashboard.render())
+    text = console.export_text()
+    final_line = [line for line in text.splitlines() if line.strip()][-1]
+
+    assert final_line.count("╯") == 2

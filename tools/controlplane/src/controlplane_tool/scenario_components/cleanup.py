@@ -21,6 +21,12 @@ def _namespace(context: ScenarioExecutionContext) -> str:
     return "nanofaas-e2e"
 
 
+def _control_plane_release(context: ScenarioExecutionContext) -> str:
+    if context.release:
+        return context.release
+    return "control-plane"
+
+
 def _kubeconfig_path(context: ScenarioExecutionContext) -> str:
     home = context.vm_request.home
     if home:
@@ -36,7 +42,7 @@ def plan_uninstall_control_plane(context: ScenarioExecutionContext) -> tuple[Sce
         RemoteCommandOperation(
             operation_id="cleanup.uninstall_control_plane",
             summary="Uninstall control plane with Helm",
-            argv=("helm", "uninstall", "control-plane", "-n", namespace),
+            argv=("helm", "uninstall", _control_plane_release(context), "-n", namespace),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
         ),

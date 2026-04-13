@@ -185,3 +185,29 @@ def test_cli_host_platform_runner_uses_shared_platform_primitives(tmp_path) -> N
     assert runner._platform_uninstall_command() == list(
         cli_components._plan_platform_uninstall(context)[0].argv
     )
+
+
+def test_cli_stack_apply_operation_stages_manifest_before_apply(tmp_path) -> None:
+    from controlplane_tool.scenario_models import ResolvedScenario
+
+    resolved = ResolvedScenario(
+        name="test",
+        base_scenario="cli-stack",
+        runtime="java",
+        functions=[_rf("echo-test", image="registry.internal/echo-test:v1")],
+    )
+    context = CliComponentContext(
+        repo_root=tmp_path,
+        release="test-release",
+        namespace="test-ns",
+        local_registry="registry.internal:5000",
+        resolved_scenario=resolved,
+    )
+
+    operation = cli_components.plan_fn_apply_selected(context)[0]
+
+    assert operation.argv[:2] == ("bash", "-lc")
+    assert "printf '%s'" in operation.argv[2]
+    assert "/tmp/echo-test.json" in operation.argv[2]
+    assert "fn apply -f /tmp/echo-test.json" in operation.argv[2]
+    assert "NANOFAAS_ENDPOINT" not in operation.env

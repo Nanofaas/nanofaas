@@ -68,7 +68,6 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
             "cli.fn_enqueue_selected",
             "cli.fn_delete_selected",
             "cleanup.uninstall_control_plane",
-            "cleanup.uninstall_function_runtime",
             "cleanup.delete_namespace",
             "cleanup.verify_cli_platform_status_fails",
             "vm.down",
