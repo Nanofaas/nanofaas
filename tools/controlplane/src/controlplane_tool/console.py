@@ -90,6 +90,25 @@ def has_workflow_sink() -> bool:
     return _workflow_sink() is not None
 
 
+def _child_workflow_context(
+    *,
+    task_id: str,
+    parent_task_id: str | None,
+    context: WorkflowContext | None,
+) -> WorkflowContext:
+    active = context or _workflow_context() or WorkflowContext()
+    resolved_parent_task_id = parent_task_id
+    if resolved_parent_task_id is None:
+        resolved_parent_task_id = active.task_id or active.parent_task_id
+    return WorkflowContext(
+        flow_id=active.flow_id,
+        flow_run_id=active.flow_run_id,
+        task_id=task_id,
+        parent_task_id=resolved_parent_task_id,
+        task_run_id=active.task_run_id,
+    )
+
+
 def _render_event(event: WorkflowEvent) -> None:
     if event.kind == "log.line":
         prefix = "stderr │ " if event.stream == "stderr" else ""
@@ -200,6 +219,59 @@ def step(label: str, detail: str = "") -> None:
             context=_workflow_context(),
         )
     )
+
+
+@contextmanager
+def workflow_step(
+    *,
+    task_id: str,
+    title: str,
+    parent_task_id: str | None = None,
+    detail: str = "",
+    context: WorkflowContext | None = None,
+) -> Generator[WorkflowContext, None, None]:
+    """Emit a balanced task-running/task-completed/task-failed event sequence."""
+    child_context = _child_workflow_context(
+        task_id=task_id,
+        parent_task_id=parent_task_id,
+        context=context,
+    )
+    _emit_workflow_event(
+        build_task_event(
+            kind="task.running",
+            task_id=task_id,
+            parent_task_id=child_context.parent_task_id,
+            title=title,
+            detail=detail,
+            context=child_context,
+        )
+    )
+    with bind_workflow_context(child_context):
+        try:
+            yield child_context
+        except Exception as exc:
+            _emit_workflow_event(
+                build_task_event(
+                    kind="task.failed",
+                    task_id=task_id,
+                    parent_task_id=child_context.parent_task_id,
+                    title=title,
+                    detail=detail or str(exc),
+                    context=child_context,
+                )
+            )
+            raise
+        else:
+            _emit_workflow_event(
+                build_task_event(
+                    kind="task.completed",
+                    task_id=task_id,
+                    parent_task_id=child_context.parent_task_id,
+                    title=title,
+                    detail=detail,
+                    context=child_context,
+                )
+            )
 
 
 def success(label: str, detail: str = "") -> None:

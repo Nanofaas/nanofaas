@@ -40,6 +40,7 @@ class WorkflowContext:
     flow_id: str = "interactive.console"
     flow_run_id: str | None = None
     task_id: str | None = None
+    parent_task_id: str | None = None
     task_run_id: str | None = None
 
 
@@ -50,6 +51,7 @@ class WorkflowEvent:
     at: datetime = field(default_factory=utc_now)
     flow_run_id: str | None = None
     task_id: str | None = None
+    parent_task_id: str | None = None
     task_run_id: str | None = None
     title: str = ""
     detail: str = ""

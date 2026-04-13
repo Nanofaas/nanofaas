@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 from threading import Thread
 
+import pytest
+
 from controlplane_tool.console import (
     _render_event,
     bind_workflow_context,
@@ -11,6 +13,7 @@ from controlplane_tool.console import (
     status,
     step,
     success,
+    workflow_step,
     warning,
     workflow_log,
 )
@@ -135,6 +138,66 @@ def test_nested_console_steps_preserve_explicit_parent_identity() -> None:
     assert [event.task_id for event in sink.events] == [
         "tests.run_k3s_curl_checks",
         "tests.run_k3s_curl_checks",
+    ]
+    assert [event.parent_task_id for event in sink.events] == [
+        "tests.run_k3s_curl_checks",
+        "tests.run_k3s_curl_checks",
+    ]
+
+
+def test_workflow_step_emits_balanced_child_events() -> None:
+    sink = _FakeSink()
+    context = WorkflowContext(
+        flow_id="workflow.console",
+        task_id="tests.run_k3s_curl_checks",
+    )
+
+    with bind_workflow_sink(sink), bind_workflow_context(context):
+        with workflow_step(
+            task_id="verify.control_plane_health",
+            title="Verifying control-plane health",
+        ):
+            workflow_log("checking readiness")
+
+    assert [event.kind for event in sink.events] == [
+        "task.running",
+        "log.line",
+        "task.completed",
+    ]
+    assert [event.task_id for event in sink.events] == [
+        "verify.control_plane_health",
+        "verify.control_plane_health",
+        "verify.control_plane_health",
+    ]
+    assert [event.parent_task_id for event in sink.events] == [
+        "tests.run_k3s_curl_checks",
+        "tests.run_k3s_curl_checks",
+        "tests.run_k3s_curl_checks",
+    ]
+
+
+def test_workflow_step_emits_failed_child_events() -> None:
+    sink = _FakeSink()
+    context = WorkflowContext(
+        flow_id="workflow.console",
+        task_id="tests.run_k3s_curl_checks",
+    )
+
+    with bind_workflow_sink(sink), bind_workflow_context(context):
+        with pytest.raises(RuntimeError, match="boom"):
+            with workflow_step(
+                task_id="verify.control_plane_health",
+                title="Verifying control-plane health",
+            ):
+                raise RuntimeError("boom")
+
+    assert [event.kind for event in sink.events] == [
+        "task.running",
+        "task.failed",
+    ]
+    assert [event.task_id for event in sink.events] == [
+        "verify.control_plane_health",
+        "verify.control_plane_health",
     ]
     assert [event.parent_task_id for event in sink.events] == [
         "tests.run_k3s_curl_checks",
