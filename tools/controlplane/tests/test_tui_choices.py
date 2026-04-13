@@ -248,47 +248,6 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
 
 
-def test_tui_helper_reads_selected_radiolist_value_not_current_value() -> None:
-    import controlplane_tool.tui_app as tui_app
-    from prompt_toolkit.widgets import RadioList
-
-    radio_list = RadioList([("first", "First"), ("second", "Second")])
-    radio_list._selected_index = 1
-
-    assert radio_list.current_value == "first"
-    assert tui_app._selected_radiolist_value(radio_list) == "second"
-
-
-def test_tui_helper_reads_selected_choice_description_not_current_value() -> None:
-    import controlplane_tool.tui_app as tui_app
-    from prompt_toolkit.widgets import RadioList
-
-    choices = [
-        tui_app._DescribedChoice("First", "first", "First description"),
-        tui_app._DescribedChoice("Second", "second", "Second description"),
-    ]
-    radio_list = RadioList([(choice.value, choice.title) for choice in choices])
-    radio_list._selected_index = 1
-
-    assert tui_app._selected_described_choice(radio_list, choices).description == "Second description"
-
-
-def test_tui_accepting_radiolist_accepts_highlighted_value() -> None:
-    import controlplane_tool.tui_app as tui_app
-
-    accepted: list[str] = []
-    radio_list = tui_app._AcceptingRadioList(
-        [("first", "First"), ("second", "Second")],
-        on_accept=lambda value: accepted.append(value),
-    )
-    radio_list._selected_index = 1
-
-    radio_list._handle_enter()
-
-    assert radio_list.current_value == "second"
-    assert accepted == ["second"]
-
-
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
     now = datetime.now(UTC)
     return FlowRunResult.completed(

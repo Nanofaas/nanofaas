@@ -205,3 +205,9 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
         "Delete E2E namespace",
         "Teardown VM",
     ]
+    assert snapshot.phases[3].children[0].task_id == "verify.control_plane_health"
+    assert snapshot.phases[3].children[0].detail == "Verifying control-plane health"
+    assert [child.task_id for child in snapshot.phases[3].children] == [
+        "verify.control_plane_health",
+        "verify.prometheus_metrics",
+    ]
