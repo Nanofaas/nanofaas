@@ -129,9 +129,12 @@ class CliStackRunner:
         resolved = _resolve_scenario(scenario_file)
         phase("Verify")
         reporter = WorkflowProgressReporter.current()
-        for index, planned_step in enumerate(self.plan_steps(resolved), start=1):
-            child_task_id = planned_step.step_id or f"cli.stack.step.{index}"
-            with reporter.child(child_task_id, planned_step.summary):
+        for planned_step in self.plan_steps(resolved):
+            if not planned_step.step_id:
+                raise ValueError(
+                    f"CLI stack planned step '{planned_step.summary}' is missing a stable step_id"
+                )
+            with reporter.child(planned_step.step_id, planned_step.summary):
                 result = self._shell.run(
                     planned_step.command,
                     cwd=self.repo_root,
