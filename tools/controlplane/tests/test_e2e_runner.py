@@ -1,5 +1,6 @@
 from pathlib import Path
-from types import SimpleNamespace
+
+import pytest
 
 from controlplane_tool.console import bind_workflow_sink, workflow_log
 from controlplane_tool.e2e_models import E2eRequest
@@ -32,6 +33,7 @@ def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
     assert any(step.summary == "Ensure registry container" for step in plan.steps)
     assert any(step.summary == "Configure k3s registry" for step in plan.steps)
     assert any(step.summary == "Deploy control-plane via Helm" for step in plan.steps)
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_select_scenarios_applies_only_and_skip_filters() -> None:
@@ -61,6 +63,7 @@ def test_container_local_plan_no_longer_routes_to_shell_backend() -> None:
         "e2e-container-local-backend.sh" in " ".join(step.command)
         for step in plan.steps
     )
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_deploy_host_plan_no_longer_routes_to_shell_backend() -> None:
@@ -72,6 +75,7 @@ def test_deploy_host_plan_no_longer_routes_to_shell_backend() -> None:
         "e2e-deploy-host-backend.sh" in " ".join(step.command)
         for step in plan.steps
     )
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
@@ -87,6 +91,7 @@ def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
     assert not any("e2e-k3s-curl-backend.sh" in command for command in rendered)
     assert any("K8sE2eTest" in command for command in rendered)
     assert any("controlplane_tool.k3s_curl_runner" in command for command in rendered)
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
@@ -100,6 +105,7 @@ def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
 
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("e2e-helm-stack-backend.sh" in command for command in rendered)
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
@@ -202,6 +208,15 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
         "Run loadtest via Python runner",
         "Run autoscaling experiment (Python)",
     ]
+    assert all(step.step_id for step in plan.steps)
+
+
+def test_buildpack_plan_assigns_step_ids_to_all_executable_steps() -> None:
+    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+        E2eRequest(scenario="buildpack", runtime="java")
+    )
+
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_helm_stack_execute_resolves_vm_host_for_autoscaling_env() -> None:
@@ -377,6 +392,7 @@ def test_k3s_junit_curl_plan_binds_user_kubeconfig_for_cluster_steps() -> None:
         for step in plan.steps
     )
     assert any(step.env.get("KUBECONFIG") == "/home/ubuntu/.kube/config" for step in plan.steps)
+    assert all(step.step_id for step in plan.steps)
 
 
 def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
@@ -450,7 +466,7 @@ def test_execute_binds_step_context_for_nested_workflow_events() -> None:
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
-            SimpleNamespace(
+            ScenarioPlanStep(
                 summary="Run top-level verification",
                 command=["echo", "noop"],
                 env={},
@@ -470,14 +486,32 @@ def test_execute_binds_step_context_for_nested_workflow_events() -> None:
     assert sink.events[0].line == "nested progress"
 
 
+def test_execute_rejects_step_without_id() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    plan = ScenarioPlan(
+        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
+        request=E2eRequest(scenario="docker", runtime="java"),
+        steps=[
+            ScenarioPlanStep(
+                summary="Broken step",
+                command=["false"],
+                step_id="",
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="step_id"):
+        runner.execute(plan)
+
+
 def test_execute_emits_step_progress_events() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = ScenarioPlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
-            ScenarioPlanStep(summary="First step", command=["echo", "one"]),
-            ScenarioPlanStep(summary="Second step", command=["echo", "two"]),
+            ScenarioPlanStep(summary="First step", command=["echo", "one"], step_id="docker.first"),
+            ScenarioPlanStep(summary="Second step", command=["echo", "two"], step_id="docker.second"),
         ],
     )
 
@@ -502,7 +536,7 @@ def test_execute_emits_failure_event_when_step_fails() -> None:
     plan = ScenarioPlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[ScenarioPlanStep(summary="Broken step", command=["false"])],
+        steps=[ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken")],
     )
 
     events = []

@@ -159,7 +159,7 @@ class E2eRunner:
         summary: str,
         result: ShellExecutionResult,
         *,
-        step_id: str = "",
+        step_id: str,
     ) -> ScenarioPlanStep:
         return ScenarioPlanStep(summary=summary, command=result.command, env=result.env, step_id=step_id)
 
@@ -169,7 +169,7 @@ class E2eRunner:
         command: list[str],
         *,
         env: dict[str, str] | None = None,
-        step_id: str = "",
+        step_id: str,
     ) -> ScenarioPlanStep:
         return ScenarioPlanStep(summary=summary, command=command, env=env or {}, step_id=step_id)
 
@@ -181,7 +181,7 @@ class E2eRunner:
         env: dict[str, str] | None = None,
     ) -> ScenarioPlanStep:
         script = self.paths.workspace_root / "scripts" / "lib" / script_name
-        return self._step(summary, ["bash", str(script)], env=env)
+        return self._step(summary, ["bash", str(script)], env=env, step_id=f"backend.{script_name}")
 
     def _with_manifest_env(
         self,
@@ -300,6 +300,7 @@ class E2eRunner:
                         "--tests",
                         "it.unimib.datai.nanofaas.controlplane.e2e.E2eFlowTest",
                     ],
+                    step_id="docker.e2e_flow",
                 )
             ]
 
@@ -312,6 +313,7 @@ class E2eRunner:
                         ":function-runtime:bootBuildImage",
                         "-PfunctionRuntimeImage=nanofaas/function-runtime:buildpack",
                     ],
+                    step_id="buildpack.boot_build_image",
                 ),
                 self._step(
                     "Run buildpack regression tests",
@@ -327,6 +329,7 @@ class E2eRunner:
                         "--tests",
                         "it.unimib.datai.nanofaas.controlplane.e2e.ContainerLocalE2eTest",
                     ],
+                    step_id="buildpack.e2e_tests",
                 ),
             ]
 
@@ -342,6 +345,7 @@ class E2eRunner:
                         "local-e2e", "run", "container-local",
                     ],
                     env=self._with_manifest_env(request, self._common_env(request)),
+                    step_id="container-local.run_flow",
                 )
             ]
 
@@ -357,6 +361,7 @@ class E2eRunner:
                         "local-e2e", "run", "deploy-host",
                     ],
                     env=self._with_manifest_env(request, self._common_env(request)),
+                    step_id="deploy-host.run_flow",
                 )
             ]
 
@@ -373,18 +378,24 @@ class E2eRunner:
             resolved_scenario=request.resolved_scenario,
         )
 
-        ensure_step = self._step_from_result("Ensure VM is running", prelude.ensure_running)
+        ensure_step = self._step_from_result(
+            "Ensure VM is running",
+            prelude.ensure_running,
+            step_id="vm.ensure_running",
+        )
 
         if prelude.build_selected_functions_script is not None:
             build_selected_functions_step = self._remote_exec_step(
                 "Build selected function images in VM",
                 vm_request,
                 prelude.build_selected_functions_script,
+                step_id="images.build_selected_functions",
             )
         else:
             build_selected_functions_step = self._step(
                 "Build selected function images in VM",
                 ["echo", "No selected function images to build"],
+                step_id="images.build_selected_functions",
             )
 
         return [
@@ -392,42 +403,50 @@ class E2eRunner:
             self._step_from_result(
                 "Provision base VM dependencies",
                 prelude.install_dependencies,
+                step_id="vm.provision_base",
             ),
-            self._step_from_result("Sync project to VM", prelude.sync_project),
+            self._step_from_result("Sync project to VM", prelude.sync_project, step_id="repo.sync_to_vm"),
             self._step_from_result(
                 "Ensure registry container",
                 prelude.ensure_registry,
+                step_id="registry.ensure_container",
             ),
             self._remote_exec_step(
                 "Build control-plane and runtime images in VM",
                 vm_request,
                 prelude.build_core_script,
+                step_id="images.build_core",
             ),
             build_selected_functions_step,
-            self._step_from_result("Install k3s", prelude.install_k3s),
+            self._step_from_result("Install k3s", prelude.install_k3s, step_id="k3s.install"),
             self._step_from_result(
                 "Configure k3s registry",
                 prelude.configure_registry,
+                step_id="k3s.configure_registry",
             ),
             self._remote_exec_step(
                 "Deploy control-plane via Helm",
                 vm_request,
                 prelude.deploy_control_plane_script,
+                step_id="helm.deploy_control_plane",
             ),
             self._remote_exec_step(
                 "Deploy function-runtime via Helm",
                 vm_request,
                 prelude.deploy_function_runtime_script,
+                step_id="helm.deploy_function_runtime",
             ),
             self._remote_exec_step(
                 "Wait for control-plane deployment",
                 vm_request,
                 prelude.wait_control_plane_script,
+                step_id="k8s.wait_control_plane_ready",
             ),
             self._remote_exec_step(
                 "Wait for function-runtime deployment",
                 vm_request,
                 prelude.wait_function_runtime_script,
+                step_id="k8s.wait_function_runtime_ready",
             ),
         ]
 
@@ -580,15 +599,24 @@ class E2eRunner:
     def _vm_bootstrap_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
         vm_request = self._require_vm(request)
         ensure_dry = self.vm.ensure_running(vm_request, dry_run=True)
-        ensure_step = self._step_from_result("Ensure VM is running", ensure_dry)
+        ensure_step = self._step_from_result("Ensure VM is running", ensure_dry, step_id="vm.ensure_running")
         return [
             ensure_step,
             self._step_from_result(
                 "Provision base VM dependencies",
                 self.vm.install_dependencies(vm_request, install_helm=True, dry_run=True),
+                step_id="vm.provision_base",
             ),
-            self._step_from_result("Sync project to VM", self.vm.sync_project(vm_request, dry_run=True)),
-            self._step_from_result("Install k3s", self.vm.install_k3s(vm_request, dry_run=True)),
+            self._step_from_result(
+                "Sync project to VM",
+                self.vm.sync_project(vm_request, dry_run=True),
+                step_id="repo.sync_to_vm",
+            ),
+            self._step_from_result(
+                "Install k3s",
+                self.vm.install_k3s(vm_request, dry_run=True),
+                step_id="k3s.install",
+            ),
             self._step_from_result(
                 "Ensure registry container",
                 self.vm.ensure_registry_container(
@@ -596,6 +624,7 @@ class E2eRunner:
                     registry=request.local_registry,
                     dry_run=True,
                 ),
+                step_id="registry.ensure_container",
             ),
             self._step_from_result(
                 "Configure k3s registry",
@@ -604,6 +633,7 @@ class E2eRunner:
                     registry=request.local_registry,
                     dry_run=True,
                 ),
+                step_id="k3s.configure_registry",
             ),
         ]
 
@@ -623,6 +653,7 @@ class E2eRunner:
                         "cli-e2e", "run", "vm",
                     ],
                     env=self._with_manifest_env(request, self._vm_env(request)),
+                    step_id="cli.vm_e2e_flow",
                 )
             ]
 
@@ -638,6 +669,7 @@ class E2eRunner:
                         "cli-e2e", "run", "cli-stack",
                     ],
                     env=self._with_manifest_env(request, self._vm_env(request)),
+                    step_id="cli_stack.vm_e2e_flow",
                 )
             ]
 
@@ -653,6 +685,7 @@ class E2eRunner:
                         "cli-e2e", "run", "host-platform",
                     ],
                     env=self._with_manifest_env(request, self._vm_env(request)),
+                    step_id="cli.host_platform_flow",
                 )
         ]
 
@@ -832,6 +865,11 @@ class E2eRunner:
             )
         )
 
+    def _require_step_id(self, step: ScenarioPlanStep) -> str:
+        if not step.step_id:
+            raise ValueError(f"Scenario step '{step.summary}' is missing a stable step_id")
+        return step.step_id
+
     def _execute_steps(
         self,
         plan: ScenarioPlan,
@@ -840,6 +878,7 @@ class E2eRunner:
         ip_cache: dict[str, str] = {}
         total_steps = len(plan.steps)
         for step_index, step in enumerate(plan.steps, start=1):
+            step_id = self._require_step_id(step)
             self._emit_event(
                 event_listener,
                 step_index=step_index,
@@ -847,7 +886,7 @@ class E2eRunner:
                 step=step,
                 status="running",
             )
-            with bind_workflow_context(WorkflowContext(flow_id=plan.request.scenario, task_id=step.step_id)):
+            with bind_workflow_context(WorkflowContext(flow_id=plan.request.scenario, task_id=step_id)):
                 if step.action is not None:
                     try:
                         step.action()
