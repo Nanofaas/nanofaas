@@ -47,7 +47,7 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
     console.print(dashboard.render())
     text = console.export_text()
 
-    assert "Raw Command Output" in text
+    assert "Execution Log" in text
     assert "Execution Phases" in text
     assert "Ensure VM is running" in text
     assert "Bootstrapping VM" in text
@@ -66,7 +66,7 @@ def test_workflow_dashboard_can_hide_log_panel() -> None:
     console.print(dashboard.render())
     text = console.export_text()
 
-    assert "Raw Command Output" not in text
+    assert "Execution Log" not in text
     assert "Execution Phases" in text
 
 
@@ -258,3 +258,40 @@ def test_teardown_row_stays_pending_until_parent_cleanup_step_completes() -> Non
 
     assert dashboard.steps[-1].label == "Teardown VM"
     assert dashboard.steps[-1].state == "pending"
+
+
+def test_nested_verify_events_attach_to_parent_verification_row() -> None:
+    bridge = TuiPrefectBridge(
+        planned_steps=[
+            "Ensure VM is running",
+            "Provision base VM dependencies",
+            "Sync project to VM",
+            "Run k3s-junit-curl verification",
+            "Delete E2E namespace",
+            "Teardown VM",
+        ]
+    )
+
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_k3s_curl_checks",
+            title="Run k3s-junit-curl verification",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.control_plane_health",
+            title="Verify",
+            detail="Verifying control-plane health",
+        )
+    )
+
+    snapshot = bridge.snapshot()
+
+    assert snapshot.phases[3].label == "Run k3s-junit-curl verification"
+    assert snapshot.phases[3].task_id == "tests.run_k3s_curl_checks"
+    assert snapshot.phases[3].detail == "Verifying control-plane health"
