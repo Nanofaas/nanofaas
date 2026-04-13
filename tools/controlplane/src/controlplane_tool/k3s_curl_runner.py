@@ -6,6 +6,7 @@ K3sCurlRunner: curl-based verifier for the shared k3s VM scenario.
 from __future__ import annotations
 
 from controlplane_tool.console import phase, step, success
+from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 import base64
 import json
@@ -251,8 +252,6 @@ class K3sCurlRunner:
         return self._cached_service_ip
 
     def _verify_health(self) -> None:
-        phase("Verify")
-        step("Verifying control-plane health")
         service_ip = self._control_plane_service_ip()
         self._vm_exec(
             f"curl -sf http://{service_ip}:8081/actuator/health | grep -q '\"status\":\"UP\"'"
@@ -285,10 +284,18 @@ class K3sCurlRunner:
         )
 
     def verify_existing_stack(self, resolved: "ResolvedScenario | None") -> None:
-        self._verify_health()
-        for fn_key in _selected_functions(resolved):
-            self._run_function_workflow(fn_key, resolved)
-        self._verify_prometheus_metrics()
+        reporter = WorkflowProgressReporter.current()
+        with reporter.child("verify.phase", "Verify"):
+            with reporter.child("verify.health", "Verifying control-plane health"):
+                self._verify_health()
+            for fn_key in _selected_functions(resolved):
+                with reporter.child(
+                    f"verify.function.{fn_key}",
+                    f"Running function workflow for '{fn_key}'",
+                ):
+                    self._run_function_workflow(fn_key, resolved)
+            with reporter.child("verify.prometheus", "Verifying Prometheus metrics"):
+                self._verify_prometheus_metrics()
 
     def cleanup_platform(self) -> None:
         step("Cleaning up shared k3s platform")
@@ -395,7 +402,6 @@ class K3sCurlRunner:
             raise RuntimeError(f"Async execution did not complete: executionId={exec_id}") from exc
 
     def _verify_prometheus_metrics(self) -> None:
-        step("Verifying Prometheus metrics")
         metrics = self._vm_exec(
             f"curl -sf http://{self._control_plane_service_ip()}:8081/actuator/prometheus"
         )
@@ -414,7 +420,6 @@ class K3sCurlRunner:
         resolved: "ResolvedScenario | None",
     ) -> None:
         fn_image = _function_image(fn_key, resolved, self._runtime_image)
-        step(f"Running function workflow for '{fn_key}'")
         self._register_function(fn_key, fn_image)
         self._await_managed_function_ready(fn_key)
         payload = _function_payload(fn_key, resolved)
