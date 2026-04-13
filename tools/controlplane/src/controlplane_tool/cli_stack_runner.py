@@ -16,7 +16,7 @@ from controlplane_tool.cli_platform_workflow import (
     platform_status_command,
     platform_uninstall_command,
 )
-from controlplane_tool.console import phase, step, success
+from controlplane_tool.console import phase, success
 from controlplane_tool.scenario_components.environment import default_managed_vm_request
 from controlplane_tool.scenario_helpers import (
     function_image as _function_image,
@@ -32,6 +32,7 @@ from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_cluster_workflows import control_image, function_image_specs, runtime_image
 from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 
 class CliStackRunner:
@@ -127,9 +128,16 @@ class CliStackRunner:
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
         phase("Verify")
-        for planned_step in self.plan_steps(resolved):
-            step(planned_step.summary)
-            result = self._shell.run(planned_step.command, cwd=self.repo_root, env=planned_step.env, dry_run=False)
-            if result.return_code != 0:
-                raise RuntimeError(result.stderr or result.stdout or f"{planned_step.summary} failed")
+        reporter = WorkflowProgressReporter.current()
+        for index, planned_step in enumerate(self.plan_steps(resolved), start=1):
+            child_task_id = planned_step.step_id or f"cli.stack.step.{index}"
+            with reporter.child(child_task_id, planned_step.summary):
+                result = self._shell.run(
+                    planned_step.command,
+                    cwd=self.repo_root,
+                    env=planned_step.env,
+                    dry_run=False,
+                )
+                if result.return_code != 0:
+                    raise RuntimeError(result.stderr or result.stdout or f"{planned_step.summary} failed")
         success("CLI stack workflow")

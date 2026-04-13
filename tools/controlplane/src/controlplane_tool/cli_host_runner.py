@@ -8,6 +8,7 @@ Mirrors the logic of the deleted e2e-cli-host-backend.sh (M10).
 from __future__ import annotations
 
 from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 import os
 from pathlib import Path
@@ -175,14 +176,19 @@ class CliHostPlatformRunner:
                 raise RuntimeError(f"Unexpected endpoint in install output: {install_out}")
 
             phase("Verify")
-            status_out = self._run_host_cli(kubeconfig, self._platform_status_command())
-            if "deployment\tnanofaas-control-plane\t1/1" not in status_out:
-                raise RuntimeError(f"Control-plane not ready: {status_out}")
+            reporter = WorkflowProgressReporter.current()
+            with reporter.child(
+                "cli.host_platform.verify",
+                "Running platform lifecycle from host CLI...",
+            ):
+                status_out = self._run_host_cli(kubeconfig, self._platform_status_command())
+                if "deployment\tnanofaas-control-plane\t1/1" not in status_out:
+                    raise RuntimeError(f"Control-plane not ready: {status_out}")
 
-            self._run_host_cli(kubeconfig, self._platform_uninstall_command())
-            rc, _ = self._run_host_cli_allow_fail(kubeconfig, self._platform_status_command())
-            if rc == 0:
-                raise RuntimeError("platform status unexpectedly succeeded after uninstall")
+                self._run_host_cli(kubeconfig, self._platform_uninstall_command())
+                rc, _ = self._run_host_cli_allow_fail(kubeconfig, self._platform_status_command())
+                if rc == 0:
+                    raise RuntimeError("platform status unexpectedly succeeded after uninstall")
 
             success("Host CLI platform lifecycle test:")
         finally:

@@ -32,6 +32,7 @@ from controlplane_tool.scenario_runtime import (
     wait_for_http_ok,
 )
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
+from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
@@ -224,6 +225,7 @@ class ContainerLocalE2eRunner:
 
         try:
             phase("Verify")
+            reporter = WorkflowProgressReporter.current()
             with status("Waiting for control-plane readiness"):
                 if not wait_for_http_ok(self._api.health_url, max_attempts=90):
                     raise RuntimeError("Control-plane did not become healthy")
@@ -294,58 +296,64 @@ class ContainerLocalE2eRunner:
                 )
                 assert read_json_field(invoke_resp, "status") == "success"
 
-                step("Scaling managed function to 2 replicas")
-                scale_resp = tmp / "scale.json"
-                subprocess.run(
-                    [
-                        "curl",
-                        "-fsS",
-                        "-X",
-                        "PUT",
-                        "-H",
-                        "Content-Type: application/json",
-                        "-d",
-                        '{"replicas":2}',
-                        self._api.replicas_url(function_name),
-                        "-o",
-                        str(scale_resp),
-                    ],
-                    check=True,
-                )
-                assert read_json_field(scale_resp, "replicas") == 2
-                with status("Waiting for 2 replicas"):
-                    self._wait_for_containers(function_slug, 2)
+                with reporter.child(
+                    "container-local.verify.scale",
+                    "Scaling managed function to 2 replicas",
+                ):
+                    scale_resp = tmp / "scale.json"
+                    subprocess.run(
+                        [
+                            "curl",
+                            "-fsS",
+                            "-X",
+                            "PUT",
+                            "-H",
+                            "Content-Type: application/json",
+                            "-d",
+                            '{"replicas":2}',
+                            self._api.replicas_url(function_name),
+                            "-o",
+                            str(scale_resp),
+                        ],
+                        check=True,
+                    )
+                    assert read_json_field(scale_resp, "replicas") == 2
+                    with status("Waiting for 2 replicas"):
+                        self._wait_for_containers(function_slug, 2)
 
-                invoke_resp2 = tmp / "invoke-scaled.json"
-                subprocess.run(
-                    [
-                        "curl",
-                        "-fsS",
-                        "-H",
-                        "Content-Type: application/json",
-                        "-d",
-                        f"@{invoke_req}",
-                        self._api.invoke_url(function_name),
-                        "-o",
-                        str(invoke_resp2),
-                    ],
-                    check=True,
-                )
-                assert read_json_field(invoke_resp2, "status") == "success"
+                    invoke_resp2 = tmp / "invoke-scaled.json"
+                    subprocess.run(
+                        [
+                            "curl",
+                            "-fsS",
+                            "-H",
+                            "Content-Type: application/json",
+                            "-d",
+                            f"@{invoke_req}",
+                            self._api.invoke_url(function_name),
+                            "-o",
+                            str(invoke_resp2),
+                        ],
+                        check=True,
+                    )
+                    assert read_json_field(invoke_resp2, "status") == "success"
 
-                step("Deleting managed function and verifying cleanup")
-                subprocess.run(
-                    [
-                        "curl",
-                        "-fsS",
-                        "-X",
-                        "DELETE",
-                        self._api.function_url(function_name),
-                    ],
-                    check=True,
-                )
-                with status("Waiting for containers to stop"):
-                    self._wait_for_containers(function_slug, 0)
+                with reporter.child(
+                    "container-local.verify.cleanup",
+                    "Deleting managed function and verifying cleanup",
+                ):
+                    subprocess.run(
+                        [
+                            "curl",
+                            "-fsS",
+                            "-X",
+                            "DELETE",
+                            self._api.function_url(function_name),
+                        ],
+                        check=True,
+                    )
+                    with status("Waiting for containers to stop"):
+                        self._wait_for_containers(function_slug, 0)
 
                 import httpx as _httpx
 

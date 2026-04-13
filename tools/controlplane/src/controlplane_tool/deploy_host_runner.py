@@ -23,6 +23,7 @@ from controlplane_tool.scenario_runtime import (
 )
 from controlplane_tool.registry_runtime import ensure_local_registry
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
+from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
@@ -186,16 +187,21 @@ class DeployHostE2eRunner:
             cp_url = f"http://127.0.0.1:{self.control_plane_port}"
 
             phase("Verify")
+            reporter = WorkflowProgressReporter.current()
             for function_key, example_dir in selected_functions:
-                image_repo = f"nanofaas/{function_key}"
-                fn_yaml = self._write_function_yaml(work_dir, function_key, image_repo, tag, example_dir)
-                request_body_path.unlink(missing_ok=True)
-                self._run(
-                    [str(self._cli_bin), "--endpoint", cp_url, "deploy", "-f", str(fn_yaml)],
-                    check=True,
-                )
-                self._verify_registry_push(image_repo, tag)
-                self._verify_register_request(request_body_path, function_key, image_repo, tag)
+                with reporter.child(
+                    f"deploy-host.verify.{function_key}",
+                    f"Deploying {function_key}",
+                ):
+                    image_repo = f"nanofaas/{function_key}"
+                    fn_yaml = self._write_function_yaml(work_dir, function_key, image_repo, tag, example_dir)
+                    request_body_path.unlink(missing_ok=True)
+                    self._run(
+                        [str(self._cli_bin), "--endpoint", cp_url, "deploy", "-f", str(fn_yaml)],
+                        check=True,
+                    )
+                    self._verify_registry_push(image_repo, tag)
+                    self._verify_register_request(request_body_path, function_key, image_repo, tag)
 
             success("Deploy host E2E:")
         finally:

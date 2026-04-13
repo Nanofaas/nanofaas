@@ -77,6 +77,8 @@ scripts/controlplane.sh tui --profile-name dev
 scripts/controlplane.sh tui --profile-name dev --use-saved-profile
 ```
 
+In the live workflow view, the left pane is plan-ordered top-level phases only. nested work is separate detail, not peer phases, so verification substeps stay attached under the active phase instead of becoming new rows.
+
 `loadtest run` is the canonical surface for load generation and Prometheus validation. The top-level `scripts/e2e-loadtest.sh` wrapper stays separate because it still models the legacy experimental workflow rather than the generic `loadtest run` planner.
 
 Operational Ansible assets are canonical under `ops/ansible/`.

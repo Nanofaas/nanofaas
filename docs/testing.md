@@ -80,6 +80,8 @@ platform and run tests against the live cluster.
 Canonical entrypoint for orchestration is `scripts/controlplane.sh`. Most legacy
 `scripts/e2e*.sh` files are compatibility wrappers over `scripts/controlplane.sh e2e ...`; the `scripts/e2e-cli*.sh` family is now a compatibility wrapper layer over `scripts/controlplane.sh cli-test ...`; and `scripts/e2e-loadtest.sh` intentionally preserves the older Helm/Grafana/parity backend via `experiments/e2e-loadtest.sh`.
 
+The live TUI workflow model mirrors the structured event hierarchy: the left pane is plan-ordered top-level phases only, and nested work is separate detail, not peer phases.
+
 ```bash
 scripts/controlplane.sh e2e list
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run

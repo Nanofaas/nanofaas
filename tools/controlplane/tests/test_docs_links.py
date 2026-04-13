@@ -55,6 +55,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "presets such as `demo-java` are exercised end-to-end" in testing
     assert "self-bootstrapping VM-backed scenarios" in testing
     assert "instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`" in testing
+    assert "left pane is plan-ordered top-level phases only" in testing
+    assert "nested work is separate detail, not peer phases" in testing
     assert "host-platform` is a compatibility path" in testing
     assert "scripts/controlplane.sh tui --profile-name dev --use-saved-profile" in testing
     assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
@@ -72,6 +74,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
     assert "self-bootstrapping VM-backed scenarios" in tool_readme
     assert "instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`" in tool_readme
+    assert "left pane is plan-ordered top-level phases only" in tool_readme
+    assert "nested work is separate detail, not peer phases" in tool_readme
     assert "scripts/controlplane.sh loadtest show-profile quick" in tool_readme
     assert "scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh vm up" in tool_readme

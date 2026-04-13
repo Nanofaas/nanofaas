@@ -28,6 +28,7 @@ from controlplane_tool.scenario_tasks import (
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
+from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 if TYPE_CHECKING:
     from controlplane_tool.scenario_models import ResolvedScenario
@@ -176,32 +177,36 @@ class CliVmRunner:
     ) -> None:
         phase("Verify")
         functions = _selected_functions(resolved)
+        reporter = WorkflowProgressReporter.current()
         for fn_key in functions:
             fn_image = _function_image(fn_key, resolved, self._runtime_image)
-            step(f"Testing CLI function lifecycle for '{fn_key}'")
-            spec = (
-                f"{{\"name\":\"{fn_key}\","
-                f"\"image\":\"{fn_image}\","
-                f"\"timeoutMs\":5000,\"concurrency\":2,\"queueSize\":20,"
-                f"\"maxRetries\":3,\"executionMode\":\"DEPLOYMENT\"}}"
-            )
-            self._vm_exec(f"printf '%s' '{spec}' > /tmp/{fn_key}.json")
-            self._cli_exec(f"nanofaas fn apply -f /tmp/{fn_key}.json", endpoint)
-            list_output = self._cli_exec("nanofaas fn list", endpoint)
-            if fn_key not in list_output:
-                raise RuntimeError(f"fn list missing {fn_key}")
-            invoke_input = '{"input":{"message":"hello-from-cli"}}'
-            invoke_out = self._cli_exec(
-                f"nanofaas invoke {fn_key} -d '{invoke_input}'", endpoint
-            )
-            if '"success"' not in invoke_out:
-                raise RuntimeError(f"invoke did not succeed for {fn_key}: {invoke_out}")
-            enqueue_out = self._cli_exec(
-                f"nanofaas enqueue {fn_key} -d '{invoke_input}'", endpoint
-            )
-            if '"executionId"' not in enqueue_out:
-                raise RuntimeError(f"enqueue did not return executionId for {fn_key}")
-            self._cli_exec(f"nanofaas fn delete {fn_key}", endpoint)
+            with reporter.child(
+                f"cli.vm.verify.{fn_key}",
+                f"Testing CLI function lifecycle for '{fn_key}'",
+            ):
+                spec = (
+                    f"{{\"name\":\"{fn_key}\","
+                    f"\"image\":\"{fn_image}\","
+                    f"\"timeoutMs\":5000,\"concurrency\":2,\"queueSize\":20,"
+                    f"\"maxRetries\":3,\"executionMode\":\"DEPLOYMENT\"}}"
+                )
+                self._vm_exec(f"printf '%s' '{spec}' > /tmp/{fn_key}.json")
+                self._cli_exec(f"nanofaas fn apply -f /tmp/{fn_key}.json", endpoint)
+                list_output = self._cli_exec("nanofaas fn list", endpoint)
+                if fn_key not in list_output:
+                    raise RuntimeError(f"fn list missing {fn_key}")
+                invoke_input = '{"input":{"message":"hello-from-cli"}}'
+                invoke_out = self._cli_exec(
+                    f"nanofaas invoke {fn_key} -d '{invoke_input}'", endpoint
+                )
+                if '"success"' not in invoke_out:
+                    raise RuntimeError(f"invoke did not succeed for {fn_key}: {invoke_out}")
+                enqueue_out = self._cli_exec(
+                    f"nanofaas enqueue {fn_key} -d '{invoke_input}'", endpoint
+                )
+                if '"executionId"' not in enqueue_out:
+                    raise RuntimeError(f"enqueue did not return executionId for {fn_key}")
+                self._cli_exec(f"nanofaas fn delete {fn_key}", endpoint)
 
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
