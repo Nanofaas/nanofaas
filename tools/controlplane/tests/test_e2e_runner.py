@@ -1,10 +1,14 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+from controlplane_tool.console import bind_workflow_sink, workflow_log
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
 from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario_components.composer import compose_recipe
+from controlplane_tool.scenario_components.executor import operation_to_plan_step
+from controlplane_tool.scenario_components.operations import RemoteCommandOperation
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 from controlplane_tool.scenario_models import ScenarioSpec
 from controlplane_tool.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
@@ -373,6 +377,75 @@ def test_k3s_junit_curl_plan_binds_user_kubeconfig_for_cluster_steps() -> None:
         for step in plan.steps
     )
     assert any(step.env.get("KUBECONFIG") == "/home/ubuntu/.kube/config" for step in plan.steps)
+
+
+def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
+    request = E2eRequest(
+        scenario="k3s-junit-curl",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+    operation = RemoteCommandOperation(
+        operation_id="tests.run_k3s_curl_checks",
+        summary="Run k3s-junit-curl verification",
+        argv=("python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"),
+    )
+
+    step = operation_to_plan_step(operation, request=request, on_k3s_curl_verify=lambda: None)
+
+    assert step.step_id == "tests.run_k3s_curl_checks"
+
+
+def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
+    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+        E2eRequest(
+            scenario="k3s-junit-curl",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    assert [step.step_id for step in plan.steps[-6:]] == [
+        "tests.run_k3s_curl_checks",
+        "tests.run_k8s_junit",
+        "cleanup.uninstall_function_runtime",
+        "cleanup.uninstall_control_plane",
+        "cleanup.delete_namespace",
+        "vm.down",
+    ]
+
+
+def test_execute_binds_step_context_for_nested_workflow_events() -> None:
+    class _Sink:
+        def __init__(self) -> None:
+            self.events = []
+
+        def emit(self, event) -> None:  # noqa: ANN001
+            self.events.append(event)
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    plan = ScenarioPlan(
+        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
+        request=E2eRequest(scenario="docker", runtime="java"),
+        steps=[
+            SimpleNamespace(
+                summary="Run top-level verification",
+                command=["echo", "noop"],
+                env={},
+                step_id="tests.run_k3s_curl_checks",
+                action=lambda: workflow_log("nested progress"),
+            )
+        ],
+    )
+    sink = _Sink()
+
+    with bind_workflow_sink(sink):
+        runner.execute(plan)
+
+    assert len(sink.events) == 1
+    assert sink.events[0].flow_id == "docker"
+    assert sink.events[0].task_id == "tests.run_k3s_curl_checks"
+    assert sink.events[0].line == "nested progress"
 
 
 def test_execute_emits_step_progress_events() -> None:

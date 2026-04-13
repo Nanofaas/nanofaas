@@ -32,6 +32,7 @@ class ScenarioPlanStep:
     summary: str
     command: list[str]
     env: dict[str, str] = field(default_factory=dict)
+    step_id: str = ""
     action: Callable[[], None] | None = None
 
 
@@ -71,6 +72,7 @@ def operation_to_plan_step(
             summary=summary,
             command=list(argv),
             env=dict(env),
+            step_id=operation.operation_id,
             action=action,
         )
     if operation.operation_id == "vm.ensure_running" and on_ensure_running is not None:
@@ -78,6 +80,7 @@ def operation_to_plan_step(
             summary=summary,
             command=list(operation.argv),
             env=dict(operation.env),
+            step_id=operation.operation_id,
             action=on_ensure_running,
         )
     if operation.operation_id == "tests.run_k3s_curl_checks":
@@ -87,6 +90,7 @@ def operation_to_plan_step(
             summary=summary,
             command=list(operation.argv),
             env=dict(operation.env),
+            step_id=operation.operation_id,
             action=on_k3s_curl_verify,
         )
     if operation.operation_id == "vm.down":
@@ -94,18 +98,21 @@ def operation_to_plan_step(
             return ScenarioPlanStep(
                 summary=summary,
                 command=["echo", "Skipping VM teardown (--no-cleanup-vm)"],
+                step_id=operation.operation_id,
             )
         if on_vm_down is not None:
             return ScenarioPlanStep(
                 summary=summary,
                 command=list(operation.argv),
                 env=dict(operation.env),
+                step_id=operation.operation_id,
                 action=on_vm_down,
             )
     return ScenarioPlanStep(
         summary=summary,
         command=list(operation.argv),
         env=dict(operation.env),
+        step_id=operation.operation_id,
     )
 
 

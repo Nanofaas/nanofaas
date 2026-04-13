@@ -10,6 +10,7 @@ from multipass import MultipassClient
 
 from controlplane_tool.e2e_catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e_models import E2eRequest
+from controlplane_tool.console import bind_workflow_context
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.k3s_curl_runner import K3sCurlRunner
 from controlplane_tool.scenario_components.cli import CliComponentContext
@@ -44,6 +45,7 @@ from controlplane_tool.vm_cluster_workflows import (
 )
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.workflow_models import WorkflowContext
 
 
 @dataclass(frozen=True)
@@ -152,8 +154,14 @@ class E2eRunner:
         self.manifest_root = manifest_root or (self.paths.runs_dir / "manifests")
         self._host_resolver = host_resolver
 
-    def _step_from_result(self, summary: str, result: ShellExecutionResult) -> ScenarioPlanStep:
-        return ScenarioPlanStep(summary=summary, command=result.command, env=result.env)
+    def _step_from_result(
+        self,
+        summary: str,
+        result: ShellExecutionResult,
+        *,
+        step_id: str = "",
+    ) -> ScenarioPlanStep:
+        return ScenarioPlanStep(summary=summary, command=result.command, env=result.env, step_id=step_id)
 
     def _step(
         self,
@@ -161,8 +169,9 @@ class E2eRunner:
         command: list[str],
         *,
         env: dict[str, str] | None = None,
+        step_id: str = "",
     ) -> ScenarioPlanStep:
-        return ScenarioPlanStep(summary=summary, command=command, env=env or {})
+        return ScenarioPlanStep(summary=summary, command=command, env=env or {}, step_id=step_id)
 
     def _backend_step(
         self,
@@ -203,9 +212,16 @@ class E2eRunner:
             raise ValueError(f"Scenario '{request.scenario}' requires VM configuration")
         return request.vm
 
-    def _remote_exec_step(self, summary: str, request: VmRequest, command: str) -> ScenarioPlanStep:
+    def _remote_exec_step(
+        self,
+        summary: str,
+        request: VmRequest,
+        command: str,
+        *,
+        step_id: str = "",
+    ) -> ScenarioPlanStep:
         result = self.vm.remote_exec(request, command=command, dry_run=True)
-        return self._step_from_result(summary, result)
+        return self._step_from_result(summary, result, step_id=step_id)
 
     def _common_env(self, request: E2eRequest) -> dict[str, str]:
         env = {
@@ -439,6 +455,7 @@ class E2eRunner:
                     namespace=namespace,
                     kubeconfig_path=kubeconfig_path,
                 ),
+                step_id="cleanup.uninstall_function_runtime",
             )
             uninstall_control_plane_step = self._remote_exec_step(
                 "Uninstall control-plane Helm release",
@@ -449,6 +466,7 @@ class E2eRunner:
                     namespace=namespace,
                     kubeconfig_path=kubeconfig_path,
                 ),
+                step_id="cleanup.uninstall_control_plane",
             )
             delete_namespace_step = self._remote_exec_step(
                 "Delete E2E namespace",
@@ -458,12 +476,14 @@ class E2eRunner:
                     namespace=namespace,
                     kubeconfig_path=kubeconfig_path,
                 ),
+                step_id="cleanup.delete_namespace",
             )
             teardown_dry = self.vm.teardown(vm_request, dry_run=True)
             teardown_step = ScenarioPlanStep(
                 summary="Teardown VM",
                 command=teardown_dry.command,
                 env=teardown_dry.env,
+                step_id="vm.down",
                 action=lambda: self.vm.teardown(vm_request, dry_run=False),
             )
         else:
@@ -488,6 +508,7 @@ class E2eRunner:
             ScenarioPlanStep(
                 summary="Run k3s-junit-curl verification",
                 command=["python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"],
+                step_id="tests.run_k3s_curl_checks",
                 action=lambda: verifier.verify_existing_stack(request.resolved_scenario),
             ),
             self._remote_exec_step(
@@ -533,6 +554,7 @@ class E2eRunner:
                     "run",
                 ],
                 env=vm_env,
+                step_id="loadtest.run",
             ),
             self._step(
                 "Run autoscaling experiment (Python)",
@@ -546,6 +568,7 @@ class E2eRunner:
                     str(self.paths.workspace_root / "experiments" / "autoscaling.py"),
                 ],
                 env=vm_env,
+                step_id="experiments.autoscaling",
             ),
         ]
 
@@ -819,21 +842,52 @@ class E2eRunner:
                 step=step,
                 status="running",
             )
-            if step.action is not None:
-                try:
-                    step.action()
-                except Exception as exc:
+            with bind_workflow_context(WorkflowContext(flow_id=plan.request.scenario, task_id=step.step_id)):
+                if step.action is not None:
+                    try:
+                        step.action()
+                    except Exception as exc:
+                        self._emit_event(
+                            event_listener,
+                            step_index=step_index,
+                            total_steps=total_steps,
+                            step=step,
+                            status="failed",
+                            error=str(exc),
+                        )
+                        raise RuntimeError(
+                            f"Scenario '{plan.request.scenario}' failed at step '{step.summary}': {exc}"
+                        ) from exc
+                    self._emit_event(
+                        event_listener,
+                        step_index=step_index,
+                        total_steps=total_steps,
+                        step=step,
+                        status="success",
+                    )
+                    continue
+                command = self._resolve_command(step.command, plan.request.vm, ip_cache)
+                env = self._resolve_env(step.env, plan.request.vm, ip_cache)
+                result = self.shell.run(
+                    command,
+                    cwd=self.paths.workspace_root,
+                    env=env,
+                    dry_run=False,
+                )
+                if result.return_code != 0:
+                    output = (result.stderr or result.stdout or "").strip()
                     self._emit_event(
                         event_listener,
                         step_index=step_index,
                         total_steps=total_steps,
                         step=step,
                         status="failed",
-                        error=str(exc),
+                        error=output or f"exit {result.return_code}",
                     )
-                    raise RuntimeError(
-                        f"Scenario '{plan.request.scenario}' failed at step '{step.summary}': {exc}"
-                    ) from exc
+                    msg = f"Scenario '{plan.request.scenario}' failed at step '{step.summary}' (exit {result.return_code})"
+                    if output:
+                        msg += f"\n\n{output}"
+                    raise RuntimeError(msg)
                 self._emit_event(
                     event_listener,
                     step_index=step_index,
@@ -841,36 +895,6 @@ class E2eRunner:
                     step=step,
                     status="success",
                 )
-                continue
-            command = self._resolve_command(step.command, plan.request.vm, ip_cache)
-            env = self._resolve_env(step.env, plan.request.vm, ip_cache)
-            result = self.shell.run(
-                command,
-                cwd=self.paths.workspace_root,
-                env=env,
-                dry_run=False,
-            )
-            if result.return_code != 0:
-                output = (result.stderr or result.stdout or "").strip()
-                self._emit_event(
-                    event_listener,
-                    step_index=step_index,
-                    total_steps=total_steps,
-                    step=step,
-                    status="failed",
-                    error=output or f"exit {result.return_code}",
-                )
-                msg = f"Scenario '{plan.request.scenario}' failed at step '{step.summary}' (exit {result.return_code})"
-                if output:
-                    msg += f"\n\n{output}"
-                raise RuntimeError(msg)
-            self._emit_event(
-                event_listener,
-                step_index=step_index,
-                total_steps=total_steps,
-                step=step,
-                status="success",
-            )
 
     def _should_teardown(self, request: E2eRequest | None) -> bool:
         if request is None or request.vm is None:
