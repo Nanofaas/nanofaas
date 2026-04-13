@@ -61,9 +61,6 @@ class WorkflowDashboard:
         self.sync_from_snapshot(self._bridge.snapshot())
 
     def mark_step_running(self, step_index: int) -> None:
-        for index in range(step_index - 1):
-            if self._bridge.snapshot().phases[index].status == "running":
-                self._bridge.mark_phase_success(index + 1)
         self._bridge.mark_phase_running(step_index)
         self.sync_from_snapshot(self._bridge.snapshot())
 

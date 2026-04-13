@@ -104,10 +104,10 @@ def test_workflow_dashboard_renders_nested_child_progress_separately() -> None:
         "Teardown VM",
     ]
     assert dashboard.steps[0].children[0].label == "Verify"
+    assert dashboard.steps[0].children[0].state == "success"
     assert "Nested Verification Work" in text
-    assert "Run k3s-junit-curl verification" in text
-    assert "Verify" in text
-    assert "26. Verify" not in text
+    assert "✓ Verify control-plane health" in text
+    assert "Execution Phases" in text
 
 
 def test_workflow_dashboard_can_hide_log_panel() -> None:
@@ -123,7 +123,7 @@ def test_workflow_dashboard_can_hide_log_panel() -> None:
     console.print(dashboard.render())
     text = console.export_text()
 
-    assert "Execution Log" not in text
+    assert "Raw Command Output" not in text
     assert "Execution Phases" in text
 
 
@@ -213,7 +213,7 @@ def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs
     assert dashboard.steps[0].state == "cancelled"
 
 
-def test_workflow_dashboard_mark_step_running_advances_single_active_step() -> None:
+def test_workflow_dashboard_keeps_earlier_running_steps_running() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
         summary_lines=["Scenario: k3s-junit-curl"],
@@ -223,7 +223,7 @@ def test_workflow_dashboard_mark_step_running_advances_single_active_step() -> N
     dashboard.mark_step_running(1)
     dashboard.mark_step_running(2)
 
-    assert dashboard.steps[0].state == "success"
+    assert dashboard.steps[0].state == "running"
     assert dashboard.steps[1].state == "running"
 
 
