@@ -76,20 +76,14 @@ def build_phase_event(
     flow_run_id: str | None = None,
     context: WorkflowContext | None = None,
 ) -> WorkflowEvent:
-    resolved_flow_id, resolved_flow_run_id, _, resolved_parent_task_id, _ = _event_context(
-        flow_id=flow_id,
-        flow_run_id=flow_run_id,
-        task_id=None,
-        parent_task_id=None,
-        task_run_id=None,
-        context=context,
-        inherit_task_id=False,
-    )
+    active = context or WorkflowContext()
     return WorkflowEvent(
         kind="phase.started",
-        flow_id=resolved_flow_id,
-        flow_run_id=resolved_flow_run_id,
-        parent_task_id=resolved_parent_task_id,
+        flow_id=flow_id or active.flow_id,
+        flow_run_id=flow_run_id or active.flow_run_id,
+        task_id=active.task_id,
+        parent_task_id=active.parent_task_id,
+        task_run_id=active.task_run_id,
         title=label,
     )
 

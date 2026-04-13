@@ -67,6 +67,25 @@ def test_bind_workflow_sink_routes_console_helpers() -> None:
     ]
 
 
+def test_phase_preserves_context_task_identity() -> None:
+    sink = _FakeSink()
+    context = WorkflowContext(
+        flow_id="workflow.console",
+        task_id="tests.run_k3s_curl_checks",
+        parent_task_id="workflow.root",
+        task_run_id="task-run-123",
+    )
+
+    with bind_workflow_sink(sink), bind_workflow_context(context):
+        phase("Build")
+
+    assert len(sink.events) == 1
+    assert sink.events[0].kind == "phase.started"
+    assert sink.events[0].task_id == "tests.run_k3s_curl_checks"
+    assert sink.events[0].parent_task_id == "workflow.root"
+    assert sink.events[0].task_run_id == "task-run-123"
+
+
 def test_workflow_log_from_background_thread_uses_bound_sink() -> None:
     sink = _FakeSink()
     context = WorkflowContext(
