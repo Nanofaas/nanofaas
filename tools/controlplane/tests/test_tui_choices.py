@@ -248,6 +248,111 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
 
 
+def test_tui_e2e_menu_uses_described_selector_with_english_copy(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {"called": False}
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "select",
+        lambda *args, **kwargs: _Prompt("container-local"),
+    )
+
+    def fake_described_select(message, choices):  # noqa: ANN001
+        captured["called"] = True
+        captured["message"] = message
+        captured["choices"] = choices
+        return "container-local"
+
+    monkeypatch.setattr(tui_app, "_select_described_value", fake_described_select, raising=False)
+    monkeypatch.setattr(NanofaasTUI, "_run_container_local", lambda self: None)
+
+    NanofaasTUI()._e2e_menu()
+
+    assert captured["called"] is True
+    assert captured["message"] == "Scenario:"
+    descriptions = {choice.value: choice.description for choice in captured["choices"]}
+    assert descriptions["deploy-host"] == "Build on the host, push to a local registry, and register against a fake control-plane."
+    assert descriptions["helm-stack"] == "Bootstrap the full VM-backed Helm stack, then verify deployment compatibility end to end."
+
+
+def test_tui_cli_e2e_menu_uses_described_selector_with_english_copy(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {"called": False}
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "select",
+        lambda *args, **kwargs: _Prompt("vm"),
+    )
+
+    def fake_described_select(message, choices):  # noqa: ANN001
+        captured["called"] = True
+        captured["message"] = message
+        captured["choices"] = choices
+        return "vm"
+
+    monkeypatch.setattr(tui_app, "_select_described_value", fake_described_select, raising=False)
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        captured["title"] = title
+        captured["summary_lines"] = summary_lines
+        return None
+
+    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert captured["called"] is True
+    assert captured["message"] == "Runner:"
+    descriptions = {choice.value: choice.description for choice in captured["choices"]}
+    assert descriptions["cli-stack"] == "Run the canonical VM-backed CLI stack that bootstraps the platform and validates the CLI end to end."
+    assert descriptions["host-platform"] == "Keep the CLI on the host and validate the compatibility path against a VM-backed platform."
+
+
+def test_tui_helper_reads_selected_radiolist_value_not_current_value() -> None:
+    import controlplane_tool.tui_app as tui_app
+    from prompt_toolkit.widgets import RadioList
+
+    radio_list = RadioList([("first", "First"), ("second", "Second")])
+    radio_list._selected_index = 1
+
+    assert radio_list.current_value == "first"
+    assert tui_app._selected_radiolist_value(radio_list) == "second"
+
+
+def test_tui_helper_reads_selected_choice_description_not_current_value() -> None:
+    import controlplane_tool.tui_app as tui_app
+    from prompt_toolkit.widgets import RadioList
+
+    choices = [
+        tui_app._DescribedChoice("First", "first", "First description"),
+        tui_app._DescribedChoice("Second", "second", "Second description"),
+    ]
+    radio_list = RadioList([(choice.value, choice.title) for choice in choices])
+    radio_list._selected_index = 1
+
+    assert tui_app._selected_described_choice(radio_list, choices).description == "Second description"
+
+
+def test_tui_accepting_radiolist_accepts_highlighted_value() -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    accepted: list[str] = []
+    radio_list = tui_app._AcceptingRadioList(
+        [("first", "First"), ("second", "Second")],
+        on_accept=lambda value: accepted.append(value),
+    )
+    radio_list._selected_index = 1
+
+    radio_list._handle_enter()
+
+    assert radio_list.current_value == "second"
+    assert accepted == ["second"]
+
+
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
     now = datetime.now(UTC)
     return FlowRunResult.completed(
@@ -674,6 +779,220 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
         ("Wait for function-runtime deployment", "pending"),
         ("Run loadtest via Python runner", "pending"),
         ("Run autoscaling experiment (Python)", "pending"),
+    ]
+
+
+def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_completes(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+    from controlplane_tool.console import phase, step
+
+    captured: dict[str, object] = {}
+
+    answers = iter(["nanofaas-e2e", "java", True, False])
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        event_listener = kwargs["event_listener"]
+
+        def _run() -> str:
+            step_meta = ScenarioPlanStep(
+                summary="Run k3s-junit-curl verification",
+                command=["python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"],
+            )
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=1,
+                    total_steps=1,
+                    step=step_meta,
+                    status="running",
+                )
+            )
+            phase("Verify")
+            step("Verifying control-plane health")
+            step("Verifying Prometheus metrics")
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=1,
+                    total_steps=1,
+                    step=step_meta,
+                    status="success",
+                )
+            )
+            return "ok"
+
+        return LocalFlowDefinition(
+            flow_id="e2e.k3s_junit_curl",
+            task_ids=["tests.run_k3s_curl_checks"],
+            run=_run,
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        return _completed_flow_result(flow_id, flow())
+
+    class _FakeLive:
+        def __init__(self, renderable, **kwargs):  # noqa: ANN001
+            self.renderable = renderable
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def update(self, renderable, refresh=False):  # noqa: ANN001
+            self.renderable = renderable
+
+    class _FakeKeyListener:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            pass
+
+        def start(self) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+    original_complete_running_steps = WorkflowDashboard.complete_running_steps
+
+    def record_complete_running_steps(self, *args, **kwargs):  # noqa: ANN001
+        result = original_complete_running_steps(self, *args, **kwargs)
+        captured["steps"] = [(step.label, step.state) for step in self.steps]
+        return result
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(tui_app, "Live", _FakeLive)
+    monkeypatch.setattr(tui_app, "WorkflowKeyListener", _FakeKeyListener)
+    monkeypatch.setattr(WorkflowDashboard, "complete_running_steps", record_complete_running_steps)
+
+    NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
+
+    assert captured["steps"] == [
+        ("Run k3s-junit-curl verification", "success"),
+        ("Verify", "success"),
+        ("Verifying control-plane health", "success"),
+        ("Verifying Prometheus metrics", "success"),
+        ("k3s-junit-curl E2E completed", "success"),
+    ]
+
+
+def test_child_events_require_explicit_completion(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+    from controlplane_tool.console import phase, step
+
+    captured: dict[str, object] = {}
+
+    answers = iter(["nanofaas-e2e", "java", True, False])
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Teardown VM"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        event_listener = kwargs["event_listener"]
+
+        def _run() -> str:
+            verify_step = ScenarioPlanStep(
+                summary="Run k3s-junit-curl verification",
+                command=["python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"],
+            )
+            teardown_step = ScenarioPlanStep(
+                summary="Teardown VM",
+                command=["multipass", "delete", "nanofaas-e2e"],
+            )
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=1,
+                    total_steps=2,
+                    step=verify_step,
+                    status="running",
+                )
+            )
+            phase("Verify")
+            step("Verify")
+            step("Verify")
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=2,
+                    total_steps=2,
+                    step=teardown_step,
+                    status="running",
+                )
+            )
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=1,
+                    total_steps=2,
+                    step=verify_step,
+                    status="success",
+                )
+            )
+            return "ok"
+
+        return LocalFlowDefinition(
+            flow_id="e2e.k3s_junit_curl",
+            task_ids=["tests.run_k3s_curl_checks", "vm.teardown"],
+            run=_run,
+        )
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        return _completed_flow_result(flow_id, flow())
+
+    class _FakeLive:
+        def __init__(self, renderable, **kwargs):  # noqa: ANN001
+            self.renderable = renderable
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def update(self, renderable, refresh=False):  # noqa: ANN001
+            self.renderable = renderable
+
+    class _FakeKeyListener:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            pass
+
+        def start(self) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+    original_complete_running_steps = WorkflowDashboard.complete_running_steps
+
+    def record_complete_running_steps(self, *args, **kwargs):  # noqa: ANN001
+        result = original_complete_running_steps(self, *args, **kwargs)
+        captured["steps"] = [(step.label, step.state) for step in self.steps]
+        return result
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(tui_app, "Live", _FakeLive)
+    monkeypatch.setattr(tui_app, "WorkflowKeyListener", _FakeKeyListener)
+    monkeypatch.setattr(WorkflowDashboard, "complete_running_steps", record_complete_running_steps)
+
+    NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
+
+    assert captured["steps"] == [
+        ("Run k3s-junit-curl verification", "success"),
+        ("Teardown VM", "pending"),
     ]
 
 

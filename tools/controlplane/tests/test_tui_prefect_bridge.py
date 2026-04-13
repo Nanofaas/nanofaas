@@ -125,3 +125,83 @@ def test_tui_bridge_task_updated_reactivates_failed_task() -> None:
     snapshot = bridge.snapshot()
     assert snapshot.phases[0].status == "running"
     assert snapshot.phases[0].detail == "Retrying"
+
+
+def test_tui_bridge_does_not_mark_lower_planned_step_success_when_higher_step_starts() -> None:
+    bridge = TuiPrefectBridge(
+        planned_steps=[
+            "Ensure VM is running",
+            "Provision base VM dependencies",
+        ]
+    )
+
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k8s_vm",
+            task_id="vm.ensure_running",
+            title="Ensure VM is running",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k8s_vm",
+            task_id="vm.provision_base",
+            title="Provision base VM dependencies",
+        )
+    )
+
+    snapshot = bridge.snapshot()
+    assert [phase.status for phase in snapshot.phases] == ["running", "running"]
+
+
+def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
+    bridge = TuiPrefectBridge(
+        planned_steps=[
+            "Ensure VM is running",
+            "Provision base VM dependencies",
+            "Sync project to VM",
+            "Run k3s-junit-curl verification",
+            "Delete E2E namespace",
+            "Teardown VM",
+        ]
+    )
+
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_k3s_curl_checks",
+            title="Run k3s-junit-curl verification",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.control_plane_health",
+            title="Verify",
+            detail="Verifying control-plane health",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.prometheus_metrics",
+            title="Verify",
+            detail="Verifying Prometheus metrics",
+        )
+    )
+
+    snapshot = bridge.snapshot()
+
+    assert [phase.label for phase in snapshot.phases] == [
+        "Ensure VM is running",
+        "Provision base VM dependencies",
+        "Sync project to VM",
+        "Run k3s-junit-curl verification",
+        "Delete E2E namespace",
+        "Teardown VM",
+    ]
