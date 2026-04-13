@@ -86,7 +86,7 @@ class TuiPrefectBridge:
     def handle_event(self, event: WorkflowEvent) -> None:
         if event.kind == "log.line":
             if event.task_id:
-                self._phase_for_event(event, allow_top_level_creation=True)
+                self._phase_for_event(event)
             prefix = "stderr │ " if event.stream == "stderr" else ""
             self.append_log(f"{prefix}{event.line}")
             return
@@ -95,55 +95,60 @@ class TuiPrefectBridge:
             self.append_log(f"[phase] {event.title or 'Phase'}")
             return
         if event.kind == "task.pending":
-            self._phase_for_event(event, allow_top_level_creation=True)
+            self._phase_for_event(event)
             return
         if event.kind == "task.running":
             self.append_log(
                 f"[step] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase = self._phase_for_event(event, allow_top_level_creation=True)
-            self._mark_phase_running(phase)
+            phase = self._phase_for_event(event)
+            if phase is not None:
+                self._mark_phase_running(phase)
             return
         if event.kind == "task.completed":
             self.append_log(
                 f"[ok] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase = self._phase_for_event(event, allow_top_level_creation=True)
-            self._mark_phase_success(phase, detail=event.detail)
+            phase = self._phase_for_event(event)
+            if phase is not None:
+                self._mark_phase_success(phase, detail=event.detail)
             return
         if event.kind == "task.failed":
             self.append_log(
                 f"[fail] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase = self._phase_for_event(event, allow_top_level_creation=True)
-            self._mark_phase_failed(phase, detail=event.detail)
+            phase = self._phase_for_event(event)
+            if phase is not None:
+                self._mark_phase_failed(phase, detail=event.detail)
             return
         if event.kind == "task.cancelled":
             self.append_log(
                 f"[cancel] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase = self._phase_for_event(event, allow_top_level_creation=True)
-            self._mark_phase_cancelled(phase, detail=event.detail)
+            phase = self._phase_for_event(event)
+            if phase is not None:
+                self._mark_phase_cancelled(phase, detail=event.detail)
             return
         if event.kind == "task.updated":
             self.append_log(
                 f"[update] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase = self._phase_for_event(event, allow_top_level_creation=True)
-            self._mark_phase_running(phase)
+            phase = self._phase_for_event(event)
+            if phase is not None:
+                self._mark_phase_running(phase)
             return
         if event.kind == "task.warning":
             self.append_log(f"[warn] {event.title or event.task_id or 'Task'}")
-            self._phase_for_event(event, allow_top_level_creation=True)
+            self._phase_for_event(event)
             return
         if event.kind == "task.skipped":
             self.append_log(f"[skip] {event.title or event.task_id or 'Task'}")
-            self._phase_for_event(event, allow_top_level_creation=True)
+            self._phase_for_event(event)
 
     def _clone_phase(self, phase: TuiPhaseSnapshot) -> TuiPhaseSnapshot:
         return TuiPhaseSnapshot(
@@ -160,9 +165,7 @@ class TuiPrefectBridge:
     def _phase_for_event(
         self,
         event: WorkflowEvent,
-        *,
-        allow_top_level_creation: bool,
-    ) -> TuiPhaseSnapshot:
+    ) -> TuiPhaseSnapshot | None:
         phase = self._phase_by_task_id.get(event.task_id or "")
         if phase is not None:
             self._sync_phase_metadata(phase, event.title or phase.label, event.task_id, event.detail)
@@ -174,22 +177,21 @@ class TuiPrefectBridge:
                     parent,
                     event.title or event.task_id or "Task",
                     task_id=event.task_id,
-                    detail=event.detail,
+                        detail=event.detail,
                 )
-        if not allow_top_level_creation:
-            existing = self._phase_by_task_id.get(event.parent_task_id or "")
-            if existing is not None:
-                return existing
-            return self._next_unassigned_top_level_phase() or self._upsert_top_level_phase(
+        if not self._phases:
+            return self._upsert_top_level_phase(
                 event.title or event.task_id or "Task",
                 task_id=event.task_id,
                 detail=event.detail,
             )
-        return self._upsert_top_level_phase(
-            event.title or event.task_id or "Task",
-            task_id=event.task_id,
-            detail=event.detail,
-        )
+        if event.title is None:
+            return None
+        phase = self._match_planned_top_level_phase(event.title)
+        if phase is None:
+            return None
+        self._sync_phase_metadata(phase, event.title, event.task_id, event.detail)
+        return phase
 
     def _upsert_top_level_phase(
         self,
@@ -211,6 +213,18 @@ class TuiPrefectBridge:
         if task_id:
             self._phase_by_task_id[task_id] = phase
         return phase
+
+    def _next_unassigned_top_level_phase(self) -> TuiPhaseSnapshot | None:
+        for phase in self._phases:
+            if phase.parent_task_id is None and phase.task_id is None:
+                return phase
+        return None
+
+    def _match_planned_top_level_phase(self, label: str) -> TuiPhaseSnapshot | None:
+        for phase in self._phases:
+            if phase.parent_task_id is None and phase.task_id is None and phase.label == label:
+                return phase
+        return None
 
     def _ensure_child_phase(
         self,
@@ -254,12 +268,6 @@ class TuiPrefectBridge:
             self._phase_by_task_id[task_id] = phase
         if detail:
             phase.detail = detail
-
-    def _next_unassigned_top_level_phase(self) -> TuiPhaseSnapshot | None:
-        for phase in self._phases:
-            if phase.parent_task_id is None and phase.task_id is None:
-                return phase
-        return None
 
     def _mark_phase_running(self, phase: TuiPhaseSnapshot) -> None:
         if phase.status != "running":

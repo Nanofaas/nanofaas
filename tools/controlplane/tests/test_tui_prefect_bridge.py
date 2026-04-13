@@ -306,5 +306,5 @@ def test_parentless_task_event_does_not_attach_to_active_row() -> None:
     snapshot = bridge.snapshot()
     assert snapshot.phases[0].task_id == "tests.run_k3s_curl_checks"
     assert snapshot.phases[0].children == []
-    assert snapshot.phases[1].task_id == "verify.prometheus_metrics"
+    assert snapshot.phases[1].task_id is None
     assert snapshot.phases[1].label == "Teardown VM"
