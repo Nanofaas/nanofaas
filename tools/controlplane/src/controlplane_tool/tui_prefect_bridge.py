@@ -1,29 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import time
-from typing import Literal
 
-from controlplane_tool.workflow_models import WorkflowEvent
-
-WorkflowState = Literal["pending", "running", "success", "failed", "cancelled"]
-
-
-@dataclass
-class TuiPhaseSnapshot:
-    label: str
-    task_id: str | None = None
-    status: WorkflowState = "pending"
-    detail: str = ""
-    started_at: float | None = None
-    finished_at: float | None = None
-
-
-@dataclass
-class TuiWorkflowSnapshot:
-    phases: list[TuiPhaseSnapshot]
-    logs: list[str]
-    show_logs: bool
+from controlplane_tool.workflow_models import (
+    TuiPhaseSnapshot,
+    TuiWorkflowSnapshot,
+    WorkflowEvent,
+    WorkflowState,
+)
 
 
 class TuiPrefectBridge:
@@ -35,25 +19,15 @@ class TuiPrefectBridge:
     ) -> None:
         self.log_limit = log_limit
         self._phases: list[TuiPhaseSnapshot] = []
-        self._phase_keys: dict[str, int] = {}
+        self._phase_by_task_id: dict[str, TuiPhaseSnapshot] = {}
         self._logs: list[str] = []
         self._show_logs = True
         for label in planned_steps or []:
-            self.upsert_phase(label)
+            self._phases.append(TuiPhaseSnapshot(label=label))
 
     def snapshot(self) -> TuiWorkflowSnapshot:
         return TuiWorkflowSnapshot(
-            phases=[
-                TuiPhaseSnapshot(
-                    label=phase.label,
-                    task_id=phase.task_id,
-                    status=phase.status,
-                    detail=phase.detail,
-                    started_at=phase.started_at,
-                    finished_at=phase.finished_at,
-                )
-                for phase in self._phases
-            ],
+            phases=[self._clone_phase(phase) for phase in self._phases],
             logs=list(self._logs),
             show_logs=self._show_logs,
         )
@@ -74,59 +48,26 @@ class TuiPrefectBridge:
         detail: str = "",
         activate: bool = False,
     ) -> int:
-        key = self._resolve_key(label, task_id)
-        index = self._phase_keys.get(key)
-        if index is None and task_id is not None:
-            index = self._find_title_placeholder(label)
-            if index is not None:
-                self._phase_keys[key] = index
-                self._phases[index].task_id = task_id
-        if index is None:
-            self._phases.append(TuiPhaseSnapshot(label=label, task_id=task_id, detail=detail))
-            index = len(self._phases) - 1
-            self._phase_keys[key] = index
-        phase = self._phases[index]
-        if label and (not phase.label or phase.label == phase.task_id):
-            phase.label = label
-        if task_id and not phase.task_id:
-            phase.task_id = task_id
-        if detail:
-            phase.detail = detail
+        phase = self._upsert_top_level_phase(label, task_id=task_id, detail=detail)
         if activate:
-            self.mark_phase_running(index + 1)
-        return index + 1
+            self._mark_phase_running(phase)
+        return self._phases.index(phase) + 1
 
     def mark_phase_running(self, phase_index: int) -> None:
         phase = self._phases[phase_index - 1]
-        for existing in self._phases:
-            if existing is phase or existing.status != "running":
-                continue
-            existing.status = "success"
-            existing.finished_at = existing.finished_at or time.time()
-        if phase.status != "running":
-            phase.status = "running"
-        phase.started_at = phase.started_at or time.time()
+        self._mark_phase_running(phase)
 
     def mark_phase_success(self, phase_index: int, detail: str = "") -> None:
         phase = self._phases[phase_index - 1]
-        phase.status = "success"
-        if detail:
-            phase.detail = detail
-        phase.finished_at = time.time()
+        self._mark_phase_success(phase, detail=detail)
 
     def mark_phase_failed(self, phase_index: int, detail: str = "") -> None:
         phase = self._phases[phase_index - 1]
-        phase.status = "failed"
-        if detail:
-            phase.detail = detail
-        phase.finished_at = time.time()
+        self._mark_phase_failed(phase, detail=detail)
 
     def mark_phase_cancelled(self, phase_index: int, detail: str = "") -> None:
         phase = self._phases[phase_index - 1]
-        phase.status = "cancelled"
-        if detail:
-            phase.detail = detail
-        phase.finished_at = time.time()
+        self._mark_phase_cancelled(phase, detail=detail)
 
     def complete_running_phases(
         self,
@@ -145,7 +86,26 @@ class TuiPrefectBridge:
     def handle_event(self, event: WorkflowEvent) -> None:
         if event.kind == "log.line":
             if event.task_id and (event.title or self._has_phase_for_task(event.task_id)):
-                self.upsert_phase(event.title or event.task_id, task_id=event.task_id)
+                phase = self._phase_by_task_id.get(event.task_id)
+                if phase is None:
+                    phase = self._find_top_level_phase(event.title or event.task_id)
+                if phase is None:
+                    parent = self._find_fallback_parent(event)
+                    if parent is not None:
+                        phase = self._ensure_child_phase(
+                            parent,
+                            event.title or event.task_id,
+                            task_id=event.task_id,
+                            detail=event.detail,
+                        )
+                    else:
+                        phase = self._upsert_top_level_phase(
+                            event.title or event.task_id,
+                            task_id=event.task_id,
+                            detail=event.detail,
+                        )
+                else:
+                    self._sync_phase_metadata(phase, event.title or event.task_id, event.task_id, event.detail)
             prefix = "stderr │ " if event.stream == "stderr" else ""
             self.append_log(f"{prefix}{event.line}")
             return
@@ -154,85 +114,220 @@ class TuiPrefectBridge:
             self.append_log(f"[phase] {event.title or 'Phase'}")
             return
         if event.kind == "task.pending":
-            self.upsert_phase(event.title or event.task_id or "Task", task_id=event.task_id, detail=event.detail)
+            self._phase_for_task_event(event, activate=False)
             return
         if event.kind == "task.running":
             self.append_log(
                 f"[step] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase_index = self.upsert_phase(
-                event.title or event.task_id or "Task",
-                task_id=event.task_id,
-                detail=event.detail,
-                activate=True,
-            )
-            self.mark_phase_running(phase_index)
+            phase = self._phase_for_task_event(event, activate=True)
+            self._mark_phase_running(phase)
             return
         if event.kind == "task.completed":
             self.append_log(
                 f"[ok] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase_index = self.upsert_phase(
-                event.title or event.task_id or "Task",
-                task_id=event.task_id,
-                detail=event.detail,
-            )
-            self.mark_phase_success(phase_index, detail=event.detail)
+            phase = self._phase_for_task_event(event, activate=False)
+            self._mark_phase_success(phase, detail=event.detail)
             return
         if event.kind == "task.failed":
             self.append_log(
                 f"[fail] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase_index = self.upsert_phase(
-                event.title or event.task_id or "Task",
-                task_id=event.task_id,
-                detail=event.detail,
-            )
-            self.mark_phase_failed(phase_index, detail=event.detail)
+            phase = self._phase_for_task_event(event, activate=False)
+            self._mark_phase_failed(phase, detail=event.detail)
             return
         if event.kind == "task.cancelled":
             self.append_log(
                 f"[cancel] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase_index = self.upsert_phase(
-                event.title or event.task_id or "Task",
-                task_id=event.task_id,
-                detail=event.detail,
-            )
-            self.mark_phase_cancelled(phase_index, detail=event.detail)
+            phase = self._phase_for_task_event(event, activate=False)
+            self._mark_phase_cancelled(phase, detail=event.detail)
             return
         if event.kind == "task.updated":
             self.append_log(
                 f"[update] {event.title or event.task_id or 'Task'}"
                 + (f" ({event.detail})" if event.detail else "")
             )
-            phase_index = self.upsert_phase(
+            phase = self._phase_for_task_event(event, activate=True)
+            self._mark_phase_running(phase)
+            return
+        if event.kind == "task.warning":
+            self.append_log(f"[warn] {event.title or event.task_id or 'Task'}")
+            self._phase_for_task_event(event, activate=False)
+            return
+        if event.kind == "task.skipped":
+            self.append_log(f"[skip] {event.title or event.task_id or 'Task'}")
+            self._phase_for_task_event(event, activate=False)
+
+    def _clone_phase(self, phase: TuiPhaseSnapshot) -> TuiPhaseSnapshot:
+        return TuiPhaseSnapshot(
+            label=phase.label,
+            task_id=phase.task_id,
+            parent_task_id=phase.parent_task_id,
+            status=phase.status,
+            detail=phase.detail,
+            started_at=phase.started_at,
+            finished_at=phase.finished_at,
+            children=[self._clone_phase(child) for child in phase.children],
+        )
+
+    def _phase_for_task_event(self, event: WorkflowEvent, *, activate: bool) -> TuiPhaseSnapshot:
+        phase = self._phase_by_task_id.get(event.task_id or "")
+        if phase is not None:
+            self._sync_phase_metadata(phase, event.title or event.task_id or phase.label, event.task_id, event.detail)
+            return phase
+        parent = self._resolve_parent_phase(event)
+        if parent is not None and self._is_child_event(event):
+            phase = self._ensure_child_phase(
+                parent,
                 event.title or event.task_id or "Task",
                 task_id=event.task_id,
                 detail=event.detail,
             )
-            self.mark_phase_running(phase_index)
-            return
-        if event.kind == "task.warning":
-            self.append_log(f"[warn] {event.title or event.task_id or 'Task'}")
-            self.upsert_phase(event.title or event.task_id or "Task", task_id=event.task_id)
-            return
-        if event.kind == "task.skipped":
-            self.append_log(f"[skip] {event.title or event.task_id or 'Task'}")
-            self.upsert_phase(event.title or event.task_id or "Task", task_id=event.task_id)
+        else:
+            phase = self._upsert_top_level_phase(
+                event.title or event.task_id or "Task",
+                task_id=event.task_id,
+                detail=event.detail,
+            )
+        if activate:
+            self._mark_phase_running(phase)
+        return phase
 
-    def _resolve_key(self, label: str, task_id: str | None) -> str:
+    def _resolve_parent_phase(self, event: WorkflowEvent) -> TuiPhaseSnapshot | None:
+        if event.parent_task_id:
+            parent = self._phase_by_task_id.get(event.parent_task_id)
+            if parent is not None:
+                return parent
+        if not self._phases:
+            return None
+        if event.task_id:
+            existing = self._phase_by_task_id.get(event.task_id)
+            if existing is not None and existing.parent_task_id is not None:
+                return self._phase_by_task_id.get(existing.parent_task_id)
+        if self._find_top_level_phase(event.title or "") is not None:
+            return None
+        return self._find_active_top_level_phase()
+
+    def _find_fallback_parent(self, event: WorkflowEvent) -> TuiPhaseSnapshot | None:
+        if not self._phases:
+            return None
+        if event.parent_task_id:
+            return self._phase_by_task_id.get(event.parent_task_id)
+        return self._find_active_top_level_phase()
+
+    def _is_child_event(self, event: WorkflowEvent) -> bool:
+        if event.parent_task_id:
+            return True
+        if not self._phases:
+            return False
+        if self._find_top_level_phase(event.title or "") is not None:
+            return False
+        return self._find_active_top_level_phase() is not None
+
+    def _upsert_top_level_phase(
+        self,
+        label: str,
+        *,
+        task_id: str | None = None,
+        detail: str = "",
+    ) -> TuiPhaseSnapshot:
+        phase = self._phase_by_task_id.get(task_id or "")
+        if phase is not None and phase.parent_task_id is None:
+            self._sync_phase_metadata(phase, label, task_id, detail)
+            return phase
+        phase = self._find_top_level_phase(label)
+        if phase is None:
+            phase = TuiPhaseSnapshot(label=label, task_id=task_id, detail=detail)
+            self._phases.append(phase)
+        else:
+            self._sync_phase_metadata(phase, label, task_id, detail)
         if task_id:
-            return f"task:{task_id}"
-        return f"title:{label}"
+            self._phase_by_task_id[task_id] = phase
+        return phase
 
-    def _find_title_placeholder(self, label: str) -> int | None:
-        key = f"title:{label}"
-        return self._phase_keys.get(key)
+    def _ensure_child_phase(
+        self,
+        parent: TuiPhaseSnapshot,
+        label: str,
+        *,
+        task_id: str | None = None,
+        detail: str = "",
+    ) -> TuiPhaseSnapshot:
+        phase = self._phase_by_task_id.get(task_id or "")
+        if phase is not None and phase.parent_task_id == parent.task_id:
+            self._sync_phase_metadata(phase, label, task_id, detail)
+            return phase
+        if task_id is None:
+            for child in parent.children:
+                if child.label == label and child.parent_task_id == parent.task_id:
+                    self._sync_phase_metadata(child, label, task_id, detail)
+                    return child
+        phase = TuiPhaseSnapshot(
+            label=label,
+            task_id=task_id,
+            parent_task_id=parent.task_id,
+            detail=detail,
+        )
+        parent.children.append(phase)
+        if task_id:
+            self._phase_by_task_id[task_id] = phase
+        return phase
+
+    def _sync_phase_metadata(
+        self,
+        phase: TuiPhaseSnapshot,
+        label: str,
+        task_id: str | None,
+        detail: str,
+    ) -> None:
+        if label and (not phase.label or phase.label == phase.task_id):
+            phase.label = label
+        if task_id and not phase.task_id:
+            phase.task_id = task_id
+            self._phase_by_task_id[task_id] = phase
+        if detail:
+            phase.detail = detail
+
+    def _find_top_level_phase(self, label: str) -> TuiPhaseSnapshot | None:
+        for phase in self._phases:
+            if phase.label == label and phase.parent_task_id is None:
+                return phase
+        return None
+
+    def _find_active_top_level_phase(self) -> TuiPhaseSnapshot | None:
+        for phase in reversed(self._phases):
+            if phase.parent_task_id is None and phase.status == "running":
+                return phase
+        return None
 
     def _has_phase_for_task(self, task_id: str) -> bool:
-        return self._resolve_key("", task_id) in self._phase_keys
+        return task_id in self._phase_by_task_id
+
+    def _mark_phase_running(self, phase: TuiPhaseSnapshot) -> None:
+        if phase.status != "running":
+            phase.status = "running"
+        phase.started_at = phase.started_at or time.time()
+
+    def _mark_phase_success(self, phase: TuiPhaseSnapshot, detail: str = "") -> None:
+        phase.status = "success"
+        if detail:
+            phase.detail = detail
+        phase.finished_at = time.time()
+
+    def _mark_phase_failed(self, phase: TuiPhaseSnapshot, detail: str = "") -> None:
+        phase.status = "failed"
+        if detail:
+            phase.detail = detail
+        phase.finished_at = time.time()
+
+    def _mark_phase_cancelled(self, phase: TuiPhaseSnapshot, detail: str = "") -> None:
+        phase.status = "cancelled"
+        if detail:
+            phase.detail = detail
+        phase.finished_at = time.time()
