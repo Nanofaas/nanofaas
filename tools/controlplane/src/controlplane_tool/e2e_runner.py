@@ -490,18 +490,22 @@ class E2eRunner:
             uninstall_runtime_step = self._step(
                 "Uninstall function-runtime Helm release",
                 ["echo", "Skipping function-runtime cleanup (--no-cleanup-vm)"],
+                step_id="cleanup.uninstall_function_runtime",
             )
             uninstall_control_plane_step = self._step(
                 "Uninstall control-plane Helm release",
                 ["echo", "Skipping control-plane cleanup (--no-cleanup-vm)"],
+                step_id="cleanup.uninstall_control_plane",
             )
             delete_namespace_step = self._step(
                 "Delete E2E namespace",
                 ["echo", "Skipping namespace cleanup (--no-cleanup-vm)"],
+                step_id="cleanup.delete_namespace",
             )
             teardown_step = self._step(
                 "Teardown VM",
                 ["echo", "Skipping VM teardown (--no-cleanup-vm)"],
+                step_id="vm.down",
             )
 
         return [
@@ -521,6 +525,7 @@ class E2eRunner:
                     namespace=namespace,
                     remote_manifest_path=remote_manifest_path,
                 ),
+                step_id="tests.run_k8s_junit",
             ),
             uninstall_runtime_step,
             uninstall_control_plane_step,

@@ -397,7 +397,8 @@ def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
 
 
 def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
-    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+    runner = E2eRunner(Path("/repo"), shell=RecordingShell())
+    steps = runner._k3s_junit_curl_tail_steps(  # noqa: SLF001
         E2eRequest(
             scenario="k3s-junit-curl",
             runtime="java",
@@ -405,7 +406,28 @@ def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
         )
     )
 
-    assert [step.step_id for step in plan.steps[-6:]] == [
+    assert [step.step_id for step in steps] == [
+        "tests.run_k3s_curl_checks",
+        "tests.run_k8s_junit",
+        "cleanup.uninstall_function_runtime",
+        "cleanup.uninstall_control_plane",
+        "cleanup.delete_namespace",
+        "vm.down",
+    ]
+
+
+def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values_without_cleanup() -> None:
+    runner = E2eRunner(Path("/repo"), shell=RecordingShell())
+    steps = runner._k3s_junit_curl_tail_steps(  # noqa: SLF001
+        E2eRequest(
+            scenario="k3s-junit-curl",
+            runtime="java",
+            cleanup_vm=False,
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    assert [step.step_id for step in steps] == [
         "tests.run_k3s_curl_checks",
         "tests.run_k8s_junit",
         "cleanup.uninstall_function_runtime",
