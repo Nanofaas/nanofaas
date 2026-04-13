@@ -682,6 +682,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
     import controlplane_tool.e2e_runner as e2e_runner
     from controlplane_tool.console import phase, step
     from rich.console import Console
+    import re
 
     captured: dict[str, object] = {}
 
@@ -767,11 +768,14 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
     console = Console(record=True, width=140)
     console.print(captured["live"].renderable)
     text = console.export_text()
+    phase_labels = [
+        re.sub(r"\s+\d+\.\d+s$", "", match.group(1)).strip()
+        for line in text.splitlines()
+        for match in [re.search(r"\d+\.\s+(.*?)\s+\d+\.\d+s", line)]
+        if match is not None
+    ]
 
-    assert "Run k3s-junit-curl verification" in text
-    assert "✓ 2. Verify" not in text
-    assert "✓ 3. Verifying control-plane health" not in text
-    assert "✓ 4. Verifying Prometheus metrics" not in text
+    assert phase_labels == ["Run k3s-junit-curl verification"]
 
 def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
     dashboard = WorkflowDashboard(

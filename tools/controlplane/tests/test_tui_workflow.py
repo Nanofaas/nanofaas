@@ -291,6 +291,9 @@ def test_teardown_row_stays_pending_until_parent_cleanup_step_completes() -> Non
             title="Delete E2E namespace",
         )
     )
+
+    assert dashboard.steps[-1].label == "Teardown VM"
+    assert dashboard.steps[-1].state == "pending"
     dashboard.apply_event(
         build_task_event(
             kind="task.completed",
