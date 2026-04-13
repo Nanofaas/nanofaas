@@ -197,7 +197,11 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
 
     snapshot = bridge.snapshot()
 
-    assert snapshot.phases[3].label == "Run k3s-junit-curl verification"
-    assert snapshot.phases[3].task_id == "tests.run_k3s_curl_checks"
-    assert snapshot.phases[3].detail == "Verifying Prometheus metrics"
-    assert all(phase.label != "Verify" for phase in snapshot.phases)
+    assert [phase.label for phase in snapshot.phases] == [
+        "Ensure VM is running",
+        "Provision base VM dependencies",
+        "Sync project to VM",
+        "Run k3s-junit-curl verification",
+        "Delete E2E namespace",
+        "Teardown VM",
+    ]
