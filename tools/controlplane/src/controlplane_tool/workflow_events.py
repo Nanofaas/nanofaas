@@ -26,8 +26,6 @@ def _event_context(
     active = context or WorkflowContext()
     resolved_task_id = task_id if task_id is not None else active.task_id if inherit_task_id else None
     resolved_parent_task_id = parent_task_id if parent_task_id is not None else active.parent_task_id
-    if resolved_parent_task_id is None and inherit_task_id and active.task_id is not None:
-        resolved_parent_task_id = active.task_id
     return (
         flow_id or active.flow_id,
         flow_run_id or active.flow_run_id,
@@ -76,14 +74,21 @@ def build_phase_event(
     flow_run_id: str | None = None,
     context: WorkflowContext | None = None,
 ) -> WorkflowEvent:
-    active = context or WorkflowContext()
+    resolved_flow_id, resolved_flow_run_id, resolved_task_id, resolved_parent_task_id, resolved_task_run_id = _event_context(
+        flow_id=flow_id,
+        flow_run_id=flow_run_id,
+        task_id=None,
+        parent_task_id=None,
+        task_run_id=None,
+        context=context,
+    )
     return WorkflowEvent(
         kind="phase.started",
-        flow_id=flow_id or active.flow_id,
-        flow_run_id=flow_run_id or active.flow_run_id,
-        task_id=active.task_id,
-        parent_task_id=active.parent_task_id,
-        task_run_id=active.task_run_id,
+        flow_id=resolved_flow_id,
+        flow_run_id=resolved_flow_run_id,
+        task_id=resolved_task_id,
+        parent_task_id=resolved_parent_task_id,
+        task_run_id=resolved_task_run_id,
         title=label,
     )
 

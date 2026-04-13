@@ -146,7 +146,7 @@ def test_render_event_shows_updated_tasks_and_log_lines(capsys) -> None:
     assert "docker push ok" in captured.out
 
 
-def test_nested_console_steps_preserve_explicit_parent_identity() -> None:
+def test_nested_console_steps_stay_parentless_without_explicit_parent_identity() -> None:
     sink = _FakeSink()
     context = WorkflowContext(flow_id="workflow.console", task_id="tests.run_k3s_curl_checks")
 
@@ -159,8 +159,8 @@ def test_nested_console_steps_preserve_explicit_parent_identity() -> None:
         "tests.run_k3s_curl_checks",
     ]
     assert [event.parent_task_id for event in sink.events] == [
-        "tests.run_k3s_curl_checks",
-        "tests.run_k3s_curl_checks",
+        None,
+        None,
     ]
 
 
