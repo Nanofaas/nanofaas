@@ -172,6 +172,30 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
         build_task_event(
             kind="task.running",
             flow_id="e2e.k3s_junit_curl",
+            task_id="vm.ensure_running",
+            title="Ensure VM is running",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="vm.provision_base_dependencies",
+            title="Provision base VM dependencies",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="vm.sync_project",
+            title="Sync project to VM",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
             task_id="tests.run_k3s_curl_checks",
             title="Run k3s-junit-curl verification",
         )
@@ -181,6 +205,7 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
             kind="task.running",
             flow_id="e2e.k3s_junit_curl",
             task_id="verify.control_plane_health",
+            parent_task_id="tests.run_k3s_curl_checks",
             title="Verify",
             detail="Verifying control-plane health",
         )
@@ -190,6 +215,7 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
             kind="task.running",
             flow_id="e2e.k3s_junit_curl",
             task_id="verify.prometheus_metrics",
+            parent_task_id="tests.run_k3s_curl_checks",
             title="Verify",
             detail="Verifying Prometheus metrics",
         )
@@ -197,6 +223,10 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
 
     snapshot = bridge.snapshot()
 
+    assert snapshot.phases[0].task_id == "vm.ensure_running"
+    assert snapshot.phases[1].task_id == "vm.provision_base_dependencies"
+    assert snapshot.phases[2].task_id == "vm.sync_project"
+    assert snapshot.phases[3].task_id == "tests.run_k3s_curl_checks"
     assert [phase.label for phase in snapshot.phases] == [
         "Ensure VM is running",
         "Provision base VM dependencies",
@@ -211,3 +241,70 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
         "verify.control_plane_health",
         "verify.prometheus_metrics",
     ]
+
+
+def test_parent_task_id_routes_child_under_parent_even_when_labels_match() -> None:
+    bridge = TuiPrefectBridge(
+        planned_steps=[
+            "Run k3s-junit-curl verification",
+            "Verify",
+        ]
+    )
+
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_k3s_curl_checks",
+            title="Run k3s-junit-curl verification",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.control_plane_health",
+            parent_task_id="tests.run_k3s_curl_checks",
+            title="Verify",
+            detail="Verifying control-plane health",
+        )
+    )
+
+    snapshot = bridge.snapshot()
+    assert snapshot.phases[0].task_id == "tests.run_k3s_curl_checks"
+    assert snapshot.phases[0].children[0].task_id == "verify.control_plane_health"
+    assert snapshot.phases[1].task_id is None
+    assert snapshot.phases[1].label == "Verify"
+
+
+def test_parentless_task_event_does_not_attach_to_active_row() -> None:
+    bridge = TuiPrefectBridge(
+        planned_steps=[
+            "Run k3s-junit-curl verification",
+            "Teardown VM",
+        ]
+    )
+
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_k3s_curl_checks",
+            title="Run k3s-junit-curl verification",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.prometheus_metrics",
+            title="Verify",
+            detail="Verifying Prometheus metrics",
+        )
+    )
+
+    snapshot = bridge.snapshot()
+    assert snapshot.phases[0].task_id == "tests.run_k3s_curl_checks"
+    assert snapshot.phases[0].children == []
+    assert snapshot.phases[1].task_id == "verify.prometheus_metrics"
+    assert snapshot.phases[1].label == "Teardown VM"
