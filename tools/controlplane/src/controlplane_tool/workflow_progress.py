@@ -10,6 +10,8 @@ from controlplane_tool.workflow_models import WorkflowContext
 
 @dataclass(slots=True, frozen=True)
 class WorkflowProgressReporter:
+    """One-level reporter for nested verification work beneath the active parent task."""
+
     flow_id: str
     parent_task_id: str | None = None
 

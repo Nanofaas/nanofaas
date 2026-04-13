@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.console import bind_workflow_context, bind_workflow_sink
+from controlplane_tool.console import bind_workflow_context, bind_workflow_sink, workflow_log
 from controlplane_tool.k3s_curl_runner import K3sCurlRunner
 from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent
 from controlplane_tool.workflow_progress import WorkflowProgressReporter
@@ -49,20 +49,25 @@ def test_workflow_progress_reporter_child_emits_balanced_events_with_parent_iden
         reporter = WorkflowProgressReporter.current()
         assert reporter.flow_id == "e2e.k3s_junit_curl"
         with reporter.child("verify.health", "Verifying control-plane health"):
+            workflow_log("health endpoint responded")
             pass
 
     assert [event.kind for event in sink.events] == [
         "task.running",
+        "log.line",
         "task.completed",
     ]
     assert [event.task_id for event in sink.events] == [
+        "verify.health",
         "verify.health",
         "verify.health",
     ]
     assert [event.parent_task_id for event in sink.events] == [
         "tests.run_k3s_curl_checks",
         "tests.run_k3s_curl_checks",
+        "tests.run_k3s_curl_checks",
     ]
+    assert sink.events[1].line == "health endpoint responded"
 
 
 def test_workflow_progress_reporter_child_emits_failed_events_with_parent_identity() -> None:
