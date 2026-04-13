@@ -777,6 +777,53 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
 
     assert phase_labels == ["Run k3s-junit-curl verification"]
 
+
+def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    class _FakeLive:
+        def __init__(self, renderable, **kwargs):  # noqa: ANN001
+            self.renderable = renderable
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def update(self, renderable, refresh=False):  # noqa: ANN001
+            self.renderable = renderable
+
+    class _FakeKeyListener:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            pass
+
+        def start(self) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+    def fake_action(dashboard, sink):  # noqa: ANN001
+        dashboard.upsert_step("Run k3s-junit-curl verification", activate=True)
+        return "ok"
+
+    def fail_complete_running_steps(self, *args, **kwargs):  # noqa: ANN001
+        raise AssertionError("dashboard.complete_running_steps() should not be called")
+
+    monkeypatch.setattr(tui_app, "Live", _FakeLive)
+    monkeypatch.setattr(tui_app, "WorkflowKeyListener", _FakeKeyListener)
+    monkeypatch.setattr(WorkflowDashboard, "complete_running_steps", fail_complete_running_steps)
+
+    result = NanofaasTUI()._run_live_workflow(
+        title="E2E Scenarios",
+        summary_lines=["Scenario: k3s-junit-curl"],
+        planned_steps=["Run k3s-junit-curl verification"],
+        action=fake_action,
+    )
+
+    assert result == "ok"
+
 def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",

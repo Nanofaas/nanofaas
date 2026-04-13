@@ -47,10 +47,67 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
     console.print(dashboard.render())
     text = console.export_text()
 
-    assert "Execution Log" in text
+    assert "Raw Command Output" in text
     assert "Execution Phases" in text
     assert "Ensure VM is running" in text
     assert "Bootstrapping VM" in text
+
+
+def test_workflow_dashboard_renders_nested_child_progress_separately() -> None:
+    dashboard = WorkflowDashboard(
+        title="E2E Scenarios",
+        summary_lines=[
+            "Scenario: k3s-junit-curl",
+            "VM Name: nanofaas-e2e",
+        ],
+        planned_steps=[
+            "Run k3s-junit-curl verification",
+            "Teardown VM",
+        ],
+    )
+
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_k3s_curl_checks",
+            title="Run k3s-junit-curl verification",
+        )
+    )
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.control_plane_health",
+            parent_task_id="tests.run_k3s_curl_checks",
+            title="Verify",
+            detail="control-plane health",
+        )
+    )
+    dashboard.apply_event(
+        build_task_event(
+            kind="task.completed",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.control_plane_health",
+            parent_task_id="tests.run_k3s_curl_checks",
+            title="Verify",
+            detail="control-plane health",
+        )
+    )
+
+    console = Console(record=True, width=140)
+    console.print(dashboard.render())
+    text = console.export_text()
+
+    assert [step.label for step in dashboard.steps] == [
+        "Run k3s-junit-curl verification",
+        "Teardown VM",
+    ]
+    assert dashboard.steps[0].children[0].label == "Verify"
+    assert "Nested Verification Work" in text
+    assert "Run k3s-junit-curl verification" in text
+    assert "Verify" in text
+    assert "26. Verify" not in text
 
 
 def test_workflow_dashboard_can_hide_log_panel() -> None:
@@ -223,18 +280,12 @@ def test_workflow_dashboard_keeps_log_panel_bottom_aligned_with_phases() -> None
     assert final_line.count("╯") == 2
 
 
-def test_teardown_row_stays_pending_until_parent_cleanup_step_completes() -> None:
+def test_workflow_dashboard_retains_top_level_rows_even_when_nested_work_completes() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
         summary_lines=["Scenario: k3s-junit-curl"],
         planned_steps=[
-            "Ensure VM is running",
-            "Provision base VM dependencies",
-            "Sync project to VM",
             "Run k3s-junit-curl verification",
-            "Uninstall function-runtime Helm release",
-            "Uninstall control-plane Helm release",
-            "Delete E2E namespace",
             "Teardown VM",
         ],
     )
@@ -249,38 +300,11 @@ def test_teardown_row_stays_pending_until_parent_cleanup_step_completes() -> Non
     )
     dashboard.apply_event(
         build_task_event(
-            kind="task.completed",
+            kind="task.running",
             flow_id="e2e.k3s_junit_curl",
-            task_id="vm.teardown",
-            title="Teardown VM",
-        )
-    )
-
-    assert dashboard.steps[-1].label == "Teardown VM"
-    assert dashboard.steps[-1].state == "pending"
-
-    dashboard.apply_event(
-        build_task_event(
-            kind="task.completed",
-            flow_id="e2e.k3s_junit_curl",
-            task_id="tests.run_k3s_curl_checks",
-            title="Run k3s-junit-curl verification",
-        )
-    )
-    dashboard.apply_event(
-        build_task_event(
-            kind="task.completed",
-            flow_id="e2e.k3s_junit_curl",
-            task_id="cleanup.uninstall_function_runtime",
-            title="Uninstall function-runtime Helm release",
-        )
-    )
-    dashboard.apply_event(
-        build_task_event(
-            kind="task.completed",
-            flow_id="e2e.k3s_junit_curl",
-            task_id="cleanup.uninstall_control_plane",
-            title="Uninstall control-plane Helm release",
+            task_id="cleanup.delete_namespace",
+            parent_task_id="tests.run_k3s_curl_checks",
+            title="Delete E2E namespace",
         )
     )
     dashboard.apply_event(
@@ -288,19 +312,14 @@ def test_teardown_row_stays_pending_until_parent_cleanup_step_completes() -> Non
             kind="task.completed",
             flow_id="e2e.k3s_junit_curl",
             task_id="cleanup.delete_namespace",
+            parent_task_id="tests.run_k3s_curl_checks",
             title="Delete E2E namespace",
         )
     )
 
-    assert dashboard.steps[-1].label == "Teardown VM"
-    assert dashboard.steps[-1].state == "pending"
-    dashboard.apply_event(
-        build_task_event(
-            kind="task.completed",
-            flow_id="e2e.k3s_junit_curl",
-            task_id="vm.teardown",
-            title="Teardown VM",
-        )
-    )
-
-    assert dashboard.steps[-1].state == "success"
+    assert [step.label for step in dashboard.steps] == [
+        "Run k3s-junit-curl verification",
+        "Teardown VM",
+    ]
+    assert dashboard.steps[0].children[0].label == "Delete E2E namespace"
+    assert dashboard.steps[1].state == "pending"

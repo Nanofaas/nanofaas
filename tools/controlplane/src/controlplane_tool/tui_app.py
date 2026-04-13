@@ -8,10 +8,18 @@ from __future__ import annotations
 
 import sys
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 import questionary
+from prompt_toolkit.application import Application
+from prompt_toolkit.application.current import get_app
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Dimension, Layout
+from prompt_toolkit.layout.containers import HSplit, VSplit, Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.widgets import Frame, RadioList
 from questionary import Style
 from rich.live import Live
 from rich.markup import escape
@@ -52,6 +60,109 @@ def _ask(prompt_fn):
     if result is None:
         raise KeyboardInterrupt
     return result
+
+
+@dataclass(frozen=True)
+class _DescribedChoice:
+    title: str
+    value: str
+    description: str
+
+
+class _AcceptingRadioList(RadioList):
+    def __init__(
+        self,
+        values: list[tuple[str, str]],
+        *,
+        on_accept: Callable[[str], None],
+    ) -> None:
+        super().__init__(values)
+        self._on_accept = on_accept
+
+    def _handle_enter(self) -> None:
+        super()._handle_enter()
+        self._on_accept(_selected_radiolist_value(self))
+
+
+def _selected_radiolist_value(radio_list: RadioList) -> str:
+    selected_index = getattr(radio_list, "_selected_index", 0)
+    return str(radio_list.values[selected_index][0])
+
+
+def _selected_described_choice(
+    radio_list: RadioList,
+    choices: list[_DescribedChoice],
+) -> _DescribedChoice:
+    selected_value = _selected_radiolist_value(radio_list)
+    return next(choice for choice in choices if choice.value == selected_value)
+
+
+def _select_described_value(message: str, choices: list[_DescribedChoice]) -> str | None:
+    """Show an interactive selector with a live description panel on the right."""
+    if not choices:
+        raise ValueError("choices must not be empty")
+
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return questionary.select(
+            message,
+            choices=[questionary.Choice(choice.title, choice.value) for choice in choices],
+            style=_STYLE,
+        ).ask()
+
+    radio_list = _AcceptingRadioList(
+        [(choice.value, choice.title) for choice in choices],
+        on_accept=lambda value: get_app().exit(result=value),
+    )
+
+    def _description_fragments() -> list[tuple[str, str]]:
+        selected = _selected_described_choice(radio_list, choices)
+        return [
+            ("class:question", selected.description),
+            ("", "\n\n"),
+            ("class:instruction", "Enter to confirm • Esc to cancel"),
+        ]
+
+    body = VSplit(
+        [
+            Frame(radio_list, title=message),
+            Frame(
+                Window(
+                    FormattedTextControl(_description_fragments),
+                    wrap_lines=True,
+                ),
+                title="Description",
+            ),
+        ],
+        padding=1,
+        width=Dimension(preferred=100),
+    )
+    root = HSplit(
+        [
+            Window(
+                height=1,
+                content=FormattedTextControl(
+                    [("class:instruction", "Use arrow keys to move through the list.")]
+                ),
+            ),
+            body,
+        ]
+    )
+
+    bindings = KeyBindings()
+
+    @bindings.add("escape")
+    @bindings.add("c-c")
+    def _cancel(event) -> None:  # noqa: ANN001
+        event.app.exit(result=None)
+
+    app = Application(
+        layout=Layout(root, focused_element=radio_list),
+        key_bindings=bindings,
+        full_screen=True,
+        style=_STYLE,
+        mouse_support=False,
+    )
+    return app.run()
 
 
 # ── Main application ─────────────────────────────────────────────────────────
@@ -139,7 +250,9 @@ class NanofaasTUI:
             key_listener.start()
             try:
                 with bind_workflow_sink(sink):
-                    return action(dashboard, sink)
+                    result = action(dashboard, sink)
+                    _refresh()
+                    return result
             finally:
                 key_listener.stop()
 
@@ -463,24 +576,41 @@ class NanofaasTUI:
         phase("E2E Scenarios")
 
         scenario_choice = _ask(
-            lambda: questionary.select(
+            lambda: _select_described_value(
                 "Scenario:",
                 choices=[
-                    questionary.Choice(
+                    _DescribedChoice(
                         "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
                         "k3s-junit-curl",
+                        "Provision the VM, install k3s, deploy the stack, then verify it with curl and JUnit checks.",
                     ),
-                    questionary.Choice(
+                    _DescribedChoice(
                         "helm-stack — self-bootstrapping VM stack for Helm compatibility",
                         "helm-stack",
+                        "Bootstrap the full VM-backed Helm stack, then verify deployment compatibility end to end.",
                     ),
-                    questionary.Choice("container-local — local managed DEPLOYMENT", "container-local"),
-                    questionary.Choice("deploy-host — deploy-host with local registry", "deploy-host"),
-                    questionary.Choice("docker — local POOL with Docker", "docker"),
-                    questionary.Choice("buildpack — local POOL with buildpack", "buildpack"),
+                    _DescribedChoice(
+                        "container-local — local managed DEPLOYMENT",
+                        "container-local",
+                        "Run the managed DEPLOYMENT workflow entirely on the local machine without a VM.",
+                    ),
+                    _DescribedChoice(
+                        "deploy-host — deploy-host with local registry",
+                        "deploy-host",
+                        "Build on the host, push to a local registry, and register against a fake control-plane.",
+                    ),
+                    _DescribedChoice(
+                        "docker — local POOL with Docker",
+                        "docker",
+                        "Exercise the local POOL runtime with Docker-based execution on the host.",
+                    ),
+                    _DescribedChoice(
+                        "buildpack — local POOL with buildpack",
+                        "buildpack",
+                        "Exercise the local POOL runtime using buildpack-produced images on the host.",
+                    ),
                 ],
-                style=_STYLE,
-            ).ask()
+            )
         )
 
         if scenario_choice in ("k3s-junit-curl", "helm-stack"):
@@ -715,21 +845,26 @@ class NanofaasTUI:
         phase("CLI E2E")
 
         runner_choice = _ask(
-            lambda: questionary.select(
+            lambda: _select_described_value(
                 "Runner:",
                 choices=[
-                    questionary.Choice("vm — CLI E2E on k3s VM", "vm"),
-                    questionary.Choice(
+                    _DescribedChoice(
+                        "vm — CLI E2E on k3s VM",
+                        "vm",
+                        "Run the CLI workflow inside a VM-backed environment with the classic CLI E2E path.",
+                    ),
+                    _DescribedChoice(
                         "cli-stack — canonical self-bootstrapping CLI stack in VM",
                         "cli-stack",
+                        "Run the canonical VM-backed CLI stack that bootstraps the platform and validates the CLI end to end.",
                     ),
-                    questionary.Choice(
+                    _DescribedChoice(
                         "host-platform — compatibility path, CLI on host vs cluster",
                         "host-platform",
+                        "Keep the CLI on the host and validate the compatibility path against a VM-backed platform.",
                     ),
                 ],
-                style=_STYLE,
-            ).ask()
+            )
         )
 
         repo_root = default_tool_paths().workspace_root
