@@ -21,23 +21,23 @@ from prompt_toolkit.layout.containers import HSplit, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import Frame, RadioList
 from questionary import Style
-from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
-from controlplane_tool.console import bind_workflow_sink, console, fail, header, phase, skip, step, success, warning
+from controlplane_tool.console import console, fail, header, phase, skip, step, success, warning
 from controlplane_tool.infra_flows import build_vm_flow
 from controlplane_tool.loadtest_commands import build_loadtest_request
 from controlplane_tool.loadtest_flows import build_loadtest_flow
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.registry_runtime import default_registry_url, ensure_local_registry
-from controlplane_tool.prefect_runtime import run_local_flow
 from controlplane_tool.profiles import list_profiles, load_profile
 from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.cli_stack_runner import CliStackRunner
-from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard, WorkflowKeyListener
+from controlplane_tool.tui_event_applier import TuiEventApplier
+from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard
+from controlplane_tool.tui_workflow_controller import TuiWorkflowController
 
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
 _STYLE = Style(
@@ -234,6 +234,10 @@ class NanofaasTUI:
         questionary.Choice("🚪  Exit", "exit"),
     ]
 
+    def __init__(self) -> None:
+        self._applier = TuiEventApplier()
+        self._controller = TuiWorkflowController(event_applier=self._applier)
+
     def run(self) -> None:
         header()
         try:
@@ -265,119 +269,6 @@ class NanofaasTUI:
         except KeyboardInterrupt:
             pass
         console.print("\n[dim]Bye.[/]\n")
-
-    def _run_live_workflow(
-        self,
-        *,
-        title: str,
-        summary_lines: list[str],
-        planned_steps: list[str] | None,
-        action: Callable[[WorkflowDashboard, TuiWorkflowSink], Any],
-    ) -> Any:
-        dashboard = WorkflowDashboard(
-            title=title,
-            summary_lines=[*summary_lines, "Hotkeys: l toggle logs"],
-            planned_steps=planned_steps,
-        )
-        live: Live | None = None
-
-        def _refresh() -> None:
-            if live is not None:
-                live.update(dashboard.render(), refresh=True)
-
-        sink = TuiWorkflowSink(dashboard, refresh=_refresh)
-        key_listener = WorkflowKeyListener(
-            lambda key: (
-                dashboard.toggle_logs(),
-                _refresh(),
-            )
-            if key.lower() == "l"
-            else None
-        )
-        with Live(dashboard.render(), console=console, refresh_per_second=8, transient=False) as active_live:
-            live = active_live
-            active_live.update(dashboard.render(), refresh=True)
-            key_listener.start()
-            try:
-                with bind_workflow_sink(sink):
-                    result = action(dashboard, sink)
-                    _refresh()
-                    return result
-            finally:
-                key_listener.stop()
-
-    def _run_shared_flow(
-        self,
-        flow: Any,
-        *,
-        allow_none_result: bool = True,
-        on_result: Callable[[Any], None] | None = None,
-    ) -> Any:
-        flow_result = run_local_flow(flow.flow_id, flow.run)
-        if flow_result.status != "completed":
-            raise RuntimeError(flow_result.error or f"{flow.flow_id} failed")
-        if flow_result.result is None and not allow_none_result:
-            raise RuntimeError(f"{flow.flow_id} returned no result")
-        if on_result is not None:
-            on_result(flow_result.result)
-        self._raise_on_nonzero_command_result(flow_result.result)
-        return flow_result.result
-
-    def _append_command_result_logs(self, dashboard: WorkflowDashboard, result: Any) -> None:
-        if isinstance(result, list):
-            for item in result:
-                self._append_command_result_logs(dashboard, item)
-            return
-        stdout = getattr(result, "stdout", "")
-        stderr = getattr(result, "stderr", "")
-        if stdout:
-            dashboard.append_log(str(stdout).strip())
-        if stderr:
-            dashboard.append_log(str(stderr).strip())
-
-    def _raise_on_nonzero_command_result(self, result: Any) -> None:
-        if isinstance(result, list):
-            for item in result:
-                self._raise_on_nonzero_command_result(item)
-            return
-        return_code = getattr(result, "return_code", None)
-        if return_code in (None, 0):
-            return
-        stderr = getattr(result, "stderr", "") or ""
-        stdout = getattr(result, "stdout", "") or ""
-        detail = str(stderr).strip() or str(stdout).strip() or f"exit code {return_code}"
-        raise RuntimeError(detail)
-
-    def _apply_e2e_step_event(self, dashboard: WorkflowDashboard, event: Any) -> None:
-        if event.status == "running":
-            dashboard.mark_step_running(event.step_index)
-            dashboard.append_log(f"[start] {event.step.summary}")
-            return
-        if event.status == "success":
-            dashboard.mark_step_success(event.step_index)
-            dashboard.append_log(f"[done] {event.step.summary}")
-            return
-        dashboard.mark_step_failed(event.step_index)
-        dashboard.append_log(
-            f"[fail] {event.step.summary}" + (f" ({event.error})" if event.error else "")
-        )
-
-    def _apply_loadtest_step_event(self, dashboard: WorkflowDashboard, event: Any) -> None:
-        step_index = dashboard.upsert_step(event.step_name)
-        if event.status == "running":
-            dashboard.mark_step_running(step_index)
-            dashboard.append_log(f"[start] {event.step_name}")
-            return
-        if event.status == "passed":
-            dashboard.mark_step_success(step_index)
-            dashboard.append_log(
-                f"[done] {event.step_name}" + (f" ({event.detail})" if event.detail else "")
-            )
-            return
-        dashboard.mark_step_failed(step_index, event.detail)
-        dashboard.append_log(
-            f"[fail] {event.step_name}" + (f" ({event.detail})" if event.detail else "")
-        )
 
     # ── BUILD ─────────────────────────────────────────────────────────────────
 
@@ -443,7 +334,7 @@ class NanofaasTUI:
             fail(f"{action} failed", detail=f"exit code {result.return_code}")
             raise RuntimeError(f"{action} failed (exit code {result.return_code})")
 
-        self._run_live_workflow(
+        self._controller.run_live_workflow(
             title="Build & Test",
             summary_lines=[
                 f"Action: {action}",
@@ -535,7 +426,7 @@ class NanofaasTUI:
         flow = build_vm_flow(flow_id, **build_kwargs)
 
         if dry_run:
-            result = self._run_shared_flow(flow, allow_none_result=False)
+            result = self._controller.run_shared_flow(flow, allow_none_result=False)
             console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
             return
 
@@ -550,15 +441,15 @@ class NanofaasTUI:
 
         def _run_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
             step(f"Running vm {action}", f"lifecycle={lifecycle}")
-            live_result = self._run_shared_flow(
+            live_result = self._controller.run_shared_flow(
                 flow,
                 allow_none_result=False,
-                on_result=lambda result: self._append_command_result_logs(dashboard, result),
+                on_result=lambda result: self._controller.append_command_result_logs(dashboard, result),
             )
             success(f"vm {action} completed")
             return live_result
 
-        self._run_live_workflow(
+        self._controller.run_live_workflow(
             title="VM Management",
             summary_lines=[
                 f"Action: {action}",
@@ -594,7 +485,7 @@ class NanofaasTUI:
         def _run_registry_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
             step("Starting local registry", registry)
             result = ensure_local_registry(registry=registry)
-            self._append_command_result_logs(dashboard, result)
+            self._controller.append_command_result_logs(dashboard, result)
             return_code = getattr(result, "return_code", 0)
             if return_code != 0:
                 detail = (
@@ -607,7 +498,7 @@ class NanofaasTUI:
             success("Registry ready", detail=registry)
             return result
 
-        self._run_live_workflow(
+        self._controller.run_live_workflow(
             title="Registry",
             summary_lines=[f"Registry URL: {registry}"],
             planned_steps=[
@@ -702,7 +593,7 @@ class NanofaasTUI:
 
             def _run_helm_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 def _on_event(event: Any) -> None:
-                    self._apply_e2e_step_event(dashboard, event)
+                    self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
                 dashboard.append_log("Starting helm-stack workflow")
@@ -713,11 +604,11 @@ class NanofaasTUI:
                     request=request,
                     event_listener=_on_event,
                 )
-                self._run_shared_flow(flow)
+                self._controller.run_shared_flow(flow)
                 dashboard.append_log("helm-stack E2E completed")
                 sink._update()
 
-            self._run_live_workflow(
+            self._controller.run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=[
                     f"Scenario: {scenario}",
@@ -787,7 +678,7 @@ class NanofaasTUI:
 
             def _run_k8s_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 def _on_event(event: Any) -> None:
-                    self._apply_e2e_step_event(dashboard, event)
+                    self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
                 flow = build_scenario_flow(
@@ -798,11 +689,11 @@ class NanofaasTUI:
                 )
                 dashboard.append_log("Starting k3s-junit-curl workflow")
                 sink._update()
-                self._run_shared_flow(flow)
+                self._controller.run_shared_flow(flow)
                 success("k3s-junit-curl E2E completed")
                 return plan
 
-            self._run_live_workflow(
+            self._controller.run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=[
                     "Scenario: k3s-junit-curl",
@@ -822,10 +713,10 @@ class NanofaasTUI:
                 "container-local",
                 repo_root=default_tool_paths().workspace_root,
             )
-            self._run_shared_flow(flow)
+            self._controller.run_shared_flow(flow)
             success("container-local E2E completed")
 
-        self._run_live_workflow(
+        self._controller.run_live_workflow(
             title="E2E Scenarios",
             summary_lines=["Scenario: container-local"],
             planned_steps=["Build", "Deploy", "Verify"],
@@ -839,10 +730,10 @@ class NanofaasTUI:
                 "deploy-host",
                 repo_root=default_tool_paths().workspace_root,
             )
-            self._run_shared_flow(flow)
+            self._controller.run_shared_flow(flow)
             success("deploy-host E2E completed")
 
-        self._run_live_workflow(
+        self._controller.run_live_workflow(
             title="E2E Scenarios",
             summary_lines=["Scenario: deploy-host"],
             planned_steps=["Build", "Deploy", "Verify"],
@@ -864,7 +755,7 @@ class NanofaasTUI:
 
         def _run_generic_e2e_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
             def _on_event(event: Any) -> None:
-                self._apply_e2e_step_event(dashboard, event)
+                self._applier.apply_e2e_step_event(dashboard, event)
                 sink._update()
 
             flow = build_scenario_flow(
@@ -875,11 +766,11 @@ class NanofaasTUI:
             )
             dashboard.append_log(f"Starting E2E scenario={scenario}")
             sink._update()
-            self._run_shared_flow(flow)
+            self._controller.run_shared_flow(flow)
             success(f"{scenario} E2E completed")
             return plan
 
-        self._run_live_workflow(
+        self._controller.run_live_workflow(
             title="E2E Scenarios",
             summary_lines=[
                 f"Scenario: {scenario}",
@@ -929,10 +820,10 @@ class NanofaasTUI:
                     "cli",
                     repo_root=repo_root,
                 )
-                self._run_shared_flow(flow)
+                self._controller.run_shared_flow(flow)
                 success("CLI VM E2E completed")
 
-            self._run_live_workflow(
+            self._controller.run_live_workflow(
                 title="CLI E2E",
                 summary_lines=["Runner: vm", "Mode: legacy in-VM CLI validation path"],
                 planned_steps=["Build", "Deploy", "Verify"],
@@ -954,7 +845,7 @@ class NanofaasTUI:
 
             def _run_cli_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 def _on_event(event: Any) -> None:
-                    self._apply_e2e_step_event(dashboard, event)
+                    self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
                 step("Running CLI stack E2E")
@@ -963,10 +854,10 @@ class NanofaasTUI:
                     repo_root=repo_root,
                     event_listener=_on_event,
                 )
-                self._run_shared_flow(flow)
+                self._controller.run_shared_flow(flow)
                 success("CLI stack E2E completed")
 
-            self._run_live_workflow(
+            self._controller.run_live_workflow(
                 title="CLI E2E",
                 summary_lines=[
                     "Runner: cli-stack",
@@ -984,10 +875,10 @@ class NanofaasTUI:
                     "cli-host",
                     repo_root=repo_root,
                 )
-                self._run_shared_flow(flow)
+                self._controller.run_shared_flow(flow)
                 success("CLI Host Platform E2E completed")
 
-            self._run_live_workflow(
+            self._controller.run_live_workflow(
                 title="CLI E2E",
                 summary_lines=[
                     "Runner: host-platform",
@@ -1052,7 +943,7 @@ class NanofaasTUI:
         else:
             def _run_loadtest_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 def _on_event(event: Any) -> None:
-                    self._apply_loadtest_step_event(dashboard, event)
+                    self._applier.apply_loadtest_step_event(dashboard, event)
                     sink._update()
 
                 flow = build_loadtest_flow(
@@ -1060,7 +951,7 @@ class NanofaasTUI:
                     request=request,
                     event_listener=_on_event,
                 )
-                result = self._run_shared_flow(flow, allow_none_result=False)
+                result = self._controller.run_shared_flow(flow, allow_none_result=False)
                 dashboard.append_log(f"Summary: {result.run_dir / 'summary.json'}")
                 dashboard.append_log(f"Report: {result.run_dir / 'report.html'}")
                 sink._update()
@@ -1070,7 +961,7 @@ class NanofaasTUI:
                 fail("Load test failed", detail=str(result.run_dir))
                 raise RuntimeError(f"load test failed: {result.run_dir}")
 
-            self._run_live_workflow(
+            self._controller.run_live_workflow(
                 title="Load Testing",
                 summary_lines=[
                     f"Profile: {request.profile.name}",

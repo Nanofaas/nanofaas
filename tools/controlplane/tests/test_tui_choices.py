@@ -7,8 +7,10 @@ from controlplane_tool.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
 from controlplane_tool.module_catalog import module_choices
 from controlplane_tool.prefect_models import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
+import controlplane_tool.tui_workflow_controller as tui_wfc
 from controlplane_tool.tui_app import NanofaasTUI
 from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard
+from controlplane_tool.tui_workflow_controller import TuiWorkflowController
 
 
 def test_module_catalog_has_descriptions() -> None:
@@ -191,7 +193,7 @@ def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
         captured["planned_steps"] = planned_steps
         return None
 
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._cli_e2e_menu()
 
@@ -218,7 +220,7 @@ def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypa
         captured["planned_steps"] = planned_steps
         return None
 
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._cli_e2e_menu()
 
@@ -358,8 +360,8 @@ def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
         return action(SimpleNamespace(append_log=lambda message: None), SimpleNamespace(_update=lambda: None))
 
     monkeypatch.setattr(tui_app, "build_vm_flow", fake_build_vm_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._vm_menu()
 
@@ -393,8 +395,8 @@ def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monk
         return action(dashboard, sink)
 
     monkeypatch.setattr(tui_app, "build_vm_flow", fake_build_vm_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     with pytest.raises(RuntimeError, match="vm failed"):
         NanofaasTUI()._vm_menu()
@@ -425,8 +427,8 @@ def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeyp
         return action(dashboard, sink)
 
     monkeypatch.setattr(tui_app, "build_vm_flow", fake_build_vm_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     with pytest.raises(RuntimeError, match="vm stderr"):
         NanofaasTUI()._vm_menu()
@@ -454,7 +456,7 @@ def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
         called["planned_steps"] = planned_steps
         return action(SimpleNamespace(append_log=lambda message: None), SimpleNamespace(_update=lambda: None))
 
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._registry_menu()
 
@@ -506,8 +508,8 @@ def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) ->
         return action(dashboard, sink)
 
     monkeypatch.setattr(tui_app, "build_loadtest_flow", fake_build_loadtest_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._loadtest_menu()
 
@@ -556,8 +558,8 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
         return action(dashboard, sink)
 
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
 
@@ -625,8 +627,8 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
         return action(dashboard, sink)
 
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._run_vm_e2e("helm-stack")
 
@@ -727,8 +729,8 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
         captured["steps"] = [(step.label, step.state) for step in dashboard.steps]
 
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(NanofaasTUI, "_run_live_workflow", fake_live)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
     NanofaasTUI()._run_vm_e2e("helm-stack")
 
@@ -833,9 +835,9 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
             return None
 
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
-    monkeypatch.setattr(tui_app, "run_local_flow", fake_run_local_flow)
-    monkeypatch.setattr(tui_app, "Live", _FakeLive)
-    monkeypatch.setattr(tui_app, "WorkflowKeyListener", _FakeKeyListener)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(tui_wfc, "Live", _FakeLive)
+    monkeypatch.setattr(tui_wfc, "WorkflowKeyListener", _FakeKeyListener)
 
     NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
 
@@ -853,8 +855,6 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
 
 
 def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-
     class _FakeLive:
         def __init__(self, renderable, **kwargs):  # noqa: ANN001
             self.renderable = renderable
@@ -885,11 +885,11 @@ def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch
     def fail_complete_running_steps(self, *args, **kwargs):  # noqa: ANN001
         raise AssertionError("dashboard.complete_running_steps() should not be called")
 
-    monkeypatch.setattr(tui_app, "Live", _FakeLive)
-    monkeypatch.setattr(tui_app, "WorkflowKeyListener", _FakeKeyListener)
+    monkeypatch.setattr(tui_wfc, "Live", _FakeLive)
+    monkeypatch.setattr(tui_wfc, "WorkflowKeyListener", _FakeKeyListener)
     monkeypatch.setattr(WorkflowDashboard, "complete_running_steps", fail_complete_running_steps)
 
-    result = NanofaasTUI()._run_live_workflow(
+    result = NanofaasTUI()._controller.run_live_workflow(
         title="E2E Scenarios",
         summary_lines=["Scenario: k3s-junit-curl"],
         planned_steps=["Run k3s-junit-curl verification"],
@@ -912,7 +912,7 @@ def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
         error="very long traceback line 1\nline 2",
     )
 
-    NanofaasTUI()._apply_e2e_step_event(dashboard, event)
+    NanofaasTUI()._applier.apply_e2e_step_event(dashboard, event)
 
     assert [(step.label, step.state, step.detail) for step in dashboard.steps] == [
         ("Run autoscaling experiment (Python)", "failed", "")
