@@ -2,6 +2,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from controlplane_tool.main import app
+from controlplane_tool.paths import resolve_workspace_path
 
 PIPELINE_ALIAS = "pipeline" + "-run"
 
@@ -15,7 +16,7 @@ def test_cli_help_exits_zero() -> None:
 
 
 def test_tooling_lockfile_exists() -> None:
-    assert Path("tools/controlplane/uv.lock").exists()
+    assert resolve_workspace_path(Path("tools/controlplane/uv.lock")).exists()
 
 
 def test_vm_group_help_exits_zero() -> None:
@@ -54,12 +55,12 @@ def test_functions_group_help_exits_zero() -> None:
 
 
 def test_generic_controlplane_wrapper_uses_locked_tool() -> None:
-    script = Path("scripts/controlplane.sh").read_text(encoding="utf-8")
+    script = resolve_workspace_path(Path("scripts/controlplane.sh")).read_text(encoding="utf-8")
     assert "uv run --project tools/controlplane --locked controlplane-tool" in script
 
 
 def test_demo_java_profile_exists() -> None:
-    assert Path("tools/controlplane/profiles/demo-java.toml").exists()
+    assert resolve_workspace_path(Path("tools/controlplane/profiles/demo-java.toml")).exists()
 
 
 def test_removed_pipeline_run_command_is_rejected() -> None:

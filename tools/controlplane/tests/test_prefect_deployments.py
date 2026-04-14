@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from controlplane_tool.build_tasks import CommandExecutionResult
+from controlplane_tool.paths import resolve_workspace_path
 from controlplane_tool.prefect_deployments import build_prefect_deployment, run_deployment_flow
 
 
@@ -114,7 +115,7 @@ def test_run_deployment_flow_raises_on_nonzero_command_result(monkeypatch) -> No
 
 
 def test_prefect_yaml_includes_supported_flow_example() -> None:
-    prefect_yaml = Path("tools/controlplane/prefect.yaml")
+    prefect_yaml = resolve_workspace_path(Path("tools/controlplane/prefect.yaml"))
 
     payload = yaml.safe_load(prefect_yaml.read_text(encoding="utf-8"))
 

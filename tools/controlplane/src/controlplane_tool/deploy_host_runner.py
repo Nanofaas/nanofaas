@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-deploy-host-backend.sh (M9).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from controlplane_tool.console import console, phase, success, warning, skip, fail, status, workflow_log, workflow_step
 
 import os
 import subprocess
@@ -80,18 +80,17 @@ class DeployHostE2eRunner:
         return [(fn.key, fn.example_dir) for fn in resolved.functions]
 
     def _build_cli(self, *, skip: bool = False) -> None:
-        phase("Build")
         if skip:
             if not self._cli_bin.exists():
                 raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
             return
-        step("Building nanofaas CLI on host...")
+        workflow_log("Building nanofaas CLI on host...")
         self._run(["./gradlew", ":nanofaas-cli:installDist", "--no-daemon", "-q"])
         if not self._cli_bin.exists():
             raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
 
     def _start_registry(self, container_name: str, docker: str = "docker") -> None:
-        step(f"Starting local registry ({container_name}) on port {self.registry_port}")
+        workflow_log(f"Starting local registry ({container_name}) on port {self.registry_port}")
         _ = docker
         result = ensure_local_registry(
             registry=f"localhost:{self.registry_port}",
@@ -171,7 +170,9 @@ class DeployHostE2eRunner:
         tag = f"e2e-{int(time.time())}"
         registry_container = f"nanofaas-deploy-e2e-registry-{int(time.time())}"
 
-        self._build_cli(skip=skip_cli_build)
+        phase("Build")
+        with workflow_step(task_id="deploy-host.build", title="Build"):
+            self._build_cli(skip=skip_cli_build)
 
         work_dir = Path(tempfile.mkdtemp(prefix="nanofaas-deploy-host-e2e."))
         request_body_path = work_dir / "function-request.json"
@@ -179,29 +180,31 @@ class DeployHostE2eRunner:
 
         try:
             phase("Deploy")
-            self._start_registry(registry_container, docker)
-            fake_cp.start(work_dir)
-            if not wait_for_http_any_status(f"http://127.0.0.1:{self.control_plane_port}/", max_attempts=30):
-                raise RuntimeError(f"Fake control-plane did not start on port {self.control_plane_port}")
+            with workflow_step(task_id="deploy-host.deploy", title="Deploy"):
+                self._start_registry(registry_container, docker)
+                fake_cp.start(work_dir)
+                if not wait_for_http_any_status(f"http://127.0.0.1:{self.control_plane_port}/", max_attempts=30):
+                    raise RuntimeError(f"Fake control-plane did not start on port {self.control_plane_port}")
 
             cp_url = f"http://127.0.0.1:{self.control_plane_port}"
 
             phase("Verify")
-            reporter = WorkflowProgressReporter.current()
-            for function_key, example_dir in selected_functions:
-                with reporter.child(
-                    f"deploy-host.verify.{function_key}",
-                    f"Deploying {function_key}",
-                ):
-                    image_repo = f"nanofaas/{function_key}"
-                    fn_yaml = self._write_function_yaml(work_dir, function_key, image_repo, tag, example_dir)
-                    request_body_path.unlink(missing_ok=True)
-                    self._run(
-                        [str(self._cli_bin), "--endpoint", cp_url, "deploy", "-f", str(fn_yaml)],
-                        check=True,
-                    )
-                    self._verify_registry_push(image_repo, tag)
-                    self._verify_register_request(request_body_path, function_key, image_repo, tag)
+            with workflow_step(task_id="deploy-host.verify", title="Verify"):
+                reporter = WorkflowProgressReporter.current()
+                for function_key, example_dir in selected_functions:
+                    with reporter.child(
+                        f"deploy-host.verify.{function_key}",
+                        f"Deploying {function_key}",
+                    ):
+                        image_repo = f"nanofaas/{function_key}"
+                        fn_yaml = self._write_function_yaml(work_dir, function_key, image_repo, tag, example_dir)
+                        request_body_path.unlink(missing_ok=True)
+                        self._run(
+                            [str(self._cli_bin), "--endpoint", cp_url, "deploy", "-f", str(fn_yaml)],
+                            check=True,
+                        )
+                        self._verify_registry_push(image_repo, tag)
+                        self._verify_register_request(request_body_path, function_key, image_repo, tag)
 
             success("Deploy host E2E:")
         finally:

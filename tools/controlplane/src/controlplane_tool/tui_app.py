@@ -53,6 +53,8 @@ _STYLE = Style(
     ]
 )
 
+_BACK_VALUE = "back"
+
 
 def _ask(prompt_fn):
     """Execute a questionary prompt; exit cleanly on Ctrl-C / None."""
@@ -67,6 +69,47 @@ class _DescribedChoice:
     title: str
     value: str
     description: str
+
+
+def _back_choice() -> questionary.Choice:
+    return questionary.Choice("back — return to previous menu", _BACK_VALUE)
+
+
+def _with_back_choice(choices: list[Any]) -> list[Any]:
+    if any(getattr(choice, "value", choice) == _BACK_VALUE for choice in choices):
+        return choices
+    return [*choices, questionary.Separator(), _back_choice()]
+
+
+def _with_back_described_choice(choices: list[_DescribedChoice]) -> list[_DescribedChoice]:
+    if any(choice.value == _BACK_VALUE for choice in choices):
+        return choices
+    return [
+        *choices,
+        _DescribedChoice(
+            "back — return to previous menu",
+            _BACK_VALUE,
+            "Return to the previous menu without starting a workflow.",
+        ),
+    ]
+
+
+def _select_value(
+    message: str,
+    *,
+    choices: list[Any],
+    default: str | None = None,
+    include_back: bool = False,
+) -> Any:
+    prompt_choices = _with_back_choice(list(choices)) if include_back else choices
+    return _ask(
+        lambda: questionary.select(
+            message,
+            choices=prompt_choices,
+            default=default,
+            style=_STYLE,
+        ).ask()
+    )
 
 
 class _AcceptingRadioList(RadioList):
@@ -97,8 +140,15 @@ def _selected_described_choice(
     return next(choice for choice in choices if choice.value == selected_value)
 
 
-def _select_described_value(message: str, choices: list[_DescribedChoice]) -> str | None:
+def _select_described_value(
+    message: str,
+    choices: list[_DescribedChoice],
+    *,
+    include_back: bool = False,
+) -> str | None:
     """Show an interactive selector with a live description panel on the right."""
+    if include_back:
+        choices = _with_back_described_choice(choices)
     if not choices:
         raise ValueError("choices must not be empty")
 
@@ -336,30 +386,30 @@ class NanofaasTUI:
 
         phase("Build & Test")
 
-        action = _ask(
-            lambda: questionary.select(
-                "Action:",
-                choices=[
-                    questionary.Choice("jar — assemble JARs", "jar"),
-                    questionary.Choice("build — compile + unit tests", "build"),
-                    questionary.Choice("test — unit tests only", "test"),
-                    questionary.Choice("run — start control-plane", "run"),
-                    questionary.Choice("image — build OCI image", "image"),
-                    questionary.Choice("native — build GraalVM native", "native"),
-                    questionary.Choice("inspect — show configuration", "inspect"),
-                ],
-                style=_STYLE,
-            ).ask()
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice("jar — assemble JARs", "jar"),
+                questionary.Choice("build — compile + unit tests", "build"),
+                questionary.Choice("test — unit tests only", "test"),
+                questionary.Choice("run — start control-plane", "run"),
+                questionary.Choice("image — build OCI image", "image"),
+                questionary.Choice("native — build GraalVM native", "native"),
+                questionary.Choice("inspect — show configuration", "inspect"),
+            ],
+            include_back=True,
         )
+        if action == _BACK_VALUE:
+            return
 
-        profile = _ask(
-            lambda: questionary.select(
-                "Profile:",
-                choices=["core", "k8s", "all", "container-local"],
-                default="core",
-                style=_STYLE,
-            ).ask()
+        profile = _select_value(
+            "Profile:",
+            choices=["core", "k8s", "all", "container-local"],
+            default="core",
+            include_back=True,
         )
+        if profile == _BACK_VALUE:
+            return
 
         dry_run = _ask(
             lambda: questionary.confirm(
@@ -410,29 +460,29 @@ class NanofaasTUI:
 
         phase("VM Management")
 
-        action = _ask(
-            lambda: questionary.select(
-                "Action:",
-                choices=[
-                    questionary.Choice("up — start / provision", "up"),
-                    questionary.Choice("down — stop and delete", "down"),
-                    questionary.Choice("sync — sync project", "sync"),
-                    questionary.Choice("provision-base — install base dependencies", "provision-base"),
-                    questionary.Choice("provision-k3s — install k3s", "provision-k3s"),
-                    questionary.Choice("inspect — show status", "inspect"),
-                ],
-                style=_STYLE,
-            ).ask()
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice("up — start / provision", "up"),
+                questionary.Choice("down — stop and delete", "down"),
+                questionary.Choice("sync — sync project", "sync"),
+                questionary.Choice("provision-base — install base dependencies", "provision-base"),
+                questionary.Choice("provision-k3s — install k3s", "provision-k3s"),
+                questionary.Choice("inspect — show status", "inspect"),
+            ],
+            include_back=True,
         )
+        if action == _BACK_VALUE:
+            return
 
-        lifecycle = _ask(
-            lambda: questionary.select(
-                "Lifecycle:",
-                choices=["multipass", "external"],
-                default="multipass",
-                style=_STYLE,
-            ).ask()
+        lifecycle = _select_value(
+            "Lifecycle:",
+            choices=["multipass", "external"],
+            default="multipass",
+            include_back=True,
         )
+        if lifecycle == _BACK_VALUE:
+            return
 
         if lifecycle == "multipass":
             name = _ask(
@@ -525,21 +575,18 @@ class NanofaasTUI:
     def _registry_menu(self) -> None:
         phase("Registry")
 
-        action = _ask(
-            lambda: questionary.select(
-                "Action:",
-                choices=[
-                    questionary.Choice(
-                        "start — start Docker Desktop if present and run registry",
-                        "start",
-                    ),
-                    questionary.Choice("back", "back"),
-                ],
-                default="start",
-                style=_STYLE,
-            ).ask()
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice(
+                    "start — start Docker Desktop if present and run registry",
+                    "start",
+                ),
+            ],
+            default="start",
+            include_back=True,
         )
-        if action == "back":
+        if action == _BACK_VALUE:
             return
 
         registry = default_registry_url()
@@ -610,8 +657,11 @@ class NanofaasTUI:
                         "Exercise the local POOL runtime using buildpack-produced images on the host.",
                     ),
                 ],
+                include_back=True,
             )
         )
+        if scenario_choice == _BACK_VALUE:
+            return
 
         if scenario_choice in ("k3s-junit-curl", "helm-stack"):
             self._run_vm_e2e(scenario_choice)
@@ -864,8 +914,11 @@ class NanofaasTUI:
                         "Keep the CLI on the host and validate the compatibility path against a VM-backed platform.",
                     ),
                 ],
+                include_back=True,
             )
         )
+        if runner_choice == _BACK_VALUE:
+            return
 
         repo_root = default_tool_paths().workspace_root
 
@@ -954,17 +1007,17 @@ class NanofaasTUI:
 
         phase("Load Testing")
 
-        action = _ask(
-            lambda: questionary.select(
-                "Action:",
-                choices=[
-                    questionary.Choice("run — run load test with profile", "run"),
-                    questionary.Choice("plan — show plan without executing", "plan"),
-                    questionary.Choice("new profile — interactive wizard", "new_profile"),
-                ],
-                style=_STYLE,
-            ).ask()
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice("run — run load test with profile", "run"),
+                questionary.Choice("plan — show plan without executing", "plan"),
+                questionary.Choice("new profile — interactive wizard", "new_profile"),
+            ],
+            include_back=True,
         )
+        if action == _BACK_VALUE:
+            return
 
         if action == "new_profile":
             self._profile_menu()
@@ -978,11 +1031,13 @@ class NanofaasTUI:
                 ).ask()
             )
             if use_saved:
-                profile_name = _ask(
-                    lambda: questionary.select(
-                        "Profile:", choices=saved, style=_STYLE
-                    ).ask()
+                profile_name = _select_value(
+                    "Profile:",
+                    choices=saved,
+                    include_back=True,
                 )
+                if profile_name == _BACK_VALUE:
+                    return
                 profile = load_profile(profile_name)
             else:
                 profile = self._build_profile_interactive("default")
@@ -1033,17 +1088,17 @@ class NanofaasTUI:
 
         phase("Function Catalog")
 
-        view = _ask(
-            lambda: questionary.select(
-                "View:",
-                choices=[
-                    questionary.Choice("All functions", "all"),
-                    questionary.Choice("Presets", "presets"),
-                    questionary.Choice("Function detail", "show"),
-                ],
-                style=_STYLE,
-            ).ask()
+        view = _select_value(
+            "View:",
+            choices=[
+                questionary.Choice("All functions", "all"),
+                questionary.Choice("Presets", "presets"),
+                questionary.Choice("Function detail", "show"),
+            ],
+            include_back=True,
         )
+        if view == _BACK_VALUE:
+            return
 
         if view == "all":
             functions = list_functions()
@@ -1072,11 +1127,13 @@ class NanofaasTUI:
                 resolve_function_definition,
             )
             keys = [fn.key for fn in list_functions()]
-            key = _ask(
-                lambda: questionary.select(
-                    "Function:", choices=keys, style=_STYLE
-                ).ask()
+            key = _select_value(
+                "Function:",
+                choices=keys,
+                include_back=True,
             )
+            if key == _BACK_VALUE:
+                return
             fn = resolve_function_definition(key)
             rows = [
                 ("Key", fn.key),
@@ -1100,17 +1157,17 @@ class NanofaasTUI:
 
         phase("Profile Manager")
 
-        action = _ask(
-            lambda: questionary.select(
-                "Action:",
-                choices=[
-                    questionary.Choice("Create new profile", "new"),
-                    questionary.Choice("View existing profile", "show"),
-                    questionary.Choice("Delete profile", "delete"),
-                ],
-                style=_STYLE,
-            ).ask()
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice("Create new profile", "new"),
+                questionary.Choice("View existing profile", "show"),
+                questionary.Choice("Delete profile", "delete"),
+            ],
+            include_back=True,
         )
+        if action == _BACK_VALUE:
+            return
 
         if action == "new":
             name = _ask(
@@ -1127,11 +1184,13 @@ class NanofaasTUI:
             if not saved:
                 warning("No saved profiles.")
                 return
-            name = _ask(
-                lambda: questionary.select(
-                    "Profile:", choices=saved, style=_STYLE
-                ).ask()
+            name = _select_value(
+                "Profile:",
+                choices=saved,
+                include_back=True,
             )
+            if name == _BACK_VALUE:
+                return
             profile = load_profile(name)
             _show_profile_table(profile)
 
@@ -1140,11 +1199,13 @@ class NanofaasTUI:
             if not saved:
                 warning("No saved profiles.")
                 return
-            name = _ask(
-                lambda: questionary.select(
-                    "Profile to delete:", choices=saved, style=_STYLE
-                ).ask()
+            name = _select_value(
+                "Profile to delete:",
+                choices=saved,
+                include_back=True,
             )
+            if name == _BACK_VALUE:
+                return
             confirm = _ask(
                 lambda: questionary.confirm(
                     f"Delete '{name}'?", default=False, style=_STYLE

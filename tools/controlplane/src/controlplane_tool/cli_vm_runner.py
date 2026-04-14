@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-cli-backend.sh (M10).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from controlplane_tool.console import console, phase, success, warning, fail, status, workflow_log, workflow_step
 
 import os
 import shlex
@@ -94,8 +94,7 @@ class CliVmRunner:
         )
 
     def _build_artifacts(self) -> None:
-        phase("Build")
-        step("Building control-plane artifacts")
+        workflow_log("Building control-plane artifacts")
         self._vm_exec(
             f"cd {self._remote_dir} && "
             f"./scripts/controlplane.sh jar --profile k8s -- --quiet"
@@ -106,7 +105,7 @@ class CliVmRunner:
         )
 
     def _build_images(self) -> None:
-        step("Building and pushing images")
+        workflow_log("Building and pushing images")
         self._vm_exec(
             build_core_images_vm_script(
                 remote_dir=self._remote_dir,
@@ -119,8 +118,7 @@ class CliVmRunner:
         )
 
     def _deploy_platform(self) -> None:
-        phase("Deploy")
-        step("Deploying platform to k3s")
+        workflow_log("Deploying platform to k3s")
         self._vm_exec(
             kubectl_create_namespace_vm_script(
                 remote_dir=self._remote_dir,
@@ -153,9 +151,9 @@ class CliVmRunner:
 
     def _build_cli(self) -> None:
         if self.skip_cli_build:
-            skip("Skipping CLI build (NANOFAAS_CLI_SKIP_INSTALL_DIST=true)")
+            workflow_log("Skipping CLI build (NANOFAAS_CLI_SKIP_INSTALL_DIST=true)")
             return
-        step("Building CLI in VM")
+        workflow_log("Building CLI in VM")
         self._vm_exec(
             f"cd {self._remote_dir} && "
             f"./gradlew :nanofaas-cli:installDist --no-daemon -q"
@@ -175,7 +173,6 @@ class CliVmRunner:
         resolved: "ResolvedScenario | None",
         endpoint: str,
     ) -> None:
-        phase("Verify")
         functions = _selected_functions(resolved)
         reporter = WorkflowProgressReporter.current()
         for fn_key in functions:
@@ -218,10 +215,18 @@ class CliVmRunner:
                 "Set E2E_SKIP_VM_BOOTSTRAP=true and ensure VM is running, or use E2eRunner."
             )
 
-        self._build_artifacts()
-        self._build_images()
-        self._deploy_platform()
-        self._build_cli()
-        endpoint = self._resolve_endpoint()
-        self._run_cli_tests(resolved, endpoint)
+        phase("Build")
+        with workflow_step(task_id="cli.vm.build", title="Build"):
+            self._build_artifacts()
+            self._build_images()
+
+        phase("Deploy")
+        with workflow_step(task_id="cli.vm.deploy", title="Deploy"):
+            self._deploy_platform()
+
+        phase("Verify")
+        with workflow_step(task_id="cli.vm.verify", title="Verify"):
+            self._build_cli()
+            endpoint = self._resolve_endpoint()
+            self._run_cli_tests(resolved, endpoint)
         success("CLI E2E workflow")

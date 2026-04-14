@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-container-local-backend.sh (M9).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from controlplane_tool.console import console, phase, success, warning, skip, fail, status, workflow_log, workflow_step
 
 import os
 import subprocess
@@ -99,8 +99,7 @@ class ContainerLocalE2eRunner:
         return fn.key, fn.image, fn.runtime, fn.family, fn.payload_path
 
     def _build_artifacts(self) -> None:
-        phase("Build")
-        step("Building control-plane and function-runtime artifacts")
+        workflow_log("Building control-plane and function-runtime artifacts")
         self._run(
             [
                 "./scripts/controlplane.sh",
@@ -121,7 +120,7 @@ class ContainerLocalE2eRunner:
         runtime_kind: str | None,
         family: str | None,
     ) -> None:
-        step(f"Building function image {image}")
+        workflow_log(f"Building function image {image}")
         adapter = self.runtime_adapter or "docker"
         if runtime_kind is None:
             self._run([adapter, "build", "-t", image, "function-runtime"])
@@ -199,129 +198,92 @@ class ContainerLocalE2eRunner:
             raise RuntimeError("No Docker-compatible runtime found on PATH (docker, podman, nerdctl)")
         self.runtime_adapter = adapter
 
-        self._build_artifacts()
-        self._build_function_image(function_image, runtime_kind, family)
+        phase("Build")
+        with workflow_step(task_id="container-local.build", title="Build"):
+            self._build_artifacts()
+            self._build_function_image(function_image, runtime_kind, family)
 
         control_plane_jar = self.repo_root / "control-plane" / "build" / "libs" / "app.jar"
+        cp_proc: subprocess.Popen[str] | None = None
 
         phase("Deploy")
-        step("Starting control-plane with container-local provider")
-        cp_log_path = Path(tempfile.mktemp(suffix=".log"))
-        cp_proc = spawn_logged_process(
-            [
-                "java",
-                "-jar",
-                str(control_plane_jar),
-                f"--server.port={self.api_port}",
-                f"--management.server.port={self.mgmt_port}",
-                "--sync-queue.enabled=false",
-                "--nanofaas.deployment.default-backend=container-local",
-                f"--nanofaas.container-local.runtime-adapter={adapter}",
-                "--nanofaas.container-local.bind-host=127.0.0.1",
-            ],
-            cwd=self.repo_root,
-            log_path=cp_log_path,
-        )
+        with workflow_step(task_id="container-local.deploy", title="Deploy"):
+            workflow_log("Starting control-plane with container-local provider")
+            cp_log_path = Path(tempfile.mktemp(suffix=".log"))
+            cp_proc = spawn_logged_process(
+                [
+                    "java",
+                    "-jar",
+                    str(control_plane_jar),
+                    f"--server.port={self.api_port}",
+                    f"--management.server.port={self.mgmt_port}",
+                    "--sync-queue.enabled=false",
+                    "--nanofaas.deployment.default-backend=container-local",
+                    f"--nanofaas.container-local.runtime-adapter={adapter}",
+                    "--nanofaas.container-local.bind-host=127.0.0.1",
+                ],
+                cwd=self.repo_root,
+                log_path=cp_log_path,
+            )
 
         try:
             phase("Verify")
-            reporter = WorkflowProgressReporter.current()
-            with status("Waiting for control-plane readiness"):
-                if not wait_for_http_ok(self._api.health_url, max_attempts=90):
-                    raise RuntimeError("Control-plane did not become healthy")
+            with workflow_step(task_id="container-local.verify", title="Verify"):
+                reporter = WorkflowProgressReporter.current()
+                with status("Waiting for control-plane readiness"):
+                    if not wait_for_http_ok(self._api.health_url, max_attempts=90):
+                        raise RuntimeError("Control-plane did not become healthy")
 
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp = Path(tmp_dir)
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    tmp = Path(tmp_dir)
 
-                register_req = tmp / "register-request.json"
-                write_json_file(
-                    register_req,
-                    self._api.register_body(
-                        function_name,
-                        function_image,
-                        timeout_ms=5000,
-                        concurrency=2,
-                        queue_size=20,
-                    ),
-                )
-                register_resp = tmp / "register.json"
-                subprocess.run(
-                    [
-                        "curl",
-                        "-fsS",
-                        "-H",
-                        "Content-Type: application/json",
-                        "-d",
-                        f"@{register_req}",
-                        self._api.register_url,
-                        "-o",
-                        str(register_resp),
-                    ],
-                    check=True,
-                )
-                assert read_json_field(register_resp, "name") == function_name
-                assert read_json_field(register_resp, "effectiveExecutionMode") == "DEPLOYMENT"
-                assert read_json_field(register_resp, "deploymentBackend") == "container-local"
-                endpoint_url = read_json_field(register_resp, "endpointUrl")
-                if not endpoint_url:
-                    raise RuntimeError("endpointUrl must be present for provider-backed registration")
-
-                with status("Waiting for container to start"):
-                    self._wait_for_containers(function_slug, 1)
-                with status("Waiting for proxy endpoint health"):
-                    health_base = endpoint_url.rstrip("/invoke").rstrip("/")
-                    if not wait_for_http_ok(f"{health_base}/health"):
-                        raise RuntimeError("Stable proxy endpoint did not become healthy")
-
-                invoke_req = tmp / "invoke-request.json"
-                if payload_path:
-                    wrap_payload(payload_path, invoke_req)
-                else:
-                    invoke_req.write_text('{"input":{"message":"hello-container-local"}}', encoding="utf-8")
-
-                invoke_resp = tmp / "invoke.json"
-                subprocess.run(
-                    [
-                        "curl",
-                        "-fsS",
-                        "-H",
-                        "Content-Type: application/json",
-                        "-d",
-                        f"@{invoke_req}",
-                        self._api.invoke_url(function_name),
-                        "-o",
-                        str(invoke_resp),
-                    ],
-                    check=True,
-                )
-                assert read_json_field(invoke_resp, "status") == "success"
-
-                with reporter.child(
-                    "container-local.verify.scale",
-                    "Scaling managed function to 2 replicas",
-                ):
-                    scale_resp = tmp / "scale.json"
+                    register_req = tmp / "register-request.json"
+                    write_json_file(
+                        register_req,
+                        self._api.register_body(
+                            function_name,
+                            function_image,
+                            timeout_ms=5000,
+                            concurrency=2,
+                            queue_size=20,
+                        ),
+                    )
+                    register_resp = tmp / "register.json"
                     subprocess.run(
                         [
                             "curl",
                             "-fsS",
-                            "-X",
-                            "PUT",
                             "-H",
                             "Content-Type: application/json",
                             "-d",
-                            '{"replicas":2}',
-                            self._api.replicas_url(function_name),
+                            f"@{register_req}",
+                            self._api.register_url,
                             "-o",
-                            str(scale_resp),
+                            str(register_resp),
                         ],
                         check=True,
                     )
-                    assert read_json_field(scale_resp, "replicas") == 2
-                    with status("Waiting for 2 replicas"):
-                        self._wait_for_containers(function_slug, 2)
+                    assert read_json_field(register_resp, "name") == function_name
+                    assert read_json_field(register_resp, "effectiveExecutionMode") == "DEPLOYMENT"
+                    assert read_json_field(register_resp, "deploymentBackend") == "container-local"
+                    endpoint_url = read_json_field(register_resp, "endpointUrl")
+                    if not endpoint_url:
+                        raise RuntimeError("endpointUrl must be present for provider-backed registration")
 
-                    invoke_resp2 = tmp / "invoke-scaled.json"
+                    with status("Waiting for container to start"):
+                        self._wait_for_containers(function_slug, 1)
+                    with status("Waiting for proxy endpoint health"):
+                        health_base = endpoint_url.rstrip("/invoke").rstrip("/")
+                        if not wait_for_http_ok(f"{health_base}/health"):
+                            raise RuntimeError("Stable proxy endpoint did not become healthy")
+
+                    invoke_req = tmp / "invoke-request.json"
+                    if payload_path:
+                        wrap_payload(payload_path, invoke_req)
+                    else:
+                        invoke_req.write_text('{"input":{"message":"hello-container-local"}}', encoding="utf-8")
+
+                    invoke_resp = tmp / "invoke.json"
                     subprocess.run(
                         [
                             "curl",
@@ -332,36 +294,78 @@ class ContainerLocalE2eRunner:
                             f"@{invoke_req}",
                             self._api.invoke_url(function_name),
                             "-o",
-                            str(invoke_resp2),
+                            str(invoke_resp),
                         ],
                         check=True,
                     )
-                    assert read_json_field(invoke_resp2, "status") == "success"
+                    assert read_json_field(invoke_resp, "status") == "success"
 
-                with reporter.child(
-                    "container-local.verify.cleanup",
-                    "Deleting managed function and verifying cleanup",
-                ):
-                    subprocess.run(
-                        [
-                            "curl",
-                            "-fsS",
-                            "-X",
-                            "DELETE",
-                            self._api.function_url(function_name),
-                        ],
-                        check=True,
-                    )
-                    with status("Waiting for containers to stop"):
-                        self._wait_for_containers(function_slug, 0)
+                    with reporter.child(
+                        "container-local.verify.scale",
+                        "Scaling managed function to 2 replicas",
+                    ):
+                        scale_resp = tmp / "scale.json"
+                        subprocess.run(
+                            [
+                                "curl",
+                                "-fsS",
+                                "-X",
+                                "PUT",
+                                "-H",
+                                "Content-Type: application/json",
+                                "-d",
+                                '{"replicas":2}',
+                                self._api.replicas_url(function_name),
+                                "-o",
+                                str(scale_resp),
+                            ],
+                            check=True,
+                        )
+                        assert read_json_field(scale_resp, "replicas") == 2
+                        with status("Waiting for 2 replicas"):
+                            self._wait_for_containers(function_slug, 2)
 
-                import httpx as _httpx
+                        invoke_resp2 = tmp / "invoke-scaled.json"
+                        subprocess.run(
+                            [
+                                "curl",
+                                "-fsS",
+                                "-H",
+                                "Content-Type: application/json",
+                                "-d",
+                                f"@{invoke_req}",
+                                self._api.invoke_url(function_name),
+                                "-o",
+                                str(invoke_resp2),
+                            ],
+                            check=True,
+                        )
+                        assert read_json_field(invoke_resp2, "status") == "success"
 
-                http_status = _httpx.get(self._api.function_url(function_name), timeout=5).status_code
-                if http_status != 404:
-                    raise RuntimeError(
-                        f"Expected 404 after function delete, got {status}"
-                    )
+                    with reporter.child(
+                        "container-local.verify.cleanup",
+                        "Deleting managed function and verifying cleanup",
+                    ):
+                        subprocess.run(
+                            [
+                                "curl",
+                                "-fsS",
+                                "-X",
+                                "DELETE",
+                                self._api.function_url(function_name),
+                            ],
+                            check=True,
+                        )
+                        with status("Waiting for containers to stop"):
+                            self._wait_for_containers(function_slug, 0)
+
+                    import httpx as _httpx
+
+                    http_status = _httpx.get(self._api.function_url(function_name), timeout=5).status_code
+                    if http_status != 404:
+                        raise RuntimeError(
+                            f"Expected 404 after function delete, got {status}"
+                        )
 
             success("container-local managed DEPLOYMENT flow")
         finally:

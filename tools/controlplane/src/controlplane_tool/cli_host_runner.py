@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-cli-host-backend.sh (M10).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from controlplane_tool.console import console, phase, success, warning, skip, fail, status, workflow_log, workflow_step
 from controlplane_tool.workflow_progress import WorkflowProgressReporter
 
 import os
@@ -88,7 +88,7 @@ class CliHostPlatformRunner:
             if not self._cli_bin.exists():
                 raise RuntimeError(f"CLI binary not found at {self._cli_bin}")
             return
-        step("Building nanofaas-cli on host...")
+        workflow_log("Building nanofaas-cli on host...")
         result = self._shell.run(
             self._first_operation_command(cli_components.plan_build_install_dist(self._plan_context())),
             cwd=self.repo_root,
@@ -164,31 +164,34 @@ class CliHostPlatformRunner:
 
         try:
             phase("Build")
-            self._build_cli_on_host()
+            with workflow_step(task_id="cli.host_platform.build", title="Build"):
+                self._build_cli_on_host()
 
             phase("Deploy")
-            step("Running platform lifecycle from host CLI...")
-            install_out = self._run_host_cli(
-                kubeconfig,
-                self._platform_install_command(),
-            )
-            if f"endpoint\thttp://{public_host}:30080" not in install_out:
-                raise RuntimeError(f"Unexpected endpoint in install output: {install_out}")
+            with workflow_step(task_id="cli.host_platform.deploy", title="Deploy"):
+                workflow_log("Running platform lifecycle from host CLI...")
+                install_out = self._run_host_cli(
+                    kubeconfig,
+                    self._platform_install_command(),
+                )
+                if f"endpoint\thttp://{public_host}:30080" not in install_out:
+                    raise RuntimeError(f"Unexpected endpoint in install output: {install_out}")
 
             phase("Verify")
-            reporter = WorkflowProgressReporter.current()
-            with reporter.child(
-                "cli.host_platform.verify",
-                "Running platform lifecycle from host CLI...",
-            ):
-                status_out = self._run_host_cli(kubeconfig, self._platform_status_command())
-                if "deployment\tnanofaas-control-plane\t1/1" not in status_out:
-                    raise RuntimeError(f"Control-plane not ready: {status_out}")
+            with workflow_step(task_id="cli.host_platform.verify_phase", title="Verify"):
+                reporter = WorkflowProgressReporter.current()
+                with reporter.child(
+                    "cli.host_platform.verify",
+                    "Running platform lifecycle from host CLI...",
+                ):
+                    status_out = self._run_host_cli(kubeconfig, self._platform_status_command())
+                    if "deployment\tnanofaas-control-plane\t1/1" not in status_out:
+                        raise RuntimeError(f"Control-plane not ready: {status_out}")
 
-                self._run_host_cli(kubeconfig, self._platform_uninstall_command())
-                rc, _ = self._run_host_cli_allow_fail(kubeconfig, self._platform_status_command())
-                if rc == 0:
-                    raise RuntimeError("platform status unexpectedly succeeded after uninstall")
+                    self._run_host_cli(kubeconfig, self._platform_uninstall_command())
+                    rc, _ = self._run_host_cli_allow_fail(kubeconfig, self._platform_status_command())
+                    if rc == 0:
+                        raise RuntimeError("platform status unexpectedly succeeded after uninstall")
 
             success("Host CLI platform lifecycle test:")
         finally:

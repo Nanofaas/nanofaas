@@ -37,3 +37,26 @@ def test_resolve_workspace_path_keeps_absolute_paths(tmp_path: Path) -> None:
     absolute_path.write_text("", encoding="utf-8")
 
     assert resolve_workspace_path(absolute_path) == absolute_path.resolve()
+
+
+def test_resolve_workspace_path_resolves_repo_root_assets_from_nested_tool_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    script_path = workspace_root / "scripts" / "controlplane.sh"
+    gitignore_path = workspace_root / ".gitignore"
+    nested_tool_dir = workspace_root / "tools" / "controlplane"
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    nested_tool_dir.mkdir(parents=True, exist_ok=True)
+    script_path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    gitignore_path.write_text("tools/controlplane/runs/\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "controlplane_tool.paths.default_tool_paths",
+        lambda: ToolPaths.repo_root(workspace_root),
+    )
+    monkeypatch.chdir(nested_tool_dir)
+
+    assert resolve_workspace_path(Path("scripts/controlplane.sh")) == script_path.resolve()
+    assert resolve_workspace_path(Path(".gitignore")) == gitignore_path.resolve()

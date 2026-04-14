@@ -248,6 +248,80 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
 
 
+def test_tui_submenus_include_back_entries(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, list[object]] = {}
+
+    def fake_select(message, **kwargs):  # noqa: ANN001
+        captured[str(message)] = list(kwargs["choices"])
+        return _Prompt("back")
+
+    monkeypatch.setattr(tui_app.questionary, "select", fake_select)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+
+    NanofaasTUI()._build_menu()
+    NanofaasTUI()._vm_menu()
+    NanofaasTUI()._registry_menu()
+    NanofaasTUI()._loadtest_menu()
+    NanofaasTUI()._functions_menu()
+    NanofaasTUI()._profile_menu()
+
+    assert any(getattr(choice, "value", None) == "back" for choice in captured["Action:"])
+    assert any(getattr(choice, "value", None) == "back" for choice in captured["View:"])
+
+
+def test_tui_described_selectors_include_back_entries(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {}
+
+    def fake_described_select(message, choices, include_back=False):  # noqa: ANN001
+        captured[message] = {"choices": choices, "include_back": include_back}
+        return "back"
+
+    monkeypatch.setattr(tui_app, "_select_described_value", fake_described_select)
+
+    NanofaasTUI()._e2e_menu()
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert captured["Scenario:"]["include_back"] is True
+    assert captured["Runner:"]["include_back"] is True
+
+
+def test_tui_back_selection_returns_before_followup_prompts(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    text_prompts: list[str] = []
+    confirm_prompts: list[str] = []
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "select",
+        lambda *args, **kwargs: _Prompt("back"),
+    )
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "text",
+        lambda *args, **kwargs: text_prompts.append(str(args[0] if args else "")) or _Prompt(""),
+    )
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "confirm",
+        lambda *args, **kwargs: confirm_prompts.append(str(args[0] if args else "")) or _Prompt(False),
+    )
+
+    NanofaasTUI()._build_menu()
+    NanofaasTUI()._vm_menu()
+    NanofaasTUI()._loadtest_menu()
+    NanofaasTUI()._functions_menu()
+    NanofaasTUI()._profile_menu()
+
+    assert text_prompts == []
+    assert confirm_prompts == []
+
+
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
     now = datetime.now(UTC)
     return FlowRunResult.completed(

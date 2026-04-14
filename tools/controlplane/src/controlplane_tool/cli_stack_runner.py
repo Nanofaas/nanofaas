@@ -16,7 +16,7 @@ from controlplane_tool.cli_platform_workflow import (
     platform_status_command,
     platform_uninstall_command,
 )
-from controlplane_tool.console import phase, success
+from controlplane_tool.console import phase, success, workflow_step
 from controlplane_tool.scenario_components.environment import default_managed_vm_request
 from controlplane_tool.scenario_helpers import (
     function_image as _function_image,
@@ -79,10 +79,6 @@ class CliStackRunner:
     def _cli_bin_dir(self) -> str:
         return f"{self._remote_dir}/nanofaas-cli/build/install/nanofaas-cli/bin"
 
-    def _remote_exec_step(self, summary: str, command: str) -> ScenarioPlanStep:
-        result = self._vm.remote_exec(self.vm_request, command=command, dry_run=True)
-        return ScenarioPlanStep(summary=summary, command=result.command, env=result.env)
-
     def _resolve_public_host(self) -> str:
         host = os.getenv("E2E_PUBLIC_HOST", "") or os.getenv("E2E_VM_HOST", "")
         if host:
@@ -128,19 +124,20 @@ class CliStackRunner:
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
         phase("Verify")
-        reporter = WorkflowProgressReporter.current()
-        for planned_step in self.plan_steps(resolved):
-            if not planned_step.step_id:
-                raise ValueError(
-                    f"CLI stack planned step '{planned_step.summary}' is missing a stable step_id"
-                )
-            with reporter.child(planned_step.step_id, planned_step.summary):
-                result = self._shell.run(
-                    planned_step.command,
-                    cwd=self.repo_root,
-                    env=planned_step.env,
-                    dry_run=False,
-                )
-                if result.return_code != 0:
-                    raise RuntimeError(result.stderr or result.stdout or f"{planned_step.summary} failed")
+        with workflow_step(task_id="cli-stack.verify", title="Verify"):
+            reporter = WorkflowProgressReporter.current()
+            for planned_step in self.plan_steps(resolved):
+                if not planned_step.step_id:
+                    raise ValueError(
+                        f"CLI stack planned step '{planned_step.summary}' is missing a stable step_id"
+                    )
+                with reporter.child(planned_step.step_id, planned_step.summary):
+                    result = self._shell.run(
+                        planned_step.command,
+                        cwd=self.repo_root,
+                        env=planned_step.env,
+                        dry_run=False,
+                    )
+                    if result.return_code != 0:
+                        raise RuntimeError(result.stderr or result.stdout or f"{planned_step.summary} failed")
         success("CLI stack workflow")
