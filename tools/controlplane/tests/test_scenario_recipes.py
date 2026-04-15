@@ -90,9 +90,19 @@ def test_helm_stack_recipe_and_cli_stack_recipe_share_components_without_sharing
         ],
     )
     assert "loadtest.run" in helm_recipe.component_ids
+    assert "loadtest.install_k6" in helm_recipe.component_ids
     assert "experiments.autoscaling" in helm_recipe.component_ids
     assert "cli.build_install_dist" in cli_recipe.component_ids
     assert "cli.platform_uninstall" not in cli_recipe.component_ids
     assert "cleanup.uninstall_function_runtime" not in cli_recipe.component_ids
     assert "cleanup.verify_cli_platform_status_fails" in cli_recipe.component_ids
     assert helm_recipe.component_ids != cli_recipe.component_ids
+    _assert_order(
+        helm_recipe.component_ids,
+        [
+            "k8s.wait_function_runtime_ready",
+            "loadtest.install_k6",
+            "loadtest.run",
+            "experiments.autoscaling",
+        ],
+    )

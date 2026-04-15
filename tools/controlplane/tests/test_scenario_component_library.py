@@ -107,6 +107,17 @@ def test_k3s_component_planners_return_typed_remote_operations() -> None:
     assert "configure-k3s-registry.yml" in configure_operations[0].argv[-1]
 
 
+def test_loadtest_component_planner_installs_k6_with_ansible() -> None:
+    operations = bootstrap.plan_loadtest_install_k6(_managed_context())
+
+    assert len(operations) == 1
+    operation = operations[0]
+    assert operation.operation_id == "loadtest.install_k6"
+    assert operation.summary == "Install k6 for load testing"
+    assert operation.argv[0] == "ansible-playbook"
+    assert "install-k6.yml" in operation.argv[-1]
+
+
 def test_image_component_planners_return_typed_operations_for_selected_functions() -> None:
     resolved_scenario = ResolvedScenario(
         name="demo-java",
@@ -255,3 +266,35 @@ def test_operation_executor_inverts_cli_cleanup_status_check() -> None:
     )
 
     step.action()
+
+
+def test_helm_stack_tail_runs_loadtest_inside_vm() -> None:
+    from controlplane_tool.scenario_components.verification import plan_loadtest_run
+
+    context = _managed_context()
+
+    loadtest_operation = plan_loadtest_run(context)[0]
+
+    assert loadtest_operation.execution_target == "vm"
+    assert loadtest_operation.argv[:4] == (
+        "uv",
+        "run",
+        "--project",
+        "tools/controlplane",
+    )
+
+
+def test_helm_stack_tail_keeps_autoscaling_on_host() -> None:
+    from controlplane_tool.scenario_components.verification import plan_autoscaling_experiment
+
+    context = _managed_context()
+
+    autoscaling_operation = plan_autoscaling_experiment(context)[0]
+
+    assert autoscaling_operation.execution_target == "host"
+    assert autoscaling_operation.argv[:4] == (
+        "uv",
+        "run",
+        "--project",
+        "/repo/tools/controlplane",
+    )

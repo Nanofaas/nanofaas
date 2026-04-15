@@ -43,6 +43,7 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
             "helm.deploy_function_runtime",
             "k8s.wait_control_plane_ready",
             "k8s.wait_function_runtime_ready",
+            "loadtest.install_k6",
             "loadtest.run",
             "experiments.autoscaling",
         ),

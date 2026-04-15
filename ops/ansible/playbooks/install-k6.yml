@@ -1,0 +1,100 @@
+---
+- name: Install k6
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    k6_release_api_url: https://api.github.com/repos/grafana/k6/releases/latest
+    k6_arch_map:
+      x86_64: amd64
+      amd64: amd64
+      aarch64: arm64
+      arm64: arm64
+  pre_tasks:
+    - name: Ensure python3 is present on the target
+      ansible.builtin.raw: |
+        if command -v python3 >/dev/null 2>&1; then
+          echo already-present
+          exit 0
+        fi
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y python3 python3-apt
+      register: bootstrap_python
+      changed_when: "'already-present' not in bootstrap_python.stdout"
+
+    - name: Gather facts after python bootstrap
+      ansible.builtin.setup:
+
+    - name: Resolve k6 architecture
+      ansible.builtin.set_fact:
+        k6_arch: "{{ k6_arch_map.get(ansible_architecture, '') }}"
+
+  tasks:
+    - name: Fail when k6 is requested on an unsupported architecture
+      ansible.builtin.fail:
+        msg: "Unsupported architecture for k6: {{ ansible_architecture }}"
+      when: k6_arch | length == 0
+
+    - name: Resolve latest k6 release from GitHub
+      ansible.builtin.uri:
+        url: "{{ k6_release_api_url }}"
+        headers:
+          Accept: application/vnd.github+json
+        return_content: true
+        status_code: 200
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: k6_release
+
+    - name: Set target k6 version
+      ansible.builtin.set_fact:
+        k6_target_version: "{{ k6_release.json.tag_name }}"
+
+    - name: Check installed k6 version
+      ansible.builtin.command: k6 version
+      register: k6_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Parse installed k6 version
+      ansible.builtin.set_fact:
+        k6_installed_version: >-
+          {{
+            k6_installed.stdout.split()[1]
+            if (k6_installed.rc == 0 and (k6_installed.stdout.split() | length) > 1)
+            else ""
+          }}
+
+    - name: Ensure k6 archive extraction directory exists
+      ansible.builtin.file:
+        path: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}"
+        state: directory
+        mode: "0755"
+      when: k6_installed_version != k6_target_version
+
+    - name: Download k6 release archive
+      ansible.builtin.get_url:
+        url: "https://github.com/grafana/k6/releases/download/{{ k6_target_version }}/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
+        dest: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
+        mode: "0644"
+      when: k6_installed_version != k6_target_version
+
+    - name: Extract k6 release archive
+      ansible.builtin.unarchive:
+        src: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
+        dest: "/tmp"
+        remote_src: true
+        creates: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}/k6"
+      when: k6_installed_version != k6_target_version
+
+    - name: Install k6 binary
+      ansible.builtin.copy:
+        src: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}/k6"
+        dest: /usr/local/bin/k6
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      when: k6_installed_version != k6_target_version

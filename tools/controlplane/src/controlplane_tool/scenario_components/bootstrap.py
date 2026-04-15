@@ -206,6 +206,18 @@ def plan_k3s_configure_registry(
     )
 
 
+def plan_loadtest_install_k6(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
+    return (
+        _ansible_operation(
+            context=context,
+            operation_id="loadtest.install_k6",
+            summary="Install k6 for load testing",
+            playbook_name="install-k6.yml",
+            extra_vars={},
+        ),
+    )
+
+
 VM_ENSURE_RUNNING = ScenarioComponentDefinition(
     component_id="vm.ensure_running",
     summary="Ensure VM is running",
@@ -240,4 +252,10 @@ K3S_CONFIGURE_REGISTRY = ScenarioComponentDefinition(
     component_id="k3s.configure_registry",
     summary="Configure k3s registry access",
     planner=plan_k3s_configure_registry,
+)
+
+LOADTEST_INSTALL_K6 = ScenarioComponentDefinition(
+    component_id="loadtest.install_k6",
+    summary="Install k6 for load testing",
+    planner=plan_loadtest_install_k6,
 )

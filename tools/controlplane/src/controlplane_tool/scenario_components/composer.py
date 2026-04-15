@@ -18,6 +18,7 @@ def _load_all_components() -> None:
     from controlplane_tool.scenario_components.bootstrap import (
         VM_ENSURE_RUNNING, VM_PROVISION_BASE, REPO_SYNC_TO_VM,
         REGISTRY_ENSURE_CONTAINER, K3S_INSTALL, K3S_CONFIGURE_REGISTRY,
+        LOADTEST_INSTALL_K6,
     )
     from controlplane_tool.scenario_components.cleanup import (
         DELETE_NAMESPACE, UNINSTALL_CONTROL_PLANE, UNINSTALL_FUNCTION_RUNTIME,
@@ -41,6 +42,7 @@ def _load_all_components() -> None:
     for comp in [
         VM_ENSURE_RUNNING, VM_PROVISION_BASE, REPO_SYNC_TO_VM,
         REGISTRY_ENSURE_CONTAINER, K3S_INSTALL, K3S_CONFIGURE_REGISTRY,
+        LOADTEST_INSTALL_K6,
         HELM_DEPLOY_CONTROL_PLANE, HELM_DEPLOY_FUNCTION_RUNTIME,
         K8S_WAIT_CONTROL_PLANE_READY, K8S_WAIT_FUNCTION_RUNTIME_READY,
         CLI_BUILD_INSTALL_DIST, CLI_PLATFORM_INSTALL, CLI_PLATFORM_STATUS,
@@ -58,7 +60,7 @@ def _load_all_components() -> None:
     for comp in [
         _component("tests.run_k3s_curl_checks", "Run k3s curl checks", plan_run_k3s_curl_checks),
         _component("tests.run_k8s_junit", "Run Kubernetes JUnit checks", plan_run_k8s_junit),
-        _component("loadtest.run", "Run load test", plan_loadtest_run),
+        _component("loadtest.run", "Run k6 load test", plan_loadtest_run),
         _component("experiments.autoscaling", "Verify autoscaling experiment", plan_autoscaling_experiment),
     ]:
         _registry.register(comp)

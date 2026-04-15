@@ -9,6 +9,7 @@ def test_ansible_layout_exists_for_vm_provisioning():
     assert (ANSIBLE_DIR / "ansible.cfg").exists()
     assert (ANSIBLE_DIR / "requirements.txt").exists()
     assert (ANSIBLE_DIR / "playbooks" / "provision-base.yml").exists()
+    assert (ANSIBLE_DIR / "playbooks" / "install-k6.yml").exists()
     assert (ANSIBLE_DIR / "playbooks" / "provision-k3s.yml").exists()
     assert (ANSIBLE_DIR / "playbooks" / "ensure-registry.yml").exists()
     assert (ANSIBLE_DIR / "playbooks" / "configure-k3s-registry.yml").exists()
@@ -42,3 +43,11 @@ def test_base_playbook_installs_uv_for_controlplane_wrapper() -> None:
     base = (ANSIBLE_DIR / "playbooks" / "provision-base.yml").read_text(encoding="utf-8")
     assert "Install uv" in base
     assert "UV_INSTALL_DIR" in base or "command -v uv" in base
+
+
+def test_k6_playbook_installs_k6_for_vm_loadtests() -> None:
+    playbook = (ANSIBLE_DIR / "playbooks" / "install-k6.yml").read_text(encoding="utf-8")
+
+    assert "Install k6" in playbook
+    assert "https://github.com/grafana/k6/releases" in playbook
+    assert "dest: /usr/local/bin/k6" in playbook

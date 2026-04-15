@@ -74,7 +74,7 @@ class HelmStackRunner:
 
         env = self._build_env()
         phase("Run")
-        step("Running loadtest via Python runner")
+        step("Running k6 loadtest via controlplane runner")
         loadtest = self._shell.run(
             [
                 "uv",

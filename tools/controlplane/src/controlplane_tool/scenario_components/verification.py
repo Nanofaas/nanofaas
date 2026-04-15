@@ -145,14 +145,15 @@ def plan_run_k8s_junit(context: ScenarioExecutionContext) -> tuple[ScenarioOpera
 
 
 def plan_loadtest_run(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
-    controlplane_tool_project = Path(context.repo_root) / "tools" / "controlplane"
+    controlplane_tool_project = "tools/controlplane"
     env = dict(_managed_vm_env(context))
-    if context.manifest_path is not None:
-        env["NANOFAAS_SCENARIO_PATH"] = str(context.manifest_path)
+    remote_manifest_path = _remote_manifest_path(context)
+    if remote_manifest_path is not None:
+        env["NANOFAAS_SCENARIO_PATH"] = remote_manifest_path
     return (
         RemoteCommandOperation(
             operation_id="loadtest.run",
-            summary="Run loadtest via Python runner",
+            summary="Run k6 loadtest via controlplane runner",
             argv=(
                 "uv",
                 "run",
@@ -164,6 +165,7 @@ def plan_loadtest_run(context: ScenarioExecutionContext) -> tuple[ScenarioOperat
                 "run",
             ),
             env=_frozen_env(env),
+            execution_target="vm",
         ),
     )
 

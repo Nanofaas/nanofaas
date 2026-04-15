@@ -5,12 +5,16 @@ Extracted from E2eRunner. Owns all step-construction logic.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.k3s_curl_runner import K3sCurlRunner
 from controlplane_tool.paths import ToolPaths
-from controlplane_tool.scenario_components.executor import ScenarioPlanStep
+from controlplane_tool.scenario_components.bootstrap import plan_loadtest_install_k6
+from controlplane_tool.scenario_components.environment import resolve_scenario_environment
+from controlplane_tool.scenario_components.executor import ScenarioPlanStep, operation_to_plan_step
+from controlplane_tool.scenario_components.verification import plan_loadtest_run
 from controlplane_tool.scenario_manifest import write_scenario_manifest
 from controlplane_tool.scenario_tasks import (
     helm_uninstall_vm_script,
@@ -84,6 +88,23 @@ class ScenarioPlanner:
     ) -> ScenarioPlanStep:
         result = self.vm.remote_exec(request, command=command, dry_run=True)
         return self._step_from_result(summary, result, step_id=step_id)
+
+    def _run_remote_operation(
+        self,
+        request: E2eRequest,
+        argv: tuple[str, ...],
+        env: Mapping[str, str],
+    ) -> None:
+        vm_request = self._require_vm(request)
+        result = self.vm.exec_argv(
+            vm_request,
+            argv,
+            env=dict(env),
+            cwd=self.vm.remote_project_dir(vm_request),
+            dry_run=False,
+        )
+        if result.return_code != 0:
+            raise RuntimeError((result.stderr or result.stdout or f"exit {result.return_code}").strip())
 
     # ── environment helpers ──────────────────────────────────────────────────
 
@@ -456,26 +477,25 @@ class ScenarioPlanner:
         ]
 
     def helm_stack_tail_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
+        context = resolve_scenario_environment(
+            self.paths.workspace_root,
+            request,
+            manifest_root=self.manifest_root,
+        )
         vm_env = self._vm_env(request)
         if request.helm_noninteractive:
             vm_env = {**vm_env, "E2E_K3S_HELM_NONINTERACTIVE": "true"}
         vm_env = self._with_manifest_env(request, vm_env)
         controlplane_tool_project = self.paths.workspace_root / "tools" / "controlplane"
         return [
-            self._step(
-                "Run loadtest via Python runner",
-                [
-                    "uv",
-                    "run",
-                    "--project",
-                    str(controlplane_tool_project),
-                    "--locked",
-                    "controlplane-tool",
-                    "loadtest",
-                    "run",
-                ],
-                env=vm_env,
-                step_id="loadtest.run",
+            operation_to_plan_step(
+                plan_loadtest_install_k6(context)[0],
+                request=request,
+            ),
+            operation_to_plan_step(
+                plan_loadtest_run(context)[0],
+                request=request,
+                on_remote_exec=lambda argv, env: self._run_remote_operation(request, argv, env),
             ),
             self._step(
                 "Run autoscaling experiment (Python)",

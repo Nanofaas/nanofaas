@@ -612,7 +612,8 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
             SimpleNamespace(summary="Deploy function-runtime via Helm"),
             SimpleNamespace(summary="Wait for control-plane deployment"),
             SimpleNamespace(summary="Wait for function-runtime deployment"),
-            SimpleNamespace(summary="Run loadtest via Python runner"),
+            SimpleNamespace(summary="Install k6 for load testing"),
+            SimpleNamespace(summary="Run k6 loadtest via controlplane runner"),
             SimpleNamespace(summary="Run autoscaling experiment (Python)"),
         ]
 
@@ -668,7 +669,8 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
         "Deploy function-runtime via Helm",
         "Wait for control-plane deployment",
         "Wait for function-runtime deployment",
-        "Run loadtest via Python runner",
+        "Install k6 for load testing",
+        "Run k6 loadtest via controlplane runner",
         "Run autoscaling experiment (Python)",
     ]
 
@@ -694,7 +696,8 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
             SimpleNamespace(summary="Deploy function-runtime via Helm"),
             SimpleNamespace(summary="Wait for control-plane deployment"),
             SimpleNamespace(summary="Wait for function-runtime deployment"),
-            SimpleNamespace(summary="Run loadtest via Python runner"),
+            SimpleNamespace(summary="Install k6 for load testing"),
+            SimpleNamespace(summary="Run k6 loadtest via controlplane runner"),
             SimpleNamespace(summary="Run autoscaling experiment (Python)"),
         ]
 
@@ -708,7 +711,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
             event_listener(
                 ScenarioStepEvent(
                     step_index=1,
-                    total_steps=15,
+                    total_steps=16,
                     step=step,
                     status="running",
                 )
@@ -716,7 +719,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
             event_listener(
                 ScenarioStepEvent(
                     step_index=1,
-                    total_steps=15,
+                    total_steps=16,
                     step=step,
                     status="success",
                 )
@@ -763,7 +766,8 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
         ("Deploy function-runtime via Helm", "pending"),
         ("Wait for control-plane deployment", "pending"),
         ("Wait for function-runtime deployment", "pending"),
-        ("Run loadtest via Python runner", "pending"),
+        ("Install k6 for load testing", "pending"),
+        ("Run k6 loadtest via controlplane runner", "pending"),
         ("Run autoscaling experiment (Python)", "pending"),
     ]
 

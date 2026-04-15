@@ -2,8 +2,8 @@
 Tests for k3s_runtime - K3sCurlRunner, HelmStackRunner, and helper functions (M11).
 
 Gate: runners must guard against un-bootstrapped VMs, resolve function metadata from
-scenario, cache the ClusterIP, and route loadtest to the Python runner (not deleted
-experiments/e2e-loadtest-registry.sh).
+scenario, cache the ClusterIP, and route loadtest through the controlplane runner
+(not deleted experiments/e2e-loadtest-registry.sh).
 """
 from __future__ import annotations
 
@@ -304,7 +304,7 @@ def test_helm_stack_runner_build_env_sets_host_when_external(tmp_path) -> None:
     assert env["E2E_VM_HOST"] == "192.168.64.5"
 
 
-def test_helm_stack_runner_run_invokes_python_loadtest_runner(tmp_path, monkeypatch) -> None:
+def test_helm_stack_runner_run_invokes_controlplane_loadtest_runner(tmp_path, monkeypatch) -> None:
     """HelmStackRunner must not call deleted e2e-loadtest-registry.sh (M12)."""
     monkeypatch.setenv("E2E_SKIP_VM_BOOTSTRAP", "true")
     vm_req = _make_vm_request()
@@ -320,7 +320,7 @@ def test_helm_stack_runner_run_invokes_python_loadtest_runner(tmp_path, monkeypa
         runner.run()
 
     called_cmds = [" ".join(c) for c in calls]
-    # Must call controlplane-tool loadtest run (Python runner)
+    # Must call controlplane-tool loadtest run.
     assert any("loadtest" in cmd and "run" in cmd for cmd in called_cmds)
     # Must NOT call deleted experiments/e2e-loadtest-registry.sh
     assert not any("e2e-loadtest-registry.sh" in cmd for cmd in called_cmds)

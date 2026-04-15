@@ -137,6 +137,7 @@ def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
 
     assert k3s_recipe_ids[:shared_prefix_length] == helm_recipe_ids[:shared_prefix_length]
     assert helm_recipe_ids[shared_prefix_length:] == [
+        "loadtest.install_k6",
         "loadtest.run",
         "experiments.autoscaling",
     ]
@@ -150,7 +151,8 @@ def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
         step.summary for step in k3s_plan.steps[:shared_step_prefix]
     ]
     assert [step.summary for step in helm_stack_plan.steps[shared_step_prefix:]] == [
-        "Run loadtest via Python runner",
+        "Install k6 for load testing",
+        "Run k6 loadtest via controlplane runner",
         "Run autoscaling experiment (Python)",
     ]
 
@@ -205,7 +207,12 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
     )
 
     assert [step.summary for step in plan.steps[-2:]] == [
-        "Run loadtest via Python runner",
+        "Run k6 loadtest via controlplane runner",
+        "Run autoscaling experiment (Python)",
+    ]
+    assert [step.summary for step in plan.steps[-3:]] == [
+        "Install k6 for load testing",
+        "Run k6 loadtest via controlplane runner",
         "Run autoscaling experiment (Python)",
     ]
     assert all(step.step_id for step in plan.steps)
