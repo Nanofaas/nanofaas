@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, Protocol
 
 
 def utc_now() -> datetime:
@@ -80,3 +81,11 @@ class WorkflowEvent:
     detail: str = ""
     stream: str = "stdout"
     line: str = ""
+
+
+class WorkflowSink(Protocol):
+    """Event receiver for workflow progress — implemented by TUI, console, and test fakes."""
+
+    def emit(self, event: "WorkflowEvent") -> None: ...
+
+    def status(self, label: str) -> AbstractContextManager[None]: ...

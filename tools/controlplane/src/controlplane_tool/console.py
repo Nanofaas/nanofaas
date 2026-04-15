@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from contextvars import ContextVar
 from contextlib import contextmanager
-from typing import ContextManager, Generator, Protocol
+from typing import Generator
 
 from rich.console import Console
 from rich.markup import escape
@@ -21,7 +21,10 @@ from controlplane_tool.workflow_events import (
     build_phase_event,
     build_task_event,
 )
-from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent
+from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent, WorkflowSink
+
+# WorkflowSink is imported from workflow_models and re-exported here for backwards compat.
+__all__ = [*globals().get("__all__", []), "WorkflowSink"]
 
 # Singleton — shared across all modules.
 console = Console(highlight=False)
@@ -44,12 +47,6 @@ _LOGO = r"""
  ██║ ╚████║██║  ██║██║ ╚████║╚██████╔╝██║     ██║  ██║██║  ██║███████║
  ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
 """
-
-
-class WorkflowSink(Protocol):
-    def emit(self, event: WorkflowEvent) -> None: ...
-
-    def status(self, label: str) -> ContextManager[None]: ...
 
 
 @contextmanager
