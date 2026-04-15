@@ -576,7 +576,7 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
 
     assert called["scenario"] == "k3s-junit-curl"
     assert called["flow_id"] == "e2e.k3s_junit_curl"
@@ -645,7 +645,7 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e("helm-stack")
+    NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
 
     assert called["scenario"] == "helm-stack"
     assert called["flow_id"] == "e2e.helm_stack"
@@ -747,7 +747,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e("helm-stack")
+    NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
 
     assert captured["steps"] == [
         ("Ensure VM is running", "success"),
@@ -854,7 +854,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
     monkeypatch.setattr(tui_wfc, "Live", _FakeLive)
     monkeypatch.setattr(tui_wfc, "WorkflowKeyListener", _FakeKeyListener)
 
-    NanofaasTUI()._run_vm_e2e("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
 
     console = Console(record=True, width=140)
     console.print(captured["live"].renderable)
@@ -959,7 +959,7 @@ def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> Non
 
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
 
-    NanofaasTUI()._run_vm_e2e("helm-stack")
+    NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
 
     request = called["request"]
     assert request.function_preset == "demo-loadtest"

@@ -382,15 +382,15 @@ class NanofaasTUI:
             return
 
         if scenario_choice in ("k3s-junit-curl", "helm-stack"):
-            self._run_vm_e2e(scenario_choice)
+            self._run_vm_e2e_scenario(scenario_choice)
         elif scenario_choice == "container-local":
             self._run_container_local()
         elif scenario_choice == "deploy-host":
             self._run_deploy_host()
         else:
-            self._run_generic_e2e(scenario_choice)
+            self._run_e2e_scenario(scenario_choice)
 
-    def _run_vm_e2e(self, scenario: str) -> None:
+    def _run_vm_e2e_scenario(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
 
         if scenario == "helm-stack":
@@ -567,7 +567,7 @@ class NanofaasTUI:
             action=_run_deploy_host_workflow,
         )
 
-    def _run_generic_e2e(self, scenario: str) -> None:
+    def _run_e2e_scenario(self, scenario: str) -> None:
         from controlplane_tool.e2e_models import E2eRequest
 
         runtime = _ask(
