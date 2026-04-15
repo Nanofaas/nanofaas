@@ -419,7 +419,7 @@ class NanofaasTUI:
             plan = E2eRunner(repo_root=repo_root).plan(request)
 
             def _run_helm_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-                def _on_event(event: Any) -> None:
+                def _on_step_event(event: Any) -> None:
                     self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
@@ -429,7 +429,7 @@ class NanofaasTUI:
                     "helm-stack",
                     repo_root=repo_root,
                     request=request,
-                    event_listener=_on_event,
+                    event_listener=_on_step_event,
                 )
                 self._controller.run_shared_flow(flow)
                 dashboard.append_log("helm-stack E2E completed")
@@ -504,7 +504,7 @@ class NanofaasTUI:
             plan = runner.plan(request)
 
             def _run_k8s_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-                def _on_event(event: Any) -> None:
+                def _on_step_event(event: Any) -> None:
                     self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
@@ -512,7 +512,7 @@ class NanofaasTUI:
                     "k3s-junit-curl",
                     repo_root=repo_root,
                     request=request,
-                    event_listener=_on_event,
+                    event_listener=_on_step_event,
                 )
                 dashboard.append_log("Starting k3s-junit-curl workflow")
                 sink._update()
@@ -581,7 +581,7 @@ class NanofaasTUI:
         plan = E2eRunner(repo_root=default_tool_paths().workspace_root).plan(request)
 
         def _run_generic_e2e_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-            def _on_event(event: Any) -> None:
+            def _on_step_event(event: Any) -> None:
                 self._applier.apply_e2e_step_event(dashboard, event)
                 sink._update()
 
@@ -589,7 +589,7 @@ class NanofaasTUI:
                 scenario,
                 repo_root=default_tool_paths().workspace_root,
                 request=request,
-                event_listener=_on_event,
+                event_listener=_on_step_event,
             )
             dashboard.append_log(f"Starting E2E scenario={scenario}")
             sink._update()
@@ -671,7 +671,7 @@ class NanofaasTUI:
             cli_stack_plan = E2eRunner(repo_root).plan(cli_stack_request)
 
             def _run_cli_stack_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-                def _on_event(event: Any) -> None:
+                def _on_step_event(event: Any) -> None:
                     self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
@@ -679,7 +679,7 @@ class NanofaasTUI:
                 flow = build_scenario_flow(
                     "cli-stack",
                     repo_root=repo_root,
-                    event_listener=_on_event,
+                    event_listener=_on_step_event,
                 )
                 self._controller.run_shared_flow(flow)
                 success("CLI stack E2E completed")
@@ -769,14 +769,14 @@ class NanofaasTUI:
             _show_loadtest_plan(request)
         else:
             def _run_loadtest_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-                def _on_event(event: Any) -> None:
+                def _on_step_event(event: Any) -> None:
                     self._applier.apply_loadtest_step_event(dashboard, event)
                     sink._update()
 
                 flow = build_loadtest_flow(
                     request.load_profile.name,
                     request=request,
-                    event_listener=_on_event,
+                    event_listener=_on_step_event,
                 )
                 result = self._controller.run_shared_flow(flow, allow_none_result=False)
                 dashboard.append_log(f"Summary: {result.run_dir / 'summary.json'}")
