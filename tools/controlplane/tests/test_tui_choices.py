@@ -338,11 +338,14 @@ def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
 
 def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui_widgets as tui_widgets
 
     answers = iter(["provision-base", "multipass", "nanofaas-e2e", "ubuntu", False, False])
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    _ask_fn = lambda prompt_fn: next(answers)  # noqa: E731
+    monkeypatch.setattr(tui_app, "_ask", _ask_fn)
+    monkeypatch.setattr(tui_widgets, "_ask", _ask_fn)
 
     def fake_build_vm_flow(flow_id, **kwargs):  # noqa: ANN001
         called["built_flow_id"] = flow_id
@@ -374,10 +377,13 @@ def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
 def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monkeypatch) -> None:
     import pytest
     import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui_widgets as tui_widgets
 
     answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
 
-    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    _ask_fn = lambda prompt_fn: next(answers)  # noqa: E731
+    monkeypatch.setattr(tui_app, "_ask", _ask_fn)
+    monkeypatch.setattr(tui_widgets, "_ask", _ask_fn)
 
     def fake_build_vm_flow(flow_id, **kwargs):  # noqa: ANN001
         return LocalFlowDefinition(
@@ -405,11 +411,14 @@ def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monk
 def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeypatch) -> None:
     import pytest
     import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui_widgets as tui_widgets
 
     answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
     log_lines: list[str] = []
 
-    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    _ask_fn = lambda prompt_fn: next(answers)  # noqa: E731
+    monkeypatch.setattr(tui_app, "_ask", _ask_fn)
+    monkeypatch.setattr(tui_widgets, "_ask", _ask_fn)
 
     def fake_build_vm_flow(flow_id, **kwargs):  # noqa: ANN001
         return LocalFlowDefinition(
@@ -443,12 +452,15 @@ def test_tui_main_menu_includes_registry_entry() -> None:
 
 def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui_widgets as tui_widgets
     from controlplane_tool.registry_runtime import default_registry_url
 
     answers = iter(["start"])
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    _ask_fn = lambda prompt_fn: next(answers)  # noqa: E731
+    monkeypatch.setattr(tui_app, "_ask", _ask_fn)
+    monkeypatch.setattr(tui_widgets, "_ask", _ask_fn)
     monkeypatch.setattr(tui_app, "ensure_local_registry", lambda **kwargs: called.update(kwargs) or object())
 
     def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
@@ -466,10 +478,13 @@ def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
 
 def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui_widgets as tui_widgets
 
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: "run")
+    _ask_fn = lambda prompt_fn: "run"  # noqa: E731
+    monkeypatch.setattr(tui_app, "_ask", _ask_fn)
+    monkeypatch.setattr(tui_widgets, "_ask", _ask_fn)
     monkeypatch.setattr(tui_app, "list_profiles", lambda: [])
     monkeypatch.setattr(NanofaasTUI, "_build_profile_interactive", lambda self, name: SimpleNamespace(name=name))
     monkeypatch.setattr(
