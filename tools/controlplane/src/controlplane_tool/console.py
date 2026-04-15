@@ -23,9 +23,6 @@ from controlplane_tool.workflow_events import (
 )
 from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent, WorkflowSink
 
-# WorkflowSink is imported from workflow_models and re-exported here for backwards compat.
-__all__ = [*globals().get("__all__", []), "WorkflowSink"]
-
 # Singleton — shared across all modules.
 console = Console(highlight=False)
 _workflow_sink_var: ContextVar["WorkflowSink | None"] = ContextVar(
