@@ -32,7 +32,7 @@ cli_e2e_app.add_typer(_run_app, name="run")
 
 
 @_run_app.command("vm")
-def run_vm(
+def run_e2e_vm(
     scenario_file: Annotated[
         Optional[Path],
         typer.Option("--scenario-file", help="Resolved scenario manifest JSON path."),
