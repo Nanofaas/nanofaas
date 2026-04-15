@@ -6,7 +6,6 @@ un-bootstrapped VMs. They must use vm_request_from_env() for env-based construct
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
 from pathlib import Path
 import subprocess
@@ -29,26 +28,13 @@ from controlplane_tool.scenario_helpers import (
     selected_functions as _selected_functions,
 )
 from controlplane_tool.shell_backend import ShellExecutionResult
-from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent
+from controlplane_tool.workflow_models import WorkflowContext
 from controlplane_tool.workflow_progress import WorkflowProgressReporter
 from controlplane_tool.vm_models import VmRequest
 
 
 def _make_vm_request() -> VmRequest:
     return VmRequest(lifecycle="multipass", name="test-vm")
-
-
-class _FakeSink:
-    def __init__(self) -> None:
-        self.events: list[WorkflowEvent] = []
-
-    def emit(self, event: WorkflowEvent) -> None:
-        self.events.append(event)
-
-    @contextmanager
-    def status(self, label: str):
-        _ = label
-        yield
 
 
 class _FakeProcess:
@@ -63,12 +49,12 @@ class _FakeProcess:
         return None
 
 
-def _task_events(sink: _FakeSink, task_id: str) -> list[WorkflowEvent]:
+def _task_events(sink, task_id: str) -> list:
     return [event for event in sink.events if event.task_id == task_id]
 
 
 def _assert_balanced_phase(
-    sink: _FakeSink,
+    sink,
     *,
     task_id: str,
     parent_task_id: str,
@@ -177,6 +163,7 @@ def test_cli_runtime_re_exports_dedicated_cli_stack_runner() -> None:
 def test_cli_vm_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fake_sink,
 ) -> None:
     monkeypatch.setenv("E2E_SKIP_VM_BOOTSTRAP", "true")
     monkeypatch.setattr(cli_runtime, "_resolve_scenario", lambda scenario_file: None, raising=False)
@@ -200,21 +187,20 @@ def test_cli_vm_runner_emits_balanced_top_level_phase_events_and_verify_children
 
     monkeypatch.setattr(runner, "_run_cli_tests", _run_cli_tests)
 
-    sink = _FakeSink()
-    with bind_workflow_sink(sink), bind_workflow_context(
+    with bind_workflow_sink(fake_sink), bind_workflow_context(
         WorkflowContext(flow_id="e2e.cli_vm", task_id="cli.vm_e2e_flow")
     ):
         runner.run()
 
-    _assert_balanced_phase(sink, task_id="cli.vm.build", parent_task_id="cli.vm_e2e_flow")
-    _assert_balanced_phase(sink, task_id="cli.vm.deploy", parent_task_id="cli.vm_e2e_flow")
-    _assert_balanced_phase(sink, task_id="cli.vm.verify", parent_task_id="cli.vm_e2e_flow")
-    assert [event.kind for event in _task_events(sink, "cli.vm.verify.echo-test")] == [
+    _assert_balanced_phase(fake_sink, task_id="cli.vm.build", parent_task_id="cli.vm_e2e_flow")
+    _assert_balanced_phase(fake_sink, task_id="cli.vm.deploy", parent_task_id="cli.vm_e2e_flow")
+    _assert_balanced_phase(fake_sink, task_id="cli.vm.verify", parent_task_id="cli.vm_e2e_flow")
+    assert [event.kind for event in _task_events(fake_sink, "cli.vm.verify.echo-test")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "cli.vm.verify.echo-test")
+        event.parent_task_id for event in _task_events(fake_sink, "cli.vm.verify.echo-test")
     } == {"cli.vm.verify"}
 
 
@@ -290,6 +276,7 @@ def test_cli_host_platform_runner_uses_shared_platform_primitives(tmp_path) -> N
 def test_cli_host_platform_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fake_sink,
 ) -> None:
     monkeypatch.setenv("E2E_SKIP_VM_BOOTSTRAP", "true")
 
@@ -317,33 +304,32 @@ def test_cli_host_platform_runner_emits_balanced_top_level_phase_events_and_veri
     monkeypatch.setattr(runner, "_run_host_cli", _run_host_cli)
     monkeypatch.setattr(runner, "_run_host_cli_allow_fail", lambda kubeconfig_path, command: (1, ""))
 
-    sink = _FakeSink()
-    with bind_workflow_sink(sink), bind_workflow_context(
+    with bind_workflow_sink(fake_sink), bind_workflow_context(
         WorkflowContext(flow_id="e2e.cli_host_platform", task_id="cli.host_platform_flow")
     ):
         runner.run()
 
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="cli.host_platform.build",
         parent_task_id="cli.host_platform_flow",
     )
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="cli.host_platform.deploy",
         parent_task_id="cli.host_platform_flow",
     )
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="cli.host_platform.verify_phase",
         parent_task_id="cli.host_platform_flow",
     )
-    assert [event.kind for event in _task_events(sink, "cli.host_platform.verify")] == [
+    assert [event.kind for event in _task_events(fake_sink, "cli.host_platform.verify")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "cli.host_platform.verify")
+        event.parent_task_id for event in _task_events(fake_sink, "cli.host_platform.verify")
     } == {"cli.host_platform.verify_phase"}
 
 
@@ -376,6 +362,7 @@ def test_cli_stack_apply_operation_stages_manifest_before_apply(tmp_path) -> Non
 def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fake_sink,
 ) -> None:
     monkeypatch.setattr(container_local_runner_mod, "_resolve_scenario_file", lambda scenario_file: None)
     monkeypatch.setattr(container_local_runner_mod, "select_container_runtime", lambda runtime_adapter: "docker")
@@ -422,46 +409,46 @@ def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify
         lambda url, timeout=5: type("_Resp", (), {"status_code": 404})(),
     )
 
-    sink = _FakeSink()
-    with bind_workflow_sink(sink), bind_workflow_context(
+    with bind_workflow_sink(fake_sink), bind_workflow_context(
         WorkflowContext(flow_id="e2e.container_local", task_id="container-local.run_flow")
     ):
         runner.run()
 
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="container-local.build",
         parent_task_id="container-local.run_flow",
     )
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="container-local.deploy",
         parent_task_id="container-local.run_flow",
     )
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="container-local.verify",
         parent_task_id="container-local.run_flow",
     )
-    assert [event.kind for event in _task_events(sink, "container-local.verify.scale")] == [
+    assert [event.kind for event in _task_events(fake_sink, "container-local.verify.scale")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "container-local.verify.scale")
+        event.parent_task_id for event in _task_events(fake_sink, "container-local.verify.scale")
     } == {"container-local.verify"}
-    assert [event.kind for event in _task_events(sink, "container-local.verify.cleanup")] == [
+    assert [event.kind for event in _task_events(fake_sink, "container-local.verify.cleanup")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "container-local.verify.cleanup")
+        event.parent_task_id for event in _task_events(fake_sink, "container-local.verify.cleanup")
     } == {"container-local.verify"}
 
 
 def test_deploy_host_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fake_sink,
 ) -> None:
     monkeypatch.setattr(deploy_host_runner_mod, "_resolve_scenario_file", lambda scenario_file: None)
     monkeypatch.setattr(deploy_host_runner_mod, "select_container_runtime", lambda: "docker")
@@ -494,38 +481,38 @@ def test_deploy_host_runner_emits_balanced_top_level_phase_events_and_verify_chi
     monkeypatch.setattr(runner, "_verify_registry_push", lambda image_repo, tag: None)
     monkeypatch.setattr(runner, "_verify_register_request", lambda request_body_path, function_name, image_repo, tag: None)
 
-    sink = _FakeSink()
-    with bind_workflow_sink(sink), bind_workflow_context(
+    with bind_workflow_sink(fake_sink), bind_workflow_context(
         WorkflowContext(flow_id="e2e.deploy_host", task_id="deploy-host.run_flow")
     ):
         runner.run()
 
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="deploy-host.build",
         parent_task_id="deploy-host.run_flow",
     )
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="deploy-host.deploy",
         parent_task_id="deploy-host.run_flow",
     )
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="deploy-host.verify",
         parent_task_id="deploy-host.run_flow",
     )
-    assert [event.kind for event in _task_events(sink, "deploy-host.verify.deploy-e2e")] == [
+    assert [event.kind for event in _task_events(fake_sink, "deploy-host.verify.deploy-e2e")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "deploy-host.verify.deploy-e2e")
+        event.parent_task_id for event in _task_events(fake_sink, "deploy-host.verify.deploy-e2e")
     } == {"deploy-host.verify"}
 
 
 def test_cli_stack_runner_emits_explicit_verify_parent_context_for_planned_steps(
     monkeypatch: pytest.MonkeyPatch,
+    fake_sink,
 ) -> None:
     monkeypatch.setattr(cli_stack_runner_mod, "_resolve_scenario", lambda scenario_file: None)
 
@@ -558,28 +545,27 @@ def test_cli_stack_runner_emits_explicit_verify_parent_context_for_planned_steps
 
     runner._shell = _Shell()
 
-    sink = _FakeSink()
-    with bind_workflow_sink(sink), bind_workflow_context(
+    with bind_workflow_sink(fake_sink), bind_workflow_context(
         WorkflowContext(flow_id="e2e.cli_stack", task_id="cli_stack.vm_e2e_flow")
     ):
         runner.run()
 
     _assert_balanced_phase(
-        sink,
+        fake_sink,
         task_id="cli-stack.verify",
         parent_task_id="cli_stack.vm_e2e_flow",
     )
-    assert [event.kind for event in _task_events(sink, "cli.platform_install")] == [
+    assert [event.kind for event in _task_events(fake_sink, "cli.platform_install")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "cli.platform_install")
+        event.parent_task_id for event in _task_events(fake_sink, "cli.platform_install")
     } == {"cli-stack.verify"}
-    assert [event.kind for event in _task_events(sink, "cli.platform_status")] == [
+    assert [event.kind for event in _task_events(fake_sink, "cli.platform_status")] == [
         "task.running",
         "task.completed",
     ]
     assert {
-        event.parent_task_id for event in _task_events(sink, "cli.platform_status")
+        event.parent_task_id for event in _task_events(fake_sink, "cli.platform_status")
     } == {"cli-stack.verify"}

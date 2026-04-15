@@ -453,14 +453,7 @@ def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values_without_cleanup()
     ]
 
 
-def test_execute_binds_step_context_for_nested_workflow_events() -> None:
-    class _Sink:
-        def __init__(self) -> None:
-            self.events = []
-
-        def emit(self, event) -> None:  # noqa: ANN001
-            self.events.append(event)
-
+def test_execute_binds_step_context_for_nested_workflow_events(fake_sink) -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = ScenarioPlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
@@ -475,15 +468,14 @@ def test_execute_binds_step_context_for_nested_workflow_events() -> None:
             )
         ],
     )
-    sink = _Sink()
 
-    with bind_workflow_sink(sink):
+    with bind_workflow_sink(fake_sink):
         runner.execute(plan)
 
-    assert len(sink.events) == 1
-    assert sink.events[0].flow_id == "docker"
-    assert sink.events[0].task_id == "tests.run_k3s_curl_checks"
-    assert sink.events[0].line == "nested progress"
+    assert len(fake_sink.events) == 1
+    assert fake_sink.events[0].flow_id == "docker"
+    assert fake_sink.events[0].task_id == "tests.run_k3s_curl_checks"
+    assert fake_sink.events[0].line == "nested progress"
 
 
 def test_execute_rejects_step_without_id() -> None:
