@@ -255,7 +255,7 @@ def test_helm_stack_execute_resolves_vm_host_for_autoscaling_env() -> None:
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
     shell = RecordingShell()
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
-    runner._k3s_curl_runner = lambda request: type(  # type: ignore[method-assign]
+    runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
         "_Verifier",
         (),
         {"verify_existing_stack": staticmethod(lambda resolved: None)},
@@ -300,7 +300,7 @@ def test_run_all_tears_down_vm_when_cleanup_vm_true() -> None:
         host_resolver=lambda _: "10.0.0.1",
         multipass_client=MultipassClient(backend=backend),
     )
-    runner._k3s_curl_runner = lambda request: type(  # type: ignore[method-assign]
+    runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
         "_Verifier",
         (),
         {"verify_existing_stack": staticmethod(lambda resolved: None)},
@@ -414,7 +414,7 @@ def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
 
 def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
     runner = E2eRunner(Path("/repo"), shell=RecordingShell())
-    steps = runner._k3s_junit_curl_tail_steps(  # noqa: SLF001
+    steps = runner._planner.k3s_junit_curl_tail_steps(  # noqa: SLF001
         E2eRequest(
             scenario="k3s-junit-curl",
             runtime="java",
@@ -434,7 +434,7 @@ def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
 
 def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values_without_cleanup() -> None:
     runner = E2eRunner(Path("/repo"), shell=RecordingShell())
-    steps = runner._k3s_junit_curl_tail_steps(  # noqa: SLF001
+    steps = runner._planner.k3s_junit_curl_tail_steps(  # noqa: SLF001
         E2eRequest(
             scenario="k3s-junit-curl",
             runtime="java",
