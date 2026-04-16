@@ -450,6 +450,30 @@ def test_tui_main_menu_includes_registry_entry() -> None:
     assert any(choice.value == "registry" for choice in NanofaasTUI._MAIN_MENU if hasattr(choice, "value"))
 
 
+def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "header", lambda: None)
+    monkeypatch.setattr(tui_app.console, "print", lambda *args, **kwargs: None)
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured["message"] = message
+        captured["choices"] = choices
+        captured["default"] = default
+        captured["include_back"] = include_back
+        return "exit"
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+
+    NanofaasTUI().run()
+
+    assert captured["message"] == "What would you like to do?"
+    assert any(getattr(choice, "value", None) == "build" for choice in captured["choices"])
+    assert captured["include_back"] is False
+
+
 def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
     import controlplane_tool.tui_widgets as tui_widgets

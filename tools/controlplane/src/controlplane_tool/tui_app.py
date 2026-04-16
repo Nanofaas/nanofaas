@@ -31,13 +31,11 @@ from controlplane_tool.tui_workflow_controller import TuiWorkflowController
 from controlplane_tool.tui_widgets import (
     _BACK_VALUE,
     _STYLE,
-    _AcceptingRadioList,
     _DescribedChoice,
     _ask,
     _back_choice,
     _select_described_value,
     _select_value,
-    _selected_radiolist_value,
     _with_back_choice,
     _with_back_described_choice,
 )
@@ -69,12 +67,9 @@ class NanofaasTUI:
         header()
         try:
             while True:
-                choice = _ask(
-                    lambda: questionary.select(
-                        "What would you like to do?",
-                        choices=self._MAIN_MENU,
-                        style=_STYLE,
-                    ).ask()
+                choice = _select_value(
+                    "What would you like to do?",
+                    choices=self._MAIN_MENU,
                 )
                 if choice == "exit":
                     break
