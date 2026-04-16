@@ -209,6 +209,7 @@ def test_k3s_curl_runner_waits_for_managed_function_before_invoking(tmp_path) ->
 
     calls: list[tuple[str, str]] = []
 
+    runner._delete_function = lambda fn_key: calls.append(("delete", fn_key))  # type: ignore[attr-defined]
     runner._register_function = lambda fn_key, fn_image: calls.append(("register", fn_key))  # type: ignore[method-assign]
     runner._invoke_function = lambda fn_key, payload: calls.append(("invoke", fn_key))  # type: ignore[method-assign]
     runner._enqueue_function = lambda fn_key, payload: (calls.append(("enqueue", fn_key)) or "exec-1")  # type: ignore[method-assign]
@@ -218,11 +219,73 @@ def test_k3s_curl_runner_waits_for_managed_function_before_invoking(tmp_path) ->
     runner._run_function_workflow("word-stats-java", resolved)
 
     assert calls == [
+        ("delete", "word-stats-java"),
         ("register", "word-stats-java"),
         ("wait", "word-stats-java"),
         ("invoke", "word-stats-java"),
         ("enqueue", "word-stats-java"),
         ("poll", "exec-1"),
+        ("delete", "word-stats-java"),
+    ]
+
+
+def test_k3s_curl_runner_register_function_uses_deterministic_scaling(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    captured: dict[str, Any] = {}
+
+    runner._kubectl_curl = lambda *args, **kwargs: pytest.fail("unexpected _kubectl_curl call")  # type: ignore[method-assign]
+    runner._kubectl_curl_with_status = lambda method, path, body_json=None: (  # type: ignore[attr-defined]
+        captured.update({"method": method, "path": path, "body_json": body_json}) or (201, '{"name":"word-stats-java"}')
+    )
+
+    runner._register_function("word-stats-java", "localhost:5000/nanofaas/java-word-stats:e2e")
+
+    payload = json.loads(captured["body_json"])
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/v1/functions"
+    assert payload["name"] == "word-stats-java"
+    assert payload["image"] == "localhost:5000/nanofaas/java-word-stats:e2e"
+    assert payload["scalingConfig"]["minReplicas"] == 1
+    assert payload["scalingConfig"]["maxReplicas"] == 1
+
+
+def test_k3s_curl_runner_register_function_raises_on_non_created_status(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+
+    runner._kubectl_curl = lambda *args, **kwargs: pytest.fail("unexpected _kubectl_curl call")  # type: ignore[method-assign]
+    runner._kubectl_curl_with_status = lambda method, path, body_json=None: (  # type: ignore[attr-defined]
+        409, '{"message":"already registered"}'
+    )
+
+    with pytest.raises(RuntimeError, match="already registered"):
+        runner._register_function("word-stats-java", "localhost:5000/nanofaas/java-word-stats:e2e")
+
+
+def test_k3s_curl_runner_reconciles_function_before_and_after_workflow(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    resolved = _make_resolved([
+        {"key": "word-stats-java", "family": "word-stats", "image": "localhost:5000/nanofaas/java-word-stats:e2e"}
+    ])
+
+    calls: list[tuple[str, str]] = []
+
+    runner._delete_function = lambda fn_key: calls.append(("delete", fn_key))  # type: ignore[attr-defined]
+    runner._register_function = lambda fn_key, fn_image: calls.append(("register", fn_key))  # type: ignore[method-assign]
+    runner._invoke_function = lambda fn_key, payload: calls.append(("invoke", fn_key))  # type: ignore[method-assign]
+    runner._enqueue_function = lambda fn_key, payload: (calls.append(("enqueue", fn_key)) or "exec-1")  # type: ignore[method-assign]
+    runner._poll_execution = lambda exec_id: calls.append(("poll", exec_id))  # type: ignore[method-assign]
+    runner._await_managed_function_ready = lambda fn_key: calls.append(("wait", fn_key))  # type: ignore[method-assign]
+
+    runner._run_function_workflow("word-stats-java", resolved)
+
+    assert calls == [
+        ("delete", "word-stats-java"),
+        ("register", "word-stats-java"),
+        ("wait", "word-stats-java"),
+        ("invoke", "word-stats-java"),
+        ("enqueue", "word-stats-java"),
+        ("poll", "exec-1"),
+        ("delete", "word-stats-java"),
     ]
 
 
@@ -246,6 +309,32 @@ def test_k3s_curl_runner_retries_sync_invoke_until_success(tmp_path) -> None:
         ("POST", "/v1/functions/word-stats-java:invoke"),
         ("POST", "/v1/functions/word-stats-java:invoke"),
     ]
+
+
+def test_k3s_curl_runner_verify_prometheus_metrics_accepts_legacy_names(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    runner._control_plane_service_ip = lambda: "10.96.0.1"  # type: ignore[method-assign]
+    runner._vm_exec = lambda cmd: "\n".join([  # type: ignore[method-assign]
+        "function_enqueue_total{function=\"word-stats-java\"} 1",
+        "function_success_total{function=\"word-stats-java\"} 1",
+        "function_queue_depth{function=\"word-stats-java\"} 0",
+        "function_inFlight{function=\"word-stats-java\"} 0",
+    ])
+
+    runner._verify_prometheus_metrics()
+
+
+def test_k3s_curl_runner_verify_prometheus_metrics_accepts_sync_queue_names(tmp_path) -> None:
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    runner._control_plane_service_ip = lambda: "10.96.0.1"  # type: ignore[method-assign]
+    runner._vm_exec = lambda cmd: "\n".join([  # type: ignore[method-assign]
+        "function_enqueue_total{function=\"word-stats-java\"} 1",
+        "function_success_total{function=\"word-stats-java\"} 1",
+        "sync_queue_depth{function=\"word-stats-java\"} 0",
+        "function_dispatch_total{function=\"word-stats-java\"} 2",
+    ])
+
+    runner._verify_prometheus_metrics()
 
 
 # ---------------------------------------------------------------------------

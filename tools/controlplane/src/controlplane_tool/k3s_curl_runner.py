@@ -343,6 +343,36 @@ class K3sCurlRunner:
             )
         return self._vm_exec(f"curl -s --max-time 35 -X {method} '{url}'")
 
+    def _kubectl_curl_with_status(
+        self,
+        method: str,
+        path: str,
+        body_json: str | None = None,
+    ) -> tuple[int, str]:
+        url = f"http://{self._control_plane_service_ip()}:8080{path}"
+        if body_json:
+            b64 = base64.b64encode(body_json.encode()).decode()
+            response = self._vm_exec(
+                f"echo '{b64}' | base64 -d | "
+                f"curl -s --max-time 35 -w '\\n%{{http_code}}' -X {method} '{url}' "
+                f"-H 'Content-Type: application/json' --data-binary @-"
+            )
+        else:
+            response = self._vm_exec(
+                f"curl -s --max-time 35 -w '\\n%{{http_code}}' -X {method} '{url}'"
+            )
+        body, _, status_line = response.rpartition("\n")
+        try:
+            status = int(status_line.strip())
+        except ValueError as exc:
+            raise RuntimeError(f"Unexpected HTTP status line for {method} {path}: {response}") from exc
+        return status, body
+
+    def _delete_function(self, fn_key: str) -> None:
+        status, body = self._kubectl_curl_with_status("DELETE", f"/v1/functions/{fn_key}")
+        if status not in {204, 404}:
+            raise RuntimeError(f"Failed to delete function {fn_key}: HTTP {status}: {body}")
+
     def _register_function(self, fn_key: str, fn_image: str) -> None:
         spec = json.dumps(
             {
@@ -353,9 +383,17 @@ class K3sCurlRunner:
                 "queueSize": 20,
                 "maxRetries": 3,
                 "executionMode": "DEPLOYMENT",
+                "scalingConfig": {
+                    "strategy": "INTERNAL",
+                    "minReplicas": 1,
+                    "maxReplicas": 1,
+                    "metrics": [{"type": "queue_depth", "target": "5"}],
+                },
             }
         )
-        self._kubectl_curl("POST", "/v1/functions", spec)
+        status, body = self._kubectl_curl_with_status("POST", "/v1/functions", spec)
+        if status != 201:
+            raise RuntimeError(f"Failed to register function {fn_key}: HTTP {status}: {body}")
 
     def _invoke_function(self, fn_key: str, payload: str) -> None:
         last_response = ""
@@ -405,14 +443,15 @@ class K3sCurlRunner:
         metrics = self._vm_exec(
             f"curl -sf http://{self._control_plane_service_ip()}:8081/actuator/prometheus"
         )
-        for metric in (
-            "function_enqueue_total",
-            "function_success_total",
-            "function_queue_depth",
-            "function_inFlight",
-        ):
-            if metric not in metrics:
-                raise RuntimeError(f"Prometheus metric {metric!r} not found")
+        required_metric_groups = (
+            ("function_enqueue_total",),
+            ("function_success_total",),
+            ("function_queue_depth", "sync_queue_depth"),
+            ("function_inFlight", "function_in_flight", "function_dispatch_total"),
+        )
+        for candidates in required_metric_groups:
+            if not any(metric in metrics for metric in candidates):
+                raise RuntimeError(f"Prometheus metric {candidates[0]!r} not found")
 
     def _run_function_workflow(
         self,
@@ -420,12 +459,16 @@ class K3sCurlRunner:
         resolved: "ResolvedScenario | None",
     ) -> None:
         fn_image = _function_image(fn_key, resolved, self._runtime_image)
-        self._register_function(fn_key, fn_image)
-        self._await_managed_function_ready(fn_key)
-        payload = _function_payload(fn_key, resolved)
-        self._invoke_function(fn_key, payload)
-        exec_id = self._enqueue_function(fn_key, payload)
-        self._poll_execution(exec_id)
+        self._delete_function(fn_key)
+        try:
+            self._register_function(fn_key, fn_image)
+            self._await_managed_function_ready(fn_key)
+            payload = _function_payload(fn_key, resolved)
+            self._invoke_function(fn_key, payload)
+            exec_id = self._enqueue_function(fn_key, payload)
+            self._poll_execution(exec_id)
+        finally:
+            self._delete_function(fn_key)
 
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
