@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvider {
 
@@ -25,6 +26,7 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     private final PortAllocator portAllocator;
     private final ManagedFunctionProxyFactory proxyFactory;
     private final Map<String, FunctionState> states = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public ContainerLocalDeploymentProvider(ContainerRuntimeAdapter adapter,
                                             ContainerLocalProperties properties,
@@ -55,56 +57,89 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     }
 
     @Override
-    public synchronized ProvisionResult provision(FunctionSpec spec) {
-        FunctionState existing = states.get(spec.name());
-        if (existing != null) {
-            return new ProvisionResult(existing.proxy.endpointUrl(), backendId());
-        }
-
-        ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
-        FunctionState state = new FunctionState(spec, proxy);
-        states.put(spec.name(), state);
+    public ProvisionResult provision(FunctionSpec spec) {
+        ReentrantLock lock = locks.computeIfAbsent(spec.name(), k -> new ReentrantLock());
+        lock.lock();
         try {
-            scaleTo(state, desiredReplicas(spec));
-            return new ProvisionResult(proxy.endpointUrl(), backendId());
-        } catch (RuntimeException e) {
-            states.remove(spec.name());
-            safeClose(proxy);
-            throw e;
+            FunctionState existing = states.get(spec.name());
+            if (existing != null) {
+                return new ProvisionResult(existing.proxy.endpointUrl(), backendId());
+            }
+
+            ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
+            FunctionState state = new FunctionState(spec, proxy);
+            states.put(spec.name(), state);
+            try {
+                scaleTo(state, desiredReplicas(spec));
+                return new ProvisionResult(proxy.endpointUrl(), backendId());
+            } catch (RuntimeException e) {
+                states.remove(spec.name());
+                safeClose(proxy);
+                throw e;
+            }
+        } finally {
+            lock.unlock();
         }
     }
 
     @Override
-    public synchronized void deprovision(String functionName) {
-        FunctionState state = states.remove(functionName);
-        if (state == null) {
+    public void deprovision(String functionName) {
+        ReentrantLock lock = locks.get(functionName);
+        if (lock == null) {
             return;
         }
-
-        for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
-            removeReplica(state, replicaIndex);
+        lock.lock();
+        try {
+            FunctionState state = states.remove(functionName);
+            if (state == null) {
+                return;
+            }
+            for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
+                removeReplica(state, replicaIndex);
+            }
+            safeClose(state.proxy);
+        } finally {
+            lock.unlock();
+            locks.remove(functionName);
         }
-        safeClose(state.proxy);
     }
 
     @Override
-    public synchronized void setReplicas(String functionName, int replicas) {
-        FunctionState state = states.get(functionName);
-        if (state == null) {
+    public void setReplicas(String functionName, int replicas) {
+        ReentrantLock lock = locks.get(functionName);
+        if (lock == null) {
             return;
         }
-        scaleTo(state, Math.max(0, replicas));
+        lock.lock();
+        try {
+            FunctionState state = states.get(functionName);
+            if (state == null) {
+                return;
+            }
+            scaleTo(state, Math.max(0, replicas));
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
-    public synchronized int getReadyReplicas(String functionName) {
-        FunctionState state = states.get(functionName);
-        if (state == null) {
+    public int getReadyReplicas(String functionName) {
+        ReentrantLock lock = locks.get(functionName);
+        if (lock == null) {
             return 0;
         }
-        return (int) state.replicas.values().stream()
-                .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
-                .count();
+        lock.lock();
+        try {
+            FunctionState state = states.get(functionName);
+            if (state == null) {
+                return 0;
+            }
+            return (int) state.replicas.values().stream()
+                    .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
+                    .count();
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void scaleTo(FunctionState state, int desiredReplicas) {
