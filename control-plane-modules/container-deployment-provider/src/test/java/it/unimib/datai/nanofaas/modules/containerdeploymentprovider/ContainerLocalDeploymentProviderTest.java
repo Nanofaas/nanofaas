@@ -16,6 +16,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -198,6 +201,57 @@ class ContainerLocalDeploymentProviderTest {
         );
     }
 
+    @Test
+    void getReadyReplicas_otherFunction_doesNotBlockDuringSlowProvision() throws Exception {
+        CountDownLatch provisionBlocker = new CountDownLatch(1);
+        CountDownLatch provisionStarted = new CountDownLatch(1);
+        BlockingEndpointProbe probe = new BlockingEndpointProbe(provisionStarted, provisionBlocker);
+        RecordingProxy slowProxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                new RecordingContainerRuntimeAdapter(),
+                new ContainerLocalProperties("docker", "127.0.0.1",
+                        Duration.ofSeconds(10), Duration.ofMillis(10), null),
+                probe,
+                new FixedPortAllocator(19001),
+                functionName -> slowProxy
+        );
+
+        // Start provisioning "slow" in background — will block on the probe
+        Thread provisionThread = Thread.ofVirtual()
+                .start(() -> {
+                    try {
+                        provider.provision(spec("slow", 1));
+                    } catch (Exception ignored) {
+                    }
+                });
+
+        // Wait until provision is actually inside awaitReady (holding the lock)
+        assertThat(provisionStarted.await(2, TimeUnit.SECONDS)).isTrue();
+
+        // Run getReadyReplicas("other") in its own thread so we can time it without deadlocking.
+        // If it blocks (because provision holds this-monitor), the future times out and we fail.
+        CompletableFuture<Long> readyFuture = CompletableFuture.supplyAsync(() -> {
+            long start = System.nanoTime();
+            provider.getReadyReplicas("other");
+            return (System.nanoTime() - start) / 1_000_000;
+        });
+
+        try {
+            long elapsedMs = readyFuture.get(500, TimeUnit.MILLISECONDS);
+            assertThat(elapsedMs).as("getReadyReplicas for a different function must not block during provision of another")
+                    .isLessThan(500);
+        } catch (java.util.concurrent.TimeoutException e) {
+            org.junit.jupiter.api.Assertions.fail(
+                    "getReadyReplicas for a different function blocked for more than 500 ms while provision held the lock");
+        } finally {
+            // Always release so provision thread can finish and no threads leak.
+            provisionBlocker.countDown();
+        }
+
+        provisionThread.join(3_000);
+    }
+
     private static class RecordingContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         private final List<ContainerInstanceSpec> started = new ArrayList<>();
         private final List<String> removed = new ArrayList<>();
@@ -277,6 +331,31 @@ class ContainerLocalDeploymentProviderTest {
         @Override
         public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
             throw new IllegalStateException(message);
+        }
+
+        @Override
+        public boolean isReady(String baseUrl) {
+            return false;
+        }
+    }
+
+    private static final class BlockingEndpointProbe implements EndpointProbe {
+        private final CountDownLatch started;
+        private final CountDownLatch blocker;
+
+        private BlockingEndpointProbe(CountDownLatch started, CountDownLatch blocker) {
+            this.started = started;
+            this.blocker = blocker;
+        }
+
+        @Override
+        public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
+            started.countDown();
+            try {
+                blocker.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         @Override
