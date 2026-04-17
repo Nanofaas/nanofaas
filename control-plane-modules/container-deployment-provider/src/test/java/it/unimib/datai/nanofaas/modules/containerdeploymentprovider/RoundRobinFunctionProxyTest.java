@@ -51,6 +51,25 @@ class RoundRobinFunctionProxyTest {
         assertThat(List.of(first, second, third)).containsExactly("a", "b", "a");
     }
 
+    @Test
+    void handleInvoke_emptyBodyUpstream_returnsStatusWithoutChunkedEncoding() throws Exception {
+        backendA = backend204();
+        proxy = new RoundRobinFunctionProxy("127.0.0.1");
+        proxy.updateBackends(List.of(baseUrl(backendA)));
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder(URI.create(proxy.endpointUrl()))
+                .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                .header("Content-Type", "application/json")
+                .build();
+        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+        assertThat(response.statusCode()).isEqualTo(204);
+        assertThat(response.body()).isEmpty();
+        // Transfer-Encoding must not be present on a 204 (RFC 7230 §3.3.3)
+        assertThat(response.headers().map()).doesNotContainKey("transfer-encoding");
+    }
+
     private static HttpServer backend(String responseBody) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/invoke", exchange -> {
@@ -59,6 +78,16 @@ class RoundRobinFunctionProxyTest {
             try (OutputStream outputStream = exchange.getResponseBody()) {
                 outputStream.write(response);
             }
+        });
+        server.start();
+        return server;
+    }
+
+    private static HttpServer backend204() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/invoke", exchange -> {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.getResponseBody().close();
         });
         server.start();
         return server;

@@ -78,10 +78,13 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofByteArray());
+            byte[] body = response.body();
             copyResponseHeaders(response, exchange);
-            exchange.sendResponseHeaders(response.statusCode(), response.body().length);
+            exchange.sendResponseHeaders(response.statusCode(), body.length == 0 ? -1 : body.length);
             try (OutputStream outputStream = exchange.getResponseBody()) {
-                outputStream.write(response.body());
+                if (body.length > 0) {
+                    outputStream.write(body);
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
