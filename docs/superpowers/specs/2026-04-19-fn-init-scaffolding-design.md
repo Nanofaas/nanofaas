@@ -173,7 +173,7 @@ Binary assets (images, etc.) are stored in `payloads/assets/` and referenced via
 }
 ```
 
-**With file reference (XML, plain text):**
+**With text file reference (XML, plain text):**
 ```json
 {
   "description": "parse XML document",
@@ -183,7 +183,7 @@ Binary assets (images, etc.) are stored in `payloads/assets/` and referenced via
 }
 ```
 
-**With binary input (images, etc.):**
+**With binary input (images, audio, etc.):**
 ```json
 {
   "description": "classify a cat image",
@@ -203,11 +203,19 @@ Binary assets (images, etc.) are stored in `payloads/assets/` and referenced via
 | `description` | string | yes | Human-readable test case name |
 | `input` | object \| string | yes | Inline JSON object, or `@path` file reference |
 | `content-type` | string | no | Content-Type hint; inferred from file extension if absent |
-| `input-encoding` | string | no | `base64` for binary files; runner encodes transparently |
+| `input-encoding` | string | no | Only needed for binary files: `base64`; runner encodes transparently |
 | `expected` | object | yes | Expected response body (exact match) |
 
-When `input` is a `@path` reference, the path is relative to the payload file location.
-When `input-encoding` is `base64`, the runner reads the file, encodes it, and sends it as the `input` field value.
+**Input resolution rules (applied by the runner):**
+
+| `input` value | `input-encoding` | Runner behaviour |
+|---|---|---|
+| JSON object | — | sent as-is |
+| `@path` to `.json` | — | file read as UTF-8, parsed as JSON, sent as-is |
+| `@path` to `.xml` / `.txt` / text | — | file read as UTF-8 string, sent as string |
+| `@path` to binary file | `base64` | file read as bytes, base64-encoded, sent as string |
+
+`@path` references are relative to the payload file location. Text formats (JSON, XML, plain text) are always handled natively as strings — `input-encoding` is only required for binary.
 
 **Consumer:** `nanofaas fn test <name> --payloads ./payloads/` (future CLI subcommand — out of scope for this spec, tracked separately). Plain JSON payloads can also be used directly with `nanofaas invoke -d @payloads/happy-path.json` for manual exploration.
 
