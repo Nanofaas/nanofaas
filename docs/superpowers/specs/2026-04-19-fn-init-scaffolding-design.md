@@ -160,13 +160,37 @@ Templates use `{{PLACEHOLDER}}` markers replaced via `str.replace()` — no Jinj
 
 ### Payloads (both languages)
 
-A `payloads/` directory is always generated, language-agnostic. Each file is a JSON contract test case:
+A `payloads/` directory is always generated, language-agnostic. Each file is a JSON contract test case.
+Binary assets (images, etc.) are stored in `payloads/assets/` and referenced via `@` prefix.
+
+**Standard format:**
 
 ```json
 {
   "description": "greet with explicit name",
   "input": {"name": "Alice"},
   "expected": {"greeting": "Hello, Alice!"}
+}
+```
+
+**With file reference (XML, plain text):**
+```json
+{
+  "description": "parse XML document",
+  "content-type": "application/xml",
+  "input": "@assets/sample.xml",
+  "expected": {"root": "value"}
+}
+```
+
+**With binary input (images, etc.):**
+```json
+{
+  "description": "classify a cat image",
+  "content-type": "image/jpeg",
+  "input": "@assets/cat.jpg",
+  "input-encoding": "base64",
+  "expected": {"label": "cat"}
 }
 ```
 
@@ -177,10 +201,15 @@ A `payloads/` directory is always generated, language-agnostic. Each file is a J
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `description` | string | yes | Human-readable test case name |
-| `input` | object | yes | Value passed as `InvocationRequest.input` |
+| `input` | object \| string | yes | Inline JSON object, or `@path` file reference |
+| `content-type` | string | no | Content-Type hint; inferred from file extension if absent |
+| `input-encoding` | string | no | `base64` for binary files; runner encodes transparently |
 | `expected` | object | yes | Expected response body (exact match) |
 
-**Consumer:** `nanofaas fn test <name> --payloads ./payloads/` (future CLI subcommand — out of scope for this spec, tracked separately). Payload files can also be used directly with `nanofaas invoke -d @payloads/happy-path.json` for manual exploration.
+When `input` is a `@path` reference, the path is relative to the payload file location.
+When `input-encoding` is `base64`, the runner reads the file, encodes it, and sends it as the `input` field value.
+
+**Consumer:** `nanofaas fn test <name> --payloads ./payloads/` (future CLI subcommand — out of scope for this spec, tracked separately). Plain JSON payloads can also be used directly with `nanofaas invoke -d @payloads/happy-path.json` for manual exploration.
 
 ---
 
