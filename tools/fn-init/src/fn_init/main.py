@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -32,6 +33,10 @@ def main(
         default_out = str(monorepo_root / "examples" / lang / name) if monorepo_root else None
         out = wizard.ask_out(default_out)
         vscode = wizard.ask_vscode()
+
+    if not re.match(r"^[a-z][a-z0-9-]*$", name):
+        console.print(f"[red]Error:[/] invalid function name {escape(name)!r} — use lowercase letters, digits, and hyphens only")
+        raise typer.Exit(1)
 
     if lang not in ("java", "python"):
         console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java or python.")
