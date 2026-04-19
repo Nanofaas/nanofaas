@@ -158,6 +158,30 @@ Templates use `{{PLACEHOLDER}}` markers replaced via `str.replace()` — no Jinj
 - `.vscode/launch.json` — debug configuration (Spring Boot for Java, FastAPI for Python)
 - `.vscode/extensions.json` — recommended extensions
 
+### Payloads (both languages)
+
+A `payloads/` directory is always generated, language-agnostic. Each file is a JSON contract test case:
+
+```json
+{
+  "description": "greet with explicit name",
+  "input": {"name": "Alice"},
+  "expected": {"greeting": "Hello, Alice!"}
+}
+```
+
+`fn-init` scaffolds two example files: `payloads/happy-path.json` and `payloads/missing-input.json`.
+
+**Standard format fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `description` | string | yes | Human-readable test case name |
+| `input` | object | yes | Value passed as `InvocationRequest.input` |
+| `expected` | object | yes | Expected response body (exact match) |
+
+**Consumer:** `nanofaas fn test <name> --payloads ./payloads/` (future CLI subcommand — out of scope for this spec, tracked separately). Payload files can also be used directly with `nanofaas invoke -d @payloads/happy-path.json` for manual exploration.
+
 ---
 
 ## Monorepo Integration (Java only)
@@ -184,11 +208,14 @@ After generation, a green Rich panel shows the exact CLI commands to proceed:
 │                                                   │
 │  # implement your handler, then:                  │
 │  nanofaas deploy -f function.yaml                 │
-│  nanofaas invoke greet -d '{"input": {}}'         │
+│  nanofaas invoke greet -d @payloads/happy-path.json│
 │                                                   │
-│  # run tests:                                     │
+│  # run contract tests (all payloads):             │
+│  nanofaas fn test greet --payloads ./payloads/    │
+│                                                   │
+│  # run unit tests:                                │
 │  ./gradlew :examples:java:greet:test   (Java)     │
-│  uv run pytest                          (Python)  │
+│  uv run pytest                         (Python)   │
 ╰───────────────────────────────────────────────────╯
 ```
 
@@ -229,5 +256,5 @@ All CLI operations (`deploy`, `invoke`, `enqueue`) use `nanofaas` CLI — no raw
 
 - Go scaffolding (deferred)
 - VS Code extension (may call `fn-init.sh` in a future phase)
-- `nanofaas deploy` integration (CLI already handles this via `function.yaml`)
+- `nanofaas fn test` CLI subcommand (tracked separately — consumes the payload format defined here)
 - Hot reload / devmode
