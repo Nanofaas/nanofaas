@@ -1,0 +1,10 @@
+from nanofaas.sdk import nanofaas_function, context
+
+logger = context.get_logger(__name__)
+
+
+@nanofaas_function
+def handle(input_data):
+    logger.info(f"{{FUNCTION_NAME}} invoked, executionId={context.get_execution_id()}")
+    # TODO: implement handler logic
+    return {"result": "ok"}

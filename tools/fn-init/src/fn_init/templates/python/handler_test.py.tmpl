@@ -1,0 +1,14 @@
+from unittest.mock import patch
+from handler import handle
+
+
+def test_handle_returns_result():
+    with patch("nanofaas.sdk.context.get_execution_id", return_value="test-id"):
+        result = handle({"key": "value"})
+    assert result == {"result": "ok"}
+
+
+def test_handle_empty_input():
+    with patch("nanofaas.sdk.context.get_execution_id", return_value="test-id"):
+        result = handle({})
+    assert "result" in result
