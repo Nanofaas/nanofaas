@@ -1,13 +1,77 @@
-import typer
+from __future__ import annotations
 
-app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.", invoke_without_command=True)
+import sys
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.markup import escape
+
+from fn_init import generator, wizard
+
+app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.")
+console = Console(force_terminal=sys.stdout.isatty())
 
 
 @app.command()
-def scaffold() -> None:
-    """Initialize a new nanofaas function."""
-    pass
+def main(
+    name: Optional[str] = typer.Argument(None, help="Function name (lowercase, alphanumeric + hyphens)"),
+    lang: str = typer.Option("java", "--lang", help="Language: java or python"),
+    out: Optional[Path] = typer.Option(None, "--out", help="Parent output directory"),
+    vscode: bool = typer.Option(False, "--vscode", help="Generate VS Code project files"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+) -> None:
+    cwd = Path.cwd()
+
+    if name is None:
+        wizard.show_welcome()
+        monorepo_root = generator.detect_monorepo_root(cwd)
+        name = wizard.ask_name()
+        lang = wizard.ask_lang()
+        default_out = str(monorepo_root / "examples" / lang / name) if monorepo_root else None
+        out = wizard.ask_out(default_out)
+        vscode = wizard.ask_vscode()
+
+    if lang not in ("java", "python"):
+        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java or python.")
+        raise typer.Exit(1)
+
+    class_name = generator.to_class_name(name)
+    package = generator.to_package(name)
+    placeholders = {
+        "FUNCTION_NAME": name,
+        "CLASS_NAME": class_name,
+        "PACKAGE": package,
+        "PACKAGE_PATH": package.replace(".", "/"),
+        "IMAGE_TAG": f"nanofaas/{name}:latest",
+        "LANG": lang,
+    }
+
+    try:
+        output_dir, monorepo_root = generator.resolve_output_dir(name, lang, out, cwd)
+    except ValueError as e:
+        console.print(f"[red]Error:[/] {e}")
+        raise typer.Exit(1)
+
+    if output_dir.exists():
+        console.print(f"[red]Error:[/] directory already exists: {output_dir}")
+        raise typer.Exit(1)
+
+    if not yes:
+        wizard.show_summary(output_dir, lang, vscode)
+        if not wizard.confirm_proceed():
+            console.print("[yellow]Aborted.[/]")
+            raise typer.Exit(0)
+
+    with console.status("[bold green]Generating..."):
+        generator.generate_function(name, lang, output_dir, vscode, placeholders)
+        if monorepo_root and lang == "java":
+            if generator.update_settings_gradle(monorepo_root, name, lang):
+                console.print(f"[dim]Updated settings.gradle → added include 'examples:java:{name}'[/]")
+
+    wizard.show_next_steps(name, lang, output_dir)
 
 
-def main() -> None:
+def entry() -> None:
     app()

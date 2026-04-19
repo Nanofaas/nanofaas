@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-fn-init = "fn_init.main:main"
+fn-init = "fn_init.main:entry"
 
 [build-system]
 requires = ["setuptools>=61.0"]
