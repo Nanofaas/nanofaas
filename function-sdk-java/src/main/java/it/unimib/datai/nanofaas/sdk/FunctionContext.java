@@ -16,17 +16,17 @@ public final class FunctionContext {
 
     private FunctionContext() {}
 
-    /** Current execution ID (set by runtime per request). */
+    /** Current execution ID from the runtime-populated MDC. */
     public static String getExecutionId() {
         return MDC.get("executionId");
     }
 
-    /** Current distributed trace ID (set by runtime per request). */
+    /** Current distributed trace ID from the runtime-populated MDC. */
     public static String getTraceId() {
         return MDC.get("traceId");
     }
 
-    /** Convenience logger that automatically includes trace context from MDC. */
+    /** Convenience logger used by handlers that rely on MDC-backed correlation fields. */
     public static Logger getLogger(Class<?> clazz) {
         return LoggerFactory.getLogger(clazz);
     }

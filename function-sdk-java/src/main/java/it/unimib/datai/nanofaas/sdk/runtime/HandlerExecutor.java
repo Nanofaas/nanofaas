@@ -27,13 +27,6 @@ public class HandlerExecutor {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
-    /**
-     * Executes handler.handle(request) within the configured timeout.
-     *
-     * @throws TimeoutException     if the handler exceeds the timeout
-     * @throws InterruptedException if the calling thread is interrupted
-     * @throws Exception            any exception thrown by the handler
-     */
     public Object execute(FunctionHandler handler, InvocationRequest request) throws Exception {
         Future<Object> future = executor.submit(() -> handler.handle(request));
         try {

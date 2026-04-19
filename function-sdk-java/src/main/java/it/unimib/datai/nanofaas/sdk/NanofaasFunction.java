@@ -19,6 +19,6 @@ import java.lang.annotation.*;
 @Documented
 @Component
 public @interface NanofaasFunction {
-    /** Optional bean name. */
+    /** Optional bean name used when multiple handler beans are present. */
     String value() default "";
 }

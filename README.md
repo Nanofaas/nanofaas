@@ -24,6 +24,7 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 
 ## Quickstart (local)
 
+Invoke these commands in 2 different terminals:
 ```bash
 scripts/controlplane.sh run --profile core
 ./gradlew :function-runtime:bootRun
