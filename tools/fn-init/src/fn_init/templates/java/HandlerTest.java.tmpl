@@ -1,0 +1,20 @@
+package {{PACKAGE}};
+
+import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class {{CLASS_NAME}}HandlerTest {
+
+    private final {{CLASS_NAME}}Handler handler = new {{CLASS_NAME}}Handler();
+
+    @Test
+    void handleReturnsResult() {
+        var req = new InvocationRequest(Map.of(), null);
+        var result = handler.handle(req);
+        assertNotNull(result);
+    }
+}
