@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#
+# nanoFaaS {{FUNCTION_NAME}} handler
+#
+# Reads InvocationRequest JSON from stdin and writes handler output JSON to stdout.
+#
+
+set -euo pipefail
+
+req="$(cat)"
+
+jq '
+  .input as $in
+  | if ($in | type) != "object" then
+      {"error": "Input must be a JSON object"}
+    else
+      # TODO: implement handler logic
+      {"result": "ok"}
+    end
+' <<<"$req"

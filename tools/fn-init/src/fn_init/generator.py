@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import stat
 from pathlib import Path
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -23,13 +24,33 @@ PYTHON_FILE_MAP: dict[str, str] = {
     "function.yaml.tmpl": "function.yaml",
 }
 
+GO_FILE_MAP: dict[str, str] = {
+    "main.go.tmpl": "main.go",
+    "main_test.go.tmpl": "main_test.go",
+    "go.mod.tmpl": "go.mod",
+    "Dockerfile.tmpl": "Dockerfile",
+    "function.yaml.tmpl": "function.yaml",
+}
+
+BASH_FILE_MAP: dict[str, str] = {
+    "handler.sh.tmpl": "handler.sh",
+    "handler_test.sh.tmpl": "tests/test_handler.sh",
+    "Dockerfile.tmpl": "Dockerfile",
+    "function.yaml.tmpl": "function.yaml",
+}
+
 VSCODE_FILE_MAP: dict[str, str] = {
     "settings.json.tmpl": ".vscode/settings.json",
     "launch.json.tmpl": ".vscode/launch.json",
     "extensions.json.tmpl": ".vscode/extensions.json",
 }
 
-FILE_MAPS: dict[str, dict[str, str]] = {"java": JAVA_FILE_MAP, "python": PYTHON_FILE_MAP}
+FILE_MAPS: dict[str, dict[str, str]] = {
+    "java": JAVA_FILE_MAP,
+    "python": PYTHON_FILE_MAP,
+    "go": GO_FILE_MAP,
+    "bash": BASH_FILE_MAP,
+}
 
 
 def to_class_name(name: str) -> str:
@@ -85,6 +106,8 @@ def generate_function(
         dest = output_dir / render(dest_pattern, placeholders)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(render(tmpl_path.read_text(), placeholders))
+        if dest.suffix == ".sh":
+            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         created.append(dest)
 
     payloads_dir = output_dir / "payloads"

@@ -36,7 +36,7 @@ def ask_name() -> str:
 
 
 def ask_lang() -> str:
-    return Prompt.ask("[bold]Language[/]", choices=["java", "python"], default="java")
+    return Prompt.ask("[bold]Language[/]", choices=["java", "python", "go", "bash"], default="java")
 
 
 def ask_out(default: str | None) -> Path | None:
@@ -62,9 +62,19 @@ def show_summary(output_dir: Path, lang: str, vscode: bool) -> None:
         test.add("HandlerTest.java")
         tree.add("build.gradle")
         tree.add("Dockerfile")
-    else:
+    elif lang == "python":
         tree.add("handler.py")
         tree.add("[dim]tests/[/]test_handler.py")
+        tree.add("pyproject.toml")
+        tree.add("Dockerfile")
+    elif lang == "go":
+        tree.add("main.go")
+        tree.add("main_test.go")
+        tree.add("go.mod")
+        tree.add("Dockerfile")
+    elif lang == "bash":
+        tree.add("handler.sh")
+        tree.add("[dim]tests/[/]test_handler.sh")
         tree.add("Dockerfile")
     tree.add("function.yaml")
     payloads = tree.add("[dim]payloads/[/]")
@@ -83,11 +93,12 @@ def confirm_proceed() -> bool:
 
 
 def show_next_steps(name: str, lang: str, output_dir: Path) -> None:
-    unit_cmd = (
-        f"./gradlew :examples:java:{name}:test"
-        if lang == "java"
-        else "uv run pytest"
-    )
+    unit_cmd = {
+        "java": f"./gradlew :examples:java:{name}:test",
+        "python": "uv run pytest",
+        "go": "go mod tidy && go test ./...",
+        "bash": "bash tests/test_handler.sh",
+    }[lang]
     console.print(Panel(
         f"[dim]cd[/] {output_dir}\n\n"
         "[dim]# implement your handler, then:[/]\n"
