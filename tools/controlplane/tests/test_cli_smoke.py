@@ -54,6 +54,23 @@ def test_functions_group_help_exits_zero() -> None:
     assert "functions" in result.stdout.lower()
 
 
+def test_tui_help_exposes_interactive_entrypoint_not_profile_runner() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["tui", "--help"])
+
+    assert result.exit_code == 0
+    assert "--profile-name" not in result.stdout
+    assert "--use-saved-profile" not in result.stdout
+
+
+def test_top_level_help_hides_legacy_runner_groups() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["--help"])
+
+    assert "cli-e2e" not in result.stdout
+    assert "local-e2e" not in result.stdout
+
+
 def test_generic_controlplane_wrapper_uses_locked_tool() -> None:
     script = resolve_workspace_path(Path("scripts/controlplane.sh")).read_text(encoding="utf-8")
     assert "uv run --project tools/controlplane --locked controlplane-tool" in script

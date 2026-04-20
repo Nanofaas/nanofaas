@@ -33,6 +33,13 @@ def test_main_help_mentions_loadtest_command() -> None:
     assert "loadtest" in result.output
 
 
+def test_main_help_hides_legacy_runner_groups() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert "cli-e2e" not in result.output
+    assert "local-e2e" not in result.output
+
+
 def test_main_unknown_command_exits_nonzero() -> None:
     result = runner.invoke(app, ["totally-unknown-command"])
     assert result.exit_code != 0

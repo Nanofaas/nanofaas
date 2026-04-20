@@ -25,6 +25,16 @@ def test_pipeline_wrapper_forwards_to_tui_path() -> None:
     assert "tui" in script
 
 
+def test_tool_readme_uses_tui_as_interactive_entrypoint_without_profile_flags() -> None:
+    readme = resolve_workspace_path(Path("tools/controlplane/README.md")).read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/controlplane.sh tui" in readme
+    assert "scripts/controlplane.sh tui --profile-name" not in readme
+    assert "scripts/controlplane.sh tui --profile-name dev --use-saved-profile" not in readme
+
+
 def test_profile_fixture_exists_for_saved_profile_flow() -> None:
     profile_path = resolve_workspace_path(Path("tools/controlplane/profiles/demo-java.toml"))
     assert profile_path.exists()

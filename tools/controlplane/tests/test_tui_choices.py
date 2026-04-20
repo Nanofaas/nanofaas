@@ -446,8 +446,12 @@ def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeyp
     assert "vm stderr" in log_lines
 
 
-def test_tui_main_menu_includes_registry_entry() -> None:
-    assert any(choice.value == "registry" for choice in NanofaasTUI._MAIN_MENU if hasattr(choice, "value"))
+def test_tui_main_menu_no_longer_includes_registry_entry() -> None:
+    assert not any(
+        choice.value == "registry"
+        for choice in NanofaasTUI._MAIN_MENU
+        if hasattr(choice, "value")
+    )
 
 
 def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
