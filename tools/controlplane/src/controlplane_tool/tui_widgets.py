@@ -16,7 +16,7 @@ from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import Dimension, Layout
 from prompt_toolkit.layout.containers import HSplit, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.widgets import Frame
+from prompt_toolkit.widgets import CheckboxList, Frame
 from questionary import Style
 from questionary.prompts.common import Choice, InquirerControl
 
@@ -104,6 +104,21 @@ def _select_value(
     )
 
 
+def _checkbox_values(
+    message: str,
+    *,
+    choices: list[Any],
+    default_values: list[str] | None = None,
+) -> list[Any]:
+    return _ask(
+        lambda: _select_described_checkbox_values(
+            message,
+            choices,
+            default_values=default_values,
+        )
+    )
+
+
 def _normalize_choice(choice: Any) -> Any:
     if isinstance(choice, _DescribedChoice):
         return questionary.Choice(choice.title, choice.value, description=choice.description)
@@ -142,6 +157,57 @@ def _description_fragments(control: InquirerControl) -> list[tuple[str, str]]:
     current = control.get_pointed_at()
     description = getattr(current, "description", None) or ""
     return [("class:text", description)]
+
+
+def _checkbox_description_fragments(
+    checkbox_list: CheckboxList,
+    choices: list[Any],
+) -> list[tuple[str, str]]:
+    selected_index = getattr(checkbox_list, "_selected_index", 0)
+    current = choices[selected_index]
+    description = getattr(current, "description", None) or ""
+    selected_count = len(getattr(checkbox_list, "current_values", []))
+    return [
+        ("class:text", description),
+        ("", "\n\n"),
+        ("class:instruction", f"Space toggle | Enter confirm | Selected: {selected_count}"),
+    ]
+
+
+def _build_header_block(
+    *,
+    message: str,
+    screen_title: str,
+    screen_breadcrumb: str,
+) -> HSplit:
+    prompt = Window(
+        height=1,
+        content=FormattedTextControl(lambda: _select_prompt_fragments(message)),
+    )
+    return HSplit(
+        [
+            Window(
+                height=_PICKER_BRAND_HEIGHT,
+                content=FormattedTextControl(lambda: [("class:brand", APP_ASCII_LOGO)]),
+            ),
+            Window(
+                height=1,
+                content=FormattedTextControl(
+                    lambda: [
+                        ("class:brand", APP_WORDMARK),
+                        ("class:text", f"  {screen_title}"),
+                    ]
+                ),
+            ),
+            Window(
+                height=1,
+                content=FormattedTextControl(
+                    lambda: [("class:breadcrumb", screen_breadcrumb)]
+                ),
+            ),
+            prompt,
+        ]
+    )
 
 
 def _build_described_select_application(
@@ -219,33 +285,10 @@ def _build_described_select_application(
     def _ignore_other_keys(event) -> None:  # noqa: ANN001
         """Ignore all remaining keys, including space."""
 
-    prompt = Window(
-        height=1,
-        content=FormattedTextControl(lambda: _select_prompt_fragments(message)),
-    )
-    header_block = HSplit(
-        [
-            Window(
-                height=_PICKER_BRAND_HEIGHT,
-                content=FormattedTextControl(lambda: [("class:brand", APP_ASCII_LOGO)]),
-            ),
-            Window(
-                height=1,
-                content=FormattedTextControl(
-                    lambda: [
-                        ("class:brand", APP_WORDMARK),
-                        ("class:text", f"  {screen_title}"),
-                    ]
-                ),
-            ),
-            Window(
-                height=1,
-                content=FormattedTextControl(
-                    lambda: [("class:breadcrumb", screen_breadcrumb)]
-                ),
-            ),
-            prompt,
-        ]
+    header_block = _build_header_block(
+        message=message,
+        screen_title=screen_title,
+        screen_breadcrumb=screen_breadcrumb,
     )
     selector = Window(
         content=control,
@@ -292,6 +335,122 @@ def _build_described_select_application(
     )
 
 
+def _build_described_checkbox_application(
+    message: str,
+    choices: list[Any],
+    *,
+    default_values: list[str] | None = None,
+    title: str | None = None,
+    breadcrumb: str | None = None,
+    footer_hint: str | None = None,
+    input=None,  # noqa: ANN001
+    output=None,  # noqa: ANN001
+) -> Application:
+    normalized_choices = _normalize_choices(choices)
+    if not normalized_choices:
+        raise ValueError("choices must not be empty")
+
+    screen_title = title or _screen_title(message)
+    screen_breadcrumb = breadcrumb or _screen_breadcrumb(screen_title)
+    screen_footer = footer_hint or "Space toggle | Enter confirm | Esc cancel | Ctrl+C exit"
+    checkbox_list = CheckboxList(
+        values=[(choice.value, choice.title) for choice in normalized_choices],
+        default_values=default_values,
+    )
+    bindings = KeyBindings()
+
+    def _move_cursor(delta: int) -> None:
+        total_choices = len(checkbox_list.values)
+        checkbox_list._selected_index = (checkbox_list._selected_index + delta) % total_choices
+
+    def _toggle_current() -> None:
+        current_value = checkbox_list.values[checkbox_list._selected_index][0]
+        if current_value in checkbox_list.current_values:
+            checkbox_list.current_values = [value for value in checkbox_list.current_values if value != current_value]
+            return
+        checkbox_list.current_values = [*checkbox_list.current_values, current_value]
+
+    @bindings.add(Keys.ControlQ, eager=True)
+    @bindings.add(Keys.ControlC, eager=True)
+    @bindings.add("escape", eager=True)
+    def _cancel(event) -> None:  # noqa: ANN001
+        event.app.exit(result=None)
+
+    @bindings.add(Keys.Down, eager=True)
+    @bindings.add("j", eager=True)
+    @bindings.add(Keys.ControlN, eager=True)
+    def _down(event) -> None:  # noqa: ANN001
+        _move_cursor(1)
+
+    @bindings.add(Keys.Up, eager=True)
+    @bindings.add("k", eager=True)
+    @bindings.add(Keys.ControlP, eager=True)
+    def _up(event) -> None:  # noqa: ANN001
+        _move_cursor(-1)
+
+    @bindings.add(" ", eager=True)
+    def _toggle(event) -> None:  # noqa: ANN001
+        _toggle_current()
+
+    @bindings.add(Keys.ControlM, eager=True)
+    def _accept(event) -> None:  # noqa: ANN001
+        ordered_values = [
+            value for value, _ in checkbox_list.values if value in checkbox_list.current_values
+        ]
+        event.app.exit(result=ordered_values)
+
+    header_block = _build_header_block(
+        message=message,
+        screen_title=screen_title,
+        screen_breadcrumb=screen_breadcrumb,
+    )
+    selector = Frame(
+        checkbox_list,
+        title="Select",
+        width=Dimension(weight=_PICKER_PANEL_WEIGHT, min=_PICKER_SELECTOR_MIN_WIDTH),
+    )
+    description = Frame(
+        Window(
+            content=FormattedTextControl(
+                lambda: _checkbox_description_fragments(checkbox_list, normalized_choices)
+            ),
+            wrap_lines=True,
+            dont_extend_height=False,
+        ),
+        title="Description",
+        width=Dimension(weight=_PICKER_PANEL_WEIGHT, min=_PICKER_DESCRIPTION_MIN_WIDTH),
+    )
+    body = VSplit(
+        [selector, description],
+        padding=2,
+        width=Dimension(preferred=_PICKER_BODY_PREFERRED_WIDTH),
+    )
+
+    return Application(
+        layout=Layout(
+            HSplit(
+                [
+                    header_block,
+                    body,
+                    Window(
+                        height=1,
+                        content=FormattedTextControl(
+                            lambda: [("class:footer", screen_footer)]
+                        ),
+                    ),
+                ]
+            ),
+            focused_element=checkbox_list,
+        ),
+        key_bindings=bindings,
+        full_screen=True,
+        style=_STYLE,
+        mouse_support=False,
+        input=input,
+        output=output,
+    )
+
+
 def _select_described_value(
     message: str,
     choices: list[Any],
@@ -323,6 +482,39 @@ def _select_described_value(
         message,
         normalized_choices,
         default=default,
+        title=title,
+        breadcrumb=breadcrumb,
+        footer_hint=footer_hint,
+    )
+    return app.run()
+
+
+def _select_described_checkbox_values(
+    message: str,
+    choices: list[Any],
+    *,
+    default_values: list[str] | None = None,
+    title: str | None = None,
+    breadcrumb: str | None = None,
+    footer_hint: str | None = None,
+) -> list[Any] | None:
+    """Show an interactive multi-select with a live description panel on the right."""
+    normalized_choices = _normalize_choices(choices)
+    if not normalized_choices:
+        raise ValueError("choices must not be empty")
+
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return questionary.checkbox(
+            message,
+            choices=normalized_choices,
+            default=default_values,
+            style=_STYLE,
+        ).ask()
+
+    app = _build_described_checkbox_application(
+        message,
+        normalized_choices,
+        default_values=default_values,
         title=title,
         breadcrumb=breadcrumb,
         footer_hint=footer_hint,

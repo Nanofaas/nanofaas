@@ -32,6 +32,93 @@ def test_module_catalog_has_descriptions() -> None:
         assert module.description
 
 
+def test_profile_wizard_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
+    import controlplane_tool.tui as tui
+
+    select_answers = iter(["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "vm"])
+    confirm_answers = iter([True, True, True, True, True, True])
+    captured_selects: list[tuple[str, list[object]]] = []
+    captured_checkboxes: list[tuple[str, list[object]]] = []
+
+    def fake_select(*args, **kwargs):  # noqa: ANN001
+        captured_selects.append((str(args[0]), list(kwargs["choices"])))
+        return _Prompt(next(select_answers))
+
+    def fake_checkbox(*args, **kwargs):  # noqa: ANN001
+        captured_checkboxes.append((str(args[0]), list(kwargs["choices"])))
+        return _Prompt(["autoscaler"])
+
+    monkeypatch.setattr(tui.questionary, "select", fake_select)
+    monkeypatch.setattr(tui.questionary, "checkbox", fake_checkbox)
+    monkeypatch.setattr(
+        tui.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt("word-stats-java,json-transform-java"),
+    )
+
+    build_profile_interactive(profile_name="wizard-demo")
+
+    assert [message for message, _ in captured_selects] == [
+        "Control plane implementation:",
+        "Java build mode:",
+        "Loadtest profile:",
+        "Default E2E selection type:",
+        "Base E2E scenario:",
+        "Function preset:",
+        "Default CLI validation scenario:",
+    ]
+    assert [message for message, _ in captured_checkboxes] == [
+        "Select control-plane modules:",
+    ]
+    for _, choices in captured_selects + captured_checkboxes:
+        descriptions = [getattr(choice, "description", None) for choice in choices]
+        assert all(description and len(description) >= 48 for description in descriptions)
+
+
+def test_profile_wizard_scenario_file_selector_supplies_descriptions(monkeypatch) -> None:
+    import controlplane_tool.tui as tui
+
+    select_answers = iter(
+        [
+            "java",
+            "native",
+            "quick",
+            "scenario-file",
+            "tools/controlplane/scenarios/k8s-demo-java.toml",
+        ]
+    )
+    confirm_answers = iter([True, True, True, True, True, False])
+    captured_selects: list[tuple[str, list[object]]] = []
+
+    def fake_select(*args, **kwargs):  # noqa: ANN001
+        captured_selects.append((str(args[0]), list(kwargs["choices"])))
+        return _Prompt(next(select_answers))
+
+    monkeypatch.setattr(tui.questionary, "select", fake_select)
+    monkeypatch.setattr(tui.questionary, "checkbox", lambda *args, **kwargs: _Prompt(["autoscaler"]))
+    monkeypatch.setattr(
+        tui.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+    monkeypatch.setattr(
+        tui.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt("word-stats-java,json-transform-java"),
+    )
+
+    build_profile_interactive(profile_name="wizard-file")
+
+    scenario_file_choices = dict(captured_selects)["Scenario file:"]
+    descriptions = [getattr(choice, "description", None) for choice in scenario_file_choices]
+    assert all(description and len(description) >= 48 for description in descriptions)
+
+
 def test_default_required_metrics_match_control_plane_metrics() -> None:
     assert "function_dispatch_total" in DEFAULT_REQUIRED_METRICS
     assert "function_success_total" in DEFAULT_REQUIRED_METRICS

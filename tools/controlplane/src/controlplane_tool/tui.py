@@ -23,8 +23,151 @@ from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
 from controlplane_tool.module_catalog import module_choices
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.profiles import save_profile
+from controlplane_tool.tui_widgets import _checkbox_values, _select_value
 
 DEFAULT_REQUIRED_METRICS: tuple[str, ...] = CORE_REQUIRED_METRICS
+
+
+def _choice(title: str, value: str, description: str) -> questionary.Choice:
+    return questionary.Choice(title, value, description=description)
+
+
+def _required_select_value(
+    message: str,
+    *,
+    choices: list[questionary.Choice],
+    default: str | None = None,
+) -> str:
+    try:
+        return _select_value(message, choices=choices, default=default)
+    except KeyboardInterrupt as exc:
+        raise typer.Exit(code=1) from exc
+
+
+def _required_checkbox_values(
+    message: str,
+    *,
+    choices: list[questionary.Choice],
+    default_values: list[str] | None = None,
+) -> list[str]:
+    try:
+        result = _checkbox_values(message, choices=choices, default_values=default_values)
+    except KeyboardInterrupt as exc:
+        raise typer.Exit(code=1) from exc
+    return list(result)
+
+
+_IMPLEMENTATION_CHOICES = [
+    _choice(
+        "Java",
+        "java",
+        "Use the Java control-plane implementation, with support for both JVM and GraalVM native build paths.",
+    ),
+    _choice(
+        "Rust",
+        "rust",
+        "Use the Rust control-plane implementation and keep the profile aligned with the Rust toolchain.",
+    ),
+]
+
+_JAVA_BUILD_MODE_CHOICES = [
+    _choice(
+        "Native",
+        "native",
+        "Build the Java control-plane as a GraalVM native image for low-latency execution checks.",
+    ),
+    _choice(
+        "JVM",
+        "jvm",
+        "Build the Java control-plane as a standard JVM application for the fastest local iteration cycle.",
+    ),
+]
+
+_E2E_SELECTION_MODE_CHOICES = [
+    _choice(
+        "Function preset",
+        "preset",
+        "Store a named function preset so future E2E and load-test workflows can reuse a curated function bundle.",
+    ),
+    _choice(
+        "Explicit function CSV",
+        "functions",
+        "Store an explicit comma-separated function list when you need a custom combination outside the preset catalog.",
+    ),
+    _choice(
+        "Scenario file",
+        "scenario-file",
+        "Point the profile at a scenario manifest file and let that file define the full E2E selection.",
+    ),
+]
+
+
+def _scenario_file_choices() -> list[questionary.Choice]:
+    workspace_root = default_tool_paths().workspace_root
+    scenario_root = default_tool_paths().scenarios_dir
+    return [
+        _choice(
+            path.name,
+            str(path.relative_to(workspace_root)),
+            f"Reuse the scenario manifest '{path.name}' from {scenario_root.name} without prompting for presets or explicit functions.",
+        )
+        for path in sorted(scenario_root.glob("*.toml"))
+    ]
+
+
+def _base_scenario_choices() -> list[questionary.Choice]:
+    choices: list[questionary.Choice] = []
+    for scenario in list_scenarios():
+        runtimes = ", ".join(scenario.supported_runtimes)
+        description = (
+            f"{scenario.description} Requires VM={'yes' if scenario.requires_vm else 'no'}; "
+            f"supported runtimes={runtimes}; selection mode={scenario.selection_mode}."
+        )
+        choices.append(_choice(scenario.name, scenario.name, description))
+    return choices
+
+
+def _function_preset_choices() -> list[questionary.Choice]:
+    choices: list[questionary.Choice] = []
+    for preset in list_function_presets():
+        description = (
+            f"{preset.description} Includes {len(preset.functions)} function definition(s) from the repository catalog."
+        )
+        choices.append(_choice(preset.name, preset.name, description))
+    return choices
+
+
+def _cli_test_scenario_choices() -> list[questionary.Choice]:
+    choices: list[questionary.Choice] = []
+    for scenario in list_cli_test_scenarios():
+        description = (
+            f"{scenario.description} Requires VM={'yes' if scenario.requires_vm else 'no'}; "
+            f"function selection={'yes' if scenario.accepts_function_selection else 'no'}."
+        )
+        choices.append(_choice(scenario.name, scenario.name, description))
+    return choices
+
+
+def _module_selection_choices() -> list[questionary.Choice]:
+    return [
+        _choice(
+            module.name,
+            module.key,
+            f"{module.description} Module key={module.key}.",
+        )
+        for module in module_choices()
+    ]
+
+
+def _load_profile_choices() -> list[questionary.Choice]:
+    choices: list[questionary.Choice] = []
+    for profile in list_load_profiles():
+        stage_summary = ", ".join(f"{stage.duration}@{stage.target}" for stage in profile.stages)
+        description = (
+            f"{profile.description} Stages={stage_summary}; summary window={profile.summary_window_seconds}s."
+        )
+        choices.append(_choice(profile.name.capitalize(), profile.name, description))
+    return choices
 
 
 def _prompt_scenario_selection() -> ScenarioSelectionConfig:
@@ -37,57 +180,32 @@ def _prompt_scenario_selection() -> ScenarioSelectionConfig:
     if not save_defaults:
         return ScenarioSelectionConfig()
 
-    selection_mode = questionary.select(
+    selection_mode = _required_select_value(
         "Default E2E selection type:",
-        choices=[
-            questionary.Choice("Function preset", value="preset"),
-            questionary.Choice("Explicit function CSV", value="functions"),
-            questionary.Choice("Scenario file", value="scenario-file"),
-        ],
+        choices=_E2E_SELECTION_MODE_CHOICES,
         default="preset",
-    ).ask()
-    if selection_mode is None:
-        raise typer.Exit(code=1)
+    )
 
     if selection_mode == "scenario-file":
-        scenario_files = sorted(default_tool_paths().scenarios_dir.glob("*.toml"))
-        scenario_file = questionary.select(
+        scenario_file = _required_select_value(
             "Scenario file:",
-            choices=[
-                questionary.Choice(
-                    path.name,
-                    value=str(path.relative_to(default_tool_paths().workspace_root)),
-                )
-                for path in scenario_files
-            ],
+            choices=_scenario_file_choices(),
             default="tools/controlplane/scenarios/k8s-demo-java.toml",
-        ).ask()
-        if scenario_file is None:
-            raise typer.Exit(code=1)
+        )
         return ScenarioSelectionConfig(scenario_file=scenario_file)
 
-    base_scenario = questionary.select(
+    base_scenario = _required_select_value(
         "Base E2E scenario:",
-        choices=[
-            questionary.Choice(scenario.name, value=scenario.name)
-            for scenario in list_scenarios()
-        ],
+        choices=_base_scenario_choices(),
         default="k3s-junit-curl",
-    ).ask()
-    if base_scenario is None:
-        raise typer.Exit(code=1)
+    )
 
     if selection_mode == "preset":
-        preset_name = questionary.select(
+        preset_name = _required_select_value(
             "Function preset:",
-            choices=[
-                questionary.Choice(preset.name, value=preset.name)
-                for preset in list_function_presets()
-            ],
+            choices=_function_preset_choices(),
             default="demo-java",
-        ).ask()
-        if preset_name is None:
-            raise typer.Exit(code=1)
+        )
         return ScenarioSelectionConfig(
             base_scenario=base_scenario,
             function_preset=preset_name,
@@ -113,58 +231,35 @@ def _prompt_cli_test_selection() -> CliTestConfig:
     if not save_defaults:
         return CliTestConfig()
 
-    default_scenario = questionary.select(
+    default_scenario = _required_select_value(
         "Default CLI validation scenario:",
-        choices=[
-            questionary.Choice(scenario.name, value=scenario.name)
-            for scenario in list_cli_test_scenarios()
-        ],
+        choices=_cli_test_scenario_choices(),
         default="vm",
-    ).ask()
-    if default_scenario is None:
-        raise typer.Exit(code=1)
+    )
     return CliTestConfig(default_scenario=default_scenario)
 
 
 def build_profile_interactive(profile_name: str) -> Profile:
-    runtime = questionary.select(
+    runtime = _required_select_value(
         "Control plane implementation:",
-        choices=[
-            questionary.Choice("Java", value="java"),
-            questionary.Choice("Rust", value="rust"),
-        ],
+        choices=_IMPLEMENTATION_CHOICES,
         default="java",
-    ).ask()
-    if runtime is None:
-        raise typer.Exit(code=1)
+    )
 
     build_mode = "rust"
     if runtime == "java":
-        selected_mode = questionary.select(
+        selected_mode = _required_select_value(
             "Java build mode:",
-            choices=[
-                questionary.Choice("Native", value="native"),
-                questionary.Choice("JVM", value="jvm"),
-            ],
+            choices=_JAVA_BUILD_MODE_CHOICES,
             default="native",
-        ).ask()
-        if selected_mode is None:
-            raise typer.Exit(code=1)
+        )
         build_mode = selected_mode
 
-    available_modules = module_choices()
-    selected_modules = questionary.checkbox(
+    selected_modules = _required_checkbox_values(
         "Select control-plane modules:",
-        choices=[
-            questionary.Choice(
-                title=f"{module.name} - {module.description}",
-                value=module.key,
-            )
-            for module in available_modules
-        ],
-    ).ask()
-    if selected_modules is None:
-        raise typer.Exit(code=1)
+        choices=_module_selection_choices(),
+        default_values=[],
+    )
 
     tests_enabled = questionary.confirm("Run tests after build?", default=True).ask()
     if tests_enabled is None:
@@ -184,16 +279,11 @@ def build_profile_interactive(profile_name: str) -> Profile:
                 "Run metrics + k6 load tests with Prometheus?", default=True
             ).ask()
         )
-        load_profile = questionary.select(
+        load_profile = _required_select_value(
             "Loadtest profile:",
-            choices=[
-                questionary.Choice(profile.name.capitalize(), value=profile.name)
-                for profile in list_load_profiles()
-            ],
+            choices=_load_profile_choices(),
             default="quick",
-        ).ask()
-        if load_profile is None:
-            raise typer.Exit(code=1)
+        )
         tests.load_profile = load_profile
         selected_load_profile = load_profile
 

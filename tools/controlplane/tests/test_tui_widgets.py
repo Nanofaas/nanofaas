@@ -1,7 +1,9 @@
 from controlplane_tool.tui_widgets import (
     _DescribedChoice,
     _back_choice,
+    _build_described_checkbox_application,
     _build_described_select_application,
+    _checkbox_values,
     _select_value,
     _with_back_described_choice,
 )
@@ -72,6 +74,41 @@ def test_select_value_routes_standard_choices_through_described_selector(monkeyp
     assert any(getattr(choice, "value", choice) == "back" for choice in captured["choices"])
 
 
+def test_checkbox_values_route_standard_choices_through_described_checkbox(monkeypatch) -> None:
+    import controlplane_tool.tui_widgets as tui_widgets
+
+    captured: dict[str, object] = {}
+
+    def fake_select_described_checkbox_values(message, choices, default_values=None):  # noqa: ANN001
+        captured["message"] = message
+        captured["choices"] = choices
+        captured["default_values"] = default_values
+        return ["autoscaler"]
+
+    monkeypatch.setattr(
+        tui_widgets,
+        "_select_described_checkbox_values",
+        fake_select_described_checkbox_values,
+    )
+
+    result = _checkbox_values(
+        "Select control-plane modules:",
+        choices=[
+            questionary.Choice(
+                "Autoscaler",
+                "autoscaler",
+                description="Adaptive scaling decisions based on runtime metrics and queue pressure.",
+            ),
+        ],
+        default_values=["autoscaler"],
+    )
+
+    assert result == ["autoscaler"]
+    assert captured["message"] == "Select control-plane modules:"
+    assert captured["default_values"] == ["autoscaler"]
+    assert captured["choices"][0].description
+
+
 def test_described_picker_requires_enter_to_confirm_after_space() -> None:
     choices = [
         _DescribedChoice("one", "one", "first"),
@@ -91,9 +128,47 @@ def test_described_picker_requires_enter_to_confirm_after_space() -> None:
         assert app.run() == "three"
 
 
+def test_described_checkbox_requires_enter_to_confirm_after_space() -> None:
+    choices = [
+        _DescribedChoice("one", "one", "first"),
+        _DescribedChoice("two", "two", "second"),
+        _DescribedChoice("three", "three", "third"),
+    ]
+
+    with create_pipe_input() as pipe_input:
+        app = _build_described_checkbox_application(
+            "Modules:",
+            choices,
+            input=pipe_input,
+            output=DummyOutput(),
+        )
+        pipe_input.send_text(" j \r")
+
+        assert app.run() == ["one", "two"]
+
+
 def test_described_picker_uses_full_screen_with_wider_stable_description_panel() -> None:
     app = _build_described_select_application(
         "Scenario:",
+        [_DescribedChoice("one", "one", "first")],
+        output=DummyOutput(),
+    )
+
+    root = app.layout.container
+    body = root.children[1]
+    selector = body.children[0]
+    description = body.children[1]
+
+    assert app.full_screen is True
+    assert body.width.preferred == 140
+    assert selector.width.min == 48
+    assert description.width.min == 40
+    assert description.width.weight == selector.width.weight
+
+
+def test_described_checkbox_uses_full_screen_with_wider_stable_description_panel() -> None:
+    app = _build_described_checkbox_application(
+        "Modules:",
         [_DescribedChoice("one", "one", "first")],
         output=DummyOutput(),
     )
@@ -137,6 +212,23 @@ def test_described_picker_header_contains_legacy_ascii_logo() -> None:
 
     app = _build_described_select_application(
         "Scenario:",
+        [_DescribedChoice("one", "one", "first")],
+        output=DummyOutput(),
+    )
+
+    root = app.layout.container
+    header = root.children[0]
+    logo_window = header.children[0]
+    logo_fragments = logo_window.content.text()
+
+    assert APP_ASCII_LOGO.splitlines()[0] in logo_fragments[0][1]
+
+
+def test_described_checkbox_header_contains_legacy_ascii_logo() -> None:
+    from controlplane_tool.tui_chrome import APP_ASCII_LOGO
+
+    app = _build_described_checkbox_application(
+        "Modules:",
         [_DescribedChoice("one", "one", "first")],
         output=DummyOutput(),
     )
