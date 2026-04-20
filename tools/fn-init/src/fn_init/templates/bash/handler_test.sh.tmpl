@@ -11,12 +11,12 @@ assert_eq() {
     local desc="$1" expected="$2" actual="$3"
     if [ "$actual" = "$expected" ]; then
         echo "  PASS: $desc"
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
         echo "  FAIL: $desc"
         echo "    expected: $expected"
         echo "    actual:   $actual"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 }
 

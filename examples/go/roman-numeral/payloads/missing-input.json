@@ -1,0 +1,7 @@
+{
+  "description": "invoke roman-numeral with empty input",
+  "input": {},
+  "expected": {
+    "result": "ok"
+  }
+}
