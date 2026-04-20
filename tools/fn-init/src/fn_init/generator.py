@@ -18,6 +18,7 @@ JAVA_FILE_MAP: dict[str, str] = {
 PYTHON_FILE_MAP: dict[str, str] = {
     "handler.py.tmpl": "handler.py",
     "handler_test.py.tmpl": "tests/test_handler.py",
+    "pyproject.toml.tmpl": "pyproject.toml",
     "Dockerfile.tmpl": "Dockerfile",
     "function.yaml.tmpl": "function.yaml",
 }
