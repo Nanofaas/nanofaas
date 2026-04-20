@@ -13,6 +13,8 @@ from controlplane_tool.workflow_events import (
 def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
+        breadcrumb="Main / Validation",
+        footer_hint="l toggle logs | Ctrl+C back",
         summary_lines=[
             "Scenario: k3s-junit-curl",
             "VM Name: nanofaas-e2e",
@@ -51,6 +53,8 @@ def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
     assert "Execution Phases" in text
     assert "Ensure VM is running" in text
     assert "Bootstrapping VM" in text
+    assert "Main / Validation" in text
+    assert "l toggle logs" in text
 
 
 def test_workflow_dashboard_renders_nested_child_progress_separately() -> None:
@@ -275,9 +279,9 @@ def test_workflow_dashboard_keeps_log_panel_bottom_aligned_with_phases() -> None
     console = Console(record=True, width=100)
     console.print(dashboard.render())
     text = console.export_text()
-    final_line = [line for line in text.splitlines() if line.strip()][-1]
+    panel_bottom = next(line for line in text.splitlines() if line.count("╯") == 2)
 
-    assert final_line.count("╯") == 2
+    assert panel_bottom.count("╯") == 2
 
 
 def test_workflow_dashboard_retains_top_level_rows_even_when_nested_work_completes() -> None:

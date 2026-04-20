@@ -14,8 +14,8 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
-from rich.text import Text
 
+from controlplane_tool.tui_chrome import APP_BRAND
 from controlplane_tool.workflow_events import (
     build_log_event,
     build_phase_event,
@@ -35,16 +35,6 @@ _workflow_context_var: ContextVar[WorkflowContext | None] = ContextVar(
     default=None,
 )
 _workflow_context_shared: WorkflowContext | None = None
-
-_LOGO = r"""
- ███╗   ██╗ █████╗ ███╗   ██╗ ██████╗ ███████╗ █████╗  █████╗ ███████╗
- ████╗  ██║██╔══██╗████╗  ██║██╔═══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝
- ██╔██╗ ██║███████║██╔██╗ ██║██║   ██║█████╗  ███████║███████║███████╗
- ██║╚██╗██║██╔══██║██║╚██╗██║██║   ██║██╔══╝  ██╔══██║██╔══██║╚════██║
- ██║ ╚████║██║  ██║██║ ╚████║╚██████╔╝██║     ██║  ██║██║  ██║███████║
- ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
-"""
-
 
 @contextmanager
 def bind_workflow_sink(sink: WorkflowSink) -> Generator[None, None, None]:
@@ -186,11 +176,9 @@ def workflow_log(
 def header(subtitle: str = "controlplane tool") -> None:
     """Startup banner — shown once when the TUI launches."""
     console.print()
-    logo = Text(_LOGO, style="bold cyan", justify="center")
-    console.print(logo)
     console.print(
         Panel(
-            f"[dim]{escape(subtitle)}[/]",
+            f"[bold cyan]{escape(APP_BRAND)}[/]\n[dim]{escape(subtitle)}[/]",
             border_style="cyan dim",
             padding=(0, 4),
         )

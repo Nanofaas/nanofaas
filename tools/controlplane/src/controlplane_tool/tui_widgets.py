@@ -20,9 +20,14 @@ from prompt_toolkit.widgets import Frame
 from questionary import Style
 from questionary.prompts.common import Choice, InquirerControl
 
+from controlplane_tool.tui_chrome import APP_BRAND
+
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
 _STYLE = Style(
     [
+        ("brand", "fg:cyan bold"),
+        ("breadcrumb", "fg:grey"),
+        ("footer", "fg:grey"),
         ("qmark", "fg:cyan bold"),
         ("question", "bold"),
         ("answer", "fg:cyan bold"),
@@ -120,6 +125,18 @@ def _select_prompt_fragments(message: str) -> list[tuple[str, str]]:
     ]
 
 
+def _screen_title(message: str) -> str:
+    return message.rstrip(" ?:") or "Menu"
+
+
+def _screen_breadcrumb(screen_title: str) -> str:
+    return f"Main / {screen_title}"
+
+
+def _screen_footer() -> str:
+    return "Enter confirm | Esc back | Ctrl+C exit"
+
+
 def _description_fragments(control: InquirerControl) -> list[tuple[str, str]]:
     current = control.get_pointed_at()
     description = getattr(current, "description", None) or ""
@@ -131,10 +148,16 @@ def _build_described_select_application(
     choices: list[Any],
     *,
     default: str | None = None,
+    title: str | None = None,
+    breadcrumb: str | None = None,
+    footer_hint: str | None = None,
     input=None,  # noqa: ANN001
     output=None,  # noqa: ANN001
 ) -> Application:
     normalized_choices = _normalize_choices(choices)
+    screen_title = title or _screen_title(message)
+    screen_breadcrumb = breadcrumb or _screen_breadcrumb(screen_title)
+    screen_footer = footer_hint or _screen_footer()
     control = InquirerControl(
         normalized_choices,
         default=default,
@@ -199,6 +222,26 @@ def _build_described_select_application(
         height=1,
         content=FormattedTextControl(lambda: _select_prompt_fragments(message)),
     )
+    header_block = HSplit(
+        [
+            Window(
+                height=1,
+                content=FormattedTextControl(
+                    lambda: [
+                        ("class:brand", APP_BRAND),
+                        ("class:text", f"  {screen_title}"),
+                    ]
+                ),
+            ),
+            Window(
+                height=1,
+                content=FormattedTextControl(
+                    lambda: [("class:breadcrumb", screen_breadcrumb)]
+                ),
+            ),
+            prompt,
+        ]
+    )
     selector = Window(
         content=control,
         dont_extend_height=True,
@@ -220,7 +263,21 @@ def _build_described_select_application(
     )
 
     return Application(
-        layout=Layout(HSplit([prompt, body]), focused_element=selector),
+        layout=Layout(
+            HSplit(
+                [
+                    header_block,
+                    body,
+                    Window(
+                        height=1,
+                        content=FormattedTextControl(
+                            lambda: [("class:footer", screen_footer)]
+                        ),
+                    ),
+                ]
+            ),
+            focused_element=selector,
+        ),
         key_bindings=bindings,
         full_screen=True,
         style=_STYLE,
@@ -236,6 +293,9 @@ def _select_described_value(
     *,
     default: str | None = None,
     include_back: bool = False,
+    title: str | None = None,
+    breadcrumb: str | None = None,
+    footer_hint: str | None = None,
 ) -> str | None:
     """Show an interactive selector with a live description panel on the right."""
     if include_back:
@@ -258,5 +318,8 @@ def _select_described_value(
         message,
         normalized_choices,
         default=default,
+        title=title,
+        breadcrumb=breadcrumb,
+        footer_hint=footer_hint,
     )
     return app.run()

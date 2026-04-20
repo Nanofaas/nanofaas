@@ -32,7 +32,9 @@ class TuiWorkflowController:
     ) -> Any:
         dashboard = WorkflowDashboard(
             title=title,
-            summary_lines=[*summary_lines, "Hotkeys: l toggle logs"],
+            breadcrumb=f"Main / {title}",
+            footer_hint="l toggle logs | Ctrl+C back",
+            summary_lines=summary_lines,
             planned_steps=planned_steps,
         )
         live: Live | None = None

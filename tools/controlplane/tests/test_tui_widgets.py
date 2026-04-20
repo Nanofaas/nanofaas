@@ -7,6 +7,8 @@ from controlplane_tool.tui_widgets import (
 )
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
+from rich.console import Console
+from rich.text import Text
 import questionary
 
 
@@ -106,3 +108,23 @@ def test_described_picker_uses_full_screen_with_wider_stable_description_panel()
     assert selector.width.min == 48
     assert description.width.min == 40
     assert description.width.weight == selector.width.weight
+
+
+def test_render_screen_frame_renders_brand_title_and_footer() -> None:
+    from controlplane_tool.tui_chrome import APP_BRAND, render_screen_frame
+
+    frame = render_screen_frame(
+        title="Validation",
+        body=Text("Body"),
+        breadcrumb="Main / Validation",
+        footer_hint="Esc back | Ctrl+C exit",
+    )
+
+    console = Console(record=True, width=140)
+    console.print(frame)
+    text = console.export_text()
+
+    assert APP_BRAND in text
+    assert "Validation" in text
+    assert "Main / Validation" in text
+    assert "Esc back" in text

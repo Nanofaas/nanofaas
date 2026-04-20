@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
+from controlplane_tool.tui_chrome import render_screen_frame
 from controlplane_tool.tui_prefect_bridge import TuiPrefectBridge
 from controlplane_tool.workflow_models import WorkflowEvent
 
@@ -36,11 +37,15 @@ class WorkflowDashboard:
         self,
         *,
         title: str,
+        breadcrumb: str = "Main",
+        footer_hint: str = "l toggle logs | Ctrl+C back",
         summary_lines: list[str] | None = None,
         planned_steps: list[str] | None = None,
         log_limit: int = 200,
     ) -> None:
         self.title = title
+        self.breadcrumb = breadcrumb
+        self.footer_hint = footer_hint
         self.summary_lines = list(summary_lines or [])
         self.log_limit = log_limit
         self._bridge = TuiPrefectBridge(
@@ -177,7 +182,7 @@ class WorkflowDashboard:
 
     def render(self):
         summary = Text("\n".join(self.summary_lines) or "No scenario details.", style="cyan")
-        summary_panel = Panel(summary, title=self.title, border_style="cyan dim")
+        summary_panel = Panel(summary, title="Summary", border_style="cyan dim")
 
         phases = Table.grid(padding=(0, 1))
         phases.expand = True
@@ -199,7 +204,17 @@ class WorkflowDashboard:
             else Text("No log output yet.", style="dim")
         )
         if not self.show_logs:
-            return Group(summary_panel, phases_panel, nested_panel) if nested_panel is not None else Group(summary_panel, phases_panel)
+            content = (
+                Group(summary_panel, phases_panel, nested_panel)
+                if nested_panel is not None
+                else Group(summary_panel, phases_panel)
+            )
+            return render_screen_frame(
+                title=self.title,
+                body=content,
+                breadcrumb=self.breadcrumb,
+                footer_hint=self.footer_hint,
+            )
 
         log_panel = Panel(
             log_body,
@@ -215,7 +230,12 @@ class WorkflowDashboard:
         if nested_panel is not None:
             left_pane.append(nested_panel)
         layout.add_row(Group(*left_pane), log_panel)
-        return layout
+        return render_screen_frame(
+            title=self.title,
+            body=layout,
+            breadcrumb=self.breadcrumb,
+            footer_hint=self.footer_hint,
+        )
 
 
 class TuiWorkflowSink:
