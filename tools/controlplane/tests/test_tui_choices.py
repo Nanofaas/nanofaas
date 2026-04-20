@@ -549,6 +549,99 @@ def test_environment_menu_entries_have_helpful_descriptions(monkeypatch) -> None
     assert all(description and len(description) >= 48 for description in descriptions)
 
 
+def test_primary_tui_menus_supply_descriptions_for_every_entry(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: list[tuple[str, list[object]]] = []
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return "back"
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+
+    app = NanofaasTUI()
+    app._build_menu()
+    app._environment_menu()
+    app._validation_menu()
+    app._vm_menu()
+    app._registry_menu()
+    app._loadtest_menu()
+    app._functions_menu()
+    app._profile_menu()
+
+    assert [message for message, _ in captured] == [
+        "Action:",
+        "Action:",
+        "Action:",
+        "Action:",
+        "Action:",
+        "Action:",
+        "View:",
+        "Action:",
+    ]
+    for _, choices in captured:
+        descriptions = [getattr(choice, "description", None) for choice in choices]
+        assert all(description and len(description) >= 48 for description in descriptions)
+
+
+def test_followup_tui_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
+    import controlplane_tool.profiles as profiles
+    import controlplane_tool.tui_app as tui_app
+
+    captured: list[tuple[str, list[object]]] = []
+    answers = iter(
+        [
+            "jar",
+            "back",
+            "up",
+            "back",
+            "run",
+            "back",
+            "show",
+            "back",
+            "show",
+            "back",
+            "delete",
+            "back",
+        ]
+    )
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
+    monkeypatch.setattr(profiles, "list_profiles", lambda root=None: ["demo-java"])
+
+    app = NanofaasTUI()
+    app._build_menu()
+    app._vm_menu()
+    app._loadtest_menu()
+    app._functions_menu()
+    app._profile_menu()
+    app._profile_menu()
+
+    assert [message for message, _ in captured] == [
+        "Action:",
+        "Profile:",
+        "Action:",
+        "Lifecycle:",
+        "Action:",
+        "Profile:",
+        "View:",
+        "Function:",
+        "Action:",
+        "Profile:",
+        "Action:",
+        "Profile to delete:",
+    ]
+    for _, choices in captured:
+        descriptions = [getattr(choice, "description", None) for choice in choices]
+        assert all(description and len(description) >= 48 for description in descriptions)
+
+
 def test_validation_menu_contains_platform_cli_and_host_paths(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 

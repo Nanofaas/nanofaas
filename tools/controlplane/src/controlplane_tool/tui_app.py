@@ -43,18 +43,354 @@ from controlplane_tool.tui_widgets import (
 # ── Main application ─────────────────────────────────────────────────────────
 
 
+def _choice(title: str, value: str, description: str) -> questionary.Choice:
+    return questionary.Choice(title, value, description=description)
+
+
+def _value_choice(value: str, description: str, *, title: str | None = None) -> questionary.Choice:
+    return _choice(title or value, value, description)
+
+
+def _saved_profile_description(name: str) -> str:
+    try:
+        profile = load_profile(name)
+    except Exception:  # noqa: BLE001
+        return (
+            f"Reuse the saved profile '{name}' for build, validation, and load-testing workflows "
+            "without re-entering its defaults manually."
+        )
+
+    control_plane = getattr(profile, "control_plane", None)
+    scenario = getattr(profile, "scenario", None)
+    cli_test = getattr(profile, "cli_test", None)
+    loadtest = getattr(profile, "loadtest", None)
+    tests = getattr(profile, "tests", None)
+    implementation = getattr(control_plane, "implementation", "—") or "—"
+    build_mode = getattr(control_plane, "build_mode", "—") or "—"
+    base_scenario = getattr(scenario, "base_scenario", "—") or "—"
+    cli_default = getattr(cli_test, "default_scenario", "—") or "—"
+    load_profile = (
+        getattr(loadtest, "default_load_profile", None)
+        or getattr(tests, "load_profile", None)
+        or "—"
+    )
+    return (
+        f"Reuse the saved profile '{name}'. Current defaults: implementation={implementation}, "
+        f"build={build_mode}, scenario={base_scenario}, cli={cli_default}, load={load_profile}."
+    )
+
+
+def _saved_profile_choices(names: list[str]) -> list[questionary.Choice]:
+    return [_value_choice(name, _saved_profile_description(name)) for name in names]
+
+
+def _function_detail_choices() -> list[questionary.Choice]:
+    from controlplane_tool.function_catalog import list_functions
+
+    choices: list[questionary.Choice] = []
+    for fn in list_functions():
+        image = fn.default_image or "no default image configured"
+        payload = fn.default_payload_file or "no default payload file configured"
+        description = (
+            f"{fn.description} Runtime={fn.runtime}; family={fn.family}; "
+            f"default image={image}; default payload={payload}."
+        )
+        choices.append(_value_choice(fn.key, description))
+    return choices
+
+
+_MAIN_MENU_CHOICES = [
+    _choice(
+        "Build",
+        "build",
+        "Compile, package, inspect, and run the selected control-plane profile before moving into deployment-oriented workflows.",
+    ),
+    _choice(
+        "Environment",
+        "environment",
+        "Prepare shared infrastructure such as managed VMs and the local registry that the rest of the validation flows depend on.",
+    ),
+    _choice(
+        "Validation",
+        "validation",
+        "Run platform, CLI, and host-compatibility verification flows that prove the stack behaves correctly end to end.",
+    ),
+    _choice(
+        "Load Testing",
+        "loadtest",
+        "Bootstrap a scenario, drive k6 traffic, evaluate metrics gates, and generate the final benchmark report.",
+    ),
+    _choice(
+        "Catalog",
+        "catalog",
+        "Browse function definitions, presets, and per-function metadata used by scenarios, demos, and load tests.",
+    ),
+    _choice(
+        "Profiles",
+        "profiles",
+        "Create, inspect, and remove saved profiles that capture defaults across build, validation, and load-testing workflows.",
+    ),
+    _choice(
+        "Exit",
+        "exit",
+        "Leave the interactive tool without starting another workflow.",
+    ),
+]
+
+_BUILD_ACTION_CHOICES = [
+    _choice(
+        "jar — assemble JARs",
+        "jar",
+        "Assemble bootable JAR artifacts for the selected module set without running the broader verification suite.",
+    ),
+    _choice(
+        "build — compile + unit tests",
+        "build",
+        "Compile the selected profile and run the standard Gradle build lifecycle, including unit tests.",
+    ),
+    _choice(
+        "test — unit tests only",
+        "test",
+        "Execute the test lifecycle only, without packaging artifacts or starting long-running services.",
+    ),
+    _choice(
+        "run — start control-plane",
+        "run",
+        "Start the control-plane locally for manual verification and fast development feedback.",
+    ),
+    _choice(
+        "image — build OCI image",
+        "image",
+        "Build OCI images for the selected profile, ready for registry push or local runtime testing.",
+    ),
+    _choice(
+        "native — build GraalVM native",
+        "native",
+        "Produce GraalVM native binaries when the native-image toolchain is available for the selected profile.",
+    ),
+    _choice(
+        "inspect — show configuration",
+        "inspect",
+        "Show the resolved build configuration and module selection before running an expensive build step.",
+    ),
+]
+
+_BUILD_PROFILE_CHOICES = [
+    _value_choice(
+        "core",
+        "Use the core control-plane module set for the default day-to-day development loop.",
+    ),
+    _value_choice(
+        "k8s",
+        "Include Kubernetes-facing modules and integrations needed for cluster-oriented validation paths.",
+    ),
+    _value_choice(
+        "all",
+        "Build every available control-plane module and optional extension exposed by this repository.",
+    ),
+    _value_choice(
+        "container-local",
+        "Focus on the local container execution path and the modules required for host-managed workflows.",
+    ),
+]
+
+_ENVIRONMENT_ACTION_CHOICES = [
+    _choice(
+        "vm — lifecycle, provisioning, and inspection",
+        "vm",
+        "Manage VM lifecycle, provisioning, synchronization, and inspection for the canonical managed environments.",
+    ),
+    _choice(
+        "registry — local registry bootstrap",
+        "registry",
+        "Start or verify the local image registry used by VM-backed and local validation workflows.",
+    ),
+]
+
+_VALIDATION_ACTION_CHOICES = [
+    _choice(
+        "platform — platform end-to-end scenarios",
+        "platform",
+        "Run platform-level end-to-end scenarios that build, deploy, and verify the stack from the control-plane outward.",
+    ),
+    _choice(
+        "cli — CLI validation workflows",
+        "cli",
+        "Validate nanofaas-cli workflows against a managed environment and catch CLI-specific regressions early.",
+    ),
+    _choice(
+        "host — deploy-host compatibility path",
+        "host",
+        "Exercise the deploy-host compatibility route with host-side build and registration behavior.",
+    ),
+]
+
+_VM_ACTION_CHOICES = [
+    _choice(
+        "up — start / provision",
+        "up",
+        "Create or resume the target VM environment and make it ready for the next workflow.",
+    ),
+    _choice(
+        "down — stop and delete",
+        "down",
+        "Stop the managed VM and remove it cleanly when the environment is no longer needed.",
+    ),
+    _choice(
+        "sync — sync project",
+        "sync",
+        "Copy the current workspace content into the target VM before a build or validation run.",
+    ),
+    _choice(
+        "provision-base — install base dependencies",
+        "provision-base",
+        "Install the shared VM prerequisites required before cluster setup or image build work begins.",
+    ),
+    _choice(
+        "provision-k3s — install k3s",
+        "provision-k3s",
+        "Install and configure the k3s runtime layer inside the managed VM environment.",
+    ),
+    _choice(
+        "inspect — show status",
+        "inspect",
+        "Inspect the current VM state, connectivity, and resolved runtime settings without changing anything.",
+    ),
+]
+
+_VM_LIFECYCLE_CHOICES = [
+    _value_choice(
+        "multipass",
+        "Use the managed Multipass lifecycle handled directly by the tool for provisioning and teardown.",
+    ),
+    _value_choice(
+        "external",
+        "Target an existing remote host or VM that you manage outside the tool, using SSH only.",
+    ),
+]
+
+_REGISTRY_ACTION_CHOICES = [
+    _choice(
+        "start — start Docker Desktop if present and run registry",
+        "start",
+        "Ensure Docker Desktop is available when needed and launch the local registry used by build and validation flows.",
+    ),
+]
+
+_PLATFORM_VALIDATION_CHOICES = [
+    _DescribedChoice(
+        "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
+        "k3s-junit-curl",
+        "Provision a managed VM, install k3s, deploy the stack, and verify the result with curl probes plus JUnit checks.",
+    ),
+    _DescribedChoice(
+        "helm-stack — self-bootstrapping VM stack for Helm compatibility",
+        "helm-stack",
+        "Bootstrap the full VM-backed Helm stack and validate the deployment path that load testing and demos rely on.",
+    ),
+    _DescribedChoice(
+        "container-local — local managed DEPLOYMENT",
+        "container-local",
+        "Run the managed DEPLOYMENT workflow entirely on the local machine without provisioning a VM first.",
+    ),
+]
+
+_PLATFORM_HOST_COMPAT_CHOICE = _DescribedChoice(
+    "deploy-host — deploy-host with local registry",
+    "deploy-host",
+    "Build on the host, push through a local registry, and validate the host compatibility deployment path.",
+)
+
+_PLATFORM_LOCAL_RUNTIME_CHOICES = [
+    _DescribedChoice(
+        "docker — local POOL with Docker",
+        "docker",
+        "Exercise the local POOL runtime with Docker-backed execution on the host machine.",
+    ),
+    _DescribedChoice(
+        "buildpack — local POOL with buildpack",
+        "buildpack",
+        "Exercise the local POOL runtime using buildpack-produced images on the host machine.",
+    ),
+]
+
+_CLI_E2E_RUNNER_CHOICES = [
+    _DescribedChoice(
+        "vm — CLI E2E on k3s VM",
+        "vm",
+        "Run the legacy CLI validation path inside a managed VM-backed environment.",
+    ),
+    _DescribedChoice(
+        "cli-stack — canonical self-bootstrapping CLI stack in VM",
+        "cli-stack",
+        "Run the canonical VM-backed CLI stack that bootstraps the platform and validates the CLI end to end.",
+    ),
+    _DescribedChoice(
+        "host-platform — compatibility path, CLI on host vs cluster",
+        "host-platform",
+        "Keep the CLI on the host and validate the compatibility route against a VM-backed platform.",
+    ),
+]
+
+_LOADTEST_ACTION_CHOICES = [
+    _choice(
+        "run — run load test with profile",
+        "run",
+        "Execute the load-test workflow from bootstrap through metrics gate and final report generation.",
+    ),
+    _choice(
+        "plan — show plan without executing",
+        "plan",
+        "Resolve the active load-test request and show what would run, without executing traffic or bootstrap steps.",
+    ),
+    _choice(
+        "new profile — interactive wizard",
+        "new_profile",
+        "Create or revise a saved profile interactively before selecting it for load testing.",
+    ),
+]
+
+_CATALOG_VIEW_CHOICES = [
+    _choice(
+        "All functions",
+        "all",
+        "Browse every function definition shipped with the repository, including runtime and family metadata.",
+    ),
+    _choice(
+        "Presets",
+        "presets",
+        "Inspect named function bundles that are reused by scenarios, demos, and load-testing flows.",
+    ),
+    _choice(
+        "Function detail",
+        "show",
+        "Open the detailed record for a single function, including image and payload defaults.",
+    ),
+]
+
+_PROFILE_ACTION_CHOICES = [
+    _choice(
+        "Create new profile",
+        "new",
+        "Launch the interactive wizard and save a new reusable profile for build, validation, and load testing.",
+    ),
+    _choice(
+        "View existing profile",
+        "show",
+        "Inspect the resolved defaults stored in a saved profile before reusing it in other workflows.",
+    ),
+    _choice(
+        "Delete profile",
+        "delete",
+        "Remove a saved profile when it is obsolete, misleading, or no longer part of the supported workflow set.",
+    ),
+]
+
+
 class NanofaasTUI:
     """Menu-driven Rich TUI for all controlplane operations."""
 
-    _MAIN_MENU = [
-        questionary.Choice("Build", "build"),
-        questionary.Choice("Environment", "environment"),
-        questionary.Choice("Validation", "validation"),
-        questionary.Choice("Load Testing", "loadtest"),
-        questionary.Choice("Catalog", "catalog"),
-        questionary.Choice("Profiles", "profiles"),
-        questionary.Choice("Exit", "exit"),
-    ]
+    _MAIN_MENU = _MAIN_MENU_CHOICES
 
     def __init__(self) -> None:
         self._applier = TuiEventApplier()
@@ -102,15 +438,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice("jar — assemble JARs", "jar"),
-                questionary.Choice("build — compile + unit tests", "build"),
-                questionary.Choice("test — unit tests only", "test"),
-                questionary.Choice("run — start control-plane", "run"),
-                questionary.Choice("image — build OCI image", "image"),
-                questionary.Choice("native — build GraalVM native", "native"),
-                questionary.Choice("inspect — show configuration", "inspect"),
-            ],
+            choices=_BUILD_ACTION_CHOICES,
             include_back=True,
         )
         if action == _BACK_VALUE:
@@ -118,7 +446,7 @@ class NanofaasTUI:
 
         profile = _select_value(
             "Profile:",
-            choices=["core", "k8s", "all", "container-local"],
+            choices=_BUILD_PROFILE_CHOICES,
             default="core",
             include_back=True,
         )
@@ -174,10 +502,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice("vm — lifecycle, provisioning, and inspection", "vm"),
-                questionary.Choice("registry — local registry bootstrap", "registry"),
-            ],
+            choices=_ENVIRONMENT_ACTION_CHOICES,
             include_back=True,
         )
         if action == _BACK_VALUE:
@@ -195,11 +520,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice("platform — platform end-to-end scenarios", "platform"),
-                questionary.Choice("cli — CLI validation workflows", "cli"),
-                questionary.Choice("host — deploy-host compatibility path", "host"),
-            ],
+            choices=_VALIDATION_ACTION_CHOICES,
             include_back=True,
         )
         if action == _BACK_VALUE:
@@ -222,14 +543,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice("up — start / provision", "up"),
-                questionary.Choice("down — stop and delete", "down"),
-                questionary.Choice("sync — sync project", "sync"),
-                questionary.Choice("provision-base — install base dependencies", "provision-base"),
-                questionary.Choice("provision-k3s — install k3s", "provision-k3s"),
-                questionary.Choice("inspect — show status", "inspect"),
-            ],
+            choices=_VM_ACTION_CHOICES,
             include_back=True,
         )
         if action == _BACK_VALUE:
@@ -237,7 +551,7 @@ class NanofaasTUI:
 
         lifecycle = _select_value(
             "Lifecycle:",
-            choices=["multipass", "external"],
+            choices=_VM_LIFECYCLE_CHOICES,
             default="multipass",
             include_back=True,
         )
@@ -337,12 +651,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice(
-                    "start — start Docker Desktop if present and run registry",
-                    "start",
-                ),
-            ],
+            choices=_REGISTRY_ACTION_CHOICES,
             default="start",
             include_back=True,
         )
@@ -393,45 +702,10 @@ class NanofaasTUI:
     ) -> None:
         phase(phase_label)
 
-        choices = [
-            _DescribedChoice(
-                "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
-                "k3s-junit-curl",
-                "Provision the VM, install k3s, deploy the stack, then verify it with curl and JUnit checks.",
-            ),
-            _DescribedChoice(
-                "helm-stack — self-bootstrapping VM stack for Helm compatibility",
-                "helm-stack",
-                "Bootstrap the full VM-backed Helm stack, then verify deployment compatibility end to end.",
-            ),
-            _DescribedChoice(
-                "container-local — local managed DEPLOYMENT",
-                "container-local",
-                "Run the managed DEPLOYMENT workflow entirely on the local machine without a VM.",
-            ),
-        ]
+        choices = list(_PLATFORM_VALIDATION_CHOICES)
         if include_host_compat:
-            choices.append(
-                _DescribedChoice(
-                    "deploy-host — deploy-host with local registry",
-                    "deploy-host",
-                    "Build on the host, push to a local registry, and register against a fake control-plane.",
-                )
-            )
-        choices.extend(
-            [
-                _DescribedChoice(
-                    "docker — local POOL with Docker",
-                    "docker",
-                    "Exercise the local POOL runtime with Docker-based execution on the host.",
-                ),
-                _DescribedChoice(
-                    "buildpack — local POOL with buildpack",
-                    "buildpack",
-                    "Exercise the local POOL runtime using buildpack-produced images on the host.",
-                ),
-            ]
-        )
+            choices.append(_PLATFORM_HOST_COMPAT_CHOICE)
+        choices.extend(_PLATFORM_LOCAL_RUNTIME_CHOICES)
 
         scenario_choice = _ask(
             lambda: _select_described_value(
@@ -677,23 +951,7 @@ class NanofaasTUI:
         runner_choice = _ask(
             lambda: _select_described_value(
                 "Runner:",
-                choices=[
-                    _DescribedChoice(
-                        "vm — CLI E2E on k3s VM",
-                        "vm",
-                        "Run the CLI workflow inside a VM-backed environment with the classic CLI E2E path.",
-                    ),
-                    _DescribedChoice(
-                        "cli-stack — canonical self-bootstrapping CLI stack in VM",
-                        "cli-stack",
-                        "Run the canonical VM-backed CLI stack that bootstraps the platform and validates the CLI end to end.",
-                    ),
-                    _DescribedChoice(
-                        "host-platform — compatibility path, CLI on host vs cluster",
-                        "host-platform",
-                        "Keep the CLI on the host and validate the compatibility path against a VM-backed platform.",
-                    ),
-                ],
+                choices=_CLI_E2E_RUNNER_CHOICES,
                 include_back=True,
             )
         )
@@ -789,11 +1047,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice("run — run load test with profile", "run"),
-                questionary.Choice("plan — show plan without executing", "plan"),
-                questionary.Choice("new profile — interactive wizard", "new_profile"),
-            ],
+            choices=_LOADTEST_ACTION_CHOICES,
             include_back=True,
         )
         if action == _BACK_VALUE:
@@ -813,7 +1067,7 @@ class NanofaasTUI:
             if use_saved:
                 profile_name = _select_value(
                     "Profile:",
-                    choices=saved,
+                    choices=_saved_profile_choices(saved),
                     include_back=True,
                 )
                 if profile_name == _BACK_VALUE:
@@ -873,11 +1127,7 @@ class NanofaasTUI:
 
         view = _select_value(
             "View:",
-            choices=[
-                questionary.Choice("All functions", "all"),
-                questionary.Choice("Presets", "presets"),
-                questionary.Choice("Function detail", "show"),
-            ],
+            choices=_CATALOG_VIEW_CHOICES,
             include_back=True,
         )
         if view == _BACK_VALUE:
@@ -906,13 +1156,11 @@ class NanofaasTUI:
 
         else:
             from controlplane_tool.function_catalog import (
-                list_functions,
                 resolve_function_definition,
             )
-            keys = [fn.key for fn in list_functions()]
             key = _select_value(
                 "Function:",
-                choices=keys,
+                choices=_function_detail_choices(),
                 include_back=True,
             )
             if key == _BACK_VALUE:
@@ -945,11 +1193,7 @@ class NanofaasTUI:
 
         action = _select_value(
             "Action:",
-            choices=[
-                questionary.Choice("Create new profile", "new"),
-                questionary.Choice("View existing profile", "show"),
-                questionary.Choice("Delete profile", "delete"),
-            ],
+            choices=_PROFILE_ACTION_CHOICES,
             include_back=True,
         )
         if action == _BACK_VALUE:
@@ -972,7 +1216,7 @@ class NanofaasTUI:
                 return
             name = _select_value(
                 "Profile:",
-                choices=saved,
+                choices=_saved_profile_choices(saved),
                 include_back=True,
             )
             if name == _BACK_VALUE:
@@ -987,7 +1231,7 @@ class NanofaasTUI:
                 return
             name = _select_value(
                 "Profile to delete:",
-                choices=saved,
+                choices=_saved_profile_choices(saved),
                 include_back=True,
             )
             if name == _BACK_VALUE:
