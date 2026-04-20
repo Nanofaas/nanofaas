@@ -60,13 +60,14 @@ def test_m9_scenario_manifest_shell_is_deleted() -> None:
     assert not (scripts_lib / "scenario-manifest.sh").exists()
 
 
-def test_m9_local_e2e_commands_are_importable() -> None:
-    from controlplane_tool.local_e2e_commands import local_e2e_app  # noqa: F401
+def test_m9_local_e2e_commands_module_is_deleted() -> None:
+    module = Path(__file__).resolve().parents[1] / "src" / "controlplane_tool" / "local_e2e_commands.py"
+    assert not module.exists()
 
 
-def test_m9_local_e2e_group_is_in_main_cli() -> None:
+def test_m9_local_e2e_group_is_removed_from_main_cli() -> None:
     result = runner.invoke(app, ["--help"])
-    assert "local-e2e" in result.stdout
+    assert "local-e2e" not in result.stdout
 
 
 def test_m9_container_local_e2e_runner_is_importable() -> None:
@@ -93,9 +94,9 @@ def test_m10_cli_vm_runner_is_importable() -> None:
     from controlplane_tool.cli_runtime import CliHostPlatformRunner  # noqa: F401
 
 
-def test_m10_cli_e2e_group_is_in_main_cli() -> None:
+def test_m10_cli_e2e_group_is_removed_from_main_cli() -> None:
     result = runner.invoke(app, ["--help"])
-    assert "cli-e2e" in result.stdout
+    assert "cli-e2e" not in result.stdout
 
 
 def test_m10_cli_vm_runner_shell_backends_are_deleted() -> None:
@@ -196,7 +197,7 @@ def test_m13_scripts_lib_is_empty() -> None:
 def test_m13_all_cli_command_groups_registered() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e"):
+    for group in ("e2e", "cli-test", "loadtest", "vm", "functions", "tui"):
         assert group in result.stdout, f"CLI group {group!r} missing from help"
 
 

@@ -86,5 +86,5 @@ def test_python_cli_exposes_all_expected_command_groups() -> None:
 
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    for group in ("e2e", "cli-test", "loadtest", "vm", "local-e2e", "cli-e2e"):
+    for group in ("e2e", "cli-test", "loadtest", "vm", "functions", "tui"):
         assert group in result.stdout, f"Expected command group {group!r} not found in CLI help"

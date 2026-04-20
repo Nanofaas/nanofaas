@@ -21,7 +21,7 @@ def run_script(name: str) -> str:
 # M9: container-local now uses Python runtime — no shell backend in dry-run output
 def test_container_local_wrapper_dry_run_uses_python_runner() -> None:
     output = run_script("e2e-container-local.sh")
-    assert "local-e2e" in output
+    assert "e2e run container-local" in output
     assert "e2e-container-local-backend.sh" not in output
 
 
@@ -40,7 +40,7 @@ def test_cli_host_platform_wrapper_dry_run_no_longer_uses_shell_backend() -> Non
 # M9: deploy-host now uses Python runtime — no shell backend in dry-run output
 def test_cli_deploy_host_wrapper_dry_run_uses_python_runner() -> None:
     output = run_script("e2e-cli-deploy-host.sh")
-    assert "local-e2e" in output
+    assert "cli-test run deploy-host" in output
     assert "e2e-deploy-host-backend.sh" not in output
 
 

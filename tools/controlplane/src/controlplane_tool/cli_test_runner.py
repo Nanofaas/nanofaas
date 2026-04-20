@@ -119,13 +119,12 @@ class CliTestRunner:
 
     def _step_owns_cli_build(self, step: ScenarioPlanStep) -> bool:
         rendered = " ".join(step.command)
-        # Python local-e2e runner (M9+): deploy-host builds CLI on host
-        if "local-e2e" in rendered and "deploy-host" in rendered:
-            return True
-        # Python cli-e2e runner (M10+): vm and host-platform build CLI
-        if "cli-e2e" in rendered and ("run" in rendered):
-            return True
-        return False
+        if "controlplane-tool" not in rendered or "cli-test" not in rendered or "run" not in rendered:
+            return False
+        return any(
+            scenario_name in rendered
+            for scenario_name in ("deploy-host", "vm", "host-platform")
+        )
 
     def _with_cli_build_reuse(self, steps: list[ScenarioPlanStep]) -> list[ScenarioPlanStep]:
         reused_steps: list[ScenarioPlanStep] = []
