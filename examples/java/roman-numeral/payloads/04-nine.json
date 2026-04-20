@@ -1,0 +1,9 @@
+{
+  "description": "subtractive IX",
+  "input": {
+    "number": 9
+  },
+  "expected": {
+    "roman": "IX"
+  }
+}

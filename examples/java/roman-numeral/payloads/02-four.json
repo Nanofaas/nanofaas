@@ -1,0 +1,9 @@
+{
+  "description": "subtractive IV",
+  "input": {
+    "number": 4
+  },
+  "expected": {
+    "roman": "IV"
+  }
+}

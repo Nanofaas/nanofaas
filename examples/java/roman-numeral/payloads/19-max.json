@@ -1,0 +1,9 @@
+{
+  "description": "largest valid number",
+  "input": {
+    "number": 3999
+  },
+  "expected": {
+    "roman": "MMMCMXCIX"
+  }
+}

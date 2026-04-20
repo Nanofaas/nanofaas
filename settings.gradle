@@ -71,3 +71,4 @@ def unknownModules = requestedModules.findAll { !availableModules.contains(it) }
 if (!unknownModules.isEmpty()) {
     throw new GradleException("Unknown control-plane modules: ${unknownModules}. Available: ${availableModules}")
 }
+include 'examples:java:roman-numeral'

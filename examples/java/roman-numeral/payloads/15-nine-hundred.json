@@ -1,0 +1,9 @@
+{
+  "description": "subtractive CM",
+  "input": {
+    "number": 900
+  },
+  "expected": {
+    "roman": "CM"
+  }
+}

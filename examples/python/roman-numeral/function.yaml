@@ -1,0 +1,12 @@
+name: roman-numeral
+image: nanofaas/roman-numeral:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../../..
+    dockerfile: examples/python/roman-numeral/Dockerfile
+    platform: linux/amd64
+    push: true
