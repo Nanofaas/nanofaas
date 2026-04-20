@@ -111,7 +111,7 @@ def test_described_picker_uses_full_screen_with_wider_stable_description_panel()
 
 
 def test_render_screen_frame_renders_brand_title_and_footer() -> None:
-    from controlplane_tool.tui_chrome import APP_BRAND, render_screen_frame
+    from controlplane_tool.tui_chrome import APP_WORDMARK, render_screen_frame
 
     frame = render_screen_frame(
         title="Validation",
@@ -124,7 +124,8 @@ def test_render_screen_frame_renders_brand_title_and_footer() -> None:
     console.print(frame)
     text = console.export_text()
 
-    assert APP_BRAND in text
+    assert APP_WORDMARK in text
     assert "Validation" in text
     assert "Main / Validation" in text
     assert "Esc back" in text
+    assert "OpenFaaS" not in text

@@ -24,7 +24,14 @@ def test_tui_main_menu_uses_canonical_product_sections() -> None:
     ]
 
 
-def test_workflow_dashboard_renders_persistent_openfaas_brand() -> None:
+def test_main_menu_entries_have_precise_english_descriptions() -> None:
+    for choice in NanofaasTUI._MAIN_MENU:
+        assert getattr(choice, "description", None)
+        assert len(choice.description) >= 48
+        assert choice.description.endswith(".")
+
+
+def test_workflow_dashboard_renders_persistent_nanofaas_brand() -> None:
     dashboard = WorkflowDashboard(
         title="Validation",
         summary_lines=["Scenario: cli-stack"],
@@ -32,4 +39,5 @@ def test_workflow_dashboard_renders_persistent_openfaas_brand() -> None:
 
     text = _render_dashboard_text(dashboard)
 
-    assert "OpenFaaS" in text
+    assert "NANOFAAS" in text
+    assert "OpenFaaS" not in text

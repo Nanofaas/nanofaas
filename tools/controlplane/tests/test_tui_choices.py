@@ -530,6 +530,25 @@ def test_environment_menu_contains_vm_and_registry(monkeypatch) -> None:
     assert captured["include_back"] is True
 
 
+def test_environment_menu_entries_have_helpful_descriptions(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {}
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured["message"] = message
+        captured["choices"] = choices
+        return "back"
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+
+    NanofaasTUI()._environment_menu()
+
+    descriptions = [choice.description for choice in captured["choices"]]
+    assert captured["message"] == "Action:"
+    assert all(description and len(description) >= 48 for description in descriptions)
+
+
 def test_validation_menu_contains_platform_cli_and_host_paths(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 
