@@ -60,10 +60,10 @@ scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
 scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run
 scripts/e2e-loadtest.sh --profile demo-java --dry-run
-scripts/controlplane.sh tui --profile-name dev
+scripts/controlplane.sh tui
 ```
 
-Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`.
+Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`. Use `scripts/controlplane.sh tui` for the interactive product surface, then pick or create profiles from the `Profiles` section.
 
 For VM-backed scenarios, provisioning is executed against the resolved VM host over SSH/Ansible rather than `localhost`. `scripts/controlplane.sh e2e all ...` plans one shared VM bootstrap block for VM-backed scenarios, reuses that session across scenarios, and tears the Multipass VM down once at the end unless `--no-cleanup-vm` is set. When `E2E_VM_LIFECYCLE=external`, the tool never attempts VM teardown.
 

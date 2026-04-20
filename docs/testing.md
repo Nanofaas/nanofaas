@@ -437,7 +437,7 @@ Optional override for an existing endpoint:
 
 ```bash
 export NANOFAAS_TOOL_PROMETHEUS_URL=http://127.0.0.1:9090
-scripts/controlplane.sh tui --profile-name dev --use-saved-profile
+scripts/controlplane.sh tui
 ```
 
 The metrics step invokes k6 with control-plane base URL semantics:

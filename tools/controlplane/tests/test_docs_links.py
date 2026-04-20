@@ -58,7 +58,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "left pane is plan-ordered top-level phases only" in testing
     assert "nested work is separate detail, not peer phases" in testing
     assert "host-platform` is a compatibility path" in testing
-    assert "scripts/controlplane.sh tui --profile-name dev --use-saved-profile" in testing
+    assert "scripts/controlplane.sh tui" in testing
+    assert "scripts/controlplane.sh tui --profile-name" not in testing
     assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
     assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in testing
     assert "cli-stack is the canonical VM-backed CLI stack scenario" in testing

@@ -73,9 +73,10 @@ For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH ope
 Use the canonical wrapper for saved-profile / interactive runs as well:
 
 ```bash
-scripts/controlplane.sh tui --profile-name dev
-scripts/controlplane.sh tui --profile-name dev --use-saved-profile
+scripts/controlplane.sh tui
 ```
+
+The interactive TUI owns profile selection and profile creation. Use the `Profiles` section to inspect saved profiles and the `Load Testing` / `Validation` sections to consume them.
 
 In the live workflow view, the left pane is plan-ordered top-level phases only. nested work is separate detail, not peer phases, so verification substeps stay attached under the active phase instead of becoming new rows.
 

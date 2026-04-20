@@ -2,8 +2,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from rich.console import Console
+
 from controlplane_tool.console import bind_workflow_sink
 from controlplane_tool.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
+from controlplane_tool.models import (
+    CliTestConfig,
+    ControlPlaneConfig,
+    LoadtestConfig,
+    MetricsConfig,
+    Profile,
+    ScenarioSelectionConfig,
+    TestsConfig,
+)
 from controlplane_tool.module_catalog import module_choices
 from controlplane_tool.prefect_models import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
@@ -177,6 +188,52 @@ def test_tui_can_save_cli_stack_as_default_cli_test_scenario(monkeypatch) -> Non
     profile = build_profile_interactive(profile_name="demo-java")
 
     assert profile.cli_test.default_scenario == "cli-stack"
+
+
+def test_profile_view_shows_behavioral_defaults(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    profile = Profile(
+        name="demo-java",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
+        modules=["autoscaler", "build-metadata"],
+        tests=TestsConfig(
+            enabled=True,
+            api=True,
+            e2e_mockk8s=False,
+            metrics=True,
+            load_profile="smoke",
+        ),
+        metrics=MetricsConfig(
+            required=["function_dispatch_total", "function_latency_ms"],
+            strict_required=True,
+        ),
+        scenario=ScenarioSelectionConfig(
+            base_scenario="k3s-junit-curl",
+            function_preset="demo-java",
+            namespace="nanofaas-e2e",
+            local_registry="localhost:5000",
+        ),
+        loadtest=LoadtestConfig(
+            default_load_profile="smoke",
+            metrics_gate_mode="warn",
+            function_preset="demo-java",
+        ),
+        cli_test=CliTestConfig(default_scenario="cli-stack"),
+    )
+    recording_console = Console(record=True, width=160)
+
+    monkeypatch.setattr(tui_app, "console", recording_console)
+
+    tui_app._show_profile_table(profile)
+    text = recording_console.export_text()
+
+    assert "scenario.base_scenario" in text
+    assert "cli_test.default_scenario" in text
+    assert "loadtest.default_load_profile" in text
+    assert "loadtest.metrics_gate_mode" in text
+    assert "metrics.strict_required" in text
+    assert "metrics.required" in text
 
 
 def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:

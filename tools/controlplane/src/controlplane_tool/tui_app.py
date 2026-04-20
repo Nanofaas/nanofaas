@@ -1060,5 +1060,69 @@ def _show_profile_table(profile: Any) -> None:
         table.add_row("tests.enabled", str(getattr(tests, "enabled", False)))
         table.add_row("tests.api", str(getattr(tests, "api", False)))
         table.add_row("tests.e2e_mockk8s", str(getattr(tests, "e2e_mockk8s", False)))
+        table.add_row("tests.metrics", str(getattr(tests, "metrics", False)))
         table.add_row("tests.load_profile", escape(str(getattr(tests, "load_profile", "—"))))
+    scenario = getattr(profile, "scenario", None)
+    if scenario:
+        table.add_row(
+            "scenario.base_scenario",
+            escape(str(getattr(scenario, "base_scenario", "—") or "—")),
+        )
+        table.add_row(
+            "scenario.function_preset",
+            escape(str(getattr(scenario, "function_preset", "—") or "—")),
+        )
+        functions = getattr(scenario, "functions", []) or []
+        table.add_row("scenario.functions", escape(", ".join(functions) or "—"))
+        table.add_row(
+            "scenario.scenario_file",
+            escape(str(getattr(scenario, "scenario_file", "—") or "—")),
+        )
+        table.add_row(
+            "scenario.namespace",
+            escape(str(getattr(scenario, "namespace", "—") or "—")),
+        )
+        table.add_row(
+            "scenario.local_registry",
+            escape(str(getattr(scenario, "local_registry", "—") or "—")),
+        )
+    cli_test = getattr(profile, "cli_test", None)
+    if cli_test:
+        table.add_row(
+            "cli_test.default_scenario",
+            escape(str(getattr(cli_test, "default_scenario", "—") or "—")),
+        )
+    loadtest = getattr(profile, "loadtest", None)
+    if loadtest:
+        table.add_row(
+            "loadtest.default_load_profile",
+            escape(str(getattr(loadtest, "default_load_profile", "—") or "—")),
+        )
+        table.add_row(
+            "loadtest.metrics_gate_mode",
+            escape(str(getattr(loadtest, "metrics_gate_mode", "—") or "—")),
+        )
+        table.add_row(
+            "loadtest.scenario_file",
+            escape(str(getattr(loadtest, "scenario_file", "—") or "—")),
+        )
+        table.add_row(
+            "loadtest.function_preset",
+            escape(str(getattr(loadtest, "function_preset", "—") or "—")),
+        )
+    metrics = getattr(profile, "metrics", None)
+    if metrics:
+        required_metrics = getattr(metrics, "required", []) or []
+        table.add_row(
+            "metrics.required",
+            escape(", ".join(required_metrics) or "—"),
+        )
+        table.add_row(
+            "metrics.prometheus_url",
+            escape(str(getattr(metrics, "prometheus_url", "—") or "—")),
+        )
+        table.add_row(
+            "metrics.strict_required",
+            str(getattr(metrics, "strict_required", False)),
+        )
     console.print(table)
