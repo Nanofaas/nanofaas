@@ -198,6 +198,83 @@ def test_generate_python_creates_payloads(tmp_path):
     assert (out / "payloads" / "happy-path.json").exists()
 
 
+# --- generate_function (Go) ---
+
+GO_PLACEHOLDERS = {
+    "FUNCTION_NAME": "greet",
+    "CLASS_NAME": "Greet",
+    "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "IMAGE_TAG": "nanofaas/greet:latest",
+    "LANG": "go",
+}
+
+def test_generate_go_creates_main(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    assert (out / "main.go").exists()
+    content = (out / "main.go").read_text()
+    assert "handleGreet" in content
+    assert "nanofaas.NewRuntime()" in content
+
+def test_generate_go_creates_test(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    assert (out / "main_test.go").exists()
+    assert "TestHandleGreetReturnsResult" in (out / "main_test.go").read_text()
+
+def test_generate_go_creates_build_files(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    assert (out / "go.mod").exists()
+    assert (out / "Dockerfile").exists()
+    assert (out / "function.yaml").exists()
+
+def test_generate_go_gomod_has_module(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    content = (out / "go.mod").read_text()
+    assert "github.com/miciav/nanofaas/examples/go/greet" in content
+    assert "function-sdk-go" in content
+
+
+# --- generate_function (Bash) ---
+
+BASH_PLACEHOLDERS = {
+    "FUNCTION_NAME": "greet",
+    "CLASS_NAME": "Greet",
+    "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "IMAGE_TAG": "nanofaas/greet:latest",
+    "LANG": "bash",
+}
+
+def test_generate_bash_creates_handler(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "bash", out, vscode=False, placeholders=BASH_PLACEHOLDERS)
+    handler = out / "handler.sh"
+    assert handler.exists()
+    assert "#!/usr/bin/env bash" in handler.read_text()
+
+def test_generate_bash_handler_is_executable(tmp_path):
+    import stat as stat_module
+    out = tmp_path / "greet"
+    generate_function("greet", "bash", out, vscode=False, placeholders=BASH_PLACEHOLDERS)
+    mode = (out / "handler.sh").stat().st_mode
+    assert mode & stat_module.S_IXUSR
+
+def test_generate_bash_creates_test(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "bash", out, vscode=False, placeholders=BASH_PLACEHOLDERS)
+    assert (out / "tests" / "test_handler.sh").exists()
+
+def test_generate_bash_creates_build_files(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "bash", out, vscode=False, placeholders=BASH_PLACEHOLDERS)
+    assert (out / "Dockerfile").exists()
+    assert (out / "function.yaml").exists()
+
+
 # --- update_settings_gradle ---
 
 def test_update_settings_gradle_appends(tmp_path):

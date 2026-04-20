@@ -1,0 +1,23 @@
+package main
+
+import (
+	"context"
+	"log"
+	"log/slog"
+
+	"github.com/miciav/nanofaas/function-sdk-go/nanofaas"
+)
+
+func main() {
+	rt := nanofaas.NewRuntime()
+	rt.Register("{{FUNCTION_NAME}}", handle{{CLASS_NAME}})
+	if err := rt.Start(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func handle{{CLASS_NAME}}(ctx context.Context, req nanofaas.InvocationRequest) (any, error) {
+	nanofaas.Logger(ctx, slog.Default()).Info("{{FUNCTION_NAME}} invoked")
+	// TODO: implement handler logic
+	return map[string]any{"result": "ok"}, nil
+}

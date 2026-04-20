@@ -1,0 +1,20 @@
+package main
+
+import (
+	"context"
+	"testing"
+
+	"github.com/miciav/nanofaas/function-sdk-go/nanofaas"
+)
+
+func TestHandle{{CLASS_NAME}}ReturnsResult(t *testing.T) {
+	result, err := handle{{CLASS_NAME}}(context.Background(), nanofaas.InvocationRequest{
+		Input: map[string]any{"key": "value"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+}

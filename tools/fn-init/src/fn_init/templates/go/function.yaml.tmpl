@@ -1,0 +1,12 @@
+name: {{FUNCTION_NAME}}
+image: {{IMAGE_TAG}}
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../../..
+    dockerfile: examples/go/{{FUNCTION_NAME}}/Dockerfile
+    platform: linux/amd64
+    push: true

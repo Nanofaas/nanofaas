@@ -1,0 +1,12 @@
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY function-sdk-go /src/function-sdk-go
+COPY examples/go/{{FUNCTION_NAME}} /src/examples/go/{{FUNCTION_NAME}}
+WORKDIR /src/examples/go/{{FUNCTION_NAME}}
+RUN go build -o /out/{{FUNCTION_NAME}} .
+
+FROM alpine:3.22
+WORKDIR /app
+COPY --from=build /out/{{FUNCTION_NAME}} /app/{{FUNCTION_NAME}}
+EXPOSE 8080
+ENTRYPOINT ["/app/{{FUNCTION_NAME}}"]

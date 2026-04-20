@@ -18,7 +18,7 @@ console = Console(force_terminal=sys.stdout.isatty())
 @app.command()
 def main(
     name: Optional[str] = typer.Argument(None, help="Function name (lowercase, alphanumeric + hyphens)"),
-    lang: str = typer.Option("java", "--lang", help="Language: java or python"),
+    lang: str = typer.Option("java", "--lang", help="Language: java, python, go, or bash"),
     out: Optional[Path] = typer.Option(None, "--out", help="Parent output directory"),
     vscode: bool = typer.Option(False, "--vscode", help="Generate VS Code project files"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
@@ -38,8 +38,8 @@ def main(
         console.print(f"[red]Error:[/] invalid function name {escape(name)!r} — use lowercase letters, digits, and hyphens only")
         raise typer.Exit(1)
 
-    if lang not in ("java", "python"):
-        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java or python.")
+    if lang not in ("java", "python", "go", "bash"):
+        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java, python, go, or bash.")
         raise typer.Exit(1)
 
     class_name = generator.to_class_name(name)
@@ -71,7 +71,7 @@ def main(
 
     with console.status("[bold green]Generating..."):
         generator.generate_function(name, lang, output_dir, vscode, placeholders)
-        if monorepo_root and lang == "java":
+        if monorepo_root and lang == "java":  # only Java has centralised Gradle registry
             if generator.update_settings_gradle(monorepo_root, name, lang):
                 console.print(f"[dim]Updated settings.gradle → added include 'examples:java:{name}'[/]")
 
