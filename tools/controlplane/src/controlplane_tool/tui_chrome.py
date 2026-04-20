@@ -6,7 +6,16 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-APP_BRAND = "OpenFaaS"
+APP_WORDMARK = "NANOFAAS"
+APP_ASCII_LOGO = """
+ ███╗   ██╗ █████╗ ███╗   ██╗ ██████╗ ███████╗ █████╗  █████╗ ███████╗
+ ████╗  ██║██╔══██╗████╗  ██║██╔═══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝
+ ██╔██╗ ██║███████║██╔██╗ ██║██║   ██║█████╗  ███████║███████║███████╗
+ ██║╚██╗██║██╔══██║██║╚██╗██║██║   ██║██╔══╝  ██╔══██║██╔══██║╚════██║
+ ██║ ╚████║██║  ██║██║ ╚████║╚██████╔╝██║     ██║  ██║██║  ██║███████║
+ ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+""".strip("\n")
+APP_BRAND = APP_WORDMARK
 DEFAULT_BREADCRUMB = "Main"
 DEFAULT_FOOTER_HINT = "Esc back | Ctrl+C exit"
 
@@ -22,11 +31,16 @@ def render_screen_frame(
     header.add_column(ratio=1)
     header.add_column(justify="right", no_wrap=True)
     header.add_row(
-        Text(APP_BRAND, style="bold cyan"),
+        Text(APP_WORDMARK, style="bold cyan"),
         Text(breadcrumb, style="dim") if breadcrumb else Text(""),
     )
 
-    content: list[RenderableType] = [header, Rule(style="cyan dim"), body]
+    content: list[RenderableType] = [
+        Text(APP_ASCII_LOGO, style="bold cyan"),
+        header,
+        Rule(style="cyan dim"),
+        body,
+    ]
     if footer_hint:
         content.extend([Rule(style="cyan dim"), Text(footer_hint, style="dim")])
 

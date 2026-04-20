@@ -20,7 +20,7 @@ from prompt_toolkit.widgets import Frame
 from questionary import Style
 from questionary.prompts.common import Choice, InquirerControl
 
-from controlplane_tool.tui_chrome import APP_BRAND
+from controlplane_tool.tui_chrome import APP_ASCII_LOGO, APP_WORDMARK
 
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
 _STYLE = Style(
@@ -46,6 +46,7 @@ _PICKER_BODY_PREFERRED_WIDTH = 140
 _PICKER_SELECTOR_MIN_WIDTH = 48
 _PICKER_DESCRIPTION_MIN_WIDTH = 40
 _PICKER_PANEL_WEIGHT = 1
+_PICKER_BRAND_HEIGHT = APP_ASCII_LOGO.count("\n") + 1
 
 
 def _ask(prompt_fn):
@@ -225,10 +226,14 @@ def _build_described_select_application(
     header_block = HSplit(
         [
             Window(
+                height=_PICKER_BRAND_HEIGHT,
+                content=FormattedTextControl(lambda: [("class:brand", APP_ASCII_LOGO)]),
+            ),
+            Window(
                 height=1,
                 content=FormattedTextControl(
                     lambda: [
-                        ("class:brand", APP_BRAND),
+                        ("class:brand", APP_WORDMARK),
                         ("class:text", f"  {screen_title}"),
                     ]
                 ),

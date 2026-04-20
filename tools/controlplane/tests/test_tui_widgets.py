@@ -111,7 +111,7 @@ def test_described_picker_uses_full_screen_with_wider_stable_description_panel()
 
 
 def test_render_screen_frame_renders_brand_title_and_footer() -> None:
-    from controlplane_tool.tui_chrome import APP_WORDMARK, render_screen_frame
+    from controlplane_tool.tui_chrome import APP_ASCII_LOGO, APP_WORDMARK, render_screen_frame
 
     frame = render_screen_frame(
         title="Validation",
@@ -125,7 +125,25 @@ def test_render_screen_frame_renders_brand_title_and_footer() -> None:
     text = console.export_text()
 
     assert APP_WORDMARK in text
+    assert APP_ASCII_LOGO.splitlines()[0] in text
     assert "Validation" in text
     assert "Main / Validation" in text
     assert "Esc back" in text
     assert "OpenFaaS" not in text
+
+
+def test_described_picker_header_contains_legacy_ascii_logo() -> None:
+    from controlplane_tool.tui_chrome import APP_ASCII_LOGO
+
+    app = _build_described_select_application(
+        "Scenario:",
+        [_DescribedChoice("one", "one", "first")],
+        output=DummyOutput(),
+    )
+
+    root = app.layout.container
+    header = root.children[0]
+    logo_window = header.children[0]
+    logo_fragments = logo_window.content.text()
+
+    assert APP_ASCII_LOGO.splitlines()[0] in logo_fragments[0][1]

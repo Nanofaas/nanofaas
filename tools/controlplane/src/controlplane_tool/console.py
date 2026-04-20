@@ -14,8 +14,9 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
+from rich.text import Text
 
-from controlplane_tool.tui_chrome import APP_BRAND
+from controlplane_tool.tui_chrome import APP_ASCII_LOGO
 from controlplane_tool.workflow_events import (
     build_log_event,
     build_phase_event,
@@ -176,9 +177,10 @@ def workflow_log(
 def header(subtitle: str = "controlplane tool") -> None:
     """Startup banner — shown once when the TUI launches."""
     console.print()
+    console.print(Text(APP_ASCII_LOGO, style="bold cyan", justify="center"))
     console.print(
         Panel(
-            f"[bold cyan]{escape(APP_BRAND)}[/]\n[dim]{escape(subtitle)}[/]",
+            f"[dim]{escape(subtitle)}[/]",
             border_style="cyan dim",
             padding=(0, 4),
         )
