@@ -47,16 +47,13 @@ class NanofaasTUI:
     """Menu-driven Rich TUI for all controlplane operations."""
 
     _MAIN_MENU = [
-        questionary.Choice("🏗  Build & Test", "build"),
-        questionary.Choice("🖥  VM Management", "vm"),
-        questionary.Choice("🗄  Registry", "registry"),
-        questionary.Choice("🧪  E2E Scenarios", "e2e"),
-        questionary.Choice("🖥  CLI E2E", "cli_e2e"),
-        questionary.Choice("📊  Load Testing", "loadtest"),
-        questionary.Choice("📦  Function Catalog", "functions"),
-        questionary.Choice("⚙️   Profile Manager", "profile"),
-        questionary.Separator(),
-        questionary.Choice("🚪  Exit", "exit"),
+        questionary.Choice("Build", "build"),
+        questionary.Choice("Environment", "environment"),
+        questionary.Choice("Validation", "validation"),
+        questionary.Choice("Load Testing", "loadtest"),
+        questionary.Choice("Catalog", "catalog"),
+        questionary.Choice("Profiles", "profiles"),
+        questionary.Choice("Exit", "exit"),
     ]
 
     def __init__(self) -> None:
@@ -76,11 +73,15 @@ class NanofaasTUI:
                 try:
                     {
                         "build": self._build_menu,
+                        "environment": self._environment_menu,
+                        "validation": self._validation_menu,
+                        "loadtest": self._loadtest_menu,
+                        "catalog": self._catalog_menu,
+                        "profiles": self._profiles_menu,
                         "vm": self._vm_menu,
                         "registry": self._registry_menu,
                         "e2e": self._e2e_menu,
                         "cli_e2e": self._cli_e2e_menu,
-                        "loadtest": self._loadtest_menu,
                         "functions": self._functions_menu,
                         "profile": self._profile_menu,
                     }[choice]()
@@ -165,6 +166,52 @@ class NanofaasTUI:
             planned_steps=[f"{action}"],
             action=_run_build_workflow,
         )
+
+    # ── ENVIRONMENT ──────────────────────────────────────────────────────────
+
+    def _environment_menu(self) -> None:
+        phase("Environment")
+
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice("vm — lifecycle, provisioning, and inspection", "vm"),
+                questionary.Choice("registry — local registry bootstrap", "registry"),
+            ],
+            include_back=True,
+        )
+        if action == _BACK_VALUE:
+            return
+
+        {
+            "vm": self._vm_menu,
+            "registry": self._registry_menu,
+        }[action]()
+
+    # ── VALIDATION ───────────────────────────────────────────────────────────
+
+    def _validation_menu(self) -> None:
+        phase("Validation")
+
+        action = _select_value(
+            "Action:",
+            choices=[
+                questionary.Choice("platform — platform end-to-end scenarios", "platform"),
+                questionary.Choice("cli — CLI validation workflows", "cli"),
+                questionary.Choice("host — deploy-host compatibility path", "host"),
+            ],
+            include_back=True,
+        )
+        if action == _BACK_VALUE:
+            return
+
+        if action == "platform":
+            self._platform_validation_menu()
+            return
+        if action == "cli":
+            self._cli_e2e_menu()
+            return
+        self._run_deploy_host()
 
     # ── VM ────────────────────────────────────────────────────────────────────
 
@@ -333,43 +380,63 @@ class NanofaasTUI:
     # ── E2E ───────────────────────────────────────────────────────────────────
 
     def _e2e_menu(self) -> None:
-        phase("E2E Scenarios")
+        self._platform_validation_menu(
+            phase_label="E2E Scenarios",
+            include_host_compat=True,
+        )
+
+    def _platform_validation_menu(
+        self,
+        *,
+        phase_label: str = "Platform Validation",
+        include_host_compat: bool = False,
+    ) -> None:
+        phase(phase_label)
+
+        choices = [
+            _DescribedChoice(
+                "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
+                "k3s-junit-curl",
+                "Provision the VM, install k3s, deploy the stack, then verify it with curl and JUnit checks.",
+            ),
+            _DescribedChoice(
+                "helm-stack — self-bootstrapping VM stack for Helm compatibility",
+                "helm-stack",
+                "Bootstrap the full VM-backed Helm stack, then verify deployment compatibility end to end.",
+            ),
+            _DescribedChoice(
+                "container-local — local managed DEPLOYMENT",
+                "container-local",
+                "Run the managed DEPLOYMENT workflow entirely on the local machine without a VM.",
+            ),
+        ]
+        if include_host_compat:
+            choices.append(
+                _DescribedChoice(
+                    "deploy-host — deploy-host with local registry",
+                    "deploy-host",
+                    "Build on the host, push to a local registry, and register against a fake control-plane.",
+                )
+            )
+        choices.extend(
+            [
+                _DescribedChoice(
+                    "docker — local POOL with Docker",
+                    "docker",
+                    "Exercise the local POOL runtime with Docker-based execution on the host.",
+                ),
+                _DescribedChoice(
+                    "buildpack — local POOL with buildpack",
+                    "buildpack",
+                    "Exercise the local POOL runtime using buildpack-produced images on the host.",
+                ),
+            ]
+        )
 
         scenario_choice = _ask(
             lambda: _select_described_value(
                 "Scenario:",
-                choices=[
-                    _DescribedChoice(
-                        "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
-                        "k3s-junit-curl",
-                        "Provision the VM, install k3s, deploy the stack, then verify it with curl and JUnit checks.",
-                    ),
-                    _DescribedChoice(
-                        "helm-stack — self-bootstrapping VM stack for Helm compatibility",
-                        "helm-stack",
-                        "Bootstrap the full VM-backed Helm stack, then verify deployment compatibility end to end.",
-                    ),
-                    _DescribedChoice(
-                        "container-local — local managed DEPLOYMENT",
-                        "container-local",
-                        "Run the managed DEPLOYMENT workflow entirely on the local machine without a VM.",
-                    ),
-                    _DescribedChoice(
-                        "deploy-host — deploy-host with local registry",
-                        "deploy-host",
-                        "Build on the host, push to a local registry, and register against a fake control-plane.",
-                    ),
-                    _DescribedChoice(
-                        "docker — local POOL with Docker",
-                        "docker",
-                        "Exercise the local POOL runtime with Docker-based execution on the host.",
-                    ),
-                    _DescribedChoice(
-                        "buildpack — local POOL with buildpack",
-                        "buildpack",
-                        "Exercise the local POOL runtime using buildpack-produced images on the host.",
-                    ),
-                ],
+                choices=choices,
                 include_back=True,
             )
         )
@@ -796,6 +863,9 @@ class NanofaasTUI:
 
     # ── FUNCTIONS ─────────────────────────────────────────────────────────────
 
+    def _catalog_menu(self) -> None:
+        self._functions_menu()
+
     def _functions_menu(self) -> None:
         from controlplane_tool.function_catalog import list_functions, list_function_presets
 
@@ -864,6 +934,9 @@ class NanofaasTUI:
             console.print(table)
 
     # ── PROFILE MANAGER ───────────────────────────────────────────────────────
+
+    def _profiles_menu(self) -> None:
+        self._profile_menu()
 
     def _profile_menu(self) -> None:
         from controlplane_tool.profiles import list_profiles, load_profile, save_profile

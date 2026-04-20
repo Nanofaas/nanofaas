@@ -454,6 +454,57 @@ def test_tui_main_menu_no_longer_includes_registry_entry() -> None:
     )
 
 
+def test_environment_menu_contains_vm_and_registry(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {}
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured["message"] = message
+        captured["choices"] = choices
+        captured["include_back"] = include_back
+        return "back"
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+
+    NanofaasTUI()._environment_menu()
+
+    assert [choice.value for choice in captured["choices"]] == ["vm", "registry"]
+    assert captured["include_back"] is True
+
+
+def test_validation_menu_contains_platform_cli_and_host_paths(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    captured: dict[str, object] = {}
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured["message"] = message
+        captured["choices"] = choices
+        captured["include_back"] = include_back
+        return "back"
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+
+    NanofaasTUI()._validation_menu()
+
+    assert [choice.value for choice in captured["choices"]] == ["platform", "cli", "host"]
+    assert captured["include_back"] is True
+
+
+def test_validation_menu_routes_host_path_to_deploy_host(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    calls: list[str] = []
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: "host")
+    monkeypatch.setattr(NanofaasTUI, "_run_deploy_host", lambda self: calls.append("deploy-host"))
+
+    NanofaasTUI()._validation_menu()
+
+    assert calls == ["deploy-host"]
+
+
 def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 
