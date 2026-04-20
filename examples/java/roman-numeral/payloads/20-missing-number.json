@@ -1,0 +1,7 @@
+{
+  "description": "missing number field returns error",
+  "input": {},
+  "expected": {
+    "error": "missing required field: number"
+  }
+}

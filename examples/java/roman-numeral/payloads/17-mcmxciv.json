@@ -1,0 +1,9 @@
+{
+  "description": "1994 historical year",
+  "input": {
+    "number": 1994
+  },
+  "expected": {
+    "roman": "MCMXCIV"
+  }
+}

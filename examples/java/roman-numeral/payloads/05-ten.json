@@ -1,0 +1,9 @@
+{
+  "description": "simple X",
+  "input": {
+    "number": 10
+  },
+  "expected": {
+    "roman": "X"
+  }
+}

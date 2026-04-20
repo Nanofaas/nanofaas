@@ -1,0 +1,9 @@
+{
+  "description": "subtractive CD",
+  "input": {
+    "number": 400
+  },
+  "expected": {
+    "roman": "CD"
+  }
+}

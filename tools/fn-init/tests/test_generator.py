@@ -183,6 +183,14 @@ def test_generate_python_creates_build_files(tmp_path):
     generate_function("greet", "python", out, vscode=False, placeholders=PYTHON_PLACEHOLDERS)
     assert (out / "Dockerfile").exists()
     assert (out / "function.yaml").exists()
+    assert (out / "pyproject.toml").exists()
+
+def test_generate_python_pyproject_has_function_name(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "python", out, vscode=False, placeholders=PYTHON_PLACEHOLDERS)
+    content = (out / "pyproject.toml").read_text()
+    assert 'name = "greet"' in content
+    assert 'pythonpath = ["."]' in content
 
 def test_generate_python_creates_payloads(tmp_path):
     out = tmp_path / "greet"
