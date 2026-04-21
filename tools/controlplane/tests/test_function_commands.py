@@ -26,3 +26,11 @@ def test_functions_show_preset_renders_function_list() -> None:
     assert "word-stats-java" in result.stdout
     assert "json-transform-java" in result.stdout
     assert "word-stats-go" not in result.stdout
+
+
+def test_functions_show_preset_renders_javascript_function_list() -> None:
+    result = CliRunner().invoke(app, ["functions", "show-preset", "demo-javascript"])
+    assert result.exit_code == 0
+    assert "demo-javascript" in result.stdout
+    assert "word-stats-javascript" in result.stdout
+    assert "json-transform-javascript" in result.stdout

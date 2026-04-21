@@ -12,7 +12,7 @@ BuildAction = Literal["jar", "build", "run", "image", "native", "test", "inspect
 ProfileName = Literal["core", "k8s", "container-local", "all"]
 VmLifecycle = Literal["multipass", "external"]
 RuntimeKind = Literal["java", "rust"]
-FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "fixture"]
+FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "javascript", "fixture"]
 CliTestScenarioName = Literal["unit", "vm", "cli-stack", "host-platform", "deploy-host"]
 ScenarioName = Literal[
     "docker",
