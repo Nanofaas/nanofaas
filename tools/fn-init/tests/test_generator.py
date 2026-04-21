@@ -86,6 +86,13 @@ def test_resolve_in_monorepo_with_out(tmp_path):
     assert out == custom / "greet"
     assert root == tmp_path
 
+def test_resolve_in_monorepo_with_out_already_pointing_to_target_dir(tmp_path):
+    (tmp_path / "settings.gradle").write_text("")
+    target = tmp_path / "examples" / "python" / "greet"
+    out, root = resolve_output_dir("greet", "python", target, tmp_path)
+    assert out == target
+    assert root == tmp_path
+
 def test_resolve_outside_monorepo_with_out(tmp_path):
     custom = tmp_path / "projects"
     out, root = resolve_output_dir("greet", "java", custom, tmp_path)

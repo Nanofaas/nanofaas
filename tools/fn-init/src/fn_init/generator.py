@@ -94,7 +94,7 @@ def resolve_output_dir(
 ) -> tuple[Path, Path | None]:
     monorepo_root = detect_monorepo_root(cwd)
     if out is not None:
-        return out / name, monorepo_root
+        return (out if out.name == name else out / name), monorepo_root
     if monorepo_root is not None:
         return monorepo_root / "examples" / lang / name, monorepo_root
     raise ValueError("Not inside the nanofaas monorepo. Use --out to specify an output directory.")
