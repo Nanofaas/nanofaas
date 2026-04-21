@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ console = Console(force_terminal=sys.stdout.isatty())
 @app.command()
 def main(
     name: Optional[str] = typer.Argument(None, help="Function name (lowercase, alphanumeric + hyphens)"),
-    lang: str = typer.Option("java", "--lang", help="Language: java, python, go, or bash"),
+    lang: str = typer.Option("java", "--lang", help="Language: java, python, go, javascript, or bash"),
     out: Optional[Path] = typer.Option(None, "--out", help="Parent output directory"),
     vscode: bool = typer.Option(False, "--vscode", help="Generate VS Code project files"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
@@ -38,12 +39,19 @@ def main(
         console.print(f"[red]Error:[/] invalid function name {escape(name)!r} — use lowercase letters, digits, and hyphens only")
         raise typer.Exit(1)
 
-    if lang not in ("java", "python", "go", "bash"):
-        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java, python, go, or bash.")
+    if lang not in ("java", "python", "go", "javascript", "bash"):
+        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java, python, go, javascript, or bash.")
         raise typer.Exit(1)
 
     class_name = generator.to_class_name(name)
     package = generator.to_package(name)
+
+    try:
+        output_dir, monorepo_root = generator.resolve_output_dir(name, lang, out, cwd)
+    except ValueError as e:
+        console.print(f"[red]Error:[/] {e}")
+        raise typer.Exit(1)
+
     placeholders = {
         "FUNCTION_NAME": name,
         "CLASS_NAME": class_name,
@@ -51,13 +59,12 @@ def main(
         "PACKAGE_PATH": package.replace(".", "/"),
         "IMAGE_TAG": f"nanofaas/{name}:latest",
         "LANG": lang,
+        "SDK_PATH": (
+            os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
+            if lang == "javascript" and monorepo_root is not None
+            else "../../../function-sdk-javascript"
+        ),
     }
-
-    try:
-        output_dir, monorepo_root = generator.resolve_output_dir(name, lang, out, cwd)
-    except ValueError as e:
-        console.print(f"[red]Error:[/] {e}")
-        raise typer.Exit(1)
 
     if output_dir.exists():
         console.print(f"[red]Error:[/] directory already exists: {output_dir}")

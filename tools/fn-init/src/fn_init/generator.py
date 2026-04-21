@@ -32,6 +32,16 @@ GO_FILE_MAP: dict[str, str] = {
     "function.yaml.tmpl": "function.yaml",
 }
 
+JAVASCRIPT_FILE_MAP: dict[str, str] = {
+    "package.json.tmpl": "package.json",
+    "tsconfig.json.tmpl": "tsconfig.json",
+    "src/index.ts.tmpl": "src/index.ts",
+    "src/handler.ts.tmpl": "src/handler.ts",
+    "test/handler.test.ts.tmpl": "test/handler.test.ts",
+    "Dockerfile.tmpl": "Dockerfile",
+    "function.yaml.tmpl": "function.yaml",
+}
+
 BASH_FILE_MAP: dict[str, str] = {
     "handler.sh.tmpl": "handler.sh",
     "handler_test.sh.tmpl": "tests/test_handler.sh",
@@ -49,6 +59,7 @@ FILE_MAPS: dict[str, dict[str, str]] = {
     "java": JAVA_FILE_MAP,
     "python": PYTHON_FILE_MAP,
     "go": GO_FILE_MAP,
+    "javascript": JAVASCRIPT_FILE_MAP,
     "bash": BASH_FILE_MAP,
 }
 

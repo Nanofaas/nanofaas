@@ -11,6 +11,7 @@ from fn_init.generator import (
     generate_function,
     update_settings_gradle,
 )
+from fn_init import wizard
 
 
 # --- to_class_name ---
@@ -209,6 +210,16 @@ GO_PLACEHOLDERS = {
     "LANG": "go",
 }
 
+JAVASCRIPT_PLACEHOLDERS = {
+    "FUNCTION_NAME": "greet",
+    "CLASS_NAME": "Greet",
+    "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "IMAGE_TAG": "nanofaas/greet:latest",
+    "LANG": "javascript",
+    "SDK_PATH": "../../../function-sdk-javascript",
+}
+
 def test_generate_go_creates_main(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
@@ -236,6 +247,38 @@ def test_generate_go_gomod_has_module(tmp_path):
     content = (out / "go.mod").read_text()
     assert "github.com/miciav/nanofaas/examples/go/greet" in content
     assert "function-sdk-go" in content
+
+
+# --- generate_function (JavaScript) ---
+
+def test_generate_javascript_creates_sources(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    assert (out / "package.json").exists()
+    assert (out / "tsconfig.json").exists()
+    assert (out / "src" / "index.ts").exists()
+    assert (out / "src" / "handler.ts").exists()
+    assert (out / "test" / "handler.test.ts").exists()
+
+def test_generate_javascript_package_uses_local_sdk(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    content = (out / "package.json").read_text()
+    assert '"nanofaas-function-sdk": "file:../../../function-sdk-javascript"' in content
+    assert '"test": "npm run build && node --test dist/test/**/*.test.js"' in content
+
+def test_generate_javascript_function_yaml_uses_javascript_dockerfile(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    content = (out / "function.yaml").read_text()
+    assert "dockerfile: examples/javascript/greet/Dockerfile" in content
+
+def test_generate_javascript_vscode(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "javascript", out, vscode=True, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    assert (out / ".vscode" / "settings.json").exists()
+    assert (out / ".vscode" / "launch.json").exists()
+    assert (out / ".vscode" / "extensions.json").exists()
 
 
 # --- generate_function (Bash) ---
@@ -291,3 +334,18 @@ def test_update_settings_gradle_python_noop(tmp_path):
     (tmp_path / "settings.gradle").write_text("")
     assert update_settings_gradle(tmp_path, "my-fn", "python") is False
     assert (tmp_path / "settings.gradle").read_text() == ""
+
+def test_update_settings_gradle_javascript_noop(tmp_path):
+    (tmp_path / "settings.gradle").write_text("")
+    assert update_settings_gradle(tmp_path, "my-fn", "javascript") is False
+    assert (tmp_path / "settings.gradle").read_text() == ""
+
+
+# --- wizard ---
+
+def test_show_next_steps_for_javascript_mentions_npm_commands(capsys):
+    wizard.show_next_steps("greet", "javascript", Path("/tmp/greet"))
+    captured = capsys.readouterr().out
+    assert "npm install" in captured
+    assert "npm test" in captured
+    assert "npm run build" in captured

@@ -1,0 +1,8 @@
+import { createRuntime } from "nanofaas-function-sdk";
+
+import { handle{{CLASS_NAME}} } from "./handler.js";
+
+const runtime = createRuntime();
+runtime.register("{{FUNCTION_NAME}}", handle{{CLASS_NAME}});
+
+await runtime.start();

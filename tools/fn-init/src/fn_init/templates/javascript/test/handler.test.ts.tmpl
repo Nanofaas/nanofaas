@@ -1,0 +1,37 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { getLogger, type HandlerContext } from "nanofaas-function-sdk";
+
+import { handle{{CLASS_NAME}} } from "../src/handler.js";
+
+function createContext(): HandlerContext {
+    return {
+        executionId: "exec-test",
+        logger: getLogger("{{FUNCTION_NAME}}.test"),
+        signal: new AbortController().signal,
+        isColdStart: false,
+    };
+}
+
+test("handle{{CLASS_NAME}} returns the default result", async () => {
+    const output = await handle{{CLASS_NAME}}(createContext(), {
+        input: {
+            key: "value",
+        },
+    });
+
+    assert.deepEqual(output, {
+        result: "ok",
+    });
+});
+
+test("handle{{CLASS_NAME}} handles empty input", async () => {
+    const output = await handle{{CLASS_NAME}}(createContext(), {
+        input: {},
+    });
+
+    assert.deepEqual(output, {
+        result: "ok",
+    });
+});

@@ -1,0 +1,8 @@
+import type { Handler } from "nanofaas-function-sdk";
+
+export const handle{{CLASS_NAME}}: Handler = async (ctx, _req) => {
+    ctx.logger.info("{{FUNCTION_NAME}} invoked");
+    return {
+        result: "ok",
+    };
+};
