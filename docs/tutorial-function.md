@@ -1,7 +1,7 @@
 # Tutorial: Writing a nanofaas Function
 
 This tutorial walks you through creating, building, and invoking a nanofaas
-function from scratch. Examples are shown for Java and Python; sections that
+function from scratch. Examples are shown for Java, Python, and JavaScript; sections that
 differ between languages are marked accordingly.
 
 ---
@@ -12,6 +12,7 @@ differ between languages are marked accordingly.
 |---|---|
 | nanofaas CLI (`nanofaas`) | any recent |
 | Java (SDKMAN recommended) | 21 — *Java only* |
+| Node.js + npm | 20 — *JavaScript only* |
 | Docker or compatible runtime | any recent |
 | nanofaas platform running | — |
 
@@ -52,6 +53,7 @@ then generates a ready-to-run project:
 greet/
 ├── src/…/GreetHandler.java   (Java)
 │   handler.py                (Python)
+│   src/index.ts              (JavaScript)
 ├── build.gradle / Dockerfile
 ├── function.yaml
 └── payloads/
@@ -64,6 +66,7 @@ For non-interactive use (CI):
 ```bash
 ./scripts/fn-init.sh greet --lang java --yes
 ./scripts/fn-init.sh greet --lang python --yes
+./scripts/fn-init.sh greet --lang javascript --yes
 ```
 
 ---
@@ -95,6 +98,23 @@ def handle(input_data):
     return {"greeting": f"Hello, {name}!"}
 ```
 
+### JavaScript
+
+Edit `src/handler.ts`:
+
+```ts
+import type { Handler, JsonObject } from "nanofaas-function-sdk";
+
+export const handleGreet: Handler = async (ctx, req) => {
+    ctx.logger.info("greet invoked");
+    const input = typeof req.input === "object" && req.input !== null && !Array.isArray(req.input)
+        ? req.input as JsonObject
+        : {};
+    const name = typeof input.name === "string" ? input.name : "world";
+    return { greeting: `Hello, ${name}!` };
+};
+```
+
 ---
 
 ## Step 3 — Update the payloads
@@ -123,6 +143,19 @@ Edit `payloads/happy-path.json` to match your handler's actual input/output:
 
 ```bash
 uv run pytest
+```
+
+### JavaScript
+
+```bash
+npm install
+npm test
+```
+
+If you want the compiled output before packaging, run:
+
+```bash
+npm run build
 ```
 
 ---
@@ -178,3 +211,4 @@ nanofaas exec get <executionId> --watch
 - Add more payload cases in `payloads/` for edge cases and error paths.
 - Deploy to Kubernetes: see `docs/k8s.md`.
 - Run a full E2E load test: see `docs/e2e-tutorial.md`.
+- JavaScript v1 currently covers SDK/examples/`fn-init` only; it is not wired into the VM-backed `tools/controlplane` presets, release automation, or Ansible provisioning flows yet.
