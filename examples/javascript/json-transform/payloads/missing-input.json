@@ -1,0 +1,7 @@
+{
+  "description": "json transform missing data object",
+  "input": {},
+  "expected": {
+    "error": "Field 'data' must be a JSON object"
+  }
+}

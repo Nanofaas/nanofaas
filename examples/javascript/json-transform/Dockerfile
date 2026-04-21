@@ -1,0 +1,20 @@
+FROM node:20-alpine AS build
+WORKDIR /src
+
+COPY function-sdk-javascript ./function-sdk-javascript
+COPY examples/javascript/json-transform ./examples/javascript/json-transform
+
+WORKDIR /src/examples/javascript/json-transform
+RUN npm install
+RUN npm run build
+RUN npm prune --omit=dev
+
+FROM node:20-alpine
+WORKDIR /app
+
+COPY --from=build /src/examples/javascript/json-transform/package.json ./package.json
+COPY --from=build /src/examples/javascript/json-transform/node_modules ./node_modules
+COPY --from=build /src/examples/javascript/json-transform/dist ./dist
+
+EXPOSE 8080
+CMD ["node", "dist/src/index.js"]
