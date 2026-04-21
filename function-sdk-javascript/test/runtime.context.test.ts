@@ -17,9 +17,9 @@ test("concurrent requests keep execution and trace context isolated", async () =
 
         return {
             ctxExecutionId: ctx.executionId,
-            ctxTraceId: ctx.traceId,
-            storeExecutionId: getExecutionId(),
-            storeTraceId: getTraceId(),
+            ctxTraceId: ctx.traceId ?? null,
+            storeExecutionId: getExecutionId() ?? null,
+            storeTraceId: getTraceId() ?? null,
         };
     });
     await runtime.start();
