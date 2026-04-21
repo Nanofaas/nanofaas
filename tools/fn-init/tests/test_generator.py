@@ -286,6 +286,8 @@ def test_generate_javascript_package_uses_local_sdk(tmp_path):
     generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
     content = (out / "package.json").read_text()
     assert '"nanofaas-function-sdk": "file:../../../function-sdk-javascript"' in content
+    assert '"prebuild": "npm --prefix ../../../function-sdk-javascript install && npm --prefix ../../../function-sdk-javascript run build"' in content
+    assert '"pretest": "npm --prefix ../../../function-sdk-javascript install && npm --prefix ../../../function-sdk-javascript run build"' in content
     assert '"test": "npm run build && node --test dist/test/**/*.test.js"' in content
 
 def test_generate_javascript_function_yaml_uses_javascript_dockerfile(tmp_path):
