@@ -99,6 +99,15 @@ def _function_detail_choices() -> list[questionary.Choice]:
     return choices
 
 
+def _acknowledge_static_view(message: str = "Press any key to return to the previous menu.") -> None:
+    _ask(
+        lambda: questionary.press_any_key_to_continue(
+            message,
+            style=_STYLE,
+        ).ask()
+    )
+
+
 _MAIN_MENU_CHOICES = [
     _choice(
         "Build",
@@ -434,215 +443,223 @@ class NanofaasTUI:
     def _build_menu(self) -> None:
         from controlplane_tool.cli_commands import GradleCommandExecutor
 
-        phase("Build & Test")
+        while True:
+            phase("Build & Test")
 
-        action = _select_value(
-            "Action:",
-            choices=_BUILD_ACTION_CHOICES,
-            include_back=True,
-        )
-        if action == _BACK_VALUE:
-            return
-
-        profile = _select_value(
-            "Profile:",
-            choices=_BUILD_PROFILE_CHOICES,
-            default="core",
-            include_back=True,
-        )
-        if profile == _BACK_VALUE:
-            return
-
-        dry_run = _ask(
-            lambda: questionary.confirm(
-                "Dry-run? (show command only)", default=False, style=_STYLE
-            ).ask()
-        )
-        executor = GradleCommandExecutor()
-        if dry_run:
-            result = executor.execute(
-                action=action,
-                profile=profile,
-                modules=None,
-                extra_gradle_args=[],
-                dry_run=True,
+            action = _select_value(
+                "Action:",
+                choices=_BUILD_ACTION_CHOICES,
+                include_back=True,
             )
-            console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
-            return
+            if action == _BACK_VALUE:
+                return
 
-        def _run_build_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-            step(f"Running {action}", f"profile={profile}")
-            result = executor.execute(
-                action=action,
-                profile=profile,
-                modules=None,
-                extra_gradle_args=[],
-                dry_run=False,
+            profile = _select_value(
+                "Profile:",
+                choices=_BUILD_PROFILE_CHOICES,
+                default="core",
+                include_back=True,
             )
-            if result.return_code == 0:
-                success(f"{action} completed")
-                return result
-            fail(f"{action} failed", detail=f"exit code {result.return_code}")
-            raise RuntimeError(f"{action} failed (exit code {result.return_code})")
+            if profile == _BACK_VALUE:
+                continue
 
-        self._controller.run_live_workflow(
-            title="Build & Test",
-            summary_lines=[
-                f"Action: {action}",
-                f"Profile: {profile}",
-            ],
-            planned_steps=[f"{action}"],
-            action=_run_build_workflow,
-        )
+            dry_run = _ask(
+                lambda: questionary.confirm(
+                    "Dry-run? (show command only)", default=False, style=_STYLE
+                ).ask()
+            )
+            executor = GradleCommandExecutor()
+            if dry_run:
+                result = executor.execute(
+                    action=action,
+                    profile=profile,
+                    modules=None,
+                    extra_gradle_args=[],
+                    dry_run=True,
+                )
+                console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
+                _acknowledge_static_view()
+                continue
+
+            def _run_build_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step(f"Running {action}", f"profile={profile}")
+                result = executor.execute(
+                    action=action,
+                    profile=profile,
+                    modules=None,
+                    extra_gradle_args=[],
+                    dry_run=False,
+                )
+                if result.return_code == 0:
+                    success(f"{action} completed")
+                    return result
+                fail(f"{action} failed", detail=f"exit code {result.return_code}")
+                raise RuntimeError(f"{action} failed (exit code {result.return_code})")
+
+            self._controller.run_live_workflow(
+                title="Build & Test",
+                summary_lines=[
+                    f"Action: {action}",
+                    f"Profile: {profile}",
+                ],
+                planned_steps=[f"{action}"],
+                action=_run_build_workflow,
+            )
+            return
 
     # ── ENVIRONMENT ──────────────────────────────────────────────────────────
 
     def _environment_menu(self) -> None:
-        phase("Environment")
+        while True:
+            phase("Environment")
 
-        action = _select_value(
-            "Action:",
-            choices=_ENVIRONMENT_ACTION_CHOICES,
-            include_back=True,
-        )
-        if action == _BACK_VALUE:
-            return
+            action = _select_value(
+                "Action:",
+                choices=_ENVIRONMENT_ACTION_CHOICES,
+                include_back=True,
+            )
+            if action == _BACK_VALUE:
+                return
 
-        {
-            "vm": self._vm_menu,
-            "registry": self._registry_menu,
-        }[action]()
+            {
+                "vm": self._vm_menu,
+                "registry": self._registry_menu,
+            }[action]()
 
     # ── VALIDATION ───────────────────────────────────────────────────────────
 
     def _validation_menu(self) -> None:
-        phase("Validation")
+        while True:
+            phase("Validation")
 
-        action = _select_value(
-            "Action:",
-            choices=_VALIDATION_ACTION_CHOICES,
-            include_back=True,
-        )
-        if action == _BACK_VALUE:
-            return
+            action = _select_value(
+                "Action:",
+                choices=_VALIDATION_ACTION_CHOICES,
+                include_back=True,
+            )
+            if action == _BACK_VALUE:
+                return
 
-        if action == "platform":
-            self._platform_validation_menu()
-            return
-        if action == "cli":
-            self._cli_e2e_menu()
-            return
-        self._run_deploy_host()
+            if action == "platform":
+                self._platform_validation_menu()
+                continue
+            if action == "cli":
+                self._cli_e2e_menu()
+                continue
+            self._run_deploy_host()
 
     # ── VM ────────────────────────────────────────────────────────────────────
 
     def _vm_menu(self) -> None:
         from controlplane_tool.vm_models import VmRequest
 
-        phase("VM Management")
+        while True:
+            phase("VM Management")
 
-        action = _select_value(
-            "Action:",
-            choices=_VM_ACTION_CHOICES,
-            include_back=True,
-        )
-        if action == _BACK_VALUE:
-            return
-
-        lifecycle = _select_value(
-            "Lifecycle:",
-            choices=_VM_LIFECYCLE_CHOICES,
-            default="multipass",
-            include_back=True,
-        )
-        if lifecycle == _BACK_VALUE:
-            return
-
-        if lifecycle == "multipass":
-            name = _ask(
-                lambda: questionary.text(
-                    "VM Name:", default="nanofaas-e2e", style=_STYLE
-                ).ask()
+            action = _select_value(
+                "Action:",
+                choices=_VM_ACTION_CHOICES,
+                include_back=True,
             )
-            host = None
-        else:
-            name = None
-            host = _ask(
-                lambda: questionary.text(
-                    "Remote host (IP/hostname):", style=_STYLE
-                ).ask()
+            if action == _BACK_VALUE:
+                return
+
+            lifecycle = _select_value(
+                "Lifecycle:",
+                choices=_VM_LIFECYCLE_CHOICES,
+                default="multipass",
+                include_back=True,
+            )
+            if lifecycle == _BACK_VALUE:
+                continue
+
+            if lifecycle == "multipass":
+                name = _ask(
+                    lambda: questionary.text(
+                        "VM Name:", default="nanofaas-e2e", style=_STYLE
+                    ).ask()
+                )
+                host = None
+            else:
+                name = None
+                host = _ask(
+                    lambda: questionary.text(
+                        "Remote host (IP/hostname):", style=_STYLE
+                    ).ask()
+                )
+
+            user = _ask(
+                lambda: questionary.text("SSH User:", default="ubuntu", style=_STYLE).ask()
             )
 
-        user = _ask(
-            lambda: questionary.text("SSH User:", default="ubuntu", style=_STYLE).ask()
-        )
-
-        dry_run = _ask(
-            lambda: questionary.confirm(
-                "Dry-run?", default=False, style=_STYLE
-            ).ask()
-        )
-
-        request = VmRequest(lifecycle=lifecycle, name=name, host=host, user=user)
-        build_kwargs: dict[str, Any] = {
-            "request": request,
-            "repo_root": default_tool_paths().workspace_root,
-            "dry_run": dry_run,
-        }
-
-        if action == "provision-base":
-            install_helm = _ask(
+            dry_run = _ask(
                 lambda: questionary.confirm(
-                    "Install Helm?", default=False, style=_STYLE
+                    "Dry-run?", default=False, style=_STYLE
                 ).ask()
             )
-            build_kwargs["install_helm"] = install_helm
 
-        flow_id = {
-            "up": "vm.up",
-            "down": "vm.down",
-            "sync": "vm.sync",
-            "provision-base": "vm.provision_base",
-            "provision-k3s": "vm.provision_k3s",
-            "inspect": "vm.inspect",
-        }[action]
-        flow = build_vm_flow(flow_id, **build_kwargs)
+            request = VmRequest(lifecycle=lifecycle, name=name, host=host, user=user)
+            build_kwargs: dict[str, Any] = {
+                "request": request,
+                "repo_root": default_tool_paths().workspace_root,
+                "dry_run": dry_run,
+            }
 
-        if dry_run:
-            result = self._controller.run_shared_flow(flow, allow_none_result=False)
-            console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
-            return
+            if action == "provision-base":
+                install_helm = _ask(
+                    lambda: questionary.confirm(
+                        "Install Helm?", default=False, style=_STYLE
+                    ).ask()
+                )
+                build_kwargs["install_helm"] = install_helm
 
-        action_label = {
-            "up": "Ensure VM is running",
-            "down": "Teardown VM",
-            "sync": "Sync project to VM",
-            "provision-base": "Provision base dependencies",
-            "provision-k3s": "Install k3s",
-            "inspect": "Inspect VM",
-        }[action]
+            flow_id = {
+                "up": "vm.up",
+                "down": "vm.down",
+                "sync": "vm.sync",
+                "provision-base": "vm.provision_base",
+                "provision-k3s": "vm.provision_k3s",
+                "inspect": "vm.inspect",
+            }[action]
+            flow = build_vm_flow(flow_id, **build_kwargs)
 
-        def _run_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-            step(f"Running vm {action}", f"lifecycle={lifecycle}")
-            live_result = self._controller.run_shared_flow(
-                flow,
-                allow_none_result=False,
-                on_result=lambda result: self._controller.append_command_result_logs(dashboard, result),
+            if dry_run:
+                result = self._controller.run_shared_flow(flow, allow_none_result=False)
+                console.print(Panel(" ".join(result.command), title="Command", border_style="dim"))
+                _acknowledge_static_view()
+                continue
+
+            action_label = {
+                "up": "Ensure VM is running",
+                "down": "Teardown VM",
+                "sync": "Sync project to VM",
+                "provision-base": "Provision base dependencies",
+                "provision-k3s": "Install k3s",
+                "inspect": "Inspect VM",
+            }[action]
+
+            def _run_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+                step(f"Running vm {action}", f"lifecycle={lifecycle}")
+                live_result = self._controller.run_shared_flow(
+                    flow,
+                    allow_none_result=False,
+                    on_result=lambda result: self._controller.append_command_result_logs(dashboard, result),
+                )
+                success(f"vm {action} completed")
+                return live_result
+
+            self._controller.run_live_workflow(
+                title="VM Management",
+                summary_lines=[
+                    f"Action: {action}",
+                    f"Lifecycle: {lifecycle}",
+                    f"VM: {name or host or 'default'}",
+                    f"User: {user}",
+                ],
+                planned_steps=[action_label],
+                action=_run_vm_workflow,
             )
-            success(f"vm {action} completed")
-            return live_result
-
-        self._controller.run_live_workflow(
-            title="VM Management",
-            summary_lines=[
-                f"Action: {action}",
-                f"Lifecycle: {lifecycle}",
-                f"VM: {name or host or 'default'}",
-                f"User: {user}",
-            ],
-            planned_steps=[action_label],
-            action=_run_vm_workflow,
-        )
+            return
 
     # ── REGISTRY ─────────────────────────────────────────────────────────────
 
@@ -700,31 +717,33 @@ class NanofaasTUI:
         phase_label: str = "Platform Validation",
         include_host_compat: bool = False,
     ) -> None:
-        phase(phase_label)
+        while True:
+            phase(phase_label)
 
-        choices = list(_PLATFORM_VALIDATION_CHOICES)
-        if include_host_compat:
-            choices.append(_PLATFORM_HOST_COMPAT_CHOICE)
-        choices.extend(_PLATFORM_LOCAL_RUNTIME_CHOICES)
+            choices = list(_PLATFORM_VALIDATION_CHOICES)
+            if include_host_compat:
+                choices.append(_PLATFORM_HOST_COMPAT_CHOICE)
+            choices.extend(_PLATFORM_LOCAL_RUNTIME_CHOICES)
 
-        scenario_choice = _ask(
-            lambda: _select_described_value(
-                "Scenario:",
-                choices=choices,
-                include_back=True,
+            scenario_choice = _ask(
+                lambda: _select_described_value(
+                    "Scenario:",
+                    choices=choices,
+                    include_back=True,
+                )
             )
-        )
-        if scenario_choice == _BACK_VALUE:
-            return
+            if scenario_choice == _BACK_VALUE:
+                return
 
-        if scenario_choice in ("k3s-junit-curl", "helm-stack"):
-            self._run_vm_e2e_scenario(scenario_choice)
-        elif scenario_choice == "container-local":
-            self._run_container_local()
-        elif scenario_choice == "deploy-host":
-            self._run_deploy_host()
-        else:
-            self._run_e2e_scenario(scenario_choice)
+            if scenario_choice in ("k3s-junit-curl", "helm-stack"):
+                self._run_vm_e2e_scenario(scenario_choice)
+            elif scenario_choice == "container-local":
+                self._run_container_local()
+            elif scenario_choice == "deploy-host":
+                self._run_deploy_host()
+            else:
+                self._run_e2e_scenario(scenario_choice)
+            continue
 
     def _run_vm_e2e_scenario(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
@@ -835,6 +854,7 @@ class NanofaasTUI:
                 plan = runner.plan(request)
                 step("k3s-junit-curl E2E plan (dry-run)")
                 _show_plan_table(plan)
+                _acknowledge_static_view()
                 return
 
             plan = runner.plan(request)
@@ -1043,47 +1063,50 @@ class NanofaasTUI:
     def _loadtest_menu(self) -> None:
         from controlplane_tool.loadtest_catalog import list_load_profiles
 
-        phase("Load Testing")
+        while True:
+            phase("Load Testing")
 
-        action = _select_value(
-            "Action:",
-            choices=_LOADTEST_ACTION_CHOICES,
-            include_back=True,
-        )
-        if action == _BACK_VALUE:
-            return
-
-        if action == "new_profile":
-            self._profile_menu()
-            return
-
-        saved = list_profiles()
-        if saved:
-            use_saved = _ask(
-                lambda: questionary.confirm(
-                    "Use a saved profile?", default=True, style=_STYLE
-                ).ask()
+            action = _select_value(
+                "Action:",
+                choices=_LOADTEST_ACTION_CHOICES,
+                include_back=True,
             )
-            if use_saved:
-                profile_name = _select_value(
-                    "Profile:",
-                    choices=_saved_profile_choices(saved),
-                    include_back=True,
+            if action == _BACK_VALUE:
+                return
+
+            if action == "new_profile":
+                self._profile_menu()
+                continue
+
+            saved = list_profiles()
+            if saved:
+                use_saved = _ask(
+                    lambda: questionary.confirm(
+                        "Use a saved profile?", default=True, style=_STYLE
+                    ).ask()
                 )
-                if profile_name == _BACK_VALUE:
-                    return
-                profile = load_profile(profile_name)
+                if use_saved:
+                    profile_name = _select_value(
+                        "Profile:",
+                        choices=_saved_profile_choices(saved),
+                        include_back=True,
+                    )
+                    if profile_name == _BACK_VALUE:
+                        continue
+                    profile = load_profile(profile_name)
+                else:
+                    profile = self._build_profile_interactive("default")
             else:
+                warning("No saved profiles found, launching wizard...")
                 profile = self._build_profile_interactive("default")
-        else:
-            warning("No saved profiles found, launching wizard...")
-            profile = self._build_profile_interactive("default")
 
-        request = build_loadtest_request(profile=profile)
+            request = build_loadtest_request(profile=profile)
 
-        if action == "plan":
-            _show_loadtest_plan(request)
-        else:
+            if action == "plan":
+                _show_loadtest_plan(request)
+                _acknowledge_static_view()
+                continue
+
             def _run_loadtest_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 def _on_step_event(event: Any) -> None:
                     self._applier.apply_loadtest_step_event(dashboard, event)
@@ -1114,6 +1137,7 @@ class NanofaasTUI:
                 planned_steps=["preflight", "bootstrap", "load_k6", "metrics_gate", "report"],
                 action=_run_loadtest_workflow,
             )
+            return
 
     # ── FUNCTIONS ─────────────────────────────────────────────────────────────
 
@@ -1123,38 +1147,42 @@ class NanofaasTUI:
     def _functions_menu(self) -> None:
         from controlplane_tool.function_catalog import list_functions, list_function_presets
 
-        phase("Function Catalog")
+        while True:
+            phase("Function Catalog")
 
-        view = _select_value(
-            "View:",
-            choices=_CATALOG_VIEW_CHOICES,
-            include_back=True,
-        )
-        if view == _BACK_VALUE:
-            return
+            view = _select_value(
+                "View:",
+                choices=_CATALOG_VIEW_CHOICES,
+                include_back=True,
+            )
+            if view == _BACK_VALUE:
+                return
 
-        if view == "all":
-            functions = list_functions()
-            table = Table(title="Available functions", border_style="cyan dim")
-            table.add_column("Key", style="cyan bold")
-            table.add_column("Family", style="dim")
-            table.add_column("Runtime", style="green")
-            for fn in functions:
-                table.add_row(fn.key, fn.family or "", fn.runtime or "")
-            console.print(table)
+            if view == "all":
+                functions = list_functions()
+                table = Table(title="Available functions", border_style="cyan dim")
+                table.add_column("Key", style="cyan bold")
+                table.add_column("Family", style="dim")
+                table.add_column("Runtime", style="green")
+                for fn in functions:
+                    table.add_row(fn.key, fn.family or "", fn.runtime or "")
+                console.print(table)
+                _acknowledge_static_view("Press any key to return to the catalog.")
+                continue
 
-        elif view == "presets":
-            presets = list_function_presets()
-            table = Table(title="Available presets", border_style="cyan dim")
-            table.add_column("Name", style="cyan bold")
-            table.add_column("Description", style="dim")
-            table.add_column("Functions", style="green")
-            for preset in presets:
-                keys = ", ".join(f.key for f in preset.functions)
-                table.add_row(preset.name, preset.description or "", keys)
-            console.print(table)
+            if view == "presets":
+                presets = list_function_presets()
+                table = Table(title="Available presets", border_style="cyan dim")
+                table.add_column("Name", style="cyan bold")
+                table.add_column("Description", style="dim")
+                table.add_column("Functions", style="green")
+                for preset in presets:
+                    keys = ", ".join(f.key for f in preset.functions)
+                    table.add_row(preset.name, preset.description or "", keys)
+                console.print(table)
+                _acknowledge_static_view("Press any key to return to the catalog.")
+                continue
 
-        else:
             from controlplane_tool.function_catalog import (
                 resolve_function_definition,
             )
@@ -1164,7 +1192,7 @@ class NanofaasTUI:
                 include_back=True,
             )
             if key == _BACK_VALUE:
-                return
+                continue
             fn = resolve_function_definition(key)
             rows = [
                 ("Key", fn.key),
@@ -1180,6 +1208,7 @@ class NanofaasTUI:
             for label, value in rows:
                 table.add_row(label, escape(str(value)))
             console.print(table)
+            _acknowledge_static_view("Press any key to return to the catalog.")
 
     # ── PROFILE MANAGER ───────────────────────────────────────────────────────
 
@@ -1189,53 +1218,59 @@ class NanofaasTUI:
     def _profile_menu(self) -> None:
         from controlplane_tool.profiles import list_profiles, load_profile, save_profile
 
-        phase("Profile Manager")
+        while True:
+            phase("Profile Manager")
 
-        action = _select_value(
-            "Action:",
-            choices=_PROFILE_ACTION_CHOICES,
-            include_back=True,
-        )
-        if action == _BACK_VALUE:
-            return
-
-        if action == "new":
-            name = _ask(
-                lambda: questionary.text(
-                    "Profile name:", default="default", style=_STYLE
-                ).ask()
-            )
-            profile = self._build_profile_interactive(name)
-            dest = save_profile(profile)
-            success(f"Profile '{name}' saved", detail=str(dest))
-
-        elif action == "show":
-            saved = list_profiles()
-            if not saved:
-                warning("No saved profiles.")
-                return
-            name = _select_value(
-                "Profile:",
-                choices=_saved_profile_choices(saved),
+            action = _select_value(
+                "Action:",
+                choices=_PROFILE_ACTION_CHOICES,
                 include_back=True,
             )
-            if name == _BACK_VALUE:
+            if action == _BACK_VALUE:
                 return
-            profile = load_profile(name)
-            _show_profile_table(profile)
 
-        else:  # delete
+            if action == "new":
+                name = _ask(
+                    lambda: questionary.text(
+                        "Profile name:", default="default", style=_STYLE
+                    ).ask()
+                )
+                profile = self._build_profile_interactive(name)
+                dest = save_profile(profile)
+                success(f"Profile '{name}' saved", detail=str(dest))
+                _acknowledge_static_view()
+                continue
+
+            if action == "show":
+                saved = list_profiles()
+                if not saved:
+                    warning("No saved profiles.")
+                    _acknowledge_static_view()
+                    continue
+                name = _select_value(
+                    "Profile:",
+                    choices=_saved_profile_choices(saved),
+                    include_back=True,
+                )
+                if name == _BACK_VALUE:
+                    continue
+                profile = load_profile(name)
+                _show_profile_table(profile)
+                _acknowledge_static_view()
+                continue
+
             saved = list_profiles()
             if not saved:
                 warning("No saved profiles.")
-                return
+                _acknowledge_static_view()
+                continue
             name = _select_value(
                 "Profile to delete:",
                 choices=_saved_profile_choices(saved),
                 include_back=True,
             )
             if name == _BACK_VALUE:
-                return
+                continue
             confirm = _ask(
                 lambda: questionary.confirm(
                     f"Delete '{name}'?", default=False, style=_STYLE
@@ -1245,6 +1280,7 @@ class NanofaasTUI:
                 from controlplane_tool.profiles import profile_path
                 profile_path(name).unlink(missing_ok=True)
                 success(f"Profile '{name}' deleted")
+                _acknowledge_static_view()
 
     def _build_profile_interactive(self, name: str) -> Any:
         from controlplane_tool.tui import build_profile_interactive

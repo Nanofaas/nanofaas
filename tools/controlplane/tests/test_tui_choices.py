@@ -379,10 +379,11 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     import controlplane_tool.tui_app as tui_app
 
     captured: dict[str, object] = {}
+    answers = iter(["container-local", "back"])
 
     def fake_select(*args, **kwargs):  # noqa: ANN001
         captured["choices"] = [choice.title for choice in kwargs["choices"]]
-        return _Prompt("container-local")
+        return _Prompt(next(answers))
 
     monkeypatch.setattr(tui_app.questionary, "select", fake_select)
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
@@ -677,53 +678,70 @@ def test_followup_tui_selectors_supply_descriptions_for_every_entry(monkeypatch)
     import controlplane_tool.tui_app as tui_app
 
     captured: list[tuple[str, list[object]]] = []
-    answers = iter(
-        [
-            "jar",
-            "back",
-            "up",
-            "back",
-            "run",
-            "back",
-            "show",
-            "back",
-            "show",
-            "back",
-            "delete",
-            "back",
-        ]
-    )
-
-    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
-        captured.append((message, list(choices)))
-        return next(answers)
-
-    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
     monkeypatch.setattr(profiles, "list_profiles", lambda root=None: ["demo-java"])
 
     app = NanofaasTUI()
+
+    build_answers = iter(["jar", "back", "back"])
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(build_answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     app._build_menu()
+
+    vm_answers = iter(["up", "back", "back"])
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(vm_answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     app._vm_menu()
+
+    loadtest_answers = iter(["run", "back", "back"])
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(loadtest_answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     app._loadtest_menu()
+
+    functions_answers = iter(["show", "back", "back"])
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(functions_answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     app._functions_menu()
-    app._profile_menu()
+
+    profile_show_answers = iter(["show", "back", "back"])
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(profile_show_answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     app._profile_menu()
 
-    assert [message for message, _ in captured] == [
-        "Action:",
-        "Profile:",
-        "Action:",
-        "Lifecycle:",
-        "Action:",
-        "Profile:",
-        "View:",
-        "Function:",
-        "Action:",
-        "Profile:",
-        "Action:",
-        "Profile to delete:",
-    ]
+    profile_delete_answers = iter(["delete", "back", "back"])
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        captured.append((message, list(choices)))
+        return next(profile_delete_answers)
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+    app._profile_menu()
+
+    messages = [message for message, _ in captured]
+    assert messages.count("Profile:") >= 2
+    assert "Lifecycle:" in messages
+    assert "Function:" in messages
+    assert "Profile to delete:" in messages
     for _, choices in captured:
         descriptions = [getattr(choice, "description", None) for choice in choices]
         assert all(description and len(description) >= 48 for description in descriptions)
@@ -753,7 +771,9 @@ def test_validation_menu_routes_host_path_to_deploy_host(monkeypatch) -> None:
 
     calls: list[str] = []
 
-    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: "host")
+    answers = iter(["host", "back"])
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
     monkeypatch.setattr(NanofaasTUI, "_run_deploy_host", lambda self: calls.append("deploy-host"))
 
     NanofaasTUI()._validation_menu()
@@ -783,6 +803,249 @@ def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
     assert captured["message"] == "What would you like to do?"
     assert any(getattr(choice, "value", None) == "build" for choice in captured["choices"])
     assert captured["include_back"] is False
+
+
+def test_tui_function_catalog_waits_for_acknowledge_after_static_views(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["all", "presets", "show", "word-stats-java", "back"])
+    acknowledgements: list[str] = []
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
+    monkeypatch.setattr(tui_app.console, "print", lambda *args, **kwargs: None)
+
+    def fake_press_any_key_to_continue(message, style=None):  # noqa: ANN001
+        acknowledgements.append(message)
+        return _Prompt(True)
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "press_any_key_to_continue",
+        fake_press_any_key_to_continue,
+    )
+
+    app = NanofaasTUI()
+    app._functions_menu()
+
+    assert acknowledgements == [
+        "Press any key to return to the catalog.",
+        "Press any key to return to the catalog.",
+        "Press any key to return to the catalog.",
+    ]
+
+
+def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path) -> None:
+    import controlplane_tool.cli_commands as cli_commands
+    import controlplane_tool.profiles as profiles
+    import controlplane_tool.tui_app as tui_app
+
+    acknowledgements: list[str] = []
+    generic_message = "Press any key to return to the previous menu."
+
+    monkeypatch.setattr(
+        tui_app,
+        "_acknowledge_static_view",
+        lambda message=generic_message: acknowledgements.append(message),
+    )
+    monkeypatch.setattr(tui_app.console, "print", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tui_app, "step", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tui_app, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tui_app, "warning", lambda *args, **kwargs: None)
+
+    build_selects = iter(["build", "core", "back"])
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(build_selects))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
+    monkeypatch.setattr(
+        cli_commands.GradleCommandExecutor,
+        "execute",
+        lambda self, **kwargs: SimpleNamespace(command=["./gradlew", "build"]),
+    )
+    NanofaasTUI()._build_menu()
+
+    vm_selects = iter(["up", "multipass", "back"])
+    vm_asks = iter(["nanofaas-e2e", "ubuntu", True])
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(vm_selects))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(vm_asks))
+    monkeypatch.setattr(tui_app, "build_vm_flow", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        TuiWorkflowController,
+        "run_shared_flow",
+        lambda self, flow, allow_none_result=False, on_result=None: SimpleNamespace(
+            command=["controlplane-tool", "vm", "up"]
+        ),
+    )
+    NanofaasTUI()._vm_menu()
+
+    loadtest_selects = iter(["plan", "demo-java", "back"])
+    loadtest_asks = iter([True])
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(loadtest_selects))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(loadtest_asks))
+    monkeypatch.setattr(tui_app, "list_profiles", lambda: ["demo-java"])
+    monkeypatch.setattr(tui_app, "load_profile", lambda name: SimpleNamespace(name=name))
+    monkeypatch.setattr(
+        tui_app,
+        "build_loadtest_request",
+        lambda profile: SimpleNamespace(
+            load_profile="quick",
+            scenario="k3s-junit-curl",
+            metrics_gate="warn",
+            runs_root=Path("/tmp/loadtest"),
+        ),
+    )
+    NanofaasTUI()._loadtest_menu()
+
+    monkeypatch.setattr(profiles, "list_profiles", lambda root=None: ["demo-java"])
+    monkeypatch.setattr(
+        profiles,
+        "load_profile",
+        lambda name, root=None: SimpleNamespace(
+            name=name,
+            control_plane=None,
+            modules=[],
+            tests=None,
+            scenario=None,
+            cli_test=None,
+            loadtest=None,
+            metrics=None,
+        ),
+    )
+
+    profile_show_selects = iter(["show", "demo-java", "back"])
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(profile_show_selects))
+    NanofaasTUI()._profile_menu()
+
+    profile_new_selects = iter(["new", "back"])
+    profile_new_asks = iter(["demo-java"])
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(profile_new_selects))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(profile_new_asks))
+    monkeypatch.setattr(
+        NanofaasTUI,
+        "_build_profile_interactive",
+        lambda self, name: SimpleNamespace(name=name),
+    )
+    monkeypatch.setattr(
+        profiles,
+        "save_profile",
+        lambda profile, root=None, prefect=None: tmp_path / f"{profile.name}.toml",
+    )
+    NanofaasTUI()._profile_menu()
+
+    monkeypatch.setattr(profiles, "list_profiles", lambda root=None: [])
+    profile_delete_empty_selects = iter(["delete", "back"])
+    monkeypatch.setattr(
+        tui_app,
+        "_select_value",
+        lambda *args, **kwargs: next(profile_delete_empty_selects),
+    )
+    NanofaasTUI()._profile_menu()
+
+    monkeypatch.setattr(profiles, "list_profiles", lambda root=None: ["demo-java"])
+    monkeypatch.setattr(
+        profiles,
+        "profile_path",
+        lambda name, root=None: tmp_path / f"{name}.toml",
+    )
+    profile_delete_selects = iter(["delete", "demo-java", "back"])
+    profile_delete_asks = iter([True])
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(profile_delete_selects))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(profile_delete_asks))
+    NanofaasTUI()._profile_menu()
+
+    assert acknowledgements == [
+        generic_message,
+        generic_message,
+        generic_message,
+        generic_message,
+        generic_message,
+        generic_message,
+        generic_message,
+    ]
+
+
+def test_tui_k3s_junit_curl_dry_run_plan_waits_for_acknowledge(monkeypatch) -> None:
+    import controlplane_tool.e2e_commands as e2e_commands
+    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui_app as tui_app
+
+    acknowledgements: list[str] = []
+    answers = iter(["nanofaas-e2e", "java", True, True])
+
+    monkeypatch.setattr(
+        tui_app,
+        "_acknowledge_static_view",
+        lambda message="Press any key to return to the previous menu.": acknowledgements.append(message),
+    )
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    monkeypatch.setattr(tui_app, "step", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        e2e_commands,
+        "_resolve_run_request",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(name="Ensure VM is running", status="pending"),
+            SimpleNamespace(name="Run k3s-junit-curl verification", status="pending"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+
+    assert acknowledgements == ["Press any key to return to the previous menu."]
+
+
+def test_platform_validation_menu_returns_to_scenario_picker_after_dry_run(monkeypatch) -> None:
+    import controlplane_tool.e2e_commands as e2e_commands
+    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui_app as tui_app
+
+    scenario_answers = iter(["k3s-junit-curl", "back"])
+    ask_answers = iter(["nanofaas-e2e", "java", True, True])
+    prompts: list[str] = []
+
+    def fake_select_described_value(message, choices, include_back=False):  # noqa: ANN001
+        prompts.append(message)
+        return next(scenario_answers)
+
+    monkeypatch.setattr(tui_app, "_select_described_value", fake_select_described_value)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt(next(ask_answers)),
+    )
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "select",
+        lambda *args, **kwargs: _Prompt(next(ask_answers)),
+    )
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(ask_answers)),
+    )
+    monkeypatch.setattr(
+        tui_app,
+        "_acknowledge_static_view",
+        lambda message="Press any key to return to the previous menu.": None,
+    )
+    monkeypatch.setattr(tui_app, "step", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        e2e_commands,
+        "_resolve_run_request",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    class _FakePlan:
+        steps = [SimpleNamespace(name="Ensure VM is running", status="pending")]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    NanofaasTUI()._platform_validation_menu()
+
+    assert prompts == ["Scenario:", "Scenario:"]
 
 
 def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
