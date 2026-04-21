@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import stat
 from pathlib import Path
@@ -97,6 +98,17 @@ def resolve_output_dir(
     if monorepo_root is not None:
         return monorepo_root / "examples" / lang / name, monorepo_root
     raise ValueError("Not inside the nanofaas monorepo. Use --out to specify an output directory.")
+
+
+def resolve_sdk_dependency_path(monorepo_root: Path | None, output_dir: Path) -> str:
+    default_relative_path = "../../../function-sdk-javascript"
+    if monorepo_root is None:
+        return default_relative_path
+    try:
+        output_dir.resolve().relative_to(monorepo_root.resolve())
+    except ValueError:
+        return str((monorepo_root / "function-sdk-javascript").resolve())
+    return os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
 
 
 def generate_function(

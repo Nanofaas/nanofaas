@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import os
 import re
 import sys
 from pathlib import Path
@@ -59,11 +57,9 @@ def main(
         "PACKAGE_PATH": package.replace(".", "/"),
         "IMAGE_TAG": f"nanofaas/{name}:latest",
         "LANG": lang,
-        "SDK_PATH": (
-            os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
-            if lang == "javascript" and monorepo_root is not None
-            else "../../../function-sdk-javascript"
-        ),
+        "SDK_PATH": generator.resolve_sdk_dependency_path(monorepo_root, output_dir)
+        if lang == "javascript"
+        else "../../../function-sdk-javascript",
     }
 
     if output_dir.exists():
