@@ -1,0 +1,16 @@
+{
+  "description": "rename configured fields and preserve others",
+  "input": {
+    "data": {
+      "first_name": "Ada",
+      "city": "London"
+    },
+    "fieldMap": {
+      "first_name": "firstName"
+    }
+  },
+  "expected": {
+    "firstName": "Ada",
+    "city": "London"
+  }
+}

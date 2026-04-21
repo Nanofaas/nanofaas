@@ -1,0 +1,22 @@
+{
+  "description": "word stats with repeated words and topN",
+  "input": {
+    "text": "hello world hello nano",
+    "topN": 2
+  },
+  "expected": {
+    "wordCount": 4,
+    "uniqueWords": 3,
+    "topWords": [
+      {
+        "word": "hello",
+        "count": 2
+      },
+      {
+        "word": "nano",
+        "count": 1
+      }
+    ],
+    "averageWordLength": 4.75
+  }
+}

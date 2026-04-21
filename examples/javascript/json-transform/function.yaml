@@ -1,0 +1,12 @@
+name: json-transform-javascript
+image: nanofaas/json-transform-javascript:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../../..
+    dockerfile: examples/javascript/json-transform/Dockerfile
+    platform: linux/amd64
+    push: true

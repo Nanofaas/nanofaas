@@ -1,0 +1,7 @@
+{
+  "description": "word stats missing required text field",
+  "input": {},
+  "expected": {
+    "error": "Field 'text' is required and must be non-empty"
+  }
+}
