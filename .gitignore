@@ -17,6 +17,9 @@
 **/.pytest_cache/
 **/.venv/
 **/.uv/
+**/node_modules/
+**/dist/
+**/build-test/
 
 # k6 / experiment results
 k6/results/
