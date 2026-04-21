@@ -8,6 +8,7 @@ from fn_init.generator import (
     render,
     detect_monorepo_root,
     resolve_output_dir,
+    resolve_sdk_dependency_path,
     generate_function,
     update_settings_gradle,
 )
@@ -94,6 +95,26 @@ def test_resolve_outside_monorepo_with_out(tmp_path):
 def test_resolve_outside_monorepo_no_out_raises(tmp_path):
     with pytest.raises(ValueError, match="--out"):
         resolve_output_dir("greet", "java", None, tmp_path)
+
+
+def test_resolve_sdk_dependency_path_inside_monorepo_uses_relative_path(tmp_path):
+    monorepo_root = tmp_path / "repo"
+    output_dir = monorepo_root / "examples" / "javascript" / "greet"
+    output_dir.mkdir(parents=True)
+    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == "../../../function-sdk-javascript"
+
+
+def test_resolve_sdk_dependency_path_outside_monorepo_uses_absolute_path(tmp_path):
+    monorepo_root = tmp_path / "repo"
+    output_dir = tmp_path / "generated" / "greet"
+    output_dir.mkdir(parents=True)
+    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == str(monorepo_root / "function-sdk-javascript")
+
+
+def test_resolve_sdk_dependency_path_without_monorepo_uses_default_relative_path(tmp_path):
+    output_dir = tmp_path / "generated" / "greet"
+    output_dir.mkdir(parents=True)
+    assert resolve_sdk_dependency_path(None, output_dir) == "../../../function-sdk-javascript"
 
 
 # --- generate_function (Java) ---
