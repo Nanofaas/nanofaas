@@ -7,6 +7,7 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 - `control-plane/` API gateway, in-memory queueing, scheduler thread, and backend-neutral dispatch core
 - `control-plane-modules/` optional modules, including managed deployment providers such as `k8s-deployment-provider` and `container-deployment-provider`
 - `function-sdk-go/` Go SDK for authoring NanoFaaS functions with an embedded HTTP runtime
+- `function-sdk-javascript/` TypeScript/JavaScript SDK for authoring NanoFaaS functions on Node.js
 - `function-runtime/` HTTP runtime for Java function handlers
 - `python-runtime/` HTTP runtime for Python function handlers
 - `common/` shared DTOs and runtime contracts
@@ -146,6 +147,8 @@ Module authoring details are in `docs/control-plane-modules.md`.
 ```bash
 ./gradlew test
 cd function-sdk-go && go test ./...
+cd function-sdk-javascript && npm test
+cd examples/javascript/word-stats && npm install && npm test
 ```
 
 E2E (local):
@@ -194,10 +197,19 @@ scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 
 ## Docs
 
 - `docs/tutorial-java-function.md` — step-by-step guide to writing, building, and invoking a Java function.
+- `docs/tutorial-function.md` — step-by-step guide to scaffolding and deploying Java, Python, and JavaScript functions.
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
 - `docs/no-k8s-profile.md` documents the `container-local` managed-deployment profile.
 - `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
 - `function-sdk-go/README.md` documents the planned Go function authoring/runtime SDK.
+- `function-sdk-javascript/README.md` documents the JavaScript function authoring/runtime SDK.
+
+## JavaScript SDK Scope (v1)
+
+The JavaScript authoring workflow is first-class under `function-sdk-javascript/`,
+`examples/javascript/`, and `tools/fn-init/`, but v1 intentionally does not add
+JavaScript into the VM-backed `tools/controlplane` presets, `scripts/build-push-images.sh`,
+`scripts/release-manager/release.py`, or `ops/ansible/playbooks/provision-base.yml`.
 
 ## nanofaas-cli (CLI)
 

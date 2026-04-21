@@ -44,6 +44,7 @@ scripts/controlplane.sh matrix --task :control-plane:test --modules async-queue,
 | function-runtime | JUnit 5, Spring Boot Test |
 | nanofaas-cli | JUnit 5, OkHttp MockWebServer, Fabric8 Mock Client, AssertJ |
 | function-sdk-go | Go `testing`, `httptest` (planned) |
+| function-sdk-javascript | Node `node:test`, `prom-client`, built-in HTTP/fetch integration tests |
 
 ### Go SDK tests
 
@@ -53,6 +54,25 @@ The Go function SDK lives under `function-sdk-go/` and is tested with the Go too
 cd function-sdk-go
 go mod tidy
 go test ./...
+```
+
+### JavaScript SDK tests
+
+The JavaScript function SDK lives under `function-sdk-javascript/` and is tested with the Node 20 toolchain.
+
+```bash
+cd function-sdk-javascript
+npm test
+```
+
+JavaScript demo functions live under `examples/javascript/`:
+
+```bash
+cd examples/javascript/word-stats
+npm install && npm test
+
+cd ../json-transform
+npm install && npm test
 ```
 
 ### CLI unit tests
@@ -158,6 +178,8 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 ```
 
 Canonical Ansible asset root: `ops/ansible/`.
+
+The JavaScript authoring workflow is intentionally scoped to SDK/examples/`fn-init` in v1; it does not currently extend `tools/controlplane` presets, `scripts/build-push-images.sh`, `scripts/release-manager/release.py`, or `ops/ansible/playbooks/provision-base.yml`.
 
 ### CLI E2E (`scripts/e2e-cli.sh`)
 

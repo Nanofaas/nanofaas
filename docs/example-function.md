@@ -36,6 +36,21 @@ cd examples/go/word-stats
 go run .
 ```
 
+## JavaScript runtime examples
+
+The JavaScript SDK examples live under:
+
+- `examples/javascript/word-stats`
+- `examples/javascript/json-transform`
+
+Run one locally:
+
+```bash
+cd examples/javascript/word-stats
+npm install
+npm start
+```
+
 ## Async invoke
 
 ```bash
