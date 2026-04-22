@@ -142,6 +142,7 @@ def build_function_image_vm_script(
         "exec": Path(f"examples/bash/{family}/Dockerfile"),
         "go": Path(f"examples/go/{family}/Dockerfile"),
         "java-lite": Path(f"examples/java/{family}-lite/Dockerfile"),
+        "javascript": Path(f"examples/javascript/{family}/Dockerfile"),
         "python": Path(f"examples/python/{family}/Dockerfile"),
     }
     if runtime_kind not in dockerfile_map:

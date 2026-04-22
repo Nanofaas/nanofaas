@@ -148,6 +148,31 @@ def test_image_component_planners_return_typed_operations_for_selected_functions
     assert any("word-stats" in " ".join(operation.argv) for operation in selected_operations)
 
 
+def test_image_component_planners_build_javascript_functions_from_examples_directory() -> None:
+    resolved_scenario = ResolvedScenario(
+        name="demo-javascript",
+        base_scenario="helm-stack",
+        runtime="java",
+        functions=[
+            ResolvedFunction(
+                key="word-stats-javascript",
+                family="word-stats",
+                runtime="javascript",
+                description="Word stats function",
+            )
+        ],
+        function_keys=["word-stats-javascript"],
+    )
+    context = _managed_context(resolved_scenario=resolved_scenario)
+
+    selected_operations = images.plan_build_selected_functions(context)
+
+    assert any(
+        "examples/javascript/word-stats/Dockerfile" in " ".join(operation.argv)
+        for operation in selected_operations
+    )
+
+
 def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
     context = _managed_context(runtime="rust")
 

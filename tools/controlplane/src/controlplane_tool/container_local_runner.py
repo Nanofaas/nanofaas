@@ -137,6 +137,8 @@ class ContainerLocalE2eRunner:
             self._run([adapter, "build", "-t", image, "-f", f"examples/java/{family}-lite/Dockerfile", "."])
         elif runtime_kind == "go":
             self._run([adapter, "build", "-t", image, "-f", f"examples/go/{family}/Dockerfile", "."])
+        elif runtime_kind == "javascript":
+            self._run([adapter, "build", "-t", image, "-f", f"examples/javascript/{family}/Dockerfile", "."])
         elif runtime_kind == "python":
             self._run([adapter, "build", "-t", image, "-f", f"examples/python/{family}/Dockerfile", "."])
         elif runtime_kind == "exec":

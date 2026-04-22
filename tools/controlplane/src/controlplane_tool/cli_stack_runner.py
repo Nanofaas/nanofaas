@@ -106,10 +106,15 @@ class CliStackRunner:
         )
 
     def plan_steps(self, resolved_scenario=None) -> list[ScenarioPlanStep]:
+        effective_scenario = (
+            resolved_scenario.model_copy(update={"base_scenario": "cli-stack"})
+            if resolved_scenario is not None
+            else None
+        )
         request = E2eRequest(
             scenario="cli-stack",
             runtime=self.runtime,
-            resolved_scenario=resolved_scenario,
+            resolved_scenario=effective_scenario,
             vm=self.vm_request,
             namespace=self.namespace,
             local_registry=self.local_registry,

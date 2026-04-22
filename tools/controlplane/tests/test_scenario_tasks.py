@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from controlplane_tool.scenario_tasks import (
     build_core_images_vm_script,
+    build_function_images_vm_script,
     helm_upgrade_install_vm_script,
     kubectl_create_namespace_vm_script,
 )
@@ -53,3 +54,12 @@ def test_cluster_scripts_bind_explicit_kubeconfig() -> None:
     assert "KUBECONFIG=/home/ubuntu/.kube/config helm upgrade" in helm_script
     assert "KUBECONFIG=/home/ubuntu/.kube/config kubectl create namespace" in namespace_script
     assert "| KUBECONFIG=/home/ubuntu/.kube/config kubectl apply -f -" in namespace_script
+
+
+def test_build_function_images_vm_script_supports_javascript_dockerfiles() -> None:
+    script = build_function_images_vm_script(
+        remote_dir="/srv/nanofaas",
+        functions=[("localhost:5000/nanofaas/javascript-word-stats:e2e", "javascript", "word-stats")],
+    )
+
+    assert "examples/javascript/word-stats/Dockerfile" in script

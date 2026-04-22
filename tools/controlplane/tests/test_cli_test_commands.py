@@ -55,6 +55,16 @@ def test_cli_test_run_uses_saved_profile_default_scenario() -> None:
     assert "Scenario: vm" in result.stdout
 
 
+def test_cli_test_run_saved_profile_demo_javascript_defaults_to_cli_stack() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["cli-test", "run", "--saved-profile", "demo-javascript", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert "Scenario: cli-stack" in result.stdout
+
+
 def test_cli_test_run_host_platform_rejects_explicit_function_preset() -> None:
     result = CliRunner().invoke(
         app,

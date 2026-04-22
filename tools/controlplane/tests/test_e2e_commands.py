@@ -35,6 +35,17 @@ def test_e2e_run_dry_run_renders_resolved_functions() -> None:
     assert "json-transform-java" in result.stdout
 
 
+def test_e2e_run_dry_run_accepts_demo_javascript_preset() -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["e2e", "run", "k3s-junit-curl", "--function-preset", "demo-javascript", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert "word-stats-javascript" in result.stdout
+
+
 def test_e2e_run_dry_run_shows_catalog_flow_tasks(monkeypatch) -> None:
     import controlplane_tool.e2e_commands as e2e_commands
 
@@ -74,6 +85,17 @@ def test_helm_stack_rejects_unsupported_go_selection_before_backend() -> None:
     rendered = result.stdout + result.stderr
     assert "helm-stack" in rendered
     assert "go" in rendered
+
+
+def test_helm_stack_rejects_javascript_selection_before_backend() -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["e2e", "run", "helm-stack", "--functions", "word-stats-javascript", "--dry-run"],
+    )
+
+    assert result.exit_code == 2
+    assert "javascript" in (result.stdout + result.stderr)
 
 
 def test_e2e_run_accepts_scenario_file_without_positional_scenario() -> None:

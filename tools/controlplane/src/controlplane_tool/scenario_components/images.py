@@ -43,6 +43,7 @@ def _dockerfile_for_runtime_kind(runtime_kind: str, family: str) -> Path:
         "exec": Path(f"examples/bash/{family}/Dockerfile"),
         "go": Path(f"examples/go/{family}/Dockerfile"),
         "java-lite": Path(f"examples/java/{family}-lite/Dockerfile"),
+        "javascript": Path(f"examples/javascript/{family}/Dockerfile"),
         "python": Path(f"examples/python/{family}/Dockerfile"),
     }
     try:

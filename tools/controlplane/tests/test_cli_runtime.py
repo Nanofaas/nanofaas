@@ -445,6 +445,33 @@ def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify
     } == {"container-local.verify"}
 
 
+def test_container_local_runner_builds_javascript_function_images(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = ContainerLocalE2eRunner(tmp_path)
+    called: dict[str, list[str]] = {}
+
+    def fake_run(command: list[str], check: bool = True) -> ShellExecutionResult:
+        _ = check
+        called["command"] = command
+        return ShellExecutionResult(command=command, return_code=0)
+
+    monkeypatch.setattr(runner, "_run", fake_run)
+
+    runner._build_function_image("example/image:tag", "javascript", "word-stats")
+
+    assert called["command"] == [
+        "docker",
+        "build",
+        "-t",
+        "example/image:tag",
+        "-f",
+        "examples/javascript/word-stats/Dockerfile",
+        ".",
+    ]
+
+
 def test_deploy_host_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
