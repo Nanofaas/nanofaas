@@ -34,6 +34,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert BUILD_WRAPPER not in modules
 
     assert "scripts/controlplane.sh functions list" in root_readme
+    assert "scripts/controlplane.sh functions show-preset demo-javascript" in root_readme
     assert "scripts/controlplane.sh vm up" in root_readme
     assert "scripts/controlplane.sh cli-test list" in root_readme
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in root_readme
@@ -45,8 +46,10 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
 
     assert "scripts/controlplane.sh matrix" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
+    assert "scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in testing
+    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run host-platform --function-preset" not in testing
@@ -69,9 +72,11 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
 
     assert "scripts/controlplane.sh e2e all" in tool_readme
     assert "scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run" in tool_readme
+    assert "scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test list" in tool_readme
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in tool_readme
+    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
     assert "self-bootstrapping VM-backed scenarios" in tool_readme
     assert "instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`" in tool_readme
@@ -81,6 +86,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh vm up" in tool_readme
     assert "scripts/controlplane.sh functions show-preset demo-java" in tool_readme
+    assert "scripts/controlplane.sh functions show-preset demo-javascript" in tool_readme
     assert "cli_test.default_scenario" in tool_readme
     assert "single-function" in tool_readme
     assert BUILD_WRAPPER not in tool_readme

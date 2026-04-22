@@ -108,9 +108,11 @@ scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-ru
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
 scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
@@ -179,7 +181,9 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 
 Canonical Ansible asset root: `ops/ansible/`.
 
-The JavaScript authoring workflow is intentionally scoped to SDK/examples/`fn-init` in v1; it does not currently extend `tools/controlplane` presets, `scripts/build-push-images.sh`, `scripts/release-manager/release.py`, or `ops/ansible/playbooks/provision-base.yml`.
+JavaScript authoring remains first-class under `function-sdk-javascript/` and `examples/javascript/`.
+V2 also wires JavaScript into `tools/controlplane` presets, saved profiles, and VM-backed dry-run/E2E flows such as `k3s-junit-curl` and `cli-stack`.
+Build and publish automation remains tracked separately in `docs/plans/2026-04-21-v2-packaging-and-release.md`.
 
 ### CLI E2E (`scripts/e2e-cli.sh`)
 

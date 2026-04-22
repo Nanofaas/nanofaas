@@ -45,14 +45,17 @@ Use the canonical wrapper below for unified build, VM lifecycle, CLI validation,
 ```bash
 scripts/controlplane.sh build --profile core --dry-run
 scripts/controlplane.sh functions list
+scripts/controlplane.sh functions show-preset demo-javascript
 scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
@@ -204,12 +207,14 @@ scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 
 - `function-sdk-go/README.md` documents the planned Go function authoring/runtime SDK.
 - `function-sdk-javascript/README.md` documents the JavaScript function authoring/runtime SDK.
 
-## JavaScript SDK Scope (v1)
+## JavaScript Scope
 
-The JavaScript authoring workflow is first-class under `function-sdk-javascript/`,
-`examples/javascript/`, and `tools/fn-init/`, but v1 intentionally does not add
-JavaScript into the VM-backed `tools/controlplane` presets, `scripts/build-push-images.sh`,
-`scripts/release-manager/release.py`, or `ops/ansible/playbooks/provision-base.yml`.
+The JavaScript authoring workflow remains first-class under `function-sdk-javascript/`,
+`examples/javascript/`, and `tools/fn-init/`.
+V2 also wires JavaScript into `tools/controlplane` catalogs, saved profiles, and VM-backed
+dry-run/E2E flows such as `k3s-junit-curl` and `cli-stack`.
+Build and publish automation remains tracked separately in
+`docs/plans/2026-04-21-v2-packaging-and-release.md`.
 
 ## nanofaas-cli (CLI)
 

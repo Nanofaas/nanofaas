@@ -46,14 +46,17 @@ Use the canonical wrapper for orchestration across build, VM, and E2E flows:
 scripts/controlplane.sh build --profile core --dry-run
 scripts/controlplane.sh functions list
 scripts/controlplane.sh functions show-preset demo-java
+scripts/controlplane.sh functions show-preset demo-javascript
 scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
