@@ -17,6 +17,20 @@ export class TimeoutError extends Error {
     }
 }
 
+export class InvalidJsonError extends Error {
+    constructor(message = "Request body must be valid JSON") {
+        super(message);
+        this.name = "InvalidJsonError";
+    }
+}
+
+export class InvalidRequestError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "InvalidRequestError";
+    }
+}
+
 export function toErrorInfo(error: unknown): ErrorInfo {
     if (error instanceof NanofaasError) {
         return {
@@ -27,6 +41,18 @@ export function toErrorInfo(error: unknown): ErrorInfo {
     if (error instanceof TimeoutError) {
         return {
             code: "HANDLER_TIMEOUT",
+            message: error.message,
+        };
+    }
+    if (error instanceof InvalidJsonError) {
+        return {
+            code: "INVALID_JSON",
+            message: error.message,
+        };
+    }
+    if (error instanceof InvalidRequestError) {
+        return {
+            code: "INVALID_REQUEST",
             message: error.message,
         };
     }
