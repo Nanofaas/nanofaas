@@ -962,6 +962,77 @@ def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path
     ]
 
 
+def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    fake_paths = SimpleNamespace(
+        workspace_root=Path("/repo"),
+        scenarios_dir=Path("/repo/tools/controlplane/scenarios"),
+    )
+
+    monkeypatch.setattr(tui_app, "default_tool_paths", lambda: fake_paths)
+    monkeypatch.setattr(
+        Path,
+        "glob",
+        lambda self, pattern: iter(
+            [
+                fake_paths.scenarios_dir / "k8s-demo-javascript.toml",
+                fake_paths.scenarios_dir / "k8s-demo-all.toml",
+                fake_paths.scenarios_dir / "broken.toml",
+            ]
+        ),
+    )
+
+    def fake_load(path: Path):  # noqa: ANN001
+        if path.name == "k8s-demo-javascript.toml":
+            return SimpleNamespace(base_scenario="k3s-junit-curl", name="k8s-demo-javascript")
+        if path.name == "k8s-demo-all.toml":
+            return SimpleNamespace(base_scenario="helm-stack", name="k8s-demo-all")
+        raise ValueError("invalid manifest")
+
+    monkeypatch.setattr(tui_app, "load_scenario_file", fake_load)
+
+    values = [choice.value for choice in tui_app._k3s_scenario_file_choices()]
+    assert values == ["tools/controlplane/scenarios/k8s-demo-javascript.toml"]
+
+
+def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    monkeypatch.setattr(
+        tui_app,
+        "list_profiles",
+        lambda: ["demo-javascript", "bad-helm", "generic"],
+    )
+
+    def fake_load_profile(name: str):  # noqa: ANN001
+        if name == "demo-javascript":
+            return SimpleNamespace(
+                scenario=SimpleNamespace(
+                    base_scenario="k3s-junit-curl",
+                    scenario_file=None,
+                )
+            )
+        if name == "bad-helm":
+            return SimpleNamespace(
+                scenario=SimpleNamespace(
+                    base_scenario="helm-stack",
+                    scenario_file=None,
+                )
+            )
+        return SimpleNamespace(
+            scenario=SimpleNamespace(
+                base_scenario=None,
+                scenario_file=None,
+            )
+        )
+
+    monkeypatch.setattr(tui_app, "load_profile", fake_load_profile)
+
+    values = [choice.value for choice in tui_app._k3s_saved_profile_choices()]
+    assert values == ["demo-javascript", "generic"]
+
+
 def test_tui_k3s_junit_curl_dry_run_plan_waits_for_acknowledge(monkeypatch) -> None:
     import controlplane_tool.e2e_commands as e2e_commands
     import controlplane_tool.e2e_runner as e2e_runner
