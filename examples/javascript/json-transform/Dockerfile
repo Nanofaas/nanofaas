@@ -2,7 +2,11 @@ FROM node:20-alpine AS build
 WORKDIR /src
 
 COPY function-sdk-javascript ./function-sdk-javascript
-COPY examples/javascript/json-transform ./examples/javascript/json-transform
+WORKDIR /src/function-sdk-javascript
+RUN npm install
+RUN npm run build
+
+COPY examples/javascript/json-transform /src/examples/javascript/json-transform
 
 WORKDIR /src/examples/javascript/json-transform
 RUN npm install

@@ -2,7 +2,11 @@ FROM node:20-alpine AS build
 WORKDIR /src
 
 COPY function-sdk-javascript ./function-sdk-javascript
-COPY examples/javascript/word-stats ./examples/javascript/word-stats
+WORKDIR /src/function-sdk-javascript
+RUN npm install
+RUN npm run build
+
+COPY examples/javascript/word-stats /src/examples/javascript/word-stats
 
 WORKDIR /src/examples/javascript/word-stats
 RUN npm install
