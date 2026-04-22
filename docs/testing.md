@@ -149,6 +149,8 @@ CLI validation is also first-class:
 
 - `scripts/controlplane.sh cli-test list|inspect|run` is the canonical interface for `nanofaas-cli` validation.
 - saved profiles can persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario directly from the profile.
+- Within `Validation -> platform -> k3s-junit-curl`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
+- The TUI only offers saved profiles and scenario manifests compatible with `k3s-junit-curl`; incompatible entries are filtered out instead of failing at execution time.
 - `k3s-junit-curl`, `helm-stack`, and `cli-stack` are self-bootstrapping VM-backed scenarios: when no VM request is provided, the tool creates and configures a managed VM and installs scenario-specific software there instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`.
 - `cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the registry there, then exercises function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`.
 - `vm` validates and executes every function in the resolved selection, and `deploy-host` iterates the same full function set when it builds, pushes, and registers host-side deploy fixtures.

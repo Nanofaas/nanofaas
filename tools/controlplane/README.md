@@ -80,6 +80,8 @@ scripts/controlplane.sh tui
 ```
 
 The interactive TUI owns profile selection and profile creation. Use the `Profiles` section to inspect saved profiles and the `Load Testing` / `Validation` sections to consume them.
+Within `Validation -> platform -> k3s-junit-curl`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
+The TUI only offers saved profiles and scenario manifests compatible with `k3s-junit-curl`; incompatible entries are filtered out instead of failing at execution time.
 
 In the live workflow view, the left pane is plan-ordered top-level phases only. nested work is separate detail, not peer phases, so verification substeps stay attached under the active phase instead of becoming new rows.
 
