@@ -39,6 +39,12 @@ Runtime configuration comes from:
 - `FUNCTION_HANDLER`
 - `NANOFAAS_HANDLER_TIMEOUT`
 
+Per-request headers override the corresponding environment variables:
+
+- `X-Execution-Id` overrides `EXECUTION_ID`
+- `X-Trace-Id` overrides `TRACE_ID`
+- `X-Callback-Url` overrides `CALLBACK_URL`
+
 ## Error contract
 
 - `EXECUTION_ID_REQUIRED` -> HTTP 400
