@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import re
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from fn_init import generator, wizard
 
 app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.")
 console = Console(force_terminal=sys.stdout.isatty())
+DEFAULT_JAVASCRIPT_SDK_VERSION = "0.16.1"
 
 
 @app.command()
@@ -50,6 +52,12 @@ def main(
         console.print(f"[red]Error:[/] {e}")
         raise typer.Exit(1)
 
+    sdk_package = (
+        json.loads((monorepo_root / "function-sdk-javascript" / "package.json").read_text(encoding="utf-8"))
+        if monorepo_root is not None
+        else {"version": DEFAULT_JAVASCRIPT_SDK_VERSION}
+    )
+
     placeholders = {
         "FUNCTION_NAME": name,
         "CLASS_NAME": class_name,
@@ -57,9 +65,16 @@ def main(
         "PACKAGE_PATH": package.replace(".", "/"),
         "IMAGE_TAG": f"nanofaas/{name}:latest",
         "LANG": lang,
-        "SDK_PATH": generator.resolve_sdk_dependency_path(monorepo_root, output_dir)
-        if lang == "javascript"
-        else "../../../function-sdk-javascript",
+        "SDK_DEPENDENCY": (
+            generator.resolve_sdk_dependency_spec(monorepo_root, output_dir, sdk_package["version"])
+            if lang == "javascript"
+            else ""
+        ),
+        "SDK_BUILD_HOOKS": (
+            generator.render_sdk_build_hooks(monorepo_root, output_dir)
+            if lang == "javascript"
+            else ""
+        ),
     }
 
     if output_dir.exists():

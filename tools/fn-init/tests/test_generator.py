@@ -8,7 +8,7 @@ from fn_init.generator import (
     render,
     detect_monorepo_root,
     resolve_output_dir,
-    resolve_sdk_dependency_path,
+    resolve_sdk_dependency_spec,
     generate_function,
     update_settings_gradle,
 )
@@ -104,24 +104,24 @@ def test_resolve_outside_monorepo_no_out_raises(tmp_path):
         resolve_output_dir("greet", "java", None, tmp_path)
 
 
-def test_resolve_sdk_dependency_path_inside_monorepo_uses_relative_path(tmp_path):
+def test_resolve_sdk_dependency_spec_inside_monorepo_uses_file_dependency(tmp_path):
     monorepo_root = tmp_path / "repo"
     output_dir = monorepo_root / "examples" / "javascript" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == "../../../function-sdk-javascript"
+    assert resolve_sdk_dependency_spec(monorepo_root, output_dir, "0.16.1") == "file:../../../function-sdk-javascript"
 
 
-def test_resolve_sdk_dependency_path_outside_monorepo_uses_absolute_path(tmp_path):
+def test_resolve_sdk_dependency_spec_outside_monorepo_uses_published_version(tmp_path):
     monorepo_root = tmp_path / "repo"
     output_dir = tmp_path / "generated" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == str(monorepo_root / "function-sdk-javascript")
+    assert resolve_sdk_dependency_spec(monorepo_root, output_dir, "0.16.1") == "0.16.1"
 
 
-def test_resolve_sdk_dependency_path_without_monorepo_uses_default_relative_path(tmp_path):
+def test_resolve_sdk_dependency_spec_without_monorepo_uses_published_version(tmp_path):
     output_dir = tmp_path / "generated" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(None, output_dir) == "../../../function-sdk-javascript"
+    assert resolve_sdk_dependency_spec(None, output_dir, "0.16.1") == "0.16.1"
 
 
 # --- generate_function (Java) ---
@@ -245,7 +245,13 @@ JAVASCRIPT_PLACEHOLDERS = {
     "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "javascript",
-    "SDK_PATH": "../../../function-sdk-javascript",
+    "SDK_DEPENDENCY": "file:../../../function-sdk-javascript",
+    "SDK_BUILD_HOOKS": (
+        '    "prebuild": "npm --prefix ../../../function-sdk-javascript install && '
+        'npm --prefix ../../../function-sdk-javascript run build",\n'
+        '    "pretest": "npm --prefix ../../../function-sdk-javascript install && '
+        'npm --prefix ../../../function-sdk-javascript run build",\n'
+    ),
 }
 
 def test_generate_go_creates_main(tmp_path):
@@ -288,14 +294,34 @@ def test_generate_javascript_creates_sources(tmp_path):
     assert (out / "src" / "handler.ts").exists()
     assert (out / "test" / "handler.test.ts").exists()
 
-def test_generate_javascript_package_uses_local_sdk(tmp_path):
+def test_generate_javascript_package_keeps_local_sdk_inside_monorepo(tmp_path):
     out = tmp_path / "greet"
-    generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    placeholders = dict(JAVASCRIPT_PLACEHOLDERS)
+    placeholders["SDK_DEPENDENCY"] = "file:../../../function-sdk-javascript"
+    placeholders["SDK_BUILD_HOOKS"] = (
+        '    "prebuild": "npm --prefix ../../../function-sdk-javascript install && '
+        'npm --prefix ../../../function-sdk-javascript run build",\n'
+        '    "pretest": "npm --prefix ../../../function-sdk-javascript install && '
+        'npm --prefix ../../../function-sdk-javascript run build",\n'
+    )
+    generate_function("greet", "javascript", out, vscode=False, placeholders=placeholders)
     content = (out / "package.json").read_text()
     assert '"nanofaas-function-sdk": "file:../../../function-sdk-javascript"' in content
     assert '"prebuild": "npm --prefix ../../../function-sdk-javascript install && npm --prefix ../../../function-sdk-javascript run build"' in content
     assert '"pretest": "npm --prefix ../../../function-sdk-javascript install && npm --prefix ../../../function-sdk-javascript run build"' in content
     assert '"test": "npm run build && node --test dist/test/**/*.test.js"' in content
+
+
+def test_generate_javascript_package_uses_published_sdk_outside_monorepo(tmp_path):
+    out = tmp_path / "greet"
+    placeholders = dict(JAVASCRIPT_PLACEHOLDERS)
+    placeholders["SDK_DEPENDENCY"] = "0.16.1"
+    placeholders["SDK_BUILD_HOOKS"] = ""
+    generate_function("greet", "javascript", out, vscode=False, placeholders=placeholders)
+    content = (out / "package.json").read_text()
+    assert '"nanofaas-function-sdk": "0.16.1"' in content
+    assert '"prebuild"' not in content
+    assert '"pretest"' not in content
 
 def test_generate_javascript_function_yaml_uses_javascript_dockerfile(tmp_path):
     out = tmp_path / "greet"

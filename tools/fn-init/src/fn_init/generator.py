@@ -100,15 +100,29 @@ def resolve_output_dir(
     raise ValueError("Not inside the nanofaas monorepo. Use --out to specify an output directory.")
 
 
-def resolve_sdk_dependency_path(monorepo_root: Path | None, output_dir: Path) -> str:
-    default_relative_path = "../../../function-sdk-javascript"
+def resolve_sdk_dependency_spec(monorepo_root: Path | None, output_dir: Path, published_version: str) -> str:
     if monorepo_root is None:
-        return default_relative_path
+        return published_version
     try:
         output_dir.resolve().relative_to(monorepo_root.resolve())
     except ValueError:
-        return str((monorepo_root / "function-sdk-javascript").resolve())
-    return os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
+        return published_version
+    relative = os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
+    return f"file:{relative}"
+
+
+def render_sdk_build_hooks(monorepo_root: Path | None, output_dir: Path) -> str:
+    if monorepo_root is None:
+        return ""
+    try:
+        output_dir.resolve().relative_to(monorepo_root.resolve())
+    except ValueError:
+        return ""
+    relative = os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
+    return (
+        f'    "prebuild": "npm --prefix {relative} install && npm --prefix {relative} run build",\n'
+        f'    "pretest": "npm --prefix {relative} install && npm --prefix {relative} run build",\n'
+    )
 
 
 def generate_function(
