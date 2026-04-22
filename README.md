@@ -213,6 +213,9 @@ The JavaScript authoring workflow remains first-class under `function-sdk-javasc
 `examples/javascript/`, and `tools/fn-init/`.
 V2 also wires JavaScript into `tools/controlplane` catalogs, saved profiles, and VM-backed
 dry-run/E2E flows such as `k3s-junit-curl` and `cli-stack`.
+The JavaScript SDK is packaged from `function-sdk-javascript/` and validated with
+`npm pack --dry-run` as part of the release flow driven by
+`scripts/release-manager/release.py`.
 Build and publish automation remains tracked separately in
 `docs/plans/2026-04-21-v2-packaging-and-release.md`.
 

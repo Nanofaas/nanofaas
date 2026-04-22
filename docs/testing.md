@@ -65,6 +65,16 @@ cd function-sdk-javascript
 npm test
 ```
 
+### JavaScript SDK packaging checks
+
+The packaging/release gate used by `scripts/release-manager/release.py` validates the npm artifact before release:
+
+```bash
+cd function-sdk-javascript
+env npm_config_cache=/tmp/codex-npm-cache npm test
+env npm_config_cache=/tmp/codex-npm-cache npm pack --dry-run
+```
+
 JavaScript demo functions live under `examples/javascript/`:
 
 ```bash

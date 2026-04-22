@@ -39,10 +39,23 @@ Runtime configuration comes from:
 - `FUNCTION_HANDLER`
 - `NANOFAAS_HANDLER_TIMEOUT`
 
+## Install
+
+```bash
+npm install nanofaas-function-sdk
+```
+
 ## Development
 
 ```bash
 npm install
 npm test
 npm run build
+```
+
+## Release verification
+
+```bash
+env npm_config_cache=/tmp/codex-npm-cache npm test
+env npm_config_cache=/tmp/codex-npm-cache npm pack --dry-run
 ```
