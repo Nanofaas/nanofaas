@@ -80,6 +80,10 @@ def test_demo_java_profile_exists() -> None:
     assert resolve_workspace_path(Path("tools/controlplane/profiles/demo-java.toml")).exists()
 
 
+def test_demo_javascript_profile_exists() -> None:
+    assert resolve_workspace_path(Path("tools/controlplane/profiles/demo-javascript.toml")).exists()
+
+
 def test_removed_pipeline_run_command_is_rejected() -> None:
     runner = CliRunner()
     result = runner.invoke(app, [PIPELINE_ALIAS, "--help"])

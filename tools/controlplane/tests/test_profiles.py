@@ -71,6 +71,26 @@ def test_profile_roundtrip_with_e2e_selection(tmp_path: Path) -> None:
     assert loaded.cli_test.default_scenario == "vm"
 
 
+def test_profile_roundtrip_with_javascript_e2e_selection(tmp_path: Path) -> None:
+    profile = Profile(
+        name="demo-javascript",
+        control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
+        scenario=ScenarioSelectionConfig(
+            base_scenario="k3s-junit-curl",
+            function_preset="demo-javascript",
+            namespace="nanofaas-e2e",
+        ),
+        cli_test=CliTestConfig(default_scenario="cli-stack"),
+    )
+
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("demo-javascript", root=tmp_path)
+
+    assert loaded.scenario.function_preset == "demo-javascript"
+    assert loaded.scenario.base_scenario == "k3s-junit-curl"
+    assert loaded.cli_test.default_scenario == "cli-stack"
+
+
 def test_profile_roundtrip_with_loadtest_defaults(tmp_path: Path) -> None:
     profile = Profile(
         name="perf-java",

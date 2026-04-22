@@ -43,6 +43,14 @@ def test_profile_fixture_exists_for_saved_profile_flow() -> None:
     assert 'default_scenario = "vm"' in profile
 
 
+def test_javascript_profile_fixture_exists_for_saved_profile_flow() -> None:
+    profile_path = resolve_workspace_path(Path("tools/controlplane/profiles/demo-javascript.toml"))
+    assert profile_path.exists()
+    profile = profile_path.read_text(encoding="utf-8")
+    assert "[cli_test]" in profile
+    assert 'default_scenario = "cli-stack"' in profile
+
+
 def test_loadtest_wrapper_routes_to_python_runner() -> None:
     # M12: wrapper routes to controlplane.sh loadtest run (not experiments script)
     script = resolve_workspace_path(Path("scripts/e2e-loadtest.sh")).read_text(encoding="utf-8")

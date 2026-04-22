@@ -31,6 +31,17 @@ def test_load_scenario_file_resolves_relative_path_from_workspace_root(
     assert scenario.name == "k8s-demo-java"
 
 
+def test_loader_resolves_javascript_scenario_manifest() -> None:
+    scenario = load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-javascript.toml"))
+
+    assert scenario.base_scenario == "k3s-junit-curl"
+    assert scenario.function_preset == "demo-javascript"
+    assert scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
+
+
 def test_loader_rejects_both_functions_and_function_preset() -> None:
     with pytest.raises(ValueError, match="exactly one of"):
         ScenarioSpec(
