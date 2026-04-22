@@ -3,13 +3,13 @@ WORKDIR /src
 
 COPY function-sdk-javascript ./function-sdk-javascript
 WORKDIR /src/function-sdk-javascript
-RUN npm install
+RUN npm ci
 RUN npm run build
 
 COPY examples/javascript/json-transform /src/examples/javascript/json-transform
 
 WORKDIR /src/examples/javascript/json-transform
-RUN npm install
+RUN npm ci
 RUN npm run build
 RUN npm prune --omit=dev
 
