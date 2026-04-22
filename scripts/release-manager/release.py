@@ -328,7 +328,17 @@ def build_and_push_arm64(version):
         )
         run_command(f"docker push {img}")
 
-    # 8. Java Lite Demo Functions (native image via multi-stage Dockerfile)
+    # 8. JavaScript Demo Functions
+    for example in ["word-stats", "json-transform"]:
+        img = f"{base_image}/javascript-{example}:{tag}-arm64"
+        console.print(f"[blue]Building JavaScript {example} ({img})...[/blue]")
+        run_command(
+            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
+            f"-t {img} -f examples/javascript/{example}/Dockerfile ."
+        )
+        run_command(f"docker push {img}")
+
+    # 9. Java Lite Demo Functions (native image via multi-stage Dockerfile)
     for example in ["word-stats", "json-transform"]:
         img = f"{base_image}/java-lite-{example}:{tag}-arm64"
         console.print(f"[blue]Building Java Lite {example} native image ({img})...[/blue]")
@@ -346,6 +356,7 @@ def update_files(new_v, dry_run=False):
     
     files_to_update = [
         ("build.gradle", r"(version\s*=\s*')[^']+'", rf"\g<1>{new_v}'"),
+        ("function-sdk-javascript/package.json", r'("version"\s*:\s*")[^"]+"', rf'\g<1>{new_v}"'),
         ("function-sdk-python/pyproject.toml", r'(version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         ("watchdog/Cargo.toml", r'(^version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         # Helm chart + default image tags
@@ -379,6 +390,33 @@ def update_files(new_v, dry_run=False):
             console.print(f"[green]Updated {rel_path}[/green]")
             updated_files.append(rel_path)
     return updated_files
+
+
+def refresh_javascript_sdk_lockfile(dry_run=False):
+    cmd = "cd function-sdk-javascript && npm install --package-lock-only"
+    if dry_run:
+        console.print(f"[dim](Dry-run) Would run: {cmd}[/dim]")
+        return "function-sdk-javascript/package-lock.json"
+    run_command(cmd)
+    return "function-sdk-javascript/package-lock.json"
+
+
+def pack_javascript_sdk(dry_run=False):
+    cmd = "cd function-sdk-javascript && npm pack --dry-run"
+    if dry_run:
+        console.print(f"[dim](Dry-run) Would run: {cmd}[/dim]")
+        return
+    console.print("[blue]Packing JavaScript SDK...[/blue]")
+    run_command(cmd)
+
+
+def publish_javascript_sdk():
+    ok, _, _ = try_command("cd function-sdk-javascript && npm whoami")
+    if not ok:
+        console.print("[yellow]npm auth unavailable; skipping JavaScript SDK publish.[/yellow]")
+        return
+    if questionary.confirm("Publish JavaScript SDK to npm?").ask():
+        run_command("cd function-sdk-javascript && npm publish --access public")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -462,7 +500,14 @@ def main():
 
         # 5. Apply Changes (Files + K8s)
         updated_files = update_files(new_v, args.dry_run)
-        if args.dry_run: return
+        if "function-sdk-javascript/package.json" in updated_files or args.dry_run:
+            lockfile_path = refresh_javascript_sdk_lockfile(dry_run=args.dry_run)
+            if lockfile_path not in updated_files:
+                updated_files.append(lockfile_path)
+            pack_javascript_sdk(dry_run=args.dry_run)
+        if args.dry_run:
+            console.print("[dim](Dry-run) Skipping commit/tag/publish/image-build mutations.[/dim]")
+            return
 
         # 6. Commit and Push Bump
         if updated_files:
@@ -485,6 +530,8 @@ def main():
         os.remove(tag_file)
         if questionary.confirm(f"Push tag {tag_name}?").ask():
             run_command(f"git push origin {tag_name}")
+
+        publish_javascript_sdk()
 
         # 8. Optional Local Image Builds (run last so tagging isn't blocked by long local builds)
         if questionary.confirm("Build and push images from this machine (ARM64)?").ask():
