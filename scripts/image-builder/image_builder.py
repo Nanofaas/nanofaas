@@ -174,6 +174,18 @@ IMAGES = {
         "context": ".",
         "group": "Python Functions",
     },
+    "javascript-word-stats": {
+        "type": "docker",
+        "dockerfile": "examples/javascript/word-stats/Dockerfile",
+        "context": ".",
+        "group": "JavaScript Functions",
+    },
+    "javascript-json-transform": {
+        "type": "docker",
+        "dockerfile": "examples/javascript/json-transform/Dockerfile",
+        "context": ".",
+        "group": "JavaScript Functions",
+    },
     "watchdog": {
         "type": "docker",
         "dockerfile": "watchdog/Dockerfile",

@@ -32,9 +32,11 @@ def test_images_catalog_contains_all_expected_entries():
         "watchdog",
         "bash-word-stats",
         "bash-json-transform",
+        "javascript-word-stats",
+        "javascript-json-transform",
     }
     assert set(ib.IMAGES) == expected
-    assert len(ib.IMAGES) == 13
+    assert len(ib.IMAGES) == 15
 
 
 def test_resolve_selected_images_supports_all_option():
@@ -120,3 +122,12 @@ def test_docker_command_for_multi_arch_uses_buildx():
         "docker buildx build --platform linux/arm64,linux/amd64 -t "
         "ghcr.io/miciav/nanofaas/watchdog:v0.10.0 -f watchdog/Dockerfile ."
     )
+
+
+def test_docker_command_for_javascript_example():
+    cmd = ib.build_docker_command(
+        ib.IMAGES["javascript-word-stats"],
+        "ghcr.io/miciav/nanofaas/javascript-word-stats:v0.10.0-arm64",
+        "arm64",
+    )
+    assert "examples/javascript/word-stats/Dockerfile" in cmd
