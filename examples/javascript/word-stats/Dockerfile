@@ -16,6 +16,7 @@ RUN npm prune --omit=dev
 FROM node:20-alpine
 WORKDIR /app
 
+COPY --from=build /src/function-sdk-javascript /function-sdk-javascript
 COPY --from=build /src/examples/javascript/word-stats/package.json ./package.json
 COPY --from=build /src/examples/javascript/word-stats/node_modules ./node_modules
 COPY --from=build /src/examples/javascript/word-stats/dist ./dist
