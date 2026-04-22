@@ -72,4 +72,3 @@ if (!unknownModules.isEmpty()) {
     throw new GradleException("Unknown control-plane modules: ${unknownModules}. Available: ${availableModules}")
 }
 include 'examples:java:roman-numeral'
-include 'examples:java:test-da-cancellare'
