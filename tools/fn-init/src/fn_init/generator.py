@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import stat
 from pathlib import Path
 
@@ -125,33 +126,72 @@ def render_sdk_build_hooks(monorepo_root: Path | None, output_dir: Path) -> str:
     )
 
 
+def is_output_inside_monorepo(monorepo_root: Path | None, output_dir: Path) -> bool:
+    if monorepo_root is None:
+        return False
+    try:
+        output_dir.resolve().relative_to(monorepo_root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def should_vendor_javascript_sdk(monorepo_root: Path | None, output_dir: Path) -> bool:
+    return monorepo_root is not None and not is_output_inside_monorepo(monorepo_root, output_dir)
+
+
+def vendor_javascript_sdk(monorepo_root: Path, output_dir: Path) -> Path:
+    source = monorepo_root / "function-sdk-javascript"
+    destination = output_dir / "function-sdk-javascript"
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns("node_modules", "dist", "build-test", ".pytest_cache"),
+    )
+    return destination
+
+
 def build_javascript_scaffold_contract(
     monorepo_root: Path | None,
     output_dir: Path,
     published_version: str,
 ) -> dict[str, str]:
-    sdk_dependency = resolve_sdk_dependency_spec(monorepo_root, output_dir, published_version)
-    sdk_build_hooks = render_sdk_build_hooks(monorepo_root, output_dir)
-
-    repo_relative_output: str | None = None
-    if monorepo_root is not None:
-        try:
-            repo_relative_output = os.path.relpath(output_dir.resolve(), monorepo_root.resolve())
-        except ValueError:
-            repo_relative_output = None
-
-    if repo_relative_output is None or repo_relative_output.startswith(".."):
+    if monorepo_root is None:
         return {
-            "SDK_DEPENDENCY": sdk_dependency,
-            "SDK_BUILD_HOOKS": sdk_build_hooks,
+            "SDK_DEPENDENCY": published_version,
+            "SDK_BUILD_HOOKS": "",
             "BUILD_CONTEXT": ".",
             "DOCKERFILE_PATH": "Dockerfile",
             "DOCKER_APP_COPY": "COPY . /src/app",
             "DOCKER_APP_DIR": "/src/app",
             "DOCKER_SDK_COPY": "",
+            "DOCKER_SDK_BUILD_BLOCK": "",
             "DOCKER_FINAL_SDK_COPY": "",
         }
 
+    if should_vendor_javascript_sdk(monorepo_root, output_dir):
+        return {
+            "SDK_DEPENDENCY": "file:./function-sdk-javascript",
+            "SDK_BUILD_HOOKS": (
+                '    "prebuild": "npm --prefix ./function-sdk-javascript install && npm --prefix ./function-sdk-javascript run build",\n'
+                '    "pretest": "npm --prefix ./function-sdk-javascript install && npm --prefix ./function-sdk-javascript run build",\n'
+            ),
+            "BUILD_CONTEXT": ".",
+            "DOCKERFILE_PATH": "Dockerfile",
+            "DOCKER_APP_COPY": "COPY . /src/app",
+            "DOCKER_APP_DIR": "/src/app",
+            "DOCKER_SDK_COPY": "",
+            "DOCKER_SDK_BUILD_BLOCK": (
+                "WORKDIR /src/app/function-sdk-javascript\n"
+                "RUN npm ci\n"
+                "RUN npm run build\n\n"
+            ),
+            "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/app/function-sdk-javascript /function-sdk-javascript",
+        }
+
+    sdk_dependency = resolve_sdk_dependency_spec(monorepo_root, output_dir, published_version)
+    sdk_build_hooks = render_sdk_build_hooks(monorepo_root, output_dir)
+    repo_relative_output = os.path.relpath(output_dir.resolve(), monorepo_root.resolve())
     normalized_output = repo_relative_output.replace(os.sep, "/")
     build_context = os.path.relpath(monorepo_root.resolve(), output_dir.resolve()).replace(os.sep, "/")
     docker_app_dir = f"/src/{normalized_output}"
@@ -164,6 +204,11 @@ def build_javascript_scaffold_contract(
         "DOCKER_APP_COPY": f"COPY {normalized_output} {docker_app_dir}",
         "DOCKER_APP_DIR": docker_app_dir,
         "DOCKER_SDK_COPY": "COPY function-sdk-javascript ./function-sdk-javascript",
+        "DOCKER_SDK_BUILD_BLOCK": (
+            "WORKDIR /src/function-sdk-javascript\n"
+            "RUN npm ci\n"
+            "RUN npm run build\n\n"
+        ),
         "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
     }
 

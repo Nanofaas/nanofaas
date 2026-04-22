@@ -257,6 +257,11 @@ JAVASCRIPT_PLACEHOLDERS = {
     "DOCKER_APP_COPY": "COPY examples/javascript/greet /src/examples/javascript/greet",
     "DOCKER_APP_DIR": "/src/examples/javascript/greet",
     "DOCKER_SDK_COPY": "COPY function-sdk-javascript ./function-sdk-javascript",
+    "DOCKER_SDK_BUILD_BLOCK": (
+        "WORKDIR /src/function-sdk-javascript\n"
+        "RUN npm ci\n"
+        "RUN npm run build\n\n"
+    ),
     "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
 }
 

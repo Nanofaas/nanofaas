@@ -78,6 +78,7 @@ def main(
         "DOCKER_APP_COPY": "",
         "DOCKER_APP_DIR": "/src/app",
         "DOCKER_SDK_COPY": "",
+        "DOCKER_SDK_BUILD_BLOCK": "",
         "DOCKER_FINAL_SDK_COPY": "",
     }
     placeholders.update(javascript_contract)
@@ -94,6 +95,8 @@ def main(
 
     with console.status("[bold green]Generating..."):
         generator.generate_function(name, lang, output_dir, vscode, placeholders)
+        if lang == "javascript" and monorepo_root and generator.should_vendor_javascript_sdk(monorepo_root, output_dir):
+            generator.vendor_javascript_sdk(monorepo_root, output_dir)
         if monorepo_root and lang == "java":  # only Java has centralised Gradle registry
             if generator.update_settings_gradle(monorepo_root, name, lang):
                 console.print(f"[dim]Updated settings.gradle → added include 'examples:java:{name}'[/]")

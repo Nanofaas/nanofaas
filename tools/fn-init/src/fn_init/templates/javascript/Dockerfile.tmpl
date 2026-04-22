@@ -4,6 +4,7 @@ WORKDIR /src
 {{DOCKER_SDK_COPY}}
 {{DOCKER_APP_COPY}}
 
+{{DOCKER_SDK_BUILD_BLOCK}}
 WORKDIR {{DOCKER_APP_DIR}}
 RUN npm install
 RUN npm run build
