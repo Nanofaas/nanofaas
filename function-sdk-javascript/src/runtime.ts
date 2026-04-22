@@ -92,11 +92,12 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 
 function normalizeInvocationRequest(payload: unknown): InvocationRequest {
     if (isJsonObject(payload)) {
-        if ("metadata" in payload && payload.metadata !== undefined && !isMetadataRecord(payload.metadata)) {
+        const rawMetadata = "metadata" in payload ? payload.metadata : undefined;
+        if (rawMetadata !== undefined && rawMetadata !== null && !isMetadataRecord(rawMetadata)) {
             throw new InvalidRequestError("Invocation metadata must be a string map");
         }
         const input = "input" in payload ? (payload.input as JsonValue) : (payload as JsonValue);
-        const metadata = isMetadataRecord(payload.metadata) ? payload.metadata : undefined;
+        const metadata = isMetadataRecord(rawMetadata) ? rawMetadata : undefined;
         return metadata === undefined ? { input } : { input, metadata };
     }
     return { input: payload as JsonValue };
@@ -389,7 +390,7 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
 
             await new Promise<void>((resolve, reject) => {
                 state.server?.once("error", reject);
-                state.server?.listen(requestedPort, "127.0.0.1", () => {
+                state.server?.listen(requestedPort, "0.0.0.0", () => {
                     state.server?.off("error", reject);
                     resolve();
                 });

@@ -62,6 +62,28 @@ test("metadata must be a string map", async () => {
     }
 });
 
+test("null metadata is treated as absent metadata", async () => {
+    const runtime = await withRuntime();
+    try {
+        const response = await fetch(`${runtime.baseUrl}/invoke`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-execution-id": "exec-null-metadata",
+            },
+            body: JSON.stringify({
+                input: { ok: true },
+                metadata: null,
+            }),
+        });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { ok: true });
+    } finally {
+        await runtime.stop();
+    }
+});
+
 test("invalid metadata still sends failure callback when execution id is known", async () => {
     let resolveReceived!: (value: unknown) => void;
     let rejectReceived!: (reason?: unknown) => void;
