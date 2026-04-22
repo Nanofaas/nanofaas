@@ -6,6 +6,7 @@ All CLI commands remain available for scripted / CI use.
 """
 from __future__ import annotations
 
+from pathlib import Path
 import traceback
 from typing import Any
 
@@ -19,9 +20,10 @@ from controlplane_tool.console import console, fail, header, phase, skip, step, 
 from controlplane_tool.infra_flows import build_vm_flow
 from controlplane_tool.loadtest_commands import build_loadtest_request
 from controlplane_tool.loadtest_flows import build_loadtest_flow
-from controlplane_tool.paths import default_tool_paths
+from controlplane_tool.paths import default_tool_paths, resolve_workspace_path
 from controlplane_tool.registry_runtime import default_registry_url, ensure_local_registry
 from controlplane_tool.profiles import list_profiles, load_profile
+from controlplane_tool.scenario_loader import load_scenario_file
 from controlplane_tool.scenario_flows import build_scenario_flow
 from controlplane_tool.cli_stack_runner import CliStackRunner
 from controlplane_tool.tui_event_applier import TuiEventApplier
@@ -82,6 +84,70 @@ def _saved_profile_description(name: str) -> str:
 
 def _saved_profile_choices(names: list[str]) -> list[questionary.Choice]:
     return [_value_choice(name, _saved_profile_description(name)) for name in names]
+
+
+_K3S_SELECTION_SOURCE_CHOICES = [
+    _choice(
+        "Built-in default",
+        "default",
+        "Reuse the built-in scenario-aware default selection for k3s-junit-curl.",
+    ),
+    _choice(
+        "Function preset",
+        "preset",
+        "Choose a catalog preset such as demo-java or demo-javascript.",
+    ),
+    _choice(
+        "Scenario file",
+        "scenario-file",
+        "Choose an existing TOML manifest from tools/controlplane/scenarios/.",
+    ),
+    _choice(
+        "Saved profile",
+        "saved-profile",
+        "Choose an existing saved profile whose scenario is compatible with k3s-junit-curl.",
+    ),
+]
+
+
+def _k3s_scenario_file_choices() -> list[questionary.Choice]:
+    paths = default_tool_paths()
+    choices: list[questionary.Choice] = []
+    for path in sorted(paths.scenarios_dir.glob("*.toml")):
+        try:
+            scenario = load_scenario_file(path)
+        except Exception:  # noqa: BLE001
+            continue
+        if scenario.base_scenario != "k3s-junit-curl":
+            continue
+        relative = str(path.relative_to(paths.workspace_root))
+        choices.append(
+            _choice(
+                path.name,
+                relative,
+                f"Reuse the compatible k3s-junit-curl manifest '{path.name}' from {paths.scenarios_dir.name}.",
+            )
+        )
+    return choices
+
+
+def _k3s_saved_profile_choices() -> list[questionary.Choice]:
+    choices: list[questionary.Choice] = []
+    for name in list_profiles():
+        try:
+            profile = load_profile(name)
+            scenario = getattr(profile, "scenario", None)
+            scenario_file = getattr(scenario, "scenario_file", None)
+            if scenario_file:
+                manifest = load_scenario_file(resolve_workspace_path(Path(scenario_file)))
+                if manifest.base_scenario != "k3s-junit-curl":
+                    continue
+            elif getattr(scenario, "base_scenario", None) not in (None, "k3s-junit-curl"):
+                continue
+        except Exception:  # noqa: BLE001
+            continue
+        choices.append(_value_choice(name, _saved_profile_description(name)))
+    return choices
 
 
 def _function_detail_choices() -> list[questionary.Choice]:
@@ -803,6 +869,7 @@ class NanofaasTUI:
         else:  # k3s-junit-curl
             from controlplane_tool.e2e_runner import E2eRunner
             from controlplane_tool.e2e_commands import _resolve_run_request
+            from controlplane_tool.function_catalog import list_function_presets
 
             vm_name = _ask(
                 lambda: questionary.text(
@@ -824,6 +891,63 @@ class NanofaasTUI:
                     style=_STYLE,
                 ).ask()
             )
+            function_preset = None
+            scenario_file = None
+            saved_profile = None
+            selection_source = None
+
+            while True:
+                selection_source = _ask(
+                    lambda: _select_described_value(
+                        "Selection source:",
+                        choices=_K3S_SELECTION_SOURCE_CHOICES,
+                    )
+                )
+                if selection_source == "default":
+                    break
+                if selection_source == "preset":
+                    preset_choices = [
+                        _choice(
+                            preset.name,
+                            preset.name,
+                            f"{preset.description} Includes {len(preset.functions)} function definition(s) from the repository catalog.",
+                        )
+                        for preset in list_function_presets()
+                    ]
+                    function_preset = _ask(
+                        lambda: _select_described_value(
+                            "Function preset:",
+                            choices=preset_choices,
+                        )
+                    )
+                    break
+                if selection_source == "scenario-file":
+                    choices = _k3s_scenario_file_choices()
+                    if not choices:
+                        warning("No compatible scenario files found for k3s-junit-curl.")
+                        continue
+                    scenario_file = Path(
+                        _ask(
+                            lambda: _select_described_value(
+                                "Scenario file:",
+                                choices=choices,
+                            )
+                        )
+                    )
+                    break
+                if selection_source == "saved-profile":
+                    choices = _k3s_saved_profile_choices()
+                    if not choices:
+                        warning("No compatible saved profiles found for k3s-junit-curl.")
+                        continue
+                    saved_profile = _ask(
+                        lambda: _select_described_value(
+                            "Saved profile:",
+                            choices=choices,
+                        )
+                    )
+                    break
+
             dry_run = _ask(
                 lambda: questionary.confirm(
                     "Dry-run? (show plan without executing)", default=False, style=_STYLE
@@ -844,10 +968,10 @@ class NanofaasTUI:
                 cleanup_vm=cleanup_vm,
                 namespace=None,
                 local_registry=None,
-                function_preset=None,
+                function_preset=function_preset,
                 functions_csv=None,
-                scenario_file=None,
-                saved_profile=None,
+                scenario_file=scenario_file,
+                saved_profile=saved_profile,
             )
             runner = E2eRunner(repo_root=repo_root)
             if dry_run:
@@ -858,6 +982,20 @@ class NanofaasTUI:
                 return
 
             plan = runner.plan(request)
+            summary_lines = [
+                "Scenario: k3s-junit-curl",
+                "Mode: self-bootstrapping VM-backed scenario",
+                f"VM Name: {vm_name}",
+                f"Control-plane runtime: {runtime}",
+                f"Cleanup VM at end: {'yes' if cleanup_vm else 'no'}",
+                f"Selection source: {selection_source}",
+            ]
+            if function_preset is not None:
+                summary_lines.append(f"Function preset: {function_preset}")
+            if scenario_file is not None:
+                summary_lines.append(f"Scenario file: {scenario_file}")
+            if saved_profile is not None:
+                summary_lines.append(f"Saved profile: {saved_profile}")
 
             def _run_k8s_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 def _on_step_event(event: Any) -> None:
@@ -878,13 +1016,7 @@ class NanofaasTUI:
 
             self._controller.run_live_workflow(
                 title="E2E Scenarios",
-                summary_lines=[
-                    "Scenario: k3s-junit-curl",
-                    "Mode: self-bootstrapping VM-backed scenario",
-                    f"VM Name: {vm_name}",
-                    f"Control-plane runtime: {runtime}",
-                    f"Cleanup VM at end: {'yes' if cleanup_vm else 'no'}",
-                ],
+                summary_lines=summary_lines,
                 planned_steps=[step.summary for step in plan.steps],
                 action=_run_k8s_vm_workflow,
             )
