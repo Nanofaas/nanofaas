@@ -125,6 +125,49 @@ def render_sdk_build_hooks(monorepo_root: Path | None, output_dir: Path) -> str:
     )
 
 
+def build_javascript_scaffold_contract(
+    monorepo_root: Path | None,
+    output_dir: Path,
+    published_version: str,
+) -> dict[str, str]:
+    sdk_dependency = resolve_sdk_dependency_spec(monorepo_root, output_dir, published_version)
+    sdk_build_hooks = render_sdk_build_hooks(monorepo_root, output_dir)
+
+    repo_relative_output: str | None = None
+    if monorepo_root is not None:
+        try:
+            repo_relative_output = os.path.relpath(output_dir.resolve(), monorepo_root.resolve())
+        except ValueError:
+            repo_relative_output = None
+
+    if repo_relative_output is None or repo_relative_output.startswith(".."):
+        return {
+            "SDK_DEPENDENCY": sdk_dependency,
+            "SDK_BUILD_HOOKS": sdk_build_hooks,
+            "BUILD_CONTEXT": ".",
+            "DOCKERFILE_PATH": "Dockerfile",
+            "DOCKER_APP_COPY": "COPY . /src/app",
+            "DOCKER_APP_DIR": "/src/app",
+            "DOCKER_SDK_COPY": "",
+            "DOCKER_FINAL_SDK_COPY": "",
+        }
+
+    normalized_output = repo_relative_output.replace(os.sep, "/")
+    build_context = os.path.relpath(monorepo_root.resolve(), output_dir.resolve()).replace(os.sep, "/")
+    docker_app_dir = f"/src/{normalized_output}"
+
+    return {
+        "SDK_DEPENDENCY": sdk_dependency,
+        "SDK_BUILD_HOOKS": sdk_build_hooks,
+        "BUILD_CONTEXT": build_context,
+        "DOCKERFILE_PATH": f"{normalized_output}/Dockerfile",
+        "DOCKER_APP_COPY": f"COPY {normalized_output} {docker_app_dir}",
+        "DOCKER_APP_DIR": docker_app_dir,
+        "DOCKER_SDK_COPY": "COPY function-sdk-javascript ./function-sdk-javascript",
+        "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
+    }
+
+
 def generate_function(
     name: str,
     lang: str,

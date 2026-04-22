@@ -58,6 +58,12 @@ def main(
         else {"version": DEFAULT_JAVASCRIPT_SDK_VERSION}
     )
 
+    javascript_contract = (
+        generator.build_javascript_scaffold_contract(monorepo_root, output_dir, sdk_package["version"])
+        if lang == "javascript"
+        else {}
+    )
+
     placeholders = {
         "FUNCTION_NAME": name,
         "CLASS_NAME": class_name,
@@ -65,17 +71,16 @@ def main(
         "PACKAGE_PATH": package.replace(".", "/"),
         "IMAGE_TAG": f"nanofaas/{name}:latest",
         "LANG": lang,
-        "SDK_DEPENDENCY": (
-            generator.resolve_sdk_dependency_spec(monorepo_root, output_dir, sdk_package["version"])
-            if lang == "javascript"
-            else ""
-        ),
-        "SDK_BUILD_HOOKS": (
-            generator.render_sdk_build_hooks(monorepo_root, output_dir)
-            if lang == "javascript"
-            else ""
-        ),
+        "SDK_DEPENDENCY": "",
+        "SDK_BUILD_HOOKS": "",
+        "BUILD_CONTEXT": ".",
+        "DOCKERFILE_PATH": "Dockerfile",
+        "DOCKER_APP_COPY": "",
+        "DOCKER_APP_DIR": "/src/app",
+        "DOCKER_SDK_COPY": "",
+        "DOCKER_FINAL_SDK_COPY": "",
     }
+    placeholders.update(javascript_contract)
 
     if output_dir.exists():
         console.print(f"[red]Error:[/] directory already exists: {output_dir}")

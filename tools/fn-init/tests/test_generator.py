@@ -252,6 +252,12 @@ JAVASCRIPT_PLACEHOLDERS = {
         '    "pretest": "npm --prefix ../../../function-sdk-javascript install && '
         'npm --prefix ../../../function-sdk-javascript run build",\n'
     ),
+    "BUILD_CONTEXT": "../../..",
+    "DOCKERFILE_PATH": "examples/javascript/greet/Dockerfile",
+    "DOCKER_APP_COPY": "COPY examples/javascript/greet /src/examples/javascript/greet",
+    "DOCKER_APP_DIR": "/src/examples/javascript/greet",
+    "DOCKER_SDK_COPY": "COPY function-sdk-javascript ./function-sdk-javascript",
+    "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
 }
 
 def test_generate_go_creates_main(tmp_path):
