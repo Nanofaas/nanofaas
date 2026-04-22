@@ -69,7 +69,7 @@ public class KubernetesDeploymentBuilder {
                             .addNewContainer()
                                 .withName("function")
                                 .withImage(spec.image())
-                                .withImagePullPolicy("IfNotPresent")
+                                .withImagePullPolicy("Always")
                                 .withCommand(spec.command() == null || spec.command().isEmpty() ? null : spec.command())
                                 .withEnv(envVars)
                                 .withResources(resources.build())

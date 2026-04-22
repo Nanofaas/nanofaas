@@ -106,6 +106,14 @@ class KubernetesDeploymentBuilderTest {
     }
 
     @Test
+    void buildDeployment_alwaysPullsFunctionImages() {
+        Deployment deployment = builder.buildDeployment(spec(null));
+        Container container = deployment.getSpec().getTemplate().getSpec().getContainers().get(0);
+
+        assertEquals("Always", container.getImagePullPolicy());
+    }
+
+    @Test
     void buildDeployment_addsPrometheusScrapeAnnotations() {
         Deployment deployment = builder.buildDeployment(spec(null));
         Map<String, String> ann = deployment.getSpec().getTemplate().getMetadata().getAnnotations();
