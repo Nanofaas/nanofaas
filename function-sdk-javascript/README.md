@@ -52,6 +52,26 @@ Callback behavior for validation failures is intentional:
 - `EXECUTION_ID_REQUIRED` does not emit a callback because the runtime cannot identify the execution.
 - `INVALID_JSON` and `INVALID_REQUEST` emit a failure callback when `X-Execution-Id` and callback resolution are available.
 
+## Cold start headers
+
+On the first successful invocation, the runtime adds:
+
+- `X-Cold-Start: true`
+- `X-Init-Duration-Ms: <milliseconds since runtime start>`
+
+## Metrics
+
+The `/metrics` endpoint exposes Prometheus text for:
+
+- `runtime_invocations_total`
+- `runtime_invocation_duration_seconds`
+- `runtime_in_flight`
+- `runtime_cold_start`
+- `runtime_callback_failures`
+
+Structured logger entries emitted by the runtime and handler logger include `executionId`
+and `traceId` when those values are available for the current request.
+
 ## Install
 
 ```bash
