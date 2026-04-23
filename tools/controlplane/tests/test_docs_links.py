@@ -59,6 +59,9 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "self-bootstrapping VM-backed scenarios" in testing
     assert "instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`" in testing
     assert "Validation -> platform -> k3s-junit-curl" in testing
+    assert "Validation -> cli -> cli-stack" in testing
+    assert "Validation -> host -> deploy-host" in testing
+    assert "Validation -> platform -> container-local" in testing
     assert "tools/controlplane/scenarios/k8s-demo-javascript.toml" in testing
     assert "left pane is plan-ordered top-level phases only" in testing
     assert "nested work is separate detail, not peer phases" in testing
@@ -84,6 +87,11 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`" in tool_readme
     assert "compatible saved profile such as `demo-javascript`" in tool_readme
     assert "filtered out instead of failing at execution time" in tool_readme
+    assert "Validation -> cli -> cli-stack" in tool_readme
+    assert "Validation -> host -> deploy-host" in tool_readme
+    assert "Validation -> platform -> container-local" in tool_readme
+    assert "`container-local` supports single function selection" in tool_readme
+    assert "`helm-stack` remains excluded from this selector path" in tool_readme
     assert "left pane is plan-ordered top-level phases only" in tool_readme
     assert "nested work is separate detail, not peer phases" in tool_readme
     assert "scripts/controlplane.sh loadtest show-profile quick" in tool_readme

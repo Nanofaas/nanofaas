@@ -82,6 +82,9 @@ scripts/controlplane.sh tui
 The interactive TUI owns profile selection and profile creation. Use the `Profiles` section to inspect saved profiles and the `Load Testing` / `Validation` sections to consume them.
 Within `Validation -> platform -> k3s-junit-curl`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
 The TUI only offers saved profiles and scenario manifests compatible with `k3s-junit-curl`; incompatible entries are filtered out instead of failing at execution time.
+The same generalized selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> container-local`.
+`cli-stack` and `deploy-host` accept built-in defaults, compatible presets, scenario files, and saved profiles. `container-local` supports single function selection, compatible single-function scenario files, and compatible single-function saved profiles.
+`helm-stack` remains excluded from this selector path because its runtime allowlist intentionally omits JavaScript for the compatibility workflow.
 
 In the live workflow view, the left pane is plan-ordered top-level phases only. nested work is separate detail, not peer phases, so verification substeps stay attached under the active phase instead of becoming new rows.
 
