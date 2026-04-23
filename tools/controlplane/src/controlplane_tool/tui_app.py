@@ -107,6 +107,19 @@ K3S_SELECTION_TARGET = TuiSelectionTarget(
     strict_base_scenarios=frozenset({"k3s-junit-curl"}),
 )
 
+CLI_STACK_SELECTION_TARGET = TuiSelectionTarget(
+    key="cli-stack",
+    label="cli-stack",
+    resolver_scenario="cli-stack",
+    selection_mode="multi",
+    allow_default=True,
+    allow_presets=True,
+    allow_single_functions=False,
+    allow_scenario_files=True,
+    allow_saved_profiles=True,
+    strict_base_scenarios=None,
+)
+
 
 def _prompt_function_selection(target: TuiSelectionTarget) -> TuiSelectionResult:
     while True:
@@ -177,6 +190,43 @@ def _prompt_function_selection(target: TuiSelectionTarget) -> TuiSelectionResult
                 ),
             )
         raise ValueError(f"Unsupported selection source: {source}")
+
+
+def _resolve_tui_e2e_request(
+    *,
+    scenario: str,
+    selection: TuiSelectionResult,
+    runtime: str,
+    lifecycle: str,
+    name: str | None,
+    host: str | None,
+    user: str,
+    home: str | None,
+    cpus: int,
+    memory: str,
+    disk: str,
+    cleanup_vm: bool,
+    namespace: str | None,
+    local_registry: str | None,
+):
+    from controlplane_tool.e2e_commands import _resolve_run_request
+
+    return _resolve_run_request(
+        scenario=scenario,
+        runtime=runtime,
+        lifecycle=lifecycle,
+        name=name,
+        host=host,
+        user=user,
+        home=home,
+        cpus=cpus,
+        memory=memory,
+        disk=disk,
+        cleanup_vm=cleanup_vm,
+        namespace=namespace,
+        local_registry=local_registry,
+        **selection.as_resolver_kwargs(),
+    )
 
 
 def _function_detail_choices() -> list[questionary.Choice]:
@@ -1097,13 +1147,23 @@ class NanofaasTUI:
 
         if runner_choice == "cli-stack":
             from controlplane_tool.e2e_runner import E2eRunner
-            from controlplane_tool.e2e_models import E2eRequest
-            from controlplane_tool.scenario_components.environment import default_managed_vm_request
 
-            cli_stack_request = E2eRequest(
+            selection = _prompt_function_selection(CLI_STACK_SELECTION_TARGET)
+            cli_stack_request = _resolve_tui_e2e_request(
                 scenario="cli-stack",
-                vm=default_managed_vm_request(),
-                local_registry=default_registry_url(),
+                selection=selection,
+                runtime="java",
+                lifecycle="multipass",
+                name="nanofaas-e2e",
+                host=None,
+                user="ubuntu",
+                home=None,
+                cpus=4,
+                memory="12G",
+                disk="30G",
+                cleanup_vm=False,
+                namespace=None,
+                local_registry=None,
             )
             cli_stack_plan = E2eRunner(repo_root).plan(cli_stack_request)
 
@@ -1116,6 +1176,7 @@ class NanofaasTUI:
                 flow = build_scenario_flow(
                     "cli-stack",
                     repo_root=repo_root,
+                    request=cli_stack_request,
                     event_listener=_on_step_event,
                 )
                 self._controller.run_shared_flow(flow)
@@ -1126,6 +1187,7 @@ class NanofaasTUI:
                 summary_lines=[
                     "Runner: cli-stack",
                     "Mode: canonical self-bootstrapping VM-backed CLI stack",
+                    *selection.summary_lines,
                 ],
                 planned_steps=[s.summary for s in cli_stack_plan.steps],
                 action=_run_cli_stack_workflow,

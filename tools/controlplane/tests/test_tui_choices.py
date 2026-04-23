@@ -326,7 +326,7 @@ def test_profile_view_shows_behavioral_defaults(monkeypatch) -> None:
 def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 
-    answers = iter(["cli-stack"])
+    answers = iter(["cli-stack", "default"])
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
@@ -345,9 +345,224 @@ def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
     assert captured["summary_lines"] == [
         "Runner: cli-stack",
         "Mode: canonical self-bootstrapping VM-backed CLI stack",
+        "Selection: built-in default",
     ]
     assert "Build nanofaas-cli installDist in VM" in captured["planned_steps"]
     assert "Verify cli-stack status fails" in captured["planned_steps"]
+
+
+def test_tui_cli_stack_default_selection_resolves_request_and_passes_it_to_flow(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+
+    answers = iter(["cli-stack", "default"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Build nanofaas-cli installDist in VM"),
+            SimpleNamespace(summary="Verify cli-stack status fails"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        called["event_listener"] = kwargs.get("event_listener")
+        return LocalFlowDefinition(flow_id="e2e.cli_stack", task_ids=["vm.ensure_running"], run=lambda: "ok")
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["result"] = flow()
+        return _completed_flow_result(flow_id, called["result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["summary_lines"] = summary_lines
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert called["scenario"] == "cli-stack"
+    assert called["flow_id"] == "e2e.cli_stack"
+    assert callable(called["event_listener"])
+    assert called["request"].scenario == "cli-stack"
+    assert called["request"].function_preset == "demo-java"
+    assert called["request"].saved_profile is None
+    assert called["request"].scenario_file is None
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-java",
+        "json-transform-java",
+    ]
+    assert called["summary_lines"] == [
+        "Runner: cli-stack",
+        "Mode: canonical self-bootstrapping VM-backed CLI stack",
+        "Selection: built-in default",
+    ]
+    assert called["planned_steps"] == [
+        "Build nanofaas-cli installDist in VM",
+        "Verify cli-stack status fails",
+    ]
+
+
+def test_tui_cli_stack_can_use_javascript_preset(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+
+    answers = iter(["cli-stack", "preset", "demo-javascript"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Build nanofaas-cli installDist in VM"),
+            SimpleNamespace(summary="Verify cli-stack status fails"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.cli_stack", task_ids=["vm.ensure_running"], run=lambda: "ok")
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["result"] = flow()
+        return _completed_flow_result(flow_id, called["result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert called["scenario"] == "cli-stack"
+    assert called["request"].scenario == "cli-stack"
+    assert called["request"].function_preset == "demo-javascript"
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
+
+
+def test_tui_cli_stack_can_use_saved_profile(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+
+    answers = iter(["cli-stack", "saved-profile", "demo-javascript"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Build nanofaas-cli installDist in VM"),
+            SimpleNamespace(summary="Verify cli-stack status fails"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.cli_stack", task_ids=["vm.ensure_running"], run=lambda: "ok")
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["result"] = flow()
+        return _completed_flow_result(flow_id, called["result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert called["scenario"] == "cli-stack"
+    assert called["request"].scenario == "cli-stack"
+    assert called["request"].function_preset == "demo-javascript"
+    assert called["request"].saved_profile == "demo-javascript"
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
+
+
+def test_tui_cli_stack_can_use_scenario_file(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.e2e_runner as e2e_runner
+    from controlplane_tool.paths import resolve_workspace_path
+
+    answers = iter(
+        [
+            "cli-stack",
+            "scenario-file",
+            "tools/controlplane/scenarios/k8s-demo-javascript.toml",
+        ]
+    )
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    class _FakePlan:
+        steps = [
+            SimpleNamespace(summary="Build nanofaas-cli installDist in VM"),
+            SimpleNamespace(summary="Verify cli-stack status fails"),
+        ]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.cli_stack", task_ids=["vm.ensure_running"], run=lambda: "ok")
+
+    def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow_id
+        called["result"] = flow()
+        return _completed_flow_result(flow_id, called["result"])
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._cli_e2e_menu()
+
+    assert called["scenario"] == "cli-stack"
+    assert called["request"].scenario == "cli-stack"
+    assert called["request"].scenario_file == resolve_workspace_path(
+        Path("tools/controlplane/scenarios/k8s-demo-javascript.toml")
+    )
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
 
 
 def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypatch) -> None:
