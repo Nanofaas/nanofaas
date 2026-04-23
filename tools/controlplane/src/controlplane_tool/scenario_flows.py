@@ -11,6 +11,9 @@ from controlplane_tool.scenario_components.environment import default_managed_vm
 from controlplane_tool.scenario_components.composer import compose_recipe
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
 
+ContainerLocalE2eRunner = None
+DeployHostE2eRunner = None
+
 
 def scenario_task_ids(scenario: str) -> list[str]:
     if scenario in {"container-local", "deploy-host", "cli", "cli-host"}:
@@ -41,6 +44,46 @@ def build_scenario_flow(
 ) -> LocalFlowDefinition[object]:
     flow_id = f"e2e.{scenario.replace('-', '_')}"
 
+    if scenario == "container-local":
+        runner_cls = ContainerLocalE2eRunner
+        if runner_cls is None:
+            from controlplane_tool.container_local_runner import (
+                ContainerLocalE2eRunner as runner_cls,
+            )
+
+        return LocalFlowDefinition(
+            flow_id=flow_id,
+            task_ids=scenario_task_ids(scenario),
+            run=lambda: runner_cls(
+                repo_root,
+                api_port=api_port,
+                mgmt_port=mgmt_port,
+                runtime_adapter=runtime_adapter,
+                control_plane_modules=control_plane_modules,
+            ).run(
+                scenario_file=scenario_file,
+                resolved_scenario=getattr(request, "resolved_scenario", None),
+            ),
+        )
+    if scenario == "deploy-host":
+        runner_cls = DeployHostE2eRunner
+        if runner_cls is None:
+            from controlplane_tool.deploy_host_runner import DeployHostE2eRunner as runner_cls
+
+        return LocalFlowDefinition(
+            flow_id=flow_id,
+            task_ids=scenario_task_ids(scenario),
+            run=lambda: runner_cls(
+                repo_root,
+                registry_port=registry_port,
+                control_plane_port=control_plane_port,
+            ).run(
+                scenario_file=scenario_file,
+                resolved_scenario=getattr(request, "resolved_scenario", None),
+                skip_cli_build=skip_cli_build,
+            ),
+        )
+
     if request is not None:
         return LocalFlowDefinition(
             flow_id=flow_id,
@@ -50,36 +93,6 @@ def build_scenario_flow(
 
     if scenario == "k3s-junit-curl":
         raise ValueError("scenario 'k3s-junit-curl' requires an executable request")
-
-    if scenario == "container-local":
-        from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
-
-        return LocalFlowDefinition(
-            flow_id=flow_id,
-            task_ids=scenario_task_ids(scenario),
-            run=lambda: ContainerLocalE2eRunner(
-                repo_root,
-                api_port=api_port,
-                mgmt_port=mgmt_port,
-                runtime_adapter=runtime_adapter,
-                control_plane_modules=control_plane_modules,
-            ).run(scenario_file=scenario_file),
-        )
-    if scenario == "deploy-host":
-        from controlplane_tool.deploy_host_runner import DeployHostE2eRunner
-
-        return LocalFlowDefinition(
-            flow_id=flow_id,
-            task_ids=scenario_task_ids(scenario),
-            run=lambda: DeployHostE2eRunner(
-                repo_root,
-                registry_port=registry_port,
-                control_plane_port=control_plane_port,
-            ).run(
-                scenario_file=scenario_file,
-                skip_cli_build=skip_cli_build,
-            ),
-        )
     if scenario == "cli":
         from controlplane_tool.cli_vm_runner import CliVmRunner
 

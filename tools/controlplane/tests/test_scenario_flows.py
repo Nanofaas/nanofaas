@@ -19,6 +19,28 @@ def _assert_order(task_ids: list[str], ordered_ids: list[str]) -> None:
     assert positions == sorted(positions)
 
 
+def _make_resolved_scenario(function_keys: list[str]):
+    from controlplane_tool.scenario_models import ResolvedFunction, ResolvedScenario
+
+    functions = [
+        ResolvedFunction(
+            key=key,
+            family=key.split("-", 1)[0],
+            runtime="javascript" if "javascript" in key else "java",
+            description=f"Resolved function {key}",
+            image=f"localhost:5000/nanofaas/{key}:e2e",
+        )
+        for key in function_keys
+    ]
+    return ResolvedScenario(
+        name="test-selection",
+        base_scenario="container-local" if len(function_keys) == 1 else "deploy-host",
+        runtime="java",
+        functions=functions,
+        function_keys=function_keys,
+    )
+
+
 def test_k3s_junit_curl_flow_uses_reusable_vm_build_and_deploy_tasks() -> None:
     flow = build_scenario_flow(
         "k3s-junit-curl",
@@ -129,6 +151,60 @@ def test_cli_stack_flow_no_longer_needs_a_preexisting_vm_request() -> None:
 
     assert flow.flow_id == "e2e.cli_stack"
     assert "vm.ensure_running" in flow.task_ids
+
+
+def test_container_local_flow_passes_resolved_scenario_to_runner(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            return None
+
+        def run(self, scenario_file=None, *, resolved_scenario=None):  # noqa: ANN001
+            captured["scenario_file"] = scenario_file
+            captured["resolved_scenario"] = resolved_scenario
+            return "ok"
+
+    monkeypatch.setattr(scenario_flows_mod, "ContainerLocalE2eRunner", FakeRunner, raising=False)
+
+    request = E2eRequest(
+        scenario="container-local",
+        resolved_scenario=_make_resolved_scenario(["word-stats-javascript"]),
+    )
+    flow = build_scenario_flow("container-local", repo_root=Path("/repo"), request=request)
+
+    assert flow.run() == "ok"
+    assert captured["scenario_file"] is None
+    assert captured["resolved_scenario"] is request.resolved_scenario
+
+
+def test_deploy_host_flow_passes_resolved_scenario_to_runner(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            return None
+
+        def run(self, scenario_file=None, *, resolved_scenario=None, skip_cli_build=False):  # noqa: ANN001
+            captured["scenario_file"] = scenario_file
+            captured["resolved_scenario"] = resolved_scenario
+            captured["skip_cli_build"] = skip_cli_build
+            return "ok"
+
+    monkeypatch.setattr(scenario_flows_mod, "DeployHostE2eRunner", FakeRunner, raising=False)
+
+    request = E2eRequest(
+        scenario="deploy-host",
+        resolved_scenario=_make_resolved_scenario(
+            ["word-stats-javascript", "json-transform-javascript"]
+        ),
+    )
+    flow = build_scenario_flow("deploy-host", repo_root=Path("/repo"), request=request)
+
+    assert flow.run() == "ok"
+    assert captured["scenario_file"] is None
+    assert captured["resolved_scenario"] is request.resolved_scenario
+    assert captured["skip_cli_build"] is False
 
 
 def test_k3s_junit_curl_flow_requires_request_for_executable_definition() -> None:

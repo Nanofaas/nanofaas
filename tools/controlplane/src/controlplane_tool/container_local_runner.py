@@ -188,10 +188,19 @@ class ContainerLocalE2eRunner:
                 dry_run=False,
             )
 
-    def run(self, scenario_file: Path | None = None) -> None:
+    def run(
+        self,
+        scenario_file: Path | None = None,
+        *,
+        resolved_scenario: "ResolvedScenario | None" = None,
+    ) -> None:
         import urllib.request
 
-        resolved = _resolve_scenario_file(scenario_file)
+        resolved = (
+            resolved_scenario
+            if resolved_scenario is not None
+            else _resolve_scenario_file(scenario_file)
+        )
         function_name, function_image, runtime_kind, family, payload_path = self._resolve_function(resolved)
         function_slug = "".join(c if c.isalnum() or c == "-" else "-" for c in function_name)
 

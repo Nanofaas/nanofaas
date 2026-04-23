@@ -159,11 +159,16 @@ class DeployHostE2eRunner:
         self,
         scenario_file: Path | None = None,
         *,
+        resolved_scenario: "ResolvedScenario | None" = None,
         skip_cli_build: bool = False,
     ) -> None:
         import time
 
-        resolved = _resolve_scenario_file(scenario_file)
+        resolved = (
+            resolved_scenario
+            if resolved_scenario is not None
+            else _resolve_scenario_file(scenario_file)
+        )
         selected_functions = self._resolve_functions(resolved)
 
         docker = select_container_runtime() or "docker"

@@ -472,6 +472,45 @@ def test_container_local_runner_builds_javascript_function_images(
     ]
 
 
+def test_container_local_runner_run_uses_explicit_resolved_scenario(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from controlplane_tool.scenario_models import ResolvedScenario
+
+    class StopRun(RuntimeError):
+        pass
+
+    resolved = ResolvedScenario(
+        name="selected-container-local",
+        base_scenario="container-local",
+        runtime="java",
+        functions=[_rf("word-stats-javascript", runtime="javascript")],
+        function_keys=["word-stats-javascript"],
+    )
+    runner = ContainerLocalE2eRunner(tmp_path)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        container_local_runner_mod,
+        "_resolve_scenario_file",
+        lambda scenario_file: (_ for _ in ()).throw(
+            AssertionError("scenario file resolution should be skipped when resolved_scenario is provided")
+        ),
+    )
+
+    def fake_resolve_function(incoming):  # noqa: ANN001
+        captured["resolved"] = incoming
+        raise StopRun()
+
+    monkeypatch.setattr(runner, "_resolve_function", fake_resolve_function)
+
+    with pytest.raises(StopRun):
+        runner.run(resolved_scenario=resolved)
+
+    assert captured["resolved"] is resolved
+
+
 def test_deploy_host_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -535,6 +574,48 @@ def test_deploy_host_runner_emits_balanced_top_level_phase_events_and_verify_chi
     assert {
         event.parent_task_id for event in _task_events(fake_sink, "deploy-host.verify.deploy-e2e")
     } == {"deploy-host.verify"}
+
+
+def test_deploy_host_runner_run_uses_explicit_resolved_scenario(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from controlplane_tool.scenario_models import ResolvedScenario
+
+    class StopRun(RuntimeError):
+        pass
+
+    resolved = ResolvedScenario(
+        name="selected-deploy-host",
+        base_scenario="deploy-host",
+        runtime="java",
+        functions=[
+            _rf("word-stats-javascript", runtime="javascript"),
+            _rf("json-transform-javascript", runtime="javascript"),
+        ],
+        function_keys=["word-stats-javascript", "json-transform-javascript"],
+    )
+    runner = DeployHostE2eRunner(tmp_path)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        deploy_host_runner_mod,
+        "_resolve_scenario_file",
+        lambda scenario_file: (_ for _ in ()).throw(
+            AssertionError("scenario file resolution should be skipped when resolved_scenario is provided")
+        ),
+    )
+
+    def fake_resolve_functions(incoming):  # noqa: ANN001
+        captured["resolved"] = incoming
+        raise StopRun()
+
+    monkeypatch.setattr(runner, "_resolve_functions", fake_resolve_functions)
+
+    with pytest.raises(StopRun):
+        runner.run(resolved_scenario=resolved)
+
+    assert captured["resolved"] is resolved
 
 
 def test_cli_stack_runner_emits_explicit_verify_parent_context_for_planned_steps(
