@@ -709,6 +709,157 @@ def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
     ]
 
 
+def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["function", "word-stats-javascript"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(
+            flow_id="e2e.container_local",
+            task_ids=["container-local.build"],
+            run=lambda: "ok",
+        )
+
+    def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow.flow_id
+        called["result"] = flow.run()
+        return called["result"]
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        called["summary_lines"] = summary_lines
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", fake_run_shared_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_container_local()
+
+    assert called["title"] == "E2E Scenarios"
+    assert called["scenario"] == "container-local"
+    assert called["flow_id"] == "e2e.container_local"
+    assert called["request"].scenario == "container-local"
+    assert called["request"].function_preset is None
+    assert called["request"].functions == ["word-stats-javascript"]
+    assert called["request"].saved_profile is None
+    assert called["request"].scenario_file is None
+    assert called["request"].resolved_scenario.function_keys == ["word-stats-javascript"]
+    assert called["summary_lines"] == [
+        "Scenario: container-local",
+        "Mode: local managed DEPLOYMENT path",
+        "Function: word-stats-javascript",
+    ]
+    assert called["planned_steps"] == ["Build", "Deploy", "Verify"]
+
+
+def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    from controlplane_tool.paths import resolve_workspace_path
+
+    answers = iter(
+        [
+            "scenario-file",
+            "tools/controlplane/scenarios/container-local-smoke.toml",
+        ]
+    )
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(
+            flow_id="e2e.container_local",
+            task_ids=["container-local.build"],
+            run=lambda: "ok",
+        )
+
+    def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow.flow_id
+        called["result"] = flow.run()
+        return called["result"]
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["summary_lines"] = summary_lines
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", fake_run_shared_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_container_local()
+
+    assert called["scenario"] == "container-local"
+    assert called["flow_id"] == "e2e.container_local"
+    assert called["request"].scenario == "container-local"
+    assert called["request"].scenario_file == resolve_workspace_path(
+        Path("tools/controlplane/scenarios/container-local-smoke.toml")
+    )
+    assert called["request"].functions == ["word-stats-java"]
+    assert called["request"].resolved_scenario.function_keys == ["word-stats-java"]
+    assert called["summary_lines"] == [
+        "Scenario: container-local",
+        "Mode: local managed DEPLOYMENT path",
+        "Scenario file: tools/controlplane/scenarios/container-local-smoke.toml",
+    ]
+
+
+def test_tui_container_local_warns_when_no_compatible_saved_profiles(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["saved-profile", "function", "word-stats-javascript"])
+    warnings: list[str] = []
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+    monkeypatch.setattr(tui_app, "warning", warnings.append)
+    monkeypatch.setattr(tui_app, "saved_profile_choices", lambda target: [])
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(
+            flow_id="e2e.container_local",
+            task_ids=["container-local.build"],
+            run=lambda: "ok",
+        )
+
+    def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow.flow_id
+        called["result"] = flow.run()
+        return called["result"]
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", fake_run_shared_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_container_local()
+
+    assert warnings == ["No compatible saved profiles found for container-local."]
+    assert called["scenario"] == "container-local"
+    assert called["flow_id"] == "e2e.container_local"
+    assert called["request"].functions == ["word-stats-javascript"]
+    assert called["request"].resolved_scenario.function_keys == ["word-stats-javascript"]
+
+
 def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 

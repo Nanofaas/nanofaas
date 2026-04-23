@@ -133,6 +133,19 @@ DEPLOY_HOST_SELECTION_TARGET = TuiSelectionTarget(
     strict_base_scenarios=None,
 )
 
+CONTAINER_LOCAL_SELECTION_TARGET = TuiSelectionTarget(
+    key="container-local",
+    label="container-local",
+    resolver_scenario="container-local",
+    selection_mode="single",
+    allow_default=True,
+    allow_presets=False,
+    allow_single_functions=True,
+    allow_scenario_files=True,
+    allow_saved_profiles=True,
+    strict_base_scenarios=None,
+)
+
 
 def _prompt_function_selection(target: TuiSelectionTarget) -> TuiSelectionResult:
     while True:
@@ -1050,18 +1063,41 @@ class NanofaasTUI:
             )
 
     def _run_container_local(self) -> None:
+        selection = _prompt_function_selection(CONTAINER_LOCAL_SELECTION_TARGET)
+        request = _resolve_tui_e2e_request(
+            scenario="container-local",
+            selection=selection,
+            runtime="java",
+            lifecycle="multipass",
+            name=None,
+            host=None,
+            user="ubuntu",
+            home=None,
+            cpus=4,
+            memory="12G",
+            disk="30G",
+            cleanup_vm=True,
+            namespace=None,
+            local_registry=None,
+        )
+
         def _run_container_local_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
             step("Running container-local E2E")
             flow = build_scenario_flow(
                 "container-local",
                 repo_root=default_tool_paths().workspace_root,
+                request=request,
             )
             self._controller.run_shared_flow(flow)
             success("container-local E2E completed")
 
         self._controller.run_live_workflow(
             title="E2E Scenarios",
-            summary_lines=["Scenario: container-local"],
+            summary_lines=[
+                "Scenario: container-local",
+                "Mode: local managed DEPLOYMENT path",
+                *selection.summary_lines,
+            ],
             planned_steps=["Build", "Deploy", "Verify"],
             action=_run_container_local_workflow,
         )
