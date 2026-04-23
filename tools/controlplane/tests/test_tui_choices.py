@@ -565,6 +565,150 @@ def test_tui_cli_stack_can_use_scenario_file(monkeypatch) -> None:
     ]
 
 
+def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["preset", "demo-javascript"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.build"], run=lambda: "ok")
+
+    def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow.flow_id
+        called["result"] = flow.run()
+        return called["result"]
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        called["summary_lines"] = summary_lines
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", fake_run_shared_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_deploy_host()
+
+    assert called["title"] == "E2E Scenarios"
+    assert called["scenario"] == "deploy-host"
+    assert called["flow_id"] == "e2e.deploy_host"
+    assert called["request"].scenario == "deploy-host"
+    assert called["request"].function_preset == "demo-javascript"
+    assert called["request"].saved_profile is None
+    assert called["request"].scenario_file is None
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
+    assert called["summary_lines"] == [
+        "Scenario: deploy-host",
+        "Mode: host-side build/push/register compatibility path",
+        "Function preset: demo-javascript",
+    ]
+    assert called["planned_steps"] == ["Build", "Deploy", "Verify"]
+
+
+def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["saved-profile", "demo-javascript"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.build"], run=lambda: "ok")
+
+    def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow.flow_id
+        called["result"] = flow.run()
+        return called["result"]
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["summary_lines"] = summary_lines
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", fake_run_shared_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_deploy_host()
+
+    assert called["scenario"] == "deploy-host"
+    assert called["flow_id"] == "e2e.deploy_host"
+    assert called["request"].scenario == "deploy-host"
+    assert called["request"].function_preset == "demo-javascript"
+    assert called["request"].saved_profile == "demo-javascript"
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
+    assert called["summary_lines"] == [
+        "Scenario: deploy-host",
+        "Mode: host-side build/push/register compatibility path",
+        "Saved profile: demo-javascript",
+    ]
+
+
+def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+    from controlplane_tool.paths import resolve_workspace_path
+
+    answers = iter(
+        [
+            "scenario-file",
+            "tools/controlplane/scenarios/k8s-demo-javascript.toml",
+        ]
+    )
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.build"], run=lambda: "ok")
+
+    def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
+        called["flow_id"] = flow.flow_id
+        called["result"] = flow.run()
+        return called["result"]
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", fake_run_shared_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_deploy_host()
+
+    assert called["scenario"] == "deploy-host"
+    assert called["flow_id"] == "e2e.deploy_host"
+    assert called["request"].scenario == "deploy-host"
+    assert called["request"].scenario_file == resolve_workspace_path(
+        Path("tools/controlplane/scenarios/k8s-demo-javascript.toml")
+    )
+    assert called["request"].resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
+
+
 def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
 

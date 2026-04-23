@@ -120,6 +120,19 @@ CLI_STACK_SELECTION_TARGET = TuiSelectionTarget(
     strict_base_scenarios=None,
 )
 
+DEPLOY_HOST_SELECTION_TARGET = TuiSelectionTarget(
+    key="deploy-host",
+    label="deploy-host",
+    resolver_scenario="deploy-host",
+    selection_mode="multi",
+    allow_default=True,
+    allow_presets=True,
+    allow_single_functions=False,
+    allow_scenario_files=True,
+    allow_saved_profiles=True,
+    strict_base_scenarios=None,
+)
+
 
 def _prompt_function_selection(target: TuiSelectionTarget) -> TuiSelectionResult:
     while True:
@@ -1054,18 +1067,41 @@ class NanofaasTUI:
         )
 
     def _run_deploy_host(self) -> None:
+        selection = _prompt_function_selection(DEPLOY_HOST_SELECTION_TARGET)
+        request = _resolve_tui_e2e_request(
+            scenario="deploy-host",
+            selection=selection,
+            runtime="java",
+            lifecycle="multipass",
+            name=None,
+            host=None,
+            user="ubuntu",
+            home=None,
+            cpus=4,
+            memory="12G",
+            disk="30G",
+            cleanup_vm=True,
+            namespace=None,
+            local_registry=None,
+        )
+
         def _run_deploy_host_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
             step("Running deploy-host E2E")
             flow = build_scenario_flow(
                 "deploy-host",
                 repo_root=default_tool_paths().workspace_root,
+                request=request,
             )
             self._controller.run_shared_flow(flow)
             success("deploy-host E2E completed")
 
         self._controller.run_live_workflow(
             title="E2E Scenarios",
-            summary_lines=["Scenario: deploy-host"],
+            summary_lines=[
+                "Scenario: deploy-host",
+                "Mode: host-side build/push/register compatibility path",
+                *selection.summary_lines,
+            ],
             planned_steps=["Build", "Deploy", "Verify"],
             action=_run_deploy_host_workflow,
         )
