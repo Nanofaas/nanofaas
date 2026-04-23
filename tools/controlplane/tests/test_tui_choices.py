@@ -963,6 +963,7 @@ def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path
 
 
 def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch) -> None:
+    import controlplane_tool.tui_selection as selection
     import controlplane_tool.tui_app as tui_app
 
     fake_paths = SimpleNamespace(
@@ -985,24 +986,59 @@ def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch)
 
     def fake_load(path: Path):  # noqa: ANN001
         if path.name == "k8s-demo-javascript.toml":
-            return SimpleNamespace(base_scenario="k3s-junit-curl", name="k8s-demo-javascript")
+            return SimpleNamespace(
+                base_scenario="k3s-junit-curl",
+                name="k8s-demo-javascript",
+                function_keys=["word-stats-javascript", "json-transform-javascript"],
+                functions=[
+                    SimpleNamespace(
+                        key="word-stats-javascript",
+                        runtime="javascript",
+                        image="localhost:5000/nanofaas/javascript-word-stats:e2e",
+                        example_dir=Path("examples/javascript/word-stats"),
+                    ),
+                    SimpleNamespace(
+                        key="json-transform-javascript",
+                        runtime="javascript",
+                        image="localhost:5000/nanofaas/javascript-json-transform:e2e",
+                        example_dir=Path("examples/javascript/json-transform"),
+                    ),
+                ],
+            )
         if path.name == "k8s-demo-all.toml":
-            return SimpleNamespace(base_scenario="helm-stack", name="k8s-demo-all")
+            return SimpleNamespace(
+                base_scenario="helm-stack",
+                name="k8s-demo-all",
+                function_keys=["word-stats-java"],
+                functions=[
+                    SimpleNamespace(
+                        key="word-stats-java",
+                        runtime="java",
+                        image="localhost:5000/nanofaas/java-word-stats:e2e",
+                        example_dir=Path("examples/java/word-stats"),
+                    ),
+                ],
+            )
         raise ValueError("invalid manifest")
 
-    monkeypatch.setattr(tui_app, "load_scenario_file", fake_load)
+    monkeypatch.setattr(selection, "load_scenario_file", fake_load)
+    monkeypatch.setattr(selection, "default_tool_paths", lambda: fake_paths)
 
-    values = [choice.value for choice in tui_app._k3s_scenario_file_choices()]
+    values = [
+        choice.value
+        for choice in tui_app.scenario_file_choices(tui_app.K3S_SELECTION_TARGET)
+    ]
     assert values == ["tools/controlplane/scenarios/k8s-demo-javascript.toml"]
 
 
 def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) -> None:
+    import controlplane_tool.tui_selection as selection
     import controlplane_tool.tui_app as tui_app
 
     monkeypatch.setattr(
-        tui_app,
+        selection,
         "list_profiles",
-        lambda: ["demo-javascript", "bad-helm", "generic"],
+        lambda: ["demo-javascript", "fixture-only", "generic"],
     )
 
     def fake_load_profile(name: str):  # noqa: ANN001
@@ -1010,27 +1046,36 @@ def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) 
             return SimpleNamespace(
                 scenario=SimpleNamespace(
                     base_scenario="k3s-junit-curl",
+                    function_preset="demo-javascript",
+                    functions=[],
                     scenario_file=None,
                 )
             )
-        if name == "bad-helm":
+        if name == "fixture-only":
             return SimpleNamespace(
                 scenario=SimpleNamespace(
-                    base_scenario="helm-stack",
+                    base_scenario="k3s-junit-curl",
+                    function_preset="metrics-smoke",
+                    functions=[],
                     scenario_file=None,
                 )
             )
         return SimpleNamespace(
             scenario=SimpleNamespace(
                 base_scenario=None,
+                function_preset=None,
+                functions=[],
                 scenario_file=None,
             )
         )
 
-    monkeypatch.setattr(tui_app, "load_profile", fake_load_profile)
+    monkeypatch.setattr(selection, "load_profile", fake_load_profile)
 
-    values = [choice.value for choice in tui_app._k3s_saved_profile_choices()]
-    assert values == ["demo-javascript", "generic"]
+    values = [
+        choice.value
+        for choice in tui_app.saved_profile_choices(tui_app.K3S_SELECTION_TARGET)
+    ]
+    assert values == ["demo-javascript"]
 
 
 def test_tui_k3s_junit_curl_dry_run_plan_waits_for_acknowledge(monkeypatch) -> None:
@@ -1451,7 +1496,7 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_scenario_files(monkeypatch)
 
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
     monkeypatch.setattr(tui_app, "warning", warnings.append)
-    monkeypatch.setattr(tui_app, "_k3s_scenario_file_choices", lambda: [])
+    monkeypatch.setattr(tui_app, "scenario_file_choices", lambda target: [])
 
     class _FakePlan:
         steps = [
@@ -1506,7 +1551,7 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_saved_profiles(monkeypatch)
 
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(answers))
     monkeypatch.setattr(tui_app, "warning", warnings.append)
-    monkeypatch.setattr(tui_app, "_k3s_saved_profile_choices", lambda: [])
+    monkeypatch.setattr(tui_app, "saved_profile_choices", lambda target: [])
 
     class _FakePlan:
         steps = [
