@@ -60,3 +60,14 @@ def test_cli_test_request_cli_stack_can_be_resolved_without_vm(
     assert context.request is request
     assert context.vm_request is not None
     assert context.vm_request == VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+
+
+def test_cli_stack_environment_resolver_sets_isolated_namespace_and_release(
+    tmp_path: Path,
+) -> None:
+    request = E2eRequest(scenario="cli-stack", runtime="java", vm=None, namespace=None)
+
+    context = resolve_scenario_environment(repo_root=tmp_path, request=request)
+
+    assert context.namespace == "nanofaas-cli-stack-e2e"
+    assert context.release == "nanofaas-cli-stack-e2e"

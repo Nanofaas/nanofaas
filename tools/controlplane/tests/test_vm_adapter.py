@@ -67,6 +67,22 @@ def test_vm_sync_external_plans_rsync_via_shell() -> None:
 
     assert "vm.example.test" in " ".join(orchestrator.shell.commands[0])
     assert any(tool in orchestrator.shell.commands[0] for tool in ("rsync", "scp"))
+    assert "--delete-excluded" in orchestrator.shell.commands[0]
+    assert "--exclude=.venv/" in orchestrator.shell.commands[0]
+    assert "--exclude=node_modules/" in orchestrator.shell.commands[0]
+
+
+def test_vm_sync_multipass_plans_rsync_with_generated_artifact_excludes() -> None:
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=RecordingShell())
+    request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+
+    result = orchestrator.sync_project(request, dry_run=True)
+
+    assert result.command[:4] == ["rsync", "-az", "--delete", "--delete-excluded"]
+    assert "--exclude=.venv/" in result.command
+    assert "--exclude=node_modules/" in result.command
+    assert "--exclude=.git/" in result.command
+    assert "ubuntu@<multipass-ip:nanofaas-e2e>:/home/ubuntu/nanofaas/" in result.command[-1]
 
 
 def test_ensure_running_is_idempotent_for_existing_multipass_vm() -> None:

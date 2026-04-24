@@ -8,8 +8,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
-e2e_set_log_prefix "mem-ab-batch"
+COMMON_SH="${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
+if [[ -f "${COMMON_SH}" ]]; then
+    source "${COMMON_SH}"
+    e2e_set_log_prefix "mem-ab-batch"
+else
+    e2e_log() { printf '[mem-ab-batch] %s\n' "$*"; }
+    e2e_err() { printf '[mem-ab-batch] ERROR: %s\n' "$*" >&2; }
+fi
 
 AB_MODE="${AB_MODE:-local}"                    # local | ssh
 AB_RUNS="${AB_RUNS:-3}"                        # positive integer

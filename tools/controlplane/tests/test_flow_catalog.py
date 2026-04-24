@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -41,6 +42,27 @@ def test_flow_catalog_resolves_cli_stack_task_ids() -> None:
     task_ids = resolve_flow_task_ids("e2e.cli-stack")
 
     assert task_ids == [component.component_id for component in compose_recipe(recipe)]
+
+
+def test_flow_catalog_passes_none_for_namespace_and_release_defaults(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        flow_catalog_mod,
+        "build_scenario_flow",
+        lambda scenario, **kwargs: captured.update({"scenario": scenario, **kwargs})
+        or SimpleNamespace(flow_id="stub", task_ids=[], run=lambda: None),
+    )
+
+    resolve_flow_definition(
+        "e2e.cli-stack",
+        repo_root=Path("/repo"),
+        request=E2eRequest(scenario="cli-stack"),
+    )
+
+    assert captured["scenario"] == "cli-stack"
+    assert captured["namespace"] is None
+    assert captured["release"] is None
 
 
 def test_flow_catalog_resolves_container_local_task_ids_from_legacy_mapping() -> None:

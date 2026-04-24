@@ -60,26 +60,18 @@ def plan_recipe_steps(
     release: str | None = None,
     manifest_root: Path | None = None,
 ) -> list[ScenarioPlanStep]:
-    effective_release = release or (
-        "nanofaas-cli-stack-e2e" if scenario_name == "cli-stack" else "control-plane"
-    )
     context: ScenarioExecutionContext = resolve_scenario_environment(
         repo_root,
         request,
         manifest_root=manifest_root,
-        release=effective_release,
+        release=release,
     )
     recipe = build_scenario_recipe(scenario_name)
     runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root)
-    namespace = context.namespace
-    if namespace is None and context.resolved_scenario is not None:
-        namespace = context.resolved_scenario.namespace
-    if namespace is None:
-        namespace = "nanofaas-e2e"
     cli_context = CliComponentContext(
         repo_root=repo_root,
-        release=effective_release,
-        namespace=namespace,
+        release=context.release,
+        namespace=context.namespace,
         local_registry=context.local_registry,
         resolved_scenario=context.resolved_scenario,
     )

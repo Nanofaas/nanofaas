@@ -17,6 +17,10 @@ from controlplane_tool.cli_platform_workflow import (
     platform_uninstall_command,
 )
 from controlplane_tool.console import phase, success, workflow_step
+from controlplane_tool.scenario_defaults import (
+    resolve_scenario_namespace,
+    resolve_scenario_release,
+)
 from controlplane_tool.scenario_components.environment import default_managed_vm_request
 from controlplane_tool.scenario_helpers import (
     function_image as _function_image,
@@ -43,16 +47,28 @@ class CliStackRunner:
         repo_root: Path,
         *,
         vm_request: VmRequest | None = None,
-        namespace: str = "nanofaas-cli-stack-e2e",
-        release: str = "nanofaas-cli-stack-e2e",
+        namespace: str | None = None,
+        release: str | None = None,
         local_registry: str = "localhost:5000",
         runtime: str = "java",
         skip_cli_build: bool = False,
     ) -> None:
+        default_namespace = resolve_scenario_namespace(
+            "cli-stack",
+            explicit_namespace=namespace,
+            resolved_scenario_namespace=None,
+        )
+        resolved_release = resolve_scenario_release(
+            "cli-stack",
+            explicit_release=release,
+        )
+        if default_namespace is None or resolved_release is None:
+            raise ValueError("cli-stack requires resolved namespace and release defaults")
         self.repo_root = Path(repo_root)
         self.vm_request = vm_request or default_managed_vm_request()
-        self.namespace = namespace
-        self.release = release
+        self._explicit_namespace = namespace
+        self.namespace = default_namespace
+        self.release = resolved_release
         self.local_registry = local_registry
         self.runtime = runtime
         self.skip_cli_build = skip_cli_build
@@ -111,12 +127,21 @@ class CliStackRunner:
             if resolved_scenario is not None
             else None
         )
+        effective_namespace = resolve_scenario_namespace(
+            "cli-stack",
+            explicit_namespace=self._explicit_namespace,
+            resolved_scenario_namespace=(
+                effective_scenario.namespace if effective_scenario is not None else None
+            ),
+        )
+        if effective_namespace is None:
+            raise ValueError("cli-stack plan requires a resolved namespace")
         request = E2eRequest(
             scenario="cli-stack",
             runtime=self.runtime,
             resolved_scenario=effective_scenario,
             vm=self.vm_request,
-            namespace=self.namespace,
+            namespace=effective_namespace,
             local_registry=self.local_registry,
         )
         return plan_recipe_steps(

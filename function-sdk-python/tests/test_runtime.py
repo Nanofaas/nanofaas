@@ -101,10 +101,10 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
     mock_response = MagicMock()
     mock_response.status_code = 200
 
-    async def _success():
+    async def _to_thread(*args, **kwargs):
         return mock_response
 
-    mock_to_thread.side_effect = lambda *args, **kwargs: _success()
+    mock_to_thread.side_effect = _to_thread
 
     @decorator.nanofaas_function
     def mock_handler(input_data):

@@ -218,6 +218,35 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
     assert all(step.step_id for step in plan.steps)
 
 
+def test_cli_stack_plan_defaults_to_isolated_namespace_for_all_recipe_steps() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    plan = runner.plan(
+        E2eRequest(
+            scenario="cli-stack",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+            namespace=None,
+        )
+    )
+
+    rendered = [
+        " ".join(step.command)
+        for step in plan.steps
+        if any(
+            token in " ".join(step.command)
+            for token in (
+                "platform install",
+                "platform status",
+                "helm uninstall",
+                "kubectl delete namespace",
+            )
+        )
+    ]
+
+    assert rendered
+    assert all("nanofaas-cli-stack-e2e" in command for command in rendered)
+
+
 def test_buildpack_plan_assigns_step_ids_to_all_executable_steps() -> None:
     plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
         E2eRequest(scenario="buildpack", runtime="java")

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import controlplane_tool.cli_host_runner as cli_host_runner_mod
 import controlplane_tool.scenario_flows as scenario_flows_mod
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.e2e_runner import E2eRunner
@@ -118,6 +119,44 @@ def test_cli_stack_flow_task_ids_follow_recipe_composition(monkeypatch) -> None:
     ]
 
 
+def test_cli_stack_flow_requestless_execution_preserves_scenario_file_namespace(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    called: dict[str, object] = {}
+    resolved_scenario = _make_resolved_scenario(["word-stats-javascript"]).model_copy(
+        update={"base_scenario": "cli-stack", "namespace": "scenario-namespace"}
+    )
+    scenario_file = tmp_path / "cli-stack.toml"
+
+    monkeypatch.setattr(
+        scenario_flows_mod,
+        "_resolve_scenario",
+        lambda path: resolved_scenario if path == scenario_file else None,  # noqa: ARG005
+        raising=False,
+    )
+    monkeypatch.setattr(
+        scenario_flows_mod.E2eRunner,
+        "run",
+        lambda self, request, event_listener=None: called.update(  # noqa: ANN001
+            {"request": request, "event_listener": event_listener}
+        )
+        or "ok",
+    )
+
+    flow = build_scenario_flow(
+        "cli-stack",
+        repo_root=Path("/repo"),
+        scenario_file=scenario_file,
+        namespace=None,
+    )
+
+    assert flow.run() == "ok"
+    assert called["request"].scenario_file == scenario_file
+    assert called["request"].resolved_scenario == resolved_scenario
+    assert called["request"].namespace == "scenario-namespace"
+
+
 def test_k3s_junit_curl_flow_task_ids_are_derived_from_the_recipe() -> None:
     flow = build_scenario_flow(
         "k3s-junit-curl",
@@ -151,6 +190,31 @@ def test_cli_stack_flow_no_longer_needs_a_preexisting_vm_request() -> None:
 
     assert flow.flow_id == "e2e.cli_stack"
     assert "vm.ensure_running" in flow.task_ids
+
+
+def test_cli_host_flow_resolves_namespace_and_release_via_shared_defaults(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, *args, **kwargs):  # noqa: ANN001
+            captured["namespace"] = kwargs["namespace"]
+            captured["release"] = kwargs["release"]
+
+        def run(self, scenario_file=None):  # noqa: ANN001
+            return "ok"
+
+    monkeypatch.setattr(cli_host_runner_mod, "CliHostPlatformRunner", FakeRunner)
+
+    flow = build_scenario_flow(
+        "cli-host",
+        repo_root=Path("/repo"),
+        namespace=None,
+        release=None,
+    )
+
+    assert flow.run() == "ok"
+    assert captured["namespace"] == "nanofaas-host-cli-e2e"
+    assert captured["release"] == "nanofaas-host-cli-e2e"
 
 
 def test_container_local_flow_passes_resolved_scenario_to_runner(monkeypatch) -> None:

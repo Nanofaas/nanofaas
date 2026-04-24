@@ -52,11 +52,27 @@ class CliTestRunner:
             del commands[initial_count:]
 
     def _execute_steps(self, plan: CliTestPlan) -> None:
+        ip_cache: dict[str, str] = {}
         for step in plan.steps:
+            command = step.command
+            env = step.env
+            if plan.request.vm is not None:
+                command = self.e2e_runner._resolver._resolve_command(
+                    command,
+                    plan.request.vm,
+                    ip_cache,
+                    self.e2e_runner.vm,
+                )
+                env = self.e2e_runner._resolver._resolve_env(
+                    env,
+                    plan.request.vm,
+                    ip_cache,
+                    self.e2e_runner.vm,
+                )
             result = self.shell.run(
-                step.command,
+                command,
                 cwd=self.paths.workspace_root,
-                env=step.env,
+                env=env,
                 dry_run=False,
             )
             if result.return_code != 0:
@@ -77,16 +93,6 @@ class CliTestRunner:
             summary="Build nanofaas-cli installDist",
             command=["./gradlew", scenario.gradle_task, "--no-daemon"],
         )
-
-    def _cli_stack_steps(self, request: CliTestRequest) -> list[ScenarioPlanStep]:
-        return CliStackRunner(
-            self.paths.workspace_root,
-            vm_request=request.vm,
-            namespace=request.namespace or "nanofaas-cli-stack-e2e",
-            local_registry=request.local_registry,
-            runtime=request.runtime,
-            skip_cli_build=False,
-        ).plan_steps(request.resolved_scenario)
 
     def _as_e2e_request(
         self,
@@ -147,7 +153,7 @@ class CliTestRunner:
             runner = CliStackRunner(
                 self.paths.workspace_root,
                 vm_request=request.vm,
-                namespace=request.namespace or "nanofaas-cli-stack-e2e",
+                namespace=request.namespace,
                 local_registry=request.local_registry,
                 runtime=request.runtime,
                 skip_cli_build=False,

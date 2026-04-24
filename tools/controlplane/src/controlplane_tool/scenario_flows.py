@@ -7,9 +7,14 @@ from controlplane_tool.e2e_runner import E2eRunner
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.prefect_models import LocalFlowDefinition
 from controlplane_tool.registry_runtime import default_registry_url
+from controlplane_tool.scenario_defaults import (
+    resolve_scenario_namespace,
+    resolve_scenario_release,
+)
 from controlplane_tool.scenario_components.environment import default_managed_vm_request
 from controlplane_tool.scenario_components.composer import compose_recipe
 from controlplane_tool.scenario_components.recipes import build_scenario_recipe
+from controlplane_tool.scenario_helpers import resolve_scenario as _resolve_scenario
 
 ContainerLocalE2eRunner = None
 DeployHostE2eRunner = None
@@ -29,11 +34,11 @@ def build_scenario_flow(
     request=None,
     event_listener: Callable[[object], None] | None = None,
     scenario_file: Path | None = None,
-    namespace: str = "nanofaas-e2e",
+    namespace: str | None = None,
     local_registry: str = "",
     runtime: str = "java",
     skip_cli_build: bool = False,
-    release: str = "nanofaas-host-cli-e2e",
+    release: str | None = None,
     noninteractive: bool = True,
     api_port: int | None = None,
     mgmt_port: int | None = None,
@@ -43,6 +48,15 @@ def build_scenario_flow(
     control_plane_port: int | None = None,
 ) -> LocalFlowDefinition[object]:
     flow_id = f"e2e.{scenario.replace('-', '_')}"
+    effective_namespace = resolve_scenario_namespace(
+        scenario,
+        explicit_namespace=namespace,
+        resolved_scenario_namespace=None,
+    )
+    effective_release = resolve_scenario_release(
+        scenario,
+        explicit_release=release,
+    )
 
     if scenario == "container-local":
         runner_cls = ContainerLocalE2eRunner
@@ -101,21 +115,33 @@ def build_scenario_flow(
             task_ids=scenario_task_ids(scenario),
             run=lambda: CliVmRunner(
                 repo_root,
-                namespace=namespace,
+                namespace=effective_namespace,
                 local_registry=local_registry or default_registry_url(),
                 runtime=runtime,
                 skip_cli_build=skip_cli_build,
             ).run(scenario_file=scenario_file),
         )
     if scenario == "cli-stack":
-        effective_namespace = (
-            "nanofaas-cli-stack-e2e" if namespace == "nanofaas-e2e" else namespace
+        resolved_scenario = _resolve_scenario(scenario_file)
+        effective_scenario = (
+            resolved_scenario.model_copy(update={"base_scenario": "cli-stack"})
+            if resolved_scenario is not None
+            else None
+        )
+        cli_stack_namespace = resolve_scenario_namespace(
+            "cli-stack",
+            explicit_namespace=namespace,
+            resolved_scenario_namespace=(
+                effective_scenario.namespace if effective_scenario is not None else None
+            ),
         )
         e2e_request = E2eRequest(
             scenario="cli-stack",
             runtime=runtime,
+            scenario_file=scenario_file,
+            resolved_scenario=effective_scenario,
             vm=default_managed_vm_request(),
-            namespace=effective_namespace,
+            namespace=cli_stack_namespace,
             local_registry=local_registry or default_registry_url(),
             cleanup_vm=False,
         )
@@ -132,8 +158,8 @@ def build_scenario_flow(
             task_ids=scenario_task_ids(scenario),
             run=lambda: CliHostPlatformRunner(
                 repo_root,
-                namespace=namespace,
-                release=release,
+                namespace=effective_namespace,
+                release=effective_release,
                 local_registry=local_registry or default_registry_url(),
                 runtime=runtime,
                 skip_cli_build=skip_cli_build,
@@ -145,7 +171,7 @@ def build_scenario_flow(
             runtime=runtime,
             vm=default_managed_vm_request(),
             helm_noninteractive=noninteractive,
-            namespace=namespace,
+            namespace=effective_namespace,
             local_registry=local_registry or default_registry_url(),
             cleanup_vm=False,
         )

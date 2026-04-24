@@ -6,13 +6,16 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "image-builder"))
-questionary_stub = types.ModuleType("questionary")
-questionary_stub.Separator = lambda value: value
-questionary_stub.checkbox = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: [])
-questionary_stub.text = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: "")
-questionary_stub.select = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: "")
-questionary_stub.confirm = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: False)
-sys.modules.setdefault("questionary", questionary_stub)
+try:
+    import questionary  # noqa: F401
+except ImportError:
+    questionary_stub = types.ModuleType("questionary")
+    questionary_stub.Separator = lambda value: value
+    questionary_stub.checkbox = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: [])
+    questionary_stub.text = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: "")
+    questionary_stub.select = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: "")
+    questionary_stub.confirm = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: False)
+    sys.modules.setdefault("questionary", questionary_stub)
 
 import image_builder as ib
 

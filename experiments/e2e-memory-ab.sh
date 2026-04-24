@@ -51,6 +51,19 @@ RUN_EPOCH_ON=${RUN_EPOCH_ON:-true}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    cat <<EOF
+Usage: ./experiments/e2e-memory-ab.sh
+
+Runs baseline and epoch-enabled scenarios and writes comparison.md/comparison.json.
+EOF
+    exit 0
+fi
+runtime_kind_early="$(printf '%s' "${CONTROL_PLANE_RUNTIME}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${runtime_kind_early}" == "rust" ]]; then
+    echo "SKIP: e2e-memory-ab targets Java control-plane JVM memory profiling and is not supported for CONTROL_PLANE_RUNTIME=rust."
+    exit 0
+fi
 source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "mem-ab"
 

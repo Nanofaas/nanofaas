@@ -41,7 +41,7 @@ def _managed_context(
     [
         (bootstrap.plan_vm_ensure_running, "vm.ensure_running", ("multipass", "launch")),
         (bootstrap.plan_vm_provision_base, "vm.provision_base", ("ansible-playbook",)),
-        (bootstrap.plan_repo_sync_to_vm, "repo.sync_to_vm", ("multipass", "transfer", "-r")),
+        (bootstrap.plan_repo_sync_to_vm, "repo.sync_to_vm", ("rsync", "-az", "--delete", "--delete-excluded")),
     ],
 )
 def test_bootstrap_component_planners_return_typed_remote_operations(
@@ -71,8 +71,23 @@ def test_bootstrap_component_planners_cover_external_vm_branch() -> None:
     sync_operations = bootstrap.plan_repo_sync_to_vm(context)
 
     assert ensure_operations[0].argv[:3] == ("ssh", "ubuntu@10.0.0.10", "true")
-    assert sync_operations[0].argv[:4] == ("rsync", "-az", "--delete", "/repo/")
+    assert sync_operations[0].argv[:4] == ("rsync", "-az", "--delete", "--delete-excluded")
+    assert "--exclude=.venv/" in sync_operations[0].argv
+    assert "--exclude=node_modules/" in sync_operations[0].argv
+    assert "/repo/" in sync_operations[0].argv
     assert "ubuntu@10.0.0.10:/home/ubuntu/nanofaas/" in sync_operations[0].argv[-1]
+
+
+def test_repo_sync_to_vm_excludes_local_generated_artifacts_for_managed_vm() -> None:
+    operations = bootstrap.plan_repo_sync_to_vm(_managed_context())
+
+    operation = operations[0]
+    assert operation.argv[:4] == ("rsync", "-az", "--delete", "--delete-excluded")
+    assert "--delete-excluded" in operation.argv
+    assert "--exclude=.venv/" in operation.argv
+    assert "--exclude=node_modules/" in operation.argv
+    assert "--exclude=.git/" in operation.argv
+    assert "ubuntu@<multipass-ip:nanofaas-e2e>:/home/ubuntu/nanofaas/" in operation.argv[-1]
 
 
 def test_registry_component_planner_uses_vm_remote_ansible_operation() -> None:

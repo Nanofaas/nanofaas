@@ -9,7 +9,11 @@ from controlplane_tool.paths import ToolPaths
 from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation, ScenarioOperation
-from controlplane_tool.vm_adapter import _find_ssh_private_key_path
+from controlplane_tool.vm_adapter import (
+    _find_ssh_private_key_path,
+    repo_rsync_command,
+    repo_sync_ssh_rsh,
+)
 from controlplane_tool.vm_models import VmRequest
 
 
@@ -132,12 +136,13 @@ def plan_repo_sync_to_vm(context: ScenarioExecutionContext) -> tuple[ScenarioOpe
             RemoteCommandOperation(
                 operation_id="repo.sync_to_vm",
                 summary="Sync repository into VM",
-                argv=(
-                    "rsync",
-                    "-az",
-                    "--delete",
-                    f"{context.repo_root}/",
-                    f"{vm_request.user}@{vm_request.host}:{destination}/",
+                argv=tuple(
+                    repo_rsync_command(
+                        source=context.repo_root,
+                        user=vm_request.user,
+                        host=vm_request.host,
+                        destination=destination,
+                    )
                 ),
             ),
         )
@@ -146,7 +151,17 @@ def plan_repo_sync_to_vm(context: ScenarioExecutionContext) -> tuple[ScenarioOpe
         RemoteCommandOperation(
             operation_id="repo.sync_to_vm",
             summary="Sync repository into VM",
-            argv=("multipass", "transfer", "-r", str(context.repo_root), f"{vm_request.name or 'nanofaas-e2e'}:{destination}"),
+            argv=tuple(
+                repo_rsync_command(
+                    source=context.repo_root,
+                    user=vm_request.user,
+                    host=f"<multipass-ip:{vm_request.name or 'nanofaas-e2e'}>",
+                    destination=destination,
+                    ssh_rsh=repo_sync_ssh_rsh(
+                        _find_ssh_private_key_path(find_ssh_public_key())
+                    ),
+                )
+            ),
         ),
     )
 

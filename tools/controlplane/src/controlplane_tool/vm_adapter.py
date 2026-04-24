@@ -42,6 +42,77 @@ def _ok(command: list[str], *, stdout: str = "") -> ShellExecutionResult:
     return ShellExecutionResult(command=command, return_code=0, stdout=stdout)
 
 
+REPO_SYNC_EXCLUDE_PATTERNS = (
+    ".git",
+    ".git/",
+    ".gitnexus",
+    ".gradle/",
+    ".gradle-local/",
+    ".DS_Store",
+    ".idea/",
+    ".vscode/",
+    ".env",
+    "*.log",
+    "*.class",
+    ".worktrees/",
+    "__pycache__/",
+    "*.egg-info/",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".pytest_cache/",
+    ".venv/",
+    ".uv/",
+    "node_modules/",
+    "dist/",
+    "build/",
+    "out/",
+    "target/",
+    "build-test/",
+    "k6/results/",
+    "experiments/k6/results/",
+    "experiments/loadtest/results/",
+    "experiments/.image-cache/",
+    "tooling/runs/",
+    "tools/controlplane/runs/",
+    "recovery/",
+)
+
+
+def repo_sync_ssh_rsh(private_key_path: Path | None = None) -> str:
+    parts = [
+        "ssh",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+    ]
+    if private_key_path is not None:
+        parts.extend(["-i", str(private_key_path)])
+    return shlex.join(parts)
+
+
+def repo_rsync_command(
+    *,
+    source: Path,
+    user: str,
+    host: str,
+    destination: str,
+    ssh_rsh: str | None = None,
+) -> list[str]:
+    command = [
+        "rsync",
+        "-az",
+        "--delete",
+        "--delete-excluded",
+        *(f"--exclude={pattern}" for pattern in REPO_SYNC_EXCLUDE_PATTERNS),
+    ]
+    if ssh_rsh is not None:
+        command.extend(["-e", ssh_rsh])
+    command.extend([f"{source}/", f"{user}@{host}:{destination.rstrip('/')}/"])
+    return command
+
+
 def _sdk_error(e: MultipassCommandError) -> ShellExecutionResult:
     return ShellExecutionResult(
         command=e.args_list,
@@ -223,21 +294,27 @@ class VmOrchestrator:
 
         if request.lifecycle == "external":
             return self._shell_run(
-                ["rsync", "-az", "--delete", f"{source}/", f"{request.user}@{request.host}:{destination}/"],
+                repo_rsync_command(
+                    source=source,
+                    user=request.user,
+                    host=str(request.host),
+                    destination=destination,
+                ),
                 dry_run=dry_run,
             )
 
         name = self._vm_name(request)
-        transfer_cmd = ["multipass", "transfer", "-r", str(source), f"{name}:{destination}"]
-
-        if dry_run:
-            return _ok(transfer_cmd)
-
-        try:
-            self._client.get_vm(name).transfer(str(source), f"{name}:{destination}")
-        except MultipassCommandError as e:
-            return _sdk_error(e)
-        return _ok(transfer_cmd)
+        host = self.connection_host(request, dry_run=dry_run)
+        return self._shell_run(
+            repo_rsync_command(
+                source=source,
+                user=request.user,
+                host=host,
+                destination=destination,
+                ssh_rsh=repo_sync_ssh_rsh(self._private_key_path),
+            ),
+            dry_run=dry_run,
+        )
 
     def install_dependencies(
         self,

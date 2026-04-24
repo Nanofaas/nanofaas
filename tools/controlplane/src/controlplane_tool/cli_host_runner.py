@@ -16,6 +16,10 @@ from pathlib import Path
 from controlplane_tool.scenario_components import cli as cli_components
 from controlplane_tool.scenario_components.cli import CliComponentContext
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation
+from controlplane_tool.scenario_defaults import (
+    resolve_scenario_namespace,
+    resolve_scenario_release,
+)
 from controlplane_tool.shell_backend import ShellExecutionResult, SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
 from controlplane_tool.vm_models import VmRequest, vm_request_from_env
@@ -32,17 +36,28 @@ class CliHostPlatformRunner:
         repo_root: Path,
         *,
         vm_request: VmRequest | None = None,
-        namespace: str = "nanofaas-host-cli-e2e",
-        release: str = "nanofaas-host-cli-e2e",
+        namespace: str | None = None,
+        release: str | None = None,
         local_registry: str = "localhost:5000",
         runtime: str = "java",
         skip_build: bool = False,
         skip_cli_build: bool = False,
     ) -> None:
+        resolved_namespace = resolve_scenario_namespace(
+            "cli-host",
+            explicit_namespace=namespace,
+            resolved_scenario_namespace=None,
+        )
+        resolved_release = resolve_scenario_release(
+            "cli-host",
+            explicit_release=release,
+        )
+        if resolved_namespace is None or resolved_release is None:
+            raise ValueError("cli-host requires resolved namespace and release defaults")
         self.repo_root = Path(repo_root)
         self.vm_request = vm_request or vm_request_from_env()
-        self.namespace = namespace
-        self.release = release
+        self.namespace = resolved_namespace
+        self.release = resolved_release
         self.local_registry = local_registry
         self.runtime = runtime
         self.skip_build = skip_build
