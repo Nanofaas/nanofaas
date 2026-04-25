@@ -1,8 +1,6 @@
 # Shim: re-exports from shellcraft + workflow-aware SubprocessShell for TUI integration.
 from __future__ import annotations
 
-from pathlib import Path
-
 from shellcraft.backend import (
     OutputListener,
     RecordingShell,
@@ -27,22 +25,11 @@ __all__ = [
 class SubprocessShell(_ShellcraftSubprocessShell):
     """SubprocessShell with TUI workflow-log integration.
 
-    When a workflow sink is active (TUI log panel) and no explicit
-    output_listener is set, automatically wires workflow_log as the listener
-    so subprocess output appears in the TUI.
+    Routes each output line to workflow_log when a workflow sink is active,
+    in addition to any explicitly set output_listener.
     """
 
-    def run(
-        self,
-        command: list[str],
-        *,
-        cwd: Path | None = None,
-        env: dict[str, str] | None = None,
-        dry_run: bool = False,
-    ) -> ShellExecutionResult:
-        if not dry_run and self.output_listener is None and has_workflow_sink():
-            shell = _ShellcraftSubprocessShell(
-                output_listener=lambda s, l: workflow_log(l, stream=s)
-            )
-            return shell.run(command, cwd=cwd, env=env, dry_run=dry_run)
-        return super().run(command, cwd=cwd, env=env, dry_run=dry_run)
+    def _emit_output(self, stream: str, line: str) -> None:
+        super()._emit_output(stream, line)
+        if has_workflow_sink():
+            workflow_log(line, stream=stream)
