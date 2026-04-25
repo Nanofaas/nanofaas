@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Eliminate all kubectl usage from the controlplane tool by leveraging Helm's `--create-namespace`, `--wait`, and namespace-ownership features, and remove the now-dead `KubectlOps` class from shellcraft.
+**Goal:** Eliminate all kubectl usage from the controlplane tool by leveraging Helm's `--create-namespace`, `--wait`, and namespace-ownership features. `KubectlOps` is intentionally kept in shellcraft for potential future use.
 
-**Architecture:** Three kubectl operations are in play — namespace creation (replaced by `--create-namespace`), readiness wait (replaced by `--wait`, already present), and namespace deletion (replaced by making the namespace a Helm-managed resource via `namespace.create=true`). Legacy runners (`cli_vm_runner`, `k3s_curl_runner`) and the new component-based path (scenario_components) are updated independently. KubectlOps is removed from shellcraft last, once all callers are gone.
+**Architecture:** Three kubectl operations are in play — namespace creation (replaced by `--create-namespace`), readiness wait (replaced by `--wait`, already present), and namespace deletion (replaced by making the namespace a Helm-managed resource via `namespace.create=true`). Legacy runners (`cli_vm_runner`, `k3s_curl_runner`) and the new component-based path (scenario_components) are updated independently.
 
 **Tech Stack:** Python 3.11, Helm 3, uv/pytest for testing
 
@@ -27,20 +27,14 @@
 | `src/controlplane_tool/cli_vm_runner.py` | Replace `kubectl_create_namespace_vm_script` + `kubectl_rollout_status_vm_script` with `create_namespace=True` in helm call |
 | `src/controlplane_tool/k3s_curl_runner.py` | Same as cli_vm_runner + replace `kubectl_delete_namespace_vm_script` with `helm_uninstall_vm_script` |
 | `src/controlplane_tool/scenario_planner.py` | Replace `kubectl_delete_namespace_vm_script` with `helm_uninstall_vm_script` |
-| `src/controlplane_tool/runtime_primitives.py` | Remove `KubectlOps` from shim |
 | `tests/test_helm_ops.py` | Add `create_namespace` test |
-| `tests/test_scenario_tasks.py` | Remove kubectl test, update kubeconfig test |
+| `tests/test_scenario_tasks.py` | Remove kubectl create namespace test, update kubeconfig test |
 | `tests/test_scenario_component_library.py` | Update `test_helm_component_planners_use_namespace_and_helm_values` |
 | `tests/test_e2e_runner.py` | Replace `"kubectl delete namespace"` token with `"helm uninstall"` |
-| `tests/test_runtime_primitives.py` | Remove 2 KubectlOps tests |
 
-### Modified in `~/shellcraft/`
+### `~/shellcraft/` — unchanged
 
-| File | Change |
-|---|---|
-| `src/shellcraft/runners.py` | Remove `KubectlOps` class |
-| `src/shellcraft/__init__.py` | Remove `KubectlOps` from `__all__` and imports |
-| `tests/test_runners.py` | Remove 2 KubectlOps tests |
+`KubectlOps` is retained in shellcraft for future use.
 
 ---
 
@@ -606,102 +600,3 @@ git add tools/controlplane/src/controlplane_tool/scenario_tasks.py \
 git commit -m "chore: remove dead kubectl script functions from scenario_tasks"
 ```
 
----
-
-## Task 6: Remove `KubectlOps` from shellcraft and shim
-
-**Files:**
-- Modify: `~/shellcraft/src/shellcraft/runners.py`
-- Modify: `~/shellcraft/src/shellcraft/__init__.py`
-- Modify: `~/shellcraft/tests/test_runners.py`
-- Modify: `tools/controlplane/src/controlplane_tool/runtime_primitives.py`
-- Modify: `tools/controlplane/tests/test_runtime_primitives.py`
-
-By this point `KubectlOps` has no production callers. Remove it from shellcraft and the shim.
-
-- [ ] **Step 1: Remove `KubectlOps` from `shellcraft/runners.py`**
-
-Delete the entire `KubectlOps` class (the `@dataclass` + `__init__`, `_base`, `apply`, `delete`, `rollout_restart`, `exec` methods).
-
-- [ ] **Step 2: Remove `KubectlOps` from `shellcraft/__init__.py`**
-
-Remove the `KubectlOps` import and from `__all__`:
-
-```python
-# Remove this line from the import:
-    KubectlOps,
-
-# Remove from __all__:
-    "KubectlOps",
-```
-
-- [ ] **Step 3: Remove `KubectlOps` tests from `shellcraft/tests/test_runners.py`**
-
-Delete:
-- `test_kubectl_ops_apply_includes_manifest`
-- `test_kubectl_ops_respects_kubeconfig`
-- `test_kubectl_ops_delete_adds_ignore_not_found`
-- The `KubectlOps` import from the top of the test file
-
-- [ ] **Step 4: Run shellcraft tests**
-
-```bash
-cd ~/shellcraft && uv run pytest -v
-```
-
-Expected: all remaining tests PASS (35 tests — 3 fewer than before)
-
-- [ ] **Step 5: Remove `KubectlOps` from the controlplane-tool shim**
-
-In `tools/controlplane/src/controlplane_tool/runtime_primitives.py`, remove `KubectlOps` from the imports:
-
-```python
-# Before:
-from shellcraft.runners import (  # noqa: F401
-    CommandRunner,
-    ContainerRuntimeOps,
-    KubectlOps,
-    PlannedCommand,
-)
-
-# After:
-from shellcraft.runners import (  # noqa: F401
-    CommandRunner,
-    ContainerRuntimeOps,
-    PlannedCommand,
-)
-```
-
-- [ ] **Step 6: Remove `KubectlOps` tests from `test_runtime_primitives.py`**
-
-Delete:
-- `test_kubectl_ops_apply_includes_manifest_path`
-- `test_kubectl_ops_respects_kubeconfig`
-- The `KubectlOps` import from the top of the test file
-
-- [ ] **Step 7: Run the full test suite for both repos**
-
-```bash
-cd tools/controlplane && uv run pytest -v --tb=short
-```
-
-Expected: all tests PASS (2 fewer than before — the removed kubectl tests)
-
-```bash
-cd ~/shellcraft && uv run pytest -v
-```
-
-Expected: all tests PASS
-
-- [ ] **Step 8: Commit**
-
-```bash
-cd /Users/micheleciavotta/Downloads/mcFaas/.worktrees/ansible-vm-provisioning
-git add tools/controlplane/src/controlplane_tool/runtime_primitives.py \
-    tools/controlplane/tests/test_runtime_primitives.py
-git commit -m "chore(shim): remove KubectlOps from runtime_primitives shim"
-
-cd ~/shellcraft
-git add src/shellcraft/runners.py src/shellcraft/__init__.py tests/test_runners.py
-git commit -m "chore: remove KubectlOps — no callers remain"
-```
