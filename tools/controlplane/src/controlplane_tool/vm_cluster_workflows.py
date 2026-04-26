@@ -14,6 +14,7 @@ from typing import Any, cast
 from controlplane_tool.scenario_components import bootstrap as bootstrap_components
 from controlplane_tool.scenario_components import helm as helm_components
 from controlplane_tool.scenario_components import images as image_components
+from controlplane_tool.scenario_components import namespace as namespace_components
 from controlplane_tool.scenario_components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario_components.operations import RemoteCommandOperation
 from controlplane_tool.scenario_models import ResolvedScenario
@@ -67,10 +68,9 @@ class VmClusterPreludePlan:
     build_selected_functions_script: str | None
     install_k3s: ShellExecutionResult
     configure_registry: ShellExecutionResult
+    install_namespace_script: str
     deploy_control_plane_script: str
     deploy_function_runtime_script: str
-    wait_control_plane_script: str
-    wait_function_runtime_script: str
 
 
 def _shell_result(operation: RemoteCommandOperation) -> ShellExecutionResult:
@@ -146,9 +146,11 @@ def build_vm_cluster_prelude_plan(
         for operation in (
             *helm_components.plan_deploy_control_plane(scenario_context),
             *helm_components.plan_deploy_function_runtime(scenario_context),
-            *helm_components.plan_wait_control_plane_ready(scenario_context),
-            *helm_components.plan_wait_function_runtime_ready(scenario_context),
         )
+    }
+    namespace_plan = {
+        operation.operation_id: operation
+        for operation in namespace_components.plan_install_namespace(scenario_context)
     }
     selected_function_operations = tuple(
         operation
@@ -178,20 +180,16 @@ def build_vm_cluster_prelude_plan(
         ),
         install_k3s=_shell_result(bootstrap_plan["k3s.install"]),
         configure_registry=_shell_result(bootstrap_plan["k3s.configure_registry"]),
+        install_namespace_script=_render_operations(
+            (namespace_plan["namespace.install"],),
+            remote_dir=remote_dir,
+        ),
         deploy_control_plane_script=_render_operations(
             (helm_plan["helm.deploy_control_plane"],),
             remote_dir=remote_dir,
         ),
         deploy_function_runtime_script=_render_operations(
             (helm_plan["helm.deploy_function_runtime"],),
-            remote_dir=remote_dir,
-        ),
-        wait_control_plane_script=_render_operations(
-            (helm_plan["k8s.wait_control_plane_ready"],),
-            remote_dir=remote_dir,
-        ),
-        wait_function_runtime_script=_render_operations(
-            (helm_plan["k8s.wait_function_runtime_ready"],),
             remote_dir=remote_dir,
         ),
     )

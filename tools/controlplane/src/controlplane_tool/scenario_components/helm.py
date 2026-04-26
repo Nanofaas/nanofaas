@@ -104,7 +104,6 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
                 "helm/nanofaas",
                 "-n",
                 namespace,
-                "--create-namespace",
                 "--wait",
                 "--timeout",
                 "5m",
@@ -135,59 +134,10 @@ def plan_deploy_function_runtime(
                 "helm/nanofaas-runtime",
                 "-n",
                 namespace,
-                "--create-namespace",
                 "--wait",
                 "--timeout",
                 "3m",
                 *_set_args(values),
-            ),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
-def plan_wait_control_plane_ready(
-    context: ScenarioExecutionContext,
-) -> tuple[ScenarioOperation, ...]:
-    namespace = _effective_namespace(context)
-    return (
-        RemoteCommandOperation(
-            operation_id="k8s.wait_control_plane_ready",
-            summary="Wait for control plane readiness",
-            argv=(
-                "kubectl",
-                "rollout",
-                "status",
-                "deployment/nanofaas-control-plane",
-                "-n",
-                namespace,
-                "--timeout",
-                "180s",
-            ),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
-def plan_wait_function_runtime_ready(
-    context: ScenarioExecutionContext,
-) -> tuple[ScenarioOperation, ...]:
-    namespace = _effective_namespace(context)
-    return (
-        RemoteCommandOperation(
-            operation_id="k8s.wait_function_runtime_ready",
-            summary="Wait for function runtime readiness",
-            argv=(
-                "kubectl",
-                "rollout",
-                "status",
-                "deployment/function-runtime",
-                "-n",
-                namespace,
-                "--timeout",
-                "120s",
             ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
@@ -205,16 +155,4 @@ HELM_DEPLOY_FUNCTION_RUNTIME = ScenarioComponentDefinition(
     component_id="helm.deploy_function_runtime",
     summary="Deploy function runtime with Helm",
     planner=plan_deploy_function_runtime,
-)
-
-K8S_WAIT_CONTROL_PLANE_READY = ScenarioComponentDefinition(
-    component_id="k8s.wait_control_plane_ready",
-    summary="Wait for control plane readiness",
-    planner=plan_wait_control_plane_ready,
-)
-
-K8S_WAIT_FUNCTION_RUNTIME_READY = ScenarioComponentDefinition(
-    component_id="k8s.wait_function_runtime_ready",
-    summary="Wait for function runtime readiness",
-    planner=plan_wait_function_runtime_ready,
 )

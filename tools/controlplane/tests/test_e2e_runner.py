@@ -194,6 +194,8 @@ def test_vm_cluster_prelude_plan_uses_k3s_component_planners() -> None:
     assert "provision-k3s.yml" in prelude.install_k3s.command[-1]
     assert prelude.configure_registry.command[0] == "ansible-playbook"
     assert "configure-k3s-registry.yml" in prelude.configure_registry.command[-1]
+    assert "helm/nanofaas-namespace" in prelude.install_namespace_script
+    assert "namespace.name=nanofaas-e2e" in prelude.install_namespace_script
 
 
 def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:

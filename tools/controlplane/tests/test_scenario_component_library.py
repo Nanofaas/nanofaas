@@ -209,23 +209,21 @@ def test_helm_component_planners_use_namespace_and_helm_values() -> None:
 
     control_plane_operations = helm.plan_deploy_control_plane(context)
     runtime_operations = helm.plan_deploy_function_runtime(context)
-    wait_control_plane_operations = helm.plan_wait_control_plane_ready(context)
-    wait_runtime_operations = helm.plan_wait_function_runtime_ready(context)
 
     assert control_plane_operations and runtime_operations
-    assert wait_control_plane_operations and wait_runtime_operations
     assert all(
         isinstance(operation, RemoteCommandOperation) for operation in control_plane_operations
     )
     assert all(isinstance(operation, RemoteCommandOperation) for operation in runtime_operations)
-    # Namespace is created idempotently by helm --create-namespace; chart does not own it
-    assert "--create-namespace" in control_plane_operations[0].argv
-    assert "--create-namespace" in runtime_operations[0].argv
+    assert "--wait" in control_plane_operations[0].argv
+    assert "--wait" in runtime_operations[0].argv
+    assert "--create-namespace" not in control_plane_operations[0].argv
+    assert "--create-namespace" not in runtime_operations[0].argv
+    assert "--set" in control_plane_operations[0].argv
+    assert "namespace.create=false" in control_plane_operations[0].argv
     assert "helm" in control_plane_operations[0].argv[0]
     assert "nanofaas-stack" in " ".join(control_plane_operations[0].argv)
     assert "nanofaas-stack" in " ".join(runtime_operations[0].argv)
-    assert wait_control_plane_operations[0].argv[:3] == ("kubectl", "rollout", "status")
-    assert wait_runtime_operations[0].argv[:3] == ("kubectl", "rollout", "status")
 
 
 def test_cli_stack_cleanup_uses_cli_release_name() -> None:

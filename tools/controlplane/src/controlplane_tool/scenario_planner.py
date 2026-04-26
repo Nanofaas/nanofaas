@@ -343,6 +343,12 @@ class ScenarioPlanner:
                 step_id="k3s.configure_registry",
             ),
             self._remote_exec_step(
+                "Install namespace Helm release",
+                vm_request,
+                prelude.install_namespace_script,
+                step_id="namespace.install",
+            ),
+            self._remote_exec_step(
                 "Deploy control-plane via Helm",
                 vm_request,
                 prelude.deploy_control_plane_script,
@@ -353,18 +359,6 @@ class ScenarioPlanner:
                 vm_request,
                 prelude.deploy_function_runtime_script,
                 step_id="helm.deploy_function_runtime",
-            ),
-            self._remote_exec_step(
-                "Wait for control-plane deployment",
-                vm_request,
-                prelude.wait_control_plane_script,
-                step_id="k8s.wait_control_plane_ready",
-            ),
-            self._remote_exec_step(
-                "Wait for function-runtime deployment",
-                vm_request,
-                prelude.wait_function_runtime_script,
-                step_id="k8s.wait_function_runtime_ready",
             ),
         ]
 
