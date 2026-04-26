@@ -248,72 +248,58 @@ def helm_uninstall_vm_script(
     )
 
 
-def kubectl_create_namespace_vm_script(
+def _namespace_release_name(namespace: str) -> str:
+    return f"{namespace}-namespace"
+
+
+def helm_namespace_install_vm_script(
     *,
     remote_dir: str,
     namespace: str,
     kubeconfig_path: str | None = None,
+    timeout: str = "2m",
 ) -> str:
-    namespace_quoted = shlex.quote(namespace)
-    if kubeconfig_path is None:
-        command = (
-            f"kubectl create namespace {namespace_quoted} --dry-run=client -o yaml | "
-            "kubectl apply -f -"
-        )
-    else:
-        kubeconfig_quoted = shlex.quote(kubeconfig_path)
-        command = (
-            f"KUBECONFIG={kubeconfig_quoted} kubectl create namespace {namespace_quoted} "
-            "--dry-run=client -o yaml | "
-            f"KUBECONFIG={kubeconfig_quoted} kubectl apply -f -"
-        )
+    command = [
+        "helm",
+        "upgrade",
+        "--install",
+        _namespace_release_name(namespace),
+        "helm/nanofaas-namespace",
+        "-n",
+        "default",
+        "--wait",
+        "--timeout",
+        timeout,
+        "--set",
+        f"namespace.name={namespace}",
+    ]
     return _render_remote_script(
         remote_dir=remote_dir,
-        commands=[command],
+        commands=[_with_kubeconfig(command, kubeconfig_path=kubeconfig_path)],
     )
 
 
-def kubectl_delete_namespace_vm_script(
+def helm_namespace_uninstall_vm_script(
     *,
     remote_dir: str,
     namespace: str,
     kubeconfig_path: str | None = None,
+    timeout: str = "5m",
 ) -> str:
+    command = [
+        "helm",
+        "uninstall",
+        _namespace_release_name(namespace),
+        "-n",
+        "default",
+        "--wait",
+        "--timeout",
+        timeout,
+        "--ignore-not-found",
+    ]
     return _render_remote_script(
         remote_dir=remote_dir,
-        commands=[
-            _with_kubeconfig(
-                ["kubectl", "delete", "namespace", namespace, "--ignore-not-found=true", "--wait=false"],
-                kubeconfig_path=kubeconfig_path,
-            )
-        ],
-    )
-
-
-def kubectl_rollout_status_vm_script(
-    *,
-    remote_dir: str,
-    namespace: str,
-    deployment: str,
-    kubeconfig_path: str | None = None,
-    timeout: int = 180,
-) -> str:
-    return _render_remote_script(
-        remote_dir=remote_dir,
-        commands=[
-            _with_kubeconfig(
-                [
-                    "kubectl",
-                    "rollout",
-                    "status",
-                    f"deployment/{deployment}",
-                    "-n",
-                    namespace,
-                    f"--timeout={timeout}s",
-                ],
-                kubeconfig_path=kubeconfig_path,
-            )
-        ],
+        commands=[_with_kubeconfig(command, kubeconfig_path=kubeconfig_path)],
     )
 
 

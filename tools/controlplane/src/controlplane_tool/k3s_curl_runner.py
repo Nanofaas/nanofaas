@@ -29,11 +29,10 @@ from controlplane_tool.scenario_helpers import (
 from controlplane_tool.scenario_tasks import (
     build_core_images_vm_script,
     build_function_images_vm_script,
+    helm_namespace_install_vm_script,
+    helm_namespace_uninstall_vm_script,
     helm_upgrade_install_vm_script,
     helm_uninstall_vm_script,
-    kubectl_create_namespace_vm_script,
-    kubectl_delete_namespace_vm_script,
-    kubectl_rollout_status_vm_script,
 )
 from controlplane_tool.shell_backend import ShellBackend, SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
@@ -165,7 +164,7 @@ class K3sCurlRunner:
         phase("Deploy")
         step("Deploying platform to k3s")
         self._vm_exec(
-            kubectl_create_namespace_vm_script(
+            helm_namespace_install_vm_script(
                 remote_dir=self._remote_dir,
                 namespace=self.namespace,
                 kubeconfig_path=self._kubeconfig_path,
@@ -177,7 +176,11 @@ class K3sCurlRunner:
                 release="control-plane",
                 chart="helm/nanofaas",
                 namespace=self.namespace,
-                values=self._control_plane_helm_values(),
+                values={
+                    **self._control_plane_helm_values(),
+                    "namespace.create": "false",
+                    "namespace.name": self.namespace,
+                },
                 kubeconfig_path=self._kubeconfig_path,
                 timeout="5m",
             )
@@ -188,20 +191,13 @@ class K3sCurlRunner:
                 release="function-runtime",
                 chart="helm/nanofaas-runtime",
                 namespace=self.namespace,
-                values=self._function_runtime_helm_values(),
+                values={
+                    **self._function_runtime_helm_values(),
+                    "namespace.create": "false",
+                    "namespace.name": self.namespace,
+                },
                 kubeconfig_path=self._kubeconfig_path,
                 timeout="3m",
-            )
-        )
-
-    def _wait_for_deployment(self, name: str, timeout: int = 180) -> None:
-        self._vm_exec(
-            kubectl_rollout_status_vm_script(
-                remote_dir=self._remote_dir,
-                namespace=self.namespace,
-                deployment=name,
-                kubeconfig_path=self._kubeconfig_path,
-                timeout=timeout,
             )
         )
 
@@ -323,7 +319,7 @@ class K3sCurlRunner:
             pass
         try:
             self._vm_exec(
-                kubectl_delete_namespace_vm_script(
+                helm_namespace_uninstall_vm_script(
                     remote_dir=self._remote_dir,
                     namespace=self.namespace,
                     kubeconfig_path=self._kubeconfig_path,
@@ -482,7 +478,5 @@ class K3sCurlRunner:
         self._build_images()
         self.build_selected_function_images(resolved)
         self._deploy_platform()
-        self._wait_for_deployment("nanofaas-control-plane", 180)
-        self._wait_for_deployment("function-runtime", 120)
         self.verify_existing_stack(resolved)
         success("k3s curl E2E workflow")

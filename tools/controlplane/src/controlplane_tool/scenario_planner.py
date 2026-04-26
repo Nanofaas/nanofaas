@@ -17,9 +17,9 @@ from controlplane_tool.scenario_components.executor import ScenarioPlanStep, ope
 from controlplane_tool.scenario_components.verification import plan_loadtest_run
 from controlplane_tool.scenario_manifest import write_scenario_manifest
 from controlplane_tool.scenario_tasks import (
+    helm_namespace_uninstall_vm_script,
     helm_uninstall_vm_script,
     k8s_e2e_test_vm_script,
-    kubectl_delete_namespace_vm_script,
 )
 from controlplane_tool.shell_backend import ShellBackend, ShellExecutionResult
 from controlplane_tool.vm_adapter import VmOrchestrator
@@ -399,15 +399,15 @@ class ScenarioPlanner:
                 ),
                 step_id="cleanup.uninstall_control_plane",
             )
-            delete_namespace_step = self._remote_exec_step(
-                "Delete E2E namespace",
+            uninstall_namespace_step = self._remote_exec_step(
+                "Uninstall namespace Helm release",
                 vm_request,
-                kubectl_delete_namespace_vm_script(
+                helm_namespace_uninstall_vm_script(
                     remote_dir=remote_dir,
                     namespace=namespace,
                     kubeconfig_path=kubeconfig_path,
                 ),
-                step_id="cleanup.delete_namespace",
+                step_id="namespace.uninstall",
             )
             teardown_dry = self.vm.teardown(vm_request, dry_run=True)
             teardown_step = ScenarioPlanStep(
@@ -428,10 +428,10 @@ class ScenarioPlanner:
                 ["echo", "Skipping control-plane cleanup (--no-cleanup-vm)"],
                 step_id="cleanup.uninstall_control_plane",
             )
-            delete_namespace_step = self._step(
-                "Delete E2E namespace",
+            uninstall_namespace_step = self._step(
+                "Uninstall namespace Helm release",
                 ["echo", "Skipping namespace cleanup (--no-cleanup-vm)"],
-                step_id="cleanup.delete_namespace",
+                step_id="namespace.uninstall",
             )
             teardown_step = self._step(
                 "Teardown VM",
@@ -460,7 +460,7 @@ class ScenarioPlanner:
             ),
             uninstall_runtime_step,
             uninstall_control_plane_step,
-            delete_namespace_step,
+            uninstall_namespace_step,
             teardown_step,
         ]
 

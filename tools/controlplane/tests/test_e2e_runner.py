@@ -240,7 +240,6 @@ def test_cli_stack_plan_defaults_to_isolated_namespace_for_all_recipe_steps() ->
                 "platform install",
                 "platform status",
                 "helm uninstall",
-                "kubectl delete namespace",
             )
         )
     ]
@@ -465,7 +464,7 @@ def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
         "tests.run_k8s_junit",
         "cleanup.uninstall_function_runtime",
         "cleanup.uninstall_control_plane",
-        "cleanup.delete_namespace",
+        "namespace.uninstall",
         "vm.down",
     ]
 
@@ -486,7 +485,7 @@ def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values_without_cleanup()
         "tests.run_k8s_junit",
         "cleanup.uninstall_function_runtime",
         "cleanup.uninstall_control_plane",
-        "cleanup.delete_namespace",
+        "namespace.uninstall",
         "vm.down",
     ]
 

@@ -21,9 +21,8 @@ from controlplane_tool.scenario_helpers import (
 )
 from controlplane_tool.scenario_tasks import (
     build_core_images_vm_script,
+    helm_namespace_install_vm_script,
     helm_upgrade_install_vm_script,
-    kubectl_create_namespace_vm_script,
-    kubectl_rollout_status_vm_script,
 )
 from controlplane_tool.shell_backend import SubprocessShell
 from controlplane_tool.vm_adapter import VmOrchestrator
@@ -120,7 +119,7 @@ class CliVmRunner:
     def _deploy_platform(self) -> None:
         workflow_log("Deploying platform to k3s")
         self._vm_exec(
-            kubectl_create_namespace_vm_script(
+            helm_namespace_install_vm_script(
                 remote_dir=self._remote_dir,
                 namespace=self.namespace,
                 kubeconfig_path=self._kubeconfig_path,
@@ -133,19 +132,12 @@ class CliVmRunner:
                 chart="helm/nanofaas",
                 namespace=self.namespace,
                 values={
+                    "namespace.create": "false",
+                    "namespace.name": self.namespace,
                     "controlPlane.image.repository": self._control_image.split(":")[0],
                     "controlPlane.image.tag": self._control_image.split(":")[-1],
                 },
                 kubeconfig_path=self._kubeconfig_path,
-            )
-        )
-        self._vm_exec(
-            kubectl_rollout_status_vm_script(
-                remote_dir=self._remote_dir,
-                namespace=self.namespace,
-                deployment="function-runtime",
-                kubeconfig_path=self._kubeconfig_path,
-                timeout=120,
             )
         )
 
