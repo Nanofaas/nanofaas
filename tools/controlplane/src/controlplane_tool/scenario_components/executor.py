@@ -15,14 +15,13 @@ _SUMMARY_OVERRIDES = {
     "cli.platform_status": "Run platform status",
     "repo.sync_to_vm": "Sync project to VM",
     "registry.ensure_container": "Ensure registry container",
-"k3s.configure_registry": "Configure k3s registry",
+    "k3s.configure_registry": "Configure k3s registry",
     "helm.deploy_control_plane": "Deploy control-plane via Helm",
     "helm.deploy_function_runtime": "Deploy function-runtime via Helm",
-    "k8s.wait_control_plane_ready": "Wait for control-plane deployment",
-    "k8s.wait_function_runtime_ready": "Wait for function-runtime deployment",
+    "namespace.install": "Install namespace Helm release",
+    "namespace.uninstall": "Uninstall namespace Helm release",
     "cleanup.uninstall_control_plane": "Uninstall control-plane Helm release",
     "cleanup.uninstall_function_runtime": "Uninstall function-runtime Helm release",
-    "cleanup.delete_namespace": "Delete E2E namespace",
     "cleanup.verify_cli_platform_status_fails": "Verify cli-stack status fails",
 }
 

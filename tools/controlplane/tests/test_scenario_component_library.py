@@ -6,6 +6,7 @@ import pytest
 
 from controlplane_tool.e2e_models import E2eRequest
 from controlplane_tool.scenario_components import bootstrap, cleanup, helm, images
+from controlplane_tool.scenario_components import namespace as namespace_components
 from controlplane_tool.scenario_components.environment import resolve_scenario_environment
 from controlplane_tool.scenario_components.executor import operation_to_plan_step
 from controlplane_tool.scenario_components.composer import (
@@ -337,4 +338,47 @@ def test_helm_stack_tail_keeps_autoscaling_on_host() -> None:
         "run",
         "--project",
         "/repo/tools/controlplane",
+    )
+
+
+def test_namespace_component_installs_namespace_release_in_default_namespace() -> None:
+    context = _managed_context(namespace="nanofaas-stack")
+
+    operations = namespace_components.plan_install_namespace(context)
+
+    assert len(operations) == 1
+    assert operations[0].operation_id == "namespace.install"
+    assert operations[0].argv == (
+        "helm",
+        "upgrade",
+        "--install",
+        "nanofaas-stack-namespace",
+        "helm/nanofaas-namespace",
+        "-n",
+        "default",
+        "--wait",
+        "--timeout",
+        "2m",
+        "--set",
+        "namespace.name=nanofaas-stack",
+    )
+
+
+def test_namespace_component_uninstalls_namespace_release_last() -> None:
+    context = _managed_context(namespace="nanofaas-stack")
+
+    operations = namespace_components.plan_uninstall_namespace(context)
+
+    assert len(operations) == 1
+    assert operations[0].operation_id == "namespace.uninstall"
+    assert operations[0].argv == (
+        "helm",
+        "uninstall",
+        "nanofaas-stack-namespace",
+        "-n",
+        "default",
+        "--wait",
+        "--timeout",
+        "5m",
+        "--ignore-not-found",
     )

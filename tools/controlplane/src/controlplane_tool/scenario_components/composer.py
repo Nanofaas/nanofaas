@@ -21,7 +21,7 @@ def _load_all_components() -> None:
         LOADTEST_INSTALL_K6,
     )
     from controlplane_tool.scenario_components.cleanup import (
-        DELETE_NAMESPACE, UNINSTALL_CONTROL_PLANE, UNINSTALL_FUNCTION_RUNTIME,
+        UNINSTALL_CONTROL_PLANE, UNINSTALL_FUNCTION_RUNTIME,
         VERIFY_CLI_PLATFORM_STATUS_FAILS, VM_DOWN,
     )
     from controlplane_tool.scenario_components.cli import (
@@ -31,9 +31,12 @@ def _load_all_components() -> None:
     )
     from controlplane_tool.scenario_components.helm import (
         HELM_DEPLOY_CONTROL_PLANE, HELM_DEPLOY_FUNCTION_RUNTIME,
-        K8S_WAIT_CONTROL_PLANE_READY, K8S_WAIT_FUNCTION_RUNTIME_READY,
     )
     from controlplane_tool.scenario_components.images import BUILD_CORE, BUILD_SELECTED_FUNCTIONS
+    from controlplane_tool.scenario_components.namespace import (
+        NAMESPACE_INSTALL,
+        NAMESPACE_UNINSTALL,
+    )
     from controlplane_tool.scenario_components.verification import (
         plan_run_k3s_curl_checks, plan_run_k8s_junit,
         plan_loadtest_run, plan_autoscaling_experiment,
@@ -43,14 +46,14 @@ def _load_all_components() -> None:
         VM_ENSURE_RUNNING, VM_PROVISION_BASE, REPO_SYNC_TO_VM,
         REGISTRY_ENSURE_CONTAINER, K3S_INSTALL, K3S_CONFIGURE_REGISTRY,
         LOADTEST_INSTALL_K6,
+        NAMESPACE_INSTALL,
         HELM_DEPLOY_CONTROL_PLANE, HELM_DEPLOY_FUNCTION_RUNTIME,
-        K8S_WAIT_CONTROL_PLANE_READY, K8S_WAIT_FUNCTION_RUNTIME_READY,
         CLI_BUILD_INSTALL_DIST, CLI_PLATFORM_INSTALL, CLI_PLATFORM_STATUS,
         CLI_FN_APPLY_SELECTED, CLI_FN_LIST_SELECTED, CLI_FN_INVOKE_SELECTED,
         CLI_FN_ENQUEUE_SELECTED, CLI_FN_DELETE_SELECTED,
         BUILD_CORE, BUILD_SELECTED_FUNCTIONS,
-        UNINSTALL_CONTROL_PLANE, UNINSTALL_FUNCTION_RUNTIME,
-        DELETE_NAMESPACE, VERIFY_CLI_PLATFORM_STATUS_FAILS, VM_DOWN,
+        UNINSTALL_FUNCTION_RUNTIME, UNINSTALL_CONTROL_PLANE,
+        NAMESPACE_UNINSTALL, VERIFY_CLI_PLATFORM_STATUS_FAILS, VM_DOWN,
     ]:
         _registry.register(comp)
 
