@@ -306,18 +306,18 @@ def test_workflow_dashboard_retains_top_level_rows_even_when_nested_work_complet
         build_task_event(
             kind="task.running",
             flow_id="e2e.k3s_junit_curl",
-            task_id="cleanup.delete_namespace",
+            task_id="namespace.uninstall",
             parent_task_id="tests.run_k3s_curl_checks",
-            title="Delete E2E namespace",
+            title="Uninstall namespace Helm release",
         )
     )
     dashboard.apply_event(
         build_task_event(
             kind="task.completed",
             flow_id="e2e.k3s_junit_curl",
-            task_id="cleanup.delete_namespace",
+            task_id="namespace.uninstall",
             parent_task_id="tests.run_k3s_curl_checks",
-            title="Delete E2E namespace",
+            title="Uninstall namespace Helm release",
         )
     )
 
@@ -325,5 +325,5 @@ def test_workflow_dashboard_retains_top_level_rows_even_when_nested_work_complet
         "Run k3s-junit-curl verification",
         "Teardown VM",
     ]
-    assert dashboard.steps[0].children[0].label == "Delete E2E namespace"
+    assert dashboard.steps[0].children[0].label == "Uninstall namespace Helm release"
     assert dashboard.steps[1].state == "pending"

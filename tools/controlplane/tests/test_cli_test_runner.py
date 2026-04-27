@@ -166,7 +166,6 @@ def test_cli_test_runner_cli_stack_plan_prefers_resolved_scenario_namespace() ->
                 "platform install",
                 "platform status",
                 "helm uninstall",
-                "kubectl delete namespace",
             )
         )
     ]
