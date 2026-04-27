@@ -232,6 +232,27 @@ def test_cli_stack_cleanup_uses_cli_release_name() -> None:
     operations = cleanup.plan_uninstall_control_plane(context)
 
     assert operations[0].argv[:3] == ("helm", "uninstall", "nanofaas-cli-stack-e2e")
+    assert "-n" in operations[0].argv
+    assert "--wait" in operations[0].argv
+    assert "--ignore-not-found" in operations[0].argv
+
+
+def test_cleanup_uninstalls_function_runtime_with_wait() -> None:
+    context = _managed_context(namespace="nanofaas-stack")
+
+    operations = cleanup.plan_uninstall_function_runtime(context)
+
+    assert operations[0].argv == (
+        "helm",
+        "uninstall",
+        "function-runtime",
+        "-n",
+        "nanofaas-stack",
+        "--wait",
+        "--timeout",
+        "5m",
+        "--ignore-not-found",
+    )
 
 
 def test_compose_recipe_wires_concrete_component_planners() -> None:

@@ -42,7 +42,17 @@ def plan_uninstall_control_plane(context: ScenarioExecutionContext) -> tuple[Sce
         RemoteCommandOperation(
             operation_id="cleanup.uninstall_control_plane",
             summary="Uninstall control plane with Helm",
-            argv=("helm", "uninstall", _control_plane_release(context), "-n", namespace),
+            argv=(
+                "helm",
+                "uninstall",
+                _control_plane_release(context),
+                "-n",
+                namespace,
+                "--wait",
+                "--timeout",
+                "5m",
+                "--ignore-not-found",
+            ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
         ),
@@ -57,20 +67,17 @@ def plan_uninstall_function_runtime(
         RemoteCommandOperation(
             operation_id="cleanup.uninstall_function_runtime",
             summary="Uninstall function runtime with Helm",
-            argv=("helm", "uninstall", "function-runtime", "-n", namespace),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
-def plan_delete_namespace(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
-    namespace = _namespace(context)
-    return (
-        RemoteCommandOperation(
-            operation_id="cleanup.delete_namespace",
-            summary="Delete Kubernetes namespace",
-            argv=("kubectl", "delete", "namespace", namespace, "--ignore-not-found=true", "--wait=false"),
+            argv=(
+                "helm",
+                "uninstall",
+                "function-runtime",
+                "-n",
+                namespace,
+                "--wait",
+                "--timeout",
+                "5m",
+                "--ignore-not-found",
+            ),
             env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
             execution_target="vm",
         ),
@@ -106,12 +113,6 @@ UNINSTALL_FUNCTION_RUNTIME = ScenarioComponentDefinition(
     component_id="cleanup.uninstall_function_runtime",
     summary="Uninstall function runtime with Helm",
     planner=plan_uninstall_function_runtime,
-)
-
-DELETE_NAMESPACE = ScenarioComponentDefinition(
-    component_id="cleanup.delete_namespace",
-    summary="Delete Kubernetes namespace",
-    planner=plan_delete_namespace,
 )
 
 VM_DOWN = ScenarioComponentDefinition(
