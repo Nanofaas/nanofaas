@@ -312,9 +312,15 @@ from tui_toolkit.workflow import (
     workflow_log, workflow_step,
     bind_workflow_sink, bind_workflow_context,
     get_workflow_context, has_workflow_sink,
+    build_log_event, build_phase_event, build_task_event,
 )
 from tui_toolkit.events import WorkflowEvent, WorkflowContext, WorkflowSink
 ```
+
+The event builders are part of the public API because non-renderer consumers
+(notably `prefect_event_bridge.py` in nanofaas) build events themselves and
+push them into a `WorkflowSink` without going through the high-level
+`phase`/`step`/`success` helpers.
 
 ### Nanofaas-side setup (`controlplane_tool.ui_setup`)
 
@@ -479,9 +485,14 @@ Approximately 30 tests, ~400 LOC.
   `workflow_step` emits the expected sequence (`running` → `completed`,
   `running` → `failed` on exception); theme overrides change colors and
   icons in the rendered output.
-- **`test_snapshots.py`** — the four panel states (`completed`, `failed`,
-  `warning`, `cancelled`) produce output identical to the legacy renderer
-  during PR1 (parity test, removed in PR2 once shims are gone).
+- **`test_snapshots.py`** — golden-file parity test. The golden files are
+  recorded once at the start of PR1 by capturing the legacy renderer's
+  output for each of the four panel states (`completed`, `failed`,
+  `warning`, `cancelled`) using `console.export_text(styles=True)`. They
+  are committed alongside the test. The test then runs the new renderer
+  with `DEFAULT_THEME` and asserts byte-for-byte equality. The test stays
+  in PR2 (it remains valuable as a regression guard against accidental
+  theme drift); only the legacy capture script is removed.
 
 ### `tools/controlplane/tests/`
 
@@ -494,6 +505,14 @@ Untouched in PR1. Pass-as-is is the proof that the shims are faithful.
 - Whether to expose the per-question `prompt_fragments` builder used inside
   `pickers.py` as a public hook for callers who want a custom hint line.
   Default answer: no, until a real consumer asks. Keep it internal.
+- Python version pinning for `tui-toolkit` `pyproject.toml`: match
+  `controlplane-tool` (`requires-python = ">=3.11"`) for now. Can be
+  loosened if the library is later spun out for other consumers.
+- Whether `tui_toolkit.events.WorkflowSink` should be defined as
+  `@runtime_checkable` (the current `controlplane_tool.workflow_models`
+  version is plain `Protocol`). Default: keep it plain to match current
+  behavior; add `@runtime_checkable` only if a test or runtime check needs
+  `isinstance(x, WorkflowSink)`.
 
 ## References
 
@@ -501,7 +520,7 @@ Untouched in PR1. Pass-as-is is the proof that the shims are faithful.
   `console.py`, `tui_widgets.py`, `tui_chrome.py`, `tui_workflow.py`,
   `tui_app.py`, `workflow_models.py`, `workflow_events.py`,
   `process_streaming.py`, `shell_backend.py`, `tui_workflow_controller.py`,
-  `workflow_progress.py`.
+  `workflow_progress.py`, `prefect_event_bridge.py`.
 - Style-literal census: 63 occurrences across 6 files (`console.py`,
   `tui_chrome.py`, `tui_widgets.py`, `tui_app.py`, `tui_workflow.py`,
   `function_commands.py`).
