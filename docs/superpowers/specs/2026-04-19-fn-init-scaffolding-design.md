@@ -217,7 +217,7 @@ Binary assets (images, etc.) are stored in `payloads/assets/` and referenced via
 
 `@path` references are relative to the payload file location. Text formats (JSON, XML, plain text) are always handled natively as strings — `input-encoding` is only required for binary.
 
-**Consumer:** `nanofaas fn test <name> --payloads ./payloads/` (future CLI subcommand — out of scope for this spec, tracked separately). Plain JSON payloads can also be used directly with `nanofaas invoke -d @payloads/happy-path.json` for manual exploration.
+**Consumer:** `nanofaas fn test <name> --payloads ./payloads/` extracts `input`, invokes the function, and compares invocation `output` to `expected`. Plain JSON payloads can also be used directly with `nanofaas invoke` for manual exploration by passing only the desired input body.
 
 ---
 
@@ -293,5 +293,4 @@ All CLI operations (`deploy`, `invoke`, `enqueue`) use `nanofaas` CLI — no raw
 
 - Go scaffolding (deferred)
 - VS Code extension (may call `fn-init.sh` in a future phase)
-- `nanofaas fn test` CLI subcommand (tracked separately — consumes the payload format defined here)
 - Hot reload / devmode

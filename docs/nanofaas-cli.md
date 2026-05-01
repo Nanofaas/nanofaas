@@ -62,6 +62,7 @@ Supported env overrides:
 - `nanofaas fn get <name>`: get the function spec
 - `nanofaas fn delete <name>`: delete a function
 - `nanofaas fn apply -f function.yaml`: create or replace a function
+- `nanofaas fn test <name> --payloads ./payloads/`: run JSON contract payloads against a function
 
 `apply` behavior:
 - `POST /v1/functions`
@@ -70,6 +71,12 @@ Supported env overrides:
   - `IMAGE_NOT_FOUND` (`422`): image/tag does not exist
   - `IMAGE_PULL_AUTH_REQUIRED` (`424`): private image requires Kubernetes `imagePullSecrets`
   - `IMAGE_REGISTRY_UNAVAILABLE` (`503`): temporary registry validation issue
+
+`test` behavior:
+- reads one payload JSON file, or every `*.json` file in a payload directory
+- extracts only the `input` field and sends it as `InvocationRequest.input`
+- compares the synchronous invocation `output` with the payload `expected` field
+- prints one pass/fail line per payload and exits nonzero if any payload fails
 
 ### `deploy`
 

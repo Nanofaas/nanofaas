@@ -5,6 +5,7 @@ All terminal output should go through the helpers here, never raw print().
 """
 from __future__ import annotations
 
+import shutil as _shutil
 import sys
 from contextvars import ContextVar
 from contextlib import contextmanager
@@ -24,7 +25,33 @@ from controlplane_tool.workflow_events import (
 )
 from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent, WorkflowSink
 
-# Singleton — shared across all modules.
+# Cap for Rich output and prompt_toolkit pickers — governs both in one place.
+_MAX_CONTENT_COLS = 140
+_content_width: int | None = None  # set by init_ui_width(); None → auto-detect
+
+
+def init_ui_width() -> None:
+    """Call once at the very start of main() to lock in the terminal width.
+
+    Queries the real TTY size (available once the process is interactive) and
+    caps it at _MAX_CONTENT_COLS.  Also updates the shared console so that all
+    subsequent Rich output honours the same constraint.
+    """
+    global _content_width
+    _content_width = min(
+        _shutil.get_terminal_size(fallback=(80, 24)).columns,
+        _MAX_CONTENT_COLS,
+    )
+    console._width = _content_width  # retroactively cap the singleton
+
+
+def get_content_width() -> int:
+    """Return the active content width (after init_ui_width) or the bare max."""
+    return _content_width if _content_width is not None else _MAX_CONTENT_COLS
+
+
+# Singleton — shared across all modules.  No fixed width at import time so
+# that shutil.get_terminal_size() is not called before the TTY is attached.
 console = Console(highlight=False)
 _workflow_sink_var: ContextVar["WorkflowSink | None"] = ContextVar(
     "workflow_sink",

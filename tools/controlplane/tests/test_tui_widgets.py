@@ -1,3 +1,4 @@
+from controlplane_tool.console import get_content_width
 from controlplane_tool.tui_widgets import (
     _DescribedChoice,
     _back_choice,
@@ -160,7 +161,7 @@ def test_described_picker_uses_full_screen_with_wider_stable_description_panel()
     description = body.children[1]
 
     assert app.full_screen is True
-    assert body.width.preferred == 140
+    assert body.width.preferred == get_content_width()
     assert selector.width.min == 48
     assert description.width.min == 40
     assert description.width.weight == selector.width.weight
@@ -179,7 +180,7 @@ def test_described_checkbox_uses_full_screen_with_wider_stable_description_panel
     description = body.children[1]
 
     assert app.full_screen is True
-    assert body.width.preferred == 140
+    assert body.width.preferred == get_content_width()
     assert selector.width.min == 48
     assert description.width.min == 40
     assert description.width.weight == selector.width.weight

@@ -191,7 +191,7 @@ nanofaas fn test greet --payloads ./payloads/
 ```
 
 Runs every payload file against the deployed function and compares responses
-to `expected`. *(Requires `nanofaas fn test` — see CLI docs for availability.)*
+to `expected`.
 
 ---
 

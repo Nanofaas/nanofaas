@@ -52,35 +52,27 @@ def _dockerfile_for_runtime_kind(runtime_kind: str, family: str) -> Path:
         raise ValueError(f"Unsupported function runtime: {runtime_kind!r}") from exc
 
 
+_RUST_CP_DIR = (
+    "experiments/control-plane-staging/versions"
+    "/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust"
+)
+
+
 def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
     control_plane_image = control_image(context.local_registry)
     function_runtime_image = runtime_image(context.local_registry)
     if context.runtime == "rust":
-        control_context = "control-plane-rust"
-        control_dockerfile = "control-plane-rust/Dockerfile"
+        control_context = _RUST_CP_DIR
+        control_dockerfile = f"{_RUST_CP_DIR}/Dockerfile"
     else:
         control_context = "control-plane"
         control_dockerfile = "control-plane/Dockerfile"
 
     operations: list[ScenarioOperation] = []
 
-    if context.runtime == "rust":
-        operations.append(
-            RemoteCommandOperation(
-                operation_id="images.build_core.boot_jars",
-                summary="Build core Rust support artifacts",
-                argv=(
-                    "cargo",
-                    "build",
-                    "--release",
-                    "--manifest-path",
-                    "control-plane-rust/Cargo.toml",
-                ),
-                env=_frozen_env(),
-                execution_target="vm",
-            )
-        )
-    else:
+    if context.runtime != "rust":
+        # Rust Dockerfile is a self-contained multi-stage build (cargo runs inside Docker);
+        # no pre-build step is needed on the VM.
         operations.append(
             RemoteCommandOperation(
                 operation_id="images.build_core.boot_jars",

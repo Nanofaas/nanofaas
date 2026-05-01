@@ -42,6 +42,8 @@ install_loadtest_commands(app)
 
 
 def main() -> None:
+    from controlplane_tool.console import init_ui_width
+    init_ui_width()
     install_rich_tracebacks(show_locals=False)
     # No arguments → launch the interactive Rich TUI
     if len(sys.argv) == 1:

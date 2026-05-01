@@ -194,14 +194,12 @@ def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
 
     core_operations = images.plan_build_core(context)
 
-    assert core_operations[0].argv[:5] == (
-        "cargo",
-        "build",
-        "--release",
-        "--manifest-path",
-        "control-plane-rust/Cargo.toml",
-    )
-    assert any("control-plane-rust/Dockerfile" in " ".join(operation.argv) for operation in core_operations)
+    # Rust Dockerfile is self-contained (multi-stage with internal cargo build);
+    # no bootJar/cargo pre-build step — docker build goes straight to the control image.
+    assert core_operations[0].operation_id == "images.build_core.control_image"
+    assert core_operations[0].argv[0] == "docker"
+    rust_cp_dir = images._RUST_CP_DIR
+    assert any(rust_cp_dir in " ".join(op.argv) for op in core_operations)
 
 
 def test_helm_component_planners_use_namespace_and_helm_values() -> None:

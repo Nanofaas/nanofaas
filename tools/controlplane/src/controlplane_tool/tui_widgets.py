@@ -20,6 +20,7 @@ from prompt_toolkit.widgets import CheckboxList, Frame
 from questionary import Style
 from questionary.prompts.common import Choice, InquirerControl
 
+from controlplane_tool.console import get_content_width as _get_content_width
 from controlplane_tool.tui_chrome import APP_ASCII_LOGO, APP_WORDMARK
 
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
@@ -42,7 +43,6 @@ _STYLE = Style(
 )
 
 _BACK_VALUE = "back"
-_PICKER_BODY_PREFERRED_WIDTH = 140
 _PICKER_SELECTOR_MIN_WIDTH = 48
 _PICKER_DESCRIPTION_MIN_WIDTH = 40
 _PICKER_PANEL_WEIGHT = 1
@@ -307,7 +307,7 @@ def _build_described_select_application(
     body = VSplit(
         [selector, description],
         padding=2,
-        width=Dimension(preferred=_PICKER_BODY_PREFERRED_WIDTH),
+        width=Dimension(preferred=_get_content_width()),
     )
 
     return Application(
@@ -423,7 +423,7 @@ def _build_described_checkbox_application(
     body = VSplit(
         [selector, description],
         padding=2,
-        width=Dimension(preferred=_PICKER_BODY_PREFERRED_WIDTH),
+        width=Dimension(preferred=_get_content_width()),
     )
 
     return Application(
