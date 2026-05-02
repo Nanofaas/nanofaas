@@ -20,7 +20,7 @@ from controlplane_tool.scenario_components import cli as cli_components
 from controlplane_tool.scenario_components.cli import CliComponentContext
 from controlplane_tool.cli_vm_runner import CliVmRunner
 from controlplane_tool.cli_host_runner import CliHostPlatformRunner
-from controlplane_tool.console import bind_workflow_context, bind_workflow_sink
+from tui_toolkit import bind_workflow_context, bind_workflow_sink
 from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
 from controlplane_tool.deploy_host_runner import DeployHostE2eRunner
 from controlplane_tool.scenario_helpers import (
