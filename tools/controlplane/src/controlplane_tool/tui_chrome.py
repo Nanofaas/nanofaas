@@ -1,52 +1,26 @@
+"""SHIM — moved to tui_toolkit.chrome and controlplane_tool.ui_setup.
+
+This file will be deleted in PR2. New code should import from tui_toolkit
+directly, and brand strings from controlplane_tool.ui_setup.NANOFAAS_BRAND.
+"""
 from __future__ import annotations
 
-from rich.console import Group, RenderableType
-from rich.panel import Panel
-from rich.rule import Rule
-from rich.table import Table
-from rich.text import Text
+from tui_toolkit import render_screen_frame
 
-APP_WORDMARK = "NANOFAAS"
-APP_ASCII_LOGO = """
- ███╗   ██╗ █████╗ ███╗   ██╗ ██████╗ ███████╗ █████╗  █████╗ ███████╗
- ████╗  ██║██╔══██╗████╗  ██║██╔═══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝
- ██╔██╗ ██║███████║██╔██╗ ██║██║   ██║█████╗  ███████║███████║███████╗
- ██║╚██╗██║██╔══██║██║╚██╗██║██║   ██║██╔══╝  ██╔══██║██╔══██║╚════██║
- ██║ ╚████║██║  ██║██║ ╚████║╚██████╔╝██║     ██║  ██║██║  ██║███████║
- ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
-""".strip("\n")
+from controlplane_tool.ui_setup import NANOFAAS_BRAND, setup_ui
+
+# Ensure the nanofaas brand is active whenever this module is imported.
+# Tests that import tui_chrome but don't call main() rely on this side-effect.
+setup_ui()
+
+APP_WORDMARK = NANOFAAS_BRAND.wordmark
+APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
 APP_BRAND = APP_WORDMARK
-DEFAULT_BREADCRUMB = "Main"
-DEFAULT_FOOTER_HINT = "Esc back | Ctrl+C exit"
+DEFAULT_BREADCRUMB = NANOFAAS_BRAND.default_breadcrumb
+DEFAULT_FOOTER_HINT = NANOFAAS_BRAND.default_footer_hint
 
-
-def render_screen_frame(
-    *,
-    title: str,
-    body: RenderableType,
-    breadcrumb: str = DEFAULT_BREADCRUMB,
-    footer_hint: str = DEFAULT_FOOTER_HINT,
-) -> Panel:
-    header = Table.grid(expand=True)
-    header.add_column(ratio=1)
-    header.add_column(justify="right", no_wrap=True)
-    header.add_row(
-        Text(APP_WORDMARK, style="bold cyan"),
-        Text(breadcrumb, style="dim") if breadcrumb else Text(""),
-    )
-
-    content: list[RenderableType] = [
-        Text(APP_ASCII_LOGO, style="bold cyan"),
-        header,
-        Rule(style="cyan dim"),
-        body,
-    ]
-    if footer_hint:
-        content.extend([Rule(style="cyan dim"), Text(footer_hint, style="dim")])
-
-    return Panel(
-        Group(*content),
-        title=Text(title, style="bold"),
-        border_style="cyan dim",
-        padding=(1, 2),
-    )
+__all__ = [
+    "APP_ASCII_LOGO", "APP_WORDMARK", "APP_BRAND",
+    "DEFAULT_BREADCRUMB", "DEFAULT_FOOTER_HINT",
+    "render_screen_frame",
+]
