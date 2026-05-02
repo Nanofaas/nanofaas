@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from controlplane_tool.models import FunctionRuntimeKind
 from controlplane_tool.paths import default_tool_paths
 
@@ -31,6 +33,110 @@ _EXAMPLES_ROOT = _PATHS.workspace_root / "examples"
 
 def _example_dir(*parts: str) -> Path:
     return _EXAMPLES_ROOT.joinpath(*parts)
+
+
+_RUNTIME_DIR_TO_CATALOG_RUNTIME: dict[str, FunctionRuntimeKind] = {
+    "bash": "exec",
+    "go": "go",
+    "java": "java",
+    "javascript": "javascript",
+    "python": "python",
+}
+
+
+def _load_function_manifest(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Invalid function manifest: {path}")
+    return data
+
+
+def _runtime_from_dir(runtime_dir: str, family: str) -> FunctionRuntimeKind:
+    if runtime_dir == "java" and family.endswith("-lite"):
+        return "java-lite"
+    try:
+        return _RUNTIME_DIR_TO_CATALOG_RUNTIME[runtime_dir]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported function runtime directory: {runtime_dir}") from exc
+
+
+def _family_from_dir(function_dir_name: str, runtime: FunctionRuntimeKind) -> str:
+    if runtime == "java-lite" and function_dir_name.endswith("-lite"):
+        return function_dir_name.removesuffix("-lite")
+    return function_dir_name
+
+
+def _image_runtime_prefix(runtime_dir: str, runtime: FunctionRuntimeKind) -> str:
+    if runtime == "exec":
+        return "bash"
+    if runtime == "java-lite":
+        return "java-lite"
+    return runtime_dir
+
+
+def _default_image(runtime_dir: str, runtime: FunctionRuntimeKind, family: str) -> str:
+    prefix = _image_runtime_prefix(runtime_dir, runtime)
+    return f"localhost:5000/nanofaas/{prefix}-{family}:e2e"
+
+
+def _default_payload(payloads_root: Path, family: str) -> str | None:
+    candidate = f"{family}-sample.json"
+    return candidate if (payloads_root / candidate).exists() else None
+
+
+def _discover_example_functions(
+    examples_root: Path,
+    payloads_root: Path,
+) -> list[FunctionDefinition]:
+    if not examples_root.exists():
+        return []
+
+    discovered: list[FunctionDefinition] = []
+    seen: set[str] = set()
+
+    for runtime_root in sorted(path for path in examples_root.iterdir() if path.is_dir()):
+        runtime_dir = runtime_root.name
+        if runtime_dir == "build":
+            continue
+
+        for example_dir in sorted(path for path in runtime_root.iterdir() if path.is_dir()):
+            manifest = _load_function_manifest(example_dir / "function.yaml")
+            catalog_data = manifest.get("catalog")
+            catalog = catalog_data if isinstance(catalog_data, dict) else {}
+
+            fallback_runtime = _runtime_from_dir(runtime_dir, example_dir.name)
+            runtime = catalog.get("runtime") or fallback_runtime
+            family = catalog.get("family") or _family_from_dir(example_dir.name, runtime)
+            key = f"{family}-{runtime}"
+
+            if key in seen:
+                raise ValueError(f"Duplicate function key: {key}")
+            seen.add(key)
+
+            discovered.append(
+                FunctionDefinition(
+                    key=key,
+                    family=family,
+                    runtime=runtime,
+                    description=(
+                        catalog.get("description")
+                        or f"{family} {runtime} example function."
+                    ),
+                    example_dir=example_dir,
+                    default_image=(
+                        catalog.get("defaultImage")
+                        or _default_image(runtime_dir, runtime, family)
+                    ),
+                    default_payload_file=(
+                        catalog.get("defaultPayload")
+                        or _default_payload(payloads_root, family)
+                    ),
+                )
+            )
+
+    return discovered
 
 
 FUNCTIONS: tuple[FunctionDefinition, ...] = (
