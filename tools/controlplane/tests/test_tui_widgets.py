@@ -1,18 +1,22 @@
-from controlplane_tool.console import get_content_width
-from controlplane_tool.tui_widgets import (
-    _DescribedChoice,
+from tui_toolkit import get_content_width
+from tui_toolkit.pickers import (
+    Choice as _DescribedChoice,
     _back_choice,
-    _build_described_checkbox_application,
-    _build_described_select_application,
-    _checkbox_values,
-    _select_value,
-    _with_back_described_choice,
+    _build_multiselect_application as _build_described_checkbox_application,
+    _build_select_application as _build_described_select_application,
+    multiselect as _checkbox_values,
+    select as _select_value,
 )
+from tui_toolkit.pickers import _with_back as _with_back_described_choice
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 from rich.console import Console
 from rich.text import Text
 import questionary
+
+# Ensure the nanofaas brand is active for all tests in this module.
+from controlplane_tool.ui_setup import setup_ui as _setup_ui
+_setup_ui()
 
 
 def test_described_choice_is_frozen_dataclass() -> None:
@@ -41,18 +45,23 @@ def test_back_choice_value_is_back() -> None:
 
 
 def test_select_value_routes_standard_choices_through_described_selector(monkeypatch) -> None:
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as pickers
 
     captured: dict[str, object] = {}
 
-    def fake_select_described_value(message, choices, default=None, include_back=False):  # noqa: ANN001
+    class FakePrompt:
+        def ask(self):
+            return "build"
+
+    def fake_questionary_select(message, choices, default=None, style=None, show_description=False):  # noqa: ANN001
         captured["message"] = message
         captured["choices"] = choices
         captured["default"] = default
-        captured["include_back"] = include_back
-        return "build"
+        return FakePrompt()
 
-    monkeypatch.setattr(tui_widgets, "_select_described_value", fake_select_described_value)
+    monkeypatch.setattr(pickers.questionary, "select", fake_questionary_select)
+    monkeypatch.setattr(pickers.sys, "stdin", type("T", (), {"isatty": lambda self: False})())
+    monkeypatch.setattr(pickers.sys, "stdout", type("T", (), {"isatty": lambda self: True})())
 
     result = _select_value(
         "Action:",
@@ -71,26 +80,27 @@ def test_select_value_routes_standard_choices_through_described_selector(monkeyp
     assert result == "build"
     assert captured["message"] == "Action:"
     assert captured["default"] == "build"
-    assert captured["include_back"] is False
     assert any(getattr(choice, "value", choice) == "back" for choice in captured["choices"])
 
 
 def test_checkbox_values_route_standard_choices_through_described_checkbox(monkeypatch) -> None:
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as pickers
 
     captured: dict[str, object] = {}
 
-    def fake_select_described_checkbox_values(message, choices, default_values=None):  # noqa: ANN001
+    class FakePrompt:
+        def ask(self):
+            return ["autoscaler"]
+
+    def fake_questionary_checkbox(message, choices, default=None, style=None):  # noqa: ANN001
         captured["message"] = message
         captured["choices"] = choices
-        captured["default_values"] = default_values
-        return ["autoscaler"]
+        captured["default_values"] = default
+        return FakePrompt()
 
-    monkeypatch.setattr(
-        tui_widgets,
-        "_select_described_checkbox_values",
-        fake_select_described_checkbox_values,
-    )
+    monkeypatch.setattr(pickers.questionary, "checkbox", fake_questionary_checkbox)
+    monkeypatch.setattr(pickers.sys, "stdin", type("T", (), {"isatty": lambda self: False})())
+    monkeypatch.setattr(pickers.sys, "stdout", type("T", (), {"isatty": lambda self: True})())
 
     result = _checkbox_values(
         "Select control-plane modules:",
@@ -121,6 +131,10 @@ def test_described_picker_requires_enter_to_confirm_after_space() -> None:
         app = _build_described_select_application(
             "Scenario:",
             choices,
+            default=None,
+            title=None,
+            breadcrumb=None,
+            footer_hint=None,
             input=pipe_input,
             output=DummyOutput(),
         )
@@ -140,6 +154,10 @@ def test_described_checkbox_requires_enter_to_confirm_after_space() -> None:
         app = _build_described_checkbox_application(
             "Modules:",
             choices,
+            default_values=None,
+            title=None,
+            breadcrumb=None,
+            footer_hint=None,
             input=pipe_input,
             output=DummyOutput(),
         )
@@ -152,6 +170,10 @@ def test_described_picker_uses_full_screen_with_wider_stable_description_panel()
     app = _build_described_select_application(
         "Scenario:",
         [_DescribedChoice("one", "one", "first")],
+        default=None,
+        title=None,
+        breadcrumb=None,
+        footer_hint=None,
         output=DummyOutput(),
     )
 
@@ -171,6 +193,10 @@ def test_described_checkbox_uses_full_screen_with_wider_stable_description_panel
     app = _build_described_checkbox_application(
         "Modules:",
         [_DescribedChoice("one", "one", "first")],
+        default_values=None,
+        title=None,
+        breadcrumb=None,
+        footer_hint=None,
         output=DummyOutput(),
     )
 
@@ -187,7 +213,10 @@ def test_described_checkbox_uses_full_screen_with_wider_stable_description_panel
 
 
 def test_render_screen_frame_renders_brand_title_and_footer() -> None:
-    from controlplane_tool.tui_chrome import APP_ASCII_LOGO, APP_WORDMARK, render_screen_frame
+    from tui_toolkit import render_screen_frame
+    from controlplane_tool.ui_setup import NANOFAAS_BRAND
+    APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
+    APP_WORDMARK = NANOFAAS_BRAND.wordmark
 
     frame = render_screen_frame(
         title="Validation",
@@ -209,11 +238,16 @@ def test_render_screen_frame_renders_brand_title_and_footer() -> None:
 
 
 def test_described_picker_header_contains_legacy_ascii_logo() -> None:
-    from controlplane_tool.tui_chrome import APP_ASCII_LOGO
+    from controlplane_tool.ui_setup import NANOFAAS_BRAND
+    APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
 
     app = _build_described_select_application(
         "Scenario:",
         [_DescribedChoice("one", "one", "first")],
+        default=None,
+        title=None,
+        breadcrumb=None,
+        footer_hint=None,
         output=DummyOutput(),
     )
 
@@ -226,11 +260,16 @@ def test_described_picker_header_contains_legacy_ascii_logo() -> None:
 
 
 def test_described_checkbox_header_contains_legacy_ascii_logo() -> None:
-    from controlplane_tool.tui_chrome import APP_ASCII_LOGO
+    from controlplane_tool.ui_setup import NANOFAAS_BRAND
+    APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
 
     app = _build_described_checkbox_application(
         "Modules:",
         [_DescribedChoice("one", "one", "first")],
+        default_values=None,
+        title=None,
+        breadcrumb=None,
+        footer_hint=None,
         output=DummyOutput(),
     )
 

@@ -10,7 +10,7 @@ from multipass import MultipassClient
 from controlplane_tool.command_resolver import CommandResolver
 from controlplane_tool.e2e_catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.console import bind_workflow_context
+from tui_toolkit import bind_workflow_context
 from controlplane_tool.paths import ToolPaths
 from controlplane_tool.scenario_components.cli import CliComponentContext
 from controlplane_tool.scenario_components.composer import compose_recipe

@@ -15,7 +15,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from controlplane_tool.tui_chrome import render_screen_frame
+from tui_toolkit import render_screen_frame
 from controlplane_tool.tui_prefect_bridge import TuiPrefectBridge
 from controlplane_tool.workflow_models import WorkflowEvent
 

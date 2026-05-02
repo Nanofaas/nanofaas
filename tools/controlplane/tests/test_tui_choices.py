@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from rich.console import Console
 
-from controlplane_tool.console import bind_workflow_sink
+from tui_toolkit import bind_workflow_sink
 from controlplane_tool.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
 from controlplane_tool.models import (
     CliTestConfig,
@@ -993,7 +993,7 @@ def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
 
 def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as tui_widgets
 
     answers = iter(["provision-base", "multipass", "nanofaas-e2e", "ubuntu", False, False])
     called: dict[str, object] = {}
@@ -1032,7 +1032,7 @@ def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
 def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monkeypatch) -> None:
     import pytest
     import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as tui_widgets
 
     answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
 
@@ -1066,7 +1066,7 @@ def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monk
 def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeypatch) -> None:
     import pytest
     import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as tui_widgets
 
     answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
     log_lines: list[str] = []
@@ -1679,7 +1679,7 @@ def test_platform_validation_menu_returns_to_scenario_picker_after_dry_run(monke
 
 def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as tui_widgets
     from controlplane_tool.registry_runtime import default_registry_url
 
     answers = iter(["start"])
@@ -1705,7 +1705,7 @@ def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
 
 def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.tui_widgets as tui_widgets
+    import tui_toolkit.pickers as tui_widgets
 
     called: dict[str, object] = {}
 
@@ -2272,7 +2272,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
 def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_completes(monkeypatch) -> None:
     import controlplane_tool.tui_app as tui_app
     import controlplane_tool.e2e_runner as e2e_runner
-    from controlplane_tool.console import phase, step
+    from tui_toolkit import phase, step
     from rich.console import Console
     import re
 

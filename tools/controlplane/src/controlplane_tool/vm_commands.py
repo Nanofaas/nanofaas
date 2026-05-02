@@ -6,7 +6,8 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
-from controlplane_tool.console import console, fail, step
+from tui_toolkit import fail, step
+from tui_toolkit.console import console
 from controlplane_tool.infra_flows import build_vm_flow
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.prefect_runtime import run_local_flow

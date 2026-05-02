@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.console import bind_workflow_context, bind_workflow_sink, workflow_log
+from tui_toolkit import bind_workflow_context, bind_workflow_sink, workflow_log
 from controlplane_tool.k3s_curl_runner import K3sCurlRunner
 from controlplane_tool.workflow_models import WorkflowContext
 from controlplane_tool.workflow_progress import WorkflowProgressReporter

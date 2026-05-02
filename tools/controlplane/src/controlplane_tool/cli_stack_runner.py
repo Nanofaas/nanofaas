@@ -16,7 +16,7 @@ from controlplane_tool.cli_platform_workflow import (
     platform_status_command,
     platform_uninstall_command,
 )
-from controlplane_tool.console import phase, success, workflow_step
+from tui_toolkit import phase, success, workflow_step
 from controlplane_tool.scenario_defaults import (
     resolve_scenario_namespace,
     resolve_scenario_release,
