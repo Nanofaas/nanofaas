@@ -1,12 +1,15 @@
-"""
-tui_widgets.py — Reusable questionary / prompt_toolkit widget primitives.
+"""SHIM — moved to tui_toolkit.pickers.
 
-Extracted from tui_app.py. No dependency on runners, flows, or business logic.
+This file will be deleted in PR2. New code should import select/multiselect
+from tui_toolkit directly.
+
+Widget primitives used by tui_app and tui.py.  The full-screen prompt_toolkit
+picker implementation is kept here for backward compatibility; tui-toolkit
+provides an equivalent in tui_toolkit.pickers.
 """
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from typing import Any
 
 import questionary
@@ -17,30 +20,16 @@ from prompt_toolkit.layout import Dimension, Layout
 from prompt_toolkit.layout.containers import HSplit, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.widgets import CheckboxList, Frame
-from questionary import Style
 from questionary.prompts.common import Choice, InquirerControl
+
+from tui_toolkit import Choice as _DescribedChoice  # legacy alias: same shape as original dataclass
+from tui_toolkit.theme import DEFAULT_THEME, to_questionary_style
 
 from controlplane_tool.console import get_content_width as _get_content_width
 from controlplane_tool.tui_chrome import APP_ASCII_LOGO, APP_WORDMARK
 
 # ── questionary theme consistent with Rich cyan palette ──────────────────────
-_STYLE = Style(
-    [
-        ("brand", "fg:cyan bold"),
-        ("breadcrumb", "fg:grey"),
-        ("footer", "fg:grey"),
-        ("qmark", "fg:cyan bold"),
-        ("question", "bold"),
-        ("answer", "fg:cyan bold"),
-        ("pointer", "fg:cyan bold"),
-        ("highlighted", "fg:cyan bold"),
-        ("selected", "fg:cyan"),
-        ("text", ""),
-        ("disabled", "fg:grey"),
-        ("separator", "fg:grey"),
-        ("instruction", "fg:grey"),
-    ]
-)
+_STYLE = to_questionary_style(DEFAULT_THEME)
 
 _BACK_VALUE = "back"
 _PICKER_SELECTOR_MIN_WIDTH = 48
@@ -55,13 +44,6 @@ def _ask(prompt_fn):
     if result is None:
         raise KeyboardInterrupt
     return result
-
-
-@dataclass(frozen=True)
-class _DescribedChoice:
-    title: str
-    value: str
-    description: str
 
 
 def _back_choice() -> questionary.Choice:
@@ -520,3 +502,20 @@ def _select_described_checkbox_values(
         footer_hint=footer_hint,
     )
     return app.run()
+
+
+__all__ = [
+    "_select_value",
+    "_checkbox_values",
+    "_select_described_value",
+    "_select_described_checkbox_values",
+    "_DescribedChoice",
+    "_STYLE",
+    "_BACK_VALUE",
+    "_ask",
+    "_back_choice",
+    "_with_back_choice",
+    "_with_back_described_choice",
+    "_build_described_select_application",
+    "_build_described_checkbox_application",
+]
