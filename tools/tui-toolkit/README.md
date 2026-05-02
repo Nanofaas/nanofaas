@@ -28,4 +28,4 @@ answer = select(
 
 ## Status
 
-Pre-1.0. The first consumer is `tools/controlplane/`. See the design doc at `docs/superpowers/specs/2026-05-01-tui-toolkit-extraction-design.md`.
+Pre-1.0. The first consumer is `tools/controlplane/`. See the design doc at [`../../docs/superpowers/specs/2026-05-01-tui-toolkit-extraction-design.md`](../../docs/superpowers/specs/2026-05-01-tui-toolkit-extraction-design.md).
