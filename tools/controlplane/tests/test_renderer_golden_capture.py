@@ -5,8 +5,15 @@ Run once with:
 
 After running, verify the files appear under tools/tui-toolkit/tests/golden/.
 This file is deleted at the end of PR2.
+
+NOTE: Skipped in normal test runs. The legacy renderer has been shimmed to
+tui_toolkit, so re-running would capture the NEW renderer (not the legacy one).
+The golden files were captured before the shim was installed (Task 0.3).
 """
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.skip(reason="one-shot capture — golden files already committed in Task 0.3")
 
 from pathlib import Path
 
