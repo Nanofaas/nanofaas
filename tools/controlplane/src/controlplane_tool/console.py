@@ -1,343 +1,66 @@
-"""
-console.py — Centralized Rich UX layer for the controlplane tool.
+"""SHIM — moved to tui_toolkit.
 
-All terminal output should go through the helpers here, never raw print().
+This file will be deleted in PR2. New code should import directly:
+
+    from tui_toolkit import console, phase, step, success, warning, skip, fail
+    from tui_toolkit import status, workflow_log, workflow_step, header
+    from tui_toolkit import bind_workflow_sink, bind_workflow_context
+    from tui_toolkit import get_workflow_context, has_workflow_sink
+    from tui_toolkit import get_content_width
 """
 from __future__ import annotations
 
-import shutil as _shutil
-import sys
-from contextvars import ContextVar
-from contextlib import contextmanager
-from typing import Generator
-
-from rich.console import Console
-from rich.markup import escape
-from rich.panel import Panel
-from rich.rule import Rule
-from rich.text import Text
-
-from controlplane_tool.tui_chrome import APP_ASCII_LOGO
-from controlplane_tool.workflow_events import (
-    build_log_event,
-    build_phase_event,
-    build_task_event,
+import tui_toolkit.console as _console_module
+from tui_toolkit import (
+    bind_workflow_context,
+    bind_workflow_sink,
+    fail,
+    get_content_width,
+    get_workflow_context,
+    has_workflow_sink,
+    header,
+    init_ui,
+    phase,
+    skip,
+    status,
+    step,
+    success,
+    warning,
+    workflow_log,
+    workflow_step,
 )
-from controlplane_tool.workflow_models import WorkflowContext, WorkflowEvent, WorkflowSink
+from tui_toolkit.workflow import _active_sink as _workflow_sink_getter
+from tui_toolkit.workflow import _emit as _emit_workflow_event
+from tui_toolkit.workflow import _render_event
 
-# Cap for Rich output and prompt_toolkit pickers — governs both in one place.
-_MAX_CONTENT_COLS = 140
-_content_width: int | None = None  # set by init_ui_width(); None → auto-detect
+# The Rich console singleton — accessed via the module to avoid shadowing.
+console = _console_module.console
+
+
+def _workflow_context():
+    """Legacy alias — returns the active workflow context (or None)."""
+    return get_workflow_context()
+
+
+def _workflow_sink():
+    """Legacy alias — returns the active workflow sink (or None)."""
+    return _workflow_sink_getter()
 
 
 def init_ui_width() -> None:
-    """Call once at the very start of main() to lock in the terminal width.
-
-    Queries the real TTY size (available once the process is interactive) and
-    caps it at _MAX_CONTENT_COLS.  Also updates the shared console so that all
-    subsequent Rich output honours the same constraint.
-    """
-    global _content_width
-    _content_width = min(
-        _shutil.get_terminal_size(fallback=(80, 24)).columns,
-        _MAX_CONTENT_COLS,
-    )
-    console._width = _content_width  # retroactively cap the singleton
+    """Legacy alias — initialises the nanofaas UI (brand + theme + terminal width)."""
+    from controlplane_tool.ui_setup import setup_ui
+    setup_ui()
 
 
-def get_content_width() -> int:
-    """Return the active content width (after init_ui_width) or the bare max."""
-    return _content_width if _content_width is not None else _MAX_CONTENT_COLS
-
-
-# Singleton — shared across all modules.  No fixed width at import time so
-# that shutil.get_terminal_size() is not called before the TTY is attached.
-console = Console(highlight=False)
-_workflow_sink_var: ContextVar["WorkflowSink | None"] = ContextVar(
-    "workflow_sink",
-    default=None,
-)
-_workflow_sink_shared: "WorkflowSink | None" = None
-_workflow_context_var: ContextVar[WorkflowContext | None] = ContextVar(
-    "workflow_context",
-    default=None,
-)
-_workflow_context_shared: WorkflowContext | None = None
-
-@contextmanager
-def bind_workflow_sink(sink: WorkflowSink) -> Generator[None, None, None]:
-    global _workflow_sink_shared
-    previous_shared = _workflow_sink_shared
-    _workflow_sink_shared = sink
-    token = _workflow_sink_var.set(sink)
-    try:
-        yield
-    finally:
-        _workflow_sink_var.reset(token)
-        _workflow_sink_shared = previous_shared
-
-
-@contextmanager
-def bind_workflow_context(context: WorkflowContext) -> Generator[None, None, None]:
-    global _workflow_context_shared
-    previous_shared = _workflow_context_shared
-    _workflow_context_shared = context
-    token = _workflow_context_var.set(context)
-    try:
-        yield
-    finally:
-        _workflow_context_var.reset(token)
-        _workflow_context_shared = previous_shared
-
-
-def _workflow_sink() -> WorkflowSink | None:
-    return _workflow_sink_var.get() or _workflow_sink_shared
-
-
-def _workflow_context() -> WorkflowContext | None:
-    return _workflow_context_var.get() or _workflow_context_shared
-
-
-def has_workflow_sink() -> bool:
-    return _workflow_sink() is not None
-
-
-def _child_workflow_context(
-    *,
-    task_id: str,
-    parent_task_id: str | None,
-    context: WorkflowContext | None,
-) -> WorkflowContext:
-    active = context or _workflow_context() or WorkflowContext()
-    resolved_parent_task_id = parent_task_id
-    if resolved_parent_task_id is None:
-        resolved_parent_task_id = active.task_id or active.parent_task_id
-    return WorkflowContext(
-        flow_id=active.flow_id,
-        flow_run_id=active.flow_run_id,
-        task_id=task_id,
-        parent_task_id=resolved_parent_task_id,
-        task_run_id=active.task_run_id,
-    )
-
-
-def _render_event(event: WorkflowEvent) -> None:
-    if event.kind == "log.line":
-        prefix = "stderr │ " if event.stream == "stderr" else ""
-        console.print(f"{prefix}{escape(event.line)}")
-        return
-    if event.kind == "phase.started":
-        console.print()
-        console.print(Rule(f"[bold cyan]{escape(event.title)}[/]", style="cyan dim"))
-        console.print()
-        return
-    if event.kind == "task.running":
-        if event.detail:
-            console.print(
-                f"  [cyan]▸[/] [bold]{escape(event.title)}[/]  [dim]{escape(event.detail)}[/]"
-            )
-        else:
-            console.print(f"  [cyan]▸[/] [bold]{escape(event.title)}[/]")
-        return
-    if event.kind == "task.completed":
-        body = f"[bold green]✓  {escape(event.title)}[/]"
-        if event.detail:
-            body += f"\n\n[dim]{escape(event.detail)}[/]"
-        console.print()
-        console.print(Panel(body, border_style="green", padding=(0, 2)))
-        console.print()
-        return
-    if event.kind == "task.warning":
-        console.print(f"  [yellow]⚠[/]  [yellow]{escape(event.title)}[/]")
-        return
-    if event.kind == "task.updated":
-        if event.detail:
-            console.print(
-                f"  [cyan]↺[/] [bold]{escape(event.title)}[/]  [dim]{escape(event.detail)}[/]"
-            )
-        else:
-            console.print(f"  [cyan]↺[/] [bold]{escape(event.title)}[/]")
-        return
-    if event.kind == "task.skipped":
-        console.print(f"  [dim]⊘  {escape(event.title)}[/]")
-        return
-    if event.kind == "task.cancelled":
-        body = f"[bold yellow]⊘  {escape(event.title)}[/]"
-        if event.detail:
-            body += f"\n\n[dim]{escape(event.detail)}[/]"
-        console.print()
-        console.print(Panel(body, border_style="yellow", padding=(0, 2)))
-        console.print()
-        return
-    if event.kind == "task.failed":
-        body = f"[bold red]✗  {escape(event.title)}[/]"
-        if event.detail:
-            body += f"\n\n[dim]{escape(event.detail)}[/]"
-        console.print()
-        console.print(Panel(body, border_style="red", padding=(0, 2)))
-        console.print()
-
-
-def _emit_workflow_event(event: WorkflowEvent) -> None:
-    sink = _workflow_sink()
-    if sink is not None:
-        sink.emit(event)
-        return
-    _render_event(event)
-
-
-def workflow_log(
-    message: str,
-    *,
-    stream: str = "stdout",
-    context: WorkflowContext | None = None,
-) -> None:
-    _emit_workflow_event(
-        build_log_event(
-            line=message,
-            stream=stream,
-            context=context or _workflow_context(),
-        )
-    )
-
-
-def header(subtitle: str = "controlplane tool") -> None:
-    """Startup banner — shown once when the TUI launches."""
-    console.print()
-    console.print(Text(APP_ASCII_LOGO, style="bold cyan", justify="center"))
-    console.print(
-        Panel(
-            f"[dim]{escape(subtitle)}[/]",
-            border_style="cyan dim",
-            padding=(0, 4),
-        )
-    )
-    console.print()
-
-
-def phase(label: str) -> None:
-    """Major workflow phase separator."""
-    _emit_workflow_event(build_phase_event(label, context=_workflow_context()))
-
-
-def step(label: str, detail: str = "") -> None:
-    """A single step within a phase."""
-    _emit_workflow_event(
-        build_task_event(
-            kind="task.running",
-            title=label,
-            detail=detail,
-            context=_workflow_context(),
-        )
-    )
-
-
-@contextmanager
-def workflow_step(
-    *,
-    task_id: str,
-    title: str,
-    parent_task_id: str | None = None,
-    detail: str = "",
-    context: WorkflowContext | None = None,
-) -> Generator[WorkflowContext, None, None]:
-    """Emit a balanced task-running/task-completed/task-failed event sequence."""
-    child_context = _child_workflow_context(
-        task_id=task_id,
-        parent_task_id=parent_task_id,
-        context=context,
-    )
-    _emit_workflow_event(
-        build_task_event(
-            kind="task.running",
-            task_id=task_id,
-            parent_task_id=child_context.parent_task_id,
-            title=title,
-            detail=detail,
-            context=child_context,
-        )
-    )
-    with bind_workflow_context(child_context):
-        try:
-            yield child_context
-        except Exception as exc:
-            _emit_workflow_event(
-                build_task_event(
-                    kind="task.failed",
-                    task_id=task_id,
-                    parent_task_id=child_context.parent_task_id,
-                    title=title,
-                    detail=detail or str(exc),
-                    context=child_context,
-                )
-            )
-            raise
-        else:
-            _emit_workflow_event(
-                build_task_event(
-                    kind="task.completed",
-                    task_id=task_id,
-                    parent_task_id=child_context.parent_task_id,
-                    title=title,
-                    detail=detail,
-                    context=child_context,
-                )
-            )
-
-
-def success(label: str, detail: str = "") -> None:
-    """Green success panel for workflow completion."""
-    _emit_workflow_event(
-        build_task_event(
-            kind="task.completed",
-            title=label,
-            detail=detail,
-            context=_workflow_context(),
-        )
-    )
-
-
-def warning(label: str) -> None:
-    """Non-fatal yellow warning."""
-    _emit_workflow_event(
-        build_task_event(
-            kind="task.warning",
-            title=label,
-            context=_workflow_context(),
-        )
-    )
-
-
-def skip(label: str) -> None:
-    """Dimmed skip message."""
-    _emit_workflow_event(
-        build_task_event(
-            kind="task.skipped",
-            title=label,
-            context=_workflow_context(),
-        )
-    )
-
-
-def fail(label: str, detail: str = "") -> None:
-    """Red failure panel."""
-    _emit_workflow_event(
-        build_task_event(
-            kind="task.failed",
-            title=label,
-            detail=detail,
-            context=_workflow_context(),
-        )
-    )
-
-
-@contextmanager
-def status(label: str) -> Generator[None, None, None]:
-    """Spinner context manager for long-running operations."""
-    sink = _workflow_sink()
-    if sink is not None:
-        with sink.status(label):
-            yield
-        return
-    with console.status(f"[cyan]{escape(label)}…[/]", spinner="dots"):
-        yield
+__all__ = [
+    "console",
+    "get_content_width",
+    "init_ui_width",
+    "header", "phase", "step", "success", "warning", "skip", "fail",
+    "status", "workflow_log", "workflow_step",
+    "bind_workflow_sink", "bind_workflow_context",
+    "has_workflow_sink",
+    "_workflow_sink", "_workflow_context",
+    "_render_event", "_emit_workflow_event",
+]
