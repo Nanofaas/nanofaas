@@ -11,15 +11,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * Copies request metadata into MDC before user code runs.
+ * Copies execution metadata into SLF4J MDC for the duration of the request.
  *
- * <p>This filter exists because handler code and supporting libraries need correlation fields for
- * logs, but the values originate in HTTP headers or startup env vars. The filter is the earliest
- * place where the runtime can normalize those values for the current request thread.</p>
- *
- * <p>Environment assumptions: the incoming request may provide {@code X-Execution-Id} and
- * {@code X-Trace-Id}. If execution id is missing, the runtime falls back to startup config. The
- * MDC entries are cleared after the request finishes so they do not leak across invocations.</p>
+ * <p>This is what keeps logs from the runtime and downstream handler code correlated with the
+ * same trace and execution identifiers. The filter runs on each request and clears the MDC when
+ * the request completes so the values do not leak across invocations.</p>
  */
 @Component
 public class TraceLoggingFilter extends OncePerRequestFilter {

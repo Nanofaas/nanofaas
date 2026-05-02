@@ -8,6 +8,7 @@ metrics with Grafana. The entire process is automated with two scripts.
 
 | Tool | Purpose | Install |
 |------|---------|---------|
+| **python3** | Host-side Ansible bootstrap | Included with macOS/Linux or install Python 3 |
 | **ssh** | Remote command execution and file copy | Included with macOS/Linux or install OpenSSH client |
 | **multipass** | Optional VM lifecycle manager | `brew install multipass` or [multipass.run](https://multipass.run) |
 | **Docker** | Build images + run Grafana | [docker.com](https://docs.docker.com/get-docker/) |
@@ -15,14 +16,19 @@ metrics with Grafana. The entire process is automated with two scripts.
 
 > SSH/SCP are always used for remote command execution and file transfer.
 > Multipass is used only when `E2E_VM_LIFECYCLE=multipass` and you want the
-> scripts to create/start/delete the VM for you. All other dependencies (k3s,
-> Helm, JDK 21) are installed automatically inside the VM.
+> scripts to create/start/delete the VM for you. VM provisioning is handled by
+> Ansible over SSH for both lifecycle modes. All other dependencies (k3s, Helm,
+> JDK 21) are installed automatically inside the VM, and k3s defaults to the
+> latest official release unless you set `K3S_VERSION`. The current playbooks
+> assume a Debian/Ubuntu-style VM because bootstrap and package installation use
+> `apt`. If Ansible is missing on the host, the scripts bootstrap it with a
+> local virtualenv when available and fall back to a user-site `pip` install.
 
 ## Quick Start (2 commands)
 
 ```bash
 # 1. Deploy nanofaas (creates VM, builds, deploys, verifies — ~15 min first run)
-./scripts/e2e-k3s-helm.sh
+./scripts/controlplane.sh e2e run helm-stack
 
 # 2. Run load tests + Grafana dashboard (~12 min)
 ./scripts/e2e-loadtest.sh
@@ -31,6 +37,23 @@ metrics with Grafana. The entire process is automated with two scripts.
 That's it. Open http://localhost:3000 (admin/admin) to see the Grafana dashboard
 while the tests run.
 
+When you want to dry-run or narrow the E2E selection before running the heavier wrappers,
+use the controlplane tool directly:
+
+```bash
+scripts/controlplane.sh functions list
+scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
+scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
+scripts/controlplane.sh loadtest list-profiles
+scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
+scripts/e2e-loadtest.sh --profile demo-java --dry-run
+```
+
+The split is intentional: `scripts/controlplane.sh loadtest run ...` is the generic first-class planner, while `scripts/e2e-loadtest.sh` stays as a compatibility wrapper over `experiments/e2e-loadtest.sh` for the legacy Helm/Grafana/parity flow.
+
+The reusable TOML scenario specs live under `tools/controlplane/scenarios/`.
+
 ---
 
 ## Step-by-Step Guide
@@ -38,14 +61,14 @@ while the tests run.
 ### Step 1: Deploy nanofaas
 
 ```bash
-./scripts/e2e-k3s-helm.sh
+./scripts/controlplane.sh e2e run helm-stack
 ```
 
 This script performs the following automatically:
 
-1. **Creates a Multipass VM** (`nanofaas-e2e`, 4 CPU, 8 GB RAM, 30 GB disk)
-2. **Installs dependencies** inside the VM: Docker, JDK 21, Helm
-3. **Installs k3s** (lightweight Kubernetes, Traefik disabled)
+1. **Creates a Multipass VM** (`nanofaas-e2e`, 4 CPU, 8 GB RAM, 30 GB disk) when `E2E_VM_LIFECYCLE=multipass`, or reuses your existing VM over SSH when `E2E_VM_LIFECYCLE=external`
+2. **Runs Ansible provisioning** inside the VM for Docker, JDK 21 and Helm
+3. **Installs or upgrades k3s** (lightweight Kubernetes, Traefik disabled) to the latest official release unless `K3S_VERSION` is pinned
 4. **Syncs the project** to the VM and **builds all artifacts**:
    - Gradle JARs: control-plane, function-runtime, Java demo functions
    - Docker images: 2 core + 2 Java + 2 Go + 2 Python + 2 Bash + 2 Java Lite = 12 images
@@ -88,9 +111,10 @@ On completion, you'll see:
 | `CPUS` | `4` | VM CPU count |
 | `MEMORY` | `8G` | VM memory |
 | `DISK` | `30G` | VM disk size |
-| `KEEP_VM` | `true` | Keep VM after script exits |
+| `--no-cleanup-vm` | disabled | Keep VM after script exits |
 | `SKIP_BUILD` | `false` | Skip build if images already exist |
 | `LOCAL_REGISTRY` | `localhost:5000` | Local in-VM registry used by k3s pulls |
+| `K3S_VERSION` | latest official release | Optional explicit k3s pin |
 
 #### External/local or remote VM mode
 
@@ -110,8 +134,8 @@ E2E_KUBECONFIG_SERVER=<optional-https-server-url>
 Examples:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-curl.sh
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/e2e-cli-host-platform.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-junit-curl
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
 `E2E_PUBLIC_HOST` is useful when the SSH host and the NodePort-reachable host differ.
@@ -119,13 +143,14 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 
 #### Idempotent re-runs
 
-The script is safe to re-run. It reuses an existing VM, skips installed
-dependencies, and performs a clean Helm install each time.
+The script is safe to re-run. It reuses an existing VM, applies Ansible
+provisioning idempotently, and performs a clean Helm install each time.
 
 ### Step 2: Run load tests
 
 ```bash
 ./scripts/e2e-loadtest.sh
+./scripts/e2e-loadtest.sh --profile demo-java --dry-run
 ```
 
 This script:
@@ -140,7 +165,9 @@ This script:
    - 10-second cooldown between tests
 5. **Generates a performance report** with per-function and per-runtime analysis
 
-Go demo functions are deployed and smoke-tested by `./scripts/e2e-k3s-helm.sh`,
+`--profile demo-java` is compatibility sugar for the legacy script: it narrows the benchmark matrix to the Java demo workloads while keeping the same Helm/Grafana/parity backend. Registry-summary flows remain on `./scripts/e2e-loadtest-registry.sh --summary-only`.
+
+Go demo functions are deployed and smoke-tested by `./scripts/controlplane.sh e2e run helm-stack`,
 but they are not yet included in the current k6 benchmark matrix because the
 repository does not yet ship `experiments/k6/*-go.js` workloads.
 
@@ -272,7 +299,7 @@ other runtimes here.
 │        │             │                   │                  │
 │        │   :30090    │                   │ :30080           │
 ├────────┼─────────────┼───────────────────┼──────────────────┤
-│  Multipass VM (nanofaas-e2e) — k3s                          │
+│  VM (multipass lifecycle or external) — k3s                │
 │  ┌─────┴─────────────┴───────────────────┴───────────────┐  │
 │  │  namespace: nanofaas                                  │  │
 │  │                                                       │  │
@@ -302,7 +329,7 @@ The script handles this automatically by cleaning up before install. If you hit
 this manually, run:
 
 ```bash
-multipass exec nanofaas-e2e -- sudo kubectl delete namespace nanofaas
+ssh <user>@<vm-host> 'sudo kubectl delete namespace nanofaas'
 ```
 
 ### Functions return 429 Too Many Requests
@@ -312,8 +339,8 @@ throughput history. The setup script disables it via
 `SYNC_QUEUE_ADMISSION_ENABLED=false`. If you see this, verify the env var:
 
 ```bash
-multipass exec nanofaas-e2e -- sudo kubectl get deployment nanofaas-control-plane \
-  -n nanofaas -o jsonpath='{.spec.template.spec.containers[0].env}'
+ssh <user>@<vm-host> "sudo kubectl get deployment nanofaas-control-plane \
+  -n nanofaas -o jsonpath='{.spec.template.spec.containers[0].env}'"
 ```
 
 ### Pods stuck in ImagePullBackOff
@@ -322,8 +349,8 @@ This means k3s cannot pull from the configured local registry. Verify the
 registry config and images:
 
 ```bash
-multipass exec nanofaas-e2e -- cat /etc/rancher/k3s/registries.yaml
-multipass exec nanofaas-e2e -- curl -s http://localhost:5000/v2/_catalog
+ssh <user>@<vm-host> 'cat /etc/rancher/k3s/registries.yaml'
+ssh <user>@<vm-host> 'curl -s http://localhost:5000/v2/_catalog'
 ```
 
 ### Bash functions crash-looping
@@ -343,14 +370,14 @@ The Fabric8 Kubernetes client needs the in-cluster ServiceAccount token. The
 mounted:
 
 ```bash
-multipass exec nanofaas-e2e -- sudo kubectl exec -n nanofaas \
-  deploy/nanofaas-control-plane -- ls /var/run/secrets/kubernetes.io/serviceaccount/
+ssh <user>@<vm-host> "sudo kubectl exec -n nanofaas \
+  deploy/nanofaas-control-plane -- ls /var/run/secrets/kubernetes.io/serviceaccount/"
 ```
 
 ### SSH into the VM for debugging
 
 ```bash
-multipass shell nanofaas-e2e
+ssh <user>@<vm-host>
 sudo kubectl get pods -n nanofaas
 sudo kubectl logs -n nanofaas deploy/nanofaas-control-plane --tail=50
 ```

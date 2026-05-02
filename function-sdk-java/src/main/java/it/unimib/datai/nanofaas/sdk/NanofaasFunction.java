@@ -5,15 +5,14 @@ import org.springframework.stereotype.Component;
 import java.lang.annotation.*;
 
 /**
- * Marks a bean as a nanoFaaS function handler.
+ * Marks a Spring bean as a Nanofaas function handler.
  *
- * <p>This annotation exists so Spring component scanning can discover the handler without extra
- * runtime wiring. The control plane never calls this annotation directly; Spring uses it to turn a
- * user class into the single handler bean resolved by {@code HandlerRegistry} at invoke time.</p>
+ * <p>Spring component scanning, not user code, discovers this annotation and registers the
+ * handler in the application context. The runtime then resolves the single active handler bean
+ * from that context when the control plane calls {@code /invoke}.</p>
  *
- * <p>Dependency boundary: this is intentionally tied to the Spring application context. The Java
- * SDK is the Spring-based runtime entry point, unlike the Python SDK which discovers handlers in a
- * module-level runtime.</p>
+ * <p>This keeps function authors focused on the handler implementation while the Spring Boot
+ * lifecycle provides bean construction, dependency injection, and discovery.</p>
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

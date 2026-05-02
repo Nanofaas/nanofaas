@@ -2,7 +2,10 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,9 +35,9 @@ class FunctionServiceConcurrencyTest {
         functionService = new FunctionService(
                 registry,
                 defaults,
-                null,
                 ImageValidator.noOp(),
-                List.of()
+                List.of(),
+                new DeploymentProviderResolver(List.of(), new DeploymentProperties(null))
         );
     }
 
@@ -54,13 +57,13 @@ class FunctionServiceConcurrencyTest {
                     FunctionSpec spec = new FunctionSpec(
                             "myFunc",  // Same name
                             "image-" + threadId,
-                            null, null, null, null, null, null, null, null, null, null, null, null
+                            null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
                     );
 
-                    Optional<FunctionSpec> result = functionService.register(spec);
+                    Optional<RegisteredFunction> result = functionService.register(spec);
                     if (result.isPresent()) {
                         successCount.incrementAndGet();
-                        registeredSpecs.add(result.get());
+                        registeredSpecs.add(result.get().spec());
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -97,10 +100,10 @@ class FunctionServiceConcurrencyTest {
                     FunctionSpec spec = new FunctionSpec(
                             "func-" + threadId,  // Different names
                             "image-" + threadId,
-                            null, null, null, null, null, null, null, null, null, null, null, null
+                            null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
                     );
 
-                    Optional<FunctionSpec> result = functionService.register(spec);
+                    Optional<RegisteredFunction> result = functionService.register(spec);
                     if (result.isPresent()) {
                         successCount.incrementAndGet();
                     }
@@ -124,15 +127,15 @@ class FunctionServiceConcurrencyTest {
     void register_existingFunction_returnsEmpty() {
         FunctionSpec spec1 = new FunctionSpec(
                 "myFunc", "image1",
-                null, null, null, null, null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
         );
         FunctionSpec spec2 = new FunctionSpec(
                 "myFunc", "image2",
-                null, null, null, null, null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null, ExecutionMode.LOCAL, null, null, null
         );
 
-        Optional<FunctionSpec> result1 = functionService.register(spec1);
-        Optional<FunctionSpec> result2 = functionService.register(spec2);
+        Optional<RegisteredFunction> result1 = functionService.register(spec1);
+        Optional<RegisteredFunction> result2 = functionService.register(spec2);
 
         assertThat(result1).isPresent();
         assertThat(result2).isEmpty();
@@ -145,23 +148,23 @@ class FunctionServiceConcurrencyTest {
     void registerAndRemove_sameName_areSerialized() throws Exception {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        ManagedDeploymentProvider localProvider = provider();
         FunctionService localService = new FunctionService(
                 localRegistry,
                 defaults,
-                localResourceManager,
                 ImageValidator.noOp(),
-                List.of()
+                List.of(),
+                resolver(localProvider)
         );
 
         CountDownLatch provisionStarted = new CountDownLatch(1);
         CountDownLatch allowProvision = new CountDownLatch(1);
-        when(localResourceManager.provision(any())).thenAnswer(invocation -> {
+        when(localProvider.provision(any())).thenAnswer(invocation -> {
             provisionStarted.countDown();
             if (!allowProvision.await(5, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Timed out waiting to finish provision");
             }
-            return "http://fn-svc:8080";
+            return new ProvisionResult("http://fn-svc:8080", "k8s");
         });
 
         FunctionSpec spec = new FunctionSpec(
@@ -171,7 +174,7 @@ class FunctionServiceConcurrencyTest {
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<Optional<FunctionSpec>> registerFuture = executor.submit(() -> localService.register(spec));
+            Future<Optional<RegisteredFunction>> registerFuture = executor.submit(() -> localService.register(spec));
 
             assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
@@ -189,31 +192,31 @@ class FunctionServiceConcurrencyTest {
         }
 
         assertThat(localService.get("race-fn")).isEmpty();
-        verify(localResourceManager, times(1)).provision(any());
-        verify(localResourceManager, times(1)).deprovision("race-fn");
+        verify(localProvider, times(1)).provision(any());
+        verify(localProvider, times(1)).deprovision("race-fn");
     }
 
     @Test
     void register_deploymentNotVisibleUntilProvisioningProducesFinalSpec() throws Exception {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        ManagedDeploymentProvider localProvider = provider();
         FunctionService localService = new FunctionService(
                 localRegistry,
                 defaults,
-                localResourceManager,
                 ImageValidator.noOp(),
-                List.of()
+                List.of(),
+                resolver(localProvider)
         );
 
         CountDownLatch provisionStarted = new CountDownLatch(1);
         CountDownLatch allowProvision = new CountDownLatch(1);
-        when(localResourceManager.provision(any())).thenAnswer(invocation -> {
+        when(localProvider.provision(any())).thenAnswer(invocation -> {
             provisionStarted.countDown();
             if (!allowProvision.await(5, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Timed out waiting to finish provision");
             }
-            return "http://fn-svc:8080";
+            return new ProvisionResult("http://fn-svc:8080", "k8s");
         });
 
         FunctionSpec spec = new FunctionSpec(
@@ -223,7 +226,7 @@ class FunctionServiceConcurrencyTest {
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<FunctionSpec>> registerFuture = executor.submit(() -> localService.register(spec));
+            Future<Optional<RegisteredFunction>> registerFuture = executor.submit(() -> localService.register(spec));
 
             assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
             Thread.sleep(150);
@@ -234,8 +237,9 @@ class FunctionServiceConcurrencyTest {
 
             allowProvision.countDown();
 
-            Optional<FunctionSpec> registered = registerFuture.get(5, TimeUnit.SECONDS);
+            Optional<RegisteredFunction> registered = registerFuture.get(5, TimeUnit.SECONDS);
             assertThat(registered).isPresent();
+            assertThat(registered.get().spec().endpointUrl()).isEqualTo("http://fn-svc:8080");
             assertThat(localService.get("deploy-fn")).hasValueSatisfying(fn ->
                     assertThat(fn.endpointUrl()).isEqualTo("http://fn-svc:8080"));
         } finally {
@@ -247,16 +251,16 @@ class FunctionServiceConcurrencyTest {
     void remove_hidesFunctionWhileTeardownIsInProgress() throws Exception {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        ManagedDeploymentProvider localProvider = provider();
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
         FunctionService localService = new FunctionService(
                 localRegistry,
                 defaults,
-                localResourceManager,
                 ImageValidator.noOp(),
-                List.of(listener)
+                List.of(listener),
+                resolver(localProvider)
         );
-        when(localResourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(localProvider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         CountDownLatch removalStarted = new CountDownLatch(1);
         CountDownLatch allowRemoval = new CountDownLatch(1);
@@ -293,23 +297,23 @@ class FunctionServiceConcurrencyTest {
         }
 
         assertThat(localService.get("tear-fn")).isEmpty();
-        verify(localResourceManager).deprovision("tear-fn");
+        verify(localProvider).deprovision("tear-fn");
     }
 
     @Test
     void setReplicas_waitsForRemovalAndDoesNotScaleFunctionUnderTeardown() throws Exception {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        KubernetesResourceManager localResourceManager = mock(KubernetesResourceManager.class);
+        ManagedDeploymentProvider localProvider = provider();
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
         FunctionService localService = new FunctionService(
                 localRegistry,
                 defaults,
-                localResourceManager,
                 ImageValidator.noOp(),
-                List.of(listener)
+                List.of(listener),
+                resolver(localProvider)
         );
-        when(localResourceManager.provision(any())).thenReturn("http://fn-svc:8080");
+        when(localProvider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         CountDownLatch removalStarted = new CountDownLatch(1);
         CountDownLatch allowRemoval = new CountDownLatch(1);
@@ -347,7 +351,19 @@ class FunctionServiceConcurrencyTest {
             executor.shutdownNow();
         }
 
-        verify(localResourceManager, never()).setReplicas("tear-fn", 2);
-        verify(localResourceManager).deprovision("tear-fn");
+        verify(localProvider, never()).setReplicas("tear-fn", 2);
+        verify(localProvider).deprovision("tear-fn");
+    }
+
+    private static ManagedDeploymentProvider provider() {
+        ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
+        when(provider.backendId()).thenReturn("k8s");
+        when(provider.isAvailable()).thenReturn(true);
+        when(provider.supports(any())).thenReturn(true);
+        return provider;
+    }
+
+    private static DeploymentProviderResolver resolver(ManagedDeploymentProvider provider) {
+        return new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null));
     }
 }

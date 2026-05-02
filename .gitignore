@@ -27,4 +27,6 @@ experiments/k6/results/
 experiments/loadtest/results/
 experiments/.image-cache/
 tooling/runs/
+tools/controlplane/runs/
 recovery/
+.gitnexus

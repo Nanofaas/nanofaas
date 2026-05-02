@@ -6,8 +6,9 @@ import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
-import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
+import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +23,7 @@ public class InternalScaler implements SmartLifecycle {
 
     private final FunctionRegistry registry;
     private final ScalingMetricsReader metricsReader;
-    private final KubernetesResourceManager resourceManager;
+    private final ManagedDeploymentCoordinator deploymentCoordinator;
     private final ScalingProperties properties;
     private final ColdStartTracker coldStartTracker;
     private final ScalingDecisionCalculator decisionCalculator;
@@ -35,12 +36,12 @@ public class InternalScaler implements SmartLifecycle {
 
     public InternalScaler(FunctionRegistry registry,
                           ScalingMetricsReader metricsReader,
-                          @Autowired(required = false) KubernetesResourceManager resourceManager,
+                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker) {
         this.registry = registry;
         this.metricsReader = metricsReader;
-        this.resourceManager = resourceManager;
+        this.deploymentCoordinator = deploymentCoordinator;
         this.properties = properties;
         this.coldStartTracker = coldStartTracker;
         this.decisionCalculator = new ScalingDecisionCalculator(metricsReader);
@@ -57,8 +58,8 @@ public class InternalScaler implements SmartLifecycle {
 
     @Override
     public void start() {
-        if (resourceManager == null) {
-            log.info("InternalScaler disabled: no KubernetesResourceManager available");
+        if (deploymentCoordinator == null) {
+            log.info("InternalScaler disabled: no ManagedDeploymentCoordinator available");
             return;
         }
         if (running.compareAndSet(false, true)) {
@@ -110,16 +111,17 @@ public class InternalScaler implements SmartLifecycle {
     // Package-private for testing
     void scalingLoop() {
         try {
-            for (FunctionSpec spec : registry.list()) {
-                if (spec.executionMode() != ExecutionMode.DEPLOYMENT) {
+            for (RegisteredFunction registeredFunction : registry.listRegistered()) {
+                if (!deploymentCoordinator.isManagedDeployment(registeredFunction)) {
                     continue;
                 }
+                FunctionSpec spec = registeredFunction.spec();
                 ScalingConfig scaling = spec.scalingConfig();
                 if (scaling == null || scaling.strategy() != ScalingStrategy.INTERNAL) {
                     continue;
                 }
                 try {
-                    evaluateAndScale(spec, scaling);
+                    evaluateAndScale(registeredFunction, spec, scaling);
                 } catch (Exception ex) {
                     log.error("Error scaling function {}", spec.name(), ex);
                 }
@@ -129,9 +131,9 @@ public class InternalScaler implements SmartLifecycle {
         }
     }
 
-    private void evaluateAndScale(FunctionSpec spec, ScalingConfig scaling) {
+    private void evaluateAndScale(RegisteredFunction registeredFunction, FunctionSpec spec, ScalingConfig scaling) {
         String functionName = spec.name();
-        int currentReplicas = resourceManager.getReadyReplicas(functionName);
+        int currentReplicas = deploymentCoordinator.getReadyReplicas(registeredFunction);
         ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
 
         Instant now = Instant.now();
@@ -144,7 +146,7 @@ public class InternalScaler implements SmartLifecycle {
                 log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
                         functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
                 coldStartTracker.recordScaleUp(functionName, decision.currentReplicas(), decision.desiredReplicas());
-                resourceManager.setReplicas(functionName, decision.desiredReplicas());
+                deploymentCoordinator.setReplicas(registeredFunction, decision.desiredReplicas());
                 cooldownTracker.recordScaleUp(functionName, now);
                 scaled = true;
                 effectiveReplicas = decision.desiredReplicas();
@@ -155,7 +157,7 @@ public class InternalScaler implements SmartLifecycle {
             } else {
                 log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
                         functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
-                resourceManager.setReplicas(functionName, decision.desiredReplicas());
+                deploymentCoordinator.setReplicas(registeredFunction, decision.desiredReplicas());
                 cooldownTracker.recordScaleDown(functionName, now);
                 scaled = true;
                 effectiveReplicas = decision.desiredReplicas();

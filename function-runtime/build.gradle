@@ -45,17 +45,27 @@ tasks.named('aotTestClasses') { enabled = false }
 bootBuildImage {
     imageName = project.findProperty('functionRuntimeImage') ?: (System.getenv('FUNCTION_RUNTIME_IMAGE') ?: 'nanofaas/function-runtime:buildpack')
     // Builder/run image are overrideable to support multi-arch native builds (e.g., ARM64 on Apple Silicon).
+    // On arm64 hosts the official paketobuildpacks/*-jammy-tiny images lack an arm64
+    // manifest; fall back to dashaun's multi-arch mirror so the build works everywhere.
+    def isArm = System.getProperty('os.arch') in ['aarch64', 'arm64']
+    def defaultBuilder = isArm ? 'dashaun/builder:tiny' : 'paketobuildpacks/builder-jammy-tiny:latest'
     def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
-            ?: 'paketobuildpacks/builder-jammy-tiny:latest').toString()
-    def runImageName = (project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
-            ?: 'paketobuildpacks/run-jammy-tiny:latest').toString()
-    builder = builderImage
-    runImage = runImageName
-    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64)
-    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM')
-    if (targetPlatform) {
-        imagePlatform = targetPlatform
+            ?: defaultBuilder).toString()
+    // On arm64 let the builder use its embedded run image default; on amd64 pin the Paketo run image.
+    def runImageName = project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
+    if (!runImageName && !isArm) {
+        runImageName = 'paketobuildpacks/run-jammy-tiny:latest'
     }
+    builder = builderImage
+    if (runImageName) {
+        runImage = runImageName.toString()
+    }
+    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64).
+    // Defaults to the host JVM architecture so builds work on both arm64 and amd64 VMs.
+    def hostArch = System.getProperty('os.arch')
+    def defaultPlatform = (hostArch in ['aarch64', 'arm64']) ? 'linux/arm64' : 'linux/amd64'
+    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM') ?: defaultPlatform
+    imagePlatform = targetPlatform
     environment = [
             'BP_NATIVE_IMAGE': 'true'
     ]

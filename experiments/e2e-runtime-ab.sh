@@ -56,6 +56,14 @@ RUN_CANDIDATE=${RUN_CANDIDATE:-true}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    cat <<EOF
+Usage: ./experiments/e2e-runtime-ab.sh
+
+Runs baseline and candidate runtime scenarios and writes comparison.md/comparison.json.
+EOF
+    exit 0
+fi
 source "${PROJECT_ROOT}/scripts/lib/e2e-k3s-common.sh"
 e2e_set_log_prefix "runtime-ab"
 

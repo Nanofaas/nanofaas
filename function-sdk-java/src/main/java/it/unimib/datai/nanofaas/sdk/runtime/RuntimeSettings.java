@@ -1,15 +1,12 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
 /**
- * Normalized startup configuration for the Java function runtime.
+ * Normalized runtime inputs for a function container.
  *
- * <p>This record exists because several runtime components need the same env-driven values:
- * execution id, trace id, callback URL, and explicit handler selection. Normalizing blank strings
- * to {@code null} keeps downstream component checks consistent and avoids duplicating env parsing
- * logic across controllers, filters, and dispatchers.</p>
- *
- * <p>Lifecycle boundary: these values are fixed at application startup. They reflect the runtime
- * container's startup contract, not per-request state.</p>
+ * <p>The SDK reads these values from the process environment at startup and uses them to resolve
+ * request context, handler selection, and callback delivery. In warm mode the control plane may
+ * provide execution and trace identifiers per request; in one-shot mode the same values must be
+ * present in the environment before the Spring context starts.</p>
  */
 public record RuntimeSettings(
         String executionId,

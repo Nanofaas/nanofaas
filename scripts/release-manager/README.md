@@ -6,10 +6,13 @@ Automated tool to manage nanoFaaS releases using a GitHub-centric workflow.
 
 - **GitHub Integration**: Uses `gh` CLI to automate Pull Requests and Merges.
 - **Automated PR flow**: Automatically pushes your feature branch, creates a PR to `main`, and merges it.
-- **Coordinated Bumping**: Updates `build.gradle`, `pyproject.toml`, and `Cargo.toml` in sync.
+- **Coordinated Bumping**: Updates `build.gradle`, `function-sdk-javascript/package.json`, `pyproject.toml`, and `Cargo.toml` in sync.
 - **Release Notes**: Automatically generates a summary of changes from commit history.
 - **GitOps Ready**: Pushes tags to GitHub to trigger the automated CI/CD pipeline.
 - **Safety First**: Supports `--dry-run` and validates `gh` authentication status.
+- **JavaScript SDK Packaging**: Refreshes the JavaScript SDK lockfile with `npm install --package-lock-only` and validates packaging with `npm pack --dry-run`.
+- **Optional npm Publication**: If npm auth is available, the release flow can publish `nanofaas-function-sdk` to npm.
+- **ARM64 Parity**: Optional ARM64 image builds include the JavaScript demo images.
 
 ## Prerequisites
 
@@ -34,12 +37,17 @@ uv run --project scripts/release-manager scripts/release-manager/release.py
     -   Sync local `main` with GitHub.
     -   Bump the version (Patch/Minor/Major).
     -   Review/Edit the generated Release Notes.
-    -   Commit and Push the new version.
+    -   Refresh the JavaScript SDK lockfile and run the `npm pack --dry-run` packaging gate.
+    -   Commit and Push the new version, including the refreshed JavaScript lockfile.
     -   Create and Push the Tag (triggers GitOps).
+    -   Optionally publish `nanofaas-function-sdk` to npm.
+    -   Optionally build and push ARM64 images, including the JavaScript demos.
 
 ### Options
 
 - `--dry-run`: Preview the entire process without modifying files, creating PRs, or pushing tags.
+
+During `--dry-run`, `gh auth status` must already pass because tool validation runs before the preview branch. The dry-run output previews both `npm install --package-lock-only` and `npm pack --dry-run` for the JavaScript SDK without mutating git state.
 
 ## Requirements
 

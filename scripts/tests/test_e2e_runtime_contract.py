@@ -1,252 +1,130 @@
 from __future__ import annotations
 
-import os
-import subprocess
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "lib" / "e2e-k3s-common.sh"
+SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 
-def run_shell(script: str, *, env: dict[str, str] | None = None) -> str:
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
+# ---------------------------------------------------------------------------
+# M11: e2e-k3s-common.sh is deleted.
+# All behaviors previously tested by sourcing that file are now owned by
+# the Python adapters in tools/controlplane/src/controlplane_tool/.
+# ---------------------------------------------------------------------------
 
-    proc = subprocess.run(
-        ["bash", "-lc", script],
-        text=True,
-        capture_output=True,
-        check=True,
-        env=merged_env,
-    )
-    return proc.stdout.strip()
-
-
-def test_runtime_kind_and_rust_detection_behave_as_expected():
-    source = f"source '{SCRIPT}'"
-
-    out = run_shell(f"{source}; e2e_runtime_kind")
-    assert out == "java"
-
-    out = run_shell(
-        f"{source}; e2e_runtime_kind",
-        env={"CONTROL_PLANE_RUNTIME": "RUST"},
-    )
-    assert out == "rust"
-
-    out = run_shell(
-        f"{source}; if e2e_is_rust_runtime; then echo rust; else echo java; fi",
-        env={"CONTROL_PLANE_RUNTIME": "rust"},
-    )
-    assert out == "rust"
-
-    out = run_shell(
-        f"{source}; if e2e_is_rust_runtime; then echo rust; else echo java; fi",
-        env={"CONTROL_PLANE_RUNTIME": "invalid"},
-    )
-    assert out == "java"
-
-
-def test_build_dispatch_helpers_route_to_runtime_specific_paths():
-    source = f"source '{SCRIPT}'"
-    cmd = (
-        f"{source}; "
-        "e2e_require_vm_exec(){ return 0; }; "
-        "vm_exec(){ echo VMEXEC:$*; }; "
-        "e2e_build_core_jars(){ echo CORE_JARS:$1; }; "
-        "e2e_build_function_runtime_jar(){ echo FR_JAR:$1; }; "
-        "e2e_build_rust_control_plane_image(){ echo RUST_IMG:$1:$2; }; "
-        "CONTROL_PLANE_RUNTIME=java; "
-        "e2e_build_control_plane_artifacts /tmp/a; "
-        "e2e_build_control_plane_image /tmp/a cp-java:test; "
-        "CONTROL_PLANE_RUNTIME=rust; "
-        "e2e_build_control_plane_artifacts /tmp/b; "
-        "e2e_build_control_plane_image /tmp/b cp-rust:test"
-    )
-    out = run_shell(cmd)
-    lines = out.splitlines()
-
-    assert "CORE_JARS:/tmp/a" in lines
-    assert any("control-plane/Dockerfile control-plane/" in line for line in lines)
-    assert "FR_JAR:/tmp/b" in lines
-    assert "RUST_IMG:/tmp/b:cp-rust:test" in lines
-
-
-def test_sync_env_renderer_emits_both_aliases_and_can_be_empty():
-    source = f"source '{SCRIPT}'"
-
-    enabled = run_shell(f"{source}; e2e_render_control_plane_sync_env true")
-    assert "- name: SYNC_QUEUE_ENABLED" in enabled
-    assert "- name: NANOFAAS_SYNC_QUEUE_ENABLED" in enabled
-    assert 'value: "true"' in enabled
-
-    empty = run_shell(
-        f"{source}; "
-        "if [ -n \"$(e2e_render_control_plane_sync_env '')\" ]; then echo non-empty; else echo empty; fi"
-    )
-    assert empty == "empty"
-
-
-def test_host_temp_files_live_under_home_for_snap_multipass_compatibility():
-    source = f"source '{SCRIPT}'"
-
-    out = run_shell(
-        f"{source}; "
-        "tmp=$(e2e_mktemp_file nanofaas-test .yaml); "
-        "printf '%s\\n' \"$tmp\"; "
-        "rm -f \"$tmp\""
+def test_e2e_k3s_common_shell_is_deleted() -> None:
+    """Fails if e2e-k3s-common.sh still exists (should have been deleted in M11)."""
+    assert not (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").exists(), (
+        "e2e-k3s-common.sh still exists — delete it after Python path is green (M11)"
     )
 
-    assert Path(out).parent == Path.home() / "nanofaas-e2e-tmp"
-    assert Path(out).name.startswith("nanofaas-test.")
-    assert out.endswith(".yaml")
+
+# ---------------------------------------------------------------------------
+# Python-runtime contract (M8+): verify that the Python substrate that
+# replaced the shell contracts above is importable and coherent.
+# ---------------------------------------------------------------------------
+
+def _tool_src() -> Path:
+    return REPO_ROOT / "tools" / "controlplane" / "src"
 
 
-def test_external_vm_helper_contract_resolves_expected_paths():
-    source = f"source '{SCRIPT}'"
-    out = run_shell(
-        f"{source}; "
-        "E2E_VM_LIFECYCLE=external; "
-        "E2E_VM_HOST=vm.example.test; "
-        "E2E_VM_USER=dev; "
-        "E2E_VM_HOME=/srv/dev; "
-        "printf '%s|%s|%s|%s' "
-        "\"$(e2e_get_vm_lifecycle)\" "
-        "\"$(e2e_get_vm_host)\" "
-        "\"$(e2e_get_kubeconfig_path)\" "
-        "\"$(e2e_get_remote_project_dir)\""
+def _ensure_tool_src_on_path() -> None:
+    src = str(_tool_src())
+    if src not in sys.path:
+        sys.path.insert(0, src)
+
+
+def test_python_runtime_primitives_module_is_importable() -> None:
+    import importlib
+
+    _ensure_tool_src_on_path()
+    mod = importlib.import_module("controlplane_tool.runtime_primitives")
+    assert hasattr(mod, "CommandRunner")
+
+
+def test_python_control_plane_api_module_is_importable() -> None:
+    import importlib
+
+    _ensure_tool_src_on_path()
+    mod = importlib.import_module("controlplane_tool.control_plane_api")
+    assert hasattr(mod, "ControlPlaneApi")
+
+
+def test_python_k3s_runtime_module_is_importable() -> None:
+    import importlib
+
+    _ensure_tool_src_on_path()
+    mod = importlib.import_module("controlplane_tool.k3s_runtime")
+    assert hasattr(mod, "K3sCurlRunner")
+    assert hasattr(mod, "HelmStackRunner")
+
+
+def test_python_ansible_adapter_owns_vm_provisioning_contract() -> None:
+    import importlib
+
+    _ensure_tool_src_on_path()
+    mod = importlib.import_module("controlplane_tool.ansible_adapter")
+    adapter_cls = mod.AnsibleAdapter
+    assert hasattr(adapter_cls, "provision_base")
+    assert hasattr(adapter_cls, "provision_k3s")
+    assert hasattr(adapter_cls, "configure_registry")
+
+
+def test_python_vm_orchestrator_owns_lifecycle_contract() -> None:
+    import importlib
+
+    _ensure_tool_src_on_path()
+    mod = importlib.import_module("controlplane_tool.vm_adapter")
+    orch_cls = mod.VmOrchestrator
+    assert hasattr(orch_cls, "ensure_running")
+    assert hasattr(orch_cls, "install_dependencies")
+    assert hasattr(orch_cls, "install_k3s")
+    assert hasattr(orch_cls, "setup_registry")
+    assert hasattr(orch_cls, "sync_project")
+    assert hasattr(orch_cls, "export_kubeconfig")
+    assert hasattr(orch_cls, "remote_exec")
+    assert hasattr(orch_cls, "teardown")
+
+
+def test_python_vm_orchestrator_resolves_external_vm_paths() -> None:
+    """External VM lifecycle is handled by VmOrchestrator (replaces e2e-k3s-common.sh)."""
+    import importlib
+
+    _ensure_tool_src_on_path()
+    vm_mod = importlib.import_module("controlplane_tool.vm_models")
+    VmRequest = vm_mod.VmRequest  # noqa: N806
+
+    vm_mod2 = importlib.import_module("controlplane_tool.vm_adapter")
+    VmOrchestrator = vm_mod2.VmOrchestrator  # noqa: N806
+
+    from pathlib import Path
+
+    vm = VmOrchestrator(Path("/repo"))
+    request = VmRequest(
+        lifecycle="external",
+        host="vm.example.test",
+        user="dev",
+        home="/srv/dev",
     )
-    assert out == "external|vm.example.test|/srv/dev/.kube/config|/srv/dev/nanofaas"
+    assert vm.remote_project_dir(request) == "/srv/dev/nanofaas"
+    assert vm.kubeconfig_path(request) == "/srv/dev/.kube/config"
 
 
-def test_external_vm_lifecycle_checks_ssh_and_skips_multipass_prereq():
-    source = f"source '{SCRIPT}'"
-
-    out = run_shell(
-        f"{source}; "
-        "E2E_VM_LIFECYCLE=external; "
-        "E2E_VM_HOST=vm.example.test; "
-        "e2e_ssh_exec(){ printf '%s|%s' \"$1\" \"$2\"; }; "
-        "e2e_require_vm_access && e2e_ensure_vm_running nanofaas-e2e 4 8G 30G"
-    )
-
-    assert "Using externally managed VM host vm.example.test" in out
-    assert "vm.example.test|true" in out
+def test_ansible_playbooks_exist_for_vm_provisioning() -> None:
+    """Ansible playbooks are still the authoritative provisioning source."""
+    ansible_dir = REPO_ROOT / "ops" / "ansible"
+    assert (ansible_dir / "ansible.cfg").exists()
+    assert (ansible_dir / "playbooks" / "provision-base.yml").exists()
+    assert (ansible_dir / "playbooks" / "provision-k3s.yml").exists()
+    assert (ansible_dir / "playbooks" / "ensure-registry.yml").exists()
+    assert (ansible_dir / "playbooks" / "configure-k3s-registry.yml").exists()
 
 
-def test_external_vm_prerequisite_validation_fails_without_resolved_host():
-    source = f"source '{SCRIPT}'"
-
-    proc = subprocess.run(
-        [
-            "bash",
-            "-lc",
-            (
-                f"source '{SCRIPT}'; "
-                "E2E_VM_LIFECYCLE=external; "
-                "e2e_require_vm_access"
-            ),
-        ],
-        text=True,
-        capture_output=True,
-        env=os.environ.copy(),
-    )
-
-    assert proc.returncode != 0
-    assert "E2E_VM_HOST is required when E2E_VM_LIFECYCLE=external" in proc.stderr or "Cannot determine VM host" in proc.stderr
-
-
-def test_external_vm_host_override_is_used_by_vm_exec_and_url_resolution():
-    source = f"source '{SCRIPT}'"
-    out = run_shell(
-        f"{source}; "
-        "E2E_VM_HOST=vm.example.test; "
-        "VM_NAME=nanofaas-e2e; "
-        "multipass(){ return 1; }; "
-        "e2e_get_vm_backend(){ echo ssh; }; "
-        "e2e_ssh_exec(){ printf '%s' \"$1\"; }; "
-        "e2e_scp_to_vm(){ printf '%s' \"$2\"; }; "
-        "e2e_scp_from_vm(){ printf '%s' \"$1\"; }; "
-        "warn(){ printf '%s\\n' \"$*\"; }; "
-        "host=$(e2e_vm_exec 'echo ok'); "
-        "url=$(e2e_resolve_nanofaas_url 30080); "
-        "copy_to=$(e2e_copy_to_vm /tmp/src nanofaas-e2e /tmp/dest); "
-        "copy_from=$(e2e_copy_from_vm nanofaas-e2e /tmp/src /tmp/dest); "
-        "cleanup=$(KEEP_VM=true e2e_cleanup_vm | grep '^  SSH:' || true); "
-        "printf '%s|%s|%s|%s|%s' \"$host\" \"$url\" \"$copy_to\" \"$copy_from\" \"$cleanup\""
-    )
-    assert "vm.example.test|http://vm.example.test:30080|vm.example.test|vm.example.test" in out
-    assert "SSH:    ssh ubuntu@vm.example.test" in out
-
-
-def test_public_host_override_controls_nodeport_urls():
-    source = f"source '{SCRIPT}'"
-    out = run_shell(
-        f"{source}; "
-        "E2E_VM_LIFECYCLE=external; "
-        "E2E_VM_HOST=vm.example.test; "
-        "E2E_PUBLIC_HOST=api.example.test; "
-        "printf '%s|%s' "
-        "\"$(e2e_get_public_host)\" "
-        "\"$(e2e_resolve_nanofaas_url 30080)\""
-    )
-    assert out == "api.example.test|http://api.example.test:30080"
-
-
-def test_export_kubeconfig_to_host_rewrites_server_using_override_when_provided():
-    source = f"source '{SCRIPT}'"
-    out = run_shell(
-        f"{source}; "
-        "tmp_dir=$(mktemp -d); "
-        "src=${tmp_dir}/remote-config; "
-        "dest=${tmp_dir}/host-config; "
-        "cat > \"${src}\" <<'EOF'\n"
-        "apiVersion: v1\n"
-        "clusters:\n"
-        "- cluster:\n"
-        "    server: https://127.0.0.1:6443\n"
-        "  name: default\n"
-        "EOF\n"
-        "E2E_VM_LIFECYCLE=external; "
-        "E2E_VM_HOST=vm.example.test; "
-        "E2E_KUBECONFIG_SERVER=https://api.example.test:6443; "
-        "e2e_copy_from_vm(){ cp \"${src}\" \"$3\"; }; "
-        "e2e_export_kubeconfig_to_host nanofaas-e2e \"${dest}\"; "
-        "cat \"${dest}\"; "
-        "rm -rf \"${tmp_dir}\""
-    )
-    assert "https://api.example.test:6443" in out
-    assert "https://127.0.0.1:6443" not in out
-
-
-def test_vm_exec_shell_quotes_kubeconfig_path_with_spaces():
-    source = f"source '{SCRIPT}'"
-    out = run_shell(
-        f"{source}; "
-        "E2E_VM_HOST=vm.example.test; "
-        "E2E_KUBECONFIG_PATH='/srv/dev/kube config/config'; "
-        "e2e_get_vm_backend(){ echo ssh; }; "
-        "e2e_ssh_exec(){ printf '%s' \"$2\"; }; "
-        "e2e_vm_exec 'printf \"%s\" \"$KUBECONFIG\"'"
-    )
-    assert "/srv/dev/kube\\\\\\ config/config" in out
-
-
-def test_install_k3s_creates_parent_dir_for_custom_kubeconfig_path():
-    source = f"source '{SCRIPT}'"
-    out = run_shell(
-        f"{source}; "
-        "E2E_VM_HOME='/should/not/be/used'; "
-        "E2E_KUBECONFIG_PATH='/srv/dev/custom kube/config'; "
-        "e2e_require_vm_exec(){ return 0; }; "
-        "e2e_log(){ :; }; "
-        "vm_exec(){ printf '%s\\n' \"$*\"; }; "
-        "e2e_install_k3s"
-    )
-    lines = out.splitlines()
-
-    assert any("mkdir -p /srv/dev/custom\\ kube" in line for line in lines)
-    assert any("sudo cp /etc/rancher/k3s/k3s.yaml /srv/dev/custom\\ kube/config" in line for line in lines)
-    assert all("/should/not/be/used/.kube" not in line for line in lines)
+def test_helm_control_plane_template_quotes_extra_env_values() -> None:
+    template = (
+        REPO_ROOT / "helm" / "nanofaas" / "templates" / "control-plane-deployment.yaml"
+    ).read_text(encoding="utf-8")
+    assert "{{- range $env := . }}" in template
+    assert "value: {{ $env.value | quote }}" in template

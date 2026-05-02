@@ -38,7 +38,7 @@ Options:
   --suffix SUFFIX    Tag suffix, e.g. "-arm64" (default: none)
   --only TARGETS     Comma-separated list of targets to build:
                        control-plane, function-runtime, watchdog,
-                       java-demos, go-demos, python-demos, all (default: all)
+                       java-demos, javascript-demos, go-demos, python-demos, all (default: all)
   -h, --help         Show this help message
 EOF
     exit 0
@@ -120,7 +120,7 @@ cd "$ROOT"
 if should_build "control-plane"; then
     IMG="${BASE}/control-plane:${TAG}${TAG_SUFFIX}"
     info "Building control-plane → $IMG"
-    NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./gradlew :control-plane:bootBuildImage \
+    NATIVE_IMAGE_BUILD_ARGS="$RESOLVED_NATIVE_IMAGE_BUILD_ARGS" BP_OCI_SOURCE="$OCI_SOURCE" ./scripts/controlplane.sh image --profile all -- \
         -PcontrolPlaneImage="$IMG"
     ok "Built $IMG"
     push_image "$IMG"
@@ -164,6 +164,19 @@ if should_build "java-demos"; then
 fi
 
 # --- 5. Python Demo Functions -------------------------------------------------
+if should_build "javascript-demos"; then
+    for example in word-stats json-transform; do
+        IMG="${BASE}/javascript-${example}:${TAG}${TAG_SUFFIX}"
+        info "Building javascript/${example} → $IMG"
+        docker build $DOCKER_PLATFORM_FLAG \
+            --label "org.opencontainers.image.source=$OCI_SOURCE" \
+            -t "$IMG" -f "examples/javascript/${example}/Dockerfile" .
+        ok "Built $IMG"
+        push_image "$IMG"
+    done
+fi
+
+# --- 6. Go Demo Functions -------------------------------------------------
 if should_build "go-demos"; then
     for example in word-stats json-transform; do
         IMG="${BASE}/go-${example}:${TAG}${TAG_SUFFIX}"
@@ -176,7 +189,7 @@ if should_build "go-demos"; then
     done
 fi
 
-# --- 6. Python Demo Functions -------------------------------------------------
+# --- 7. Python Demo Functions -------------------------------------------------
 if should_build "python-demos"; then
     for example in word-stats json-transform; do
         IMG="${BASE}/python-${example}:${TAG}${TAG_SUFFIX}"

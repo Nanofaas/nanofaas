@@ -2,6 +2,7 @@ plugins {
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
     id 'org.graalvm.buildtools.native'
+    id 'java-test-fixtures'
 }
 
 def parseCsvModules = { String raw ->
@@ -59,19 +60,19 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'io.fabric8:kubernetes-client:7.5.2'
-    // Needed at compile time to instantiate a concrete HttpClient.Factory (avoids reflection in native image).
-    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
-    testImplementation 'io.fabric8:kubernetes-server-mock:7.5.2'
     testImplementation 'org.yaml:snakeyaml:2.2'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter:2.0.3'
     testImplementation 'org.testcontainers:testcontainers:2.0.3'
     testImplementation 'org.awaitility:awaitility:4.2.1'
     testImplementation 'io.rest-assured:rest-assured:5.4.0'
+
+    testFixturesImplementation 'org.awaitility:awaitility:4.2.1'
+    testFixturesImplementation 'io.rest-assured:rest-assured:5.4.0'
+    testFixturesImplementation 'org.hamcrest:hamcrest:2.2'
 }
 
 tasks.register('printSelectedControlPlaneModules') {
@@ -109,15 +110,15 @@ tasks.named('jar') {
 graalvmNative {
     binaries {
         main {
-            // Fabric8's kubeconfig parsing (SnakeYAML engine) may probe UTF-32* charsets.
+            // Kubernetes-oriented optional modules may still rely on SnakeYAML charsets.
             buildArgs.add('-H:+AddAllCharsets')
         }
     }
 }
 
-def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-k3s-e2e').toString()
+def k8sVmName = (project.findProperty('k8sVmName') ?: System.getenv('VM_NAME') ?: 'nanofaas-k3s-junit-curl').toString()
 def k8sNamespace = (project.findProperty('k8sNamespace') ?: System.getenv('NANOFAAS_E2E_NAMESPACE') ?: 'nanofaas-e2e').toString()
-def k8sKeepVm = (project.findProperty('k8sKeepVm') ?: System.getenv('KEEP_VM') ?: 'false').toString()
+def k8sCleanupVm = (project.findProperty('k8sCleanupVm') ?: System.getenv('CLEANUP_VM') ?: 'true').toString().toBoolean()
 def k8sCpus = project.findProperty('k8sCpus') ?: System.getenv('CPUS')
 def k8sMemory = project.findProperty('k8sMemory') ?: System.getenv('MEMORY')
 def k8sDisk = project.findProperty('k8sDisk') ?: System.getenv('DISK')
@@ -126,7 +127,6 @@ def k8sRemoteDir = project.findProperty('k8sRemoteDir') ?: System.getenv('REMOTE
 def k8sEnv = [
         VM_NAME: k8sVmName,
         NANOFAAS_E2E_NAMESPACE: k8sNamespace,
-        KEEP_VM: k8sKeepVm
 ]
 if (k8sCpus) {
     k8sEnv.CPUS = k8sCpus.toString()
@@ -140,12 +140,16 @@ if (k8sDisk) {
 if (k8sRemoteDir) {
     k8sEnv.REMOTE_DIR = k8sRemoteDir.toString()
 }
+def k8sE2eCommand = ['bash', 'scripts/e2e-k3s-junit-curl.sh']
+if (!k8sCleanupVm) {
+    k8sE2eCommand << '--no-cleanup-vm'
+}
 
 tasks.register('k8sE2eTest', Exec) {
     group = 'verification'
-    description = 'Run K8sE2eTest in a Multipass VM with k3s.'
+    description = 'Run the fused k3s-junit-curl E2E scenario in a Multipass VM.'
     workingDir = rootProject.projectDir
-    commandLine 'bash', 'scripts/e2e-k8s-vm.sh'
+    commandLine k8sE2eCommand
     environment k8sEnv
 }
 
@@ -170,17 +174,27 @@ tasks.named('aotTestClasses') { enabled = false }
 tasks.named('bootBuildImage') {
     imageName = project.findProperty('controlPlaneImage') ?: (System.getenv('CONTROL_PLANE_IMAGE') ?: 'nanofaas/control-plane:buildpack')
     // Builder/run image are overrideable to support multi-arch native builds (e.g., ARM64 on Apple Silicon).
+    // On arm64 hosts the official paketobuildpacks/*-jammy-tiny images lack an arm64
+    // manifest; fall back to dashaun's multi-arch mirror so the build works everywhere.
+    def isArm = System.getProperty('os.arch') in ['aarch64', 'arm64']
+    def defaultBuilder = isArm ? 'dashaun/builder:tiny' : 'paketobuildpacks/builder-jammy-tiny:latest'
     def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
-            ?: 'paketobuildpacks/builder-jammy-tiny:latest').toString()
-    def runImageName = (project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
-            ?: 'paketobuildpacks/run-jammy-tiny:latest').toString()
-    builder = builderImage
-    runImage = runImageName
-    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64)
-    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM')
-    if (targetPlatform) {
-        imagePlatform = targetPlatform
+            ?: defaultBuilder).toString()
+    // On arm64 let the builder use its embedded run image default; on amd64 pin the Paketo run image.
+    def runImageName = project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
+    if (!runImageName && !isArm) {
+        runImageName = 'paketobuildpacks/run-jammy-tiny:latest'
     }
+    builder = builderImage
+    if (runImageName) {
+        runImage = runImageName.toString()
+    }
+    // Target platform for cross-compilation (e.g., linux/amd64, linux/arm64).
+    // Defaults to the host JVM architecture so builds work on both arm64 and amd64 VMs.
+    def hostArch = System.getProperty('os.arch')
+    def defaultPlatform = (hostArch in ['aarch64', 'arm64']) ? 'linux/arm64' : 'linux/amd64'
+    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM') ?: defaultPlatform
+    imagePlatform = targetPlatform
     def nativeImageBuildArguments = (project.findProperty('nativeImageBuildArgs')
             ?: System.getenv('NATIVE_IMAGE_BUILD_ARGS')
             ?: '-H:+AddAllCharsets').toString()

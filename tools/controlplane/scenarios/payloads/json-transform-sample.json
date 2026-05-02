@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "dept": "eng",
+      "salary": 90000
+    },
+    {
+      "dept": "eng",
+      "salary": 110000
+    },
+    {
+      "dept": "ops",
+      "salary": 70000
+    }
+  ],
+  "groupBy": "dept",
+  "operation": "avg",
+  "valueField": "salary"
+}

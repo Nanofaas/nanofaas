@@ -1,0 +1,129 @@
+---
+- name: Provision base VM packages
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    install_helm: false
+    helm_version: "3.16.4"
+    vm_user: ubuntu
+    helm_arch_map:
+      x86_64: amd64
+      amd64: amd64
+      aarch64: arm64
+      arm64: arm64
+  pre_tasks:
+    - name: Ensure python3 is present on the target
+      ansible.builtin.raw: |
+        if command -v python3 >/dev/null 2>&1; then
+          echo already-present
+          exit 0
+        fi
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y python3 python3-apt
+      register: bootstrap_python
+      changed_when: "'already-present' not in bootstrap_python.stdout"
+
+    - name: Gather facts after python bootstrap
+      ansible.builtin.setup:
+
+    - name: Resolve Helm architecture
+      ansible.builtin.set_fact:
+        helm_arch: "{{ helm_arch_map.get(ansible_architecture, '') }}"
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - tar
+          - unzip
+          - openjdk-21-jdk-headless
+          - docker.io
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Add remote user to docker group
+      ansible.builtin.user:
+        name: "{{ vm_user }}"
+        groups: docker
+        append: true
+      when: vm_user != "root"
+
+    - name: Download uv installer
+      ansible.builtin.get_url:
+        url: https://astral.sh/uv/install.sh
+        dest: /tmp/uv-install.sh
+        mode: "0755"
+
+    - name: Install uv
+      ansible.builtin.shell: /tmp/uv-install.sh
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/uv
+      environment:
+        UV_INSTALL_DIR: /usr/local/bin
+
+    - name: Fail when Helm is requested on an unsupported architecture
+      ansible.builtin.fail:
+        msg: "Unsupported architecture for Helm: {{ ansible_architecture }}"
+      when:
+        - install_helm | bool
+        - helm_arch | length == 0
+
+    - name: Check installed Helm version
+      ansible.builtin.shell: helm version --short | cut -d+ -f1
+      args:
+        executable: /bin/bash
+      register: helm_installed_version
+      changed_when: false
+      failed_when: false
+      when: install_helm | bool
+
+    - name: Ensure Helm archive extraction directory exists
+      ansible.builtin.file:
+        path: "/tmp/helm-v{{ helm_version }}-linux-{{ helm_arch }}"
+        state: directory
+        mode: "0755"
+      when:
+        - install_helm | bool
+        - helm_installed_version.stdout | default("") != ("v" ~ helm_version)
+
+    - name: Download Helm release archive
+      ansible.builtin.get_url:
+        url: "https://get.helm.sh/helm-v{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+        dest: "/tmp/helm-v{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+        mode: "0644"
+      when:
+        - install_helm | bool
+        - helm_installed_version.stdout | default("") != ("v" ~ helm_version)
+
+    - name: Extract Helm release archive
+      ansible.builtin.unarchive:
+        src: "/tmp/helm-v{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+        dest: "/tmp/helm-v{{ helm_version }}-linux-{{ helm_arch }}"
+        remote_src: true
+        creates: "/tmp/helm-v{{ helm_version }}-linux-{{ helm_arch }}/linux-{{ helm_arch }}/helm"
+      when:
+        - install_helm | bool
+        - helm_installed_version.stdout | default("") != ("v" ~ helm_version)
+
+    - name: Install Helm binary
+      ansible.builtin.copy:
+        src: "/tmp/helm-v{{ helm_version }}-linux-{{ helm_arch }}/linux-{{ helm_arch }}/helm"
+        dest: /usr/local/bin/helm
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - install_helm | bool
+        - helm_installed_version.stdout | default("") != ("v" ~ helm_version)

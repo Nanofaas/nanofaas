@@ -116,6 +116,8 @@ IMAGES = {
         "type": "gradle",
         "task": ":control-plane:bootBuildImage",
         "image_param": "controlPlaneImage",
+        "wrapper_action": "image",
+        "wrapper_profile": "all",
         "group": "Core",
     },
     "function-runtime": {
@@ -171,6 +173,18 @@ IMAGES = {
         "dockerfile": "examples/python/json-transform/Dockerfile",
         "context": ".",
         "group": "Python Functions",
+    },
+    "javascript-word-stats": {
+        "type": "docker",
+        "dockerfile": "examples/javascript/word-stats/Dockerfile",
+        "context": ".",
+        "group": "JavaScript Functions",
+    },
+    "javascript-json-transform": {
+        "type": "docker",
+        "dockerfile": "examples/javascript/json-transform/Dockerfile",
+        "context": ".",
+        "group": "JavaScript Functions",
     },
     "watchdog": {
         "type": "docker",
@@ -236,11 +250,21 @@ def resolve_native_image_build_args() -> str:
 def build_gradle_command(image_cfg: dict[str, str], full_image: str, arch: str) -> str:
     platform = "linux/arm64,linux/amd64" if arch == "multi" else f"linux/{arch}"
     native_args = shlex.quote(resolve_native_image_build_args())
-    cmd = (
-        f"NATIVE_IMAGE_BUILD_ARGS={native_args} ./gradlew {image_cfg['task']} "
-        f"-P{image_cfg['image_param']}={full_image} "
-        f"-PimagePlatform={platform}"
-    )
+    oci_source = shlex.quote(f"https://github.com/{GH_OWNER}/{GH_REPO}")
+    if image_cfg.get("wrapper_action"):
+        cmd = (
+            f"NATIVE_IMAGE_BUILD_ARGS={native_args} BP_OCI_SOURCE={oci_source} "
+            f"./scripts/controlplane.sh {image_cfg['wrapper_action']} "
+            f"--profile {image_cfg['wrapper_profile']} -- "
+            f"-P{image_cfg['image_param']}={full_image} "
+            f"-PimagePlatform={platform}"
+        )
+    else:
+        cmd = (
+            f"NATIVE_IMAGE_BUILD_ARGS={native_args} ./gradlew {image_cfg['task']} "
+            f"-P{image_cfg['image_param']}={full_image} "
+            f"-PimagePlatform={platform}"
+        )
     if arch == "arm64":
         cmd += (
             " -PimageBuilder=dashaun/builder:tiny"

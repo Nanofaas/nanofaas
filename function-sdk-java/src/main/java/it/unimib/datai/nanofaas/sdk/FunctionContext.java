@@ -5,17 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Request-scoped execution metadata for nanoFaaS handlers.
+ * Reads request-scoped metadata that the runtime installs into SLF4J MDC before handler code runs.
  *
- * <p>This class exists because handlers need access to execution and trace identifiers without
- * threading those values through every method signature. The runtime populates the SLF4J MDC in
- * {@code TraceLoggingFilter} before user code runs, and handlers read it through this facade.</p>
- *
- * <p>Lifecycle boundary: these values only exist for the current request/thread context. They are
- * cleared when the request completes, so callers must not cache them beyond handler execution.</p>
- *
- * <p>Historical note: the Java SDK used to rely on direct logger access in handlers; the context
- * facade centralizes the request metadata contract and keeps it aligned with the runtime headers.</p>
+ * <p>Handlers use this helper when they need execution or trace identifiers without threading
+ * those values through every method signature. The data exists only for the lifetime of the
+ * current request thread; it is not application state and it disappears when the request scope
+ * ends.</p>
  */
 public final class FunctionContext {
 

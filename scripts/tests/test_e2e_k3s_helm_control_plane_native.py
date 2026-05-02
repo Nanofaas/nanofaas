@@ -9,83 +9,12 @@ CADVISOR_DAEMONSET_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "c
 CADVISOR_SERVICE_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "cadvisor-service.yaml"
 
 
-def test_k3s_helm_script_supports_native_control_plane_build_knobs():
+def test_k3s_helm_script_is_now_a_controlplane_wrapper():
     script = SCRIPT.read_text(encoding="utf-8")
-    assert "CONTROL_PLANE_NATIVE_BUILD" in script
-    assert "CONTROL_PLANE_MODULES" in script
-    assert "CONTROL_PLANE_NATIVE_IMAGE_BUILD_ARGS" in script
-    assert "CONTROL_PLANE_NATIVE_ACTIVE_PROCESSORS" in script
-    assert "CONTROL_PLANE_BUILD_ON_HOST" in script
-    assert "CONTROL_PLANE_ONLY" in script
-    assert "HOST_REBUILD_IMAGES" in script
-    assert "resolve_host_control_image_ref" in script
-    assert "compute_sha256_12" in script
-    assert "ensure_host_image_available_from_local_cache" in script
-    assert "docker image ls \"${repo}\" --format" in script
-    assert "CONTROL_PLANE_CACHE_ROOT" in script
-    assert "manifest.json" in script
-    assert "write_control_plane_cache_manifest" in script
-    assert "control_plane_cache_manifest_is_valid" in script
-    assert "LOADTEST_WORKLOADS" in script
-    assert "LOADTEST_RUNTIMES" in script
-    assert "PROM_CONTAINER_METRICS_ENABLED" in script
-    assert "PROM_CONTAINER_METRICS_MODE" in script
-    assert "resolve_selected_demo_targets" in script
-    assert "should_include_demo" in script
-    assert "build_non_control_plane_images_on_host" in script
-    assert "push_host_non_control_plane_images_to_registry" in script
-    assert "Reusing existing host-built control-plane image" in script
-    assert "Control-plane image '${HOST_CONTROL_IMAGE}' requested from cache but missing" in script
-    assert "Reusing existing host-built function/runtime/demo images" in script
-    assert "should_rebuild_host_image" in script
-    assert "HOST_REBUILD_IMAGE_REFS" in script
-    assert "HOST_JAVA_NATIVE_IMAGE_REFS" in script
-    assert "should_build_java_image_native" in script
-    assert "HOST_CONTROL_IMAGE=\"$(resolve_host_control_image_ref)\"" in script
-    assert "echo \"nanofaas/control-plane:host-java-v${PROJECT_VERSION}-${build_mode}-${fingerprint}\"" in script
-    assert "echo \"nanofaas/control-plane:host-${runtime_kind}-v${PROJECT_VERSION}-${fingerprint}\"" in script
-    assert "modules_hash=\"$(compute_sha256_12 \"${runtime_kind}|${build_mode}|v${PROJECT_VERSION}|${modules_selector}\")\"" in script
-    assert "echo \"${CONTROL_PLANE_CACHE_ROOT}/${runtime_kind}/${build_mode}/${modules_hash}\"" in script
-    assert "\"runtime_kind\": runtime_kind" in script
-    assert "ensure_host_image_available_from_local_cache" in script
-    assert "retagging from" in script
-    assert ":control-plane:bootBuildImage" in script
-    assert ":function-runtime:bootJar :examples:java:word-stats:bootJar :examples:java:json-transform:bootJar" in script
-    assert "uname -m" in script
-    assert "linux/arm64" in script
-    assert "-PimagePlatform=" in script
-    assert "paketobuildpacks/builder-jammy-java-tiny:latest" in script
-    assert "NATIVE_IMAGE_BUILD_ARGS=" in script
-    assert "detect_local_cpu_count" in script
-    assert ":control-plane:bootJar -PcontrolPlaneModules=" in script
-    assert "-J-Xmx8g" in script
-    assert "-J-Xmx4g" not in script
-    assert "-J-XX:ActiveProcessorCount=${active_processors}" in script
-    assert "-J-XX:ActiveProcessorCount=2" not in script
-    assert "-J-XX:ActiveProcessorCount=3" not in script
-    assert "-J-XX:ActiveProcessorCount=4" not in script
-    assert "docker save" in script
-    assert "sudo docker load -i" in script
-    assert "demos_enabled" in script
-    assert "Control-plane-only mode" in script
-    assert "PROM_CONTAINER_METRICS_KUBELET_INSECURE_SKIP_VERIFY" in script
-    assert "forcing kubelet" in script
-    assert "E2E_K3S_HELM_NONINTERACTIVE" in script
-    assert "exec bash \"${PROJECT_ROOT}/experiments/run.sh\"" in script
-    assert "VM cleanup is enabled (KEEP_VM=false)" in script
-    assert "Build strategy: control-plane/function-runtime/demo images on host" in script
-    assert "Selected demo functions:" in script
-    assert "./experiments/e2e-loadtest.sh" in script
-    assert "register functions before running load tests" in script
-    assert 'local allowed_runtimes=("java" "java-lite" "python" "exec" "go")' in script
-    assert 'LOADTEST_RUNTIMES=${LOADTEST_RUNTIMES:-java,java-lite,python,exec,go}' in script
-    assert 'GO_WORD_STATS_IMAGE="${LOCAL_REGISTRY}/nanofaas/go-word-stats:${TAG}"' in script
-    assert 'GO_JSON_TRANSFORM_IMAGE="${LOCAL_REGISTRY}/nanofaas/go-json-transform:${TAG}"' in script
-    assert 'append_demo_function_yaml "word-stats-go"' in script
-    assert 'append_demo_function_yaml "json-transform-go"' in script
-    assert 'docker build -t "${GO_WORD_STATS_IMAGE}" -f examples/go/word-stats/Dockerfile .' in script
-    assert 'docker build -t "${GO_JSON_TRANSFORM_IMAGE}" -f examples/go/json-transform/Dockerfile .' in script
-    assert "for fn in word-stats-java word-stats-python word-stats-exec word-stats-java-lite;" not in script
+    assert 'controlplane.sh" e2e run helm-stack "$@"' in script
+    assert "CONTROL_PLANE_NATIVE_BUILD" not in script
+    assert "LOADTEST_RUNTIMES" not in script
+    assert "docker save" not in script
 
 
 def test_prometheus_templates_support_container_metrics_modes():

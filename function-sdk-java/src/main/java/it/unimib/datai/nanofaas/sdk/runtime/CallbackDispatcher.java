@@ -15,16 +15,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Queues callback delivery off the request thread.
+ * Asynchronously hands callback delivery off to a bounded worker pool.
  *
- * <p>The controller invokes this component after the handler returns so callback I/O does not block
- * the main request path longer than necessary. It depends on the {@link CallbackClient}, a bounded
- * worker pool, and daemon threads so the JVM can still shut down cleanly. When the queue is full,
- * callbacks are dropped rather than stalling the function invocation.</p>
- *
- * <p>Lifecycle boundary: the executor is process-scoped and is drained at shutdown. In-flight
- * callbacks may complete during shutdown, but the dispatcher stops accepting new work once Spring
- * begins teardown.</p>
+ * <p>The dispatcher exists so the invoke path can return while callback delivery is still being
+ * attempted, but it keeps the queue and worker count bounded so callback pressure cannot grow
+ * without limit inside the function container.</p>
  */
 @Component
 public class CallbackDispatcher {

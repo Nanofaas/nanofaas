@@ -1,38 +1,74 @@
-from pathlib import Path
+"""
+M11: e2e-k3s-common.sh is deleted.
 
+The external SSH VM lifecycle behavior it provided is now owned by
+VmOrchestrator in tools/controlplane/src/controlplane_tool/vm_adapter.py.
+"""
+from pathlib import Path
+import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "lib" / "e2e-k3s-common.sh"
+SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 
-def test_common_script_supports_externally_managed_ssh_vm_lifecycle():
-    script = SCRIPT.read_text(encoding="utf-8")
-
-    # Lifecycle mode knobs.
-    assert "E2E_VM_LIFECYCLE" in script
-    assert "e2e_get_vm_lifecycle" in script
-    assert "e2e_is_external_vm_lifecycle" in script
-    assert "e2e_get_vm_host" in script
-
-    # External hosts can be resolved without multipass.
-    assert "E2E_VM_HOST" in script
-    assert "if [[ -n \"${E2E_VM_HOST:-}\" ]]; then" in script
-    assert "e2e_require_vm_access" in script
-    assert "e2e_get_vm_user" in script
-    assert "e2e_get_vm_home" in script
-    assert "e2e_get_kubeconfig_path" in script
-    assert "e2e_get_remote_project_dir" in script
-    assert "if e2e_is_external_vm_lifecycle; then" in script
-    assert "Using externally managed VM host" in script
-    assert "Skipping VM deletion: external VM lifecycle mode" in script
+def _ensure_tool_src_on_path() -> None:
+    src = str(REPO_ROOT / "tools" / "controlplane" / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
 
 
+def test_e2e_k3s_common_is_deleted() -> None:
+    assert not (SCRIPTS_DIR / "lib" / "e2e-k3s-common.sh").exists(), (
+        "e2e-k3s-common.sh still exists — delete it after Python path is green (M11)"
+    )
 
-def test_common_script_avoids_ubuntu_hardcoding_for_kubeconfig_and_k3s_setup():
-    script = SCRIPT.read_text(encoding="utf-8")
-    assert "kubeconfig_dir=$(dirname \"${kubeconfig_path}\")" in script
-    assert "mkdir -p ${q_kubeconfig_dir}" in script
-    assert "sudo cp /etc/rancher/k3s/k3s.yaml ${q_kubeconfig_path}" in script
-    assert "sudo chown ${vm_user}:${vm_user} ${q_kubeconfig_path}" in script
-    assert "export KUBECONFIG=${q_kubeconfig_path}" in script
-    assert "/home/ubuntu/.kube/config" not in script
+
+def test_vm_orchestrator_supports_external_lifecycle() -> None:
+    """VmOrchestrator handles external lifecycle in place of e2e-k3s-common.sh."""
+    _ensure_tool_src_on_path()
+    from controlplane_tool.vm_adapter import VmOrchestrator  # noqa: PLC0415
+    from controlplane_tool.vm_models import VmRequest  # noqa: PLC0415
+    from controlplane_tool.shell_backend import RecordingShell  # noqa: PLC0415
+
+    shell = RecordingShell()
+    vm = VmOrchestrator(Path("/repo"), shell=shell)
+    request = VmRequest(
+        lifecycle="external",
+        host="vm.example.test",
+        user="dev",
+        home="/srv/dev",
+    )
+
+    assert vm.remote_project_dir(request) == "/srv/dev/nanofaas"
+    assert vm.kubeconfig_path(request) == "/srv/dev/.kube/config"
+
+    result = vm.ensure_running(request, dry_run=True)
+    assert "vm.example.test" in " ".join(result.command)
+
+
+def test_vm_orchestrator_external_sync_uses_rsync() -> None:
+    _ensure_tool_src_on_path()
+    from controlplane_tool.vm_adapter import VmOrchestrator  # noqa: PLC0415
+    from controlplane_tool.vm_models import VmRequest  # noqa: PLC0415
+    from controlplane_tool.shell_backend import RecordingShell  # noqa: PLC0415
+
+    shell = RecordingShell()
+    vm = VmOrchestrator(Path("/repo"), shell=shell)
+    request = VmRequest(lifecycle="external", host="vm.example.test", user="dev")
+    result = vm.sync_project(request, dry_run=True)
+    assert "rsync" in result.command[0]
+    assert "vm.example.test" in " ".join(result.command)
+
+
+def test_vm_orchestrator_external_teardown_skips_multipass() -> None:
+    _ensure_tool_src_on_path()
+    from controlplane_tool.vm_adapter import VmOrchestrator  # noqa: PLC0415
+    from controlplane_tool.vm_models import VmRequest  # noqa: PLC0415
+    from controlplane_tool.shell_backend import RecordingShell  # noqa: PLC0415
+
+    shell = RecordingShell()
+    vm = VmOrchestrator(Path("/repo"), shell=shell)
+    request = VmRequest(lifecycle="external", host="vm.example.test", user="dev")
+    result = vm.teardown(request, dry_run=True)
+    assert "multipass" not in " ".join(result.command)
+    assert "Skipping" in " ".join(result.command)

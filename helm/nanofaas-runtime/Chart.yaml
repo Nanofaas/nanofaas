@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nanofaas-runtime
+description: Minimal Helm chart for the shared NanoFaaS function runtime deployment.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

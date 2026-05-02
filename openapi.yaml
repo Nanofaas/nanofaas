@@ -20,7 +20,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/FunctionSummary'
+                  $ref: '#/components/schemas/FunctionResponse'
     post:
       summary: Register a function
       operationId: registerFunction
@@ -36,7 +36,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FunctionSummary'
+                $ref: '#/components/schemas/FunctionResponse'
         '422':
           description: Image not found in registry
         '424':
@@ -57,7 +57,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FunctionSpec'
+                $ref: '#/components/schemas/FunctionResponse'
         '404':
           description: Not found
     delete:
@@ -355,6 +355,71 @@ components:
           type: integer
           minimum: 1
           description: Bounded in-memory queue size
+    FunctionResponse:
+      type: object
+      required: [name, image, requestedExecutionMode, effectiveExecutionMode]
+      properties:
+        name:
+          type: string
+          description: Function name
+        image:
+          type: string
+          description: Container image for the function runtime
+        command:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        resources:
+          $ref: '#/components/schemas/ResourceSpec'
+        timeoutMs:
+          type: integer
+          minimum: 1
+          maximum: 300000
+        concurrency:
+          type: integer
+          minimum: 1
+          description: Max concurrent in-flight invocations for this function
+        maxRetries:
+          type: integer
+          minimum: 0
+          description: Number of retries for failed invocations
+        queueSize:
+          type: integer
+          minimum: 1
+          description: Bounded in-memory queue size
+        endpointUrl:
+          type: string
+          description: Effective HTTP endpoint used for POOL or provider-backed DEPLOYMENT invocation
+        requestedExecutionMode:
+          type: string
+          enum: [LOCAL, POOL, DEPLOYMENT]
+          description: Execution mode requested at registration time
+        effectiveExecutionMode:
+          type: string
+          enum: [LOCAL, POOL, DEPLOYMENT]
+          description: Effective execution mode after provider selection or degradation
+        deploymentBackend:
+          type: string
+          description: Selected managed deployment backend when `effectiveExecutionMode=DEPLOYMENT`
+          example: k8s
+        degradationReason:
+          type: string
+          description: Present when a `DEPLOYMENT` request degrades to `POOL`
+        runtimeMode:
+          type: string
+          enum: [HTTP, STDIO, FILE]
+        runtimeCommand:
+          type: string
+        scalingConfig:
+          $ref: '#/components/schemas/ScalingConfig'
+        imagePullSecrets:
+          type: array
+          items:
+            type: string
     ResourceSpec:
       type: object
       properties:
@@ -364,6 +429,62 @@ components:
         memory:
           type: string
           description: Kubernetes memory request/limit (e.g., 256Mi)
+    ScalingConfig:
+      type: object
+      properties:
+        strategy:
+          type: string
+          enum: [INTERNAL, HPA]
+        minReplicas:
+          type: integer
+          minimum: 0
+        maxReplicas:
+          type: integer
+          minimum: 1
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScalingMetric'
+        concurrencyControl:
+          $ref: '#/components/schemas/ConcurrencyControlConfig'
+    ScalingMetric:
+      type: object
+      properties:
+        type:
+          type: string
+        target:
+          type: string
+        resource:
+          type: string
+    ConcurrencyControlConfig:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [FIXED, STATIC_PER_POD, ADAPTIVE_PER_POD]
+        targetInFlightPerPod:
+          type: integer
+          minimum: 1
+        minTargetInFlightPerPod:
+          type: integer
+          minimum: 1
+        maxTargetInFlightPerPod:
+          type: integer
+          minimum: 1
+        upscaleCooldownMs:
+          type: integer
+          format: int64
+          minimum: 0
+        downscaleCooldownMs:
+          type: integer
+          format: int64
+          minimum: 0
+        highLoadThreshold:
+          type: number
+          format: double
+        lowLoadThreshold:
+          type: number
+          format: double
     InvocationRequest:
       type: object
       properties:

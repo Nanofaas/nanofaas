@@ -12,19 +12,12 @@ import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Entry point for control-plane invocations.
+ * Handles the control-plane invoke request for a single function execution.
  *
- * <p>The control plane calls this controller on every function execution. It resolves the effective
- * execution context from request headers and startup env vars, enforces the handler timeout, tracks
- * cold-start state, and sends the callback result back to the control plane.</p>
- *
- * <p>Environment assumptions: this controller runs inside Spring MVC with the auto-configured
- * runtime beans already present. It assumes one active handler bean exists and that callback
- * delivery is configured through {@code CALLBACK_URL} when results must be reported back.</p>
- *
- * <p>Historical note: the current code path replaced an earlier, more ad hoc invocation pipeline
- * with a single controller-based execution flow so the runtime contract is easier to trace from the
- * source code.</p>
+ * <p>The control plane calls {@code /invoke}; this controller resolves the effective execution and
+ * trace context, rejects requests that arrive without an execution identifier, tracks cold-start
+ * state, dispatches the active handler, and posts the result back to the control plane as a
+ * callback.</p>
  */
 @RestController
 public class InvokeController {

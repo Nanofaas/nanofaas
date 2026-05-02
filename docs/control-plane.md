@@ -2,6 +2,41 @@
 
 For module selection and module packaging details, see `docs/control-plane-modules.md`.
 
+## Unified Tooling
+
+The canonical control-plane tooling root is `tools/controlplane/`.
+The canonical shell orchestration wrapper is `scripts/controlplane.sh`.
+
+Use `scripts/controlplane.sh` for the primary control-plane build contract:
+
+```bash
+scripts/controlplane.sh build --profile container-local --dry-run
+scripts/controlplane.sh jar --profile container-local
+scripts/controlplane.sh jar --profile core
+scripts/controlplane.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
+scripts/controlplane.sh image --profile k8s -- -PcontrolPlaneImage=nanofaas/control-plane:test
+scripts/controlplane.sh native --profile all
+scripts/controlplane.sh test --profile core -- --tests '*CoreDefaultsTest'
+scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
+scripts/controlplane.sh inspect --profile all
+```
+
+Milestone 3 also exposes VM lifecycle and E2E orchestration through the same product surface:
+
+```bash
+scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
+scripts/controlplane.sh vm provision-base --lifecycle external --host vm.example.test --user dev --dry-run
+scripts/controlplane.sh e2e list
+scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
+```
+
+For VM-backed E2E plans, the tool resolves the actual SSH target for Ansible/SSH operations and no longer plans against `localhost`. `e2e all` computes one shared VM bootstrap block for VM-backed scenarios, then runs scenario-specific workflows on top of that session. `--no-cleanup-vm` preserves the installed stack and VM state for debugging; external VM lifecycle mode is never destroyed by the tool.
+
+Operational Ansible assets are now canonical under `ops/ansible/`.
+
+The raw `./gradlew ... -PcontrolPlaneModules=...` workflow is still supported for low-level/advanced scenarios.
+
 ## Architecture Summary
 
 - The control-plane is a minimal core plus optional modules from `control-plane-modules/`.

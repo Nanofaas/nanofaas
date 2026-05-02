@@ -7,21 +7,21 @@
 - Native build (GraalVM via SDKMAN):
   - `./scripts/native-build.sh`
 - E2E test (requires Docker + SDKMAN JDK):
-  - `./scripts/e2e.sh`
+  - `./scripts/controlplane.sh e2e run docker`
 - If you use a Docker-compatible runtime (e.g., podman/colima), export:
   - `CONTAINER_HOST=unix:///path/to/socket`
   - `CONTAINER_TLS_VERIFY=0` (optional)
   - `CONTAINER_CERT_PATH=/path/to/certs` (optional)
 - E2E buildpack test (builds minimal images with Spring Boot buildpacks):
-  - `./scripts/e2e-buildpack.sh`
+  - `./scripts/controlplane.sh e2e run buildpack`
   - Requires Docker (buildpacks run with `bootBuildImage`).
 - E2E test on Kubernetes (k3s in Multipass):
   - Fully automated:
     - `./gradlew k8sE2e`
-  - Direct script entrypoint:
-    - `./scripts/e2e-k8s-vm.sh`
+  - Canonical orchestration entrypoint:
+    - `./scripts/controlplane.sh e2e run k3s-junit-curl`
   - Optional env for sizing/debug:
-    - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`, `KEEP_VM=true`
+    - `VM_NAME`, `CPUS`, `MEMORY`, `DISK`, `REMOTE_DIR`, `NANOFAAS_E2E_NAMESPACE`
   - K8sE2eTest also verifies sync queue backpressure (429 + headers + sync_queue_* metrics).
   - The k8s E2E test will fail if `KUBECONFIG` is missing or invalid.
   - Alias task:
@@ -29,16 +29,32 @@
 
 ## Run control plane locally
 
-- `./gradlew :control-plane:bootRun`
+- `scripts/controlplane.sh run --profile core`
 - Control plane API on `http://localhost:8080`
 - Metrics on `http://localhost:8081/actuator/prometheus`
 
 ## Run control-plane tooling wizard locally
 
+- Canonical tool root:
+  - `tools/controlplane/`
+- Canonical orchestration wrapper:
+  - `scripts/controlplane.sh --help`
+- VM/E2E examples:
+  - `scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run`
+  - `scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run`
+  - `scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run`
+- Use the unified non-interactive wrapper for control-plane Gradle actions:
+  - `scripts/controlplane.sh build --profile core --dry-run`
+  - `scripts/controlplane.sh image --profile all --dry-run`
+  - `scripts/controlplane.sh native --profile all --dry-run`
+  - `scripts/controlplane.sh test --profile k8s --dry-run`
+  - `scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run`
+  - `scripts/controlplane.sh inspect --profile container-local --dry-run`
+
 - Open the interactive wizard and save a reusable profile:
-  - `scripts/controlplane-tool.sh --profile-name dev`
+  - `scripts/controlplane.sh tui --profile-name dev`
 - Re-run with an existing profile:
-  - `scripts/controlplane-tool.sh --profile-name dev --use-saved-profile`
+  - `scripts/controlplane.sh tui --profile-name dev --use-saved-profile`
 - Exit codes:
   - `0` when run final status is `passed`
   - `1` when run final status is `failed`
@@ -53,9 +69,9 @@
   - If no endpoint is reachable, the tool auto-pulls `prom/prometheus` (if needed) and starts a local Docker container.
   - Default metric gating is scenario-compatible; strict full-gate can be enabled in profile with `metrics.strict_required = true`.
 - Artifacts:
-  - `tooling/profiles/<profile>.toml`
-  - `tooling/runs/<timestamp>-<profile>/summary.json`
-  - `tooling/runs/<timestamp>-<profile>/report.html`
+  - `tools/controlplane/profiles/<profile>.toml`
+  - `tools/controlplane/runs/<timestamp>-<profile>/summary.json`
+  - `tools/controlplane/runs/<timestamp>-<profile>/report.html`
 
 ## Run function runtime locally
 

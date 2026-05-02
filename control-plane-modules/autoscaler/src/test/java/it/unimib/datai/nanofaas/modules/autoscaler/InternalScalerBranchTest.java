@@ -6,8 +6,10 @@ import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
-import it.unimib.datai.nanofaas.controlplane.dispatch.KubernetesResourceManager;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
+import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,7 +34,7 @@ class InternalScalerBranchTest {
     private ScalingMetricsReader metricsReader;
 
     @Mock
-    private KubernetesResourceManager resourceManager;
+    private ManagedDeploymentCoordinator deploymentCoordinator;
 
     private InternalScaler scaler;
 
@@ -41,77 +43,84 @@ class InternalScalerBranchTest {
         scaler = new InternalScaler(
                 registry,
                 metricsReader,
-                resourceManager,
+                deploymentCoordinator,
                 new ScalingProperties(5000L, 0, 10),
                 new ColdStartTracker()
         );
+        lenient().when(deploymentCoordinator.isManagedDeployment(any())).thenAnswer(invocation -> {
+            RegisteredFunction function = invocation.getArgument(0);
+            return function != null
+                    && function.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT
+                    && function.deploymentMetadata().deploymentBackend() != null
+                    && !function.deploymentMetadata().deploymentBackend().isBlank();
+        });
     }
 
     @Test
     void scalingLoop_registryFailure_isHandledWithoutThrowing() {
-        when(registry.list()).thenThrow(new RuntimeException("registry down"));
+        when(registry.listRegistered()).thenThrow(new RuntimeException("registry down"));
 
         scaler.scalingLoop();
     }
 
     @Test
     void scalingLoop_functionFailure_doesNotBlockOtherFunctions() {
-        FunctionSpec bad = spec("bad", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
-        FunctionSpec good = spec("good", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
+        RegisteredFunction bad = spec("bad", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
+        RegisteredFunction good = spec("good", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
 
-        when(registry.list()).thenReturn(List.of(bad, good));
-        when(resourceManager.getReadyReplicas("bad")).thenReturn(1);
-        when(resourceManager.getReadyReplicas("good")).thenReturn(1);
+        when(registry.listRegistered()).thenReturn(List.of(bad, good));
+        when(deploymentCoordinator.getReadyReplicas(bad)).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(good)).thenReturn(1);
         when(metricsReader.readMetric(eq("bad"), any())).thenThrow(new RuntimeException("metric failure"));
         when(metricsReader.readMetric(eq("good"), any())).thenReturn(15.0);
 
         scaler.scalingLoop();
 
-        verify(resourceManager).setReplicas("good", 3);
+        verify(deploymentCoordinator).setReplicas(good, 3);
     }
 
     @Test
     void scalingLoop_scaleUpCooldown_preventsSecondScaleUp() {
-        FunctionSpec spec = spec("echo", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
+        RegisteredFunction spec = spec("echo", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
 
-        when(registry.list()).thenReturn(List.of(spec));
-        when(resourceManager.getReadyReplicas("echo")).thenReturn(1);
+        when(registry.listRegistered()).thenReturn(List.of(spec));
+        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(1);
         when(metricsReader.readMetric(eq("echo"), any())).thenReturn(15.0);
 
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(resourceManager, times(1)).setReplicas("echo", 3);
+        verify(deploymentCoordinator, times(1)).setReplicas(spec, 3);
     }
 
     @Test
     void scalingLoop_scaleDownCooldown_preventsSecondScaleDown() {
-        FunctionSpec spec = spec("echo", 0, 10, List.of(new ScalingMetric("in_flight", "2", null)));
+        RegisteredFunction spec = spec("echo", 0, 10, List.of(new ScalingMetric("in_flight", "2", null)));
 
-        when(registry.list()).thenReturn(List.of(spec));
-        when(resourceManager.getReadyReplicas("echo")).thenReturn(3);
+        when(registry.listRegistered()).thenReturn(List.of(spec));
+        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(3);
         when(metricsReader.readMetric(eq("echo"), any())).thenReturn(0.0);
 
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(resourceManager, times(1)).setReplicas("echo", 0);
+        verify(deploymentCoordinator, times(1)).setReplicas(spec, 0);
     }
 
     @Test
     void scalingLoop_blankOrInvalidTarget_usesDefaultTarget() {
-        FunctionSpec blankTarget = spec("blank", 0, 10, List.of(new ScalingMetric("queue_depth", " ", null)));
-        FunctionSpec invalidTarget = spec("invalid", 0, 10, List.of(new ScalingMetric("queue_depth", "abc", null)));
+        RegisteredFunction blankTarget = spec("blank", 0, 10, List.of(new ScalingMetric("queue_depth", " ", null)));
+        RegisteredFunction invalidTarget = spec("invalid", 0, 10, List.of(new ScalingMetric("queue_depth", "abc", null)));
 
-        when(registry.list()).thenReturn(List.of(blankTarget, invalidTarget));
-        when(resourceManager.getReadyReplicas("blank")).thenReturn(1);
-        when(resourceManager.getReadyReplicas("invalid")).thenReturn(1);
+        when(registry.listRegistered()).thenReturn(List.of(blankTarget, invalidTarget));
+        when(deploymentCoordinator.getReadyReplicas(blankTarget)).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(invalidTarget)).thenReturn(1);
         when(metricsReader.readMetric(eq("blank"), any())).thenReturn(10.0);   // 10/50 => 0.2 => no scale
         when(metricsReader.readMetric(eq("invalid"), any())).thenReturn(25.0); // 25/50 => 0.5 => no scale
 
         scaler.scalingLoop();
 
-        verify(resourceManager, never()).setReplicas(anyString(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
     }
 
     @Test
@@ -125,7 +134,8 @@ class InternalScalerBranchTest {
                         new ScalingMetric("cpu", "10", null)
                 )
         );
-        FunctionSpec spec = spec("echo", 1, 5, scaling.metrics());
+        RegisteredFunction registered = spec("echo", 1, 5, scaling.metrics());
+        FunctionSpec spec = registered.spec();
         ScalingDecisionCalculator calculator = new ScalingDecisionCalculator(metricsReader);
 
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
@@ -153,8 +163,8 @@ class InternalScalerBranchTest {
         assertThat(tracker.allowScaleUp("echo", now.plusMillis(1_000))).isTrue();
     }
 
-    private FunctionSpec spec(String name, int minReplicas, int maxReplicas, List<ScalingMetric> metrics) {
-        return new FunctionSpec(
+    private RegisteredFunction spec(String name, int minReplicas, int maxReplicas, List<ScalingMetric> metrics) {
+        return new RegisteredFunction(new FunctionSpec(
                 name,
                 "image:latest",
                 List.of(),
@@ -169,6 +179,6 @@ class InternalScalerBranchTest {
                 RuntimeMode.HTTP,
                 null,
                 new ScalingConfig(ScalingStrategy.INTERNAL, minReplicas, maxReplicas, metrics)
-        );
+        ), new DeploymentMetadata(ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null));
     }
 }

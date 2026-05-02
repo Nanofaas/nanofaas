@@ -1,0 +1,11 @@
+name = "container-local-smoke"
+base_scenario = "container-local"
+runtime = "java"
+functions = ["word-stats-java"]
+
+[invoke]
+mode = "smoke"
+payload_dir = "payloads"
+
+[payloads]
+word-stats-java = "word-stats-sample.json"

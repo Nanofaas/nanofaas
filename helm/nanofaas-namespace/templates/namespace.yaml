@@ -1,0 +1,10 @@
+{{- $namespace := required "namespace.name is required" .Values.namespace.name -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace | quote }}
+  labels:
+    app.kubernetes.io/name: nanofaas
+    app.kubernetes.io/component: namespace
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}

@@ -1,0 +1,101 @@
+---
+- name: Provision k3s
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    vm_user: ubuntu
+    kubeconfig_path: /home/ubuntu/.kube/config
+    k3s_release_api_url: https://api.github.com/repos/k3s-io/k3s/releases/latest
+    k3s_install_flags:
+      - --disable
+      - traefik
+  pre_tasks:
+    - name: Ensure python3 is present on the target
+      ansible.builtin.raw: |
+        if command -v python3 >/dev/null 2>&1; then
+          echo already-present
+          exit 0
+        fi
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y python3 python3-apt
+      register: bootstrap_python
+      changed_when: "'already-present' not in bootstrap_python.stdout"
+
+    - name: Gather facts after python bootstrap
+      ansible.builtin.setup:
+  tasks:
+    - name: Resolve latest k3s release from GitHub
+      ansible.builtin.uri:
+        url: "{{ k3s_release_api_url }}"
+        headers:
+          Accept: application/vnd.github+json
+        return_content: true
+        status_code: 200
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: k3s_release
+      when: k3s_version_override | default("") | trim | length == 0
+
+    - name: Set target k3s version
+      ansible.builtin.set_fact:
+        k3s_target_version: >-
+          {{
+            (k3s_version_override | trim)
+            if (k3s_version_override | default("") | trim | length > 0)
+            else k3s_release.json.tag_name
+          }}
+
+    - name: Check installed k3s version
+      ansible.builtin.command: k3s --version
+      register: k3s_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Parse installed k3s version
+      ansible.builtin.set_fact:
+        k3s_installed_version: >-
+          {{
+            k3s_installed.stdout_lines[0].split()[2]
+            if (k3s_installed.rc == 0 and (k3s_installed.stdout_lines | length) > 0)
+            else ""
+          }}
+
+    - name: Install or upgrade k3s when version drifts
+      ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -s - {{ k3s_install_flags | join(" ") }}
+      args:
+        executable: /bin/bash
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_target_version }}"
+      register: k3s_install
+      changed_when: true
+      when: k3s_installed_version != k3s_target_version
+
+    - name: Wait for k3s node readiness
+      ansible.builtin.command: k3s kubectl get nodes --no-headers
+      register: k3s_nodes
+      changed_when: false
+      until:
+        - k3s_nodes.rc == 0
+        - "' Ready ' in k3s_nodes.stdout"
+      retries: 60
+      delay: 2
+
+    - name: Ensure kubeconfig parent directory exists
+      ansible.builtin.file:
+        path: "{{ kubeconfig_path | dirname }}"
+        state: directory
+        owner: "{{ vm_user }}"
+        group: "{{ vm_user }}"
+        mode: "0755"
+
+    - name: Export kubeconfig for the remote user
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ kubeconfig_path }}"
+        remote_src: true
+        owner: "{{ vm_user }}"
+        group: "{{ vm_user }}"
+        mode: "0600"

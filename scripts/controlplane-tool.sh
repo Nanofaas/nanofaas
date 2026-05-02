@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "${ROOT_DIR}"
-
-exec uv run --project tooling/controlplane_tui controlplane-tool "$@"
+# Compatibility wrapper. Prefer `scripts/controlplane.sh tui ...`.
+exec "$(dirname "$0")/controlplane.sh" tui "$@"

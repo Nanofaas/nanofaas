@@ -37,10 +37,8 @@ def test_memory_ab_script_skips_for_rust_control_plane_runtime():
     assert "CONTROL_PLANE_RUNTIME=rust" in combined
 
 
-def test_loadtest_registry_script_skips_for_rust_control_plane_runtime():
+def test_loadtest_registry_script_is_migrated_to_controlplane_loadtest_wrapper():
     script = REPO_ROOT / "experiments" / "e2e-loadtest-registry.sh"
-    proc = run_script(script, env={"CONTROL_PLANE_RUNTIME": "rust"})
-    combined = proc.stdout + proc.stderr
-    assert proc.returncode == 0
-    assert "SKIP:" in combined
-    assert "CONTROL_PLANE_RUNTIME=rust" in combined
+    wrapper = REPO_ROOT / "scripts" / "e2e-loadtest.sh"
+    assert not script.exists()
+    assert "controlplane.sh\" loadtest run" in wrapper.read_text(encoding="utf-8")

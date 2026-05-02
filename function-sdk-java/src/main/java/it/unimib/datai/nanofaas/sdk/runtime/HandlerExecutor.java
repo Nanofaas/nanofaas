@@ -9,14 +9,11 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.*;
 
 /**
- * Runs the user handler under a bounded timeout.
+ * Executes the active handler within the runtime timeout boundary.
  *
- * <p>This component exists to isolate handler latency from the rest of the runtime. The controller
- * depends on it to enforce the invocation timeout boundary, and the runtime uses virtual threads so
- * blocking user code does not pin the carrier thread pool.</p>
- *
- * <p>Lifecycle boundary: execution ends when the handler returns, throws, or exceeds the configured
- * timeout. Any cleanup after that belongs to the controller or callback dispatcher.</p>
+ * <p>The executor isolates handler work from the request thread, enforces the configured timeout,
+ * and uses virtual threads so blocking handler code does not pin a carrier thread while the invoke
+ * lifecycle is still open.</p>
  */
 @Component
 public class HandlerExecutor {

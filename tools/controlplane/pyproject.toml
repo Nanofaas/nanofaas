@@ -1,0 +1,43 @@
+[project]
+name = "controlplane-tool"
+version = "0.1.0"
+description = "Control-plane orchestration product for build, test, and reporting"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12.5",
+    "questionary>=2.1.1",
+    "pydantic>=2.9.2",
+    "jinja2>=3.1.4",
+    "plotly>=5.24.1",
+    "tomli-w>=1.0.0",
+    "httpx>=0.27",
+    "tenacity>=8.3",
+    "pydantic-settings>=2.5",
+    "flask>=3.0",
+    "rich>=13.8",
+    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
+    "prefect>=3,<4",
+    "shellcraft @ file:///Users/micheleciavotta/shellcraft",
+    "tui-toolkit",
+]
+
+[project.scripts]
+controlplane-tool = "controlplane_tool.main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+]
+
+[tool.uv.sources]
+tui-toolkit = { path = "../tui-toolkit", editable = true }

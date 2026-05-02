@@ -6,7 +6,14 @@ import time
 
 from flask import Flask, request, jsonify
 import requests as http_requests
-from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    REGISTRY,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,17 +30,35 @@ HANDLER_MODULE = os.environ.get('HANDLER_MODULE', 'handler')
 HANDLER_FUNCTION = os.environ.get('HANDLER_FUNCTION', 'handle')
 FUNCTION_NAME = os.environ.get('FUNCTION_NAME') or HANDLER_MODULE or "unknown"
 
-RUNTIME_INVOCATIONS_TOTAL = Counter(
+
+def _collector(factory, name: str, documentation: str, labelnames: list[str]):
+    try:
+        return factory(name, documentation, labelnames)
+    except ValueError as exc:
+        existing = getattr(REGISTRY, "_names_to_collectors", {}).get(name)
+        if (
+            existing is not None
+            and isinstance(existing, factory)
+            and tuple(getattr(existing, "_labelnames", ())) == tuple(labelnames)
+        ):
+            return existing
+        raise exc
+
+
+RUNTIME_INVOCATIONS_TOTAL = _collector(
+    Counter,
     "runtime_invocations_total",
     "Total invocations handled by the Python runtime (Flask)",
     ["function", "success"],
 )
-RUNTIME_INVOCATION_DURATION_SECONDS = Histogram(
+RUNTIME_INVOCATION_DURATION_SECONDS = _collector(
+    Histogram,
     "runtime_invocation_duration_seconds",
     "Invocation duration in seconds (Python runtime Flask)",
     ["function"],
 )
-RUNTIME_IN_FLIGHT = Gauge(
+RUNTIME_IN_FLIGHT = _collector(
+    Gauge,
     "runtime_in_flight",
     "In-flight invocations (Python runtime Flask)",
     ["function"],

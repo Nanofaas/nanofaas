@@ -1,6 +1,21 @@
 from pathlib import Path
+import sys
+import types
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "image-builder"))
+try:
+    import questionary  # noqa: F401
+except ImportError:
+    questionary_stub = types.ModuleType("questionary")
+    questionary_stub.Separator = lambda value: value
+    questionary_stub.checkbox = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: [])
+    questionary_stub.text = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: "")
+    questionary_stub.select = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: "")
+    questionary_stub.confirm = lambda *args, **kwargs: types.SimpleNamespace(ask=lambda: False)
+    sys.modules.setdefault("questionary", questionary_stub)
 
 import image_builder as ib
 
@@ -20,9 +35,11 @@ def test_images_catalog_contains_all_expected_entries():
         "watchdog",
         "bash-word-stats",
         "bash-json-transform",
+        "javascript-word-stats",
+        "javascript-json-transform",
     }
     assert set(ib.IMAGES) == expected
-    assert len(ib.IMAGES) == 13
+    assert len(ib.IMAGES) == 15
 
 
 def test_resolve_selected_images_supports_all_option():
@@ -59,9 +76,10 @@ def test_gradle_command_arm64_uses_custom_builder():
         "ghcr.io/miciav/nanofaas/control-plane:v0.10.0-arm64",
         "arm64",
     )
-    assert ":control-plane:bootBuildImage" in cmd
+    assert "./scripts/controlplane.sh image --profile all --" in cmd
     assert "-PcontrolPlaneImage=ghcr.io/miciav/nanofaas/control-plane:v0.10.0-arm64" in cmd
     assert "NATIVE_IMAGE_BUILD_ARGS=" in cmd
+    assert "BP_OCI_SOURCE=" in cmd
     assert "-J-Xmx8g" in cmd
     assert "-J-XX:ActiveProcessorCount=" in cmd
     assert "-PimagePlatform=linux/arm64" in cmd
@@ -75,7 +93,9 @@ def test_gradle_command_amd64_uses_default_builder():
         "ghcr.io/miciav/nanofaas/control-plane:v0.10.0-amd64",
         "amd64",
     )
+    assert "./scripts/controlplane.sh image --profile all --" in cmd
     assert "NATIVE_IMAGE_BUILD_ARGS=" in cmd
+    assert "BP_OCI_SOURCE=" in cmd
     assert "-J-Xmx8g" in cmd
     assert "-J-XX:ActiveProcessorCount=" in cmd
     assert "-PimagePlatform=linux/amd64" in cmd
@@ -105,3 +125,12 @@ def test_docker_command_for_multi_arch_uses_buildx():
         "docker buildx build --platform linux/arm64,linux/amd64 -t "
         "ghcr.io/miciav/nanofaas/watchdog:v0.10.0 -f watchdog/Dockerfile ."
     )
+
+
+def test_docker_command_for_javascript_example():
+    cmd = ib.build_docker_command(
+        ib.IMAGES["javascript-word-stats"],
+        "ghcr.io/miciav/nanofaas/javascript-word-stats:v0.10.0-arm64",
+        "arm64",
+    )
+    assert "examples/javascript/word-stats/Dockerfile" in cmd
