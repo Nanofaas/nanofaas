@@ -16,7 +16,7 @@ Usage:
 """
 from __future__ import annotations
 
-from controlplane_tool.console import step, skip
+from tui_toolkit import step, skip
 
 import os
 import shutil

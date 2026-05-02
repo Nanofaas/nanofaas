@@ -7,7 +7,8 @@ Mirrors the logic of the deleted e2e-helm-stack-backend.sh (M11).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, step, success, warning, skip, fail, status
+from tui_toolkit import phase, step, success, warning, skip, fail, status
+from tui_toolkit.console import console
 
 import os
 from pathlib import Path

@@ -3,7 +3,7 @@ from __future__ import annotations
 import typer
 from rich.table import Table
 
-from controlplane_tool.console import console
+from tui_toolkit.console import console
 from controlplane_tool.function_catalog import (
     list_function_presets,
     list_functions,

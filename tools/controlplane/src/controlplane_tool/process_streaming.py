@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 from threading import Thread
 
-from controlplane_tool.console import workflow_log
+from tui_toolkit import workflow_log
 from controlplane_tool.workflow_models import WorkflowContext
 
 

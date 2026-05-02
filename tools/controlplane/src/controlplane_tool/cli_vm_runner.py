@@ -7,7 +7,8 @@ Mirrors the logic of the deleted e2e-cli-backend.sh (M10).
 """
 from __future__ import annotations
 
-from controlplane_tool.console import console, phase, success, warning, fail, status, workflow_log, workflow_step
+from tui_toolkit import phase, success, warning, fail, status, workflow_log, workflow_step
+from tui_toolkit.console import console
 
 import os
 import shlex

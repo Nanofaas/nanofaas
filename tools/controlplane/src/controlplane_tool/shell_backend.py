@@ -10,7 +10,7 @@ from shellcraft.backend import (
     SubprocessShell as _ShellcraftSubprocessShell,
 )
 
-from controlplane_tool.console import has_workflow_sink, workflow_log
+from tui_toolkit import has_workflow_sink, workflow_log
 
 __all__ = [
     "OutputListener",
