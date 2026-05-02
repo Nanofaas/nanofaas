@@ -1,0 +1,13 @@
+brand	fg:cyan bold
+breadcrumb	fg:grey
+footer	fg:grey
+qmark	fg:cyan bold
+question	bold
+answer	fg:cyan bold
+pointer	fg:cyan bold
+highlighted	fg:cyan bold
+selected	fg:cyan
+text	
+disabled	fg:grey
+separator	fg:grey
+instruction	fg:grey
