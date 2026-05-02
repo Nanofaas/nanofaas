@@ -18,6 +18,7 @@ dependencies = [
     "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
     "prefect>=3,<4",
     "shellcraft @ file:///Users/micheleciavotta/shellcraft",
+    "tui-toolkit",
 ]
 
 [project.scripts]
@@ -37,3 +38,6 @@ where = ["src"]
 dev = [
     "pytest>=8.3.4",
 ]
+
+[tool.uv.sources]
+tui-toolkit = { path = "../tui-toolkit", editable = true }

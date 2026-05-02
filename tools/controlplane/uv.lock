@@ -408,6 +408,7 @@ dependencies = [
     { name = "shellcraft" },
     { name = "tenacity" },
     { name = "tomli-w" },
+    { name = "tui-toolkit" },
     { name = "typer" },
 ]
 
@@ -431,6 +432,7 @@ requires-dist = [
     { name = "shellcraft", directory = "/Users/micheleciavotta/shellcraft" },
     { name = "tenacity", specifier = ">=8.3" },
     { name = "tomli-w", specifier = ">=1.0.0" },
+    { name = "tui-toolkit", editable = "../tui-toolkit" },
     { name = "typer", specifier = ">=0.12.5" },
 ]
 
@@ -2306,6 +2308,26 @@ sdist = { url = "https://files.pythonhosted.org/packages/19/75/241269d1da26b624c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/18/c86eb8e0202e32dd3df50d43d7ff9854f8e0603945ff398974c1d91ac1ef/tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90", size = 6675, upload-time = "2025-01-15T12:07:22.074Z" },
 ]
+
+[[package]]
+name = "tui-toolkit"
+version = "0.1.0"
+source = { editable = "../tui-toolkit" }
+dependencies = [
+    { name = "prompt-toolkit" },
+    { name = "questionary" },
+    { name = "rich" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "prompt-toolkit", specifier = ">=3.0" },
+    { name = "questionary", specifier = ">=2.1.1" },
+    { name = "rich", specifier = ">=13.8" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.3.4" }]
 
 [[package]]
 name = "typer"
