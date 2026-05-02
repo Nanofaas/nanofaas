@@ -1,9 +1,15 @@
+"""Workflow data models for the nanofaas control-plane tool.
+
+WorkflowEvent, WorkflowContext, WorkflowSink were moved to tui_toolkit.events
+and are re-exported here for backward compatibility.
+"""
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Literal
+
+from tui_toolkit.events import WorkflowContext, WorkflowEvent, WorkflowSink
 
 
 def utc_now() -> datetime:
@@ -59,33 +65,11 @@ class TaskRun:
     detail: str = ""
 
 
-@dataclass(slots=True, frozen=True)
-class WorkflowContext:
-    flow_id: str = "interactive.console"
-    flow_run_id: str | None = None
-    task_id: str | None = None
-    parent_task_id: str | None = None
-    task_run_id: str | None = None
-
-
-@dataclass(slots=True, frozen=True)
-class WorkflowEvent:
-    kind: str
-    flow_id: str
-    at: datetime = field(default_factory=utc_now)
-    flow_run_id: str | None = None
-    task_id: str | None = None
-    parent_task_id: str | None = None
-    task_run_id: str | None = None
-    title: str = ""
-    detail: str = ""
-    stream: str = "stdout"
-    line: str = ""
-
-
-class WorkflowSink(Protocol):
-    """Event receiver for workflow progress — implemented by TUI, console, and test fakes."""
-
-    def emit(self, event: "WorkflowEvent") -> None: ...
-
-    def status(self, label: str) -> AbstractContextManager[None]: ...
+__all__ = [
+    "utc_now",
+    "WorkflowState",
+    "TuiPhaseSnapshot", "TuiWorkflowSnapshot",
+    "WorkflowRun", "TaskDefinition", "TaskRun",
+    # re-exported from tui_toolkit.events
+    "WorkflowContext", "WorkflowEvent", "WorkflowSink",
+]
