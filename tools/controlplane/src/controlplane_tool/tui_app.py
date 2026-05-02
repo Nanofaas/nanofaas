@@ -661,11 +661,18 @@ class NanofaasTUI:
                     extra_gradle_args=[],
                     dry_run=False,
                 )
+                self._controller.append_command_result_logs(dashboard, result)
                 if result.return_code == 0:
                     success(f"{action} completed")
                     return result
-                fail(f"{action} failed", detail=f"exit code {result.return_code}")
-                raise RuntimeError(f"{action} failed (exit code {result.return_code})")
+                detail = (
+                    getattr(result, "stderr", "")
+                    or getattr(result, "stdout", "")
+                    or f"exit code {result.return_code}"
+                )
+                detail = str(detail).strip()
+                fail(f"{action} failed", detail=detail)
+                raise RuntimeError(f"{action} failed: {detail}")
 
             self._controller.run_live_workflow(
                 title="Build & Test",

@@ -62,6 +62,8 @@ class GradleCommandExecutor:
             command=command,
             return_code=completed.return_code,
             dry_run=False,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
         )
 
     def execute_matrix(
@@ -128,6 +130,12 @@ def _run_gradle_action(
         typer.echo(" ".join(result.command))
         return
     if result.return_code != 0:
+        stdout = getattr(result, "stdout", "") or ""
+        stderr = getattr(result, "stderr", "") or ""
+        if stdout:
+            typer.echo(str(stdout).rstrip())
+        if stderr:
+            typer.echo(str(stderr).rstrip(), err=True)
         raise typer.Exit(code=result.return_code)
 
 

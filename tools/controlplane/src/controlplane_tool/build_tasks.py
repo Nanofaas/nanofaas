@@ -11,6 +11,8 @@ class CommandExecutionResult:
     command: list[str]
     return_code: int
     dry_run: bool
+    stdout: str = ""
+    stderr: str = ""
 
 
 def run_gradle_action_task(

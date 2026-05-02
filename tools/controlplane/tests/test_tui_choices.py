@@ -979,6 +979,42 @@ def test_tui_back_selection_returns_before_followup_prompts(monkeypatch) -> None
     assert confirm_prompts == []
 
 
+def test_tui_build_menu_logs_gradle_output_before_raising_on_nonzero_result(monkeypatch) -> None:
+    import pytest
+    import controlplane_tool.cli_commands as cli_commands
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["jar", "core"])
+    log_lines: list[str] = []
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: False)
+    monkeypatch.setattr(
+        cli_commands.GradleCommandExecutor,
+        "execute",
+        lambda self, **kwargs: SimpleNamespace(
+            command=["./gradlew", ":control-plane:bootJar"],
+            return_code=17,
+            dry_run=False,
+            stdout="gradle stdout",
+            stderr="gradle stderr",
+        ),
+    )
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: log_lines.append(message))
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    with pytest.raises(RuntimeError, match="gradle stderr"):
+        NanofaasTUI()._build_menu()
+
+    assert "gradle stdout" in log_lines
+    assert "gradle stderr" in log_lines
+
+
 def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
     now = datetime.now(UTC)
     return FlowRunResult.completed(
