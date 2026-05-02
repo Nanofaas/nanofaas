@@ -23,7 +23,7 @@ from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
 from controlplane_tool.module_catalog import module_choices
 from controlplane_tool.paths import default_tool_paths
 from controlplane_tool.profiles import save_profile
-from controlplane_tool.tui_widgets import _checkbox_values, _select_value
+from tui_toolkit.pickers import select as _select_value, multiselect as _checkbox_values
 
 DEFAULT_REQUIRED_METRICS: tuple[str, ...] = CORE_REQUIRED_METRICS
 

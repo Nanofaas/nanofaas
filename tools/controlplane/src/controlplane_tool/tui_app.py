@@ -16,7 +16,17 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
-from controlplane_tool.console import console, fail, header, phase, skip, step, success, warning
+from tui_toolkit import fail, header, phase, skip, step, success, warning
+from tui_toolkit.console import console
+from tui_toolkit.pickers import (
+    Choice as _DescribedChoice,
+    _BACK_VALUE,
+    _ask,
+    select as _select_described_value,
+    select as _select_value,
+)
+from tui_toolkit.theme import DEFAULT_THEME, to_questionary_style
+
 from controlplane_tool.infra_flows import build_vm_flow
 from controlplane_tool.loadtest_commands import build_loadtest_request
 from controlplane_tool.loadtest_flows import build_loadtest_flow
@@ -38,17 +48,7 @@ from controlplane_tool.tui_selection import (
 from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard
 from controlplane_tool.tui_workflow_controller import TuiWorkflowController
 
-from controlplane_tool.tui_widgets import (
-    _BACK_VALUE,
-    _STYLE,
-    _DescribedChoice,
-    _ask,
-    _back_choice,
-    _select_described_value,
-    _select_value,
-    _with_back_choice,
-    _with_back_described_choice,
-)
+_STYLE = to_questionary_style(DEFAULT_THEME)
 
 # ── Main application ─────────────────────────────────────────────────────────
 
