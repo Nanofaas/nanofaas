@@ -29,6 +29,23 @@
 | Source file (`src/`) | 250 |
 | Test file (`tests/`) | 400 |
 
+## Terminal output
+
+All terminal output goes through `tui_toolkit`:
+
+- `from tui_toolkit.console import console` — the Rich `Console` singleton for direct `console.print(...)` calls
+- `from tui_toolkit import phase, step, success, warning, skip, fail` — workflow event rendering
+- `from tui_toolkit import status, workflow_step, workflow_log` — workflow step/log helpers
+- `from tui_toolkit import bind_workflow_sink, bind_workflow_context, has_workflow_sink` — sink/context wiring
+- `from tui_toolkit import get_content_width` — terminal width helper
+- `from tui_toolkit.pickers import select, multiselect, Choice` — interactive pickers
+- `from tui_toolkit import render_screen_frame` — screen chrome
+
+The active theme and brand are configured once in `controlplane_tool.ui_setup.setup_ui()`
+and read implicitly by every widget. To override in tests: `with bind_ui(UIContext(theme=...))`.
+
+Never use `print()` or `rich.print()` directly.
+
 ## Test Conventions
 
 - Every source module has a corresponding `test_<module>.py`.
