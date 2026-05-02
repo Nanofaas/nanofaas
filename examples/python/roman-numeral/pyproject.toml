@@ -11,5 +11,5 @@ dev = ["pytest>=7.4.0"]
 nanofaas-sdk = { path = "../../../function-sdk-python" }
 
 [tool.pytest.ini_options]
-pythonpath = [".", "../../../function-sdk-python/src"]
+pythonpath = ["."]
 testpaths = ["tests"]

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { URL } from "node:url";
 
 import { runWithContext } from "./context.js";
-import { InvalidJsonError, InvalidRequestError, TimeoutError, toErrorInfo } from "./errors.js";
+import { NanofaasError, TimeoutError, toErrorInfo } from "./errors.js";
 import { createLogger } from "./logger.js";
 import { createMetrics, type RuntimeMetrics } from "./metrics.js";
 import type {
@@ -83,21 +83,13 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     if (chunks.length === 0) {
         return {};
     }
-    try {
-        return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    } catch {
-        throw new InvalidJsonError();
-    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 function normalizeInvocationRequest(payload: unknown): InvocationRequest {
     if (isJsonObject(payload)) {
-        const rawMetadata = "metadata" in payload ? payload.metadata : undefined;
-        if (rawMetadata !== undefined && rawMetadata !== null && !isMetadataRecord(rawMetadata)) {
-            throw new InvalidRequestError("Invocation metadata must be a string map");
-        }
         const input = "input" in payload ? (payload.input as JsonValue) : (payload as JsonValue);
-        const metadata = isMetadataRecord(rawMetadata) ? rawMetadata : undefined;
+        const metadata = isMetadataRecord(payload.metadata) ? payload.metadata : undefined;
         return metadata === undefined ? { input } : { input, metadata };
     }
     return { input: payload as JsonValue };
@@ -291,11 +283,7 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
         writeJson(res, 200, output, responseHeaders);
     } catch (error) {
         const info = toErrorInfo(error);
-        const status = info.code === "HANDLER_TIMEOUT"
-            ? 504
-            : info.code === "INVALID_JSON" || info.code === "INVALID_REQUEST"
-                ? 400
-                : 500;
+        const status = info.code === "HANDLER_TIMEOUT" ? 504 : info.code === "INVALID_JSON" ? 400 : 500;
         state.metrics.invocations.inc({ success: "false" });
 
         void sendCallback(state, callbackUrl, executionId, traceId, {
@@ -390,7 +378,7 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
 
             await new Promise<void>((resolve, reject) => {
                 state.server?.once("error", reject);
-                state.server?.listen(requestedPort, "0.0.0.0", () => {
+                state.server?.listen(requestedPort, "127.0.0.1", () => {
                     state.server?.off("error", reject);
                     resolve();
                 });

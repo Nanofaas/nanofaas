@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import re
 import sys
 from pathlib import Path
@@ -13,7 +12,6 @@ from fn_init import generator, wizard
 
 app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.")
 console = Console(force_terminal=sys.stdout.isatty())
-DEFAULT_JAVASCRIPT_SDK_VERSION = "0.16.1"
 
 
 @app.command()
@@ -52,18 +50,6 @@ def main(
         console.print(f"[red]Error:[/] {e}")
         raise typer.Exit(1)
 
-    sdk_package = (
-        json.loads((monorepo_root / "function-sdk-javascript" / "package.json").read_text(encoding="utf-8"))
-        if monorepo_root is not None
-        else {"version": DEFAULT_JAVASCRIPT_SDK_VERSION}
-    )
-
-    javascript_contract = (
-        generator.build_javascript_scaffold_contract(monorepo_root, output_dir, sdk_package["version"])
-        if lang == "javascript"
-        else {}
-    )
-
     placeholders = {
         "FUNCTION_NAME": name,
         "CLASS_NAME": class_name,
@@ -71,17 +57,10 @@ def main(
         "PACKAGE_PATH": package.replace(".", "/"),
         "IMAGE_TAG": f"nanofaas/{name}:latest",
         "LANG": lang,
-        "SDK_DEPENDENCY": "",
-        "SDK_BUILD_HOOKS": "",
-        "BUILD_CONTEXT": ".",
-        "DOCKERFILE_PATH": "Dockerfile",
-        "DOCKER_APP_COPY": "",
-        "DOCKER_APP_DIR": "/src/app",
-        "DOCKER_SDK_COPY": "",
-        "DOCKER_SDK_BUILD_BLOCK": "",
-        "DOCKER_FINAL_SDK_COPY": "",
+        "SDK_PATH": generator.resolve_sdk_dependency_path(monorepo_root, output_dir)
+        if lang == "javascript"
+        else "../../../function-sdk-javascript",
     }
-    placeholders.update(javascript_contract)
 
     if output_dir.exists():
         console.print(f"[red]Error:[/] directory already exists: {output_dir}")
@@ -95,8 +74,6 @@ def main(
 
     with console.status("[bold green]Generating..."):
         generator.generate_function(name, lang, output_dir, vscode, placeholders)
-        if lang == "javascript" and monorepo_root and generator.should_vendor_javascript_sdk(monorepo_root, output_dir):
-            generator.vendor_javascript_sdk(monorepo_root, output_dir)
         if monorepo_root and lang == "java":  # only Java has centralised Gradle registry
             if generator.update_settings_gradle(monorepo_root, name, lang):
                 console.print(f"[dim]Updated settings.gradle → added include 'examples:java:{name}'[/]")

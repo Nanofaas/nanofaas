@@ -6,7 +6,7 @@ executionMode: DEPLOYMENT
 
 x-cli:
   build:
-    context: {{BUILD_CONTEXT}}
-    dockerfile: {{DOCKERFILE_PATH}}
+    context: ../../../..
+    dockerfile: examples/javascript/{{FUNCTION_NAME}}/Dockerfile
     platform: linux/amd64
     push: true

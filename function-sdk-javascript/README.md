@@ -39,62 +39,10 @@ Runtime configuration comes from:
 - `FUNCTION_HANDLER`
 - `NANOFAAS_HANDLER_TIMEOUT`
 
-Per-request headers override the corresponding environment variables:
-
-- `X-Execution-Id` overrides `EXECUTION_ID`
-- `X-Trace-Id` overrides `TRACE_ID`
-- `X-Callback-Url` overrides `CALLBACK_URL`
-
-## Error contract
-
-- `EXECUTION_ID_REQUIRED` -> HTTP 400
-- `INVALID_JSON` -> HTTP 400
-- `INVALID_REQUEST` -> HTTP 400
-- `HANDLER_TIMEOUT` -> HTTP 504
-- `UNHANDLED_ERROR` -> HTTP 500
-
-Callback behavior for validation failures is intentional:
-
-- `EXECUTION_ID_REQUIRED` does not emit a callback because the runtime cannot identify the execution.
-- `INVALID_JSON` and `INVALID_REQUEST` emit a failure callback when `X-Execution-Id` and callback resolution are available.
-
-## Cold start headers
-
-On the first successful invocation, the runtime adds:
-
-- `X-Cold-Start: true`
-- `X-Init-Duration-Ms: <milliseconds since runtime start>`
-
-## Metrics
-
-The `/metrics` endpoint exposes Prometheus text for:
-
-- `runtime_invocations_total`
-- `runtime_invocation_duration_seconds`
-- `runtime_in_flight`
-- `runtime_cold_start`
-- `runtime_callback_failures`
-
-Structured logger entries emitted by the runtime and handler logger include `executionId`
-and `traceId` when those values are available for the current request.
-
-## Install
-
-```bash
-npm install nanofaas-function-sdk
-```
-
 ## Development
 
 ```bash
 npm install
 npm test
 npm run build
-```
-
-## Release verification
-
-```bash
-env npm_config_cache=/tmp/codex-npm-cache npm test
-env npm_config_cache=/tmp/codex-npm-cache npm pack --dry-run
 ```

@@ -211,4 +211,4 @@ nanofaas exec get <executionId> --watch
 - Add more payload cases in `payloads/` for edge cases and error paths.
 - Deploy to Kubernetes: see `docs/k8s.md`.
 - Run a full E2E load test: see `docs/e2e-tutorial.md`.
-- Validate the built-in JavaScript demos through controlplane flows with `scripts/controlplane.sh functions show-preset demo-javascript`, `scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run`, or `scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run`.
+- JavaScript v1 currently covers SDK/examples/`fn-init` only; it is not wired into the VM-backed `tools/controlplane` presets, release automation, or Ansible provisioning flows yet.
