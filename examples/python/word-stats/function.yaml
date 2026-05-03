@@ -1,0 +1,6 @@
+catalog:
+  family: word-stats
+  runtime: python
+  description: Python SDK word statistics demo.
+  defaultImage: localhost:5000/nanofaas/python-word-stats:e2e
+  defaultPayload: word-stats-sample.json

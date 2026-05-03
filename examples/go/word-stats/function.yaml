@@ -1,0 +1,6 @@
+catalog:
+  family: word-stats
+  runtime: go
+  description: Go SDK word statistics demo.
+  defaultImage: localhost:5000/nanofaas/go-word-stats:e2e
+  defaultPayload: word-stats-sample.json

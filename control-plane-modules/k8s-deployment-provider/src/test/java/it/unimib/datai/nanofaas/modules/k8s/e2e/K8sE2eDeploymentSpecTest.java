@@ -1,45 +1,55 @@
 package it.unimib.datai.nanofaas.modules.k8s.e2e;
 
-import io.fabric8.kubernetes.api.model.Container;
-import io.fabric8.kubernetes.api.model.Probe;
-import io.fabric8.kubernetes.api.model.apps.Deployment;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class K8sE2eDeploymentSpecTest {
 
     @Test
-    void controlPlaneDeployment_exposesManagementHealthProbes() throws Exception {
-        Container container = containerFrom("controlPlaneDeployment");
-
-        Probe readiness = container.getReadinessProbe();
-        Probe liveness = container.getLivenessProbe();
+    void controlPlaneHelmChart_exposesManagementHealthProbes() throws Exception {
+        String template = helmTemplate("helm/nanofaas/templates/control-plane-deployment.yaml");
 
         assertAll(
-                () -> assertNotNull(readiness, "control-plane readinessProbe should be configured"),
-                () -> assertNotNull(liveness, "control-plane livenessProbe should be configured"),
-                () -> assertEquals("/actuator/health/readiness", readiness.getHttpGet().getPath()),
-                () -> assertEquals(Integer.valueOf(8081), readiness.getHttpGet().getPort().getIntVal()),
-                () -> assertEquals("/actuator/health/liveness", liveness.getHttpGet().getPath()),
-                () -> assertEquals(Integer.valueOf(8081), liveness.getHttpGet().getPort().getIntVal())
+                () -> assertTemplateContains(
+                        template,
+                        "readinessProbe:\n" +
+                                "            httpGet:\n" +
+                                "              path: /actuator/health/readiness\n" +
+                                "              port: {{ .Values.controlPlane.service.ports.actuator }}"),
+                () -> assertTemplateContains(
+                        template,
+                        "livenessProbe:\n" +
+                                "            httpGet:\n" +
+                                "              path: /actuator/health/liveness\n" +
+                                "              port: {{ .Values.controlPlane.service.ports.actuator }}")
         );
     }
 
     @Test
-    void functionRuntimeDeployment_exposesHttpReadinessProbe() throws Exception {
-        Container container = containerFrom("functionRuntimeDeployment");
-        Probe readiness = container.getReadinessProbe();
+    void functionRuntimeHelmChart_exposesHttpHealthProbes() throws Exception {
+        String template = helmTemplate("helm/nanofaas-runtime/templates/deployment.yaml");
 
         assertAll(
-                () -> assertNotNull(readiness, "function-runtime readinessProbe should be configured"),
-                () -> assertEquals("/actuator/health", readiness.getHttpGet().getPath()),
-                () -> assertEquals(Integer.valueOf(8080), readiness.getHttpGet().getPort().getIntVal())
+                () -> assertTemplateContains(
+                        template,
+                        "readinessProbe:\n" +
+                                "            httpGet:\n" +
+                                "              path: /actuator/health/readiness\n" +
+                                "              port: {{ .Values.functionRuntime.service.port }}"),
+                () -> assertTemplateContains(
+                        template,
+                        "livenessProbe:\n" +
+                                "            httpGet:\n" +
+                                "              path: /actuator/health/liveness\n" +
+                                "              port: {{ .Values.functionRuntime.service.port }}")
         );
     }
 
@@ -54,10 +64,25 @@ class K8sE2eDeploymentSpecTest {
         );
     }
 
-    private static Container containerFrom(String factoryMethodName) throws Exception {
-        Method method = K8sE2eTest.class.getDeclaredMethod(factoryMethodName);
-        method.setAccessible(true);
-        Deployment deployment = (Deployment) method.invoke(null);
-        return deployment.getSpec().getTemplate().getSpec().getContainers().getFirst();
+    private static String helmTemplate(String repoRelativePath) throws IOException {
+        return Files.readString(repoRoot().resolve(repoRelativePath));
+    }
+
+    private static Path repoRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null) {
+            if (Files.isDirectory(current.resolve("helm"))
+                    && Files.isDirectory(current.resolve("control-plane-modules"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("Unable to locate repository root from working directory");
+    }
+
+    private static void assertTemplateContains(String template, String expected) {
+        assertTrue(
+                template.contains(expected),
+                () -> "Expected Helm template to contain:\n" + expected);
     }
 }

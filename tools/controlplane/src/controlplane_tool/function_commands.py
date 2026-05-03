@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.table import Table
 
@@ -10,8 +12,17 @@ from controlplane_tool.function_catalog import (
     resolve_function_definition,
     resolve_function_preset,
 )
+from controlplane_tool.paths import default_tool_paths
 
 functions_app = typer.Typer(help="Function catalog and preset inspection commands.")
+
+
+def _workspace_relative_path(path: Path) -> str:
+    workspace_root = default_tool_paths().workspace_root.resolve()
+    try:
+        return path.resolve().relative_to(workspace_root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 @functions_app.command("list")
@@ -47,7 +58,7 @@ def functions_show(key: str = typer.Argument(..., help="Function key.")) -> None
     table.add_row("Runtime", function.runtime or "")
     table.add_row("Description", function.description or "")
     if function.example_dir is not None:
-        table.add_row("Example Dir", str(function.example_dir))
+        table.add_row("Example Dir", _workspace_relative_path(function.example_dir))
     if function.default_image is not None:
         table.add_row("Default Image", function.default_image)
     if function.default_payload_file is not None:

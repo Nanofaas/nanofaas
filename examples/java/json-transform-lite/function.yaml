@@ -1,0 +1,6 @@
+catalog:
+  family: json-transform
+  runtime: java-lite
+  description: Java Lite SDK JSON transform demo.
+  defaultImage: localhost:5000/nanofaas/java-lite-json-transform:e2e
+  defaultPayload: json-transform-sample.json

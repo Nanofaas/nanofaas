@@ -1,0 +1,6 @@
+catalog:
+  family: json-transform
+  runtime: python
+  description: Python SDK JSON transform demo.
+  defaultImage: localhost:5000/nanofaas/python-json-transform:e2e
+  defaultPayload: json-transform-sample.json

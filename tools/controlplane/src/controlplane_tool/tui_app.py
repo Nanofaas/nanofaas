@@ -270,6 +270,16 @@ def _function_detail_choices() -> list[questionary.Choice]:
     return choices
 
 
+def _workspace_relative_path(path: Path | None) -> str:
+    if path is None:
+        return "—"
+    workspace_root = default_tool_paths().workspace_root.resolve()
+    try:
+        return path.resolve().relative_to(workspace_root).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def _acknowledge_static_view(message: str = "Press any key to return to the previous menu.") -> None:
     _ask(
         lambda: questionary.press_any_key_to_continue(
@@ -1437,6 +1447,7 @@ class NanofaasTUI:
                 ("Family", fn.family),
                 ("Runtime", fn.runtime),
                 ("Description", getattr(fn, "description", "—")),
+                ("Example dir", _workspace_relative_path(getattr(fn, "example_dir", None))),
                 ("Default image", str(getattr(fn, "default_image", "—") or "—")),
                 ("Payload file", str(getattr(fn, "default_payload_file", "—") or "—")),
             ]

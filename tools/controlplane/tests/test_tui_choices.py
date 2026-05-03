@@ -1380,6 +1380,36 @@ def test_tui_function_catalog_waits_for_acknowledge_after_static_views(monkeypat
     ]
 
 
+def test_tui_function_catalog_lists_dynamic_functions(monkeypatch, capsys) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["all", "back"])
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
+    monkeypatch.setattr(tui_app, "_acknowledge_static_view", lambda *args, **kwargs: None)
+
+    NanofaasTUI()._functions_menu()
+
+    assert "roman-numeral-go" in capsys.readouterr().out
+
+
+def test_tui_function_details_show_dynamic_metadata(monkeypatch, capsys) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    answers = iter(["show", "roman-numeral-go", "back"])
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
+    monkeypatch.setattr(tui_app, "_acknowledge_static_view", lambda *args, **kwargs: None)
+
+    NanofaasTUI()._functions_menu()
+
+    output = capsys.readouterr().out
+    assert "roman-numeral-go" in output
+    assert "Go roman numeral conversion demo." in output
+    assert "localhost:5000/nanofaas/go-roman-numeral:e2e" in output
+    assert "examples/go/roman-numeral" in output
+
+
 def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path) -> None:
     import controlplane_tool.cli_commands as cli_commands
     import controlplane_tool.profiles as profiles

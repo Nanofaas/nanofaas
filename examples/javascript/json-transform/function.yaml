@@ -10,3 +10,10 @@ x-cli:
     dockerfile: examples/javascript/json-transform/Dockerfile
     platform: linux/amd64
     push: true
+
+catalog:
+  family: json-transform
+  runtime: javascript
+  description: Node.js JavaScript JSON transform demo.
+  defaultImage: localhost:5000/nanofaas/javascript-json-transform:e2e
+  defaultPayload: json-transform-sample.json

@@ -1,0 +1,6 @@
+catalog:
+  family: word-stats
+  runtime: java-lite
+  description: Java Lite SDK word statistics demo.
+  defaultImage: localhost:5000/nanofaas/java-lite-word-stats:e2e
+  defaultPayload: word-stats-sample.json
