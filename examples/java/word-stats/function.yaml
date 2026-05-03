@@ -1,0 +1,6 @@
+catalog:
+  family: word-stats
+  runtime: java
+  description: Spring Boot Java word statistics demo.
+  defaultImage: localhost:5000/nanofaas/java-word-stats:e2e
+  defaultPayload: word-stats-sample.json

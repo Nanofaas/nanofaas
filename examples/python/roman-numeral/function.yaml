@@ -10,3 +10,9 @@ x-cli:
     dockerfile: examples/python/roman-numeral/Dockerfile
     platform: linux/amd64
     push: true
+
+catalog:
+  family: roman-numeral
+  runtime: python
+  description: Python roman numeral conversion demo.
+  defaultImage: localhost:5000/nanofaas/python-roman-numeral:e2e

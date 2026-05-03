@@ -1,0 +1,6 @@
+catalog:
+  family: json-transform
+  runtime: exec
+  description: Exec/watchdog JSON transform demo.
+  defaultImage: localhost:5000/nanofaas/bash-json-transform:e2e
+  defaultPayload: json-transform-sample.json

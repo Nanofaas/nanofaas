@@ -1,0 +1,6 @@
+catalog:
+  family: word-stats
+  runtime: exec
+  description: Exec/watchdog word statistics demo.
+  defaultImage: localhost:5000/nanofaas/bash-word-stats:e2e
+  defaultPayload: word-stats-sample.json

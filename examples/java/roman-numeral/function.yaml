@@ -10,3 +10,9 @@ x-cli:
     dockerfile: Dockerfile
     platform: linux/amd64
     push: true
+
+catalog:
+  family: roman-numeral
+  runtime: java
+  description: Java roman numeral conversion demo.
+  defaultImage: localhost:5000/nanofaas/java-roman-numeral:e2e

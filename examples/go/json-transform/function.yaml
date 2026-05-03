@@ -1,0 +1,6 @@
+catalog:
+  family: json-transform
+  runtime: go
+  description: Go SDK JSON transform demo.
+  defaultImage: localhost:5000/nanofaas/go-json-transform:e2e
+  defaultPayload: json-transform-sample.json
