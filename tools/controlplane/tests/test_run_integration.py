@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from controlplane_tool.pipeline import execute_pipeline
-from controlplane_tool.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
-from controlplane_tool.pipeline import PipelineRunner
+from controlplane_tool.orchestation.pipeline import execute_pipeline
+from controlplane_tool.core.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
+from controlplane_tool.orchestation.pipeline import PipelineRunner
 
 
 class FakeSuccessAdapter:

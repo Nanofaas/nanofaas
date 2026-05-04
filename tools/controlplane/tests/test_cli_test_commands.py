@@ -1,6 +1,6 @@
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
+from controlplane_tool.app.main import app
 
 
 def test_cli_test_group_lists_known_scenarios() -> None:

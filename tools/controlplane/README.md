@@ -43,7 +43,7 @@ This is deliberately non-mandatory. If no remote Prefect setup exists, nothing c
 Use the canonical wrapper for orchestration across build, VM, and E2E flows:
 
 ```bash
-scripts/controlplane.sh build --profile core --dry-run
+scripts/controlplane.sh building --profile core --dry-run
 scripts/controlplane.sh functions list
 scripts/controlplane.sh functions show-preset demo-java
 scripts/controlplane.sh functions show-preset demo-javascript

@@ -1,14 +1,14 @@
 from pathlib import Path
 
-from controlplane_tool.adapters import AdapterResult, ShellCommandAdapter
-from controlplane_tool.control_plane_runtime import ControlPlaneSession
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
-from controlplane_tool.mockk8s_runtime import MockK8sSession
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.prometheus_runtime import PrometheusSession
-from controlplane_tool.scenario_loader import load_scenario_file
-from controlplane_tool.sut_preflight import SutFixture
+from controlplane_tool.orchestation.adapters import AdapterResult, ShellCommandAdapter
+from controlplane_tool.infra.runtimes import ControlPlaneSession
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.infra.runtimes import MockK8sSession
+from controlplane_tool.core.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
+from controlplane_tool.infra.runtimes import PrometheusSession
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.sut.sut_preflight import SutFixture
 
 
 class FakePrometheusManager:
@@ -116,7 +116,7 @@ def test_metrics_k6_uses_control_plane_base_url(tmp_path: Path, monkeypatch) -> 
 
     adapter = RecordingAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {  # noqa: ARG005
             "function_dispatch_total",
             "function_latency_ms",
@@ -124,7 +124,7 @@ def test_metrics_k6_uses_control_plane_base_url(tmp_path: Path, monkeypatch) -> 
         },
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -165,11 +165,11 @@ def test_loadtest_k6_uses_resolved_scenario_manifest_and_target(
 
     adapter = RecordingAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -216,11 +216,11 @@ def test_loadtest_k6_runs_all_requested_targets_in_order(
 
     adapter = RecordingAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},

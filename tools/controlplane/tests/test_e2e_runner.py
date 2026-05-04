@@ -3,19 +3,19 @@ from pathlib import Path
 import pytest
 
 from tui_toolkit import bind_workflow_sink, workflow_log
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
-from controlplane_tool.scenario_loader import load_scenario_file
-from controlplane_tool.scenario_loader import resolve_scenario_spec
-from controlplane_tool.scenario_components.composer import compose_recipe
-from controlplane_tool.scenario_components.executor import operation_to_plan_step
-from controlplane_tool.scenario_components.operations import RemoteCommandOperation
-from controlplane_tool.scenario_components.recipes import build_scenario_recipe
-from controlplane_tool.scenario_models import ScenarioSpec
-from controlplane_tool.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
-from controlplane_tool.vm_adapter import VmOrchestrator
-from controlplane_tool.vm_models import VmRequest
-from controlplane_tool.vm_cluster_workflows import build_vm_cluster_prelude_plan
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.scenario.scenario_loader import resolve_scenario_spec
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components import operation_to_plan_step
+from controlplane_tool.scenario.components import RemoteCommandOperation
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.scenario_models import ScenarioSpec
+from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
+from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.infra.vm.vm_cluster_workflows import build_vm_cluster_prelude_plan
 
 
 def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
@@ -90,7 +90,7 @@ def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("e2e-k3s-curl-backend.sh" in command for command in rendered)
     assert any("K8sE2eTest" in command for command in rendered)
-    assert any("controlplane_tool.k3s_curl_runner" in command for command in rendered)
+    assert any("controlplane_tool.e2e.k3s_curl_runner" in command for command in rendered)
     assert all(step.step_id for step in plan.steps)
 
 
@@ -441,7 +441,7 @@ def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
     operation = RemoteCommandOperation(
         operation_id="tests.run_k3s_curl_checks",
         summary="Run k3s-junit-curl verification",
-        argv=("python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"),
+        argv=("python", "-m", "controlplane_tool.e2e.k3s_curl_runner", "verify-existing-stack"),
     )
 
     step = operation_to_plan_step(operation, request=request, on_k3s_curl_verify=lambda: None)

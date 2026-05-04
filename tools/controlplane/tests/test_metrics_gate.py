@@ -8,16 +8,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
-from controlplane_tool.metrics_gate import (
+from controlplane_tool.loadtest.metrics_gate import (
     _query_candidates_for_metric,
     evaluate_metrics_gate,
 )
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.scenario_loader import load_scenario_file
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.core.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 
 # ---------------------------------------------------------------------------
@@ -85,11 +83,11 @@ def _make_request(required: list[str] | None = None) -> LoadtestRequest:
 
 def test_evaluate_metrics_gate_passes_when_all_metrics_present(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda url: {"function_dispatch_total"},
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [
             {"timestamp": start.isoformat(), "value": 1.0},
         ],
@@ -101,11 +99,11 @@ def test_evaluate_metrics_gate_passes_when_all_metrics_present(tmp_path: Path, m
 
 def test_evaluate_metrics_gate_fails_when_metric_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda url: {"something_else"},
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],
     )
     ok, detail = evaluate_metrics_gate(_profile(), _make_request(), FakeContext(), tmp_path)
@@ -115,11 +113,11 @@ def test_evaluate_metrics_gate_fails_when_metric_missing(tmp_path: Path, monkeyp
 
 def test_evaluate_metrics_gate_warns_when_mode_warn(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda url: set(),
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],
     )
     request = LoadtestRequest(
@@ -136,11 +134,11 @@ def test_evaluate_metrics_gate_warns_when_mode_warn(tmp_path: Path, monkeypatch)
 
 def test_evaluate_metrics_gate_passes_when_mode_off(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda url: set(),
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],
     )
     request = LoadtestRequest(
@@ -157,11 +155,11 @@ def test_evaluate_metrics_gate_passes_when_mode_off(tmp_path: Path, monkeypatch)
 
 def test_evaluate_metrics_gate_writes_series_json(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda url: {"function_dispatch_total"},
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [
             {"timestamp": start.isoformat(), "value": 1.0},
         ],
@@ -176,9 +174,9 @@ def test_evaluate_metrics_gate_writes_series_json(tmp_path: Path, monkeypatch) -
 def test_evaluate_metrics_gate_returns_error_on_prometheus_failure(tmp_path: Path, monkeypatch) -> None:
     def _raise(url: str) -> set[str]:
         raise RuntimeError("connection refused")
-    monkeypatch.setattr("controlplane_tool.metrics_gate.query_prometheus_metric_names", _raise)
+    monkeypatch.setattr("controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names", _raise)
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda *a, **kw: [],
     )
     ok, detail = evaluate_metrics_gate(_profile(), _make_request(), FakeContext(), tmp_path)

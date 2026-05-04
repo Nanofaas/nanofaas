@@ -1,4 +1,4 @@
-from controlplane_tool.build_requests import BuildRequest, resolve_modules_selector
+from controlplane_tool.building.requests import BuildRequest, resolve_modules_selector
 
 
 def test_profile_name_container_local_maps_to_expected_modules() -> None:

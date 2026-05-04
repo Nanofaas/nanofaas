@@ -1,8 +1,8 @@
 from rich.console import Console
 
-from controlplane_tool.tui_prefect_bridge import TuiPrefectBridge
-from controlplane_tool.tui_workflow import WorkflowDashboard, WorkflowStepState
-from controlplane_tool.workflow_events import (
+from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
+from controlplane_tool.tui.workflow import WorkflowDashboard, WorkflowStepState
+from controlplane_tool.workflow.workflow_events import (
     build_log_event,
     build_phase_event,
     build_task_event,

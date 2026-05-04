@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.control_plane_api import ControlPlaneApi
+from controlplane_tool.functions.control_plane_api import ControlPlaneApi
 
 
 def test_control_plane_api_builds_register_and_invoke_requests() -> None:

@@ -8,22 +8,21 @@ scenario, cache the ClusterIP, and route loadtest through the controlplane runne
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from controlplane_tool.k3s_curl_runner import K3sCurlRunner
-from controlplane_tool.helm_stack_runner import HelmStackRunner
-from controlplane_tool.scenario_helpers import (
+from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
+from controlplane_tool.e2e.helm_stack_runner import HelmStackRunner
+from controlplane_tool.scenario.scenario_helpers import (
     function_family as _function_family,
     function_image as _function_image,
     function_runtime as _function_runtime,
     selected_functions as _selected_functions,
 )
-from controlplane_tool.scenario_helpers import function_payload as _function_payload
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.scenario.scenario_helpers import function_payload as _function_payload
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +30,7 @@ from controlplane_tool.vm_models import VmRequest
 # ---------------------------------------------------------------------------
 
 def _make_fn(key: str, **kwargs) -> "Any":
-    from controlplane_tool.scenario_models import ResolvedFunction
+    from controlplane_tool.scenario.scenario_models import ResolvedFunction
 
     defaults = dict(family="echo", runtime="java", description="test fn")
     defaults.update(kwargs)
@@ -40,7 +39,7 @@ def _make_fn(key: str, **kwargs) -> "Any":
 
 def _make_resolved(functions: list[dict]):
     """Build a minimal ResolvedScenario from dicts with required fields filled in."""
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     fns = [_make_fn(**fn) for fn in functions]
     return ResolvedScenario(

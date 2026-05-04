@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.image_ops import ImageOps
+from controlplane_tool.building.image_ops import ImageOps
 
 
 def test_image_ops_build_and_push_commands_are_stable() -> None:
@@ -17,7 +17,7 @@ def test_image_ops_build_and_push_commands_are_stable() -> None:
 
     assert build.command == [
         "docker",
-        "build",
+        "building",
         "-f",
         "control-plane/Dockerfile",
         "-t",

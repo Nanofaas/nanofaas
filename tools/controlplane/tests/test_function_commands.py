@@ -1,6 +1,6 @@
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
+from controlplane_tool.app.main import app
 
 
 def test_functions_command_lists_known_presets() -> None:

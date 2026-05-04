@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.scenario_tasks import (
+from controlplane_tool.scenario.scenario_tasks import (
     build_core_images_vm_script,
     build_function_images_vm_script,
     helm_namespace_install_vm_script,

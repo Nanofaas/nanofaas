@@ -7,9 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
-from controlplane_tool.scenario_runtime import (
+from controlplane_tool.scenario.scenario_runtime import (
     FakeControlPlane,
     select_container_runtime,
     wait_for_http_any_status,
@@ -28,7 +27,7 @@ def _http_response(status_code: int):
 
 
 def test_wait_for_http_ok_returns_true_on_first_200() -> None:
-    with patch("controlplane_tool.scenario_runtime.httpx.get", return_value=_http_response(200)):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", return_value=_http_response(200)):
         result = wait_for_http_ok("http://localhost:8080", interval_seconds=0)
     assert result is True
 
@@ -43,7 +42,7 @@ def test_wait_for_http_ok_retries_until_success() -> None:
             raise httpx.RequestError("not yet")
         return _http_response(200)
 
-    with patch("controlplane_tool.scenario_runtime.httpx.get", side_effect=fake_get):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", side_effect=fake_get):
         with patch("time.sleep"):
             result = wait_for_http_ok("http://localhost:8080", max_attempts=5, interval_seconds=0)
     assert result is True
@@ -51,14 +50,14 @@ def test_wait_for_http_ok_retries_until_success() -> None:
 
 
 def test_wait_for_http_ok_returns_false_after_max_attempts() -> None:
-    with patch("controlplane_tool.scenario_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
         with patch("time.sleep"):
             result = wait_for_http_ok("http://localhost:8080", max_attempts=3, interval_seconds=0)
     assert result is False
 
 
 def test_wait_for_http_ok_treats_3xx_as_failure() -> None:
-    with patch("controlplane_tool.scenario_runtime.httpx.get", return_value=_http_response(301)):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", return_value=_http_response(301)):
         with patch("time.sleep"):
             result = wait_for_http_ok("http://localhost:8080", max_attempts=2, interval_seconds=0)
     assert result is False
@@ -69,19 +68,19 @@ def test_wait_for_http_ok_treats_3xx_as_failure() -> None:
 # ---------------------------------------------------------------------------
 
 def test_wait_for_http_any_status_returns_true_on_200() -> None:
-    with patch("controlplane_tool.scenario_runtime.httpx.get", return_value=_http_response(200)):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", return_value=_http_response(200)):
         result = wait_for_http_any_status("http://localhost:8080", interval_seconds=0)
     assert result is True
 
 
 def test_wait_for_http_any_status_returns_true_on_404() -> None:
-    with patch("controlplane_tool.scenario_runtime.httpx.get", return_value=_http_response(404)):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", return_value=_http_response(404)):
         result = wait_for_http_any_status("http://localhost:8080")
     assert result is True
 
 
 def test_wait_for_http_any_status_returns_false_on_timeout() -> None:
-    with patch("controlplane_tool.scenario_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
+    with patch("controlplane_tool.scenario.scenario_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
         with patch("time.sleep"):
             result = wait_for_http_any_status(
                 "http://localhost:8080", max_attempts=2, interval_seconds=0

@@ -2,7 +2,7 @@ import httpx
 import pytest
 from unittest.mock import MagicMock
 
-from controlplane_tool.metrics import (
+from controlplane_tool.loadtest.metrics import (
     build_required_metric_series,
     missing_required_metrics,
     parse_prometheus_metric_names,
@@ -54,7 +54,7 @@ def test_build_required_metric_series_from_prometheus_payloads() -> None:
 
 def test_query_prometheus_metric_names_wraps_transport_errors(monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.metrics.httpx.get",
+        "controlplane_tool.loadtest.metrics.httpx.get",
         lambda *args, **kwargs: (_ for _ in ()).throw(httpx.RequestError("connection refused")),
     )
 
@@ -66,7 +66,7 @@ def test_query_prometheus_metric_names_accepts_list_data_payload(monkeypatch) ->
     payload = {"status": "success", "data": ["function_dispatch_total", "function_latency_ms", "up"]}
     mock_response = MagicMock(spec=httpx.Response)
     mock_response.json.return_value = payload
-    monkeypatch.setattr("controlplane_tool.metrics.httpx.get", lambda *a, **kw: mock_response)
+    monkeypatch.setattr("controlplane_tool.loadtest.metrics.httpx.get", lambda *a, **kw: mock_response)
 
     names = query_prometheus_metric_names("http://127.0.0.1:9090")
 

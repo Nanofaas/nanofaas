@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 
 from typer.testing import CliRunner
 
-from controlplane_tool.prefect_models import FlowRunResult
-from controlplane_tool.e2e_commands import _resolve_run_request
-from controlplane_tool.main import app
+from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from controlplane_tool.cli.e2e_commands import _resolve_run_request
+from controlplane_tool.app.main import app
 
 
 def test_e2e_list_prints_known_scenarios() -> None:
@@ -47,7 +47,7 @@ def test_e2e_run_dry_run_accepts_demo_javascript_preset() -> None:
 
 
 def test_e2e_run_dry_run_shows_catalog_flow_tasks(monkeypatch) -> None:
-    import controlplane_tool.e2e_commands as e2e_commands
+    import controlplane_tool.cli.e2e_commands as e2e_commands
 
     monkeypatch.setattr(
         e2e_commands,
@@ -190,8 +190,8 @@ def test_container_local_accepts_single_explicit_function() -> None:
 
 
 def test_e2e_explicit_functions_override_saved_profile_defaults(monkeypatch) -> None:
-    import controlplane_tool.e2e_commands as e2e_commands
-    from controlplane_tool.models import (
+    import controlplane_tool.cli.e2e_commands as e2e_commands
+    from controlplane_tool.core.models import (
         ControlPlaneConfig,
         Profile,
         ScenarioSelectionConfig,
@@ -245,7 +245,7 @@ def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
             result=None,
         )
 
-    monkeypatch.setattr("controlplane_tool.e2e_commands.run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr("controlplane_tool.cli.e2e_commands.run_local_flow", fake_run_local_flow)
 
     result = runner.invoke(app, ["e2e", "run", "k3s-junit-curl"])
 
@@ -254,7 +254,7 @@ def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
 
 
 def test_e2e_all_executes_shared_catalog_flow(monkeypatch) -> None:
-    import controlplane_tool.e2e_commands as e2e_commands
+    import controlplane_tool.cli.e2e_commands as e2e_commands
 
     runner = CliRunner()
     called: dict[str, str] = {}

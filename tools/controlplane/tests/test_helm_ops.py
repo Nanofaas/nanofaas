@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.helm_ops import HelmOps
+from controlplane_tool.infra.ops.helm_ops import HelmOps
 
 
 def test_helm_ops_build_upgrade_install_command() -> None:

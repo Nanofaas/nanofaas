@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from tui_toolkit import bind_workflow_context, bind_workflow_sink, workflow_log
-from controlplane_tool.k3s_curl_runner import K3sCurlRunner
-from controlplane_tool.workflow_models import WorkflowContext
-from controlplane_tool.workflow_progress import WorkflowProgressReporter
+from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
+from controlplane_tool.workflow.workflow_models import WorkflowContext
+from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 
 def _runner() -> K3sCurlRunner:
@@ -90,7 +90,7 @@ def test_verify_existing_stack_emits_balanced_child_events_for_nested_verificati
     calls: list[tuple[str, str | None]] = []
 
     monkeypatch.setattr(
-        "controlplane_tool.k3s_curl_runner._selected_functions",
+        "controlplane_tool.e2e.k3s_curl_runner._selected_functions",
         lambda resolved: ["billing.fn", "analytics.fn"],
     )
     monkeypatch.setattr(runner, "_verify_health", lambda: calls.append(("health", None)))
@@ -161,7 +161,7 @@ def test_verify_existing_stack_marks_failed_nested_verification_child(
     runner = _runner()
 
     monkeypatch.setattr(
-        "controlplane_tool.k3s_curl_runner._selected_functions",
+        "controlplane_tool.e2e.k3s_curl_runner._selected_functions",
         lambda resolved: ["billing.fn"],
     )
     monkeypatch.setattr(runner, "_verify_health", lambda: None)

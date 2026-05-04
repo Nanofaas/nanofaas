@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.function_catalog import (
+from controlplane_tool.functions.catalog import (
     _discover_example_functions,
     list_function_presets,
     list_functions,
@@ -49,7 +49,7 @@ def test_function_catalog_discovers_repository_examples() -> None:
         "roman-numeral-exec",
         "tool-metrics-echo",
     }.issubset(keys)
-    assert "build-java" not in keys
+    assert "building-java" not in keys
 
 
 def test_resolve_function_definition_uses_dynamic_index() -> None:
@@ -157,6 +157,19 @@ def test_discovers_function_with_convention_fallback(tmp_path: Path) -> None:
     assert function.runtime == "exec"
     assert function.default_image == "localhost:5000/nanofaas/bash-word-stats:e2e"
     assert function.default_payload_file == "word-stats-sample.json"
+
+
+def test_discovery_ignores_generated_build_directories(tmp_path: Path) -> None:
+    examples = tmp_path / "examples"
+    payloads = tmp_path / "payloads"
+    _write(examples / "build" / "tmp.txt", "")
+    _write(examples / "java" / "word-stats" / "Dockerfile", "FROM scratch")
+    _write(examples / "java" / "word-stats" / "build" / "tmp.txt", "")
+    _write(payloads / "word-stats-sample.json", "{}")
+
+    functions = _discover_example_functions(examples, payloads)
+
+    assert [function.key for function in functions] == ["word-stats-java"]
 
 
 def test_discovers_java_lite_function_with_convention_fallback(tmp_path: Path) -> None:

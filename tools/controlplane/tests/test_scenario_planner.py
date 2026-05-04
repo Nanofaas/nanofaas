@@ -1,8 +1,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock
-from controlplane_tool.scenario_planner import ScenarioPlanner
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.scenario.scenario_planner import ScenarioPlanner
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def test_scenario_planner_local_steps_returns_list() -> None:

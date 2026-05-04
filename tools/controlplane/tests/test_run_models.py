@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.run_models import RunResult, StepResult
+from controlplane_tool.core.run_models import RunResult, StepResult
 
 
 def test_step_result_fields() -> None:

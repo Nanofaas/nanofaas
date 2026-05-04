@@ -8,20 +8,17 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from controlplane_tool.models import (
+from controlplane_tool.core.models import (
     VM_BACKED_SCENARIOS,
     ControlPlaneConfig,
-    LoadtestConfig,
     MetricsConfig,
     Profile,
     ReportConfig,
-    ScenarioSelectionConfig,
     TestsConfig,
 )
-from controlplane_tool.scenario_models import (
+from controlplane_tool.scenario.scenario_models import (
     ResolvedFunction,
     ResolvedScenario,
-    ScenarioInvokeConfig,
     ScenarioLoadConfig,
     ScenarioSpec,
 )
@@ -232,7 +229,7 @@ def test_resolved_function_optional_fields_default_none() -> None:
 
 
 def test_resolved_function_from_definition() -> None:
-    from controlplane_tool.function_catalog import resolve_function_definition
+    from controlplane_tool.functions.catalog import resolve_function_definition
 
     defn = resolve_function_definition("word-stats-java")
     fn = ResolvedFunction.from_definition(defn, image="my/img:v1", payload_path=None)

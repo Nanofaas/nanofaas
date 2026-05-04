@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.scenario_components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 
 
 def _assert_order(task_ids: list[str], ordered_ids: list[str]) -> None:

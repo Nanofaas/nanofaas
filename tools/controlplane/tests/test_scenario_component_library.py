@@ -4,20 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.scenario_components import bootstrap, cleanup, helm, images
-from controlplane_tool.scenario_components import namespace as namespace_components
-from controlplane_tool.scenario_components.environment import resolve_scenario_environment
-from controlplane_tool.scenario_components.executor import operation_to_plan_step
-from controlplane_tool.scenario_components.composer import (
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.scenario.components import bootstrap, helm, namespace as namespace_components
+from controlplane_tool.scenario.components import images, cleanup
+from controlplane_tool.scenario.components import resolve_scenario_environment
+from controlplane_tool.scenario.components import operation_to_plan_step
+from controlplane_tool.scenario.components.composer import (
     compose_recipe,
     recipe_task_ids,
 )
-from controlplane_tool.scenario_components.models import ScenarioRecipe
-from controlplane_tool.scenario_components.operations import RemoteCommandOperation
-from controlplane_tool.scenario_components.recipes import build_scenario_recipe
-from controlplane_tool.scenario_models import ResolvedFunction, ResolvedScenario
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.scenario.components import ScenarioRecipe
+from controlplane_tool.scenario.components import RemoteCommandOperation
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.scenario_models import ResolvedFunction, ResolvedScenario
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def _managed_context(
@@ -194,8 +194,8 @@ def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
 
     core_operations = images.plan_build_core(context)
 
-    # Rust Dockerfile is self-contained (multi-stage with internal cargo build);
-    # no bootJar/cargo pre-build step — docker build goes straight to the control image.
+    # Rust Dockerfile is self-contained (multi-stage with internal cargo building);
+    # no bootJar/cargo pre-building step — docker building goes straight to the control image.
     assert core_operations[0].operation_id == "images.build_core.control_image"
     assert core_operations[0].argv[0] == "docker"
     rust_cp_dir = images._RUST_CP_DIR
@@ -327,7 +327,7 @@ def test_operation_executor_inverts_cli_cleanup_status_check() -> None:
 
 
 def test_helm_stack_tail_runs_loadtest_inside_vm() -> None:
-    from controlplane_tool.scenario_components.verification import plan_loadtest_run
+    from controlplane_tool.scenario.components import plan_loadtest_run
 
     context = _managed_context()
 
@@ -343,7 +343,7 @@ def test_helm_stack_tail_runs_loadtest_inside_vm() -> None:
 
 
 def test_helm_stack_tail_keeps_autoscaling_on_host() -> None:
-    from controlplane_tool.scenario_components.verification import plan_autoscaling_experiment
+    from controlplane_tool.scenario.components import plan_autoscaling_experiment
 
     context = _managed_context()
 

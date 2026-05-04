@@ -7,7 +7,7 @@ import os
 
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
+from controlplane_tool.app.main import app
 
 
 runner = CliRunner()

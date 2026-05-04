@@ -1,6 +1,6 @@
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
+from controlplane_tool.app.main import app
 
 
 def test_loadtest_group_lists_profiles_and_run_command() -> None:
@@ -91,7 +91,7 @@ def test_loadtest_run_dry_run_shows_prefect_flow_tasks() -> None:
 
 
 def test_loadtest_run_dry_run_reads_flow_tasks_from_catalog(monkeypatch) -> None:
-    import controlplane_tool.loadtest_commands as loadtest_commands
+    import controlplane_tool.cli.loadtest_commands as loadtest_commands
 
     monkeypatch.setattr(
         loadtest_commands,

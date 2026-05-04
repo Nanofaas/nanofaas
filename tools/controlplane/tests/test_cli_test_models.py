@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from controlplane_tool.cli_test_models import CliTestRequest
-from controlplane_tool.scenario_components.environment import resolve_scenario_environment
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
+from controlplane_tool.scenario.components import resolve_scenario_environment
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def test_cli_test_request_allows_missing_vm_for_vm_backed_scenarios() -> None:

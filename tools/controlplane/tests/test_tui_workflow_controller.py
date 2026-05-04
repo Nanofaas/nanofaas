@@ -1,6 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
-from controlplane_tool.tui_workflow_controller import TuiWorkflowController
+from controlplane_tool.tui.workflow_controller import TuiWorkflowController
 
 
 def test_raise_on_nonzero_command_result_raises_for_nonzero() -> None:

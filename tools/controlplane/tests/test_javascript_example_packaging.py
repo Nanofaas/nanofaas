@@ -12,7 +12,7 @@ def test_javascript_example_images_copy_local_sdk_dependency_target() -> None:
 
     for dockerfile in dockerfiles:
         text = dockerfile.read_text(encoding="utf-8")
-        assert "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript" in text, (
+        assert "COPY --from=building /src/function-sdk-javascript /function-sdk-javascript" in text, (
             f"{dockerfile} must copy the local function SDK into the final image because "
             "npm installs nanofaas-function-sdk as a symlinked file dependency."
         )

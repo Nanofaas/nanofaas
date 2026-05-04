@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest
-from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS
-from controlplane_tool.models import ControlPlaneConfig, Profile
-from controlplane_tool.scenario_loader import load_scenario_file
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest
+from controlplane_tool.loadtest.metrics_contract import CORE_REQUIRED_METRICS
+from controlplane_tool.core.models import ControlPlaneConfig, Profile
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 
 def test_resolved_scenario_carries_optional_load_profile_name_and_targets() -> None:

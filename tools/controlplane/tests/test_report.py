@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from controlplane_tool.report import render_report
+from controlplane_tool.loadtest.report import render_report
 
 
 def test_report_contains_required_sections(tmp_path: Path) -> None:

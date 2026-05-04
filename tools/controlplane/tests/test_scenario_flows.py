@@ -5,14 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import controlplane_tool.cli_host_runner as cli_host_runner_mod
-import controlplane_tool.scenario_flows as scenario_flows_mod
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.e2e_runner import E2eRunner
-from controlplane_tool.scenario_components.composer import compose_recipe
-from controlplane_tool.scenario_components.recipes import build_scenario_recipe
-from controlplane_tool.scenario_flows import build_scenario_flow
-from controlplane_tool.vm_models import VmRequest
+import controlplane_tool.cli_validation.cli_host_runner as cli_host_runner_mod
+import controlplane_tool.scenario.scenario_flows as scenario_flows_mod
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.e2e.e2e_runner import E2eRunner
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.scenario_flows import build_scenario_flow
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def _assert_order(task_ids: list[str], ordered_ids: list[str]) -> None:
@@ -21,7 +21,7 @@ def _assert_order(task_ids: list[str], ordered_ids: list[str]) -> None:
 
 
 def _make_resolved_scenario(function_keys: list[str]):
-    from controlplane_tool.scenario_models import ResolvedFunction, ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedFunction, ResolvedScenario
 
     functions = [
         ResolvedFunction(

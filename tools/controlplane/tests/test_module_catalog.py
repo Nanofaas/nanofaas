@@ -3,7 +3,7 @@ Tests for module_catalog.py — MODULES catalog and module_choices().
 """
 from __future__ import annotations
 
-from controlplane_tool.module_catalog import MODULES, ModuleInfo, module_choices
+from controlplane_tool.building.module_catalog import MODULES, ModuleInfo, module_choices
 
 
 def test_modules_is_non_empty() -> None:

@@ -1,14 +1,9 @@
 """Tests for the removal of the legacy k3s-e2e command group."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-from datetime import UTC, datetime
-
-import pytest
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
+from controlplane_tool.app.main import app
 
 runner = CliRunner()
 

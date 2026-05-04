@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from controlplane_tool.build_tasks import run_gradle_action_task
-from controlplane_tool.cli_commands import CommandExecutionResult
+from controlplane_tool.building.tasks import run_gradle_action_task
+from controlplane_tool.cli.commands import CommandExecutionResult
 
 
 class _RecordingExecutor:
@@ -17,7 +17,7 @@ class _RecordingExecutor:
         dry_run: bool,
     ) -> CommandExecutionResult:
         self.calls.append((action, profile, modules, extra_gradle_args, dry_run))
-        return CommandExecutionResult(command=["./gradlew", "build"], return_code=0, dry_run=dry_run)
+        return CommandExecutionResult(command=["./gradlew", "building"], return_code=0, dry_run=dry_run)
 
 
 def test_run_gradle_action_task_delegates_to_executor() -> None:
@@ -25,12 +25,12 @@ def test_run_gradle_action_task_delegates_to_executor() -> None:
 
     result = run_gradle_action_task(
         executor=executor,
-        action="build",
+        action="building",
         profile="core",
         modules=None,
         extra_gradle_args=["--info"],
         dry_run=True,
     )
 
-    assert result.command == ["./gradlew", "build"]
-    assert executor.calls == [("build", "core", None, ["--info"], True)]
+    assert result.command == ["./gradlew", "building"]
+    assert executor.calls == [("building", "core", None, ["--info"], True)]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.loadtest_flows import build_loadtest_flow
+from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
 
 
 def test_loadtest_flow_runs_bootstrap_execute_gate_and_report_tasks() -> None:

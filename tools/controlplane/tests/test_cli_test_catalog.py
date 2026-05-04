@@ -1,4 +1,4 @@
-from controlplane_tool.cli_test_catalog import (
+from controlplane_tool.cli_validation.cli_test_catalog import (
     list_cli_test_scenarios,
     resolve_cli_test_scenario,
 )

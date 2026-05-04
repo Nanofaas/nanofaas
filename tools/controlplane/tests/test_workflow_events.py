@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from controlplane_tool.workflow_events import build_log_event, build_task_event, normalize_task_state
-from controlplane_tool.workflow_models import WorkflowContext
+from controlplane_tool.workflow.workflow_events import build_log_event, build_task_event, normalize_task_state
+from controlplane_tool.workflow.workflow_models import WorkflowContext
 
 
 def test_prefect_task_state_is_mapped_to_workflow_event() -> None:

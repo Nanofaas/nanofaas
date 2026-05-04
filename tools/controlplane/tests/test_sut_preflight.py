@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from controlplane_tool.sut_preflight import SutPreflight
+from controlplane_tool.sut.sut_preflight import SutPreflight
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ def test_request_get_returns_status_and_body(monkeypatch) -> None:
     mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.text = '["foo"]'
-    monkeypatch.setattr("controlplane_tool.sut_preflight.httpx.request", lambda *a, **kw: mock_response)
+    monkeypatch.setattr("controlplane_tool.sut.sut_preflight.httpx.request", lambda *a, **kw: mock_response)
     preflight = SutPreflight(base_url="http://127.0.0.1:8080")
     status, body = preflight._request("GET", "/v1/functions")
     assert status == 200
@@ -34,7 +34,7 @@ def test_request_post_sends_json_payload(monkeypatch) -> None:
         mock.text = "{}"
         return mock
 
-    monkeypatch.setattr("controlplane_tool.sut_preflight.httpx.request", _fake_request)
+    monkeypatch.setattr("controlplane_tool.sut.sut_preflight.httpx.request", _fake_request)
     preflight = SutPreflight(base_url="http://127.0.0.1:8080")
     status, body = preflight._request("POST", "/v1/functions", {"name": "echo"})
     assert status == 201
@@ -44,7 +44,7 @@ def test_request_post_sends_json_payload(monkeypatch) -> None:
 
 def test_request_raises_runtime_error_on_connection_failure(monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.sut_preflight.httpx.request",
+        "controlplane_tool.sut.sut_preflight.httpx.request",
         lambda *a, **kw: (_ for _ in ()).throw(httpx.RequestError("refused")),
     )
     preflight = SutPreflight(base_url="http://127.0.0.1:8080")

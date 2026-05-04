@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.scenario_helpers import (
+from controlplane_tool.scenario.scenario_helpers import (
     function_family,
     function_image,
     function_payload,
@@ -23,7 +23,7 @@ from controlplane_tool.scenario_helpers import (
 # ---------------------------------------------------------------------------
 
 def _make_fn(key: str, **kwargs):
-    from controlplane_tool.scenario_models import ResolvedFunction
+    from controlplane_tool.scenario.scenario_models import ResolvedFunction
 
     defaults = dict(family="echo", runtime="java", description="test fn")
     defaults.update(kwargs)
@@ -31,7 +31,7 @@ def _make_fn(key: str, **kwargs):
 
 
 def _make_resolved(*fn_dicts):
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     fns = [_make_fn(**d) for d in fn_dicts]
     return ResolvedScenario(
@@ -172,7 +172,7 @@ def test_function_payload_reads_per_function_payload_path(tmp_path) -> None:
 def test_function_payload_reads_scenario_level_payloads(tmp_path) -> None:
     payload_file = tmp_path / "payload.json"
     payload_file.write_text('{"x": 1}', encoding="utf-8")
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     resolved = ResolvedScenario(
         name="test",

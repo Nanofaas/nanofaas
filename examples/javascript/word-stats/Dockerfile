@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:20-alpine AS building
 WORKDIR /src
 
 COPY function-sdk-javascript ./function-sdk-javascript
@@ -16,10 +16,10 @@ RUN npm prune --omit=dev
 FROM node:20-alpine
 WORKDIR /app
 
-COPY --from=build /src/function-sdk-javascript /function-sdk-javascript
-COPY --from=build /src/examples/javascript/word-stats/package.json ./package.json
-COPY --from=build /src/examples/javascript/word-stats/node_modules ./node_modules
-COPY --from=build /src/examples/javascript/word-stats/dist ./dist
+COPY --from=building /src/function-sdk-javascript /function-sdk-javascript
+COPY --from=building /src/examples/javascript/word-stats/package.json ./package.json
+COPY --from=building /src/examples/javascript/word-stats/node_modules ./node_modules
+COPY --from=building /src/examples/javascript/word-stats/dist ./dist
 
 EXPOSE 8080
 CMD ["node", "dist/src/index.js"]

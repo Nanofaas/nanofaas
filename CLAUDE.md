@@ -159,7 +159,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **ansible-vm-provisioning** (12594 symbols, 35391 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mcFaas** (13086 symbols, 36266 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -175,7 +175,7 @@ This project is indexed by GitNexus as **ansible-vm-provisioning** (12594 symbol
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/ansible-vm-provisioning/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/mcFaas/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -214,10 +214,10 @@ This project is indexed by GitNexus as **ansible-vm-provisioning** (12594 symbol
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/ansible-vm-provisioning/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/ansible-vm-provisioning/clusters` | All functional areas |
-| `gitnexus://repo/ansible-vm-provisioning/processes` | All execution flows |
-| `gitnexus://repo/ansible-vm-provisioning/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/mcFaas/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/mcFaas/clusters` | All functional areas |
+| `gitnexus://repo/mcFaas/processes` | All execution flows |
+| `gitnexus://repo/mcFaas/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 

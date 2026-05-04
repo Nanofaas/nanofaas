@@ -43,7 +43,7 @@ Canonical shell entrypoint: `scripts/controlplane.sh`.
 Use the canonical wrapper below for unified build, VM lifecycle, CLI validation, E2E, and TUI flows:
 
 ```bash
-scripts/controlplane.sh build --profile core --dry-run
+scripts/controlplane.sh building --profile core --dry-run
 scripts/controlplane.sh functions list
 scripts/controlplane.sh functions show-preset demo-javascript
 scripts/controlplane.sh functions show-preset demo-loadtest
@@ -110,7 +110,7 @@ scripts/controlplane.sh image --profile all -- -PcontrolPlaneImage=nanofaas/cont
 Use the wrapper for the common profiles:
 
 ```bash
-scripts/controlplane.sh build --profile container-local --dry-run
+scripts/controlplane.sh building --profile container-local --dry-run
 scripts/controlplane.sh jar --profile core
 scripts/controlplane.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
 scripts/controlplane.sh image --profile k8s -- -PcontrolPlaneImage=nanofaas/control-plane:test

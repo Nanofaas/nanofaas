@@ -2,10 +2,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-BUILD_WRAPPER = "scripts/control" + "-plane-build.sh"
+BUILD_WRAPPER = "scripts/control" + "-plane-building.sh"
 TUI_WRAPPER = "scripts/controlplane" + "-tool.sh"
 PIPELINE_ALIAS = "pipeline" + "-run"
-WORKFLOW_BUILD_WRAPPER = "control" + "-plane-build.sh"
+WORKFLOW_BUILD_WRAPPER = "control" + "-plane-building.sh"
 
 
 def test_docs_reference_canonical_controlplane_commands() -> None:
@@ -22,12 +22,12 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     cli_doc = (ROOT / "docs" / "nanofaas-cli.md").read_text(encoding="utf-8")
 
     assert "scripts/controlplane.sh run --profile core" in quickstart
-    assert "scripts/controlplane.sh build --profile core --dry-run" in quickstart
+    assert "scripts/controlplane.sh building --profile core --dry-run" in quickstart
     assert BUILD_WRAPPER not in quickstart
     assert TUI_WRAPPER not in quickstart
 
     assert "scripts/controlplane.sh vm up" in control_plane
-    assert "scripts/controlplane.sh build --profile container-local --dry-run" in control_plane
+    assert "scripts/controlplane.sh building --profile container-local --dry-run" in control_plane
     assert BUILD_WRAPPER not in control_plane
 
     assert "scripts/controlplane.sh jar --profile core" in modules
@@ -39,7 +39,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh cli-test list" in root_readme
     assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in root_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in root_readme
-    assert "scripts/controlplane.sh build --profile container-local --dry-run" in root_readme
+    assert "scripts/controlplane.sh building --profile container-local --dry-run" in root_readme
     assert BUILD_WRAPPER not in root_readme
     assert TUI_WRAPPER not in root_readme
     assert PIPELINE_ALIAS not in root_readme

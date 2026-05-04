@@ -1,9 +1,9 @@
 deployments:
-  - name: build-build
-    flow_id: build.build
-    entrypoint: controlplane_tool.prefect_deployments:run_deployment_flow
+  - name: building-building
+    flow_id: building.building
+    entrypoint: controlplane_tool.orchestation.prefect_deployments:run_deployment_flow
     parameters:
-      flow_name: build.build
+      flow_name: building.building
       profile: core
       modules: null
       extra_gradle_args: []

@@ -6,16 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
-
-from controlplane_tool.gradle_ops import CommandResult
-from controlplane_tool.k6_ops import K6Ops
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate, TargetRunResult
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.scenario_loader import load_scenario_file
+from controlplane_tool.building.gradle_ops import CommandResult
+from controlplane_tool.loadtest.k6_ops import K6Ops
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.core.models import ControlPlaneConfig, Profile, TestsConfig
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 
 # ---------------------------------------------------------------------------

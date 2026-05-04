@@ -1,5 +1,5 @@
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def test_e2e_request_tracks_scenario_runtime_and_vm_config() -> None:

@@ -10,9 +10,9 @@ from pathlib import Path
 import os
 from unittest.mock import patch
 
-from controlplane_tool.registry_runtime import ensure_local_registry
-from controlplane_tool.registry_runtime import LocalRegistry
-from controlplane_tool.shell_backend import ShellBackend, ShellExecutionResult
+from controlplane_tool.infra.runtimes import ensure_local_registry
+from controlplane_tool.infra.runtimes import LocalRegistry
+from controlplane_tool.core.shell_backend import ShellBackend, ShellExecutionResult
 
 
 def test_local_registry_default_address() -> None:
@@ -92,9 +92,9 @@ def test_ensure_local_registry_sets_environment_and_runs_docker_desktop() -> Non
     original_registry_url = os.environ.get("NANOFAAS_TOOL_REGISTRY_URL")
 
     try:
-        with patch("controlplane_tool.registry_runtime.platform.system", return_value="Darwin"), patch(
-            "controlplane_tool.registry_runtime._docker_desktop_is_available", return_value=True
-        ), patch("controlplane_tool.registry_runtime.wait_for_http_ok", return_value=True):
+        with patch("controlplane_tool.infra.runtimes.registry_runtime.platform.system", return_value="Darwin"), patch(
+            "controlplane_tool.infra.runtimes.registry_runtime._docker_desktop_is_available", return_value=True
+        ), patch("controlplane_tool.infra.runtimes.registry_runtime.wait_for_http_ok", return_value=True):
             result = ensure_local_registry(registry="localhost:5001", shell=shell)
 
         assert result.return_code == 0

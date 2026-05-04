@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 
-from controlplane_tool.prometheus_runtime import PrometheusRuntimeManager, PrometheusSession
-from controlplane_tool.shell_backend import ShellExecutionResult
+from controlplane_tool.infra.runtimes import PrometheusRuntimeManager, PrometheusSession
+from controlplane_tool.core.shell_backend import ShellExecutionResult
 
 
 def test_ensure_prometheus_uses_existing_endpoint(tmp_path: Path, monkeypatch) -> None:

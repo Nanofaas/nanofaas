@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.cli_test_models import CliTestRequest
-from controlplane_tool.scenario_components.environment import (
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
+from controlplane_tool.scenario.components import (
     resolve_scenario_environment,
 )
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.infra.vm.vm_models import VmRequest
 import pytest
 
 

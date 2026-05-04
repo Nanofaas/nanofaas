@@ -12,25 +12,25 @@ import subprocess
 
 import pytest
 
-import controlplane_tool.cli_stack_runner as cli_stack_runner_mod
-import controlplane_tool.cli_runtime as cli_runtime
-import controlplane_tool.container_local_runner as container_local_runner_mod
-import controlplane_tool.deploy_host_runner as deploy_host_runner_mod
-from controlplane_tool.scenario_components import cli as cli_components
-from controlplane_tool.scenario_components.cli import CliComponentContext
-from controlplane_tool.cli_vm_runner import CliVmRunner
-from controlplane_tool.cli_host_runner import CliHostPlatformRunner
+import controlplane_tool.cli_validation.cli_stack_runner as cli_stack_runner_mod
+import controlplane_tool.cli.runtime as cli_runtime
+import controlplane_tool.e2e.container_local_runner as container_local_runner_mod
+import controlplane_tool.e2e.deploy_host_runner as deploy_host_runner_mod
+from controlplane_tool.scenario.components import cli as cli_components
+from controlplane_tool.scenario.components.cli import CliComponentContext
+from controlplane_tool.cli_validation.cli_vm_runner import CliVmRunner
+from controlplane_tool.cli_validation.cli_host_runner import CliHostPlatformRunner
 from tui_toolkit import bind_workflow_context, bind_workflow_sink
-from controlplane_tool.container_local_runner import ContainerLocalE2eRunner
-from controlplane_tool.deploy_host_runner import DeployHostE2eRunner
-from controlplane_tool.scenario_helpers import (
+from controlplane_tool.e2e.container_local_runner import ContainerLocalE2eRunner
+from controlplane_tool.e2e.deploy_host_runner import DeployHostE2eRunner
+from controlplane_tool.scenario.scenario_helpers import (
     function_image as _function_image,
     selected_functions as _selected_functions,
 )
-from controlplane_tool.shell_backend import ShellExecutionResult
-from controlplane_tool.workflow_models import WorkflowContext
-from controlplane_tool.workflow_progress import WorkflowProgressReporter
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.core.shell_backend import ShellExecutionResult
+from controlplane_tool.workflow.workflow_models import WorkflowContext
+from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def _make_vm_request() -> VmRequest:
@@ -81,7 +81,7 @@ def test_cli_selected_functions_uses_custom_default(monkeypatch) -> None:
 
 
 def _rf(key: str, **kwargs):
-    from controlplane_tool.scenario_models import ResolvedFunction
+    from controlplane_tool.scenario.scenario_models import ResolvedFunction
 
     defaults = dict(family="echo", runtime="java", description="test fn")
     defaults.update(kwargs)
@@ -89,7 +89,7 @@ def _rf(key: str, **kwargs):
 
 
 def test_cli_selected_functions_reads_from_resolved() -> None:
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     resolved = ResolvedScenario(
         name="test",
@@ -105,7 +105,7 @@ def test_cli_function_image_returns_default_when_none() -> None:
 
 
 def test_cli_function_image_returns_custom_image_from_resolved() -> None:
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     resolved = ResolvedScenario(
         name="test",
@@ -192,7 +192,7 @@ def test_cli_vm_runner_emits_balanced_top_level_phase_events_and_verify_children
     ):
         runner.run()
 
-    _assert_balanced_phase(fake_sink, task_id="cli.vm.build", parent_task_id="cli.vm_e2e_flow")
+    _assert_balanced_phase(fake_sink, task_id="cli.vm.building", parent_task_id="cli.vm_e2e_flow")
     _assert_balanced_phase(fake_sink, task_id="cli.vm.deploy", parent_task_id="cli.vm_e2e_flow")
     _assert_balanced_phase(fake_sink, task_id="cli.vm.verify", parent_task_id="cli.vm_e2e_flow")
     assert [event.kind for event in _task_events(fake_sink, "cli.vm.verify.echo-test")] == [
@@ -236,7 +236,6 @@ def test_cli_host_platform_runner_resolves_external_host_from_vm_request(tmp_pat
     vm_req = VmRequest(lifecycle="external", host="10.0.0.10")
     runner = CliHostPlatformRunner(tmp_path, vm_request=vm_req)
     # _resolve_public_host uses vm_request.host for external lifecycle
-    import os
 
     with pytest.MonkeyPatch().context() as mp:
         mp.delenv("E2E_PUBLIC_HOST", raising=False)
@@ -311,7 +310,7 @@ def test_cli_host_platform_runner_emits_balanced_top_level_phase_events_and_veri
 
     _assert_balanced_phase(
         fake_sink,
-        task_id="cli.host_platform.build",
+        task_id="cli.host_platform.building",
         parent_task_id="cli.host_platform_flow",
     )
     _assert_balanced_phase(
@@ -334,7 +333,7 @@ def test_cli_host_platform_runner_emits_balanced_top_level_phase_events_and_veri
 
 
 def test_cli_stack_apply_operation_stages_manifest_before_apply(tmp_path) -> None:
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     resolved = ResolvedScenario(
         name="test",
@@ -416,7 +415,7 @@ def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify
 
     _assert_balanced_phase(
         fake_sink,
-        task_id="container-local.build",
+        task_id="container-local.building",
         parent_task_id="container-local.run_flow",
     )
     _assert_balanced_phase(
@@ -463,7 +462,7 @@ def test_container_local_runner_builds_javascript_function_images(
 
     assert called["command"] == [
         "docker",
-        "build",
+        "building",
         "-t",
         "example/image:tag",
         "-f",
@@ -476,7 +475,7 @@ def test_container_local_runner_run_uses_explicit_resolved_scenario(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     class StopRun(RuntimeError):
         pass
@@ -554,7 +553,7 @@ def test_deploy_host_runner_emits_balanced_top_level_phase_events_and_verify_chi
 
     _assert_balanced_phase(
         fake_sink,
-        task_id="deploy-host.build",
+        task_id="deploy-host.building",
         parent_task_id="deploy-host.run_flow",
     )
     _assert_balanced_phase(
@@ -580,7 +579,7 @@ def test_deploy_host_runner_run_uses_explicit_resolved_scenario(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from controlplane_tool.scenario_models import ResolvedScenario
+    from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
     class StopRun(RuntimeError):
         pass

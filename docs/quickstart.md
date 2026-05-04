@@ -44,17 +44,15 @@
   - `scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run`
   - `scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run`
 - Use the unified non-interactive wrapper for control-plane Gradle actions:
-  - `scripts/controlplane.sh build --profile core --dry-run`
+  - `scripts/controlplane.sh building --profile core --dry-run`
   - `scripts/controlplane.sh image --profile all --dry-run`
   - `scripts/controlplane.sh native --profile all --dry-run`
   - `scripts/controlplane.sh test --profile k8s --dry-run`
   - `scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run`
   - `scripts/controlplane.sh inspect --profile container-local --dry-run`
 
-- Open the interactive wizard and save a reusable profile:
-  - `scripts/controlplane.sh tui --profile-name dev`
-- Re-run with an existing profile:
-  - `scripts/controlplane.sh tui --profile-name dev --use-saved-profile`
+- Open the interactive wizard:
+  - `scripts/controlplane.sh tui`
 - Exit codes:
   - `0` when run final status is `passed`
   - `1` when run final status is `failed`

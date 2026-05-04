@@ -7,7 +7,7 @@ E2eRunner._vm_env() and must produce correct defaults when env vars are absent.
 """
 from __future__ import annotations
 
-from controlplane_tool.vm_models import VmRequest, vm_request_from_env
+from controlplane_tool.infra.vm.vm_models import VmRequest, vm_request_from_env
 
 
 def test_vm_request_from_env_uses_defaults_when_env_absent() -> None:

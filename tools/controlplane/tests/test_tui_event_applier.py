@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock
-from controlplane_tool.tui_event_applier import TuiEventApplier
+from controlplane_tool.tui.event_applier import TuiEventApplier
 
 def test_apply_e2e_step_event_running_marks_step_and_logs() -> None:
     dashboard = MagicMock()

@@ -6,10 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from controlplane_tool.gradle_ops import CommandResult, GradleOps, run_logged
-from controlplane_tool.models import ControlPlaneConfig, Profile, TestsConfig
+from controlplane_tool.building.gradle_ops import CommandResult, GradleOps, run_logged
+from controlplane_tool.core.models import ControlPlaneConfig, Profile, TestsConfig
 
 
 # ---------------------------------------------------------------------------

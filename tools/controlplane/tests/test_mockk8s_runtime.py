@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from controlplane_tool.mockk8s_runtime import MockK8sRuntimeManager
+from controlplane_tool.infra.runtimes import MockK8sRuntimeManager
 
 
 def _request(method: str, url: str, payload: dict[str, object] | None = None) -> dict[str, object]:

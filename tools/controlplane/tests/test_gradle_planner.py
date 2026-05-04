@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from controlplane_tool.build_requests import BuildRequest
-from controlplane_tool.gradle_planner import (
+from controlplane_tool.building.requests import BuildRequest
+from controlplane_tool.building.gradle_planner import (
     build_gradle_command,
     plan_module_matrix_commands,
 )

@@ -1,6 +1,6 @@
 import pytest
-from controlplane_tool.scenario_components.composer import compose_recipe
-from controlplane_tool.scenario_components.models import ScenarioRecipe
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components import ScenarioRecipe
 
 
 def test_compose_recipe_resolves_known_component() -> None:

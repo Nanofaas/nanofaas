@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from rich.console import Console
 
 from tui_toolkit import bind_workflow_sink
-from controlplane_tool.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
-from controlplane_tool.models import (
+from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
+from controlplane_tool.core.models import (
     CliTestConfig,
     ControlPlaneConfig,
     LoadtestConfig,
@@ -15,13 +15,13 @@ from controlplane_tool.models import (
     ScenarioSelectionConfig,
     TestsConfig,
 )
-from controlplane_tool.module_catalog import module_choices
-from controlplane_tool.prefect_models import FlowRunResult, LocalFlowDefinition
+from controlplane_tool.building.module_catalog import module_choices
+from controlplane_tool.orchestation.prefect_models import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
-import controlplane_tool.tui_workflow_controller as tui_wfc
-from controlplane_tool.tui_app import NanofaasTUI
-from controlplane_tool.tui_workflow import TuiWorkflowSink, WorkflowDashboard
-from controlplane_tool.tui_workflow_controller import TuiWorkflowController
+import controlplane_tool.tui.workflow_controller as tui_wfc
+from controlplane_tool.tui.app import NanofaasTUI
+from controlplane_tool.tui.workflow import TuiWorkflowSink, WorkflowDashboard
+from controlplane_tool.tui.workflow_controller import TuiWorkflowController
 
 
 def test_module_catalog_has_descriptions() -> None:
@@ -65,7 +65,7 @@ def test_profile_wizard_selectors_supply_descriptions_for_every_entry(monkeypatc
 
     assert [message for message, _ in captured_selects] == [
         "Control plane implementation:",
-        "Java build mode:",
+        "Java building mode:",
         "Loadtest profile:",
         "Default E2E selection type:",
         "Base E2E scenario:",
@@ -278,12 +278,12 @@ def test_tui_can_save_cli_stack_as_default_cli_test_scenario(monkeypatch) -> Non
 
 
 def test_profile_view_shows_behavioral_defaults(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     profile = Profile(
         name="demo-java",
         control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
-        modules=["autoscaler", "build-metadata"],
+        modules=["autoscaler", "building-metadata"],
         tests=TestsConfig(
             enabled=True,
             api=True,
@@ -324,7 +324,7 @@ def test_profile_view_shows_behavioral_defaults(monkeypatch) -> None:
 
 
 def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["cli-stack", "default"])
     captured: dict[str, object] = {}
@@ -352,8 +352,8 @@ def test_tui_cli_e2e_menu_offers_cli_stack_runner(monkeypatch) -> None:
 
 
 def test_tui_cli_stack_default_selection_resolves_request_and_passes_it_to_flow(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(["cli-stack", "default"])
     called: dict[str, object] = {}
@@ -415,8 +415,8 @@ def test_tui_cli_stack_default_selection_resolves_request_and_passes_it_to_flow(
 
 
 def test_tui_cli_stack_can_use_javascript_preset(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(["cli-stack", "preset", "demo-javascript"])
     called: dict[str, object] = {}
@@ -462,8 +462,8 @@ def test_tui_cli_stack_can_use_javascript_preset(monkeypatch) -> None:
 
 
 def test_tui_cli_stack_can_use_saved_profile(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(["cli-stack", "saved-profile", "demo-javascript"])
     called: dict[str, object] = {}
@@ -510,9 +510,9 @@ def test_tui_cli_stack_can_use_saved_profile(monkeypatch) -> None:
 
 
 def test_tui_cli_stack_can_use_scenario_file(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
-    from controlplane_tool.paths import resolve_workspace_path
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
+    from controlplane_tool.app.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -566,7 +566,7 @@ def test_tui_cli_stack_can_use_scenario_file(monkeypatch) -> None:
 
 
 def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["preset", "demo-javascript"])
     called: dict[str, object] = {}
@@ -576,7 +576,7 @@ def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.build"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.building"], run=lambda: "ok")
 
     def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow.flow_id
@@ -610,14 +610,14 @@ def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
     ]
     assert called["summary_lines"] == [
         "Scenario: deploy-host",
-        "Mode: host-side build/push/register compatibility path",
+        "Mode: host-side building/push/register compatibility path",
         "Function preset: demo-javascript",
     ]
     assert called["planned_steps"] == ["Build", "Deploy", "Verify"]
 
 
 def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["saved-profile", "demo-javascript"])
     called: dict[str, object] = {}
@@ -627,7 +627,7 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.build"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.building"], run=lambda: "ok")
 
     def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow.flow_id
@@ -657,14 +657,14 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
     ]
     assert called["summary_lines"] == [
         "Scenario: deploy-host",
-        "Mode: host-side build/push/register compatibility path",
+        "Mode: host-side building/push/register compatibility path",
         "Saved profile: demo-javascript",
     ]
 
 
 def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    from controlplane_tool.paths import resolve_workspace_path
+    import controlplane_tool.tui.app as tui_app
+    from controlplane_tool.app.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -679,7 +679,7 @@ def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.build"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.building"], run=lambda: "ok")
 
     def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow.flow_id
@@ -710,7 +710,7 @@ def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
 
 
 def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["function", "word-stats-javascript"])
     called: dict[str, object] = {}
@@ -722,7 +722,7 @@ def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> 
         called["request"] = kwargs["request"]
         return LocalFlowDefinition(
             flow_id="e2e.container_local",
-            task_ids=["container-local.build"],
+            task_ids=["container-local.building"],
             run=lambda: "ok",
         )
 
@@ -763,8 +763,8 @@ def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> 
 
 
 def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    from controlplane_tool.paths import resolve_workspace_path
+    import controlplane_tool.tui.app as tui_app
+    from controlplane_tool.app.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -781,7 +781,7 @@ def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> No
         called["request"] = kwargs["request"]
         return LocalFlowDefinition(
             flow_id="e2e.container_local",
-            task_ids=["container-local.build"],
+            task_ids=["container-local.building"],
             run=lambda: "ok",
         )
 
@@ -818,7 +818,7 @@ def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> No
 
 
 def test_tui_container_local_warns_when_no_compatible_saved_profiles(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["saved-profile", "function", "word-stats-javascript"])
     warnings: list[str] = []
@@ -833,7 +833,7 @@ def test_tui_container_local_warns_when_no_compatible_saved_profiles(monkeypatch
         called["request"] = kwargs["request"]
         return LocalFlowDefinition(
             flow_id="e2e.container_local",
-            task_ids=["container-local.build"],
+            task_ids=["container-local.building"],
             run=lambda: "ok",
         )
 
@@ -861,7 +861,7 @@ def test_tui_container_local_warns_when_no_compatible_saved_profiles(monkeypatch
 
 
 def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["host-platform"])
     captured: dict[str, object] = {}
@@ -886,7 +886,7 @@ def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypa
 
 
 def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
     answers = iter(["container-local", "back"])
@@ -906,7 +906,7 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
 
 
 def test_tui_submenus_include_back_entries(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, list[object]] = {}
 
@@ -929,7 +929,7 @@ def test_tui_submenus_include_back_entries(monkeypatch) -> None:
 
 
 def test_tui_described_selectors_include_back_entries(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
 
@@ -947,7 +947,7 @@ def test_tui_described_selectors_include_back_entries(monkeypatch) -> None:
 
 
 def test_tui_back_selection_returns_before_followup_prompts(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     text_prompts: list[str] = []
     confirm_prompts: list[str] = []
@@ -981,8 +981,8 @@ def test_tui_back_selection_returns_before_followup_prompts(monkeypatch) -> None
 
 def test_tui_build_menu_logs_gradle_output_before_raising_on_nonzero_result(monkeypatch) -> None:
     import pytest
-    import controlplane_tool.cli_commands as cli_commands
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.cli.commands as cli_commands
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["jar", "core"])
     log_lines: list[str] = []
@@ -1028,7 +1028,7 @@ def _completed_flow_result(flow_id: str, result=None) -> FlowRunResult:
 
 
 def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
     import tui_toolkit.pickers as tui_widgets
 
     answers = iter(["provision-base", "multipass", "nanofaas-e2e", "ubuntu", False, False])
@@ -1067,7 +1067,7 @@ def test_tui_vm_menu_runs_vm_flow_via_runtime(monkeypatch) -> None:
 
 def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monkeypatch) -> None:
     import pytest
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
     import tui_toolkit.pickers as tui_widgets
 
     answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
@@ -1101,7 +1101,7 @@ def test_tui_vm_menu_raises_when_shared_flow_returns_nonzero_command_result(monk
 
 def test_tui_vm_menu_logs_stdout_stderr_before_raising_on_nonzero_result(monkeypatch) -> None:
     import pytest
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
     import tui_toolkit.pickers as tui_widgets
 
     answers = iter(["up", "multipass", "nanofaas-e2e", "ubuntu", False])
@@ -1146,7 +1146,7 @@ def test_tui_main_menu_no_longer_includes_registry_entry() -> None:
 
 
 def test_environment_menu_contains_vm_and_registry(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
 
@@ -1165,7 +1165,7 @@ def test_environment_menu_contains_vm_and_registry(monkeypatch) -> None:
 
 
 def test_environment_menu_entries_have_helpful_descriptions(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
 
@@ -1184,7 +1184,7 @@ def test_environment_menu_entries_have_helpful_descriptions(monkeypatch) -> None
 
 
 def test_primary_tui_menus_supply_descriptions_for_every_entry(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: list[tuple[str, list[object]]] = []
 
@@ -1220,7 +1220,7 @@ def test_primary_tui_menus_supply_descriptions_for_every_entry(monkeypatch) -> N
 
 
 def test_loadtest_tui_descriptions_explain_mock_fixture_execution(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     primary = {choice.value: choice.description for choice in tui_app._MAIN_MENU_CHOICES}
     actions = {choice.value: choice.description for choice in tui_app._LOADTEST_ACTION_CHOICES}
@@ -1238,8 +1238,8 @@ def test_loadtest_tui_descriptions_explain_mock_fixture_execution(monkeypatch) -
 
 
 def test_followup_tui_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
-    import controlplane_tool.profiles as profiles
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.app.profiles as profiles
+    import controlplane_tool.tui.app as tui_app
 
     captured: list[tuple[str, list[object]]] = []
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
@@ -1312,7 +1312,7 @@ def test_followup_tui_selectors_supply_descriptions_for_every_entry(monkeypatch)
 
 
 def test_validation_menu_contains_platform_cli_and_host_paths(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
 
@@ -1331,7 +1331,7 @@ def test_validation_menu_contains_platform_cli_and_host_paths(monkeypatch) -> No
 
 
 def test_validation_menu_routes_host_path_to_deploy_host(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     calls: list[str] = []
 
@@ -1346,7 +1346,7 @@ def test_validation_menu_routes_host_path_to_deploy_host(monkeypatch) -> None:
 
 
 def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
 
@@ -1365,12 +1365,12 @@ def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
     NanofaasTUI().run()
 
     assert captured["message"] == "What would you like to do?"
-    assert any(getattr(choice, "value", None) == "build" for choice in captured["choices"])
+    assert any(getattr(choice, "value", None) == "building" for choice in captured["choices"])
     assert captured["include_back"] is False
 
 
 def test_tui_function_catalog_waits_for_acknowledge_after_static_views(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["all", "presets", "show", "word-stats-java", "back"])
     acknowledgements: list[str] = []
@@ -1399,7 +1399,7 @@ def test_tui_function_catalog_waits_for_acknowledge_after_static_views(monkeypat
 
 
 def test_tui_function_catalog_lists_dynamic_functions(monkeypatch, capsys) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["all", "back"])
 
@@ -1412,7 +1412,7 @@ def test_tui_function_catalog_lists_dynamic_functions(monkeypatch, capsys) -> No
 
 
 def test_tui_function_details_show_dynamic_metadata(monkeypatch, capsys) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     answers = iter(["show", "roman-numeral-go", "back"])
 
@@ -1429,9 +1429,9 @@ def test_tui_function_details_show_dynamic_metadata(monkeypatch, capsys) -> None
 
 
 def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path) -> None:
-    import controlplane_tool.cli_commands as cli_commands
-    import controlplane_tool.profiles as profiles
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.cli.commands as cli_commands
+    import controlplane_tool.app.profiles as profiles
+    import controlplane_tool.tui.app as tui_app
 
     acknowledgements: list[str] = []
     generic_message = "Press any key to return to the previous menu."
@@ -1446,13 +1446,13 @@ def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path
     monkeypatch.setattr(tui_app, "success", lambda *args, **kwargs: None)
     monkeypatch.setattr(tui_app, "warning", lambda *args, **kwargs: None)
 
-    build_selects = iter(["build", "core", "back"])
+    build_selects = iter(["building", "core", "back"])
     monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(build_selects))
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
     monkeypatch.setattr(
         cli_commands.GradleCommandExecutor,
         "execute",
-        lambda self, **kwargs: SimpleNamespace(command=["./gradlew", "build"]),
+        lambda self, **kwargs: SimpleNamespace(command=["./gradlew", "building"]),
     )
     NanofaasTUI()._build_menu()
 
@@ -1557,8 +1557,8 @@ def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path
 
 
 def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch) -> None:
-    import controlplane_tool.tui_selection as selection
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.selection as selection
+    import controlplane_tool.tui.app as tui_app
 
     fake_paths = SimpleNamespace(
         workspace_root=Path("/repo"),
@@ -1626,8 +1626,8 @@ def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch)
 
 
 def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) -> None:
-    import controlplane_tool.tui_selection as selection
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.selection as selection
+    import controlplane_tool.tui.app as tui_app
 
     monkeypatch.setattr(
         selection,
@@ -1673,9 +1673,9 @@ def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) 
 
 
 def test_tui_k3s_junit_curl_dry_run_plan_waits_for_acknowledge(monkeypatch) -> None:
-    import controlplane_tool.e2e_commands as e2e_commands
-    import controlplane_tool.e2e_runner as e2e_runner
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.cli.e2e_commands as e2e_commands
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
 
     acknowledgements: list[str] = []
     answers = iter(["nanofaas-e2e", "java", True, "default", True])
@@ -1707,9 +1707,9 @@ def test_tui_k3s_junit_curl_dry_run_plan_waits_for_acknowledge(monkeypatch) -> N
 
 
 def test_platform_validation_menu_returns_to_scenario_picker_after_dry_run(monkeypatch) -> None:
-    import controlplane_tool.e2e_commands as e2e_commands
-    import controlplane_tool.e2e_runner as e2e_runner
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.cli.e2e_commands as e2e_commands
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
 
     scenario_answers = iter(["k3s-junit-curl", "back"])
     selection_source_answers = iter(["default"])
@@ -1762,9 +1762,9 @@ def test_platform_validation_menu_returns_to_scenario_picker_after_dry_run(monke
 
 
 def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
     import tui_toolkit.pickers as tui_widgets
-    from controlplane_tool.registry_runtime import default_registry_url
+    from controlplane_tool.infra.runtimes import default_registry_url
 
     answers = iter(["start"])
     called: dict[str, object] = {}
@@ -1788,7 +1788,7 @@ def test_tui_registry_menu_starts_local_registry(monkeypatch) -> None:
 
 
 def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
     import tui_toolkit.pickers as tui_widgets
 
     called: dict[str, object] = {}
@@ -1845,8 +1845,8 @@ def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) ->
 
 
 def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(["nanofaas-e2e", "java", True, "default", False])
     called: dict[str, object] = {}
@@ -1906,8 +1906,8 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
 
 
 def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(["nanofaas-e2e", "java", True, "preset", "demo-javascript", False])
     called: dict[str, object] = {}
@@ -1957,9 +1957,9 @@ def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> N
 
 
 def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
-    from controlplane_tool.paths import resolve_workspace_path
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
+    from controlplane_tool.app.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -2020,8 +2020,8 @@ def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
 
 
 def test_tui_k3s_junit_curl_scenario_can_use_saved_profile(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(["nanofaas-e2e", "java", True, "saved-profile", "demo-javascript", False])
     called: dict[str, object] = {}
@@ -2071,8 +2071,8 @@ def test_tui_k3s_junit_curl_scenario_can_use_saved_profile(monkeypatch) -> None:
 
 
 def test_tui_k3s_junit_curl_warns_when_no_compatible_scenario_files(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(
         [
@@ -2126,8 +2126,8 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_scenario_files(monkeypatch)
 
 
 def test_tui_k3s_junit_curl_warns_when_no_compatible_saved_profiles(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     answers = iter(
         [
@@ -2181,8 +2181,8 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_saved_profiles(monkeypatch)
 
 
 def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     called: dict[str, object] = {}
 
@@ -2261,8 +2261,8 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
 
 
 def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
 
     captured: dict[str, object] = {}
 
@@ -2354,8 +2354,8 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
 
 
 def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_completes(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
-    import controlplane_tool.e2e_runner as e2e_runner
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
     from tui_toolkit import phase, step
     from rich.console import Console
     import re
@@ -2378,7 +2378,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
         def _run() -> str:
             step_meta = ScenarioPlanStep(
                 summary="Run k3s-junit-curl verification",
-                command=["python", "-m", "controlplane_tool.k3s_curl_runner", "verify-existing-stack"],
+                command=["python", "-m", "controlplane_tool.e2e.k3s_curl_runner", "verify-existing-stack"],
             )
             event_listener(
                 ScenarioStepEvent(
@@ -2521,7 +2521,7 @@ def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
 
 
 def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> None:
-    import controlplane_tool.tui_app as tui_app
+    import controlplane_tool.tui.app as tui_app
 
     called: dict[str, object] = {}
 

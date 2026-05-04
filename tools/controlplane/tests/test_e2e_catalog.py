@@ -1,4 +1,4 @@
-from controlplane_tool.e2e_catalog import list_scenarios, resolve_scenario
+from controlplane_tool.scenario.catalog import list_scenarios, resolve_scenario
 
 
 def test_catalog_lists_expected_suite_names() -> None:

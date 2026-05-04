@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.runtime_primitives import (
+from controlplane_tool.core.runtime_primitives import (
     CommandRunner,
     ContainerRuntimeOps,
     KubectlOps,
     read_json_field,
     write_json_file,
 )
-from controlplane_tool.shell_backend import RecordingShell
+from controlplane_tool.core.shell_backend import RecordingShell
 
 
 def test_runtime_primitives_wrap_process_execution_without_shell_scripts() -> None:

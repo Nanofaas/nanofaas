@@ -1,4 +1,4 @@
-from controlplane_tool.scenario_defaults import (
+from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,
     resolve_scenario_release,
     scenario_deployment_defaults,

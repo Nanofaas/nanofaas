@@ -1,4 +1,4 @@
-from controlplane_tool.workflow_models import WorkflowEvent
+from controlplane_tool.workflow.workflow_models import WorkflowEvent
 
 
 def test_fake_sink_collects_emitted_events(fake_sink) -> None:

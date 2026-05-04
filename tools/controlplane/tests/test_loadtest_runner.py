@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
-from controlplane_tool.loadtest_runner import LoadtestRunner
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.scenario_loader import load_scenario_file
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.loadtest.loadtest_runner import LoadtestRunner
+from controlplane_tool.core.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 
 class FakeAdapter:
@@ -123,9 +123,10 @@ def test_loadtest_runner_no_longer_inlines_process_sequencing() -> None:
         Path(__file__).resolve().parents[3]
         / "tools"
         / "controlplane"
-        / "src"
-        / "controlplane_tool"
-        / "loadtest_runner.py"
+            / "src"
+            / "controlplane_tool"
+            / "loadtest"
+            / "loadtest_runner.py"
     ).read_text(encoding="utf-8")
 
     assert "bootstrap_loadtest(" not in source

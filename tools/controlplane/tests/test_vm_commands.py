@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 from typer.testing import CliRunner
 
-from controlplane_tool.prefect_models import FlowRunResult
-from controlplane_tool.main import app
-from controlplane_tool.shell_backend import ShellExecutionResult
+from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from controlplane_tool.app.main import app
+from controlplane_tool.core.shell_backend import ShellExecutionResult
 
 
 def test_vm_up_dry_run_prints_planned_multipass_command() -> None:
@@ -88,7 +88,7 @@ def test_vm_provision_base_command_runs_prefect_flow(monkeypatch) -> None:
             result=ShellExecutionResult(command=["ansible-playbook", "provision-base.yml"], return_code=0),
         )
 
-    monkeypatch.setattr("controlplane_tool.vm_commands.run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr("controlplane_tool.cli.vm_commands.run_local_flow", fake_run_local_flow)
 
     result = runner.invoke(
         app,

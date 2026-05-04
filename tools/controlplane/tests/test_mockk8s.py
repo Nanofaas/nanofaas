@@ -1,4 +1,4 @@
-from controlplane_tool.mockk8s import default_mockk8s_test_selectors
+from controlplane_tool.infra.runtimes import default_mockk8s_test_selectors
 
 
 def test_default_mockk8s_selectors_include_fabric8_targets() -> None:

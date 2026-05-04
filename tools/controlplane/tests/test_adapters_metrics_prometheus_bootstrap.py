@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from controlplane_tool.adapters import AdapterResult, ShellCommandAdapter
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
-from controlplane_tool.metrics_contract import CORE_REQUIRED_METRICS, LEGACY_STRICT_REQUIRED_METRICS
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.prometheus_runtime import PrometheusSession
-from controlplane_tool.scenario_loader import load_scenario_file
-from controlplane_tool.sut_preflight import SutFixture
+from controlplane_tool.orchestation.adapters import AdapterResult, ShellCommandAdapter
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.loadtest.metrics_contract import CORE_REQUIRED_METRICS, LEGACY_STRICT_REQUIRED_METRICS
+from controlplane_tool.core.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
+from controlplane_tool.infra.runtimes import PrometheusSession
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.sut.sut_preflight import SutFixture
 
 
 class _FakePrometheusManager:
@@ -149,11 +149,11 @@ def test_metrics_step_bootstraps_prometheus_when_missing(tmp_path: Path, monkeyp
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -193,11 +193,11 @@ def test_metrics_step_bootstraps_mockk8s_and_control_plane(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -236,11 +236,11 @@ def test_metrics_step_fails_when_mockk8s_bootstrap_fails(tmp_path: Path, monkeyp
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],  # noqa: ARG001
     )
 
@@ -277,11 +277,11 @@ def test_metrics_step_fails_when_control_plane_bootstrap_fails(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],  # noqa: ARG001
     )
 
@@ -310,11 +310,11 @@ def test_metrics_step_always_cleans_up_owned_prometheus(tmp_path: Path, monkeypa
         raise RuntimeError("query failed")
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         _raise_query_error,
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],  # noqa: ARG001
     )
 
@@ -339,11 +339,11 @@ def test_metrics_step_uses_run_window_series_for_missing_detection(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],  # noqa: ARG001
     )
 
@@ -373,11 +373,11 @@ def test_metrics_step_requires_successful_invocation_preflight(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [],  # noqa: ARG001
     )
 
@@ -405,11 +405,11 @@ def test_metrics_step_registers_fixture_before_k6(tmp_path: Path, monkeypatch) -
     k6_script.write_text("export default function(){}", encoding="utf-8")
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -448,11 +448,11 @@ def test_loadtest_bootstrap_writes_scenario_manifest_artifact(
     )
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -494,11 +494,11 @@ def test_loadtest_bootstrap_ensures_all_requested_fixtures(
     )
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {"function_dispatch_total", "function_latency_ms"},  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_range_series",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series",
         lambda base_url, metric_name, start, end, step_seconds=2: [  # noqa: ARG001
             {"timestamp": start.isoformat(), "value": 1.0},
             {"timestamp": end.isoformat(), "value": 2.0},
@@ -535,7 +535,7 @@ def test_metrics_step_uses_core_gate_for_legacy_required_list(
     )
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: set(CORE_REQUIRED_METRICS),  # noqa: ARG005
     )
 
@@ -547,7 +547,7 @@ def test_metrics_step_uses_core_gate_for_legacy_required_list(
             ]
         return []
 
-    monkeypatch.setattr("controlplane_tool.metrics_gate.query_prometheus_range_series", _series)
+    monkeypatch.setattr("controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series", _series)
 
     ok, detail = adapter.run_metrics_tests(profile, run_dir)
 
@@ -569,7 +569,7 @@ def test_metrics_step_resolves_timer_metric_aliases(tmp_path: Path, monkeypatch)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(
-        "controlplane_tool.metrics_gate.query_prometheus_metric_names",
+        "controlplane_tool.loadtest.metrics_gate.query_prometheus_metric_names",
         lambda base_url: {  # noqa: ARG005
             "function_dispatch_total",
             "function_success_total",
@@ -595,7 +595,7 @@ def test_metrics_step_resolves_timer_metric_aliases(tmp_path: Path, monkeypatch)
             ]
         return []
 
-    monkeypatch.setattr("controlplane_tool.metrics_gate.query_prometheus_range_series", _series)
+    monkeypatch.setattr("controlplane_tool.loadtest.metrics_gate.query_prometheus_range_series", _series)
 
     ok, detail = adapter.run_metrics_tests(_profile(), run_dir)
 

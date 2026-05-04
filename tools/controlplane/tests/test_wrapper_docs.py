@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from controlplane_tool.paths import resolve_workspace_path
+from controlplane_tool.app.paths import resolve_workspace_path
 
 
 def test_control_plane_build_wrapper_uses_tools_controlplane_project() -> None:
     script = resolve_workspace_path(
-        Path("scripts") / ("control" + "-plane-build.sh")
+        Path("scripts") / ("control" + "-plane-building.sh")
     ).read_text(encoding="utf-8")
     assert "Compatibility wrapper" in script
     assert "controlplane.sh" in script

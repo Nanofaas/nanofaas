@@ -3,15 +3,15 @@ from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
-from controlplane_tool.prefect_models import FlowRunResult
-from controlplane_tool.cli_commands import CommandExecutionResult
-from controlplane_tool.cli_commands import GradleCommandExecutor
+from controlplane_tool.app.main import app
+from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from controlplane_tool.cli.commands import CommandExecutionResult
+from controlplane_tool.cli.commands import GradleCommandExecutor
 
 
 def test_build_command_accepts_profile_and_non_interactive_args() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["build", "--profile", "core", "--dry-run"])
+    result = runner.invoke(app, ["building", "--profile", "core", "--dry-run"])
     assert result.exit_code == 0
     assert "bootJar" in result.stdout
 
@@ -47,15 +47,15 @@ def test_build_command_runs_prefect_flow(monkeypatch) -> None:
             orchestrator_backend="none",
             started_at=now,
             finished_at=now,
-            result=CommandExecutionResult(command=["./gradlew", "build"], return_code=0, dry_run=True),
+            result=CommandExecutionResult(command=["./gradlew", "building"], return_code=0, dry_run=True),
         )
 
-    monkeypatch.setattr("controlplane_tool.cli_commands.run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr("controlplane_tool.cli.commands.run_local_flow", fake_run_local_flow)
 
-    result = runner.invoke(app, ["build", "--profile", "core", "--dry-run"])
+    result = runner.invoke(app, ["building", "--profile", "core", "--dry-run"])
 
     assert result.exit_code == 0
-    assert called["flow_id"] == "build.build"
+    assert called["flow_id"] == "building.building"
 
 
 def test_gradle_executor_preserves_captured_output_on_failure() -> None:
@@ -99,7 +99,7 @@ def test_gradle_command_prints_captured_stderr_on_failure(monkeypatch) -> None:
             ),
         )
 
-    monkeypatch.setattr("controlplane_tool.cli_commands.run_local_flow", fake_run_local_flow)
+    monkeypatch.setattr("controlplane_tool.cli.commands.run_local_flow", fake_run_local_flow)
 
     result = runner.invoke(app, ["jar", "--profile", "core"])
 

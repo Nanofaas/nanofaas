@@ -15,7 +15,7 @@ from rich.text import Text
 import questionary
 
 # Ensure the nanofaas brand is active for all tests in this module.
-from controlplane_tool.ui_setup import setup_ui as _setup_ui
+from controlplane_tool.tui.setup import setup_ui as _setup_ui
 _setup_ui()
 
 
@@ -51,7 +51,7 @@ def test_select_value_routes_standard_choices_through_described_selector(monkeyp
 
     class FakePrompt:
         def ask(self):
-            return "build"
+            return "building"
 
     def fake_questionary_select(message, choices, default=None, style=None, show_description=False):  # noqa: ANN001
         captured["message"] = message
@@ -67,19 +67,19 @@ def test_select_value_routes_standard_choices_through_described_selector(monkeyp
         "Action:",
         choices=[
             questionary.Choice(
-                "build — compile + unit tests",
-                "build",
+                "building — compile + unit tests",
+                "building",
                 description="Compile the workspace and run unit tests.",
             ),
             "test",
         ],
-        default="build",
+        default="building",
         include_back=True,
     )
 
-    assert result == "build"
+    assert result == "building"
     assert captured["message"] == "Action:"
-    assert captured["default"] == "build"
+    assert captured["default"] == "building"
     assert any(getattr(choice, "value", choice) == "back" for choice in captured["choices"])
 
 
@@ -214,7 +214,7 @@ def test_described_checkbox_uses_full_screen_with_wider_stable_description_panel
 
 def test_render_screen_frame_renders_brand_title_and_footer() -> None:
     from tui_toolkit import render_screen_frame
-    from controlplane_tool.ui_setup import NANOFAAS_BRAND
+    from controlplane_tool.tui.setup import NANOFAAS_BRAND
     APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
     APP_WORDMARK = NANOFAAS_BRAND.wordmark
 
@@ -238,7 +238,7 @@ def test_render_screen_frame_renders_brand_title_and_footer() -> None:
 
 
 def test_described_picker_header_contains_legacy_ascii_logo() -> None:
-    from controlplane_tool.ui_setup import NANOFAAS_BRAND
+    from controlplane_tool.tui.setup import NANOFAAS_BRAND
     APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
 
     app = _build_described_select_application(
@@ -260,7 +260,7 @@ def test_described_picker_header_contains_legacy_ascii_logo() -> None:
 
 
 def test_described_checkbox_header_contains_legacy_ascii_logo() -> None:
-    from controlplane_tool.ui_setup import NANOFAAS_BRAND
+    from controlplane_tool.tui.setup import NANOFAAS_BRAND
     APP_ASCII_LOGO = NANOFAAS_BRAND.ascii_logo
 
     app = _build_described_checkbox_application(

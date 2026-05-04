@@ -10,15 +10,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
-from controlplane_tool.adapters import AdapterResult, ShellCommandAdapter
-from controlplane_tool.gradle_ops import CommandResult
-from controlplane_tool.loadtest_bootstrap import LoadtestBootstrapContext
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.scenario_loader import load_scenario_file
+from controlplane_tool.orchestation.adapters import AdapterResult, ShellCommandAdapter
+from controlplane_tool.building.gradle_ops import CommandResult
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.core.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +164,7 @@ def test_run_loadtest_k6_delegates_to_k6(tmp_path: Path, monkeypatch) -> None:
 def test_evaluate_metrics_gate_delegates_to_gate_module(tmp_path: Path, monkeypatch) -> None:
     adapter = ShellCommandAdapter(repo_root=tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.adapters.evaluate_metrics_gate",
+        "controlplane_tool.orchestation.adapters.evaluate_metrics_gate",
         lambda p, r, ctx, d: (True, "prometheus checks passed"),
     )
     ok, detail = adapter.evaluate_metrics_gate(_profile(), _make_request(), FakeContext(), tmp_path)
@@ -188,7 +185,7 @@ def test_run_metrics_tests_returns_ok_when_all_pass(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(adapter._bootstrap, "cleanup", lambda ctx: None)
     monkeypatch.setattr(adapter._k6, "run_loadtest_k6", lambda r, ctx, d: (True, "k6 ok"))
     monkeypatch.setattr(
-        "controlplane_tool.adapters.evaluate_metrics_gate",
+        "controlplane_tool.orchestation.adapters.evaluate_metrics_gate",
         lambda p, r, ctx, d: (True, "prometheus checks passed"),
     )
     ok, detail = adapter.run_metrics_tests(_profile(), tmp_path)
@@ -226,7 +223,7 @@ def test_run_metrics_tests_returns_failure_when_gate_fails(tmp_path: Path, monke
     monkeypatch.setattr(adapter._bootstrap, "cleanup", lambda ctx: None)
     monkeypatch.setattr(adapter._k6, "run_loadtest_k6", lambda r, ctx, d: (True, "k6 ok"))
     monkeypatch.setattr(
-        "controlplane_tool.adapters.evaluate_metrics_gate",
+        "controlplane_tool.orchestation.adapters.evaluate_metrics_gate",
         lambda p, r, ctx, d: (False, "missing required metrics"),
     )
     ok, detail = adapter.run_metrics_tests(_profile(), tmp_path)
@@ -243,7 +240,7 @@ def test_run_metrics_tests_skips_k6_gracefully(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr(adapter._bootstrap, "cleanup", lambda ctx: None)
     monkeypatch.setattr(adapter._k6, "run_loadtest_k6", lambda r, ctx, d: (True, "skipped"))
     monkeypatch.setattr(
-        "controlplane_tool.adapters.evaluate_metrics_gate",
+        "controlplane_tool.orchestation.adapters.evaluate_metrics_gate",
         lambda p, r, ctx, d: (True, "prometheus checks passed"),
     )
     ok, detail = adapter.run_metrics_tests(_profile(), tmp_path)

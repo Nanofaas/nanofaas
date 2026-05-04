@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import controlplane_tool.flow_catalog as flow_catalog_mod
-from controlplane_tool.e2e_models import E2eRequest
-from controlplane_tool.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
-from controlplane_tool.scenario_components.composer import compose_recipe
-from controlplane_tool.scenario_components.recipes import build_scenario_recipe
-from controlplane_tool.vm_models import VmRequest
+import controlplane_tool.orchestation.flow_catalog as flow_catalog_mod
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def _sample_request() -> E2eRequest:

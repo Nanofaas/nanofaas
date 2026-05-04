@@ -7,9 +7,9 @@ calls when docker is missing or the compose file does not exist.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from controlplane_tool.grafana_runtime import GrafanaRuntime
+from controlplane_tool.infra.runtimes import GrafanaRuntime
 
 
 def _make_runtime(tmp_path: Path, *, with_compose: bool = False) -> GrafanaRuntime:

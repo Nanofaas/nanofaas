@@ -1,11 +1,9 @@
 import sys
-from pathlib import Path
 
-import typer
 from typer.testing import CliRunner
 
-import controlplane_tool.main as main_mod
-import controlplane_tool.tui_app as tui_app
+import controlplane_tool.app.main as main_mod
+import controlplane_tool.tui.app as tui_app
 
 
 def test_run_command_supports_passthrough_gradle_args_in_dry_run() -> None:

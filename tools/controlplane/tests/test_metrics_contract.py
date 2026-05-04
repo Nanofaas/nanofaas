@@ -3,7 +3,7 @@ Tests for metrics_contract.py — CORE_REQUIRED_METRICS and LEGACY_STRICT_REQUIR
 """
 from __future__ import annotations
 
-from controlplane_tool.metrics_contract import (
+from controlplane_tool.loadtest.metrics_contract import (
     CORE_REQUIRED_METRICS,
     LEGACY_STRICT_REQUIRED_METRICS,
 )

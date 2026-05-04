@@ -10,7 +10,7 @@ The canonical shell orchestration wrapper is `scripts/controlplane.sh`.
 Use `scripts/controlplane.sh` for the primary control-plane build contract:
 
 ```bash
-scripts/controlplane.sh build --profile container-local --dry-run
+scripts/controlplane.sh building --profile container-local --dry-run
 scripts/controlplane.sh jar --profile container-local
 scripts/controlplane.sh jar --profile core
 scripts/controlplane.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local

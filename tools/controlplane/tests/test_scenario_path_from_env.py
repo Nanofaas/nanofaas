@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.paths import scenario_path_from_env
+from controlplane_tool.app.paths import scenario_path_from_env
 
 
 def test_scenario_path_from_env_returns_none_when_both_absent(monkeypatch) -> None:

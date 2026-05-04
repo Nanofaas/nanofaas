@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from controlplane_tool.models import (
+from controlplane_tool.core.models import (
     CliTestConfig,
     ControlPlaneConfig,
     LoadtestConfig,
@@ -10,7 +10,7 @@ from controlplane_tool.models import (
     ScenarioSelectionConfig,
     TestsConfig,
 )
-from controlplane_tool.profiles import load_profile, load_profile_prefect_config, save_profile
+from controlplane_tool.app.profiles import load_profile, load_profile_prefect_config, save_profile
 
 
 def test_profile_roundtrip(tmp_path: Path) -> None:

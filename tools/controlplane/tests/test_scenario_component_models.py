@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
-from controlplane_tool.scenario_components.operations import (
+from controlplane_tool.scenario.components import ScenarioComponentDefinition
+from controlplane_tool.scenario.components import (
     RemoteCommandOperation,
     ScenarioOperation,
 )

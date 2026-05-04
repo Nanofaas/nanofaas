@@ -2,16 +2,16 @@ from pathlib import Path
 
 import pytest
 
-import controlplane_tool.cli_stack_runner as cli_stack_runner_mod
-import controlplane_tool.cli_test_runner as cli_test_runner_mod
-from controlplane_tool.cli_test_catalog import resolve_cli_test_scenario
-from controlplane_tool.cli_test_models import CliTestRequest
-from controlplane_tool.cli_test_runner import CliTestPlan, CliTestRunner
-from controlplane_tool.e2e_runner import ScenarioPlanStep
-from controlplane_tool.scenario_models import ResolvedFunction, ResolvedScenario
-from controlplane_tool.scenario_loader import load_scenario_file
-from controlplane_tool.shell_backend import RecordingShell
-from controlplane_tool.vm_models import VmRequest
+import controlplane_tool.cli_validation.cli_stack_runner as cli_stack_runner_mod
+import controlplane_tool.cli_validation.cli_test_runner as cli_test_runner_mod
+from controlplane_tool.cli_validation.cli_test_catalog import resolve_cli_test_scenario
+from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
+from controlplane_tool.cli_validation.cli_test_runner import CliTestPlan, CliTestRunner
+from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep
+from controlplane_tool.scenario.scenario_models import ResolvedFunction, ResolvedScenario
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.core.shell_backend import RecordingShell
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def test_cli_test_runner_unit_scenario_calls_gradle_cli_tests() -> None:

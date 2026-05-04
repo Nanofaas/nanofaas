@@ -1,10 +1,10 @@
 from pathlib import Path
 from datetime import UTC, datetime
 
-import controlplane_tool.pipeline as pipeline_mod
-from controlplane_tool.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
-from controlplane_tool.prefect_models import FlowRunResult
-from controlplane_tool.pipeline import PipelineRunner
+import controlplane_tool.orchestation.pipeline as pipeline_mod
+from controlplane_tool.core.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
+from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from controlplane_tool.orchestation.pipeline import PipelineRunner
 
 
 class FakeFailingAdapter:
@@ -128,7 +128,7 @@ def test_pipeline_run_delegates_metrics_load_flow_to_loadtest_runner(
                 ],
             )
 
-    monkeypatch.setattr("controlplane_tool.infra_flows.LoadtestRunner", RecordingLoadtestRunner)
+    monkeypatch.setattr("controlplane_tool.orchestation.infra_flows.LoadtestRunner", RecordingLoadtestRunner)
     profile = Profile(
         name="metrics",
         control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),

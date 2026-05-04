@@ -1,5 +1,5 @@
-from controlplane_tool.tui_prefect_bridge import TuiPrefectBridge
-from controlplane_tool.workflow_events import build_log_event, build_task_event
+from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
+from controlplane_tool.workflow.workflow_events import build_log_event, build_task_event
 
 
 def test_tui_bridge_maps_task_started_event_to_running_step() -> None:
@@ -54,7 +54,7 @@ def test_tui_bridge_routes_updated_cancelled_and_log_events_through_same_task_ro
         build_log_event(
             flow_id="e2e.k8s_vm",
             task_id="images.build_core",
-            line="docker build layer cached",
+            line="docker building layer cached",
         )
     )
     bridge.handle_event(
@@ -72,7 +72,7 @@ def test_tui_bridge_routes_updated_cancelled_and_log_events_through_same_task_ro
     assert snapshot.phases[0].task_id == "images.build_core"
     assert snapshot.phases[0].detail == "cancelled by user"
     assert snapshot.phases[0].status == "cancelled"
-    assert any("docker build layer cached" in line for line in snapshot.logs)
+    assert any("docker building layer cached" in line for line in snapshot.logs)
 
 
 def test_tui_bridge_reuses_planned_placeholder_when_log_arrives_before_task_running() -> None:
@@ -82,7 +82,7 @@ def test_tui_bridge_reuses_planned_placeholder_when_log_arrives_before_task_runn
         build_log_event(
             flow_id="e2e.k8s_vm",
             task_id="images.build_core",
-            line="docker build started",
+            line="docker building started",
         )
     )
     bridge.handle_event(

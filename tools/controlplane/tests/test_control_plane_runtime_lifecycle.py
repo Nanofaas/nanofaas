@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from controlplane_tool.control_plane_runtime import (
+from controlplane_tool.infra.runtimes import (
     ControlPlaneRuntimeManager,
     ControlPlaneSession,
 )
@@ -87,14 +87,14 @@ def test_is_ready_returns_true_on_http_200(tmp_path: Path) -> None:
     mock_response = MagicMock()
     mock_response.status_code = 200
     mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch("controlplane_tool.control_plane_runtime.httpx.get", return_value=mock_response):
+    with patch("controlplane_tool.infra.runtimes.control_plane_runtime.httpx.get", return_value=mock_response):
         assert mgr._is_ready("http://127.0.0.1:8080") is True
 
 
 def test_is_ready_returns_false_on_connection_error(tmp_path: Path) -> None:
     import httpx
     mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch("controlplane_tool.control_plane_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
+    with patch("controlplane_tool.infra.runtimes.control_plane_runtime.httpx.get", side_effect=httpx.RequestError("refused")):
         assert mgr._is_ready("http://127.0.0.1:8080") is False
 
 
@@ -102,7 +102,7 @@ def test_is_ready_returns_false_on_non_200_status(tmp_path: Path) -> None:
     mock_response = MagicMock()
     mock_response.status_code = 503
     mgr = ControlPlaneRuntimeManager(tmp_path)
-    with patch("controlplane_tool.control_plane_runtime.httpx.get", return_value=mock_response):
+    with patch("controlplane_tool.infra.runtimes.control_plane_runtime.httpx.get", return_value=mock_response):
         assert mgr._is_ready("http://127.0.0.1:8080") is False
 
 

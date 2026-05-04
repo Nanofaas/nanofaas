@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from controlplane_tool.loadtest_catalog import resolve_load_profile
-from controlplane_tool.loadtest_models import LoadtestRequest, MetricsGate
-from controlplane_tool.loadtest_tasks import bootstrap_loadtest_task, write_loadtest_report_task
-from controlplane_tool.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
-from controlplane_tool.run_models import StepResult
-from controlplane_tool.scenario_loader import load_scenario_file
+from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
+from controlplane_tool.loadtest.loadtest_tasks import bootstrap_loadtest_task, write_loadtest_report_task
+from controlplane_tool.core.models import ControlPlaneConfig, MetricsConfig, Profile, TestsConfig
+from controlplane_tool.core.run_models import StepResult
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 
 class FakeAdapter:

@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.scenario_loader import (
+from controlplane_tool.scenario.scenario_loader import (
     load_scenario_file,
     overlay_scenario_selection,
 )
-from controlplane_tool.scenario_models import ScenarioLoadConfig, ScenarioPrefectConfig, ScenarioSpec
+from controlplane_tool.scenario.scenario_models import ScenarioLoadConfig, ScenarioPrefectConfig, ScenarioSpec
 
 
 def test_loader_resolves_function_preset_and_payload_paths() -> None:

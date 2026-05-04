@@ -5,9 +5,9 @@ import pytest
 from multipass import FakeBackend, MultipassClient
 from multipass._backend import CommandResult
 
-from controlplane_tool.shell_backend import RecordingShell
-from controlplane_tool.vm_adapter import VmOrchestrator
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.core.shell_backend import RecordingShell
+from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def _running_info(name: str) -> str:
@@ -188,9 +188,9 @@ def test_vm_orchestrator_matches_ansible_private_key_to_multipass_public_key(
     rsa_private.write_text("rsa-private", encoding="utf-8")
     rsa_public.write_text("ssh-rsa BBBB second@example\n", encoding="utf-8")
 
-    monkeypatch.setattr("controlplane_tool.vm_adapter.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("controlplane_tool.infra.vm.vm_adapter.Path.home", lambda: tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.vm_adapter.find_ssh_public_key",
+        "controlplane_tool.infra.vm.vm_adapter.find_ssh_public_key",
         lambda: "ssh-rsa BBBB second@example",
     )
 
@@ -221,9 +221,9 @@ def test_vm_orchestrator_sets_private_key_none_when_no_on_disk_match(
     rsa_private.write_text("rsa-private", encoding="utf-8")
     rsa_public.write_text("ssh-rsa BBBB other@example\n", encoding="utf-8")
 
-    monkeypatch.setattr("controlplane_tool.vm_adapter.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("controlplane_tool.infra.vm.vm_adapter.Path.home", lambda: tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.vm_adapter.find_ssh_public_key",
+        "controlplane_tool.infra.vm.vm_adapter.find_ssh_public_key",
         lambda: "ssh-ed25519 AAAA agent@example",
     )
 
@@ -242,7 +242,7 @@ def test_exec_argv_multipass_builds_shell_command_and_routes_via_shell_backend()
 
     orchestrator.exec_argv(
         VmRequest(lifecycle="multipass", name=name),
-        ["docker", "build", "-t", "myimage", "."],
+        ["docker", "building", "-t", "myimage", "."],
         env={"DOCKER_BUILDKIT": "1"},
         cwd="/srv/project",
     )
@@ -254,7 +254,7 @@ def test_exec_argv_multipass_builds_shell_command_and_routes_via_shell_backend()
     shell_cmd = cmd[-1]
     assert "/srv/project" in shell_cmd
     assert "DOCKER_BUILDKIT" in shell_cmd
-    assert "docker build -t myimage ." in shell_cmd
+    assert "docker building -t myimage ." in shell_cmd
 
 
 def test_exec_argv_external_vm_builds_shell_string_and_runs_via_ssh() -> None:
@@ -281,7 +281,7 @@ def test_exec_argv_multipass_dry_run_returns_placeholder_command() -> None:
     orchestrator = VmOrchestrator(repo_root=Path("/repo"))
     request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
 
-    result = orchestrator.exec_argv(request, ["make", "build"], dry_run=True)
+    result = orchestrator.exec_argv(request, ["make", "building"], dry_run=True)
 
     assert result.return_code == 0
     assert "multipass" in result.command

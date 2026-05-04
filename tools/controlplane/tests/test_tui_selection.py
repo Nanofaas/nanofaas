@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from controlplane_tool.tui_selection import (
+from controlplane_tool.tui.selection import (
     TuiSelectionResult,
     TuiSelectionTarget,
     function_choices,
@@ -179,7 +179,7 @@ def test_selection_result_exposes_resolver_kwargs() -> None:
 
 
 def test_k3s_scenario_file_choices_keep_strict_base_scenario(monkeypatch, tmp_path: Path) -> None:
-    import controlplane_tool.tui_selection as selection
+    import controlplane_tool.tui.selection as selection
 
     fake_paths = _paths(tmp_path)
     fake_paths.scenarios_dir.mkdir(parents=True)
@@ -216,7 +216,7 @@ def test_cli_stack_scenario_file_choices_reuse_buildable_cross_scenario_manifest
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import controlplane_tool.tui_selection as selection
+    import controlplane_tool.tui.selection as selection
 
     fake_paths = _paths(tmp_path)
     fake_paths.scenarios_dir.mkdir(parents=True)
@@ -260,7 +260,7 @@ def test_container_local_scenario_file_choices_require_exactly_one_function(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import controlplane_tool.tui_selection as selection
+    import controlplane_tool.tui.selection as selection
 
     fake_paths = _paths(tmp_path)
     fake_paths.scenarios_dir.mkdir(parents=True)
@@ -314,7 +314,7 @@ def test_container_local_scenario_file_choices_require_exactly_one_function(
 def test_cli_stack_saved_profile_choices_show_cross_scenario_function_selection(
     monkeypatch,
 ) -> None:
-    import controlplane_tool.tui_selection as selection
+    import controlplane_tool.tui.selection as selection
 
     monkeypatch.setattr(
         selection,
@@ -347,7 +347,7 @@ def test_cli_stack_saved_profile_choices_show_cross_scenario_function_selection(
 def test_container_local_saved_profile_choices_require_exactly_one_buildable_function(
     monkeypatch,
 ) -> None:
-    import controlplane_tool.tui_selection as selection
+    import controlplane_tool.tui.selection as selection
 
     monkeypatch.setattr(
         selection,
@@ -372,7 +372,7 @@ def test_container_local_saved_profile_choices_require_exactly_one_buildable_fun
 
 
 def test_saved_profile_choices_resolve_scenario_file_selection(monkeypatch, tmp_path: Path) -> None:
-    import controlplane_tool.tui_selection as selection
+    import controlplane_tool.tui.selection as selection
 
     fake_paths = _paths(tmp_path)
     scenario_file = fake_paths.scenarios_dir / "single-word-stats-javascript.toml"

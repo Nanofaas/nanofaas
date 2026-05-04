@@ -1,6 +1,6 @@
 import pytest
-from controlplane_tool.scenario_components.registry import ComponentRegistry
-from controlplane_tool.scenario_components.models import ScenarioComponentDefinition
+from controlplane_tool.scenario.components.registry import ComponentRegistry
+from controlplane_tool.scenario.components import ScenarioComponentDefinition
 
 
 def _make_component(component_id: str) -> ScenarioComponentDefinition:

@@ -7,14 +7,12 @@ fully implemented.
 """
 from __future__ import annotations
 
-import sys
 import tomllib
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
-from controlplane_tool.main import app
+from controlplane_tool.app.main import app
 
 runner = CliRunner()
 
@@ -89,8 +87,8 @@ def test_m9_local_e2e_group_is_removed_from_main_cli() -> None:
 
 
 def test_m9_container_local_e2e_runner_is_importable() -> None:
-    from controlplane_tool.local_e2e_runner import ContainerLocalE2eRunner  # noqa: F401
-    from controlplane_tool.local_e2e_runner import DeployHostE2eRunner  # noqa: F401
+    from controlplane_tool.e2e.local_e2e_runner import ContainerLocalE2eRunner  # noqa: F401
+    from controlplane_tool.e2e.local_e2e_runner import DeployHostE2eRunner  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +106,8 @@ def test_m10_cli_host_shell_backend_is_deleted() -> None:
 
 
 def test_m10_cli_vm_runner_is_importable() -> None:
-    from controlplane_tool.cli_runtime import CliVmRunner  # noqa: F401
-    from controlplane_tool.cli_runtime import CliHostPlatformRunner  # noqa: F401
+    from controlplane_tool.cli.runtime import CliVmRunner  # noqa: F401
+    from controlplane_tool.cli.runtime import CliHostPlatformRunner  # noqa: F401
 
 
 def test_m10_cli_e2e_group_is_removed_from_main_cli() -> None:
@@ -144,7 +142,7 @@ def test_m11_k3s_common_shell_is_deleted() -> None:
 
 
 def test_m11_k3s_runtime_is_importable() -> None:
-    from controlplane_tool.k3s_runtime import K3sCurlRunner, HelmStackRunner  # noqa: F401
+    from controlplane_tool.infra.vm.k3s_runtime import K3sCurlRunner, HelmStackRunner  # noqa: F401
 
 
 def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
@@ -153,7 +151,7 @@ def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
 
 
 def test_m11_ansible_adapter_has_provision_contract() -> None:
-    from controlplane_tool.ansible_adapter import AnsibleAdapter
+    from controlplane_tool.infra.vm.ansible_adapter import AnsibleAdapter
 
     adapter = AnsibleAdapter.__new__(AnsibleAdapter)
     assert hasattr(adapter, "provision_base")
@@ -162,7 +160,7 @@ def test_m11_ansible_adapter_has_provision_contract() -> None:
 
 
 def test_m11_vm_orchestrator_has_lifecycle_contract() -> None:
-    from controlplane_tool.vm_adapter import VmOrchestrator
+    from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 
     orch = VmOrchestrator.__new__(VmOrchestrator)
     assert hasattr(orch, "ensure_running")
@@ -196,7 +194,7 @@ def test_m12_e2e_loadtest_sh_routes_to_python_runner() -> None:
 
 
 def test_m12_grafana_runtime_is_importable() -> None:
-    from controlplane_tool.grafana_runtime import GrafanaRuntime  # noqa: F401
+    from controlplane_tool.infra.runtimes import GrafanaRuntime  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +220,7 @@ def test_m13_all_cli_command_groups_registered() -> None:
 def test_m13_all_legacy_wrappers_are_compatibility_shims() -> None:
     scripts_dir = Path(__file__).resolve().parents[3] / "scripts"
     shims = {
-        "control-plane-build.sh",
+        "control-plane-building.sh",
         "controlplane-tool.sh",
         "e2e.sh",
         "e2e-all.sh",

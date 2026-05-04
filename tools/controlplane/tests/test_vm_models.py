@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from controlplane_tool.vm_models import VmRequest
+from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def test_external_vm_request_requires_host() -> None:

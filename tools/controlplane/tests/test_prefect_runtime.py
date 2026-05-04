@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from controlplane_tool.prefect_runtime import run_local_flow
+from controlplane_tool.orchestation.prefect_runtime import run_local_flow
 
 
 def test_run_local_flow_returns_normalized_run_metadata() -> None:

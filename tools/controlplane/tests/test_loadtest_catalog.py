@@ -1,4 +1,4 @@
-from controlplane_tool.loadtest_catalog import list_load_profiles, resolve_load_profile
+from controlplane_tool.loadtest.loadtest_catalog import list_load_profiles, resolve_load_profile
 
 
 def test_load_profile_catalog_exposes_quick_smoke_stress() -> None:

@@ -1,5 +1,4 @@
-import pytest
-from controlplane_tool.command_resolver import CommandResolver
+from controlplane_tool.core.command_resolver import CommandResolver
 
 
 def test_replace_substitutes_single_placeholder() -> None:

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from controlplane_tool.scenario_loader import load_scenario_file
-from controlplane_tool.scenario_manifest import write_scenario_manifest
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.scenario.scenario_manifest import write_scenario_manifest
 
 
 def test_manifest_writer_serializes_absolute_payload_paths(tmp_path: Path) -> None:

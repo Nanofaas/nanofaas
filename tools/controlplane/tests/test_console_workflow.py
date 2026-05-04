@@ -16,8 +16,8 @@ from tui_toolkit import (
     workflow_log,
 )
 from tui_toolkit.workflow import _render_event
-from controlplane_tool.workflow_events import build_log_event, build_task_event, normalize_task_state
-from controlplane_tool.workflow_models import WorkflowContext
+from controlplane_tool.workflow.workflow_events import build_log_event, build_task_event, normalize_task_state
+from controlplane_tool.workflow.workflow_models import WorkflowContext
 
 
 def test_bind_workflow_sink_routes_console_helpers(fake_sink) -> None:
@@ -25,7 +25,7 @@ def test_bind_workflow_sink_routes_console_helpers(fake_sink) -> None:
         phase("Build")
         step("Compile", "profile=k8s")
         warning("Using cached dependencies")
-        skip("Skip optional image build")
+        skip("Skip optional image building")
         with status("Waiting for readiness"):
             pass
         success("Workflow completed", "exit code 0")
