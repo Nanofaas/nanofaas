@@ -8,6 +8,7 @@ fully implemented.
 from __future__ import annotations
 
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,23 @@ def test_m8_tools_controlplane_pyproject_exists() -> None:
     assert pyproject.exists()
     content = pyproject.read_text()
     assert "controlplane-tool" in content
+
+
+def test_m8_shellcraft_dependency_is_remote_github_package() -> None:
+    """The VM-backed runner must not depend on a host-local shellcraft path."""
+    project_dir = Path(__file__).resolve().parents[1]
+    pyproject = project_dir / "pyproject.toml"
+    lockfile = project_dir / "uv.lock"
+
+    metadata = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    dependencies = metadata["project"]["dependencies"]
+
+    shellcraft_deps = [dep for dep in dependencies if dep.startswith("shellcraft @ ")]
+    assert shellcraft_deps == ["shellcraft @ git+https://github.com/miciav/shellcraft.git"]
+
+    locked = lockfile.read_text(encoding="utf-8")
+    assert "/Users/micheleciavotta/shellcraft" not in locked
+    assert "github.com/miciav/shellcraft" in locked
 
 
 # ---------------------------------------------------------------------------

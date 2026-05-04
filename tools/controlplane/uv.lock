@@ -431,7 +431,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "questionary", specifier = ">=2.1.1" },
     { name = "rich", specifier = ">=13.8" },
-    { name = "shellcraft", directory = "/Users/micheleciavotta/shellcraft" },
+    { name = "shellcraft", git = "https://github.com/miciav/shellcraft.git" },
     { name = "tenacity", specifier = ">=8.3" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "tui-toolkit", editable = "../tui-toolkit" },
@@ -2161,12 +2161,7 @@ wheels = [
 [[package]]
 name = "shellcraft"
 version = "0.1.0"
-source = { directory = "/Users/micheleciavotta/shellcraft" }
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.3.4" }]
+source = { git = "https://github.com/miciav/shellcraft.git#b6547835aac88d058810c7b9a592ad442c54ac99" }
 
 [[package]]
 name = "shellingham"

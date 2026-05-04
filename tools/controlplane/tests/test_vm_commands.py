@@ -67,8 +67,9 @@ def test_vm_registry_dry_run_prints_both_registry_commands() -> None:
     )
 
     assert result.exit_code == 0
-    assert "ensure-registry.yml" in result.stdout
-    assert "configure-k3s-registry.yml" in result.stdout
+    unwrapped_stdout = result.stdout.replace("\n", "")
+    assert "ensure-registry.yml" in unwrapped_stdout
+    assert "configure-k3s-registry.yml" in unwrapped_stdout
 
 
 def test_vm_provision_base_command_runs_prefect_flow(monkeypatch) -> None:

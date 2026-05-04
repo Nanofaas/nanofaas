@@ -18,7 +18,7 @@ dependencies = [
     "rich>=13.8",
     "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
     "prefect>=3,<4",
-    "shellcraft @ file:///Users/micheleciavotta/shellcraft",
+    "shellcraft @ git+https://github.com/miciav/shellcraft.git",
     "tui-toolkit",
 ]
 
