@@ -1219,6 +1219,24 @@ def test_primary_tui_menus_supply_descriptions_for_every_entry(monkeypatch) -> N
         assert all(description and len(description) >= 48 for description in descriptions)
 
 
+def test_loadtest_tui_descriptions_explain_mock_fixture_execution(monkeypatch) -> None:
+    import controlplane_tool.tui_app as tui_app
+
+    primary = {choice.value: choice.description for choice in tui_app._MAIN_MENU_CHOICES}
+    actions = {choice.value: choice.description for choice in tui_app._LOADTEST_ACTION_CHOICES}
+
+    assert "mock Kubernetes API" in primary["loadtest"]
+    assert "LOCAL fixture functions" in actions["run"]
+    assert "not Kubernetes pods" in actions["run"]
+    assert "mock Kubernetes API" in actions["plan"]
+    assert "not Kubernetes pods" in actions["plan"]
+
+    monkeypatch.setattr(tui_app, "load_profile", lambda name: (_ for _ in ()).throw(RuntimeError))
+    saved_description = tui_app._saved_profile_description("demo-javascript")
+    assert "mock Kubernetes API" in saved_description
+    assert "LOCAL fixture functions" in saved_description
+
+
 def test_followup_tui_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
     import controlplane_tool.profiles as profiles
     import controlplane_tool.tui_app as tui_app

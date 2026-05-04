@@ -100,6 +100,25 @@ def test_tui_bridge_reuses_planned_placeholder_when_log_arrives_before_task_runn
     assert snapshot.phases[0].status == "running"
 
 
+def test_tui_bridge_routes_label_only_events_to_matching_planned_steps() -> None:
+    bridge = TuiPrefectBridge(planned_steps=["preflight", "bootstrap", "load_k6"])
+
+    preflight = bridge.upsert_phase("preflight")
+    bridge.mark_phase_running(preflight)
+    bridge.mark_phase_success(preflight)
+
+    bootstrap = bridge.upsert_phase("bootstrap")
+    bridge.mark_phase_running(bootstrap)
+    bridge.mark_phase_success(bootstrap)
+
+    load_k6 = bridge.upsert_phase("load_k6")
+    bridge.mark_phase_running(load_k6)
+
+    snapshot = bridge.snapshot()
+    assert [phase.label for phase in snapshot.phases] == ["preflight", "bootstrap", "load_k6"]
+    assert [phase.status for phase in snapshot.phases] == ["success", "success", "running"]
+
+
 def test_tui_bridge_task_updated_reactivates_failed_task() -> None:
     bridge = TuiPrefectBridge()
 

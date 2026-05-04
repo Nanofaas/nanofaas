@@ -62,6 +62,18 @@ class LoadtestRequest(BaseModel):
     metrics_gate: MetricsGate = Field(default_factory=MetricsGate)
     report_title: str | None = None
 
+    @property
+    def execution_description(self) -> str:
+        return (
+            "This load test starts a local control-plane against a mock Kubernetes API. "
+            "During bootstrap the requested targets are ensured as LOCAL fixture functions "
+            "and warmed up through the control-plane API; k6 then invokes the requested "
+            "targets sequentially over HTTP. It validates control-plane dispatch, k6 traffic, "
+            "and Prometheus metrics, not Kubernetes pods for the requested target images. "
+            "The bootstrap also provisions a separate demo-word-stats-deployment DEPLOYMENT "
+            "sanity check; that deployment is not the same as the requested load-test targets."
+        )
+
     @model_validator(mode="after")
     def hydrate_defaults(self) -> "LoadtestRequest":
         resolved_targets = (

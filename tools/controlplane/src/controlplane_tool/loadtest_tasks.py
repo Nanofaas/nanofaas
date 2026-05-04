@@ -147,6 +147,7 @@ def _summary_payload(
             "name": request.name,
             "scenario": request.scenario.name,
             "load_profile": request.load_profile.name,
+            "execution_description": request.execution_description,
             "targets": list(request.targets.targets if request.targets is not None else []),
             "target_results": [
                 result.model_dump(mode="json")

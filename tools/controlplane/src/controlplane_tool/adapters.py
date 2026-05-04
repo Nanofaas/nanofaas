@@ -19,11 +19,12 @@ from controlplane_tool.loadtest_bootstrap import LoadtestBootstrap, LoadtestBoot
 from controlplane_tool.loadtest_models import LoadtestRequest
 from controlplane_tool.metrics_gate import evaluate_metrics_gate
 from controlplane_tool.models import Profile
+from controlplane_tool.paths import default_tool_paths
 
 
 class ShellCommandAdapter:
     def __init__(self, repo_root: Path | None = None) -> None:
-        root = Path(repo_root) if repo_root else Path.cwd()
+        root = Path(repo_root) if repo_root else default_tool_paths().workspace_root
         self._gradle = GradleOps(root)
         self._k6 = K6Ops(root)
         self._bootstrap = LoadtestBootstrap(root)

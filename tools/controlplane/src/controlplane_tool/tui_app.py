@@ -67,7 +67,8 @@ def _saved_profile_description(name: str) -> str:
     except Exception:  # noqa: BLE001
         return (
             f"Reuse the saved profile '{name}' for build, validation, and load-testing workflows "
-            "without re-entering its defaults manually."
+            "without re-entering its defaults manually. Load tests use a local control-plane, "
+            "a mock Kubernetes API, and LOCAL fixture functions."
         )
 
     control_plane = getattr(profile, "control_plane", None)
@@ -86,7 +87,9 @@ def _saved_profile_description(name: str) -> str:
     )
     return (
         f"Reuse the saved profile '{name}'. Current defaults: implementation={implementation}, "
-        f"build={build_mode}, scenario={base_scenario}, cli={cli_default}, load={load_profile}."
+        f"build={build_mode}, scenario={base_scenario}, cli={cli_default}, load={load_profile}. "
+        "Load tests use a mock Kubernetes API and LOCAL fixture functions, not Kubernetes pods "
+        "for the requested target images."
     )
 
 
@@ -308,7 +311,7 @@ _MAIN_MENU_CHOICES = [
     _choice(
         "Load Testing",
         "loadtest",
-        "Bootstrap a scenario, drive k6 traffic, evaluate metrics gates, and generate the final benchmark report.",
+        "Run k6 against a local control-plane using a mock Kubernetes API and LOCAL fixture functions; this validates dispatch and metrics, not real target pods.",
     ),
     _choice(
         "Catalog",
@@ -526,12 +529,12 @@ _LOADTEST_ACTION_CHOICES = [
     _choice(
         "run — run load test with profile",
         "run",
-        "Execute the load-test workflow from bootstrap through metrics gate and final report generation.",
+        "Execute the load-test workflow with a local control-plane, mock Kubernetes API, and LOCAL fixture functions; requested target images are not Kubernetes pods.",
     ),
     _choice(
         "plan — show plan without executing",
         "plan",
-        "Resolve the active load-test request and show what would run, without executing traffic or bootstrap steps.",
+        "Show that the run would use a local control-plane, mock Kubernetes API, LOCAL fixture functions, sequential k6 traffic, and not Kubernetes pods.",
     ),
     _choice(
         "new profile — interactive wizard",
@@ -1563,6 +1566,9 @@ def _show_loadtest_plan(request: Any) -> None:
     table = Table(title="Load Test Plan", border_style="cyan dim", show_header=False)
     table.add_column("Field", style="dim")
     table.add_column("Value", style="cyan")
+    description = getattr(request, "execution_description", None)
+    if description:
+        table.add_row("execution", escape(str(description)))
     for attr in ("load_profile", "scenario", "metrics_gate", "runs_root"):
         val = getattr(request, attr, None)
         if val is not None:

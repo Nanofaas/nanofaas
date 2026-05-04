@@ -209,6 +209,11 @@ class TuiPrefectBridge:
         if phase is not None and phase.parent_task_id is None:
             self._sync_phase_metadata(phase, label, task_id, detail)
             return phase
+        if task_id is None:
+            for candidate in self._phases:
+                if candidate.parent_task_id is None and candidate.task_id is None and candidate.label == label:
+                    self._sync_phase_metadata(candidate, label, task_id, detail)
+                    return candidate
         phase = self._next_unassigned_top_level_phase()
         if phase is None:
             phase = TuiPhaseSnapshot(label=label, task_id=task_id, detail=detail)

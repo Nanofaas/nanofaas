@@ -103,6 +103,10 @@
       <h2>Loadtest Targets</h2>
       <p>Scenario: <strong>{{ summary.loadtest.scenario }}</strong></p>
       <p>Profile: <strong>{{ summary.loadtest.load_profile }}</strong></p>
+      {% if summary.loadtest.execution_description %}
+      <h3>Execution Semantics</h3>
+      <p>{{ summary.loadtest.execution_description }}</p>
+      {% endif %}
       <p>Requested targets: {{ summary.loadtest.targets | join(", ") }}</p>
       {% if summary.loadtest.target_results %}
       <table>

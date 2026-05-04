@@ -61,11 +61,22 @@ class FakeContext:
 # ---------------------------------------------------------------------------
 
 def test_adapter_constructs_with_no_args(tmp_path: Path) -> None:
-    # Should not raise; defaults to Path.cwd()
     adapter = ShellCommandAdapter(repo_root=tmp_path)
     assert adapter._gradle is not None
     assert adapter._k6 is not None
     assert adapter._bootstrap is not None
+
+
+def test_adapter_without_repo_root_uses_workspace_root_from_nested_tool_dir(
+    monkeypatch,
+) -> None:
+    workspace_root = Path(__file__).resolve().parents[3]
+    nested_tool_dir = workspace_root / "tools" / "controlplane"
+    monkeypatch.chdir(nested_tool_dir)
+
+    adapter = ShellCommandAdapter()
+
+    assert adapter._gradle.repo_root == workspace_root
 
 
 def test_adapter_result_is_alias_for_command_result() -> None:

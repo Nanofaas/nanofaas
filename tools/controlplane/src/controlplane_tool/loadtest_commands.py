@@ -249,6 +249,7 @@ def render_loadtest_plan(
         f"Loadtest: {request.name}",
         f"Scenario: {request.scenario.name}",
         f"Load profile: {request.load_profile.name}",
+        f"Execution semantics: {request.execution_description}",
         "Targets: " + ", ".join(request.targets.targets if request.targets is not None else []),
         "k6 stages:",
     ]

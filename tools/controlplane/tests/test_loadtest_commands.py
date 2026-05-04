@@ -29,6 +29,19 @@ def test_loadtest_run_dry_run_renders_resolved_scenario_and_k6_plan() -> None:
     assert "k6" in result.stdout.lower()
 
 
+def test_loadtest_run_dry_run_describes_mockk8s_local_fixture_semantics() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["loadtest", "run", "--saved-profile", "demo-javascript", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert "mock Kubernetes API" in result.stdout
+    assert "LOCAL fixture functions" in result.stdout
+    assert "not Kubernetes pods" in result.stdout
+    assert "sequentially" in result.stdout
+
+
 def test_loadtest_run_dry_run_resolves_scenario_file_from_workspace_root(
     monkeypatch,
 ) -> None:

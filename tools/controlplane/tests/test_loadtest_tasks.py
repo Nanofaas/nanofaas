@@ -73,4 +73,12 @@ def test_write_report_task_persists_summary_and_html(tmp_path: Path) -> None:
     assert step.name == "report"
     assert summary["final_status"] == "passed"
     assert summary["steps"][0]["name"] == "bootstrap"
+    assert "mock Kubernetes API" in summary["loadtest"]["execution_description"]
+    assert "LOCAL fixture functions" in summary["loadtest"]["execution_description"]
+    assert "not Kubernetes pods" in summary["loadtest"]["execution_description"]
+    assert "sequentially" in summary["loadtest"]["execution_description"]
     assert (tmp_path / "report.html").exists()
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
+    assert "Execution Semantics" in html
+    assert "mock Kubernetes API" in html
+    assert "LOCAL fixture functions" in html
