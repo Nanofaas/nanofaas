@@ -11,15 +11,17 @@ from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
 from controlplane_tool.functions.catalog import function_runtime_allowlist_for_scenario
 from controlplane_tool.core.models import ScenarioSelectionConfig
-from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
 from controlplane_tool.workspace.profiles import load_profile
-from controlplane_tool.scenario.scenario_loader import (
-    load_scenario_file,
-    overlay_scenario_selection,
-    resolve_scenario_spec,
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.scenario.selection_resolution import (
+    configured_scenario_path,
+    overlay_selected_scenario,
+    parse_function_csv,
+    resolved_scenario_from_config,
 )
-from controlplane_tool.scenario.scenario_models import ResolvedScenario, ScenarioSpec
+from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 E2E_CONTEXT_SETTINGS = {
@@ -110,12 +112,6 @@ def _build_request(
     )
 
 
-def _parse_csv(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
 def _render_plan(plan: ScenarioPlan, *, flow_task_ids: list[str] | None = None) -> None:
     def _display_command(command: list[str]) -> str:
         rendered = " ".join(command)
@@ -171,52 +167,6 @@ def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
     return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
 
 
-def _configured_scenario_path(path: str | None) -> Path | None:
-    if not path:
-        return None
-    return resolve_workspace_path(Path(path))
-
-
-def _resolved_from_config(
-    config: ScenarioSelectionConfig,
-    *,
-    name: str,
-    scenario: str,
-    runtime: str,
-    namespace: str | None,
-    local_registry: str,
-) -> ResolvedScenario:
-    return resolve_scenario_spec(
-        ScenarioSpec(
-            name=name,
-            base_scenario=scenario,
-            runtime=runtime,
-            function_preset=config.function_preset,
-            functions=list(config.functions),
-            namespace=namespace if namespace is not None else config.namespace,
-            local_registry=local_registry or config.local_registry,
-        )
-    )
-
-
-def _reload_with_overrides(
-    scenario: ResolvedScenario,
-    *,
-    base_scenario: str,
-    runtime: str,
-    namespace: str | None,
-    local_registry: str,
-) -> ResolvedScenario:
-    return overlay_scenario_selection(
-        scenario.model_copy(update={"base_scenario": base_scenario}),
-        function_preset=scenario.function_preset,
-        functions=[] if scenario.function_preset else list(scenario.function_keys),
-        runtime=runtime,
-        namespace=namespace,
-        local_registry=local_registry,
-    )
-
-
 def _validate_scenario_function_selection(scenario: ResolvedScenario) -> None:
     allowed_runtimes = function_runtime_allowlist_for_scenario(scenario.base_scenario)
     if allowed_runtimes is None:
@@ -268,7 +218,7 @@ def _resolve_run_request(
     scenario_file: Path | None,
     saved_profile: str | None,
 ) -> E2eRequest:
-    explicit_functions = _parse_csv(functions_csv)
+    explicit_functions = parse_function_csv(functions_csv)
     if function_preset and explicit_functions:
         raise ValueError("function selection must use only one of --function-preset or --functions")
 
@@ -277,12 +227,12 @@ def _resolve_run_request(
     profile_runtime = profile.control_plane.implementation if profile is not None else None
 
     profile_file_scenario = (
-        load_scenario_file(_configured_scenario_path(profile_selection.scenario_file))
-        if _configured_scenario_path(profile_selection.scenario_file) is not None
+        load_scenario_file(configured_scenario_path(profile_selection.scenario_file))
+        if configured_scenario_path(profile_selection.scenario_file) is not None
         else None
     )
     explicit_file_scenario = (
-        load_scenario_file(resolve_workspace_path(scenario_file))
+        load_scenario_file(configured_scenario_path(scenario_file))
         if scenario_file is not None
         else None
     )
@@ -320,15 +270,16 @@ def _resolve_run_request(
     resolved_scenario: ResolvedScenario
     scenario_source: str
     request_scenario_file = (
-        resolve_workspace_path(scenario_file)
+        configured_scenario_path(scenario_file)
         if scenario_file is not None
         else None
     )
 
     if function_preset or explicit_functions:
         if explicit_file_scenario is not None:
-            resolved_scenario = overlay_scenario_selection(
-                explicit_file_scenario.model_copy(update={"base_scenario": effective_scenario}),
+            resolved_scenario = overlay_selected_scenario(
+                explicit_file_scenario,
+                base_scenario=effective_scenario,
                 function_preset=function_preset,
                 functions=explicit_functions,
                 runtime=effective_runtime,
@@ -337,8 +288,9 @@ def _resolve_run_request(
             )
             scenario_source = "scenario file + CLI override"
         elif profile_file_scenario is not None:
-            resolved_scenario = overlay_scenario_selection(
-                profile_file_scenario.model_copy(update={"base_scenario": effective_scenario}),
+            resolved_scenario = overlay_selected_scenario(
+                profile_file_scenario,
+                base_scenario=effective_scenario,
                 function_preset=function_preset,
                 functions=explicit_functions,
                 runtime=effective_runtime,
@@ -346,9 +298,9 @@ def _resolve_run_request(
                 local_registry=effective_registry,
             )
             scenario_source = f"saved profile: {saved_profile} + CLI override"
-            request_scenario_file = _configured_scenario_path(profile_selection.scenario_file)
+            request_scenario_file = configured_scenario_path(profile_selection.scenario_file)
         else:
-            resolved_scenario = _resolved_from_config(
+            resolved_scenario = resolved_scenario_from_config(
                 ScenarioSelectionConfig(
                     base_scenario=effective_scenario,
                     function_preset=function_preset,
@@ -357,14 +309,14 @@ def _resolve_run_request(
                     local_registry=effective_registry,
                 ),
                 name=f"{effective_scenario}-cli",
-                scenario=effective_scenario,
+                base_scenario=effective_scenario,
                 runtime=effective_runtime,
                 namespace=effective_namespace,
                 local_registry=effective_registry,
             )
             scenario_source = "explicit CLI override"
     elif explicit_file_scenario is not None:
-        resolved_scenario = _reload_with_overrides(
+        resolved_scenario = overlay_selected_scenario(
             explicit_file_scenario,
             base_scenario=effective_scenario,
             runtime=effective_runtime,
@@ -373,7 +325,7 @@ def _resolve_run_request(
         )
         scenario_source = f"scenario file: {explicit_file_scenario.source_path}"
     elif profile_file_scenario is not None:
-        resolved_scenario = _reload_with_overrides(
+        resolved_scenario = overlay_selected_scenario(
             profile_file_scenario,
             base_scenario=effective_scenario,
             runtime=effective_runtime,
@@ -381,12 +333,12 @@ def _resolve_run_request(
             local_registry=effective_registry,
         )
         scenario_source = f"saved profile: {saved_profile}"
-        request_scenario_file = _configured_scenario_path(profile_selection.scenario_file)
+        request_scenario_file = configured_scenario_path(profile_selection.scenario_file)
     elif profile_selection.function_preset or profile_selection.functions:
-        resolved_scenario = _resolved_from_config(
+        resolved_scenario = resolved_scenario_from_config(
             profile_selection,
             name=f"profile-{saved_profile or 'default'}",
-            scenario=effective_scenario,
+            base_scenario=effective_scenario,
             runtime=effective_runtime,
             namespace=effective_namespace,
             local_registry=effective_registry,
@@ -394,10 +346,10 @@ def _resolve_run_request(
         scenario_source = f"saved profile: {saved_profile}"
     else:
         default_selection = _default_selection_for(effective_scenario)
-        resolved_scenario = _resolved_from_config(
+        resolved_scenario = resolved_scenario_from_config(
             default_selection,
             name=f"{effective_scenario}-default",
-            scenario=effective_scenario,
+            base_scenario=effective_scenario,
             runtime=effective_runtime,
             namespace=effective_namespace,
             local_registry=effective_registry,
@@ -518,8 +470,8 @@ def e2e_all(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
-        selected_names = _parse_csv(only)
-        skipped_names = _parse_csv(skip)
+        selected_names = parse_function_csv(only)
+        skipped_names = parse_function_csv(skip)
         candidate_names = selected_names or [scenario.name for scenario in list_scenarios()]
         active_names = [scenario_name for scenario_name in candidate_names if scenario_name not in skipped_names]
         needs_vm = any(resolve_scenario(scenario_name).requires_vm for scenario_name in active_names)
@@ -539,8 +491,8 @@ def e2e_all(
 
         runner = _runner()
         plans = runner.plan_all(
-            only=_parse_csv(only),
-            skip=_parse_csv(skip),
+            only=selected_names,
+            skip=skipped_names,
             runtime=runtime,
             vm_request=vm_request,
             cleanup_vm=cleanup_vm,
@@ -557,8 +509,8 @@ def e2e_all(
         flow = resolve_flow_definition(
             "e2e.all",
             runner=runner,
-            only=_parse_csv(only),
-            skip=_parse_csv(skip),
+            only=selected_names,
+            skip=skipped_names,
             runtime=runtime,
             vm_request=vm_request,
             cleanup_vm=cleanup_vm,
