@@ -47,7 +47,7 @@ def resolved_scenario_from_config(
     return resolve_scenario_spec(
         ScenarioSpec(
             name=name,
-            base_scenario=config.base_scenario or base_scenario,
+            base_scenario=base_scenario,
             runtime=runtime,
             function_preset=config.function_preset,
             functions=list(config.functions),

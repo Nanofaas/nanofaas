@@ -75,6 +75,22 @@ def test_resolved_scenario_from_config_uses_default_base_scenario() -> None:
     assert scenario.function_preset == "demo-java"
 
 
+def test_resolved_scenario_from_config_prefers_argument_base_scenario() -> None:
+    scenario = resolved_scenario_from_config(
+        ScenarioSelectionConfig(
+            base_scenario="cli-stack",
+            function_preset="demo-java",
+        ),
+        name="cli-test-selection",
+        base_scenario="k3s-junit-curl",
+        runtime="java",
+        namespace="demo",
+        local_registry="localhost:5000",
+    )
+
+    assert scenario.base_scenario == "k3s-junit-curl"
+
+
 def test_overlay_selected_scenario_preserves_manifest_functions_with_overrides() -> None:
     original = resolve_scenario_spec(
         ScenarioSpec(
