@@ -7,7 +7,7 @@ from typing import Callable, Literal
 
 from multipass import MultipassClient
 
-from controlplane_tool.core.command_resolver import CommandResolver
+from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from tui_toolkit import bind_workflow_context
