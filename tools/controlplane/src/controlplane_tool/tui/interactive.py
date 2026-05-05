@@ -21,8 +21,8 @@ from controlplane_tool.core.models import (
 )
 from controlplane_tool.loadtest.metrics_contract import CORE_REQUIRED_METRICS
 from controlplane_tool.building.module_catalog import module_choices
-from controlplane_tool.app.paths import default_tool_paths
-from controlplane_tool.app.profiles import save_profile
+from controlplane_tool.workspace.paths import default_tool_paths
+from controlplane_tool.workspace.profiles import save_profile
 from tui_toolkit.pickers import select as _select_value, multiselect as _checkbox_values
 
 DEFAULT_REQUIRED_METRICS: tuple[str, ...] = CORE_REQUIRED_METRICS

@@ -185,6 +185,8 @@ Loadtest runs write profiles and reports under:
 ## Package architecture checks
 
 The Python package is split into semantic packages under `controlplane_tool/`.
+`controlplane_tool.app` is reserved for entrypoints; shared path discovery, settings,
+and saved-profile persistence live under `controlplane_tool.workspace`.
 Use the import contracts as the hard boundary check:
 
 ```bash

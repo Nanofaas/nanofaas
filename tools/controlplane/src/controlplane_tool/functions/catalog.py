@@ -7,7 +7,7 @@ from typing import cast
 import yaml
 
 from controlplane_tool.core.models import FunctionRuntimeKind
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 
 
 @dataclass(frozen=True)

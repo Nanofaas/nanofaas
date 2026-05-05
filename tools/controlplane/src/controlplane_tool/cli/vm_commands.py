@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from tui_toolkit import fail
 from tui_toolkit.console import console
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest

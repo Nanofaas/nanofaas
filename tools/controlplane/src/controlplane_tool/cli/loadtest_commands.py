@@ -20,8 +20,8 @@ from controlplane_tool.core.models import (
     ScenarioSelectionConfig,
     TestsConfig,
 )
-from controlplane_tool.app.paths import default_tool_paths, resolve_workspace_path
-from controlplane_tool.app.profiles import load_profile as load_saved_profile, profile_path
+from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.profiles import load_profile as load_saved_profile, profile_path
 from controlplane_tool.scenario.scenario_loader import load_scenario_file, resolve_scenario_spec
 from controlplane_tool.scenario.scenario_models import ResolvedScenario, ScenarioSpec
 

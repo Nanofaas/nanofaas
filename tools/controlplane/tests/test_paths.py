@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from controlplane_tool.app.paths import ToolPaths, resolve_workspace_path
+from controlplane_tool.workspace.paths import ToolPaths, resolve_workspace_path
 
 
 def test_default_paths_are_rooted_under_tools_controlplane() -> None:
@@ -24,7 +24,7 @@ def test_resolve_workspace_path_prefers_active_worktree_root(
     scenario_path.write_text('name = "demo"\nbase_scenario = "k3s-junit-curl"\nruntime = "java"\n', encoding="utf-8")
 
     monkeypatch.setattr(
-        "controlplane_tool.app.paths.default_tool_paths",
+        "controlplane_tool.workspace.paths.default_tool_paths",
         lambda: ToolPaths.repo_root(workspace_root),
     )
     monkeypatch.chdir("/")
@@ -53,7 +53,7 @@ def test_resolve_workspace_path_resolves_repo_root_assets_from_nested_tool_dir(
     gitignore_path.write_text("tools/controlplane/runs/\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "controlplane_tool.app.paths.default_tool_paths",
+        "controlplane_tool.workspace.paths.default_tool_paths",
         lambda: ToolPaths.repo_root(workspace_root),
     )
     monkeypatch.chdir(nested_tool_dir)

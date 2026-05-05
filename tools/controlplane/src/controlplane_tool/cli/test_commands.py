@@ -12,8 +12,8 @@ from controlplane_tool.cli_validation.cli_test_catalog import (
 from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
 from controlplane_tool.cli_validation.cli_test_runner import CliTestPlan, CliTestRunner
 from controlplane_tool.core.models import ScenarioSelectionConfig
-from controlplane_tool.app.paths import default_tool_paths, resolve_workspace_path
-from controlplane_tool.app.profiles import load_profile, profile_path
+from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.profiles import load_profile, profile_path
 from controlplane_tool.scenario.scenario_loader import (
     load_scenario_file,
     overlay_scenario_selection,

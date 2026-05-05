@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.building.gradle_planner import (
     build_gradle_command,
     plan_module_matrix_commands,

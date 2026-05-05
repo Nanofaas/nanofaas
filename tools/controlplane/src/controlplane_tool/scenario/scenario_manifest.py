@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from uuid import uuid4
 
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
 
 SCENARIO_MANIFEST_SYSTEM_PROPERTY = "nanofaas.e2e.scenarioManifest"

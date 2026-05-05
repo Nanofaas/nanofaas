@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.app.paths import resolve_workspace_path
+from controlplane_tool.workspace.paths import resolve_workspace_path
 
 
 def test_tool_readme_documents_package_architecture_checks() -> None:
