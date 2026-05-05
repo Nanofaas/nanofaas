@@ -277,7 +277,7 @@ local_registry = "registry:5000"
         cleanup_vm=True,
         namespace="override",
         local_registry="localhost:5001",
-        function_preset="demo-java",
+        function_preset="demo-javascript",
         functions_csv=None,
         scenario_file=None,
         saved_profile="saved",
@@ -287,7 +287,11 @@ local_registry = "registry:5000"
     assert request.resolved_scenario.runtime == "rust"
     assert request.resolved_scenario.namespace == "override"
     assert request.resolved_scenario.local_registry == "localhost:5001"
-    assert request.resolved_scenario.function_preset == "demo-java"
+    assert request.resolved_scenario.function_preset == "demo-javascript"
+    assert request.resolved_scenario.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]
 
 
 def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:

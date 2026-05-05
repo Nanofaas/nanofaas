@@ -142,3 +142,30 @@ def test_overlay_selected_scenario_accepts_explicit_function_override() -> None:
 
     assert updated.function_preset is None
     assert updated.function_keys == ["word-stats-java"]
+
+
+def test_overlay_selected_scenario_accepts_explicit_preset_override() -> None:
+    original = resolve_scenario_spec(
+        ScenarioSpec(
+            name="manifest",
+            base_scenario="k3s-junit-curl",
+            runtime="java",
+            function_preset="demo-java",
+            namespace="original",
+            local_registry="registry:5000",
+        )
+    )
+
+    updated = overlay_selected_scenario(
+        original,
+        function_preset="demo-javascript",
+        runtime="java",
+        namespace="override",
+        local_registry="localhost:5001",
+    )
+
+    assert updated.function_preset == "demo-javascript"
+    assert updated.function_keys == [
+        "word-stats-javascript",
+        "json-transform-javascript",
+    ]

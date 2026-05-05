@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Final, cast
 
 from controlplane_tool.core.models import ScenarioSelectionConfig
 from controlplane_tool.scenario.scenario_loader import (
@@ -9,6 +10,8 @@ from controlplane_tool.scenario.scenario_loader import (
 )
 from controlplane_tool.scenario.scenario_models import ResolvedScenario, ScenarioSpec
 from controlplane_tool.workspace.paths import resolve_workspace_path
+
+_FUNCTION_SELECTION_UNSET: Final = object()
 
 
 def parse_function_csv(value: str | None) -> list[str]:
@@ -61,7 +64,7 @@ def overlay_selected_scenario(
     scenario: ResolvedScenario,
     *,
     base_scenario: str | None = None,
-    function_preset: str | None = None,
+    function_preset: str | None | object = _FUNCTION_SELECTION_UNSET,
     functions: list[str] | None = None,
     runtime: str,
     namespace: str | None,
@@ -74,9 +77,13 @@ def overlay_selected_scenario(
     )
     selected_preset = scenario.function_preset
     selected_functions = [] if scenario.function_preset else list(scenario.function_keys)
-    if functions is not None:
-        selected_preset = function_preset
-        selected_functions = functions
+    if function_preset is not _FUNCTION_SELECTION_UNSET or functions is not None:
+        selected_preset = (
+            cast(str | None, function_preset)
+            if function_preset is not _FUNCTION_SELECTION_UNSET
+            else None
+        )
+        selected_functions = functions if functions is not None else []
     return overlay_scenario_selection(
         source,
         function_preset=selected_preset,
