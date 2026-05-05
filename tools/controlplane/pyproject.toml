@@ -37,6 +37,9 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
+    "grimp>=3.14",
+    "import-linter>=2.11",
+    "pydeps>=3.0.6",
     "pytest>=9.0.3",
 ]
 
