@@ -25,7 +25,7 @@ controlplane_tool.functions       function catalog and control-plane API helpers
 controlplane_tool.infra           VM, runtime, registry, Prometheus, Kubernetes support
 controlplane_tool.loadtest        k6, load-test flow, metrics gate, reports
 controlplane_tool.orchestation    flow catalog, local flow orchestration, Prefect adapters
-controlplane_tool.scenario        scenario models, planner, component library
+controlplane_tool.scenario        scenario models, planner, component library, shared selection resolution
 controlplane_tool.sut             SUT preflight helpers
 controlplane_tool.tui             interactive TUI
 controlplane_tool.workspace       paths, profiles, settings

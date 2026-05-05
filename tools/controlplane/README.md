@@ -128,6 +128,15 @@ Selection precedence is:
 
 When a CLI override is combined with `--scenario-file` or `--saved-profile`, the tool preserves the base scenario metadata (`invoke`, payload mapping, namespace, and `load.profile`) and narrows `load.targets` and payloads to the selected subset instead of rebuilding the scenario from scratch.
 
+`controlplane_tool.scenario.selection_resolution` owns shared scenario/profile
+selection primitives used by CLI surfaces: CSV parsing, workspace-relative
+scenario paths, explicit selection detection, construction from
+`ScenarioSelectionConfig`, and overlaying runtime/namespace/registry or
+function-selection overrides onto an existing scenario. Command modules keep
+request construction, validation, and rendering local to their command surface.
+Use `controlplane_tool.scenario.scenario_loader` directly only for lower-level
+scenario manifest loading and raw scenario overlay operations.
+
 Loadtest saved profiles can also persist:
 
 - `loadtest.default_load_profile`
