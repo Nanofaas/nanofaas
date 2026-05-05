@@ -6,7 +6,6 @@ import subprocess
 from threading import Thread
 
 from tui_toolkit import workflow_log
-from controlplane_tool.workflow.workflow_models import WorkflowContext
 
 
 def spawn_logged_process(
@@ -15,7 +14,7 @@ def spawn_logged_process(
     cwd: Path,
     env: dict[str, str] | None = None,
     log_path: Path,
-    workflow_context: WorkflowContext | None = None,
+    workflow_context: object | None = None,
 ) -> subprocess.Popen[str]:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = log_path.open("a", encoding="utf-8")

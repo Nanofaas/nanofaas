@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 
 from controlplane_tool.orchestation.adapters import ShellCommandAdapter
+from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.building.tasks import (
     CommandExecutionResult,
     api_tests_task,
@@ -144,8 +145,6 @@ def build_gradle_action_flow(
     dry_run: bool,
     executor: object | None = None,
 ) -> LocalFlowDefinition[CommandExecutionResult]:
-    from controlplane_tool.cli.commands import GradleCommandExecutor
-
     active_executor = executor or GradleCommandExecutor()
     flow_id = f"building.{action}"
     return LocalFlowDefinition(

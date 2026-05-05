@@ -1,5 +1,5 @@
 """
-command_resolver.py — Stateless placeholder substitution for scenario plan steps.
+command_resolver.py - Stateless placeholder substitution for scenario plan steps.
 
 Extracted from E2eRunner to isolate env-building from orchestration.
 """
@@ -15,7 +15,6 @@ from controlplane_tool.infra.vm.vm_models import VmRequest
 class CommandResolver:
     """Resolves <placeholder> tokens in scenario step commands and env dicts."""
 
-    # Matches the dry-run placeholder inserted by resolve_connection_host
     _MULTIPASS_IP_RE = re.compile(r"<multipass-ip:([^>]+)>")
 
     def __init__(
@@ -24,15 +23,13 @@ class CommandResolver:
     ) -> None:
         self._host_resolver = host_resolver
 
-    # ── simple generic replacement API (testable without VM) ────────────────
-
     def _replace(self, text: str, replacements: dict[str, str]) -> str:
         for key, value in replacements.items():
             text = text.replace(f"<{key}>", value)
         return text
 
     def resolve_placeholder_text(self, text: str) -> str:
-        """Return text unchanged — override point for runtime IP injection."""
+        """Return text unchanged - override point for runtime IP injection."""
         return text
 
     def resolve_command(
@@ -41,8 +38,6 @@ class CommandResolver:
         env: dict[str, str],
     ) -> list[str]:
         return [self._replace(token, env) for token in command]
-
-    # ── multipass IP resolution (used during execution) ──────────────────────
 
     def _resolve_ip(self, vm: VmOrchestrator, vm_request: VmRequest) -> str:
         """Resolve the real IP of a VM, using an injected resolver if provided."""

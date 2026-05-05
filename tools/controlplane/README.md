@@ -182,6 +182,35 @@ Loadtest runs write profiles and reports under:
 - The metrics flow auto-starts a tool-managed control-plane runtime when needed.
 - Strict metric gating can be enabled with `strict_required = true`.
 
+## Package architecture checks
+
+The Python package is split into semantic packages under `controlplane_tool/`.
+Use the import contracts as the hard boundary check:
+
+```bash
+uv run lint-imports
+```
+
+Use the coupling report to inspect package cohesion and cross-package imports:
+
+```bash
+uv run controlplane-package-report
+```
+
+Use `pydeps` for a visual graph when investigating a dependency tangle:
+
+```bash
+uv run pydeps controlplane_tool --show-deps --max-bacon 2
+```
+
+Use GitNexus before moving public symbols or changing flow-level dependencies:
+
+```text
+gitnexus_context({name: "LoadtestRunner"})
+gitnexus_impact({target: "LoadtestRunner", direction: "upstream"})
+gitnexus_detect_changes({scope: "staged"})
+```
+
 ## Advanced
 
 Raw Gradle commands remain available for low-level workflows, but the wrapper-based UX above is the primary path for milestone 3.

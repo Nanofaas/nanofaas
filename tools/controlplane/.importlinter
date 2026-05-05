@@ -1,0 +1,59 @@
+[importlinter]
+root_package = controlplane_tool
+
+[importlinter:contract:core_is_independent]
+name = core must not import feature packages
+type = forbidden
+source_modules =
+    controlplane_tool.core
+forbidden_modules =
+    controlplane_tool.app
+    controlplane_tool.building
+    controlplane_tool.cli
+    controlplane_tool.cli_validation
+    controlplane_tool.e2e
+    controlplane_tool.functions
+    controlplane_tool.infra
+    controlplane_tool.loadtest
+    controlplane_tool.orchestation
+    controlplane_tool.scenario
+    controlplane_tool.sut
+    controlplane_tool.tui
+    controlplane_tool.workflow
+
+[importlinter:contract:no_runtime_dependency_on_tui]
+name = runtime packages must not depend on tui
+type = forbidden
+source_modules =
+    controlplane_tool.building
+    controlplane_tool.cli
+    controlplane_tool.cli_validation
+    controlplane_tool.core
+    controlplane_tool.e2e
+    controlplane_tool.functions
+    controlplane_tool.infra
+    controlplane_tool.loadtest
+    controlplane_tool.orchestation
+    controlplane_tool.scenario
+    controlplane_tool.sut
+    controlplane_tool.workflow
+forbidden_modules =
+    controlplane_tool.tui
+
+[importlinter:contract:no_lower_level_dependency_on_cli]
+name = lower-level packages must not depend on cli command modules
+type = forbidden
+source_modules =
+    controlplane_tool.building
+    controlplane_tool.cli_validation
+    controlplane_tool.core
+    controlplane_tool.e2e
+    controlplane_tool.functions
+    controlplane_tool.infra
+    controlplane_tool.loadtest
+    controlplane_tool.orchestation
+    controlplane_tool.scenario
+    controlplane_tool.sut
+    controlplane_tool.workflow
+forbidden_modules =
+    controlplane_tool.cli
