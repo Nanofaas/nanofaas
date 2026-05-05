@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 controlplane-tool = "controlplane_tool.app.main:main"
+controlplane-package-report = "controlplane_tool.devtools.package_report:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
