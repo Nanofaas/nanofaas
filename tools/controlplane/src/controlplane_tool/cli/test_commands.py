@@ -12,14 +12,17 @@ from controlplane_tool.cli_validation.cli_test_catalog import (
 from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
 from controlplane_tool.cli_validation.cli_test_runner import CliTestPlan, CliTestRunner
 from controlplane_tool.core.models import ScenarioSelectionConfig
-from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.workspace.profiles import load_profile, profile_path
-from controlplane_tool.scenario.scenario_loader import (
-    load_scenario_file,
-    overlay_scenario_selection,
-    resolve_scenario_spec,
+from controlplane_tool.scenario.scenario_loader import load_scenario_file
+from controlplane_tool.scenario.selection_resolution import (
+    configured_scenario_path,
+    explicit_selection_requested,
+    overlay_selected_scenario,
+    parse_function_csv,
+    resolved_scenario_from_config,
 )
-from controlplane_tool.scenario.scenario_models import ResolvedScenario, ScenarioSpec
+from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 CLI_TEST_CONTEXT_SETTINGS = {
@@ -35,18 +38,6 @@ cli_test_app = typer.Typer(
 
 def _runner() -> CliTestRunner:
     return CliTestRunner(default_tool_paths().workspace_root)
-
-
-def _parse_csv(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-def _configured_scenario_path(path: str | None) -> Path | None:
-    if not path:
-        return None
-    return resolve_workspace_path(Path(path))
 
 
 def _build_vm_request(
@@ -69,45 +60,6 @@ def _build_vm_request(
         cpus=cpus,
         memory=memory,
         disk=disk,
-    )
-
-
-def _resolved_from_config(
-    config: ScenarioSelectionConfig,
-    *,
-    name: str,
-    default_base_scenario: str,
-    runtime: str,
-    namespace: str | None,
-    local_registry: str,
-) -> ResolvedScenario:
-    return resolve_scenario_spec(
-        ScenarioSpec(
-            name=name,
-            base_scenario=config.base_scenario or default_base_scenario,
-            runtime=runtime,
-            function_preset=config.function_preset,
-            functions=list(config.functions),
-            namespace=namespace if namespace is not None else config.namespace,
-            local_registry=local_registry or config.local_registry,
-        )
-    )
-
-
-def _reload_with_overrides(
-    scenario: ResolvedScenario,
-    *,
-    runtime: str,
-    namespace: str | None,
-    local_registry: str,
-) -> ResolvedScenario:
-    return overlay_scenario_selection(
-        scenario,
-        function_preset=scenario.function_preset,
-        functions=[] if scenario.function_preset else list(scenario.function_keys),
-        runtime=runtime,
-        namespace=namespace,
-        local_registry=local_registry,
     )
 
 
@@ -146,15 +98,6 @@ def _handle_validation(action) -> None:
         raise typer.Exit(code=2)
 
 
-def _has_explicit_selection(
-    *,
-    function_preset: str | None,
-    explicit_functions: list[str],
-    scenario_file: Path | None,
-) -> bool:
-    return bool(function_preset or explicit_functions or scenario_file is not None)
-
-
 def _load_profile_or_raise(name: str | None):
     if name is None:
         return None
@@ -166,7 +109,9 @@ def _load_profile_or_raise(name: str | None):
 def _load_scenario_or_raise(path: Path | None) -> ResolvedScenario | None:
     if path is None:
         return None
-    resolved_path = resolve_workspace_path(path)
+    resolved_path = configured_scenario_path(path)
+    if resolved_path is None:
+        return None
     if not resolved_path.exists():
         raise FileNotFoundError(f"Scenario file not found: {resolved_path}")
     return load_scenario_file(resolved_path)
@@ -192,7 +137,7 @@ def _resolve_run_request(
     scenario_file: Path | None,
     saved_profile: str | None,
 ) -> CliTestRequest:
-    explicit_functions = _parse_csv(functions_csv)
+    explicit_functions = parse_function_csv(functions_csv)
     if function_preset and explicit_functions:
         raise ValueError("function selection must use only one of --function-preset or --functions")
 
@@ -209,10 +154,10 @@ def _resolve_run_request(
         )
 
     scenario_definition = resolve_cli_test_scenario(effective_scenario)
-    explicit_file_path = _configured_scenario_path(str(scenario_file)) if scenario_file is not None else None
-    has_explicit_selection = _has_explicit_selection(
+    explicit_file_path = configured_scenario_path(scenario_file) if scenario_file is not None else None
+    has_explicit_selection = explicit_selection_requested(
         function_preset=function_preset,
-        explicit_functions=explicit_functions,
+        functions=explicit_functions,
         scenario_file=explicit_file_path,
     )
 
@@ -220,7 +165,7 @@ def _resolve_run_request(
         raise ValueError(f"scenario '{effective_scenario}' does not accept function selection")
 
     profile_file_path = (
-        _configured_scenario_path(profile_selection.scenario_file)
+        configured_scenario_path(profile_selection.scenario_file)
         if scenario_definition.accepts_function_selection
         else None
     )
@@ -267,7 +212,7 @@ def _resolve_run_request(
 
         if function_preset or explicit_functions:
             if explicit_file_scenario is not None:
-                resolved_scenario = overlay_scenario_selection(
+                resolved_scenario = overlay_selected_scenario(
                     explicit_file_scenario,
                     function_preset=function_preset,
                     functions=explicit_functions,
@@ -277,7 +222,7 @@ def _resolve_run_request(
                 )
                 scenario_source = "scenario file + CLI override"
             elif profile_file_scenario is not None:
-                resolved_scenario = overlay_scenario_selection(
+                resolved_scenario = overlay_selected_scenario(
                     profile_file_scenario,
                     function_preset=function_preset,
                     functions=explicit_functions,
@@ -288,7 +233,7 @@ def _resolve_run_request(
                 scenario_source = f"saved profile: {saved_profile} + CLI override"
                 request_scenario_file = profile_file_path
             else:
-                resolved_scenario = _resolved_from_config(
+                resolved_scenario = resolved_scenario_from_config(
                     ScenarioSelectionConfig(
                         base_scenario=profile_selection.base_scenario or default_base_scenario,
                         function_preset=function_preset,
@@ -297,14 +242,14 @@ def _resolve_run_request(
                         local_registry=effective_registry,
                     ),
                     name=f"{effective_scenario}-cli-test",
-                    default_base_scenario=default_base_scenario,
+                    base_scenario=profile_selection.base_scenario or default_base_scenario,
                     runtime=effective_runtime,
                     namespace=effective_namespace,
                     local_registry=effective_registry,
                 )
                 scenario_source = "explicit CLI override"
         elif explicit_file_scenario is not None:
-            resolved_scenario = _reload_with_overrides(
+            resolved_scenario = overlay_selected_scenario(
                 explicit_file_scenario,
                 runtime=effective_runtime,
                 namespace=effective_namespace,
@@ -312,7 +257,7 @@ def _resolve_run_request(
             )
             scenario_source = f"scenario file: {explicit_file_scenario.source_path}"
         elif profile_file_scenario is not None:
-            resolved_scenario = _reload_with_overrides(
+            resolved_scenario = overlay_selected_scenario(
                 profile_file_scenario,
                 runtime=effective_runtime,
                 namespace=effective_namespace,
@@ -321,10 +266,10 @@ def _resolve_run_request(
             scenario_source = f"saved profile: {saved_profile}"
             request_scenario_file = profile_file_path
         elif profile_selection.function_preset or profile_selection.functions:
-            resolved_scenario = _resolved_from_config(
+            resolved_scenario = resolved_scenario_from_config(
                 profile_selection,
                 name=f"profile-{saved_profile or 'default'}",
-                default_base_scenario=default_base_scenario,
+                base_scenario=profile_selection.base_scenario or default_base_scenario,
                 runtime=effective_runtime,
                 namespace=effective_namespace,
                 local_registry=effective_registry,
