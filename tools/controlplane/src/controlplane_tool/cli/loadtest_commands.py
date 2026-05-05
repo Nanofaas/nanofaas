@@ -20,8 +20,9 @@ from controlplane_tool.core.models import (
     ScenarioSelectionConfig,
     TestsConfig,
 )
-from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.workspace.profiles import load_profile as load_saved_profile, profile_path
+from controlplane_tool.scenario.selection_resolution import configured_scenario_path
 from controlplane_tool.scenario.scenario_loader import load_scenario_file, resolve_scenario_spec
 from controlplane_tool.scenario.scenario_models import ResolvedScenario, ScenarioSpec
 
@@ -84,21 +85,18 @@ def _default_profile_for_scenario(name: str, scenario: ResolvedScenario) -> Prof
     )
 
 
-def _configured_scenario_path(path: str | None) -> Path | None:
-    if not path:
-        return None
-    return resolve_workspace_path(Path(path))
-
-
 def _resolve_scenario(profile: Profile, scenario_file: Path | None) -> ResolvedScenario:
     if scenario_file is not None:
-        return load_scenario_file(resolve_workspace_path(scenario_file))
+        resolved_scenario_file = configured_scenario_path(scenario_file)
+        if resolved_scenario_file is None:
+            raise FileNotFoundError(str(scenario_file))
+        return load_scenario_file(resolved_scenario_file)
 
-    configured_loadtest_scenario = _configured_scenario_path(profile.loadtest.scenario_file)
+    configured_loadtest_scenario = configured_scenario_path(profile.loadtest.scenario_file)
     if configured_loadtest_scenario is not None:
         return load_scenario_file(configured_loadtest_scenario)
 
-    configured_profile_scenario = _configured_scenario_path(profile.scenario.scenario_file)
+    configured_profile_scenario = configured_scenario_path(profile.scenario.scenario_file)
     if configured_profile_scenario is not None:
         return load_scenario_file(configured_profile_scenario)
 
@@ -133,7 +131,10 @@ def build_loadtest_request(
         scenario = _resolve_scenario(active_profile, scenario_file)
         active_profile = active_profile.model_copy(update={"name": saved_profile}, deep=True)
     elif scenario_file is not None:
-        scenario = load_scenario_file(resolve_workspace_path(scenario_file))
+        resolved_scenario_file = configured_scenario_path(scenario_file)
+        if resolved_scenario_file is None:
+            raise FileNotFoundError(str(scenario_file))
+        scenario = load_scenario_file(resolved_scenario_file)
         active_profile = _default_profile_for_scenario(run_name or scenario.name, scenario)
     else:
         active_profile = _default_profile_for_scenario(
@@ -218,7 +219,7 @@ def _build_request_or_exit(
         )
     except FileNotFoundError as exc:
         resolved_path = (
-            resolve_workspace_path(scenario_file)
+            configured_scenario_path(scenario_file)
             if scenario_file is not None
             else (
                 Path(exc.filename).resolve()
