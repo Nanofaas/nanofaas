@@ -61,6 +61,8 @@ def overlay_selected_scenario(
     scenario: ResolvedScenario,
     *,
     base_scenario: str | None = None,
+    function_preset: str | None = None,
+    functions: list[str] | None = None,
     runtime: str,
     namespace: str | None,
     local_registry: str,
@@ -70,10 +72,15 @@ def overlay_selected_scenario(
         if base_scenario is not None
         else scenario
     )
+    selected_preset = scenario.function_preset
+    selected_functions = [] if scenario.function_preset else list(scenario.function_keys)
+    if functions is not None:
+        selected_preset = function_preset
+        selected_functions = functions
     return overlay_scenario_selection(
         source,
-        function_preset=scenario.function_preset,
-        functions=[] if scenario.function_preset else list(scenario.function_keys),
+        function_preset=selected_preset,
+        functions=selected_functions,
         runtime=runtime,
         namespace=namespace,
         local_registry=local_registry,

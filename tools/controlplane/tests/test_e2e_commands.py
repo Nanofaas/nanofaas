@@ -229,6 +229,67 @@ def test_e2e_explicit_functions_override_saved_profile_defaults(monkeypatch) -> 
     assert "json-transform-java" not in result.stdout
 
 
+def test_e2e_request_applies_cli_override_to_saved_profile_scenario_file(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import controlplane_tool.cli.e2e_commands as e2e_commands
+    from controlplane_tool.core.models import (
+        ControlPlaneConfig,
+        Profile,
+        ScenarioSelectionConfig,
+    )
+
+    scenario_file = tmp_path / "scenario.toml"
+    scenario_file.write_text(
+        """
+name = "custom"
+base_scenario = "k3s-junit-curl"
+runtime = "java"
+function_preset = "demo-java"
+namespace = "from-file"
+local_registry = "registry:5000"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        e2e_commands,
+        "load_profile",
+        lambda name: Profile(
+            name=name,
+            control_plane=ControlPlaneConfig(implementation="java", build_mode="jvm"),
+            scenario=ScenarioSelectionConfig(scenario_file=str(scenario_file)),
+        ),
+    )
+
+    request = _resolve_run_request(
+        scenario=None,
+        runtime="rust",
+        lifecycle="external",
+        name=None,
+        host="127.0.0.1",
+        user="ubuntu",
+        home=None,
+        cpus=2,
+        memory="2G",
+        disk="10G",
+        cleanup_vm=True,
+        namespace="override",
+        local_registry="localhost:5001",
+        function_preset="demo-java",
+        functions_csv=None,
+        scenario_file=None,
+        saved_profile="saved",
+    )
+
+    assert request.resolved_scenario is not None
+    assert request.resolved_scenario.runtime == "rust"
+    assert request.resolved_scenario.namespace == "override"
+    assert request.resolved_scenario.local_registry == "localhost:5001"
+    assert request.resolved_scenario.function_preset == "demo-java"
+
+
 def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
     runner = CliRunner()
     called: dict[str, str] = {}
