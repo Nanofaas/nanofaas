@@ -18,7 +18,7 @@ from controlplane_tool.loadtest.loadtest_bootstrap import LoadtestBootstrap, Loa
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest
 from controlplane_tool.loadtest.metrics_gate import evaluate_metrics_gate
 from controlplane_tool.core.models import Profile
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 
 AdapterResult = CommandResult
 

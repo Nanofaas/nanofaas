@@ -6,7 +6,7 @@ import tomllib
 import tomli_w
 
 from controlplane_tool.core.models import Profile
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.scenario.scenario_models import ScenarioPrefectConfig
 
 

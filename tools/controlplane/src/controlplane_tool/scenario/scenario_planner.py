@@ -10,7 +10,7 @@ from pathlib import Path
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
-from controlplane_tool.app.paths import ToolPaths
+from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.scenario.components.bootstrap import plan_loadtest_install_k6
 from controlplane_tool.scenario.components.environment import resolve_scenario_environment
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep, operation_to_plan_step

@@ -22,6 +22,7 @@ TOP_LEVEL_PACKAGES = (
     "controlplane_tool.scenario",
     "controlplane_tool.sut",
     "controlplane_tool.tui",
+    "controlplane_tool.workspace",
     "controlplane_tool.workflow",
 )
 

@@ -19,6 +19,7 @@ forbidden_modules =
     controlplane_tool.scenario
     controlplane_tool.sut
     controlplane_tool.tui
+    controlplane_tool.workspace
     controlplane_tool.workflow
 
 [importlinter:contract:no_runtime_dependency_on_tui]
@@ -36,9 +37,31 @@ source_modules =
     controlplane_tool.orchestation
     controlplane_tool.scenario
     controlplane_tool.sut
+    controlplane_tool.workspace
     controlplane_tool.workflow
 forbidden_modules =
     controlplane_tool.tui
+
+[importlinter:contract:no_runtime_dependency_on_app]
+name = runtime packages must not depend on app entrypoints
+type = forbidden
+source_modules =
+    controlplane_tool.building
+    controlplane_tool.cli
+    controlplane_tool.cli_validation
+    controlplane_tool.core
+    controlplane_tool.e2e
+    controlplane_tool.functions
+    controlplane_tool.infra
+    controlplane_tool.loadtest
+    controlplane_tool.orchestation
+    controlplane_tool.scenario
+    controlplane_tool.sut
+    controlplane_tool.tui
+    controlplane_tool.workspace
+    controlplane_tool.workflow
+forbidden_modules =
+    controlplane_tool.app
 
 [importlinter:contract:no_lower_level_dependency_on_cli]
 name = lower-level packages must not depend on cli command modules
@@ -54,6 +77,7 @@ source_modules =
     controlplane_tool.orchestation
     controlplane_tool.scenario
     controlplane_tool.sut
+    controlplane_tool.workspace
     controlplane_tool.workflow
 forbidden_modules =
     controlplane_tool.cli

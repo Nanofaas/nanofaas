@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from multipass import MultipassClient, MultipassCommandError, VmNotFoundError, find_ssh_public_key
 
-from controlplane_tool.app.paths import ToolPaths
+from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.core.shell_backend import (
     ShellBackend,
     ShellExecutionResult,

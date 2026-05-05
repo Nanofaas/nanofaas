@@ -10,7 +10,7 @@ from tenacity import RetryError, Retrying, stop_after_delay, wait_fixed
 from controlplane_tool.building.requests import BuildRequest
 from controlplane_tool.building.gradle_planner import build_gradle_command
 from controlplane_tool.core.process_streaming import spawn_logged_process
-from controlplane_tool.app.settings import ToolSettings
+from controlplane_tool.workspace.settings import ToolSettings
 
 
 @dataclass

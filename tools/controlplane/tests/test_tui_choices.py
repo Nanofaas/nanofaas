@@ -512,7 +512,7 @@ def test_tui_cli_stack_can_use_saved_profile(monkeypatch) -> None:
 def test_tui_cli_stack_can_use_scenario_file(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
     import controlplane_tool.e2e.e2e_runner as e2e_runner
-    from controlplane_tool.app.paths import resolve_workspace_path
+    from controlplane_tool.workspace.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -664,7 +664,7 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
 
 def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
-    from controlplane_tool.app.paths import resolve_workspace_path
+    from controlplane_tool.workspace.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -764,7 +764,7 @@ def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> 
 
 def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
-    from controlplane_tool.app.paths import resolve_workspace_path
+    from controlplane_tool.workspace.paths import resolve_workspace_path
 
     answers = iter(
         [
@@ -1238,7 +1238,7 @@ def test_loadtest_tui_descriptions_explain_mock_fixture_execution(monkeypatch) -
 
 
 def test_followup_tui_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
-    import controlplane_tool.app.profiles as profiles
+    import controlplane_tool.workspace.profiles as profiles
     import controlplane_tool.tui.app as tui_app
 
     captured: list[tuple[str, list[object]]] = []
@@ -1430,7 +1430,7 @@ def test_tui_function_details_show_dynamic_metadata(monkeypatch, capsys) -> None
 
 def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path) -> None:
     import controlplane_tool.cli.commands as cli_commands
-    import controlplane_tool.app.profiles as profiles
+    import controlplane_tool.workspace.profiles as profiles
     import controlplane_tool.tui.app as tui_app
 
     acknowledgements: list[str] = []
@@ -1959,7 +1959,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> N
 def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
     import controlplane_tool.e2e.e2e_runner as e2e_runner
-    from controlplane_tool.app.paths import resolve_workspace_path
+    from controlplane_tool.workspace.paths import resolve_workspace_path
 
     answers = iter(
         [

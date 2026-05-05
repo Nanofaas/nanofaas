@@ -15,7 +15,7 @@
 The target package tree is:
 
 ```text
-controlplane_tool.app             entrypoints, paths, profiles, settings
+controlplane_tool.app             entrypoints
 controlplane_tool.building        Gradle, image, module build operations
 controlplane_tool.cli             Typer command groups
 controlplane_tool.cli_validation  CLI validation scenarios and runners
@@ -28,6 +28,7 @@ controlplane_tool.orchestation    flow catalog, local flow orchestration, Prefec
 controlplane_tool.scenario        scenario models, planner, component library
 controlplane_tool.sut             SUT preflight helpers
 controlplane_tool.tui             interactive TUI
+controlplane_tool.workspace       paths, profiles, settings
 controlplane_tool.workflow        workflow events, progress, sink models
 ```
 
@@ -37,7 +38,8 @@ Architectural intent:
 core       -> must stay independent from feature packages
 tui        -> UI layer only; no runtime/core package should import it
 cli        -> command surface; lower-level packages should not import it
-app        -> entrypoint/config surface; avoid importing app.main from internals
+app        -> entrypoint surface; internals must not import app
+workspace  -> shared path discovery, settings, and saved-profile persistence
 workflow   -> shared event/progress primitives; must not import TUI or CLI
 ```
 

@@ -29,9 +29,9 @@ from tui_toolkit.theme import DEFAULT_THEME, to_questionary_style
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
 from controlplane_tool.cli.loadtest_commands import build_loadtest_request
 from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes.registry_runtime import default_registry_url, ensure_local_registry
-from controlplane_tool.app.profiles import list_profiles, load_profile
+from controlplane_tool.workspace.profiles import list_profiles, load_profile
 from controlplane_tool.scenario.scenario_flows import build_scenario_flow
 from controlplane_tool.tui.event_applier import TuiEventApplier
 from controlplane_tool.tui.selection import (
@@ -1465,7 +1465,7 @@ class NanofaasTUI:
         self._profile_menu()
 
     def _profile_menu(self) -> None:
-        from controlplane_tool.app.profiles import list_profiles, load_profile, save_profile
+        from controlplane_tool.workspace.profiles import list_profiles, load_profile, save_profile
 
         while True:
             phase("Profile Manager")
@@ -1526,7 +1526,7 @@ class NanofaasTUI:
                 ).ask()
             )
             if confirm:
-                from controlplane_tool.app.profiles import profile_path
+                from controlplane_tool.workspace.profiles import profile_path
                 profile_path(name).unlink(missing_ok=True)
                 success(f"Profile '{name}' deleted")
                 _acknowledge_static_view()

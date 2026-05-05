@@ -12,7 +12,7 @@ from controlplane_tool.functions.catalog import (
     resolve_function_definition,
     resolve_function_preset,
 )
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 
 functions_app = typer.Typer(help="Function catalog and preset inspection commands.")
 

@@ -2,7 +2,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from controlplane_tool.app.main import app
-from controlplane_tool.app.paths import resolve_workspace_path
+from controlplane_tool.workspace.paths import resolve_workspace_path
 
 PIPELINE_ALIAS = "pipeline" + "-run"
 

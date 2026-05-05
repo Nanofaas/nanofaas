@@ -11,9 +11,9 @@ from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
 from controlplane_tool.functions.catalog import function_runtime_allowlist_for_scenario
 from controlplane_tool.core.models import ScenarioSelectionConfig
-from controlplane_tool.app.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
-from controlplane_tool.app.profiles import load_profile
+from controlplane_tool.workspace.profiles import load_profile
 from controlplane_tool.scenario.scenario_loader import (
     load_scenario_file,
     overlay_scenario_selection,

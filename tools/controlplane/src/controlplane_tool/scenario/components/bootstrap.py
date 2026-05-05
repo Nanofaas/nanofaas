@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 from multipass import find_ssh_public_key
 
-from controlplane_tool.app.paths import ToolPaths
+from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation

@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from controlplane_tool.building.tasks import CommandExecutionResult
-from controlplane_tool.app.paths import resolve_workspace_path
+from controlplane_tool.workspace.paths import resolve_workspace_path
 from controlplane_tool.orchestation.prefect_deployments import build_prefect_deployment, run_deployment_flow
 
 

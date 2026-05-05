@@ -11,7 +11,7 @@ from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from tui_toolkit import bind_workflow_context
-from controlplane_tool.app.paths import ToolPaths
+from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.scenario.components.cli import CliComponentContext
 from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.environment import (

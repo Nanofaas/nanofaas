@@ -4,7 +4,7 @@ from pathlib import Path
 import tomllib
 
 from controlplane_tool.functions.catalog import resolve_function_definition, resolve_function_preset
-from controlplane_tool.app.paths import default_tool_paths, resolve_workspace_path
+from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
 from controlplane_tool.infra.runtimes.registry_runtime import default_registry_url
 from controlplane_tool.scenario.scenario_models import (
     ResolvedFunction,

@@ -11,7 +11,7 @@ from controlplane_tool.cli_validation.cli_test_catalog import (
 from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlanStep
-from controlplane_tool.app.paths import ToolPaths
+from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
 from controlplane_tool.infra.vm.vm_models import VmRequest
 

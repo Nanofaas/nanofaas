@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from controlplane_tool.app.paths import resolve_workspace_path
+from controlplane_tool.workspace.paths import resolve_workspace_path
 
 
 def test_control_plane_build_wrapper_uses_tools_controlplane_project() -> None:

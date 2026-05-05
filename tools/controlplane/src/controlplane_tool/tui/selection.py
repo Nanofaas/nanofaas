@@ -13,8 +13,8 @@ from controlplane_tool.functions.catalog import (
     resolve_function_definition,
     resolve_function_preset,
 )
-from controlplane_tool.app.paths import default_tool_paths
-from controlplane_tool.app.profiles import list_profiles, load_profile
+from controlplane_tool.workspace.paths import default_tool_paths
+from controlplane_tool.workspace.profiles import list_profiles, load_profile
 from controlplane_tool.scenario.scenario_loader import load_scenario_file
 
 SelectionMode = Literal["single", "multi"]

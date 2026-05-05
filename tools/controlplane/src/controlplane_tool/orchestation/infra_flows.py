@@ -21,7 +21,7 @@ from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
 from controlplane_tool.loadtest.loadtest_runner import LoadtestRunner
 from controlplane_tool.core.models import Profile
-from controlplane_tool.app.paths import default_tool_paths
+from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes import default_registry_url
 from controlplane_tool.orchestation.prefect_models import LocalFlowDefinition
 from controlplane_tool.loadtest.report import render_report
