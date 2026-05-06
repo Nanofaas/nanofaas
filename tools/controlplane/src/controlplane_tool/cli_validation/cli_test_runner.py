@@ -118,7 +118,7 @@ class CliTestRunner:
             scenario_source=request.scenario_source,
             resolved_scenario=resolved_scenario,
             vm=request.vm,
-            keep_vm=request.keep_vm,
+            cleanup_vm=not request.keep_vm,
             namespace=request.namespace,
             local_registry=request.local_registry,
         )
@@ -182,8 +182,10 @@ class CliTestRunner:
             self._execute_steps(plan)
             return plan
         finally:
-            if plan.request.scenario != "cli-stack" and self._should_teardown(
-                request.vm,
-                keep_vm=request.keep_vm,
+            vm_request = request.vm
+            if (
+                plan.request.scenario != "cli-stack"
+                and vm_request is not None
+                and self._should_teardown(vm_request, keep_vm=request.keep_vm)
             ):
-                self.e2e_runner.vm.teardown(request.vm)
+                self.e2e_runner.vm.teardown(vm_request)

@@ -56,7 +56,8 @@ class CommandResolver:
             key = m.group(1)
             if key not in cache and vm_request is not None:
                 cache[key] = self._resolve_ip(vm, vm_request)
-            return cache.get(key, m.group(0))
+            cached = cache.get(key)
+            return cached if cached is not None else m.group(0)
 
         return self._MULTIPASS_IP_RE.sub(_replace, value)
 

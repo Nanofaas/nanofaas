@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import sys
+from typing import cast
 
 import typer
 from pydantic import ValidationError
 
 from tui_toolkit import fail
 from tui_toolkit.console import console
+from controlplane_tool.core.models import VmLifecycle
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
@@ -36,7 +37,7 @@ def _build_vm_request(
     disk: str,
 ) -> VmRequest:
     return VmRequest(
-        lifecycle=lifecycle,
+        lifecycle=cast(VmLifecycle, lifecycle),
         name=name,
         host=host,
         user=user,
@@ -65,7 +66,7 @@ def _emit_result(result, *, dry_run: bool) -> None:
         console.print(result.stdout.rstrip())
     if result.return_code != 0:
         if result.stderr:
-            console.print(result.stderr.rstrip(), file=sys.stderr)
+            typer.echo(result.stderr.rstrip(), err=True)
         raise typer.Exit(code=result.return_code)
 
 

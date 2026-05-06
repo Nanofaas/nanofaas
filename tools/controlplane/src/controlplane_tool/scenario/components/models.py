@@ -14,7 +14,7 @@ def _planner_not_implemented(_: object) -> tuple[ScenarioOperation, ...]:
 class ScenarioComponentDefinition:
     component_id: str
     summary: str
-    planner: Callable[[object], tuple[ScenarioOperation, ...]] = field(
+    planner: Callable[..., tuple[ScenarioOperation, ...]] = field(
         default=_planner_not_implemented,
         repr=False,
         compare=False,

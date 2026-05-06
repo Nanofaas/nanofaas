@@ -9,7 +9,10 @@ import time
 from controlplane_tool.orchestation.adapters import ShellCommandAdapter
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.building.tasks import (
+    BuildPipelineAdapter,
+    BuildPipelineTask,
     CommandExecutionResult,
+    GradleActionExecutor,
     api_tests_task,
     build_image_task,
     compile_task,
@@ -143,7 +146,7 @@ def build_gradle_action_flow(
     modules: str | None,
     extra_gradle_args: list[str],
     dry_run: bool,
-    executor: object | None = None,
+    executor: GradleActionExecutor | None = None,
 ) -> LocalFlowDefinition[CommandExecutionResult]:
     active_executor = executor or GradleCommandExecutor()
     flow_id = f"building.{action}"
@@ -192,14 +195,14 @@ def _loadtest_request(profile: Profile) -> LoadtestRequest:
 def build_pipeline_flow(
     profile: Profile,
     *,
-    adapter: object | None = None,
+    adapter: BuildPipelineAdapter | None = None,
     runs_root: Path | None = None,
 ) -> LocalFlowDefinition[RunResult]:
     active_adapter = adapter or ShellCommandAdapter()
     root = runs_root or default_tool_paths().runs_dir
     task_ids = pipeline_task_ids(profile)
 
-    def _run_step(name: str, fn: object, run_dir: Path) -> StepResult:
+    def _run_step(name: str, fn: BuildPipelineTask, run_dir: Path) -> StepResult:
         start = time.time()
         ok, detail = fn(adapter=active_adapter, profile=profile, run_dir=run_dir)
         duration_ms = int((time.time() - start) * 1000)
@@ -226,7 +229,7 @@ def build_pipeline_flow(
             "metrics": metrics,
         }
 
-    def _supports_structured_loadtest(adapter: object) -> bool:
+    def _supports_structured_loadtest(adapter: BuildPipelineAdapter) -> bool:
         required_methods = (
             "bootstrap_loadtest",
             "run_loadtest_k6",

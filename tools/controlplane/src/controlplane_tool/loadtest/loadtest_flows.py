@@ -7,6 +7,7 @@ from pathlib import Path
 from controlplane_tool.orchestation.adapters import ShellCommandAdapter
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest
 from controlplane_tool.loadtest.loadtest_tasks import (
+    LoadtestAdapter,
     LoadtestStepEvent,
     bootstrap_loadtest_task,
     run_loadtest_step_task,
@@ -21,7 +22,7 @@ def build_loadtest_flow(
     load_profile_name: str,
     *,
     request: LoadtestRequest | None = None,
-    adapter: object | None = None,
+    adapter: LoadtestAdapter | None = None,
     runs_root: Path | None = None,
     event_listener: Callable[[LoadtestStepEvent], None] | None = None,
 ) -> LocalFlowDefinition[RunResult | None]:

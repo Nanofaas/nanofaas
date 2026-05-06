@@ -5,8 +5,10 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 import time
-from typing import Literal
+from typing import Literal, Protocol
 
+from controlplane_tool.core.models import Profile
+from controlplane_tool.loadtest.loadtest_bootstrap import LoadtestBootstrapContext
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, TargetRunResult
 from controlplane_tool.loadtest.report import render_report
 from controlplane_tool.core.run_models import StepResult
@@ -23,8 +25,36 @@ class LoadtestStepEvent:
 
 @dataclass(frozen=True)
 class BootstrapTaskResult:
-    context: object | None
+    context: LoadtestBootstrapContext | None
     steps: list[StepResult]
+
+
+class LoadtestAdapter(Protocol):
+    def preflight(self, profile: Profile) -> list[str]: ...
+
+    def bootstrap_loadtest(
+        self,
+        profile: Profile,
+        request: LoadtestRequest,
+        run_dir: Path,
+    ) -> LoadtestBootstrapContext: ...
+
+    def run_loadtest_k6(
+        self,
+        request: LoadtestRequest,
+        context: LoadtestBootstrapContext,
+        run_dir: Path,
+    ) -> tuple[bool, str]: ...
+
+    def evaluate_metrics_gate(
+        self,
+        profile: Profile,
+        request: LoadtestRequest,
+        context: LoadtestBootstrapContext,
+        run_dir: Path,
+    ) -> tuple[bool, str]: ...
+
+    def cleanup_loadtest(self, context: LoadtestBootstrapContext) -> None: ...
 
 
 def emit_loadtest_event(
@@ -41,7 +71,7 @@ def emit_loadtest_event(
 
 def bootstrap_loadtest_task(
     *,
-    adapter: object,
+    adapter: LoadtestAdapter,
     request: LoadtestRequest,
     run_dir: Path,
     event_listener: Callable[[LoadtestStepEvent], None] | None = None,

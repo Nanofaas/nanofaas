@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import questionary
 import typer
@@ -10,12 +11,17 @@ from controlplane_tool.scenario.catalog import list_scenarios
 from controlplane_tool.functions.catalog import list_function_presets
 from controlplane_tool.loadtest.loadtest_catalog import list_load_profiles
 from controlplane_tool.core.models import (
+    BuildMode,
+    CliTestScenarioName,
     CliTestConfig,
+    ControlPlaneImplementation,
     ControlPlaneConfig,
+    LoadProfile,
     LoadtestConfig,
     MetricsConfig,
     Profile,
     ReportConfig,
+    ScenarioName,
     ScenarioSelectionConfig,
     TestsConfig,
 )
@@ -194,10 +200,13 @@ def _prompt_scenario_selection() -> ScenarioSelectionConfig:
         )
         return ScenarioSelectionConfig(scenario_file=scenario_file)
 
-    base_scenario = _required_select_value(
-        "Base E2E scenario:",
-        choices=_base_scenario_choices(),
-        default="k3s-junit-curl",
+    base_scenario = cast(
+        ScenarioName,
+        _required_select_value(
+            "Base E2E scenario:",
+            choices=_base_scenario_choices(),
+            default="k3s-junit-curl",
+        ),
     )
 
     if selection_mode == "preset":
@@ -231,27 +240,36 @@ def _prompt_cli_test_selection() -> CliTestConfig:
     if not save_defaults:
         return CliTestConfig()
 
-    default_scenario = _required_select_value(
-        "Default CLI validation scenario:",
-        choices=_cli_test_scenario_choices(),
-        default="vm",
+    default_scenario = cast(
+        CliTestScenarioName,
+        _required_select_value(
+            "Default CLI validation scenario:",
+            choices=_cli_test_scenario_choices(),
+            default="vm",
+        ),
     )
     return CliTestConfig(default_scenario=default_scenario)
 
 
 def build_profile_interactive(profile_name: str) -> Profile:
-    runtime = _required_select_value(
-        "Control plane implementation:",
-        choices=_IMPLEMENTATION_CHOICES,
-        default="java",
+    runtime = cast(
+        ControlPlaneImplementation,
+        _required_select_value(
+            "Control plane implementation:",
+            choices=_IMPLEMENTATION_CHOICES,
+            default="java",
+        ),
     )
 
-    build_mode = "rust"
+    build_mode: BuildMode = "rust"
     if runtime == "java":
-        selected_mode = _required_select_value(
-            "Java building mode:",
-            choices=_JAVA_BUILD_MODE_CHOICES,
-            default="native",
+        selected_mode = cast(
+            BuildMode,
+            _required_select_value(
+                "Java building mode:",
+                choices=_JAVA_BUILD_MODE_CHOICES,
+                default="native",
+            ),
         )
         build_mode = selected_mode
 
@@ -266,7 +284,7 @@ def build_profile_interactive(profile_name: str) -> Profile:
         raise typer.Exit(code=1)
 
     tests = TestsConfig(enabled=tests_enabled)
-    selected_load_profile = "quick"
+    selected_load_profile: LoadProfile = "quick"
     if tests_enabled:
         tests.api = bool(questionary.confirm("Run API tests?", default=True).ask())
         tests.e2e_mockk8s = bool(
@@ -279,10 +297,13 @@ def build_profile_interactive(profile_name: str) -> Profile:
                 "Run metrics + k6 load tests with Prometheus?", default=True
             ).ask()
         )
-        load_profile = _required_select_value(
-            "Loadtest profile:",
-            choices=_load_profile_choices(),
-            default="quick",
+        load_profile = cast(
+            LoadProfile,
+            _required_select_value(
+                "Loadtest profile:",
+                choices=_load_profile_choices(),
+                default="quick",
+            ),
         )
         tests.load_profile = load_profile
         selected_load_profile = load_profile

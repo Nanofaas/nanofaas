@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import Protocol
 
 from multipass import MultipassClient
 
@@ -13,7 +13,8 @@ from controlplane_tool.core.shell_backend import (
 )
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
-HostResolver = Callable[[VmRequest, bool], str]
+class HostResolver(Protocol):
+    def __call__(self, request: VmRequest, *, dry_run: bool = False) -> str: ...
 
 
 class AnsibleAdapter:

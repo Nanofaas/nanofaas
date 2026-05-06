@@ -40,9 +40,9 @@ class LoadtestBootstrapContext:
     target_functions: list[str]
     target_results: list[TargetRunResult]
     started_at: datetime
-    mockk8s_manager: object
-    control_plane_manager: object
-    prometheus_manager: object
+    mockk8s_manager: MockK8sRuntimeManager
+    control_plane_manager: ControlPlaneRuntimeManager
+    prometheus_manager: PrometheusRuntimeManager
     mockk8s_session: MockK8sSession | None
     control_plane_session: ControlPlaneSession | None
     prometheus_session: PrometheusSession | None

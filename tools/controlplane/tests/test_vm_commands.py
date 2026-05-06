@@ -5,6 +5,7 @@ from typer.testing import CliRunner
 from controlplane_tool.orchestation.prefect_models import FlowRunResult
 from controlplane_tool.app.main import app
 from controlplane_tool.core.shell_backend import ShellExecutionResult
+from controlplane_tool.cli.vm_commands import _emit_result
 
 
 def test_vm_up_dry_run_prints_planned_multipass_command() -> None:
@@ -97,3 +98,20 @@ def test_vm_provision_base_command_runs_prefect_flow(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert called["flow_id"] == "vm.provision_base"
+
+
+def test_emit_result_prints_stderr_and_exits_with_result_code() -> None:
+    result = ShellExecutionResult(
+        command=["multipass", "launch"],
+        return_code=17,
+        stdout="",
+        stderr="vm failed",
+    )
+
+    try:
+        _emit_result(result, dry_run=False)
+    except BaseException as exc:
+        assert exc.__class__.__name__ == "Exit"
+        assert getattr(exc, "exit_code") == 17
+    else:
+        raise AssertionError("expected VM command failure to exit")

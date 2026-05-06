@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+import subprocess
 
 import httpx
 from tenacity import RetryError, Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -74,7 +75,7 @@ class FakeControlPlane:
     def __init__(self, port: int, request_body_path: Path) -> None:
         self.port = port
         self.request_body_path = request_body_path
-        self._proc: object = None
+        self._proc: subprocess.Popen[str] | None = None
 
     def start(self, work_dir: Path) -> None:
 

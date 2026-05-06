@@ -16,8 +16,9 @@ from controlplane_tool.scenario.components import helm as helm_components
 from controlplane_tool.scenario.components import images as image_components
 from controlplane_tool.scenario.components import namespace as namespace_components
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
-from controlplane_tool.scenario.components.operations import RemoteCommandOperation
+from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
+from controlplane_tool.core.models import RuntimeKind
 from controlplane_tool.core.shell_backend import ShellExecutionResult
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -41,7 +42,7 @@ def image_parts(image: str) -> tuple[str, str]:
 def function_image_specs(
     resolved_scenario: ResolvedScenario | None,
     fallback_runtime_image: str,
-) -> list[tuple[str, str, str]]:
+) -> list[tuple[str, str, str, str]]:
     return image_components.function_image_specs(resolved_scenario, fallback_runtime_image)
 
 
@@ -102,6 +103,12 @@ def _render_operations(
     return " && ".join(rendered)
 
 
+def _remote_command(operation: ScenarioOperation) -> RemoteCommandOperation:
+    if isinstance(operation, RemoteCommandOperation):
+        return operation
+    raise TypeError(f"operation {operation.operation_id!r} is not a remote command")
+
+
 def build_vm_cluster_prelude_plan(
     *,
     vm: VmOrchestrator,
@@ -115,7 +122,7 @@ def build_vm_cluster_prelude_plan(
         repo_root=vm.repo_root,
         request=cast(Any, vm_request),
         scenario_name="legacy",
-        runtime=runtime,
+        runtime=cast(RuntimeKind, runtime),
         namespace=namespace,
         local_registry=local_registry,
         resolved_scenario=resolved_scenario,
@@ -124,7 +131,7 @@ def build_vm_cluster_prelude_plan(
     )
     remote_dir = vm.remote_project_dir(vm_request)
     bootstrap_plan = {
-        operation.operation_id: operation
+        operation.operation_id: _remote_command(operation)
         for operation in (
             *bootstrap_components.plan_vm_ensure_running(scenario_context),
             *bootstrap_components.plan_vm_provision_base(scenario_context),
@@ -135,21 +142,21 @@ def build_vm_cluster_prelude_plan(
         )
     }
     image_plan = {
-        operation.operation_id: operation
+        operation.operation_id: _remote_command(operation)
         for operation in (
             *image_components.plan_build_core(scenario_context),
             *image_components.plan_build_selected_functions(scenario_context),
         )
     }
     helm_plan = {
-        operation.operation_id: operation
+        operation.operation_id: _remote_command(operation)
         for operation in (
             *helm_components.plan_deploy_control_plane(scenario_context),
             *helm_components.plan_deploy_function_runtime(scenario_context),
         )
     }
     namespace_plan = {
-        operation.operation_id: operation
+        operation.operation_id: _remote_command(operation)
         for operation in namespace_components.plan_install_namespace(scenario_context)
     }
     selected_function_operations = tuple(

@@ -131,6 +131,31 @@ def test_cli_test_runner_host_platform_plan_omits_resolved_functions_for_saved_p
     assert plan.request.resolved_scenario is None
 
 
+def test_cli_test_runner_e2e_request_inverts_keep_vm_to_cleanup_vm() -> None:
+    runner = CliTestRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    scenario = resolve_cli_test_scenario("vm")
+
+    cleanup_request = runner._as_e2e_request(
+        CliTestRequest(
+            scenario="vm",
+            vm=VmRequest(lifecycle="multipass"),
+            keep_vm=False,
+        ),
+        scenario,
+    )
+    keep_request = runner._as_e2e_request(
+        CliTestRequest(
+            scenario="vm",
+            vm=VmRequest(lifecycle="multipass"),
+            keep_vm=True,
+        ),
+        scenario,
+    )
+
+    assert cleanup_request.cleanup_vm is True
+    assert keep_request.cleanup_vm is False
+
+
 def test_cli_test_runner_cli_stack_plan_prefers_resolved_scenario_namespace() -> None:
     resolved_scenario = ResolvedScenario(
         name="cli-stack-selection",

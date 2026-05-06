@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
@@ -18,7 +19,11 @@ class PrefectDeploymentSpec:
     parameters: dict[str, object] = field(default_factory=dict)
 
 
-_KNOWN_DEPLOYMENTS: dict[str, dict[str, object]] = {
+class _KnownDeploymentConfig(TypedDict):
+    parameters: dict[str, object]
+
+
+_KNOWN_DEPLOYMENTS: dict[str, _KnownDeploymentConfig] = {
     "building.building": {
         "parameters": {
             "flow_name": "building.building",
@@ -70,7 +75,10 @@ def build_prefect_deployment(
     if config is None:
         raise ValueError(f"Unsupported Prefect deployment flow: {flow_id}")
     parameters = deepcopy(config["parameters"])
-    task_ids = resolve_flow_task_ids(str(parameters["flow_name"]))
+    flow_name = parameters.get("flow_name")
+    if not isinstance(flow_name, str):
+        raise ValueError(f"Prefect deployment {flow_id} has invalid flow_name")
+    task_ids = resolve_flow_task_ids(flow_name)
 
     return PrefectDeploymentSpec(
         flow_id=flow_id,

@@ -188,7 +188,7 @@ class ScenarioPlanner:
     def _runtime_image(self, request: E2eRequest) -> str:
         return runtime_image(request.local_registry)
 
-    def _function_image_specs(self, request: E2eRequest) -> list[tuple[str, str, str]]:
+    def _function_image_specs(self, request: E2eRequest) -> list[tuple[str, str, str, str]]:
         return function_image_specs(request.resolved_scenario, self._runtime_image(request))
 
     def _k3s_curl_runner(self, request: E2eRequest) -> K3sCurlRunner:
@@ -410,12 +410,16 @@ class ScenarioPlanner:
                 step_id="namespace.uninstall",
             )
             teardown_dry = self.vm.teardown(vm_request, dry_run=True)
+
+            def _teardown_vm() -> None:
+                self.vm.teardown(vm_request, dry_run=False)
+
             teardown_step = ScenarioPlanStep(
                 summary="Teardown VM",
                 command=teardown_dry.command,
                 env=teardown_dry.env,
                 step_id="vm.down",
-                action=lambda: self.vm.teardown(vm_request, dry_run=False),
+                action=_teardown_vm,
             )
         else:
             uninstall_runtime_step = self._step(

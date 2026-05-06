@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.building.tasks import run_gradle_action_task
-from controlplane_tool.cli.commands import CommandExecutionResult
+from controlplane_tool.building.tasks import CommandExecutionResult, run_gradle_action_task
 
 
 class _RecordingExecutor:
