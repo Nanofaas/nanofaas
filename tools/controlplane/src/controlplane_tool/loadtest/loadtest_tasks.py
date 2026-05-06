@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+import sys
 import time
 from typing import Literal, Protocol
 
@@ -12,8 +13,18 @@ from controlplane_tool.loadtest.loadtest_bootstrap import LoadtestBootstrapConte
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, TargetRunResult
 from controlplane_tool.loadtest.report import render_report
 from controlplane_tool.core.run_models import StepResult
+from controlplane_tool.tasks.models import CommandTaskSpec
 
 LoadtestStepStatus = Literal["running", "passed", "failed"]
+
+_LOADTEST_CLI_MODULE = "controlplane_tool.app.main"
+_LOADTEST_STEP_TASK_IDS = {
+    "preflight": "loadtest.bootstrap",
+    "bootstrap": "loadtest.bootstrap",
+    "load_k6": "loadtest.execute_k6",
+    "metrics_gate": "metrics.evaluate_gate",
+    "report": "loadtest.write_report",
+}
 
 
 @dataclass(frozen=True)
@@ -55,6 +66,14 @@ class LoadtestAdapter(Protocol):
     ) -> tuple[bool, str]: ...
 
     def cleanup_loadtest(self, context: LoadtestBootstrapContext) -> None: ...
+
+
+def loadtest_step_spec(step_name: str, summary: str) -> CommandTaskSpec:
+    return CommandTaskSpec(
+        task_id=_LOADTEST_STEP_TASK_IDS.get(step_name, f"loadtest.{step_name}"),
+        summary=summary,
+        argv=(sys.executable, "-m", _LOADTEST_CLI_MODULE, "loadtest", "run", "--dry-run"),
+    )
 
 
 def emit_loadtest_event(
