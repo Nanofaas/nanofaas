@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell
-from controlplane_tool.tasks.executors import HostCommandTaskExecutor
+from controlplane_tool.tasks.executors import HostCommandTaskExecutor, VmCommandTaskExecutor
 from controlplane_tool.tasks.models import CommandTaskSpec
 
 
@@ -45,3 +46,46 @@ def test_host_executor_rejects_vm_tasks() -> None:
 
     with pytest.raises(ValueError, match="cannot run 'vm' task"):
         executor.run(task)
+
+
+@dataclass(frozen=True)
+class _VmResult:
+    return_code: int
+    stdout: str
+    stderr: str
+
+
+class _RecordingVmRunner:
+    def __init__(self) -> None:
+        self.commands: list[tuple[tuple[str, ...], dict[str, str], str | None, bool]] = []
+
+    def run_vm_command(
+        self,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str],
+        remote_dir: str | None,
+        dry_run: bool,
+    ) -> _VmResult:
+        self.commands.append((argv, env, remote_dir, dry_run))
+        return _VmResult(return_code=0, stdout="ok", stderr="")
+
+
+def test_vm_executor_delegates_to_injected_runner() -> None:
+    runner = _RecordingVmRunner()
+    executor = VmCommandTaskExecutor(runner=runner)
+    task = CommandTaskSpec(
+        task_id="vm.x",
+        summary="VM X",
+        target="vm",
+        argv=("docker", "ps"),
+        env={"A": "B"},
+        remote_dir="/home/ubuntu/nanofaas",
+    )
+
+    result = executor.run(task, dry_run=True)
+
+    assert result.status == "passed"
+    assert runner.commands == [
+        (("docker", "ps"), {"A": "B"}, "/home/ubuntu/nanofaas", True)
+    ]
