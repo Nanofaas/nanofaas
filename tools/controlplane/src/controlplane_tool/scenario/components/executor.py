@@ -8,6 +8,7 @@ from controlplane_tool.scenario.components.operations import (
     RemoteCommandOperation,
     ScenarioOperation,
 )
+from controlplane_tool.tasks.adapters import operation_to_task_spec
 
 _SUMMARY_OVERRIDES = {
     "cli.build_install_dist": "Build nanofaas-cli installDist in VM",
@@ -58,60 +59,63 @@ def operation_to_plan_step(
 
     if not isinstance(operation, RemoteCommandOperation):  # pragma: no cover - defensive
         raise TypeError(f"Unsupported scenario operation: {type(operation)!r}")
-    summary = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
-    if operation.execution_target == "vm" and on_remote_exec is not None:
-        argv = operation.argv
-        env = operation.env
+    task = operation_to_task_spec(operation)
+    summary = _SUMMARY_OVERRIDES.get(task.task_id, task.summary)
+    command = list(task.argv)
+    env = dict(task.env)
+    if task.target == "vm" and on_remote_exec is not None:
+        argv = task.argv
+        env_mapping = task.env
         action = (
-            (lambda: _expect_remote_failure(argv, env))
-            if operation.operation_id == "cleanup.verify_cli_platform_status_fails"
-            else (lambda: on_remote_exec(argv, env))
+            (lambda: _expect_remote_failure(argv, env_mapping))
+            if task.task_id == "cleanup.verify_cli_platform_status_fails"
+            else (lambda: on_remote_exec(argv, env_mapping))
         )
         return ScenarioPlanStep(
             summary=summary,
-            command=list(argv),
-            env=dict(env),
-            step_id=operation.operation_id,
+            command=command,
+            env=env,
+            step_id=task.task_id,
             action=action,
         )
-    if operation.operation_id == "vm.ensure_running" and on_ensure_running is not None:
+    if task.task_id == "vm.ensure_running" and on_ensure_running is not None:
         return ScenarioPlanStep(
             summary=summary,
-            command=list(operation.argv),
-            env=dict(operation.env),
-            step_id=operation.operation_id,
+            command=command,
+            env=env,
+            step_id=task.task_id,
             action=on_ensure_running,
         )
-    if operation.operation_id == "tests.run_k3s_curl_checks":
+    if task.task_id == "tests.run_k3s_curl_checks":
         if on_k3s_curl_verify is None:  # pragma: no cover - defensive
             raise ValueError("tests.run_k3s_curl_checks requires a verification callback")
         return ScenarioPlanStep(
             summary=summary,
-            command=list(operation.argv),
-            env=dict(operation.env),
-            step_id=operation.operation_id,
+            command=command,
+            env=env,
+            step_id=task.task_id,
             action=on_k3s_curl_verify,
         )
-    if operation.operation_id == "vm.down":
+    if task.task_id == "vm.down":
         if not request.cleanup_vm:
             return ScenarioPlanStep(
                 summary=summary,
                 command=["echo", "Skipping VM teardown (--no-cleanup-vm)"],
-                step_id=operation.operation_id,
+                step_id=task.task_id,
             )
         if on_vm_down is not None:
             return ScenarioPlanStep(
                 summary=summary,
-                command=list(operation.argv),
-                env=dict(operation.env),
-                step_id=operation.operation_id,
+                command=command,
+                env=env,
+                step_id=task.task_id,
                 action=on_vm_down,
             )
     return ScenarioPlanStep(
         summary=summary,
-        command=list(operation.argv),
-        env=dict(operation.env),
-        step_id=operation.operation_id,
+        command=command,
+        env=env,
+        step_id=task.task_id,
     )
 
 
