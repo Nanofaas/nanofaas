@@ -49,6 +49,18 @@ def test_render_vm_task_prefixes_remote_dir() -> None:
     assert render_task_command(task) == "cd /home/ubuntu/nanofaas && docker build ."
 
 
+def test_render_vm_task_quotes_remote_dir_with_spaces() -> None:
+    task = CommandTaskSpec(
+        task_id="x",
+        summary="X",
+        target="vm",
+        argv=("echo", "ok"),
+        remote_dir="/home/ubuntu/my repo",
+    )
+
+    assert render_task_command(task) == "cd '/home/ubuntu/my repo' && echo ok"
+
+
 def test_render_host_task_uses_cwd_as_metadata_not_shell_prefix() -> None:
     task = CommandTaskSpec(
         task_id="x",

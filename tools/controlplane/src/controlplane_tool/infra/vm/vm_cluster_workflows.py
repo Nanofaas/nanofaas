@@ -6,7 +6,6 @@ the current `E2eRunner` compatibility surface until the runner is migrated.
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
@@ -22,6 +21,8 @@ from controlplane_tool.core.models import RuntimeKind
 from controlplane_tool.core.shell_backend import ShellExecutionResult
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.tasks.adapters import operation_to_task_spec
+from controlplane_tool.tasks.rendering import render_task_command
 
 
 def control_image(local_registry: str) -> str:
@@ -86,12 +87,8 @@ def _shell_result(operation: RemoteCommandOperation) -> ShellExecutionResult:
 
 
 def _render_operation(operation: RemoteCommandOperation, *, remote_dir: str | None = None) -> str:
-    prefixes = [f"{name}={shlex.quote(value)}" for name, value in operation.env.items()]
-    command = shlex.join(list(operation.argv))
-    rendered = " ".join([*prefixes, command]) if prefixes else command
-    if remote_dir is None:
-        return rendered
-    return f"cd {shlex.quote(remote_dir)} && {rendered}"
+    task = operation_to_task_spec(operation, remote_dir=remote_dir)
+    return render_task_command(task)
 
 
 def _render_operations(
