@@ -23,6 +23,19 @@ def test_build_core_images_vm_script_includes_pushes_and_remote_directory() -> N
     assert "docker push localhost:5000/nanofaas/function-runtime:e2e" in script
 
 
+def test_build_core_images_vm_script_uses_cargo_build_for_rust_runtime() -> None:
+    script = build_core_images_vm_script(
+        remote_dir="/srv/nanofaas",
+        control_image="localhost:5000/nanofaas/control-plane:e2e",
+        runtime_image="localhost:5000/nanofaas/function-runtime:e2e",
+        runtime="rust",
+        mode="docker",
+    )
+
+    assert "cargo build --release --manifest-path control-plane-rust/Cargo.toml" in script
+    assert "cargo building" not in script
+
+
 def test_helm_upgrade_install_vm_script_uses_helm_ops_planner() -> None:
     script = helm_upgrade_install_vm_script(
         remote_dir="/srv/nanofaas",

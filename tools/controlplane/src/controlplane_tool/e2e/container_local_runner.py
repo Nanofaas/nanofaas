@@ -122,7 +122,7 @@ class ContainerLocalE2eRunner:
         workflow_log(f"Building function image {image}")
         adapter = self.runtime_adapter or "docker"
         if runtime_kind is None:
-            self._run([adapter, "building", "-t", image, "function-runtime"])
+            self._run([adapter, "build", "-t", image, "function-runtime"])
         elif runtime_kind == "java":
             self._run(
                 [
@@ -133,15 +133,15 @@ class ContainerLocalE2eRunner:
                 ]
             )
         elif runtime_kind == "java-lite":
-            self._run([adapter, "building", "-t", image, "-f", f"examples/java/{family}-lite/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"examples/java/{family}-lite/Dockerfile", "."])
         elif runtime_kind == "go":
-            self._run([adapter, "building", "-t", image, "-f", f"examples/go/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"examples/go/{family}/Dockerfile", "."])
         elif runtime_kind == "javascript":
-            self._run([adapter, "building", "-t", image, "-f", f"examples/javascript/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"examples/javascript/{family}/Dockerfile", "."])
         elif runtime_kind == "python":
-            self._run([adapter, "building", "-t", image, "-f", f"examples/python/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"examples/python/{family}/Dockerfile", "."])
         elif runtime_kind == "exec":
-            self._run([adapter, "building", "-t", image, "-f", f"examples/bash/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"examples/bash/{family}/Dockerfile", "."])
         else:
             raise RuntimeError(f"Unsupported function runtime: {runtime_kind}")
 

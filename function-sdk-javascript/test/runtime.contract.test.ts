@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { networkInterfaces } from "node:os";
 import { test } from "node:test";
 
 import { NanofaasError, createRuntime } from "../src/index.js";
@@ -12,6 +13,17 @@ async function withRuntime(
     return runtime;
 }
 
+function firstNonLoopbackIpv4(): string | undefined {
+    for (const interfaces of Object.values(networkInterfaces())) {
+        for (const entry of interfaces ?? []) {
+            if (entry.family === "IPv4" && !entry.internal) {
+                return entry.address;
+            }
+        }
+    }
+    return undefined;
+}
+
 test("health endpoint returns ok status", async () => {
     const runtime = await withRuntime((rt) => {
         rt.register("echo", async (_ctx, req) => req.input);
@@ -19,6 +31,26 @@ test("health endpoint returns ok status", async () => {
 
     try {
         const response = await fetch(`${runtime.baseUrl}/health`);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { status: "ok" });
+    } finally {
+        await runtime.stop();
+    }
+});
+
+test("runtime accepts pod-ip style connections for Kubernetes probes", async (t) => {
+    const host = firstNonLoopbackIpv4();
+    if (!host) {
+        t.skip("no non-loopback IPv4 address available");
+        return;
+    }
+
+    const runtime = await withRuntime((rt) => {
+        rt.register("echo", async (_ctx, req) => req.input);
+    });
+
+    try {
+        const response = await fetch(`http://${host}:${runtime.port}/health`);
         assert.equal(response.status, 200);
         assert.deepEqual(await response.json(), { status: "ok" });
     } finally {

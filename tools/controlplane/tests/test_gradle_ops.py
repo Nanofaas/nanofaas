@@ -146,7 +146,7 @@ def test_gradle_ops_compile_rust_invokes_cargo(tmp_path: Path) -> None:
         ok, _ = ops.compile(_rust_profile(), tmp_path / "run")
     assert ok is True
     called_cmd = mock_run.call_args[0][0]
-    assert called_cmd[0] == "cargo"
+    assert called_cmd[:2] == ["cargo", "build"]
 
 
 def test_gradle_ops_compile_rust_fails_if_manifest_missing(tmp_path: Path) -> None:
@@ -167,6 +167,8 @@ def test_gradle_ops_build_image_java_invokes_docker_build(tmp_path: Path) -> Non
         ok, detail = ops.build_image(_java_profile(), tmp_path / "run")
     assert ok is True
     assert "image=" in detail
+    docker_command = mock_run.call_args_list[-1].args[0]
+    assert docker_command[:2] == ["docker", "build"]
 
 
 def test_gradle_ops_run_api_tests_uses_control_plane_api_test_selector(tmp_path: Path) -> None:

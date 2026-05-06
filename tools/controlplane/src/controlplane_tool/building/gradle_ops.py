@@ -112,7 +112,7 @@ class GradleOps:
             if not manifest.exists():
                 return (False, f"Rust control plane manifest not found at {manifest}")
             result = self._run(
-                ["cargo", "building", "--release", "--manifest-path", str(manifest)],
+                ["cargo", "build", "--release", "--manifest-path", str(manifest)],
                 run_dir,
                 "building.log",
             )
@@ -133,7 +133,7 @@ class GradleOps:
             if not dockerfile.exists():
                 return (False, f"Rust Dockerfile not found at {dockerfile}")
             result = self._run(
-                ["docker", "building", "-f", str(dockerfile), "-t", tag, str(rust_dir)],
+                ["docker", "build", "-f", str(dockerfile), "-t", tag, str(rust_dir)],
                 run_dir,
                 "building.log",
             )
@@ -152,7 +152,7 @@ class GradleOps:
                 return (False, first.detail)
             command = [
                 "docker",
-                "building",
+                "build",
                 "-f",
                 str(self.repo_root / "control-plane" / "Dockerfile"),
                 "-t",

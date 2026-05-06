@@ -83,7 +83,7 @@ def build_core_images_vm_script(
                     ]
                 )
         if runtime == "rust":
-            commands.append("cargo building --release --manifest-path control-plane-rust/Cargo.toml 2>/dev/null || true")
+            commands.append("cargo build --release --manifest-path control-plane-rust/Cargo.toml 2>/dev/null || true")
             control_context = Path("control-plane-rust")
             control_dockerfile = Path("control-plane-rust/Dockerfile")
         else:

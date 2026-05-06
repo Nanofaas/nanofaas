@@ -462,7 +462,7 @@ def test_container_local_runner_builds_javascript_function_images(
 
     assert called["command"] == [
         "docker",
-        "building",
+        "build",
         "-t",
         "example/image:tag",
         "-f",

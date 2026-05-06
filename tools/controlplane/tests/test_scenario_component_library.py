@@ -162,6 +162,13 @@ def test_image_component_planners_return_typed_operations_for_selected_functions
     )
     assert any(context.local_registry in " ".join(operation.argv) for operation in core_operations)
     assert any("word-stats" in " ".join(operation.argv) for operation in selected_operations)
+    docker_builds = [
+        operation.argv
+        for operation in (*core_operations, *selected_operations)
+        if operation.argv[:1] == ("docker",) and "-f" in operation.argv
+    ]
+    assert docker_builds
+    assert all(argv[1] == "build" for argv in docker_builds)
 
 
 def test_image_component_planners_build_javascript_functions_from_examples_directory() -> None:
@@ -187,6 +194,12 @@ def test_image_component_planners_build_javascript_functions_from_examples_direc
         "examples/javascript/word-stats/Dockerfile" in " ".join(operation.argv)
         for operation in selected_operations
     )
+    build_operations = [
+        operation
+        for operation in selected_operations
+        if "examples/javascript/word-stats/Dockerfile" in operation.argv
+    ]
+    assert build_operations[0].argv[:2] == ("docker", "build")
 
 
 def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
@@ -194,8 +207,8 @@ def test_image_component_planner_uses_rust_branch_for_core_builds() -> None:
 
     core_operations = images.plan_build_core(context)
 
-    # Rust Dockerfile is self-contained (multi-stage with internal cargo building);
-    # no bootJar/cargo pre-building step — docker building goes straight to the control image.
+    # Rust Dockerfile is self-contained (multi-stage with internal cargo build);
+    # no bootJar/cargo pre-build step, so docker build goes straight to the control image.
     assert core_operations[0].operation_id == "images.build_core.control_image"
     assert core_operations[0].argv[0] == "docker"
     rust_cp_dir = images._RUST_CP_DIR

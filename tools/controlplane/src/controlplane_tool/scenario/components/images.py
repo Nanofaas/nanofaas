@@ -71,8 +71,8 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
     operations: list[ScenarioOperation] = []
 
     if context.runtime != "rust":
-        # Rust Dockerfile is a self-contained multi-stage building (cargo runs inside Docker);
-        # no pre-building step is needed on the VM.
+        # Rust Dockerfile is a self-contained multi-stage build (cargo runs inside Docker);
+        # no pre-build step is needed on the VM.
         operations.append(
             RemoteCommandOperation(
                 operation_id="images.build_core.boot_jars",
@@ -96,7 +96,7 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                 summary="Build control-plane image",
                 argv=(
                     "docker",
-                    "building",
+                    "build",
                     "-f",
                     control_dockerfile,
                     "-t",
@@ -111,7 +111,7 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                 summary="Build function-runtime image",
                 argv=(
                     "docker",
-                    "building",
+                    "build",
                     "-f",
                     "function-runtime/Dockerfile",
                     "-t",
@@ -182,7 +182,7 @@ def plan_build_selected_functions(
                 summary=f"Build {fn_key} function image",
                 argv=(
                     "docker",
-                    "building",
+                    "build",
                     "-f",
                     str(_dockerfile_for_runtime_kind(runtime_kind, family)),
                     "-t",

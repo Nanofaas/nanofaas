@@ -19,12 +19,12 @@ class ImageOps:
         dockerfile: Path | None = None,
         build_args: dict[str, str] | None = None,
     ) -> PlannedCommand:
-        command = [self.runtime, "building"]
+        command = [self.runtime, "build"]
         if dockerfile is not None:
             command.extend(["-f", str(dockerfile)])
         command.extend(["-t", image])
         for key, value in sorted((build_args or {}).items()):
-            command.extend(["--building-arg", f"{key}={value}"])
+            command.extend(["--build-arg", f"{key}={value}"])
         command.append(str(context))
         return PlannedCommand(command=command, cwd=Path(self.repo_root))
 

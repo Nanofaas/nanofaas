@@ -378,7 +378,7 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
 
             await new Promise<void>((resolve, reject) => {
                 state.server?.once("error", reject);
-                state.server?.listen(requestedPort, "127.0.0.1", () => {
+                state.server?.listen(requestedPort, "0.0.0.0", () => {
                     state.server?.off("error", reject);
                     resolve();
                 });
