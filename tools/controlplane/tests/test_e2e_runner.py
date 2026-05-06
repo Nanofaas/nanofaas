@@ -16,6 +16,7 @@ from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell, 
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_cluster_workflows import build_vm_cluster_prelude_plan
+from controlplane_tool.tasks.models import CommandTaskSpec
 
 
 def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
@@ -447,6 +448,33 @@ def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
     step = operation_to_plan_step(operation, request=request, on_k3s_curl_verify=lambda: None)
 
     assert step.step_id == "tests.run_k3s_curl_checks"
+
+
+def test_operation_to_plan_step_preserves_command_env_and_step_id_after_task_bridge(monkeypatch) -> None:
+    operation = RemoteCommandOperation(
+        operation_id="operation.step",
+        summary="Operation step",
+        argv=("echo", "operation"),
+        env={"SOURCE": "operation"},
+        execution_target="host",
+    )
+    request = E2eRequest(scenario="docker")
+    monkeypatch.setattr(
+        "controlplane_tool.scenario.components.executor.operation_to_task_spec",
+        lambda _operation: CommandTaskSpec(
+            task_id="task.step",
+            summary="Task step",
+            argv=("echo", "task"),
+            env={"SOURCE": "task"},
+        ),
+    )
+
+    step = operation_to_plan_step(operation, request=request)
+
+    assert step.step_id == "task.step"
+    assert step.summary == "Task step"
+    assert step.command == ["echo", "task"]
+    assert step.env == {"SOURCE": "task"}
 
 
 def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
