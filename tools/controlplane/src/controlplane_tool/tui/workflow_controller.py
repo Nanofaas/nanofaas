@@ -45,9 +45,13 @@ class TuiWorkflowController:
                 live.update(dashboard.render(), refresh=True)
 
         sink = TuiWorkflowSink(dashboard, refresh=_refresh)
-        key_listener = WorkflowKeyListener(
-            lambda key: (dashboard.toggle_logs(), _refresh()) if key.lower() == "l" else None
-        )
+
+        def _handle_key(key: str) -> None:
+            if key.lower() == "l":
+                dashboard.toggle_logs()
+                _refresh()
+
+        key_listener = WorkflowKeyListener(_handle_key)
         with Live(
             dashboard.render(), console=console, refresh_per_second=8, transient=False
         ) as active_live:

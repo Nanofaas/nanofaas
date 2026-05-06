@@ -303,7 +303,6 @@ class VmOrchestrator:
                 dry_run=dry_run,
             )
 
-        name = self._vm_name(request)
         host = self.connection_host(request, dry_run=dry_run)
         return self._shell_run(
             repo_rsync_command(

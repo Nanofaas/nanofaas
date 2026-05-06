@@ -25,6 +25,7 @@ dependencies = [
 [project.scripts]
 controlplane-tool = "controlplane_tool.app.main:main"
 controlplane-package-report = "controlplane_tool.devtools.package_report:main"
+controlplane-quality = "controlplane_tool.devtools.quality:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -38,11 +39,37 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.39.3",
     "grimp>=3.14",
     "import-linter>=2.11",
     "pydeps>=3.0.6",
     "pytest>=9.0.3",
+    "ruff>=0.15.12",
 ]
 
 [tool.uv.sources]
 tui-toolkit = { path = "../tui-toolkit", editable = true }
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["F", "SLF"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/controlplane_tool/cli_validation/cli_host_runner.py" = ["SLF001"]
+"src/controlplane_tool/cli_validation/cli_test_runner.py" = ["SLF001"]
+"src/controlplane_tool/e2e/e2e_runner.py" = ["SLF001"]
+"src/controlplane_tool/tui/app.py" = ["SLF001"]
+"tests/**/*.py" = ["F841", "SLF001"]
+
+[tool.basedpyright]
+include = [
+    "src/controlplane_tool/devtools/quality.py",
+    "src/controlplane_tool/tui/workflow.py",
+    "src/controlplane_tool/tui/workflow_controller.py",
+]
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+reportPrivateUsage = false

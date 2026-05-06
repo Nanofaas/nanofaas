@@ -4,10 +4,9 @@ from pathlib import Path
 
 from controlplane_tool.orchestation.adapters import ShellCommandAdapter
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition
-from controlplane_tool.orchestation.infra_flows import build_pipeline_flow
 from controlplane_tool.core.models import Profile
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
-from controlplane_tool.core.run_models import RunResult, StepResult
+from controlplane_tool.core.run_models import RunResult
 
 
 class PipelineRunner:

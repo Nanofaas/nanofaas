@@ -292,17 +292,23 @@ class WorkflowKeyListener:
             import tty
         except ImportError:
             return
-        self._fd = self._input_stream.fileno()
+        fd = self._input_stream.fileno()
+        if fd is None:
+            return
+        self._fd = int(fd)
         self._termios = termios
         original = termios.tcgetattr(self._fd)
         tty.setcbreak(self._fd)
 
         def _run() -> None:
+            fd = self._fd
+            if fd is None:
+                return
             while not self._stop.is_set():
-                ready, _, _ = select.select([self._fd], [], [], 0.1)
+                ready, _, _ = select.select([fd], [], [], 0.1)
                 if not ready:
                     continue
-                char = os.read(self._fd, 1).decode(errors="ignore")
+                char = os.read(fd, 1).decode(errors="ignore")
                 if char:
                     self._on_key(char)
 

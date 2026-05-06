@@ -78,14 +78,14 @@ def _saved_profile_description(name: str) -> str:
     build_mode = getattr(control_plane, "build_mode", "—") or "—"
     base_scenario = getattr(scenario, "base_scenario", "—") or "—"
     cli_default = getattr(cli_test, "default_scenario", "—") or "—"
-    load_profile = (
+    load_profile_name = (
         getattr(loadtest, "default_load_profile", None)
         or getattr(tests, "load_profile", None)
         or "—"
     )
     return (
         f"Reuse the saved profile '{name}'. Current defaults: implementation={implementation}, "
-        f"building={build_mode}, scenario={base_scenario}, cli={cli_default}, load={load_profile}. "
+        f"building={build_mode}, scenario={base_scenario}, cli={cli_default}, load={load_profile_name}. "
         "Load tests use a mock Kubernetes API and LOCAL fixture functions, not Kubernetes pods "
         "for the requested target images."
     )

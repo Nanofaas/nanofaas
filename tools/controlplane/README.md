@@ -196,6 +196,17 @@ Loadtest runs write profiles and reports under:
 The Python package is split into semantic packages under `controlplane_tool/`.
 `controlplane_tool.app` is reserved for entrypoints; shared path discovery, settings,
 and saved-profile persistence live under `controlplane_tool.workspace`.
+Use the bundled quality gate for fast local checks before committing Python tool changes:
+
+```bash
+uv run controlplane-quality
+```
+
+This runs Ruff, basedpyright, and import-linter. Ruff currently gates undefined/unused
+code issues plus private-member access outside known legacy integration points; basedpyright
+starts with the TUI workflow modules where callback typing is most sensitive and can be
+expanded as the rest of the package is typed.
+
 Use the import contracts as the hard boundary check:
 
 ```bash

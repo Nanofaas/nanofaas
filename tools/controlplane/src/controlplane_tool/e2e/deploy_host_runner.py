@@ -148,7 +148,7 @@ class DeployHostE2eRunner:
         if not request_body_path.exists() or request_body_path.stat().st_size == 0:
             raise RuntimeError(f"Missing register request body at {request_body_path}")
         body = request_body_path.read_text(encoding="utf-8")
-        if f'"name"' not in body or function_name not in body:
+        if '"name"' not in body or function_name not in body:
             raise RuntimeError(f"Function name not found in request body: {body}")
         expected_image = f"localhost:{self.registry_port}/{image_repo}:{tag}"
         if expected_image not in body:

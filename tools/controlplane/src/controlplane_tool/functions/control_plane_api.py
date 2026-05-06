@@ -11,7 +11,7 @@ Milestones that depend on this module: M9, M10, M11, M12.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
