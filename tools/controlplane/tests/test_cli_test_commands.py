@@ -9,19 +9,8 @@ def test_cli_test_group_lists_known_scenarios() -> None:
     result = CliRunner().invoke(app, ["cli-test", "list"])
 
     assert result.exit_code == 0
-    assert "vm" in result.stdout
     assert "cli-stack" in result.stdout
     assert "deploy-host" in result.stdout
-
-
-def test_cli_test_run_vm_dry_run_renders_backend_steps() -> None:
-    result = CliRunner().invoke(app, ["cli-test", "run", "vm", "--dry-run"])
-
-    assert result.exit_code == 0
-    assert "cli-test run vm" in result.stdout
-    assert "cli-e2e" not in result.stdout
-    assert "e2e-cli-backend.sh" not in result.stdout
-    assert ":nanofaas-cli:installDist" in result.stdout
 
 
 def test_cli_test_run_cli_stack_dry_run_shows_cli_stack_tail() -> None:
@@ -54,7 +43,7 @@ def test_cli_test_run_uses_saved_profile_default_scenario() -> None:
     )
 
     assert result.exit_code == 0
-    assert "Scenario: vm" in result.stdout
+    assert "Scenario: cli-stack" in result.stdout
 
 
 def test_cli_test_run_saved_profile_demo_javascript_defaults_to_cli_stack() -> None:
@@ -198,7 +187,7 @@ def test_cli_test_run_missing_saved_profile_exits_cleanly() -> None:
 def test_cli_test_run_missing_scenario_file_exits_cleanly() -> None:
     result = CliRunner().invoke(
         app,
-        ["cli-test", "run", "vm", "--scenario-file", "tools/controlplane/scenarios/nope.toml"],
+        ["cli-test", "run", "cli-stack", "--scenario-file", "tools/controlplane/scenarios/nope.toml"],
     )
 
     assert result.exit_code == 2

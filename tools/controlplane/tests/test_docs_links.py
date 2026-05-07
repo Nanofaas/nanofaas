@@ -37,7 +37,6 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh functions show-preset demo-javascript" in root_readme
     assert "scripts/controlplane.sh vm up" in root_readme
     assert "scripts/controlplane.sh cli-test list" in root_readme
-    assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in root_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in root_readme
     assert "scripts/controlplane.sh building --profile container-local --dry-run" in root_readme
     assert BUILD_WRAPPER not in root_readme
@@ -47,7 +46,6 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh matrix" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run" in testing
-    assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run" in testing
@@ -69,7 +67,6 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh tui" in testing
     assert "scripts/controlplane.sh tui --profile-name" not in testing
     assert "scripts/e2e-loadtest.sh --profile demo-java --dry-run" in testing
-    assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in testing
     assert "cli-stack is the canonical VM-backed CLI stack scenario" in testing
     assert BUILD_WRAPPER not in testing
     assert TUI_WRAPPER not in testing
@@ -79,7 +76,6 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test list" in tool_readme
-    assert "scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
@@ -112,8 +108,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "./scripts/controlplane.sh image --profile all" in workflow
     assert WORKFLOW_BUILD_WRAPPER not in workflow
 
-    assert "scripts/controlplane.sh cli-test run vm" in cli_doc
-    assert "compatibility wrapper over `scripts/controlplane.sh cli-test run vm`" in cli_doc
+    assert "scripts/controlplane.sh cli-test run cli-stack" in cli_doc
 
     assert "self-bootstrapping VM-backed scenarios" in root_readme
     assert "installs scenario-specific software inside that VM" in root_readme

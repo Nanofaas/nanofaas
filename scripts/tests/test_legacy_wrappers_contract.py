@@ -86,7 +86,7 @@ def test_python_cli_exposes_all_expected_command_groups() -> None:
     if str(tool_src) not in sys.path:
         sys.path.insert(0, str(tool_src))
 
-    from controlplane_tool.main import app  # noqa: PLC0415
+    from controlplane_tool.app.main import app  # noqa: PLC0415
     from typer.testing import CliRunner  # noqa: PLC0415
 
     result = CliRunner().invoke(app, ["--help"])

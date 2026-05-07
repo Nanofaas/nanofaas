@@ -105,8 +105,13 @@ def test_m10_cli_host_shell_backend_is_deleted() -> None:
     assert not (scripts_lib / "e2e-cli-host-backend.sh").exists()
 
 
-def test_m10_cli_vm_runner_is_importable() -> None:
-    from controlplane_tool.cli.runtime import CliVmRunner  # noqa: F401
+def test_m10_cli_vm_runner_is_removed() -> None:
+    """CliVmRunner was removed as part of legacy CLI consumer cleanup."""
+    import importlib
+    import sys
+    sys.modules.pop("controlplane_tool.cli_validation.cli_vm_runner", None)
+    with __import__("pytest").raises(ImportError):
+        importlib.import_module("controlplane_tool.cli_validation.cli_vm_runner")
     from controlplane_tool.cli.runtime import CliHostPlatformRunner  # noqa: F401
 
 
@@ -228,9 +233,6 @@ def test_m13_all_legacy_wrappers_are_compatibility_shims() -> None:
         "e2e-container-local.sh",
         "e2e-k3s-junit-curl.sh",
         "e2e-k3s-helm.sh",
-        "e2e-cli.sh",
-        "e2e-cli-host-platform.sh",
-        "e2e-cli-deploy-host.sh",
     }
     for name in shims:
         script = (scripts_dir / name).read_text(encoding="utf-8")
