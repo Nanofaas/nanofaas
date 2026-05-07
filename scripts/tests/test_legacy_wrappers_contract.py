@@ -21,9 +21,6 @@ SHIM_TARGETS = {
     "e2e-container-local.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run container-local "$@"',
     "e2e-k3s-junit-curl.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run k3s-junit-curl "$@"',
     "e2e-k3s-helm.sh": 'exec "$(dirname "$0")/controlplane.sh" e2e run helm-stack "$@"',
-    "e2e-cli.sh": 'exec "$(dirname "$0")/controlplane.sh" cli-test run vm "$@"',
-    "e2e-cli-host-platform.sh": 'exec "$(dirname "$0")/controlplane.sh" cli-test run host-platform "$@"',
-    "e2e-cli-deploy-host.sh": 'exec "$(dirname "$0")/controlplane.sh" cli-test run deploy-host "$@"',
 }
 
 

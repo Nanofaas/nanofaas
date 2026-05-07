@@ -49,7 +49,6 @@ scripts/controlplane.sh functions show-preset demo-javascript
 scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
-scripts/controlplane.sh cli-test run vm --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
