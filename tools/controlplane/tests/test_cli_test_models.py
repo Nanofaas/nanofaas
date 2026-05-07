@@ -9,7 +9,7 @@ from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
 def test_cli_test_request_allows_missing_vm_for_vm_backed_scenarios() -> None:
-    request = CliTestRequest(scenario="vm")
+    request = CliTestRequest(scenario="cli-stack")
 
     assert request.vm is None
 
