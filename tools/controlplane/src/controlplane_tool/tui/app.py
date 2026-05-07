@@ -28,6 +28,12 @@ from tui_toolkit.theme import DEFAULT_THEME, to_questionary_style
 
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
 from controlplane_tool.cli.loadtest_commands import build_loadtest_request
+from controlplane_tool.core.models import (
+    BuildAction,
+    ProfileName,
+    is_build_action,
+    is_profile_name,
+)
 from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes.registry_runtime import default_registry_url, ensure_local_registry
@@ -385,6 +391,32 @@ _BUILD_PROFILE_CHOICES = [
     ),
 ]
 
+def _select_build_action() -> BuildAction | None:
+    value = _select_value(
+        "Action:",
+        choices=_BUILD_ACTION_CHOICES,
+        include_back=True,
+    )
+    if value == _BACK_VALUE:
+        return None
+    if is_build_action(value):
+        return value
+    raise ValueError(f"Unsupported build action selected: {value}")
+
+
+def _select_build_profile() -> ProfileName | None:
+    value = _select_value(
+        "Profile:",
+        choices=_BUILD_PROFILE_CHOICES,
+        default="core",
+        include_back=True,
+    )
+    if value == _BACK_VALUE:
+        return None
+    if is_profile_name(value):
+        return value
+    raise ValueError(f"Unsupported build profile selected: {value}")
+
 _ENVIRONMENT_ACTION_CHOICES = [
     _choice(
         "vm — lifecycle, provisioning, and inspection",
@@ -628,21 +660,12 @@ class NanofaasTUI:
         while True:
             phase("Build & Test")
 
-            action = _select_value(
-                "Action:",
-                choices=_BUILD_ACTION_CHOICES,
-                include_back=True,
-            )
-            if action == _BACK_VALUE:
+            action = _select_build_action()
+            if action is None:
                 return
 
-            profile = _select_value(
-                "Profile:",
-                choices=_BUILD_PROFILE_CHOICES,
-                default="core",
-                include_back=True,
-            )
-            if profile == _BACK_VALUE:
+            profile = _select_build_profile()
+            if profile is None:
                 continue
 
             dry_run = _ask(

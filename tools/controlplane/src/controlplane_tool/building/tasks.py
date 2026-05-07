@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from controlplane_tool.core.models import Profile
+from controlplane_tool.core.models import BuildAction, Profile, ProfileName
 
 
 @dataclass(frozen=True)
@@ -21,8 +21,8 @@ class GradleActionExecutor(Protocol):
     def execute(
         self,
         *,
-        action: str,
-        profile: str,
+        action: BuildAction,
+        profile: ProfileName,
         modules: str | None,
         extra_gradle_args: list[str],
         dry_run: bool,
@@ -64,8 +64,8 @@ BuildPipelineTask = Callable[
 def run_gradle_action_task(
     *,
     executor: GradleActionExecutor,
-    action: str,
-    profile: str,
+    action: BuildAction,
+    profile: ProfileName,
     modules: str | None,
     extra_gradle_args: list[str],
     dry_run: bool,

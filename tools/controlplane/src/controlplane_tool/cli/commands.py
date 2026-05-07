@@ -4,6 +4,7 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
+from controlplane_tool.core.models import BuildAction, ProfileName
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
 
@@ -25,8 +26,8 @@ def _combined_extra_gradle_args(
 def _run_gradle_action(
     *,
     ctx: typer.Context,
-    action: str,
-    profile: str,
+    action: BuildAction,
+    profile: ProfileName,
     modules: str | None,
     dry_run: bool,
     extra_gradle_arg: list[str] | None,
@@ -98,7 +99,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("jar", context_settings=CLI_CONTEXT_SETTINGS)
     def jar_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",
@@ -123,7 +124,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("building", context_settings=CLI_CONTEXT_SETTINGS)
     def build_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",
@@ -148,7 +149,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("run", context_settings=CLI_CONTEXT_SETTINGS)
     def run_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",
@@ -173,7 +174,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("image", context_settings=CLI_CONTEXT_SETTINGS)
     def image_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",
@@ -198,7 +199,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("native", context_settings=CLI_CONTEXT_SETTINGS)
     def native_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",
@@ -223,7 +224,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("test", context_settings=CLI_CONTEXT_SETTINGS)
     def test_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",
@@ -248,7 +249,7 @@ def install_cli_commands(app: typer.Typer) -> None:
     @app.command("inspect", context_settings=CLI_CONTEXT_SETTINGS)
     def inspect_command(
         ctx: typer.Context,
-        profile: str = typer.Option(..., "--profile", help="Named control-plane profile."),
+        profile: ProfileName = typer.Option(..., "--profile", help="Named control-plane profile."),
         modules: str | None = typer.Option(
             None,
             "--modules",

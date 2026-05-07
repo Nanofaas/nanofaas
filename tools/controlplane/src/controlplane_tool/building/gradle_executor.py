@@ -9,6 +9,7 @@ from controlplane_tool.building.gradle_planner import (
 )
 from controlplane_tool.building.requests import BuildRequest
 from controlplane_tool.building.tasks import CommandExecutionResult
+from controlplane_tool.core.models import BuildAction, ProfileName
 from controlplane_tool.core.shell_backend import SubprocessShell
 
 
@@ -19,8 +20,8 @@ class GradleCommandExecutor:
 
     def _build_command(
         self,
-        action: str,
-        profile: str,
+        action: BuildAction,
+        profile: ProfileName,
         modules: str | None,
         extra_gradle_args: list[str],
     ) -> list[str]:
@@ -38,8 +39,8 @@ class GradleCommandExecutor:
 
     def execute(
         self,
-        action: str,
-        profile: str,
+        action: BuildAction,
+        profile: ProfileName,
         modules: str | None,
         extra_gradle_args: list[str],
         dry_run: bool,

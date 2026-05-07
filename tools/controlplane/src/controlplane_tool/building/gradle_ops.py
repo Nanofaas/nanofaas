@@ -15,7 +15,7 @@ from pathlib import Path
 from controlplane_tool.building.requests import BuildRequest
 from controlplane_tool.building.gradle_planner import build_gradle_command
 from controlplane_tool.infra.runtimes.mockk8s import default_mockk8s_test_selectors
-from controlplane_tool.core.models import Profile
+from controlplane_tool.core.models import BuildAction, Profile
 from controlplane_tool.core.shell_backend import SubprocessShell
 
 
@@ -73,7 +73,7 @@ class GradleOps:
 
     def _build_gradle_command(
         self,
-        action: str,
+        action: BuildAction,
         profile: Profile,
         extra_gradle_args: list[str] | None = None,
     ) -> list[str]:

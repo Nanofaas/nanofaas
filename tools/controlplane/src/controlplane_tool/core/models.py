@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeGuard
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +35,25 @@ VM_BACKED_SCENARIOS = frozenset(
         "helm-stack",
     }
 )
+
+BUILD_ACTION_VALUES: tuple[BuildAction, ...] = (
+    "jar",
+    "building",
+    "run",
+    "image",
+    "native",
+    "test",
+    "inspect",
+)
+PROFILE_NAME_VALUES: tuple[ProfileName, ...] = ("core", "k8s", "container-local", "all")
+
+
+def is_build_action(value: str) -> TypeGuard[BuildAction]:
+    return value in BUILD_ACTION_VALUES
+
+
+def is_profile_name(value: str) -> TypeGuard[ProfileName]:
+    return value in PROFILE_NAME_VALUES
 
 
 class ControlPlaneConfig(BaseModel):

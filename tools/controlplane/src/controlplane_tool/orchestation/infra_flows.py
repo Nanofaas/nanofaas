@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
+from typing import TypeGuard
 
 from controlplane_tool.orchestation.adapters import ShellCommandAdapter
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
@@ -23,7 +24,8 @@ from controlplane_tool.building.tasks import (
 from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
 from controlplane_tool.loadtest.loadtest_runner import LoadtestRunner
-from controlplane_tool.core.models import Profile
+from controlplane_tool.loadtest.loadtest_tasks import LoadtestAdapter
+from controlplane_tool.core.models import BuildAction, Profile, ProfileName
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes import default_registry_url
 from controlplane_tool.orchestation.prefect_models import LocalFlowDefinition
@@ -51,7 +53,7 @@ def vm_flow_task_ids(flow_id: str) -> list[str]:
     return [flow_id]
 
 
-def gradle_action_task_ids(action: str) -> list[str]:
+def gradle_action_task_ids(action: BuildAction) -> list[str]:
     return [f"building.{action}"]
 
 
@@ -141,8 +143,8 @@ def build_vm_flow(
 
 def build_gradle_action_flow(
     *,
-    action: str,
-    profile: str,
+    action: BuildAction,
+    profile: ProfileName,
     modules: str | None,
     extra_gradle_args: list[str],
     dry_run: bool,
@@ -229,7 +231,7 @@ def build_pipeline_flow(
             "metrics": metrics,
         }
 
-    def _supports_structured_loadtest(adapter: BuildPipelineAdapter) -> bool:
+    def _supports_structured_loadtest(adapter: BuildPipelineAdapter) -> TypeGuard[LoadtestAdapter]:
         required_methods = (
             "bootstrap_loadtest",
             "run_loadtest_k6",

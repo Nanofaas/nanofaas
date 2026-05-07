@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from controlplane_tool.core.models import BuildAction, is_build_action
 from controlplane_tool.orchestation.infra_flows import (
     build_gradle_action_flow,
     build_pipeline_flow,
@@ -31,9 +32,18 @@ def _scenario_task_ids(scenario: str) -> list[str]:
     return scenario_task_ids(scenario)
 
 
+def _resolve_build_action(flow_name: str) -> BuildAction | None:
+    if not flow_name.startswith("building."):
+        return None
+    action = flow_name.removeprefix("building.")
+    if is_build_action(action):
+        return action
+    raise ValueError(f"Unsupported building flow: {flow_name}")
+
+
 def resolve_flow_task_ids(flow_name: str, **kwargs: Any) -> list[str]:
-    if flow_name.startswith("building."):
-        return gradle_action_task_ids(flow_name.removeprefix("building."))
+    if (action := _resolve_build_action(flow_name)) is not None:
+        return gradle_action_task_ids(action)
     if flow_name.startswith("vm."):
         return vm_flow_task_ids(flow_name)
     if flow_name == "infra.pipeline":
@@ -60,8 +70,7 @@ def resolve_flow_task_ids(flow_name: str, **kwargs: Any) -> list[str]:
 
 
 def resolve_flow_definition(flow_name: str, **kwargs: Any) -> LocalFlowDefinition[Any]:
-    if flow_name.startswith("building."):
-        action = flow_name.removeprefix("building.")
+    if (action := _resolve_build_action(flow_name)) is not None:
         return build_gradle_action_flow(
             action=action,
             profile=kwargs["profile"],
