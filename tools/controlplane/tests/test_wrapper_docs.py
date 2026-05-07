@@ -40,7 +40,7 @@ def test_profile_fixture_exists_for_saved_profile_flow() -> None:
     assert profile_path.exists()
     profile = profile_path.read_text(encoding="utf-8")
     assert "[cli_test]" in profile
-    assert 'default_scenario = "vm"' in profile
+    assert 'default_scenario = "cli-stack"' in profile
 
 
 def test_javascript_profile_fixture_exists_for_saved_profile_flow() -> None:

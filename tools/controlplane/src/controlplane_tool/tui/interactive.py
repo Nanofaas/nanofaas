@@ -245,7 +245,7 @@ def _prompt_cli_test_selection() -> CliTestConfig:
         _required_select_value(
             "Default CLI validation scenario:",
             choices=_cli_test_scenario_choices(),
-            default="vm",
+            default="cli-stack",
         ),
     )
     return CliTestConfig(default_scenario=default_scenario)

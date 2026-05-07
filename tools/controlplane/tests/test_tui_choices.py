@@ -35,7 +35,7 @@ def test_module_catalog_has_descriptions() -> None:
 def test_profile_wizard_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
-    select_answers = iter(["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "vm"])
+    select_answers = iter(["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "cli-stack"])
     confirm_answers = iter([True, True, True, True, True, True])
     captured_selects: list[tuple[str, list[object]]] = []
     captured_checkboxes: list[tuple[str, list[object]]] = []
@@ -213,7 +213,7 @@ def test_tui_can_save_default_cli_test_scenario(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
     select_answers = iter(
-        ["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "vm"]
+        ["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "cli-stack"]
     )
     confirm_answers = iter([True, True, True, True, True, True])
 
@@ -240,7 +240,7 @@ def test_tui_can_save_default_cli_test_scenario(monkeypatch) -> None:
 
     profile = build_profile_interactive(profile_name="demo-java")
 
-    assert profile.cli_test.default_scenario == "vm"
+    assert profile.cli_test.default_scenario == "cli-stack"
 
 
 def test_tui_can_save_cli_stack_as_default_cli_test_scenario(monkeypatch) -> None:
