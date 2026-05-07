@@ -45,6 +45,12 @@ def test_main_unknown_command_exits_nonzero() -> None:
     assert result.exit_code != 0
 
 
+def test_cli_test_run_vm_route_is_removed() -> None:
+    """cli-test run vm must fail after legacy CLI consumer cleanup."""
+    result = runner.invoke(app, ["cli-test", "run", "vm", "--dry-run"])
+    assert result.exit_code != 0, "cli-test run vm should fail — vm route was removed"
+
+
 def test_prefect_runtime_smoke_command_runs_without_api_url(monkeypatch) -> None:
     monkeypatch.delenv("PREFECT_API_URL", raising=False)
 

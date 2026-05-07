@@ -117,3 +117,26 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
 
     assert "self-bootstrapping VM-backed scenarios" in root_readme
     assert "installs scenario-specific software inside that VM" in root_readme
+
+
+def test_docs_do_not_reference_legacy_cli_wrappers() -> None:
+    """After cleanup, docs must not mention e2e-cli*.sh or the legacy cli-test run vm route."""
+    testing = (ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
+    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    cli_doc = (ROOT / "docs" / "nanofaas-cli.md").read_text(encoding="utf-8")
+    tool_readme = (ROOT / "tools" / "controlplane" / "README.md").read_text(encoding="utf-8")
+
+    for doc_name, content in [
+        ("docs/testing.md", testing),
+        ("README.md", root_readme),
+        ("docs/nanofaas-cli.md", cli_doc),
+        ("tools/controlplane/README.md", tool_readme),
+    ]:
+        assert "scripts/e2e-cli.sh" not in content, f"{doc_name} still mentions e2e-cli.sh"
+        assert "scripts/e2e-cli-host-platform.sh" not in content, (
+            f"{doc_name} still mentions e2e-cli-host-platform.sh"
+        )
+        assert "scripts/e2e-cli-deploy-host.sh" not in content, (
+            f"{doc_name} still mentions e2e-cli-deploy-host.sh"
+        )
+        assert "cli-test run vm" not in content, f"{doc_name} still mentions cli-test run vm"

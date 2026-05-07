@@ -72,6 +72,14 @@ def test_scripts_lib_directory_is_empty_after_full_migration() -> None:
     )
 
 
+def test_legacy_cli_wrapper_scripts_are_deleted() -> None:
+    """e2e-cli*.sh must be deleted — cli-stack is the canonical VM-backed CLI path."""
+    for name in ("e2e-cli.sh", "e2e-cli-host-platform.sh", "e2e-cli-deploy-host.sh"):
+        assert not (SCRIPTS_DIR / name).exists(), (
+            f"{name!r} still exists — delete it as part of legacy CLI consumer cleanup"
+        )
+
+
 def test_python_cli_exposes_all_expected_command_groups() -> None:
     """M13: All scenario command groups must be registered in the controlplane-tool CLI."""
     import sys

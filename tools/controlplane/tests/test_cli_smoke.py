@@ -84,6 +84,23 @@ def test_demo_javascript_profile_exists() -> None:
     assert resolve_workspace_path(Path("tools/controlplane/profiles/demo-javascript.toml")).exists()
 
 
+def test_cli_vm_runner_not_exported_from_cli_runtime() -> None:
+    """CliVmRunner must not be accessible via cli.runtime after legacy cleanup."""
+    import controlplane_tool.cli.runtime as _rt
+    assert not hasattr(_rt, "CliVmRunner"), (
+        "CliVmRunner still accessible via cli.runtime — remove it"
+    )
+
+
+def test_tui_does_not_offer_legacy_vm_runner_option() -> None:
+    """TUI CLI E2E menu must not offer the legacy vm runner choice after cleanup."""
+    from controlplane_tool.tui import app as tui_app
+    vm_values = [c.value for c in tui_app._CLI_E2E_RUNNER_CHOICES]
+    assert "vm" not in vm_values, (
+        f"TUI still offers vm as a CLI E2E runner choice: {vm_values}"
+    )
+
+
 def test_removed_pipeline_run_command_is_rejected() -> None:
     runner = CliRunner()
     result = runner.invoke(app, [PIPELINE_ALIAS, "--help"])

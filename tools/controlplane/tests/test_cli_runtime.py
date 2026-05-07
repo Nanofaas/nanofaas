@@ -168,6 +168,13 @@ def test_cli_runtime_re_exports_dedicated_cli_stack_runner() -> None:
     assert hasattr(cli_runtime, "CliStackRunner")
 
 
+def test_cli_runtime_does_not_expose_cli_vm_runner() -> None:
+    """CliVmRunner must be removed from cli.runtime after legacy CLI consumer cleanup."""
+    assert not hasattr(cli_runtime, "CliVmRunner"), (
+        "CliVmRunner is still exported from cli.runtime — remove it"
+    )
+
+
 def test_cli_vm_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

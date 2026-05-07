@@ -169,6 +169,21 @@ local_registry = "registry:5000"
     ]
 
 
+def test_cli_test_run_vm_is_no_longer_a_valid_scenario() -> None:
+    """cli-test run vm must be rejected after legacy CLI consumer cleanup."""
+    result = CliRunner().invoke(app, ["cli-test", "run", "vm", "--dry-run"])
+    assert result.exit_code != 0, "cli-test run vm should fail — vm scenario was removed"
+
+
+def test_cli_test_list_does_not_advertise_vm_scenario() -> None:
+    """cli-test list must not include vm after legacy CLI consumer cleanup."""
+    result = CliRunner().invoke(app, ["cli-test", "list"])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    scenario_names = [line.split()[1] for line in lines if "│" in line and len(line.split()) > 1]
+    assert "vm" not in scenario_names, f"vm still listed in cli-test catalog: {scenario_names}"
+
+
 def test_cli_test_run_missing_saved_profile_exits_cleanly() -> None:
     result = CliRunner().invoke(
         app,
