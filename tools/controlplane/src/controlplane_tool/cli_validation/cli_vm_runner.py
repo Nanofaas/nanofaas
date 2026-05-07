@@ -78,7 +78,7 @@ class CliVmRunner:
 
     @property
     def _cli_bin_dir(self) -> str:
-        return f"{self._remote_dir}/nanofaas-cli/building/install/nanofaas-cli/bin"
+        return f"{self._remote_dir}/nanofaas-cli/build/install/nanofaas-cli/bin"
 
     @property
     def _kubeconfig_path(self) -> str:

@@ -156,6 +156,14 @@ def test_cli_vm_runner_runtime_image_uses_local_registry(tmp_path) -> None:
     assert runner._runtime_image.startswith("myreg:5001/")
 
 
+def test_cli_vm_runner_uses_gradle_install_dist_bin_dir(tmp_path) -> None:
+    vm_req = _make_vm_request()
+    runner = CliVmRunner(tmp_path, vm_request=vm_req)
+
+    assert runner._cli_bin_dir.endswith("/nanofaas-cli/build/install/nanofaas-cli/bin")
+    assert "/nanofaas-cli/building/install/" not in runner._cli_bin_dir
+
+
 def test_cli_runtime_re_exports_dedicated_cli_stack_runner() -> None:
     assert hasattr(cli_runtime, "CliStackRunner")
 
