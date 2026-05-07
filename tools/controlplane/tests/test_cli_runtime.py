@@ -1,8 +1,5 @@
 """
-Tests for cli_runtime - CliVmRunner and CliHostPlatformRunner (M10).
-
-Gate: Runners must not delegate to deleted shell backends and must guard against
-un-bootstrapped VMs. They must use vm_request_from_env() for env-based construction.
+Tests for cli_runtime — CliStackRunner, CliHostPlatformRunner, and related helpers.
 """
 from __future__ import annotations
 
@@ -18,7 +15,6 @@ import controlplane_tool.e2e.container_local_runner as container_local_runner_mo
 import controlplane_tool.e2e.deploy_host_runner as deploy_host_runner_mod
 from controlplane_tool.scenario.components import cli as cli_components
 from controlplane_tool.scenario.components.cli import CliComponentContext
-from controlplane_tool.cli_validation.cli_vm_runner import CliVmRunner
 from controlplane_tool.cli_validation.cli_host_runner import CliHostPlatformRunner
 from tui_toolkit import bind_workflow_context, bind_workflow_sink
 from controlplane_tool.e2e.container_local_runner import ContainerLocalE2eRunner
@@ -116,54 +112,6 @@ def test_cli_function_image_returns_custom_image_from_resolved() -> None:
     assert _function_image("echo-test", resolved, "fallback") == "custom/echo:v1"
 
 
-# ---------------------------------------------------------------------------
-# CliVmRunner
-# ---------------------------------------------------------------------------
-
-def test_cli_vm_runner_construction_defaults(tmp_path) -> None:
-    vm_req = _make_vm_request()
-    runner = CliVmRunner(tmp_path, vm_request=vm_req)
-    assert runner.namespace == "nanofaas-e2e"
-    assert runner.skip_cli_build is False
-    assert runner.runtime == "java"
-
-
-def test_cli_vm_runner_requires_skip_bootstrap_env(tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("E2E_SKIP_VM_BOOTSTRAP", raising=False)
-    vm_req = _make_vm_request()
-    runner = CliVmRunner(tmp_path, vm_request=vm_req)
-    with pytest.raises(RuntimeError, match="E2E_SKIP_VM_BOOTSTRAP"):
-        runner.run()
-
-
-def test_cli_vm_runner_does_not_subprocess_deleted_shell_backend() -> None:
-    """CliVmRunner must not exec the deleted e2e-cli-backend.sh."""
-    scripts_lib = Path(__file__).resolve().parents[3] / "scripts" / "lib"
-    assert not (scripts_lib / "e2e-cli-backend.sh").exists(), (
-        "e2e-cli-backend.sh was not deleted — M10 incomplete"
-    )
-
-
-def test_cli_vm_runner_control_image_uses_local_registry(tmp_path) -> None:
-    vm_req = _make_vm_request()
-    runner = CliVmRunner(tmp_path, vm_request=vm_req, local_registry="myreg:5001")
-    assert runner._control_image.startswith("myreg:5001/")
-
-
-def test_cli_vm_runner_runtime_image_uses_local_registry(tmp_path) -> None:
-    vm_req = _make_vm_request()
-    runner = CliVmRunner(tmp_path, vm_request=vm_req, local_registry="myreg:5001")
-    assert runner._runtime_image.startswith("myreg:5001/")
-
-
-def test_cli_vm_runner_uses_gradle_install_dist_bin_dir(tmp_path) -> None:
-    vm_req = _make_vm_request()
-    runner = CliVmRunner(tmp_path, vm_request=vm_req)
-
-    assert runner._cli_bin_dir.endswith("/nanofaas-cli/build/install/nanofaas-cli/bin")
-    assert "/nanofaas-cli/building/install/" not in runner._cli_bin_dir
-
-
 def test_cli_runtime_re_exports_dedicated_cli_stack_runner() -> None:
     assert hasattr(cli_runtime, "CliStackRunner")
 
@@ -173,50 +121,6 @@ def test_cli_runtime_does_not_expose_cli_vm_runner() -> None:
     assert not hasattr(cli_runtime, "CliVmRunner"), (
         "CliVmRunner is still exported from cli.runtime — remove it"
     )
-
-
-def test_cli_vm_runner_emits_balanced_top_level_phase_events_and_verify_children(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    fake_sink,
-) -> None:
-    monkeypatch.setenv("E2E_SKIP_VM_BOOTSTRAP", "true")
-    monkeypatch.setattr(cli_runtime, "_resolve_scenario", lambda scenario_file: None, raising=False)
-
-    runner = CliVmRunner(tmp_path, vm_request=_make_vm_request())
-    monkeypatch.setattr(runner, "_build_artifacts", lambda: None)
-    monkeypatch.setattr(runner, "_build_images", lambda: None)
-    monkeypatch.setattr(runner, "_deploy_platform", lambda: None)
-    monkeypatch.setattr(runner, "_build_cli", lambda: None)
-    monkeypatch.setattr(runner, "_resolve_endpoint", lambda: "http://control-plane")
-
-    def _run_cli_tests(resolved, endpoint: str) -> None:  # noqa: ANN001
-        assert resolved is None
-        assert endpoint == "http://control-plane"
-        reporter = WorkflowProgressReporter.current()
-        with reporter.child(
-            "cli.vm.verify.echo-test",
-            "Testing CLI function lifecycle for 'echo-test'",
-        ):
-            pass
-
-    monkeypatch.setattr(runner, "_run_cli_tests", _run_cli_tests)
-
-    with bind_workflow_sink(fake_sink), bind_workflow_context(
-        WorkflowContext(flow_id="e2e.cli_vm", task_id="cli.vm_e2e_flow")
-    ):
-        runner.run()
-
-    _assert_balanced_phase(fake_sink, task_id="cli.vm.building", parent_task_id="cli.vm_e2e_flow")
-    _assert_balanced_phase(fake_sink, task_id="cli.vm.deploy", parent_task_id="cli.vm_e2e_flow")
-    _assert_balanced_phase(fake_sink, task_id="cli.vm.verify", parent_task_id="cli.vm_e2e_flow")
-    assert [event.kind for event in _task_events(fake_sink, "cli.vm.verify.echo-test")] == [
-        "task.running",
-        "task.completed",
-    ]
-    assert {
-        event.parent_task_id for event in _task_events(fake_sink, "cli.vm.verify.echo-test")
-    } == {"cli.vm.verify"}
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ ProfileName = Literal["core", "k8s", "container-local", "all"]
 VmLifecycle = Literal["multipass", "external"]
 RuntimeKind = Literal["java", "rust"]
 FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "javascript", "fixture"]
-CliTestScenarioName = Literal["unit", "vm", "cli-stack", "host-platform", "deploy-host"]
+CliTestScenarioName = Literal["unit", "cli-stack", "host-platform", "deploy-host"]
 ScenarioName = Literal[
     "docker",
     "buildpack",

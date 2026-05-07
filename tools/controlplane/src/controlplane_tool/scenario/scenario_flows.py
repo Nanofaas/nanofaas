@@ -107,20 +107,6 @@ def build_scenario_flow(
 
     if scenario == "k3s-junit-curl":
         raise ValueError("scenario 'k3s-junit-curl' requires an executable request")
-    if scenario == "cli":
-        from controlplane_tool.cli_validation.cli_vm_runner import CliVmRunner
-
-        return LocalFlowDefinition(
-            flow_id=flow_id,
-            task_ids=scenario_task_ids(scenario),
-            run=lambda: CliVmRunner(
-                repo_root,
-                namespace=effective_namespace,
-                local_registry=local_registry or default_registry_url(),
-                runtime=runtime,
-                skip_cli_build=skip_cli_build,
-            ).run(scenario_file=scenario_file),
-        )
     if scenario == "cli-stack":
         resolved_scenario = _resolve_scenario(scenario_file)
         effective_scenario = (

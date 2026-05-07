@@ -129,7 +129,7 @@ class CliTestRunner:
             return False
         return any(
             scenario_name in rendered
-            for scenario_name in ("deploy-host", "vm", "host-platform")
+            for scenario_name in ("deploy-host", "host-platform")
         )
 
     def _with_cli_build_reuse(self, steps: list[ScenarioPlanStep]) -> list[ScenarioPlanStep]:

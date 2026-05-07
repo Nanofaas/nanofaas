@@ -24,14 +24,6 @@ _SCENARIOS: tuple[CliTestScenarioDefinition, ...] = (
         gradle_task=":nanofaas-cli:test",
     ),
     CliTestScenarioDefinition(
-        name="vm",
-        description="Run the CLI workflow inside a VM-backed environment.",
-        requires_vm=True,
-        accepts_function_selection=True,
-        gradle_task=":nanofaas-cli:installDist",
-        legacy_e2e_scenario="cli",
-    ),
-    CliTestScenarioDefinition(
         name="cli-stack",
         description="Run the dedicated VM-backed CLI stack evaluation flow.",
         requires_vm=True,

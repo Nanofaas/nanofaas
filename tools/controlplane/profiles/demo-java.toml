@@ -10,4 +10,4 @@ function_preset = "demo-java"
 namespace = "nanofaas-e2e"
 
 [cli_test]
-default_scenario = "vm"
+default_scenario = "cli-stack"

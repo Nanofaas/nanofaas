@@ -539,11 +539,6 @@ _PLATFORM_LOCAL_RUNTIME_CHOICES = [
 
 _CLI_E2E_RUNNER_CHOICES = [
     _DescribedChoice(
-        "vm — CLI E2E on k3s VM",
-        "vm",
-        "Run the legacy CLI validation path inside a managed VM-backed environment.",
-    ),
-    _DescribedChoice(
         "cli-stack — canonical self-bootstrapping CLI stack in VM",
         "cli-stack",
         "Run the canonical VM-backed CLI stack that bootstraps the platform and validates the CLI end to end.",
@@ -1239,24 +1234,6 @@ class NanofaasTUI:
             return
 
         repo_root = default_tool_paths().workspace_root
-
-        if runner_choice == "vm":
-            def _run_cli_vm_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-                step("Running CLI VM E2E")
-                flow = build_scenario_flow(
-                    "cli",
-                    repo_root=repo_root,
-                )
-                self._controller.run_shared_flow(flow)
-                success("CLI VM E2E completed")
-
-            self._controller.run_live_workflow(
-                title="CLI E2E",
-                summary_lines=["Runner: vm", "Mode: legacy in-VM CLI validation path"],
-                planned_steps=["Build", "Deploy", "Verify"],
-                action=_run_cli_vm_workflow,
-            )
-            return
 
         if runner_choice == "cli-stack":
             from controlplane_tool.e2e.e2e_runner import E2eRunner
