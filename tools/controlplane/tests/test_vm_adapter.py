@@ -6,7 +6,7 @@ from multipass import FakeBackend, MultipassClient
 from multipass._backend import CommandResult
 
 from controlplane_tool.core.shell_backend import RecordingShell
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator, repo_rsync_command
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
@@ -83,6 +83,18 @@ def test_vm_sync_multipass_plans_rsync_with_generated_artifact_excludes() -> Non
     assert "--exclude=node_modules/" in result.command
     assert "--exclude=.git/" in result.command
     assert "ubuntu@<multipass-ip:nanofaas-e2e>:/home/ubuntu/nanofaas/" in result.command[-1]
+
+
+def test_vm_sync_does_not_exclude_source_packages_named_building() -> None:
+    command = repo_rsync_command(
+        source=Path("/repo"),
+        user="ubuntu",
+        host="vm.example.test",
+        destination="/home/ubuntu/nanofaas",
+    )
+
+    assert "--exclude=building/" not in command
+    assert "--exclude=/building/" in command
 
 
 def test_ensure_running_is_idempotent_for_existing_multipass_vm() -> None:

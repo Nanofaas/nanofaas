@@ -65,7 +65,7 @@ REPO_SYNC_EXCLUDE_PATTERNS = (
     ".uv/",
     "node_modules/",
     "dist/",
-    "building/",
+    "/building/",
     "out/",
     "target/",
     "building-test/",
