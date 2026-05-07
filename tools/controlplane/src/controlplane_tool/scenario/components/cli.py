@@ -29,7 +29,7 @@ def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
 def _cli_binary(context: CliComponentContext) -> str:
     """Full path to the nanofaas-cli binary produced by :nanofaas-cli:installDist."""
     return str(
-        context.repo_root / "nanofaas-cli" / "building" / "install" / "nanofaas-cli" / "bin" / "nanofaas-cli"
+        context.repo_root / "nanofaas-cli" / "build" / "install" / "nanofaas-cli" / "bin" / "nanofaas-cli"
     )
 
 

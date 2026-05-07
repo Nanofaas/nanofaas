@@ -366,6 +366,21 @@ def test_cli_stack_apply_operation_stages_manifest_before_apply(tmp_path) -> Non
     assert "NANOFAAS_ENDPOINT" not in operation.env
 
 
+def test_cli_stack_components_use_gradle_install_dist_binary(tmp_path) -> None:
+    context = CliComponentContext(
+        repo_root=tmp_path,
+        release="test-release",
+        namespace="test-ns",
+        local_registry="registry.internal:5000",
+    )
+
+    operation = cli_components.plan_platform_install(context)[0]
+    command = " ".join(operation.argv)
+
+    assert "/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli" in command
+    assert "/nanofaas-cli/building/install/" not in command
+
+
 def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
