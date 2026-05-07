@@ -67,6 +67,7 @@ select = ["F", "SLF"]
 [tool.basedpyright]
 include = [
     "src/controlplane_tool/devtools/quality.py",
+    "src/controlplane_tool/tasks",
     "src/controlplane_tool/tui/workflow.py",
     "src/controlplane_tool/tui/workflow_controller.py",
 ]
