@@ -24,28 +24,6 @@ def test_cli_test_runner_unit_scenario_calls_gradle_cli_tests() -> None:
     assert not any("e2e-cli-backend.sh" in command for command in rendered)
 
 
-def test_cli_vm_runner_no_longer_uses_shell_backend_script(tmp_path: Path) -> None:
-    """M10: vm scenario must not route to the deleted e2e-cli-backend.sh."""
-    plan = CliTestRunner(
-        repo_root=Path("/repo"),
-        shell=RecordingShell(),
-        manifest_root=tmp_path,
-    ).plan(
-        CliTestRequest(
-            scenario="vm",
-            function_preset="demo-java",
-            resolved_scenario=load_scenario_file(
-                Path("tools/controlplane/scenarios/k8s-demo-java.toml")
-            ),
-            vm=VmRequest(lifecycle="multipass"),
-        )
-    )
-
-    rendered = [" ".join(step.command) for step in plan.steps]
-    assert any(":nanofaas-cli:installDist" in command for command in rendered)
-    assert not any("e2e-cli-backend.sh" in command for command in rendered)
-
-
 def test_cli_host_platform_runner_no_longer_uses_shell_backend_script() -> None:
     """M10: host-platform scenario must not route to the deleted e2e-cli-host-backend.sh."""
     plan = CliTestRunner(repo_root=Path("/repo"), shell=RecordingShell()).plan(
@@ -133,11 +111,11 @@ def test_cli_test_runner_host_platform_plan_omits_resolved_functions_for_saved_p
 
 def test_cli_test_runner_e2e_request_inverts_keep_vm_to_cleanup_vm() -> None:
     runner = CliTestRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    scenario = resolve_cli_test_scenario("vm")
+    scenario = resolve_cli_test_scenario("deploy-host")
 
     cleanup_request = runner._as_e2e_request(
         CliTestRequest(
-            scenario="vm",
+            scenario="deploy-host",
             vm=VmRequest(lifecycle="multipass"),
             keep_vm=False,
         ),
@@ -145,7 +123,7 @@ def test_cli_test_runner_e2e_request_inverts_keep_vm_to_cleanup_vm() -> None:
     )
     keep_request = runner._as_e2e_request(
         CliTestRequest(
-            scenario="vm",
+            scenario="deploy-host",
             vm=VmRequest(lifecycle="multipass"),
             keep_vm=True,
         ),

@@ -57,12 +57,6 @@ def test_k3s_junit_curl_flow_uses_reusable_vm_build_and_deploy_tasks() -> None:
     assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
-def test_cli_vm_flow_reuses_build_and_helm_deploy_tasks() -> None:
-    flow = build_scenario_flow("cli", repo_root=Path("/repo"))
-
-    assert flow.task_ids == ["tests.run_cli"]
-
-
 def test_cli_stack_flow_uses_dedicated_cli_stack_task_order() -> None:
     flow = build_scenario_flow("cli-stack", repo_root=Path("/repo"))
     recipe = build_scenario_recipe("cli-stack")
