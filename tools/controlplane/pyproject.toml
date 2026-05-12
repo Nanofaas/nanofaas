@@ -69,6 +69,7 @@ include = [
     "src/controlplane_tool/app/main.py",
     "src/controlplane_tool/building",
     "src/controlplane_tool/cli/commands.py",
+    "src/controlplane_tool/core/task_shell_adapter.py",
     "src/controlplane_tool/devtools/quality.py",
     "src/controlplane_tool/orchestation/flow_catalog.py",
     "src/controlplane_tool/orchestation/infra_flows.py",
