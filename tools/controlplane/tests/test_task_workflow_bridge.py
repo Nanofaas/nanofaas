@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
-from controlplane_tool.tasks.workflow import task_result_event, task_started_event
 from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
+from controlplane_tool.workflow.task_events import task_result_event, task_started_event
 
 
 def test_task_started_event_uses_task_id_summary_and_running_kind() -> None:
