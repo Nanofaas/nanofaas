@@ -37,6 +37,15 @@ def _load_all_components() -> None:
         NAMESPACE_INSTALL,
         NAMESPACE_UNINSTALL,
     )
+    from controlplane_tool.scenario.components.two_vm_loadtest import (
+        LOADGEN_DOWN,
+        LOADGEN_ENSURE_RUNNING,
+        LOADGEN_INSTALL_K6,
+        LOADGEN_PROVISION_BASE,
+        LOADGEN_RUN_K6,
+        LOADTEST_WRITE_REPORT,
+        METRICS_PROMETHEUS_SNAPSHOT,
+    )
     from controlplane_tool.scenario.components.verification import (
         plan_run_k3s_curl_checks, plan_run_k8s_junit,
         plan_loadtest_run, plan_autoscaling_experiment,
@@ -52,6 +61,10 @@ def _load_all_components() -> None:
         CLI_FN_APPLY_SELECTED, CLI_FN_LIST_SELECTED, CLI_FN_INVOKE_SELECTED,
         CLI_FN_ENQUEUE_SELECTED, CLI_FN_DELETE_SELECTED,
         BUILD_CORE, BUILD_SELECTED_FUNCTIONS,
+        LOADGEN_ENSURE_RUNNING, LOADGEN_PROVISION_BASE,
+        LOADGEN_INSTALL_K6, LOADGEN_RUN_K6,
+        METRICS_PROMETHEUS_SNAPSHOT, LOADTEST_WRITE_REPORT,
+        LOADGEN_DOWN,
         UNINSTALL_FUNCTION_RUNTIME, UNINSTALL_CONTROL_PLANE,
         NAMESPACE_UNINSTALL, VERIFY_CLI_PLATFORM_STATUS_FAILS, VM_DOWN,
     ]:

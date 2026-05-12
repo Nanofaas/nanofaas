@@ -141,7 +141,7 @@ class E2eRunner:
             raise ValueError(
                 f"Scenario '{request.scenario}' does not support runtime '{request.runtime}'"
             )
-        if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack"}:
+        if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack", "two-vm-loadtest"}:
             plan_request = request
             recipe = build_scenario_recipe(request.scenario)
             if request.vm is None and recipe.requires_managed_vm:

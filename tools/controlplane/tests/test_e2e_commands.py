@@ -74,6 +74,15 @@ def test_helm_stack_default_selection_uses_supported_loadtest_functions() -> Non
     assert "json-transform-go" not in result.stdout
 
 
+def test_two_vm_loadtest_dry_run_prints_recipe_steps() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["e2e", "run", "two-vm-loadtest", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "loadgen.ensure_running" in result.stdout
+    assert "loadtest.write_report" in result.stdout
+
+
 def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
     request = _resolve_run_request(
         scenario="two-vm-loadtest",

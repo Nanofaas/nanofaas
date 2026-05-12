@@ -221,6 +221,52 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
     assert all(step.step_id for step in plan.steps)
 
 
+def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    step_ids = [step.step_id for step in plan.steps]
+
+    assert step_ids[:4] == [
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "registry.ensure_container",
+    ]
+    assert step_ids[9:] == [
+        "k3s.install",
+        "k3s.configure_registry",
+        "namespace.install",
+        "helm.deploy_control_plane",
+        "helm.deploy_function_runtime",
+        "loadgen.ensure_running",
+        "loadgen.provision_base",
+        "loadgen.install_k6",
+        "loadgen.run_k6",
+        "metrics.prometheus_snapshot",
+        "loadtest.write_report",
+        "loadgen.down",
+        "vm.down",
+    ]
+    assert all(step.step_id for step in plan.steps)
+    assert [step.summary for step in plan.steps[-8:]] == [
+        "Ensure loadgen VM is running",
+        "Provision loadgen base dependencies",
+        "Install k6 on loadgen VM",
+        "Run k6 from loadgen VM",
+        "Capture Prometheus query snapshots",
+        "Write two-VM loadtest report",
+        "Tear down loadgen VM",
+        "Teardown VM",
+    ]
+
+
 def test_cli_stack_plan_defaults_to_isolated_namespace_for_all_recipe_steps() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = runner.plan(
