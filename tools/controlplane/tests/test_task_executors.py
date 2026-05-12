@@ -5,14 +5,49 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell
 from controlplane_tool.tasks.executors import HostCommandTaskExecutor, VmCommandTaskExecutor
 from controlplane_tool.tasks.models import CommandTaskSpec
 
 
+@dataclass(frozen=True)
+class _CommandResult:
+    return_code: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+class _RecordingCommandRunner:
+    def __init__(
+        self,
+        *,
+        return_code: int = 0,
+        stdout: str = "",
+        stderr: str = "",
+    ) -> None:
+        self.return_code = return_code
+        self.stdout = stdout
+        self.stderr = stderr
+        self.commands: list[tuple[list[str], Path | None, dict[str, str], bool]] = []
+
+    def run(
+        self,
+        argv: list[str],
+        *,
+        cwd: Path | None,
+        env: dict[str, str],
+        dry_run: bool,
+    ) -> _CommandResult:
+        self.commands.append((argv, cwd, env, dry_run))
+        return _CommandResult(
+            return_code=self.return_code,
+            stdout=self.stdout,
+            stderr=self.stderr,
+        )
+
+
 def test_host_executor_runs_task_with_cwd_env_and_dry_run() -> None:
-    shell = RecordingShell()
-    executor = HostCommandTaskExecutor(shell=shell)
+    runner = _RecordingCommandRunner()
+    executor = HostCommandTaskExecutor(runner=runner)
     task = CommandTaskSpec(
         task_id="x",
         summary="X",
@@ -25,23 +60,23 @@ def test_host_executor_runs_task_with_cwd_env_and_dry_run() -> None:
 
     assert result.status == "passed"
     assert result.return_code == 0
-    assert shell.commands == [["echo", "hi"]]
+    assert runner.commands == [(["echo", "hi"], Path("/repo"), {"A": "B"}, True)]
 
 
 def test_host_executor_marks_nonzero_unexpected_code_as_failed() -> None:
-    shell = ScriptedShell(return_code_map={("false",): 1}, stderr_map={("false",): "failed"})
-    executor = HostCommandTaskExecutor(shell=shell)
+    runner = _RecordingCommandRunner(return_code=1, stderr="failed")
+    executor = HostCommandTaskExecutor(runner=runner)
     task = CommandTaskSpec(task_id="x", summary="X", argv=("false",))
 
     result = executor.run(task)
 
     assert result.status == "failed"
-    assert result.return_code != 0
-    assert "failed" in result.stderr
+    assert result.return_code == 1
+    assert result.stderr == "failed"
 
 
 def test_host_executor_rejects_vm_tasks() -> None:
-    executor = HostCommandTaskExecutor(shell=RecordingShell())
+    executor = HostCommandTaskExecutor(runner=_RecordingCommandRunner())
     task = CommandTaskSpec(task_id="x", summary="X", argv=("echo", "hi"), target="vm")
 
     with pytest.raises(ValueError, match="cannot run 'vm' task"):

@@ -1,32 +1,56 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
 
-from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
 from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
 
 
+class CommandRunResult(Protocol):
+    @property
+    def return_code(self) -> int: ...
+
+    @property
+    def stdout(self) -> str: ...
+
+    @property
+    def stderr(self) -> str: ...
+
+
+class HostCommandRunner(Protocol):
+    def run(
+        self,
+        argv: list[str],
+        *,
+        cwd: Path | None,
+        env: dict[str, str],
+        dry_run: bool,
+    ) -> CommandRunResult: ...
+
+
 class HostCommandTaskExecutor:
-    def __init__(self, shell: ShellBackend | None = None) -> None:
-        self._shell = shell or SubprocessShell()
+    def __init__(self, runner: HostCommandRunner) -> None:
+        self._runner = runner
 
     def run(self, task: CommandTaskSpec, *, dry_run: bool = False) -> TaskResult:
         if task.target != "host":
             raise ValueError(f"HostCommandTaskExecutor cannot run {task.target!r} task")
-        shell_result = self._shell.run(
+        command_result = self._runner.run(
             list(task.argv),
             cwd=task.cwd,
             env=dict(task.env),
             dry_run=dry_run,
         )
-        status = "passed" if shell_result.return_code in task.expected_exit_codes else "failed"
+        status = (
+            "passed" if command_result.return_code in task.expected_exit_codes else "failed"
+        )
         return TaskResult(
             task_id=task.task_id,
             status=status,
-            return_code=shell_result.return_code,
+            return_code=command_result.return_code,
             expected_exit_codes=task.expected_exit_codes,
-            stdout=shell_result.stdout,
-            stderr=shell_result.stderr,
+            stdout=command_result.stdout,
+            stderr=command_result.stderr,
         )
 
 
