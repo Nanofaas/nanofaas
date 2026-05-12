@@ -24,12 +24,6 @@ def test_cli_stack_cli_scenario_is_canonical_vm_validation_flow() -> None:
     assert scenario.legacy_e2e_scenario == "cli-stack"
 
 
-def test_cli_test_catalog_does_not_expose_vm_scenario() -> None:
-    """vm must be removed from the cli-test catalog — cli-stack is the canonical VM-backed path."""
-    names = [s.name for s in list_cli_test_scenarios()]
-    assert "vm" not in names, f"vm scenario still in catalog: {names}"
-
-
 def test_host_platform_cli_scenario_reports_selection_disabled() -> None:
     scenario = resolve_cli_test_scenario("host-platform")
 

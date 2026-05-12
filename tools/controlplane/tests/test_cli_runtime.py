@@ -25,7 +25,6 @@ from controlplane_tool.scenario.scenario_helpers import (
 )
 from controlplane_tool.core.shell_backend import ShellExecutionResult
 from controlplane_tool.workflow.workflow_models import WorkflowContext
-from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

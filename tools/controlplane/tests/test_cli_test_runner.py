@@ -9,7 +9,6 @@ from controlplane_tool.cli_validation.cli_test_models import CliTestRequest
 from controlplane_tool.cli_validation.cli_test_runner import CliTestPlan, CliTestRunner
 from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep
 from controlplane_tool.scenario.scenario_models import ResolvedFunction, ResolvedScenario
-from controlplane_tool.scenario.scenario_loader import load_scenario_file
 from controlplane_tool.core.shell_backend import RecordingShell
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
