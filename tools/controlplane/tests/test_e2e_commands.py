@@ -74,6 +74,33 @@ def test_helm_stack_default_selection_uses_supported_loadtest_functions() -> Non
     assert "json-transform-go" not in result.stdout
 
 
+def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
+    request = _resolve_run_request(
+        scenario="two-vm-loadtest",
+        runtime=None,
+        lifecycle="multipass",
+        name=None,
+        host=None,
+        user="ubuntu",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry=None,
+        function_preset=None,
+        functions_csv=None,
+        scenario_file=None,
+        saved_profile=None,
+    )
+
+    assert request.scenario == "two-vm-loadtest"
+    assert request.function_preset == "demo-loadtest"
+    assert request.resolved_scenario is not None
+    assert request.resolved_scenario.load.targets == []
+
+
 def test_helm_stack_rejects_unsupported_go_selection_before_backend() -> None:
     runner = CliRunner()
     result = runner.invoke(

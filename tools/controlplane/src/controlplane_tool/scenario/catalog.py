@@ -79,6 +79,13 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         supported_runtimes=("java", "rust"),
         grouped_phases=True,
     ),
+    ScenarioDefinition(
+        name="two-vm-loadtest",
+        description="Two-VM Helm stack load test with a dedicated k6 generator.",
+        requires_vm=True,
+        supported_runtimes=("java", "rust"),
+        grouped_phases=True,
+    ),
 )
 
 SCENARIO_INDEX = {scenario.name: scenario for scenario in SCENARIOS}

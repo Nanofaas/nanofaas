@@ -13,6 +13,7 @@ def test_catalog_lists_expected_suite_names() -> None:
         "cli-host",
         "deploy-host",
         "helm-stack",
+        "two-vm-loadtest",
     ]
 
 
@@ -29,3 +30,13 @@ def test_container_local_selection_mode_is_single() -> None:
 def test_k3s_junit_curl_selection_mode_is_multi() -> None:
     scenario = resolve_scenario("k3s-junit-curl")
     assert scenario.selection_mode == "multi"
+
+
+def test_two_vm_loadtest_scenario_is_vm_backed_and_grouped() -> None:
+    scenario = resolve_scenario("two-vm-loadtest")
+
+    assert scenario.requires_vm is True
+    assert scenario.grouped_phases is True
+    assert scenario.selection_mode == "multi"
+    assert "java" in scenario.supported_runtimes
+    assert "rust" in scenario.supported_runtimes

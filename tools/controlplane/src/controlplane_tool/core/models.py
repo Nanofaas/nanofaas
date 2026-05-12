@@ -24,6 +24,7 @@ ScenarioName = Literal[
     "cli-host",
     "deploy-host",
     "helm-stack",
+    "two-vm-loadtest",
 ]
 
 VM_BACKED_SCENARIOS = frozenset(
@@ -33,6 +34,7 @@ VM_BACKED_SCENARIOS = frozenset(
         "cli-stack",
         "cli-host",
         "helm-stack",
+        "two-vm-loadtest",
     }
 )
 
