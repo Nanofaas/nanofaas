@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 from controlplane_tool.tasks.adapters import operation_to_task_spec
-from controlplane_tool.scenario.components.operations import RemoteCommandOperation
+
+
+@dataclass(frozen=True)
+class FakeRemoteCommandOperation:
+    operation_id: str
+    summary: str
+    argv: tuple[str, ...]
+    env: Mapping[str, str]
+    execution_target: str
 
 
 def test_remote_command_operation_converts_to_task_spec() -> None:
-    operation = RemoteCommandOperation(
+    operation = FakeRemoteCommandOperation(
         operation_id="images.build",
         summary="Build image",
         argv=("docker", "build", "."),
