@@ -7,6 +7,10 @@ from controlplane_tool.scenario.components.environment import ScenarioExecutionC
 from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.components.images import control_image, runtime_image
+from controlplane_tool.scenario.two_vm_loadtest_config import (
+    TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+)
 
 
 def _image_parts(image: str) -> tuple[str, str]:
@@ -16,7 +20,12 @@ def _image_parts(image: str) -> tuple[str, str]:
     return repository, tag
 
 
-def control_plane_helm_values(*, namespace: str, control_plane_image: str) -> dict[str, str]:
+def control_plane_helm_values(
+    *,
+    namespace: str,
+    control_plane_image: str,
+    expose_node_port: bool = False,
+) -> dict[str, str]:
     repository, tag = _image_parts(control_plane_image)
     callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
     values = {
@@ -45,6 +54,10 @@ def control_plane_helm_values(*, namespace: str, control_plane_image: str) -> di
     for index, (name, value) in enumerate(extra_env):
         values[f"controlPlane.extraEnv[{index}].name"] = name
         values[f"controlPlane.extraEnv[{index}].value"] = value
+    if expose_node_port:
+        values["controlPlane.service.type"] = "NodePort"
+        values["controlPlane.service.nodePorts.http"] = str(TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT)
+        values["controlPlane.service.nodePorts.actuator"] = str(TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT)
     return values
 
 
@@ -91,6 +104,7 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
     values = control_plane_helm_values(
         namespace=namespace,
         control_plane_image=control_image(context.local_registry),
+        expose_node_port=context.scenario_name == "two-vm-loadtest",
     )
     return (
         RemoteCommandOperation(

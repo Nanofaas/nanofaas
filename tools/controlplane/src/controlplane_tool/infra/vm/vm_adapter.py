@@ -458,6 +458,40 @@ class VmOrchestrator:
             return _sdk_error(e)
         return _ok(transfer_cmd)
 
+    def transfer_to(
+        self,
+        request: VmRequest,
+        *,
+        source: Path,
+        destination: str,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        if request.lifecycle == "external":
+            return self._shell_run(
+                ["scp", str(source), f"{request.user}@{request.host}:{destination}"],
+                dry_run=dry_run,
+            )
+
+        command = ["multipass", "transfer", str(source), f"{self._vm_name(request)}:{destination}"]
+        return self._shell_run(command, dry_run=dry_run)
+
+    def transfer_from(
+        self,
+        request: VmRequest,
+        *,
+        source: str,
+        destination: Path,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        if request.lifecycle == "external":
+            return self._shell_run(
+                ["scp", f"{request.user}@{request.host}:{source}", str(destination)],
+                dry_run=dry_run,
+            )
+
+        command = ["multipass", "transfer", f"{self._vm_name(request)}:{source}", str(destination)]
+        return self._shell_run(command, dry_run=dry_run)
+
     @staticmethod
     def _build_exec_script(
         argv: tuple[str, ...] | list[str],

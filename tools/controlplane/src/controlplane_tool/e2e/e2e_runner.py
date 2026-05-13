@@ -7,6 +7,7 @@ from typing import Callable, Literal
 
 from multipass import MultipassClient
 
+from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
 from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -23,6 +24,7 @@ from controlplane_tool.scenario.components.executor import (
     operations_to_plan_steps,
 )
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.components.two_vm_loadtest import loadgen_vm_request
 from controlplane_tool.scenario.scenario_planner import ScenarioPlanner
 from controlplane_tool.core.shell_backend import (
     ShellBackend,
@@ -59,6 +61,7 @@ def plan_recipe_steps(
     shell: ShellBackend | None = None,
     release: str | None = None,
     manifest_root: Path | None = None,
+    host_resolver: Callable[[VmRequest], str] | None = None,
 ) -> list[ScenarioPlanStep]:
     context: ScenarioExecutionContext = resolve_scenario_environment(
         repo_root,
@@ -67,7 +70,7 @@ def plan_recipe_steps(
         release=release,
     )
     recipe = build_scenario_recipe(scenario_name)
-    runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root)
+    runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root, host_resolver=host_resolver)
     cli_context = CliComponentContext(
         repo_root=repo_root,
         release=context.release,
@@ -84,10 +87,21 @@ def plan_recipe_steps(
     def _on_vm_down() -> None:
         runner.vm.teardown(vm_request)
 
+    def _on_loadgen_down() -> None:
+        runner.vm.teardown(loadgen_vm_request(context))
+
     def _on_remote_exec(argv: tuple[str, ...], env: Mapping[str, str]) -> None:
         result = runner.vm.exec_argv(vm_request, argv, env=dict(env), cwd=remote_dir)
         if result.return_code != 0:
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
+
+    def _on_loadgen_run_k6() -> None:
+        TwoVmLoadtestRunner(
+            repo_root=repo_root,
+            vm=runner.vm,
+            shell=runner.shell,
+            host_resolver=host_resolver,
+        ).run_k6(request)
 
     cli_context = CliComponentContext(
         repo_root=Path(remote_dir),
@@ -101,18 +115,45 @@ def plan_recipe_steps(
     for component in compose_recipe(recipe):
         planner_context: object = cli_context if component.component_id.startswith("cli.") else context
         operations = component.planner(planner_context)
-        steps.extend(
-            operations_to_plan_steps(
-                operations,
-                request=request,
-                on_k3s_curl_verify=lambda: runner._planner._k3s_curl_runner(request).verify_existing_stack(
-                    request.resolved_scenario
-                ),
-                on_ensure_running=_on_ensure_running,
-                on_vm_down=_on_vm_down,
-                on_remote_exec=_on_remote_exec,
-            )
+        component_steps = operations_to_plan_steps(
+            operations,
+            request=request,
+            on_k3s_curl_verify=lambda: runner._planner._k3s_curl_runner(request).verify_existing_stack(
+                request.resolved_scenario
+            ),
+            on_ensure_running=_on_ensure_running,
+            on_vm_down=_on_vm_down,
+            on_remote_exec=_on_remote_exec,
         )
+        if component.component_id == "loadgen.run_k6":
+            component_steps = [
+                ScenarioPlanStep(
+                    summary=step.summary,
+                    command=step.command,
+                    env=step.env,
+                    step_id=step.step_id,
+                    action=_on_loadgen_run_k6,
+                )
+                for step in component_steps
+            ]
+        if component.component_id == "loadgen.down":
+            component_steps = [
+                ScenarioPlanStep(
+                    summary=step.summary,
+                    command=["echo", "Skipping loadgen VM teardown (--no-cleanup-vm)"],
+                    step_id=step.step_id,
+                )
+                if not request.cleanup_vm
+                else ScenarioPlanStep(
+                    summary=step.summary,
+                    command=step.command,
+                    env=step.env,
+                    step_id=step.step_id,
+                    action=_on_loadgen_down,
+                )
+                for step in component_steps
+            ]
+        steps.extend(component_steps)
     return steps
 
 
@@ -144,9 +185,16 @@ class E2eRunner:
         if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack", "two-vm-loadtest"}:
             plan_request = request
             recipe = build_scenario_recipe(request.scenario)
-            if request.vm is None and recipe.requires_managed_vm:
+            if (request.vm is None and recipe.requires_managed_vm) or (
+                request.scenario == "two-vm-loadtest" and request.loadgen_vm is None
+            ):
                 context = resolve_scenario_environment(self.paths.workspace_root, request)
-                plan_request = request.model_copy(update={"vm": context.vm_request})
+                updates: dict[str, object] = {}
+                if request.vm is None and recipe.requires_managed_vm:
+                    updates["vm"] = context.vm_request
+                if request.scenario == "two-vm-loadtest" and request.loadgen_vm is None:
+                    updates["loadgen_vm"] = loadgen_vm_request(context)
+                plan_request = request.model_copy(update=updates)
             return ScenarioPlan(
                 scenario=scenario,
                 request=plan_request,
@@ -156,6 +204,7 @@ class E2eRunner:
                     request.scenario,
                     shell=self.shell,
                     manifest_root=self.manifest_root,
+                    host_resolver=self._host_resolver,
                 ),
             )
         steps = (
@@ -235,6 +284,7 @@ class E2eRunner:
                         scenario.name,
                         shell=self.shell,
                         manifest_root=self.manifest_root,
+                        host_resolver=self._host_resolver,
                     )
                     vm_bootstrap_planned = True
                     plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))

@@ -300,6 +300,30 @@ def test_exec_argv_multipass_dry_run_returns_placeholder_command() -> None:
     assert "exec" in result.command
 
 
+def test_transfer_to_multipass_routes_via_multipass_transfer() -> None:
+    shell = RecordingShell()
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=shell)
+    request = VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen")
+
+    orchestrator.transfer_to(request, source=Path("/tmp/script.js"), destination="/home/ubuntu/k6/script.js")
+
+    assert shell.commands == [
+        ["multipass", "transfer", "/tmp/script.js", "nanofaas-e2e-loadgen:/home/ubuntu/k6/script.js"]
+    ]
+
+
+def test_transfer_from_multipass_routes_via_multipass_transfer() -> None:
+    shell = RecordingShell()
+    orchestrator = VmOrchestrator(repo_root=Path("/repo"), shell=shell)
+    request = VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen")
+
+    orchestrator.transfer_from(request, source="/home/ubuntu/k6/k6-summary.json", destination=Path("/tmp/k6-summary.json"))
+
+    assert shell.commands == [
+        ["multipass", "transfer", "nanofaas-e2e-loadgen:/home/ubuntu/k6/k6-summary.json", "/tmp/k6-summary.json"]
+    ]
+
+
 def test_ensure_running_repairs_authorized_keys_for_existing_multipass_vm() -> None:
     name = "nanofaas-e2e"
     public_key = "ssh-ed25519 AAAA test@example"

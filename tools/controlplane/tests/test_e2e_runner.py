@@ -267,6 +267,108 @@ def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
     ]
 
 
+def test_two_vm_loadtest_plan_wires_run_k6_action() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    run_k6_step = next(step for step in plan.steps if step.step_id == "loadgen.run_k6")
+    assert run_k6_step.action is not None
+    assert run_k6_step.command[0] == "k6"
+
+
+def test_two_vm_loadtest_plan_renders_custom_k6_options() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        k6_script=Path("/tmp/custom-load.js"),
+        k6_payload=Path("/tmp/payload.json"),
+        k6_vus=7,
+        k6_duration="45s",
+    )
+
+    plan = runner.plan(request)
+
+    run_k6_step = next(step for step in plan.steps if step.step_id == "loadgen.run_k6")
+    assert "--vus" in run_k6_step.command
+    assert "7" in run_k6_step.command
+    assert "--duration" in run_k6_step.command
+    assert "45s" in run_k6_step.command
+    assert "-e" in run_k6_step.command
+    assert "NANOFAAS_URL=http://<multipass-ip:nanofaas-e2e>:30080" in run_k6_step.command
+    assert "NANOFAAS_PAYLOAD=/home/ubuntu/two-vm-loadtest/payloads/payload.json" in run_k6_step.command
+    assert "/home/ubuntu/two-vm-loadtest/scripts/script.js" == run_k6_step.command[-1]
+
+
+def test_two_vm_loadtest_plan_adds_default_loadgen_vm_for_action() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+
+    plan = runner.plan(
+        E2eRequest(
+            scenario="two-vm-loadtest",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    assert plan.request.loadgen_vm is not None
+    assert plan.request.loadgen_vm.name == "nanofaas-e2e-loadgen"
+
+
+def test_two_vm_loadtest_exposes_control_plane_for_loadgen_vm() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    deploy_step = next(step for step in plan.steps if step.step_id == "helm.deploy_control_plane")
+    assert "--set" in deploy_step.command
+    assert "controlPlane.service.type=NodePort" in deploy_step.command
+    assert "controlPlane.service.nodePorts.http=30080" in deploy_step.command
+
+
+def test_two_vm_loadtest_plan_wires_loadgen_cleanup_action() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    loadgen_down = next(step for step in plan.steps if step.step_id == "loadgen.down")
+    assert loadgen_down.command == ["multipass", "delete", "nanofaas-e2e-loadgen"]
+    assert loadgen_down.action is not None
+
+
+def test_two_vm_loadtest_plan_skips_loadgen_cleanup_when_disabled() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        cleanup_vm=False,
+    )
+
+    plan = runner.plan(request)
+
+    loadgen_down = next(step for step in plan.steps if step.step_id == "loadgen.down")
+    assert loadgen_down.command == ["echo", "Skipping loadgen VM teardown (--no-cleanup-vm)"]
+    assert loadgen_down.action is None
+
+
 def test_e2e_all_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
 
