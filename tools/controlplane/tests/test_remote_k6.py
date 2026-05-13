@@ -5,6 +5,16 @@ from pathlib import Path
 from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 
 
+def test_default_two_vm_k6_script_reads_payload_in_init_context() -> None:
+    script = Path("tools/controlplane/assets/k6/two-vm-function-invoke.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "const PAYLOAD_BODY = PAYLOAD_PATH ? open(PAYLOAD_PATH) : '';" in script
+    assert script.index("open(PAYLOAD_PATH)") < script.index("export default function")
+    assert "return PAYLOAD_BODY;" in script
+
+
 def test_default_script_gets_stage_profile_and_env() -> None:
     config = RemoteK6RunConfig(
         script_path=Path("/remote/default.js"),

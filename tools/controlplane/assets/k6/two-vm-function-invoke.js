@@ -4,10 +4,11 @@ import { check, sleep } from 'k6';
 const BASE_URL = __ENV.NANOFAAS_URL || 'http://localhost:8080';
 const FUNCTION_NAME = __ENV.NANOFAAS_FUNCTION || 'word-stats-java';
 const PAYLOAD_PATH = __ENV.NANOFAAS_PAYLOAD || '';
+const PAYLOAD_BODY = PAYLOAD_PATH ? open(PAYLOAD_PATH) : '';
 
 function requestPayload() {
-    if (PAYLOAD_PATH) {
-        return open(PAYLOAD_PATH);
+    if (PAYLOAD_BODY) {
+        return PAYLOAD_BODY;
     }
     return JSON.stringify({
         input: { text: 'the quick brown fox jumps over the lazy dog', seq: __ITER },
