@@ -301,6 +301,28 @@ def test_e2e_all_two_vm_loadtest_plan_adds_default_loadgen_vm() -> None:
     assert request.loadgen_vm.disk == "10G"
 
 
+def test_e2e_all_two_vm_loadtest_plan_derives_external_loadgen_vm() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+
+    plans = runner.plan_all(
+        only=["two-vm-loadtest"],
+        vm_request=VmRequest(
+            lifecycle="external",
+            host="stack.example",
+            user="dev",
+            home="/srv/dev",
+        ),
+    )
+
+    assert len(plans) == 1
+    loadgen_vm = plans[0].request.loadgen_vm
+    assert loadgen_vm is not None
+    assert loadgen_vm.lifecycle == "external"
+    assert loadgen_vm.host == "stack.example"
+    assert loadgen_vm.user == "dev"
+    assert loadgen_vm.home == "/srv/dev"
+
+
 def test_e2e_all_two_vm_loadtest_plan_accepts_explicit_loadgen_vm() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     loadgen_vm = VmRequest(

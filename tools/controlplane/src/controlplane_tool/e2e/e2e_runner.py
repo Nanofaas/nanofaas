@@ -210,6 +210,7 @@ class E2eRunner:
                 loadgen_vm = loadgen_vm_request or VmRequest(
                     lifecycle=shared_vm_request.lifecycle,
                     name="nanofaas-e2e-loadgen",
+                    host=shared_vm_request.host,
                     user=shared_vm_request.user,
                     home=shared_vm_request.home,
                     cpus=2,
