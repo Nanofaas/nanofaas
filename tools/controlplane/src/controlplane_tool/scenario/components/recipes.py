@@ -61,6 +61,8 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
             "namespace.install",
             "helm.deploy_control_plane",
             "helm.deploy_function_runtime",
+            "cli.build_install_dist",
+            "cli.fn_apply_selected",
             "loadgen.ensure_running",
             "loadgen.provision_base",
             "loadgen.install_k6",

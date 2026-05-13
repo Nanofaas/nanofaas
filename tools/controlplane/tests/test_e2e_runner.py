@@ -245,6 +245,8 @@ def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
         "namespace.install",
         "helm.deploy_control_plane",
         "helm.deploy_function_runtime",
+        "cli.build_install_dist",
+        "cli.fn_apply_selected.echo-test",
         "loadgen.ensure_running",
         "loadgen.provision_base",
         "loadgen.install_k6",
@@ -255,7 +257,9 @@ def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
         "vm.down",
     ]
     assert all(step.step_id for step in plan.steps)
-    assert [step.summary for step in plan.steps[-8:]] == [
+    assert [step.summary for step in plan.steps[-10:]] == [
+        "Build nanofaas-cli installDist in VM",
+        "Apply selected function 'echo-test'",
         "Ensure loadgen VM is running",
         "Provision loadgen base dependencies",
         "Install k6 on loadgen VM",
@@ -354,6 +358,37 @@ def test_two_vm_loadtest_plan_wires_loadgen_cleanup_action() -> None:
     loadgen_down = next(step for step in plan.steps if step.step_id == "loadgen.down")
     assert loadgen_down.command == ["multipass", "delete", "nanofaas-e2e-loadgen"]
     assert loadgen_down.action is not None
+    assert loadgen_down.always_run is True
+
+
+def test_two_vm_loadtest_applies_functions_before_running_k6(tmp_path: Path) -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        resolved_scenario=load_scenario_file(
+            Path("tools/controlplane/scenarios/two-vm-loadtest-java.toml")
+        ),
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
+    )
+
+    plan = runner.plan(request)
+
+    step_ids = [step.step_id for step in plan.steps]
+    apply_steps = [
+        index
+        for index, step_id in enumerate(step_ids)
+        if step_id.startswith("cli.fn_apply_selected.")
+    ]
+    assert apply_steps
+    assert max(apply_steps) < step_ids.index("loadgen.run_k6")
+    assert "cli.build_install_dist" in step_ids
+    assert all(
+        step.env.get("NANOFAAS_ENDPOINT") == "http://127.0.0.1:30080"
+        for step in plan.steps
+        if step.step_id.startswith("cli.fn_apply_selected.")
+    )
 
 
 def test_two_vm_loadtest_plan_wires_prometheus_snapshot_action() -> None:
@@ -874,3 +909,55 @@ def test_execute_emits_failure_event_when_step_fails() -> None:
         (1, "running", "Broken step"),
         (1, "failed", "Broken step"),
     ]
+
+
+def test_execute_runs_always_cleanup_steps_after_failure() -> None:
+    shell = ScriptedShell(return_code_map={("false",): 7})
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
+    cleanup_calls: list[str] = []
+    plan = ScenarioPlan(
+        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
+        request=E2eRequest(scenario="docker", runtime="java"),
+        steps=[
+            ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken"),
+            ScenarioPlanStep(
+                summary="Cleanup step",
+                command=["echo", "cleanup"],
+                step_id="vm.down",
+                action=lambda: cleanup_calls.append("vm.down"),
+                always_run=True,
+            ),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Broken step"):
+        runner.execute(plan)
+
+    assert cleanup_calls == ["vm.down"]
+
+
+def test_execute_reports_main_and_cleanup_failures() -> None:
+    shell = ScriptedShell(return_code_map={("false",): 7})
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
+    plan = ScenarioPlan(
+        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
+        request=E2eRequest(scenario="docker", runtime="java"),
+        steps=[
+            ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken"),
+            ScenarioPlanStep(
+                summary="Cleanup step",
+                command=["echo", "cleanup"],
+                step_id="vm.down",
+                action=lambda: (_ for _ in ()).throw(RuntimeError("cleanup failed")),
+                always_run=True,
+            ),
+        ],
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        runner.execute(plan)
+
+    message = str(excinfo.value)
+    assert "Broken step" in message
+    assert "Cleanup failed:" in message
+    assert "cleanup failed" in message

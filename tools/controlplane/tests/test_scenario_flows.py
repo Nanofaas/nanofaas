@@ -323,6 +323,8 @@ def test_two_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
         "helm.deploy_function_runtime",
     )
     tail = (
+        "cli.build_install_dist",
+        "cli.fn_apply_selected",
         "loadgen.ensure_running",
         "loadgen.provision_base",
         "loadgen.install_k6",

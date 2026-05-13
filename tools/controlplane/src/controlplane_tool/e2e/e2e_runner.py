@@ -24,6 +24,7 @@ from controlplane_tool.scenario.components.executor import (
     operations_to_plan_steps,
 )
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.two_vm_loadtest_config import TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT
 from controlplane_tool.scenario.components.two_vm_loadtest import loadgen_vm_request
 from controlplane_tool.scenario.scenario_planner import ScenarioPlanner
 from controlplane_tool.core.shell_backend import (
@@ -77,6 +78,11 @@ def plan_recipe_steps(
         namespace=context.namespace,
         local_registry=context.local_registry,
         resolved_scenario=context.resolved_scenario,
+        control_plane_endpoint=(
+            f"http://127.0.0.1:{TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT}"
+            if scenario_name == "two-vm-loadtest"
+            else None
+        ),
     )
     vm_request = context.vm_request
     remote_dir = runner.vm.remote_project_dir(vm_request)
@@ -126,6 +132,7 @@ def plan_recipe_steps(
         namespace=cli_context.namespace,
         local_registry=cli_context.local_registry,
         resolved_scenario=cli_context.resolved_scenario,
+        control_plane_endpoint=cli_context.control_plane_endpoint,
     )
 
     steps: list[ScenarioPlanStep] = []
@@ -167,6 +174,7 @@ def plan_recipe_steps(
                     env=step.env,
                     step_id=step.step_id,
                     action=_on_loadgen_down,
+                    always_run=True,
                 )
                 for step in component_steps
             ]
@@ -370,61 +378,69 @@ class E2eRunner:
     ) -> None:
         ip_cache: dict[str, str] = {}
         total_steps = len(plan.steps)
+        deferred_steps = [
+            (step_index, step)
+            for step_index, step in enumerate(plan.steps, start=1)
+            if step.always_run
+        ]
+        main_error: RuntimeError | None = None
         for step_index, step in enumerate(plan.steps, start=1):
-            step_id = self._require_step_id(step)
-            self._emit_event(
-                event_listener,
-                step_index=step_index,
-                total_steps=total_steps,
-                step=step,
-                status="running",
-            )
-            with bind_workflow_context(WorkflowContext(flow_id=plan.request.scenario, task_id=step_id)):
-                if step.action is not None:
-                    try:
-                        step.action()
-                    except Exception as exc:
-                        self._emit_event(
-                            event_listener,
-                            step_index=step_index,
-                            total_steps=total_steps,
-                            step=step,
-                            status="failed",
-                            error=str(exc),
-                        )
-                        raise RuntimeError(
-                            f"Scenario '{plan.request.scenario}' failed at step '{step.summary}': {exc}"
-                        ) from exc
-                    self._emit_event(
-                        event_listener,
-                        step_index=step_index,
-                        total_steps=total_steps,
-                        step=step,
-                        status="success",
-                    )
-                    continue
-                command = self._resolver._resolve_command(step.command, plan.request.vm, ip_cache, self.vm)
-                env = self._resolver._resolve_env(step.env, plan.request.vm, ip_cache, self.vm)
-                result = self.shell.run(
-                    command,
-                    cwd=self.paths.workspace_root,
-                    env=env,
-                    dry_run=False,
-                )
-                if result.return_code != 0:
-                    output = (result.stderr or result.stdout or "").strip()
+            if step.always_run:
+                continue
+            try:
+                self._execute_step(plan, step_index, total_steps, step, ip_cache, event_listener)
+            except RuntimeError as exc:
+                main_error = exc
+                break
+
+        cleanup_errors: list[str] = []
+        for step_index, step in deferred_steps:
+            try:
+                self._execute_step(plan, step_index, total_steps, step, ip_cache, event_listener)
+            except RuntimeError as exc:
+                cleanup_errors.append(str(exc))
+
+        if main_error is not None:
+            if cleanup_errors:
+                msg = str(main_error) + "\n\nCleanup failed:\n" + "\n".join(cleanup_errors)
+                raise RuntimeError(msg) from main_error
+            raise main_error
+        if cleanup_errors:
+            raise RuntimeError("Scenario cleanup failed:\n" + "\n".join(cleanup_errors))
+
+    def _execute_step(
+        self,
+        plan: ScenarioPlan,
+        step_index: int,
+        total_steps: int,
+        step: ScenarioPlanStep,
+        ip_cache: dict[str, str],
+        event_listener: Callable[[ScenarioStepEvent], None] | None = None,
+    ) -> None:
+        step_id = self._require_step_id(step)
+        self._emit_event(
+            event_listener,
+            step_index=step_index,
+            total_steps=total_steps,
+            step=step,
+            status="running",
+        )
+        with bind_workflow_context(WorkflowContext(flow_id=plan.request.scenario, task_id=step_id)):
+            if step.action is not None:
+                try:
+                    step.action()
+                except Exception as exc:
                     self._emit_event(
                         event_listener,
                         step_index=step_index,
                         total_steps=total_steps,
                         step=step,
                         status="failed",
-                        error=output or f"exit {result.return_code}",
+                        error=str(exc),
                     )
-                    msg = f"Scenario '{plan.request.scenario}' failed at step '{step.summary}' (exit {result.return_code})"
-                    if output:
-                        msg += f"\n\n{output}"
-                    raise RuntimeError(msg)
+                    raise RuntimeError(
+                        f"Scenario '{plan.request.scenario}' failed at step '{step.summary}': {exc}"
+                    ) from exc
                 self._emit_event(
                     event_listener,
                     step_index=step_index,
@@ -432,6 +448,36 @@ class E2eRunner:
                     step=step,
                     status="success",
                 )
+                return
+            command = self._resolver._resolve_command(step.command, plan.request.vm, ip_cache, self.vm)
+            env = self._resolver._resolve_env(step.env, plan.request.vm, ip_cache, self.vm)
+            result = self.shell.run(
+                command,
+                cwd=self.paths.workspace_root,
+                env=env,
+                dry_run=False,
+            )
+            if result.return_code != 0:
+                output = (result.stderr or result.stdout or "").strip()
+                self._emit_event(
+                    event_listener,
+                    step_index=step_index,
+                    total_steps=total_steps,
+                    step=step,
+                    status="failed",
+                    error=output or f"exit {result.return_code}",
+                )
+                msg = f"Scenario '{plan.request.scenario}' failed at step '{step.summary}' (exit {result.return_code})"
+                if output:
+                    msg += f"\n\n{output}"
+                raise RuntimeError(msg)
+            self._emit_event(
+                event_listener,
+                step_index=step_index,
+                total_steps=total_steps,
+                step=step,
+                status="success",
+            )
 
     def _should_teardown(self, request: E2eRequest | None) -> bool:
         if request is None or request.vm is None:

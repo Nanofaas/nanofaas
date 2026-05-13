@@ -34,6 +34,7 @@ class ScenarioPlanStep:
     env: dict[str, str] = field(default_factory=dict)
     step_id: str = ""
     action: Callable[[], None] | None = None
+    always_run: bool = False
 
 
 def operation_to_plan_step(
@@ -110,6 +111,7 @@ def operation_to_plan_step(
                 env=env,
                 step_id=task.task_id,
                 action=on_vm_down,
+                always_run=True,
             )
     return ScenarioPlanStep(
         summary=summary,

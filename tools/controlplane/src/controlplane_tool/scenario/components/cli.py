@@ -21,6 +21,7 @@ class CliComponentContext:
     namespace: str
     local_registry: str
     resolved_scenario: ResolvedScenario | None = None
+    control_plane_endpoint: str | None = None
 
 
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
@@ -38,12 +39,13 @@ def _kubeconfig_path(context: CliComponentContext) -> str:
 
 
 def _cli_env(context: CliComponentContext) -> Mapping[str, str]:
-    return _frozen_env(
-        {
-            "KUBECONFIG": _kubeconfig_path(context),
-            "NANOFAAS_NAMESPACE": context.namespace,
-        }
-    )
+    env = {
+        "KUBECONFIG": _kubeconfig_path(context),
+        "NANOFAAS_NAMESPACE": context.namespace,
+    }
+    if context.control_plane_endpoint:
+        env["NANOFAAS_ENDPOINT"] = context.control_plane_endpoint
+    return _frozen_env(env)
 
 
 def _selected_function_keys(context: CliComponentContext) -> list[str]:
