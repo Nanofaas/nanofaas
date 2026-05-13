@@ -20,6 +20,11 @@ class E2eRequest(BaseModel):
     scenario_source: str | None = None
     resolved_scenario: ResolvedScenario | None = None
     vm: VmRequest | None = None
+    loadgen_vm: VmRequest | None = None
+    k6_script: Path | None = None
+    k6_vus: int | None = Field(default=None, ge=1)
+    k6_duration: str | None = None
+    k6_payload: Path | None = None
     cleanup_vm: bool = True
     helm_noninteractive: bool = True
     namespace: str | None = None

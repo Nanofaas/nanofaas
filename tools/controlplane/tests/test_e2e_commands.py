@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typer.testing import CliRunner
 
 from controlplane_tool.orchestation.prefect_models import FlowRunResult
-from controlplane_tool.cli.e2e_commands import _resolve_run_request
+from controlplane_tool.cli.e2e_commands import _build_request, _resolve_run_request
 from controlplane_tool.app.main import app
 
 
@@ -110,6 +110,99 @@ def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
     assert request.resolved_scenario.load.targets == []
 
 
+def test_two_vm_loadtest_default_request_uses_separate_stack_and_loadgen_vms() -> None:
+    request = _resolve_run_request(
+        scenario="two-vm-loadtest",
+        runtime=None,
+        lifecycle="multipass",
+        name=None,
+        host=None,
+        user="ubuntu",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry=None,
+        function_preset=None,
+        functions_csv=None,
+        scenario_file=None,
+        saved_profile=None,
+    )
+
+    assert request.vm is not None
+    assert request.vm.name == "nanofaas-e2e"
+    assert request.vm.cpus == 4
+    assert request.vm.memory == "8G"
+    assert request.vm.disk == "30G"
+    assert request.loadgen_vm is not None
+    assert request.loadgen_vm.name == "nanofaas-e2e-loadgen"
+    assert request.loadgen_vm.cpus == 2
+    assert request.loadgen_vm.memory == "2G"
+    assert request.loadgen_vm.disk == "10G"
+    assert request.loadgen_vm.lifecycle == request.vm.lifecycle
+    assert request.loadgen_vm.user == request.vm.user
+    assert request.loadgen_vm.home == request.vm.home
+
+
+def test_build_request_accepts_loadgen_and_k6_overrides() -> None:
+    request = _build_request(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        lifecycle="multipass",
+        name="stack-vm",
+        host=None,
+        user="ubuntu",
+        home="/home/ubuntu",
+        cpus=6,
+        memory="12G",
+        disk="40G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="localhost:5000",
+        loadgen_name="loadgen-vm",
+        loadgen_cpus=3,
+        loadgen_memory="4G",
+        loadgen_disk="20G",
+        k6_script=Path("loadtest.js"),
+        k6_vus=25,
+        k6_duration="2m",
+        k6_payload=Path("payload.json"),
+    )
+
+    assert request.loadgen_vm is not None
+    assert request.loadgen_vm.name == "loadgen-vm"
+    assert request.loadgen_vm.cpus == 3
+    assert request.loadgen_vm.memory == "4G"
+    assert request.loadgen_vm.disk == "20G"
+    assert request.k6_script == Path("loadtest.js")
+    assert request.k6_vus == 25
+    assert request.k6_duration == "2m"
+    assert request.k6_payload == Path("payload.json")
+
+
+def test_non_two_vm_scenario_does_not_get_loadgen_vm() -> None:
+    request = _build_request(
+        scenario="k3s-junit-curl",
+        runtime="java",
+        lifecycle="multipass",
+        name=None,
+        host=None,
+        user="ubuntu",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="localhost:5000",
+    )
+
+    assert request.vm is not None
+    assert request.loadgen_vm is None
+
+
 def test_helm_stack_rejects_unsupported_go_selection_before_backend() -> None:
     runner = CliRunner()
     result = runner.invoke(
@@ -121,6 +214,37 @@ def test_helm_stack_rejects_unsupported_go_selection_before_backend() -> None:
     rendered = result.stdout + result.stderr
     assert "helm-stack" in rendered
     assert "go" in rendered
+
+
+def test_two_vm_loadtest_dry_run_accepts_loadgen_and_k6_overrides() -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "e2e",
+            "run",
+            "two-vm-loadtest",
+            "--loadgen-name",
+            "custom-loadgen",
+            "--loadgen-cpus",
+            "3",
+            "--loadgen-memory",
+            "4G",
+            "--loadgen-disk",
+            "20G",
+            "--k6-script",
+            "loadtest.js",
+            "--vus",
+            "50",
+            "--duration",
+            "3m",
+            "--k6-payload",
+            "payload.json",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
 
 
 def test_helm_stack_rejects_javascript_selection_before_backend() -> None:

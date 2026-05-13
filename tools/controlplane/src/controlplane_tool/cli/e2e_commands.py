@@ -83,8 +83,17 @@ def _build_request(
     saved_profile: str | None = None,
     scenario_source: str | None = None,
     resolved_scenario: ResolvedScenario | None = None,
+    loadgen_name: str | None = None,
+    loadgen_cpus: int = 2,
+    loadgen_memory: str = "2G",
+    loadgen_disk: str = "10G",
+    k6_script: Path | None = None,
+    k6_vus: int | None = None,
+    k6_duration: str | None = None,
+    k6_payload: Path | None = None,
 ) -> E2eRequest:
     vm = None
+    loadgen_vm = None
     if scenario in {
         "k3s-junit-curl",
         "cli",
@@ -93,15 +102,29 @@ def _build_request(
         "helm-stack",
         "two-vm-loadtest",
     }:
+        stack_name = name
+        if scenario == "two-vm-loadtest" and stack_name is None:
+            stack_name = "nanofaas-e2e"
         vm = _build_vm_request(
             lifecycle=lifecycle,
-            name=name,
+            name=stack_name,
             host=host,
             user=user,
             home=home,
             cpus=cpus,
             memory=memory,
             disk=disk,
+        )
+    if scenario == "two-vm-loadtest":
+        loadgen_vm = _build_vm_request(
+            lifecycle=lifecycle,
+            name=loadgen_name or "nanofaas-e2e-loadgen",
+            host=host,
+            user=user,
+            home=home,
+            cpus=loadgen_cpus,
+            memory=loadgen_memory,
+            disk=loadgen_disk,
         )
     return E2eRequest(
         scenario=scenario,
@@ -113,6 +136,11 @@ def _build_request(
         scenario_source=scenario_source,
         resolved_scenario=resolved_scenario,
         vm=vm,
+        loadgen_vm=loadgen_vm,
+        k6_script=k6_script,
+        k6_vus=k6_vus,
+        k6_duration=k6_duration,
+        k6_payload=k6_payload,
         cleanup_vm=cleanup_vm,
         namespace=namespace,
         local_registry=local_registry,
@@ -224,6 +252,14 @@ def _resolve_run_request(
     functions_csv: str | None,
     scenario_file: Path | None,
     saved_profile: str | None,
+    loadgen_name: str | None = None,
+    loadgen_cpus: int = 2,
+    loadgen_memory: str = "2G",
+    loadgen_disk: str = "10G",
+    k6_script: Path | None = None,
+    k6_vus: int | None = None,
+    k6_duration: str | None = None,
+    k6_payload: Path | None = None,
 ) -> E2eRequest:
     explicit_functions = parse_function_csv(functions_csv)
     if function_preset and explicit_functions:
@@ -387,6 +423,14 @@ def _resolve_run_request(
         saved_profile=saved_profile,
         scenario_source=scenario_source,
         resolved_scenario=resolved_scenario,
+        loadgen_name=loadgen_name,
+        loadgen_cpus=loadgen_cpus,
+        loadgen_memory=loadgen_memory,
+        loadgen_disk=loadgen_disk,
+        k6_script=k6_script,
+        k6_vus=k6_vus,
+        k6_duration=k6_duration,
+        k6_payload=k6_payload,
     )
 
 
@@ -415,6 +459,14 @@ def e2e_run(
     functions: str | None = typer.Option(None, "--functions"),
     scenario_file: Path | None = typer.Option(None, "--scenario-file"),
     saved_profile: str | None = typer.Option(None, "--saved-profile"),
+    loadgen_name: str | None = typer.Option(None, "--loadgen-name"),
+    loadgen_cpus: int = typer.Option(2, "--loadgen-cpus", min=1),
+    loadgen_memory: str = typer.Option("2G", "--loadgen-memory"),
+    loadgen_disk: str = typer.Option("10G", "--loadgen-disk"),
+    k6_script: Path | None = typer.Option(None, "--k6-script"),
+    k6_vus: int | None = typer.Option(None, "--vus", min=1),
+    k6_duration: str | None = typer.Option(None, "--duration"),
+    k6_payload: Path | None = typer.Option(None, "--k6-payload"),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
@@ -436,6 +488,14 @@ def e2e_run(
             functions_csv=functions,
             scenario_file=scenario_file,
             saved_profile=saved_profile,
+            loadgen_name=loadgen_name,
+            loadgen_cpus=loadgen_cpus,
+            loadgen_memory=loadgen_memory,
+            loadgen_disk=loadgen_disk,
+            k6_script=k6_script,
+            k6_vus=k6_vus,
+            k6_duration=k6_duration,
+            k6_payload=k6_payload,
         )
         runner = _runner()
         flow_name = f"e2e.{request.scenario}"
