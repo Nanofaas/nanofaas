@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.scenario.components.bootstrap import (
+    plan_loadtest_install_k6,
+    plan_vm_ensure_running,
+    plan_vm_provision_base,
+)
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
@@ -34,16 +41,62 @@ def _placeholder(operation_id: str, summary: str) -> tuple[ScenarioOperation, ..
     )
 
 
-def plan_loadgen_ensure_running(_: object) -> tuple[ScenarioOperation, ...]:
-    return _placeholder("loadgen.ensure_running", "Ensure loadgen VM is running")
+def _loadgen_context(context: ScenarioExecutionContext) -> ScenarioExecutionContext:
+    return replace(context, vm_request=loadgen_vm_request(context))
 
 
-def plan_loadgen_provision_base(_: object) -> tuple[ScenarioOperation, ...]:
-    return _placeholder("loadgen.provision_base", "Provision loadgen base dependencies")
+def _retag_remote_operation(
+    operation: RemoteCommandOperation,
+    *,
+    operation_id: str,
+    summary: str,
+) -> RemoteCommandOperation:
+    return replace(operation, operation_id=operation_id, summary=summary)
 
 
-def plan_loadgen_install_k6(_: object) -> tuple[ScenarioOperation, ...]:
-    return _placeholder("loadgen.install_k6", "Install k6 on loadgen VM")
+def _without_helm_install(operation: RemoteCommandOperation) -> RemoteCommandOperation:
+    return replace(
+        operation,
+        argv=tuple(
+            "install_helm=false" if part == "install_helm=true" else part
+            for part in operation.argv
+        ),
+    )
+
+
+def plan_loadgen_ensure_running(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
+    return tuple(
+        _retag_remote_operation(
+            operation,
+            operation_id="loadgen.ensure_running",
+            summary="Ensure loadgen VM is running",
+        )
+        for operation in plan_vm_ensure_running(_loadgen_context(context))
+    )
+
+
+def plan_loadgen_provision_base(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
+    return tuple(
+        _without_helm_install(
+            _retag_remote_operation(
+                operation,
+                operation_id="loadgen.provision_base",
+                summary="Provision loadgen base dependencies",
+            )
+        )
+        for operation in plan_vm_provision_base(_loadgen_context(context))
+    )
+
+
+def plan_loadgen_install_k6(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
+    return tuple(
+        _retag_remote_operation(
+            operation,
+            operation_id="loadgen.install_k6",
+            summary="Install k6 on loadgen VM",
+        )
+        for operation in plan_loadtest_install_k6(_loadgen_context(context))
+    )
 
 
 def plan_loadgen_run_k6(_: object) -> tuple[ScenarioOperation, ...]:
