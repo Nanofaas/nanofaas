@@ -172,6 +172,7 @@ class E2eRunner:
         skip: list[str] | None = None,
         runtime: str = "java",
         vm_request: VmRequest | None = None,
+        loadgen_vm_request: VmRequest | None = None,
         cleanup_vm: bool = True,
         namespace: str | None = None,
         local_registry: str = "localhost:5000",
@@ -204,10 +205,23 @@ class E2eRunner:
             if scenario.requires_vm and shared_vm_request is None:
                 shared_vm_request = VmRequest(lifecycle="multipass")
 
+            loadgen_vm = None
+            if scenario.name == "two-vm-loadtest" and shared_vm_request is not None:
+                loadgen_vm = loadgen_vm_request or VmRequest(
+                    lifecycle=shared_vm_request.lifecycle,
+                    name="nanofaas-e2e-loadgen",
+                    user=shared_vm_request.user,
+                    home=shared_vm_request.home,
+                    cpus=2,
+                    memory="2G",
+                    disk="10G",
+                )
+
             request = E2eRequest(
                 scenario=scenario.name,
                 runtime=runtime,
                 vm=shared_vm_request if scenario.requires_vm else None,
+                loadgen_vm=loadgen_vm,
                 cleanup_vm=cleanup_vm if index == last_vm_index else False,
                 namespace=namespace,
                 local_registry=local_registry,
@@ -386,6 +400,7 @@ class E2eRunner:
         skip: list[str] | None = None,
         runtime: str = "java",
         vm_request: VmRequest | None = None,
+        loadgen_vm_request: VmRequest | None = None,
         cleanup_vm: bool = True,
         namespace: str | None = None,
         local_registry: str = "localhost:5000",
@@ -396,6 +411,7 @@ class E2eRunner:
             skip=skip,
             runtime=runtime,
             vm_request=vm_request,
+            loadgen_vm_request=loadgen_vm_request,
             cleanup_vm=cleanup_vm,
             namespace=namespace,
             local_registry=local_registry,

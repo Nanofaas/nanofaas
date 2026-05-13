@@ -283,6 +283,52 @@ def test_e2e_all_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
     ]
 
 
+def test_e2e_all_two_vm_loadtest_plan_adds_default_loadgen_vm() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+
+    plans = runner.plan_all(only=["two-vm-loadtest"])
+
+    assert len(plans) == 1
+    request = plans[0].request
+    assert request.vm is not None
+    assert request.loadgen_vm is not None
+    assert request.loadgen_vm.lifecycle == request.vm.lifecycle
+    assert request.loadgen_vm.name == "nanofaas-e2e-loadgen"
+    assert request.loadgen_vm.user == request.vm.user
+    assert request.loadgen_vm.home == request.vm.home
+    assert request.loadgen_vm.cpus == 2
+    assert request.loadgen_vm.memory == "2G"
+    assert request.loadgen_vm.disk == "10G"
+
+
+def test_e2e_all_two_vm_loadtest_plan_accepts_explicit_loadgen_vm() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    loadgen_vm = VmRequest(
+        lifecycle="multipass",
+        name="custom-loadgen",
+        cpus=3,
+        memory="4G",
+        disk="20G",
+    )
+
+    plans = runner.plan_all(
+        only=["two-vm-loadtest"],
+        loadgen_vm_request=loadgen_vm,
+    )
+
+    assert len(plans) == 1
+    assert plans[0].request.loadgen_vm == loadgen_vm
+
+
+def test_e2e_all_non_two_vm_plan_does_not_add_loadgen_vm() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+
+    plans = runner.plan_all(only=["k3s-junit-curl"])
+
+    assert len(plans) == 1
+    assert plans[0].request.loadgen_vm is None
+
+
 def test_cli_stack_plan_defaults_to_isolated_namespace_for_all_recipe_steps() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = runner.plan(
