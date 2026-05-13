@@ -56,6 +56,8 @@ scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --d
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
+scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
+scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
 scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
@@ -66,7 +68,7 @@ scripts/e2e-loadtest.sh --profile demo-java --dry-run
 scripts/controlplane.sh tui
 ```
 
-Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`. Use `scripts/controlplane.sh tui` for the interactive product surface, then pick or create profiles from the `Profiles` section.
+Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`. Use `scripts/controlplane.sh e2e run two-vm-loadtest ...` when the Helm stack and the k6 generator must run on separate VMs; it writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. Use `scripts/controlplane.sh tui` for the interactive product surface, then pick or create profiles from the `Profiles` section.
 Within `Validation -> platform -> k3s-junit-curl`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
 The TUI only offers saved profiles and scenario manifests compatible with `k3s-junit-curl`; incompatible entries are filtered out instead of failing at execution time.
 The same generalized selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> container-local`.

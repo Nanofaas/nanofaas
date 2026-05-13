@@ -57,6 +57,8 @@ scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --d
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
+scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
+scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
 scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
@@ -71,6 +73,8 @@ scripts/e2e-loadtest.sh --profile demo-java --dry-run
 `scripts/controlplane.sh loadtest run ...` is the first-class load generation surface. `scripts/e2e-loadtest.sh` is intentionally narrower: it is a compatibility wrapper over `experiments/e2e-loadtest.sh` for the legacy Helm/Grafana/parity workflow, and registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`.
 
 For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH operations and treats `e2e all` as one shared VM session with one final teardown point. Use `--no-cleanup-vm` to preserve a Multipass VM after the run; external VM lifecycle mode is always preserved.
+
+`two-vm-loadtest` reuses the Helm stack bootstrap on one VM and provisions a second loadgen VM for k6. It invokes the selected function through the control-plane NodePort, captures Prometheus snapshots, and writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. The sample manifest is `tools/controlplane/scenarios/two-vm-loadtest-java.toml`.
 
 Use the canonical wrapper for saved-profile / interactive runs as well:
 

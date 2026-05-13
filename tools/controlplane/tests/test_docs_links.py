@@ -46,6 +46,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh matrix" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
     assert "scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run" in testing
+    assert "scripts/controlplane.sh e2e run two-vm-loadtest --dry-run" in testing
+    assert "tools/controlplane/scenarios/two-vm-loadtest-java.toml" in testing
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run" in testing
@@ -75,6 +77,8 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh e2e all" in tool_readme
     assert "scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run" in tool_readme
+    assert "scripts/controlplane.sh e2e run two-vm-loadtest --dry-run" in tool_readme
+    assert "two-vm-loadtest-java.toml" in tool_readme
     assert "scripts/controlplane.sh cli-test list" in tool_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in tool_readme
@@ -112,6 +116,7 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
 
     assert "self-bootstrapping VM-backed scenarios" in root_readme
     assert "installs scenario-specific software inside that VM" in root_readme
+    assert "scripts/controlplane.sh e2e run two-vm-loadtest --dry-run" in root_readme
 
 
 def test_docs_do_not_reference_legacy_cli_wrappers() -> None:

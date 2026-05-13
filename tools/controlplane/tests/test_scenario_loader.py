@@ -42,6 +42,14 @@ def test_loader_resolves_javascript_scenario_manifest() -> None:
     ]
 
 
+def test_loader_resolves_two_vm_loadtest_manifest() -> None:
+    scenario = load_scenario_file(Path("tools/controlplane/scenarios/two-vm-loadtest-java.toml"))
+
+    assert scenario.base_scenario == "two-vm-loadtest"
+    assert scenario.function_preset == "demo-java"
+    assert scenario.load.targets == ["word-stats-java"]
+
+
 def test_loader_rejects_both_functions_and_function_preset() -> None:
     with pytest.raises(ValueError, match="exactly one of"):
         ScenarioSpec(

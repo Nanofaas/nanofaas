@@ -377,6 +377,8 @@ scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --d
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
+scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
+scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
@@ -389,6 +391,7 @@ Selection precedence is explicit CLI override first, then scenario file, then sa
 Additional selection semantics:
 
 - `helm-stack` built-in defaults resolve the `demo-loadtest` preset, so dry-run and live plans exclude unsupported Go functions.
+- `two-vm-loadtest` uses the Helm stack prefix on one VM and a separate k6 load generator VM; the run captures `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html`.
 - explicit CLI selection on top of a scenario file or saved profile preserves inherited payloads, namespace, and `load.profile`, then narrows `load.targets` to the selected subset.
 - `k3s-junit-curl` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
 
