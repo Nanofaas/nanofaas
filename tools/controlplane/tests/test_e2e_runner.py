@@ -371,6 +371,21 @@ def test_two_vm_loadtest_plan_wires_prometheus_snapshot_action() -> None:
     assert "http://<multipass-ip:nanofaas-e2e>:30090" in snapshot_step.command
 
 
+def test_two_vm_loadtest_plan_wires_report_action() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    report_step = next(step for step in plan.steps if step.step_id == "loadtest.write_report")
+    assert report_step.action is not None
+    assert report_step.command[:3] == ["python", "-m", "controlplane_tool.e2e.two_vm_loadtest_runner"]
+
+
 def test_two_vm_loadtest_plan_skips_loadgen_cleanup_when_disabled() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     request = E2eRequest(

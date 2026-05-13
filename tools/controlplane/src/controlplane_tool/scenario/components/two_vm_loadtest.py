@@ -162,7 +162,18 @@ def plan_metrics_prometheus_snapshot(context: ScenarioExecutionContext) -> tuple
 
 
 def plan_loadtest_write_report(_: object) -> tuple[ScenarioOperation, ...]:
-    return _placeholder("loadtest.write_report", "Write two-VM loadtest report")
+    return (
+        RemoteCommandOperation(
+            operation_id="loadtest.write_report",
+            summary="Write two-VM loadtest report",
+            argv=(
+                "python",
+                "-m",
+                "controlplane_tool.e2e.two_vm_loadtest_runner",
+                "write-report",
+            ),
+        ),
+    )
 
 
 def plan_loadgen_down(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:

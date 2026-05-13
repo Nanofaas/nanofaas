@@ -87,6 +87,7 @@ def plan_recipe_steps(
         host_resolver=host_resolver,
     )
     two_vm_k6_result: TwoVmK6Result | None = None
+    two_vm_prometheus_snapshot_path: Path | None = None
 
     def _on_ensure_running() -> None:
         runner.vm.ensure_running(vm_request)
@@ -107,9 +108,17 @@ def plan_recipe_steps(
         two_vm_k6_result = two_vm_runner.run_k6(request)
 
     def _on_prometheus_snapshot() -> None:
+        nonlocal two_vm_prometheus_snapshot_path
         if two_vm_k6_result is None:
             raise RuntimeError("Prometheus snapshots require a completed k6 run")
-        two_vm_runner.capture_prometheus_snapshots(request, two_vm_k6_result)
+        two_vm_prometheus_snapshot_path = two_vm_runner.capture_prometheus_snapshots(request, two_vm_k6_result)
+
+    def _on_write_report() -> None:
+        if two_vm_k6_result is None:
+            raise RuntimeError("two-vm report requires a completed k6 run")
+        if two_vm_prometheus_snapshot_path is None:
+            raise RuntimeError("two-vm report requires captured Prometheus snapshots")
+        two_vm_runner.write_report(request, two_vm_k6_result, two_vm_prometheus_snapshot_path)
 
     cli_context = CliComponentContext(
         repo_root=Path(remote_dir),
@@ -169,6 +178,17 @@ def plan_recipe_steps(
                     env=step.env,
                     step_id=step.step_id,
                     action=_on_prometheus_snapshot,
+                )
+                for step in component_steps
+            ]
+        if component.component_id == "loadtest.write_report":
+            component_steps = [
+                ScenarioPlanStep(
+                    summary=step.summary,
+                    command=step.command,
+                    env=step.env,
+                    step_id=step.step_id,
+                    action=_on_write_report,
                 )
                 for step in component_steps
             ]

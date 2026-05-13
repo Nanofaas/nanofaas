@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,7 @@ from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.loadtest.prometheus_snapshots import capture_prometheus_snapshots
+from controlplane_tool.loadtest.report import render_report
 from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
@@ -28,6 +30,72 @@ class TwoVmK6Result:
     target_function: str
     started_at: datetime
     ended_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class TwoVmLoadtestReport:
+    final_status: str
+    target_function: str
+    control_plane_url: str
+    prometheus_url: str
+    k6_summary_path: Path
+    prometheus_snapshot_path: Path
+    script_path: Path
+    payload_path: Path | None = None
+
+
+def _metrics_from_prometheus_snapshot(path: Path) -> dict[str, list[dict[str, float | str]]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    queries = payload.get("queries", {})
+    if not isinstance(queries, dict):
+        return {}
+    metrics: dict[str, list[dict[str, float | str]]] = {}
+    for name, entry in queries.items():
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            continue
+        points = entry.get("points", [])
+        if isinstance(points, list):
+            metrics[name] = points
+    return metrics
+
+
+def write_two_vm_report(report: TwoVmLoadtestReport, run_dir: Path) -> Path:
+    summary = {
+        "profile_name": "two-vm-loadtest",
+        "run_dir": str(run_dir),
+        "final_status": report.final_status,
+        "steps": [
+            {
+                "name": "load_k6",
+                "status": report.final_status,
+                "duration_ms": 0,
+                "detail": f"k6 summary: {report.k6_summary_path}",
+            },
+            {
+                "name": "prometheus_snapshot",
+                "status": "passed",
+                "duration_ms": 0,
+                "detail": f"prometheus snapshots: {report.prometheus_snapshot_path}",
+            },
+        ],
+        "metrics": _metrics_from_prometheus_snapshot(report.prometheus_snapshot_path),
+        "two_vm_loadtest": {
+            "target_function": report.target_function,
+            "control_plane_url": report.control_plane_url,
+            "prometheus_url": report.prometheus_url,
+            "k6_summary_path": str(report.k6_summary_path),
+            "prometheus_snapshot_path": str(report.prometheus_snapshot_path),
+            "script_path": str(report.script_path),
+            "payload_path": str(report.payload_path) if report.payload_path else None,
+        },
+    }
+    summary_path = run_dir / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    render_report(summary=summary, output_dir=run_dir)
+    return summary_path
 
 
 class TwoVmLoadtestRunner:
@@ -126,6 +194,28 @@ class TwoVmLoadtestRunner:
             output_dir=k6_result.run_dir,
             start=k6_result.started_at,
             end=k6_result.ended_at,
+        )
+
+    def write_report(
+        self,
+        request: E2eRequest,
+        k6_result: TwoVmK6Result,
+        prometheus_snapshot_path: Path,
+    ) -> Path:
+        if request.vm is None:
+            raise ValueError("two-vm-loadtest requires a stack VM request")
+        return write_two_vm_report(
+            TwoVmLoadtestReport(
+                final_status="passed",
+                target_function=k6_result.target_function,
+                control_plane_url=two_vm_control_plane_url(request.vm, host=self._host(request.vm)),
+                prometheus_url=two_vm_prometheus_url(request.vm, host=self._host(request.vm)),
+                k6_summary_path=k6_result.k6_summary_path,
+                prometheus_snapshot_path=prometheus_snapshot_path,
+                script_path=self._script_path(request),
+                payload_path=request.k6_payload,
+            ),
+            k6_result.run_dir,
         )
 
     def _create_run_dir(self) -> Path:

@@ -134,5 +134,34 @@
       {% endif %}
     </section>
     {% endif %}
+
+    {% if summary.two_vm_loadtest %}
+    <section>
+      <h2>Two-VM Loadtest</h2>
+      <p>Target function: <strong>{{ summary.two_vm_loadtest.target_function }}</strong></p>
+      <p>Control-plane URL: {{ summary.two_vm_loadtest.control_plane_url }}</p>
+      <p>Prometheus URL: {{ summary.two_vm_loadtest.prometheus_url }}</p>
+      <table>
+        <tbody>
+          <tr>
+            <th>k6 summary</th>
+            <td>{{ summary.two_vm_loadtest.k6_summary_path }}</td>
+          </tr>
+          <tr>
+            <th>Prometheus snapshots</th>
+            <td>{{ summary.two_vm_loadtest.prometheus_snapshot_path }}</td>
+          </tr>
+          <tr>
+            <th>k6 script</th>
+            <td>{{ summary.two_vm_loadtest.script_path }}</td>
+          </tr>
+          <tr>
+            <th>Payload</th>
+            <td>{{ summary.two_vm_loadtest.payload_path or "-" }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
   </body>
 </html>
