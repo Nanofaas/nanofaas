@@ -267,6 +267,22 @@ def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
     ]
 
 
+def test_e2e_all_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+
+    plans = runner.plan_all(only=["two-vm-loadtest"])
+
+    assert [plan.scenario.name for plan in plans] == ["two-vm-loadtest"]
+    assert plans[0].request.vm is not None
+    assert [step.step_id for step in plans[0].steps[-5:]] == [
+        "loadgen.run_k6",
+        "metrics.prometheus_snapshot",
+        "loadtest.write_report",
+        "loadgen.down",
+        "vm.down",
+    ]
+
+
 def test_cli_stack_plan_defaults_to_isolated_namespace_for_all_recipe_steps() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = runner.plan(

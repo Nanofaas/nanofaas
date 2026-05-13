@@ -185,6 +185,15 @@ def test_e2e_all_dry_run_honors_only_filter() -> None:
     assert "docker" not in result.stdout
 
 
+def test_e2e_all_two_vm_loadtest_dry_run_prints_recipe_steps() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["e2e", "all", "--only", "two-vm-loadtest", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "two-vm-loadtest" in result.stdout
+    assert "loadgen.run_k6" in result.stdout
+
+
 def test_e2e_group_lists_expected_commands() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["e2e", "--help"])

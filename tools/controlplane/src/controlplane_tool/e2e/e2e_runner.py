@@ -213,6 +213,17 @@ class E2eRunner:
                 local_registry=local_registry,
             )
             if scenario.requires_vm:
+                if scenario.name == "two-vm-loadtest":
+                    steps = plan_recipe_steps(
+                        self.paths.workspace_root,
+                        request,
+                        scenario.name,
+                        shell=self.shell,
+                        manifest_root=self.manifest_root,
+                    )
+                    vm_bootstrap_planned = True
+                    plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
+                    continue
                 steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                 vm_bootstrap_planned = True
                 plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
