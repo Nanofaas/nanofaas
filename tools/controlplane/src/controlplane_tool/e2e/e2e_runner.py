@@ -7,7 +7,7 @@ from typing import Callable, Literal
 
 from multipass import MultipassClient
 
-from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
+from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmK6Result, TwoVmLoadtestRunner
 from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -80,6 +80,13 @@ def plan_recipe_steps(
     )
     vm_request = context.vm_request
     remote_dir = runner.vm.remote_project_dir(vm_request)
+    two_vm_runner = TwoVmLoadtestRunner(
+        repo_root=repo_root,
+        vm=runner.vm,
+        shell=runner.shell,
+        host_resolver=host_resolver,
+    )
+    two_vm_k6_result: TwoVmK6Result | None = None
 
     def _on_ensure_running() -> None:
         runner.vm.ensure_running(vm_request)
@@ -96,12 +103,13 @@ def plan_recipe_steps(
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
 
     def _on_loadgen_run_k6() -> None:
-        TwoVmLoadtestRunner(
-            repo_root=repo_root,
-            vm=runner.vm,
-            shell=runner.shell,
-            host_resolver=host_resolver,
-        ).run_k6(request)
+        nonlocal two_vm_k6_result
+        two_vm_k6_result = two_vm_runner.run_k6(request)
+
+    def _on_prometheus_snapshot() -> None:
+        if two_vm_k6_result is None:
+            raise RuntimeError("Prometheus snapshots require a completed k6 run")
+        two_vm_runner.capture_prometheus_snapshots(request, two_vm_k6_result)
 
     cli_context = CliComponentContext(
         repo_root=Path(remote_dir),
@@ -150,6 +158,17 @@ def plan_recipe_steps(
                     env=step.env,
                     step_id=step.step_id,
                     action=_on_loadgen_down,
+                )
+                for step in component_steps
+            ]
+        if component.component_id == "metrics.prometheus_snapshot":
+            component_steps = [
+                ScenarioPlanStep(
+                    summary=step.summary,
+                    command=step.command,
+                    env=step.env,
+                    step_id=step.step_id,
+                    action=_on_prometheus_snapshot,
                 )
                 for step in component_steps
             ]

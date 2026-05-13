@@ -10,6 +10,7 @@ from controlplane_tool.scenario.components.images import control_image, runtime_
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
     TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+    TWO_VM_PROMETHEUS_NODE_PORT,
 )
 
 
@@ -58,6 +59,9 @@ def control_plane_helm_values(
         values["controlPlane.service.type"] = "NodePort"
         values["controlPlane.service.nodePorts.http"] = str(TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT)
         values["controlPlane.service.nodePorts.actuator"] = str(TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT)
+        values["prometheus.create"] = "true"
+        values["prometheus.service.type"] = "NodePort"
+        values["prometheus.service.nodePort"] = str(TWO_VM_PROMETHEUS_NODE_PORT)
     return values
 
 

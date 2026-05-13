@@ -17,6 +17,7 @@ from controlplane_tool.scenario.components.operations import RemoteCommandOperat
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
     two_vm_load_stages,
+    two_vm_prometheus_url,
     two_vm_remote_paths,
     two_vm_target_function,
 )
@@ -144,8 +145,20 @@ def plan_loadgen_run_k6(context: ScenarioExecutionContext) -> tuple[ScenarioOper
     )
 
 
-def plan_metrics_prometheus_snapshot(_: object) -> tuple[ScenarioOperation, ...]:
-    return _placeholder("metrics.prometheus_snapshot", "Capture Prometheus query snapshots")
+def plan_metrics_prometheus_snapshot(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
+    return (
+        RemoteCommandOperation(
+            operation_id="metrics.prometheus_snapshot",
+            summary="Capture Prometheus query snapshots",
+            argv=(
+                "python",
+                "-m",
+                "controlplane_tool.loadtest.prometheus_snapshots",
+                "--url",
+                two_vm_prometheus_url(context.vm_request),
+            ),
+        ),
+    )
 
 
 def plan_loadtest_write_report(_: object) -> tuple[ScenarioOperation, ...]:

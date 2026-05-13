@@ -9,6 +9,7 @@ from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
 
 TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT = 30080
 TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT = 30081
+TWO_VM_PROMETHEUS_NODE_PORT = 30090
 TWO_VM_REMOTE_DIR_NAME = "two-vm-loadtest"
 
 
@@ -31,6 +32,16 @@ def two_vm_control_plane_url(vm_request: VmRequest, *, host: str | None = None) 
         else:
             resolved_host = f"<multipass-ip:{vm_request.name or 'nanofaas-e2e'}>"
     return f"http://{resolved_host}:{TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT}"
+
+
+def two_vm_prometheus_url(vm_request: VmRequest, *, host: str | None = None) -> str:
+    resolved_host = host
+    if resolved_host is None:
+        if vm_request.lifecycle == "external":
+            resolved_host = str(vm_request.host)
+        else:
+            resolved_host = f"<multipass-ip:{vm_request.name or 'nanofaas-e2e'}>"
+    return f"http://{resolved_host}:{TWO_VM_PROMETHEUS_NODE_PORT}"
 
 
 def two_vm_remote_paths(remote_home: str, *, payload_name: str | None = None) -> TwoVmRemotePaths:

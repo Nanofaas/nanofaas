@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.loadtest.prometheus_snapshots import capture_prometheus_snapshots
 from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
     two_vm_load_stages,
+    two_vm_prometheus_url,
     two_vm_remote_paths,
     two_vm_target_function,
 )
@@ -24,6 +26,8 @@ class TwoVmK6Result:
     run_dir: Path
     k6_summary_path: Path
     target_function: str
+    started_at: datetime
+    ended_at: datetime
 
 
 class TwoVmLoadtestRunner:
@@ -92,7 +96,11 @@ class TwoVmLoadtestRunner:
                 duration=request.k6_duration,
             )
         )
+        started_at = datetime.now(timezone.utc)
         self._check(self.vm.exec_argv(request.loadgen_vm, command, cwd=remote_paths.root_dir))
+        ended_at = datetime.now(timezone.utc)
+        if ended_at <= started_at:
+            ended_at = started_at + timedelta(seconds=1)
 
         local_summary = run_dir / "k6-summary.json"
         self._check(
@@ -102,7 +110,23 @@ class TwoVmLoadtestRunner:
                 destination=local_summary,
             )
         )
-        return TwoVmK6Result(run_dir=run_dir, k6_summary_path=local_summary, target_function=target_function)
+        return TwoVmK6Result(
+            run_dir=run_dir,
+            k6_summary_path=local_summary,
+            target_function=target_function,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+
+    def capture_prometheus_snapshots(self, request: E2eRequest, k6_result: TwoVmK6Result) -> Path:
+        if request.vm is None:
+            raise ValueError("two-vm-loadtest requires a stack VM request")
+        return capture_prometheus_snapshots(
+            prometheus_url=two_vm_prometheus_url(request.vm, host=self._host(request.vm)),
+            output_dir=k6_result.run_dir,
+            start=k6_result.started_at,
+            end=k6_result.ended_at,
+        )
 
     def _create_run_dir(self) -> Path:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

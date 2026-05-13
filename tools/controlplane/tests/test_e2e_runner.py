@@ -336,6 +336,9 @@ def test_two_vm_loadtest_exposes_control_plane_for_loadgen_vm() -> None:
     assert "--set" in deploy_step.command
     assert "controlPlane.service.type=NodePort" in deploy_step.command
     assert "controlPlane.service.nodePorts.http=30080" in deploy_step.command
+    assert "prometheus.create=true" in deploy_step.command
+    assert "prometheus.service.type=NodePort" in deploy_step.command
+    assert "prometheus.service.nodePort=30090" in deploy_step.command
 
 
 def test_two_vm_loadtest_plan_wires_loadgen_cleanup_action() -> None:
@@ -351,6 +354,21 @@ def test_two_vm_loadtest_plan_wires_loadgen_cleanup_action() -> None:
     loadgen_down = next(step for step in plan.steps if step.step_id == "loadgen.down")
     assert loadgen_down.command == ["multipass", "delete", "nanofaas-e2e-loadgen"]
     assert loadgen_down.action is not None
+
+
+def test_two_vm_loadtest_plan_wires_prometheus_snapshot_action() -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    snapshot_step = next(step for step in plan.steps if step.step_id == "metrics.prometheus_snapshot")
+    assert snapshot_step.action is not None
+    assert "http://<multipass-ip:nanofaas-e2e>:30090" in snapshot_step.command
 
 
 def test_two_vm_loadtest_plan_skips_loadgen_cleanup_when_disabled() -> None:
