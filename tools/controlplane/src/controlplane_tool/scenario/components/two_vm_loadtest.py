@@ -1,7 +1,27 @@
 from __future__ import annotations
 
+from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
+
+
+def loadgen_vm_request(context: ScenarioExecutionContext) -> VmRequest:
+    explicit_request = getattr(context, "loadgen_vm_request", None)
+    if explicit_request is not None:
+        return explicit_request
+
+    stack_vm = context.vm_request
+    return VmRequest(
+        lifecycle=stack_vm.lifecycle,
+        name="nanofaas-e2e-loadgen",
+        host=stack_vm.host,
+        user=stack_vm.user,
+        home=stack_vm.home,
+        cpus=2,
+        memory="2G",
+        disk="10G",
+    )
 
 
 def _placeholder(operation_id: str, summary: str) -> tuple[ScenarioOperation, ...]:

@@ -29,6 +29,7 @@ class ScenarioExecutionContext:
     cleanup_vm: bool
     manifest_path: Path | None = None
     release: str | None = None
+    loadgen_vm_request: VmRequest | None = None
 
 
 def default_managed_vm_request() -> VmRequest:
@@ -86,4 +87,5 @@ def resolve_scenario_environment(
         cleanup_vm=getattr(request, "cleanup_vm", True),
         manifest_path=manifest_path,
         release=effective_release,
+        loadgen_vm_request=getattr(request, "loadgen_vm", None),
     )
