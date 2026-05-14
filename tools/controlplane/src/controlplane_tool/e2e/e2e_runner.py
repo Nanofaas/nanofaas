@@ -98,6 +98,9 @@ def plan_recipe_steps(
     def _on_ensure_running() -> None:
         runner.vm.ensure_running(vm_request)
 
+    def _on_loadgen_ensure_running() -> None:
+        runner.vm.ensure_running(loadgen_vm_request(context))
+
     def _on_vm_down() -> None:
         runner.vm.teardown(vm_request)
 
@@ -157,6 +160,17 @@ def plan_recipe_steps(
                     env=step.env,
                     step_id=step.step_id,
                     action=_on_loadgen_run_k6,
+                )
+                for step in component_steps
+            ]
+        if component.component_id == "loadgen.ensure_running":
+            component_steps = [
+                ScenarioPlanStep(
+                    summary=step.summary,
+                    command=step.command,
+                    env=step.env,
+                    step_id=step.step_id,
+                    action=_on_loadgen_ensure_running,
                 )
                 for step in component_steps
             ]

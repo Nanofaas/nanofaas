@@ -286,6 +286,29 @@ def test_two_vm_loadtest_plan_wires_run_k6_action() -> None:
     assert run_k6_step.command[0] == "k6"
 
 
+def test_two_vm_loadtest_plan_wires_loadgen_ensure_running_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
+    ensured: list[str] = []
+
+    def fake_ensure_running(self: VmOrchestrator, request: VmRequest, *, dry_run: bool = False):
+        ensured.append(request.name or "")
+
+    monkeypatch.setattr(VmOrchestrator, "ensure_running", fake_ensure_running)
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan = runner.plan(request)
+
+    loadgen_step = next(step for step in plan.steps if step.step_id == "loadgen.ensure_running")
+    assert loadgen_step.action is not None
+    assert loadgen_step.command[0:4] == ["multipass", "launch", "--name", "nanofaas-e2e-loadgen"]
+    loadgen_step.action()
+    assert ensured == ["nanofaas-e2e-loadgen"]
+
+
 def test_two_vm_loadtest_plan_renders_custom_k6_options() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     request = E2eRequest(
