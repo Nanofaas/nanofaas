@@ -13,6 +13,9 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Delivers invoke results back to the control plane.
  *
@@ -108,8 +111,25 @@ public class CallbackClient {
         try {
             return objectMapper.writeValueAsBytes(result);
         } catch (JsonProcessingException ex) {
-            throw new RestClientException("Failed to serialize callback result", ex);
+            try {
+                return objectMapper.writeValueAsBytes(fallbackPayload(result));
+            } catch (JsonProcessingException fallbackEx) {
+                throw new RestClientException("Failed to serialize callback result", fallbackEx);
+            }
         }
+    }
+
+    private static Map<String, Object> fallbackPayload(InvocationResult result) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("success", result.success());
+        payload.put("output", result.output() == null ? null : String.valueOf(result.output()));
+        payload.put("error", result.error() == null
+                ? null
+                : Map.of(
+                        "code", result.error().code(),
+                        "message", result.error().message()
+                ));
+        return payload;
     }
 
     /**

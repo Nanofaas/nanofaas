@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import okhttp3.mockwebserver.MockResponse;
@@ -68,6 +69,30 @@ class CallbackClientTest {
         assertTrue(ok);
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getBody().readUtf8().contains("\"success\":true"));
+    }
+
+    @Test
+    void sendResult_fallsBackToTextOutputWhenResultSerializationFails() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        CallbackClient fallbackClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"),
+                new FailingInvocationResultObjectMapper());
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        boolean ok = fallbackClient.sendResult(
+                "exec-fallback",
+                InvocationResult.success(new NativeLikeOutput("hello")),
+                "trace-42");
+
+        assertTrue(ok);
+        RecordedRequest req = server.takeRequest();
+        String body = req.getBody().readUtf8();
+        assertTrue(body.contains("\"success\":true"));
+        assertTrue(body.contains("\"output\":\"NativeLikeOutput[value=hello]\""));
+        assertTrue(body.contains("\"error\":null"));
     }
 
     @Test
@@ -324,6 +349,20 @@ class CallbackClientTest {
 
     private static CallbackClient newCallbackClient(RestClient restClient, RuntimeSettings settings) {
         return new CallbackClient(restClient, settings, new ObjectMapper());
+    }
+
+    private record NativeLikeOutput(String value) {
+    }
+
+    private static class FailingInvocationResultObjectMapper extends ObjectMapper {
+        @Override
+        public byte[] writeValueAsBytes(Object value) throws JsonProcessingException {
+            if (value instanceof InvocationResult) {
+                throw new JsonProcessingException("native serializer missing") {
+                };
+            }
+            return super.writeValueAsBytes(value);
+        }
     }
 
     /** Removes retry delays for fast test execution. */
