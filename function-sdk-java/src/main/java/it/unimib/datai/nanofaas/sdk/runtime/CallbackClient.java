@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
@@ -36,70 +35,6 @@ public class CallbackClient {
         this.restClient = restClient;
         this.runtimeSettings = runtimeSettings;
         this.objectMapper = objectMapper;
-    }
-
-    public boolean sendResult(String executionId, InvocationResult result) {
-        return sendResult(executionId, result, null);
-    }
-
-    public boolean sendResult(String executionId, InvocationResult result, String traceId) {
-        String baseUrl = runtimeSettings.callbackUrl();
-        if (baseUrl == null || baseUrl.isBlank()) {
-            log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);
-            return false;
-        }
-        if (executionId == null || executionId.isBlank()) {
-            log.warn("executionId is null or blank, skipping callback");
-            return false;
-        }
-
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try {
-                doSendResult(executionId, result, traceId);
-                log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
-                return true;
-            } catch (RestClientException ex) {
-                log.warn("Callback failed for execution {} (attempt {}): {}",
-                        executionId, attempt + 1, ex.getMessage());
-                if (isPermanentClientFailure(ex)) {
-                    log.error("Permanent callback failure for execution {} with status {}",
-                            executionId, ((RestClientResponseException) ex).getStatusCode());
-                    return false;
-                }
-
-                if (attempt < MAX_RETRIES - 1) {
-                    try {
-                        sleepBeforeRetry(attempt);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        log.warn("Callback retry interrupted for execution {}", executionId);
-                        return false;
-                    }
-                }
-            }
-        }
-
-        log.error("All {} callback attempts failed for execution {}", MAX_RETRIES, executionId);
-        return false;
-    }
-
-    private void doSendResult(String executionId, InvocationResult result, String traceId) {
-        String effectiveTraceId = (traceId != null && !traceId.isBlank())
-                ? traceId
-                : runtimeSettings.traceId();
-        String url = callbackUrl(executionId);
-
-        RestClient.RequestBodySpec request = restClient.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_JSON);
-
-        if (effectiveTraceId != null && !effectiveTraceId.isBlank()) {
-            request.header("X-Trace-Id", effectiveTraceId);
-        }
-
-        request.body(result)
-                .retrieve()
-                .toBodilessEntity();
     }
 
     /**

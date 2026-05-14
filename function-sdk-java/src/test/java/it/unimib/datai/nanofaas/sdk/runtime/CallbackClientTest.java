@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -33,20 +32,28 @@ class CallbackClientTest {
                 new ObjectMapper());
     }
 
+    @AfterEach
+    void tearDown() throws IOException {
+        server.shutdown();
+    }
+
     private CallbackClient newCallbackClient(RestClient restClient, RuntimeSettings settings) {
         return new FastCallbackClient(restClient, settings, new ObjectMapper());
     }
 
-    @AfterEach
-    void tearDown() throws IOException {
-        server.shutdown();
+    private static CallbackPayload successPayload(Object value) {
+        return CallbackPayload.success(new ObjectMapper().valueToTree(value));
+    }
+
+    private static CallbackPayload errorPayload(String code, String message) {
+        return CallbackPayload.error(code, message);
     }
 
     @Test
     void sendResult_success_buildsUrlAndSendsBody() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-1", InvocationResult.success("hello"), "trace-42");
+        boolean ok = client.sendResult("exec-1", successPayload("hello"), "trace-42");
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -60,7 +67,7 @@ class CallbackClientTest {
     void sendResult_successWithoutTraceId_usesInjectedDefaultTraceHeader() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-2", InvocationResult.success("data"));
+        boolean ok = client.sendResult("exec-2", successPayload("data"), null);
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -83,12 +90,11 @@ class CallbackClientTest {
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = completeClient.sendResult("exec-3", InvocationResult.success("ok"));
+        boolean ok = completeClient.sendResult("exec-3", successPayload("ok"), null);
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getPath().endsWith(":complete"));
-        // Should NOT append /exec-3:complete again
         assertFalse(req.getPath().contains("exec-3:complete/exec-3:complete"));
     }
 
@@ -100,7 +106,7 @@ class CallbackClientTest {
                 new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"),
                 new ObjectMapper());
 
-        boolean ok = nullUrlClient.sendResult("exec-4", InvocationResult.success("data"));
+        boolean ok = nullUrlClient.sendResult("exec-4", successPayload("data"), null);
         assertFalse(ok);
     }
 
@@ -112,19 +118,19 @@ class CallbackClientTest {
                 new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"),
                 new ObjectMapper());
 
-        boolean ok = blankUrlClient.sendResult("exec-5", InvocationResult.success("data"));
+        boolean ok = blankUrlClient.sendResult("exec-5", successPayload("data"), null);
         assertFalse(ok);
     }
 
     @Test
     void sendResult_nullExecutionId_returnsFalse() {
-        boolean ok = client.sendResult(null, InvocationResult.success("data"));
+        boolean ok = client.sendResult(null, successPayload("data"), null);
         assertFalse(ok);
     }
 
     @Test
     void sendResult_blankExecutionId_returnsFalse() {
-        boolean ok = client.sendResult("  ", InvocationResult.success("data"));
+        boolean ok = client.sendResult("  ", successPayload("data"), null);
         assertFalse(ok);
     }
 
@@ -133,7 +139,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(500));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-6", InvocationResult.success("retry-ok"));
+        boolean ok = client.sendResult("exec-6", successPayload("retry-ok"), null);
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
     }
@@ -144,7 +150,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(500));
         server.enqueue(new MockResponse().setResponseCode(500));
 
-        boolean ok = client.sendResult("exec-7", InvocationResult.error("ERR", "fail"));
+        boolean ok = client.sendResult("exec-7", errorPayload("ERR", "fail"), null);
         assertFalse(ok);
         assertEquals(3, server.getRequestCount());
     }
@@ -153,7 +159,7 @@ class CallbackClientTest {
     void sendResult_errorResult_sendsErrorPayload() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-8", InvocationResult.error("TIMEOUT", "timed out"), "t-1");
+        boolean ok = client.sendResult("exec-8", errorPayload("TIMEOUT", "timed out"), "t-1");
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -166,7 +172,7 @@ class CallbackClientTest {
     void sendResult_permanent4xxFailure_isNotRetried() {
         server.enqueue(new MockResponse().setResponseCode(400));
 
-        boolean ok = client.sendResult("exec-9", InvocationResult.error("ERR", "fail"));
+        boolean ok = client.sendResult("exec-9", errorPayload("ERR", "fail"), null);
 
         assertFalse(ok);
         assertEquals(1, server.getRequestCount());
@@ -177,7 +183,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(429));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-9b", InvocationResult.success("retry-ok"));
+        boolean ok = client.sendResult("exec-9b", successPayload("retry-ok"), null);
 
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
@@ -188,7 +194,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(408));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-9c", InvocationResult.success("retry-ok"));
+        boolean ok = client.sendResult("exec-9c", successPayload("retry-ok"), null);
 
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
@@ -209,7 +215,7 @@ class CallbackClientTest {
                         "handler"),
                 new ObjectMapper());
 
-        boolean ok = configuredClient.sendResult("exec-9", InvocationResult.success("data"));
+        boolean ok = configuredClient.sendResult("exec-9", successPayload("data"), null);
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -233,7 +239,7 @@ class CallbackClientTest {
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        placeholderClient.sendResult("real-exec-id", InvocationResult.success("ok"));
+        placeholderClient.sendResult("real-exec-id", successPayload("ok"), null);
 
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getPath().contains("real-exec-id:complete"),
@@ -266,8 +272,8 @@ class CallbackClientTest {
                         "handler"),
                 new ObjectMapper());
 
-        assertTrue(trailingSlashClient.sendResult("exec-10", InvocationResult.success("data")));
-        assertTrue(completeSuffixClient.sendResult("exec-10", InvocationResult.success("data")));
+        assertTrue(trailingSlashClient.sendResult("exec-10", successPayload("data"), null));
+        assertTrue(completeSuffixClient.sendResult("exec-10", successPayload("data"), null));
 
         RecordedRequest trailingSlashRequest = server.takeRequest();
         assertFalse(trailingSlashRequest.getPath().contains("//exec-10:complete"));
@@ -292,7 +298,7 @@ class CallbackClientTest {
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        dirtyClient.sendResult("exec-clean", InvocationResult.success("data"));
+        dirtyClient.sendResult("exec-clean", successPayload("data"), null);
 
         RecordedRequest req = server.takeRequest();
         assertFalse(req.getPath().contains("//"), "Double slash in path: " + req.getPath());
@@ -305,8 +311,8 @@ class CallbackClientTest {
 
         AtomicBoolean interruptedAfterCall = new AtomicBoolean(false);
         Thread testThread = new Thread(() -> {
-            Thread.currentThread().interrupt(); // pre-interrupt before the call
-            client.sendResult("exec-interrupt", InvocationResult.success("x"), null);
+            Thread.currentThread().interrupt();
+            client.sendResult("exec-interrupt", successPayload("x"), null);
             interruptedAfterCall.set(Thread.currentThread().isInterrupted());
         });
         testThread.start();
@@ -314,6 +320,28 @@ class CallbackClientTest {
 
         assertTrue(interruptedAfterCall.get(),
                 "Interrupt flag should be restored after InterruptedException in retry sleep");
+    }
+
+    @Test
+    void sendResult_doesNotStringifySuccessfulOutputs() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        ObjectMapper mapper = new ObjectMapper();
+        CallbackClient strictClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"),
+                mapper);
+        CallbackPayload payload = CallbackPayload.success(mapper.readTree("""
+                {"nested":{"value":"kept"}}
+                """));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        assertTrue(strictClient.sendResult("exec-strict", payload, "trace-42"));
+
+        String body = server.takeRequest().getBody().readUtf8();
+        assertTrue(body.contains("\"nested\":{\"value\":\"kept\"}"));
+        assertFalse(body.contains("NativeLikeOutput"));
     }
 
     @Test
