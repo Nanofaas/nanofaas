@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,18 +29,21 @@ public class InvokeController {
     private final InvocationRuntimeContextResolver runtimeContextResolver;
     private final ColdStartTracker coldStartTracker;
     private final HandlerExecutor handlerExecutor;
+    private final JsonOutputNormalizer outputNormalizer;
 
     public InvokeController(
             CallbackDispatcher callbackDispatcher,
             HandlerRegistry handlerRegistry,
             InvocationRuntimeContextResolver runtimeContextResolver,
             ColdStartTracker coldStartTracker,
-            HandlerExecutor handlerExecutor) {
+            HandlerExecutor handlerExecutor,
+            JsonOutputNormalizer outputNormalizer) {
         this.callbackDispatcher = callbackDispatcher;
         this.handlerRegistry = handlerRegistry;
         this.runtimeContextResolver = runtimeContextResolver;
         this.coldStartTracker = coldStartTracker;
         this.handlerExecutor = handlerExecutor;
+        this.outputNormalizer = outputNormalizer;
     }
 
     @PostMapping("/invoke")
@@ -63,11 +66,12 @@ public class InvokeController {
 
         try {
             FunctionHandler handler = handlerRegistry.resolve();
-            Object output = handlerExecutor.execute(handler, request);
+            Object rawOutput = handlerExecutor.execute(handler, request);
+            JsonNode output = outputNormalizer.toJsonNode(rawOutput);
 
             callbackDispatcher.submit(
                     effectiveExecutionId,
-                    InvocationResult.success(output),
+                    CallbackPayload.success(output),
                     runtimeContext.traceId());
 
             ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
@@ -76,11 +80,20 @@ public class InvokeController {
                 responseBuilder.header("X-Init-Duration-Ms", String.valueOf(coldStartTracker.initDurationMs()));
             }
             return responseBuilder.body(output);
+        } catch (OutputSerializationException ex) {
+            String errorMessage = ex.getMessage();
+            log.error("Handler output serialization failed for execution {}: {}", effectiveExecutionId, errorMessage, ex);
+            callbackDispatcher.submit(
+                    effectiveExecutionId,
+                    CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR", errorMessage),
+                    runtimeContext.traceId());
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", errorMessage));
         } catch (TimeoutException ex) {
             log.error("Handler timed out for execution {}", effectiveExecutionId);
             callbackDispatcher.submit(
                     effectiveExecutionId,
-                    InvocationResult.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
+                    CallbackPayload.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
                     runtimeContext.traceId());
             return ResponseEntity.status(504).body(Map.of("error", "Handler timed out"));
         } catch (Exception ex) {
@@ -89,7 +102,7 @@ public class InvokeController {
 
             callbackDispatcher.submit(
                     effectiveExecutionId,
-                    InvocationResult.error("HANDLER_ERROR", errorMessage),
+                    CallbackPayload.error("HANDLER_ERROR", errorMessage),
                     runtimeContext.traceId());
 
             return ResponseEntity.status(500)

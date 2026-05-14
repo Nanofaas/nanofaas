@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,9 +54,9 @@ public class CallbackDispatcher {
         this.executor = executor;
     }
 
-    public boolean submit(String executionId, InvocationResult result, String traceId) {
+    public boolean submit(String executionId, CallbackPayload payload, String traceId) {
         try {
-            executor.execute(() -> callbackClient.sendResult(executionId, result, traceId));
+            executor.execute(() -> callbackClient.sendResult(executionId, payload, traceId));
             return true;
         } catch (RejectedExecutionException ex) {
             log.warn("Dropping callback for execution {} because dispatcher queue is full", executionId);
