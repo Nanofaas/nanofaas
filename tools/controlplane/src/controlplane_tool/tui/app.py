@@ -512,6 +512,11 @@ _PLATFORM_VALIDATION_CHOICES = [
         "Bootstrap the full VM-backed Helm stack and validate the deployment path that load testing and demos rely on.",
     ),
     _DescribedChoice(
+        "two-vm-loadtest — Helm stack with dedicated k6 load generator VM",
+        "two-vm-loadtest",
+        "Bootstrap the Helm stack on one VM and run k6 from a second managed load generator VM.",
+    ),
+    _DescribedChoice(
         "container-local — local managed DEPLOYMENT",
         "container-local",
         "Run the managed DEPLOYMENT workflow entirely on the local machine without provisioning a VM first.",
@@ -942,7 +947,7 @@ class NanofaasTUI:
             if scenario_choice == _BACK_VALUE:
                 return
 
-            if scenario_choice in ("k3s-junit-curl", "helm-stack"):
+            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest"):
                 self._run_vm_e2e_scenario(scenario_choice)
             elif scenario_choice == "container-local":
                 self._run_container_local()
@@ -955,12 +960,12 @@ class NanofaasTUI:
     def _run_vm_e2e_scenario(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
 
-        if scenario == "helm-stack":
+        if scenario in {"helm-stack", "two-vm-loadtest"}:
             from controlplane_tool.cli.e2e_commands import _resolve_run_request
             from controlplane_tool.e2e.e2e_runner import E2eRunner
 
             request = _resolve_run_request(
-                scenario="helm-stack",
+                scenario=scenario,
                 runtime="java",
                 lifecycle="multipass",
                 name="nanofaas-e2e",
@@ -968,7 +973,7 @@ class NanofaasTUI:
                 user="ubuntu",
                 home=None,
                 cpus=4,
-                memory="12G",
+                memory="8G" if scenario == "two-vm-loadtest" else "12G",
                 disk="30G",
                 cleanup_vm=False,
                 namespace=None,
@@ -985,16 +990,16 @@ class NanofaasTUI:
                     self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
-                dashboard.append_log("Starting helm-stack workflow")
+                dashboard.append_log(f"Starting {scenario} workflow")
                 sink._update()
                 flow = build_scenario_flow(
-                    "helm-stack",
+                    scenario,
                     repo_root=repo_root,
                     request=request,
                     event_listener=_on_step_event,
                 )
                 self._controller.run_shared_flow(flow)
-                dashboard.append_log("helm-stack E2E completed")
+                dashboard.append_log(f"{scenario} E2E completed")
                 sink._update()
 
             self._controller.run_live_workflow(

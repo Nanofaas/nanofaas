@@ -903,6 +903,29 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
 
     assert "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
     assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
+    assert "two-vm-loadtest — Helm stack with dedicated k6 load generator VM" in captured["choices"]
+
+
+def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    answers = iter(["two-vm-loadtest", "back"])
+    called: dict[str, object] = {}
+
+    def fake_select(*args, **kwargs):  # noqa: ANN001
+        return _Prompt(next(answers))
+
+    monkeypatch.setattr(tui_app.questionary, "select", fake_select)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+    monkeypatch.setattr(
+        NanofaasTUI,
+        "_run_vm_e2e_scenario",
+        lambda self, scenario: called.update({"scenario": scenario}),
+    )
+
+    NanofaasTUI()._e2e_menu()
+
+    assert called["scenario"] == "two-vm-loadtest"
 
 
 def test_tui_submenus_include_back_entries(monkeypatch) -> None:
@@ -2550,3 +2573,48 @@ def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> Non
     assert request.function_preset == "demo-loadtest"
     assert request.resolved_scenario is not None
     assert request.resolved_scenario.base_scenario == "helm-stack"
+
+
+def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
+
+    called: dict[str, object] = {}
+
+    class _FakePlan:
+        steps = [SimpleNamespace(summary="Run k6 from loadgen VM")]
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.two_vm_loadtest", task_ids=["loadgen.run_k6"], run=lambda: "ok")
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["title"] = title
+        called["summary_lines"] = summary_lines
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_vm_e2e_scenario("two-vm-loadtest")
+
+    request = called["request"]
+    assert called["scenario"] == "two-vm-loadtest"
+    assert called["summary_lines"] == [
+        "Scenario: two-vm-loadtest",
+        "Mode: self-bootstrapping VM-backed scenario",
+    ]
+    assert called["planned_steps"] == ["Run k6 from loadgen VM"]
+    assert request.scenario == "two-vm-loadtest"
+    assert request.function_preset == "demo-loadtest"
+    assert request.vm is not None
+    assert request.vm.name == "nanofaas-e2e"
+    assert request.vm.memory == "8G"
+    assert request.loadgen_vm is not None
+    assert request.loadgen_vm.name == "nanofaas-e2e-loadgen"
