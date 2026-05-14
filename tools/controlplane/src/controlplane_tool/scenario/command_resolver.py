@@ -45,6 +45,15 @@ class CommandResolver:
             return self._host_resolver(vm_request)
         return vm.resolve_multipass_ipv4(vm_request)
 
+    def _placeholder_vm_request(
+        self,
+        vm_request: VmRequest,
+        placeholder_name: str,
+    ) -> VmRequest:
+        if vm_request.name == placeholder_name:
+            return vm_request
+        return vm_request.model_copy(update={"name": placeholder_name})
+
     def _resolve_placeholder_text(
         self,
         value: str,
@@ -55,7 +64,10 @@ class CommandResolver:
         def _replace(m: re.Match) -> str:
             key = m.group(1)
             if key not in cache and vm_request is not None:
-                cache[key] = self._resolve_ip(vm, vm_request)
+                cache[key] = self._resolve_ip(
+                    vm,
+                    self._placeholder_vm_request(vm_request, key),
+                )
             cached = cache.get(key)
             return cached if cached is not None else m.group(0)
 
