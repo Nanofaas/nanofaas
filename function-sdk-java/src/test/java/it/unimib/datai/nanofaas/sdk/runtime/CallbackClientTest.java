@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -51,6 +52,25 @@ class CallbackClientTest {
     }
 
     @Test
+    void sendResult_successWhenRestClientHasNoJacksonMessageConverter() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .messageConverters(converters -> converters.removeIf(converter ->
+                        converter.getClass().getName().contains("MappingJackson2HttpMessageConverter")))
+                .build();
+        CallbackClient clientWithoutJacksonConverter = newCallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        boolean ok = clientWithoutJacksonConverter.sendResult("exec-native", InvocationResult.success("hello"), "trace-42");
+
+        assertTrue(ok);
+        RecordedRequest req = server.takeRequest();
+        assertTrue(req.getBody().readUtf8().contains("\"success\":true"));
+    }
+
+    @Test
     void sendResult_successWithoutTraceId_usesInjectedDefaultTraceHeader() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
@@ -66,7 +86,7 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient completeClient = new CallbackClient(
+        CallbackClient completeClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "env-exec-id",
@@ -88,7 +108,7 @@ class CallbackClientTest {
     @Test
     void sendResult_nullBaseUrl_returnsFalse() {
         RestClient restClient = RestClient.create();
-        CallbackClient nullUrlClient = new CallbackClient(
+        CallbackClient nullUrlClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"));
 
@@ -99,7 +119,7 @@ class CallbackClientTest {
     @Test
     void sendResult_blankBaseUrl_returnsFalse() {
         RestClient restClient = RestClient.create();
-        CallbackClient blankUrlClient = new CallbackClient(
+        CallbackClient blankUrlClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"));
 
@@ -191,7 +211,7 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient configuredClient = new CallbackClient(
+        CallbackClient configuredClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
@@ -212,7 +232,7 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient placeholderClient = new CallbackClient(
+        CallbackClient placeholderClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "env-exec-id",
@@ -238,14 +258,14 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient trailingSlashClient = new CallbackClient(
+        CallbackClient trailingSlashClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/executions/").toString(),
                         "handler"));
-        CallbackClient completeSuffixClient = new CallbackClient(
+        CallbackClient completeSuffixClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
@@ -272,7 +292,7 @@ class CallbackClientTest {
                 .baseUrl(server.url("/").toString())
                 .build();
         String dirtyUrl = server.url("/v1/executions").toString() + "/ ";
-        CallbackClient dirtyClient = new CallbackClient(
+        CallbackClient dirtyClient = newCallbackClient(
                 restClient,
                 new RuntimeSettings("env", "trace", dirtyUrl, "handler"));
 
@@ -302,10 +322,14 @@ class CallbackClientTest {
                 "Interrupt flag should be restored after InterruptedException in retry sleep");
     }
 
+    private static CallbackClient newCallbackClient(RestClient restClient, RuntimeSettings settings) {
+        return new CallbackClient(restClient, settings, new ObjectMapper());
+    }
+
     /** Removes retry delays for fast test execution. */
     private static class FastCallbackClient extends CallbackClient {
         FastCallbackClient(RestClient restClient, RuntimeSettings settings) {
-            super(restClient, settings);
+            super(restClient, settings, new ObjectMapper());
         }
 
         @Override

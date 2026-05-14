@@ -1,8 +1,11 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -28,10 +31,13 @@ public class CallbackClient {
 
     private final RestClient restClient;
     private final RuntimeSettings runtimeSettings;
+    private final ObjectMapper objectMapper;
 
-    public CallbackClient(RestClient restClient, RuntimeSettings runtimeSettings) {
+    @Autowired
+    public CallbackClient(RestClient restClient, RuntimeSettings runtimeSettings, ObjectMapper objectMapper) {
         this.restClient = restClient;
         this.runtimeSettings = runtimeSettings;
+        this.objectMapper = objectMapper;
     }
 
     public boolean sendResult(String executionId, InvocationResult result) {
@@ -93,9 +99,17 @@ public class CallbackClient {
             request.header("X-Trace-Id", effectiveTraceId);
         }
 
-        request.body(result)
+        request.body(serializeResult(result))
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    private byte[] serializeResult(InvocationResult result) {
+        try {
+            return objectMapper.writeValueAsBytes(result);
+        } catch (JsonProcessingException ex) {
+            throw new RestClientException("Failed to serialize callback result", ex);
+        }
     }
 
     /**
