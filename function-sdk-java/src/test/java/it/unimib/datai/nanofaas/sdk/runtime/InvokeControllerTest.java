@@ -1,11 +1,14 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.ResponseEntity;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -29,12 +32,12 @@ class InvokeControllerTest {
         coldStartTracker = mock(ColdStartTracker.class);
         handler = mock(FunctionHandler.class);
         when(handlerRegistry.resolve()).thenReturn(handler);
-        when(callbackDispatcher.submit(anyString(), any(), any())).thenReturn(true);
+        when(callbackDispatcher.submit(anyString(), any(CallbackPayload.class), any())).thenReturn(true);
         when(runtimeContextResolver.resolve(any(), any()))
                 .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
         when(coldStartTracker.firstInvocation()).thenReturn(false);
         controller = new InvokeController(callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker,
-                new HandlerExecutor(5000));
+                new HandlerExecutor(5000), new JsonOutputNormalizer(new ObjectMapper()));
     }
 
     @Test
@@ -47,8 +50,9 @@ class InvokeControllerTest {
         ResponseEntity<Object> response = controller.invoke(request, null, "trace-1");
 
         assertEquals(200, response.getStatusCode().value());
-        assertEquals(Map.of("result", "hello"), response.getBody());
-        verify(callbackDispatcher).submit(eq("env-exec-id"), any(InvocationResult.class), eq("trace-1"));
+        assertTrue(response.getBody() instanceof JsonNode);
+        assertEquals("hello", ((JsonNode) response.getBody()).get("result").asText());
+        verify(callbackDispatcher).submit(eq("env-exec-id"), any(CallbackPayload.class), eq("trace-1"));
     }
 
     @Test
@@ -62,7 +66,7 @@ class InvokeControllerTest {
 
         assertEquals(200, response.getStatusCode().value());
         verify(runtimeContextResolver).resolve("header-exec-id", "trace-9");
-        verify(callbackDispatcher).submit(eq("resolved-exec-id"), any(), eq("resolved-trace"));
+        verify(callbackDispatcher).submit(eq("resolved-exec-id"), any(CallbackPayload.class), eq("resolved-trace"));
     }
 
     @Test
@@ -80,7 +84,7 @@ class InvokeControllerTest {
         assertEquals("boom", body.get("error"));
         verify(callbackDispatcher).submit(
                 eq("env-exec-id"),
-                argThat((InvocationResult r) -> !r.success()),
+                argThat((CallbackPayload p) -> !p.success()),
                 eq("t-1"));
     }
 
@@ -99,16 +103,16 @@ class InvokeControllerTest {
         assertEquals("Handler execution failed", body.get("error"));
         verify(callbackDispatcher).submit(
                 eq("env-exec-id"),
-                argThat((InvocationResult r) -> !r.success() && r.error() != null
-                        && "HANDLER_ERROR".equals(r.error().code())
-                        && "Handler execution failed".equals(r.error().message())),
+                argThat((CallbackPayload p) -> !p.success() && p.error() != null
+                        && "HANDLER_ERROR".equals(p.error().code())
+                        && "Handler execution failed".equals(p.error().message())),
                 eq("t-2"));
     }
 
     @Test
     void invoke_callbackFails_stillReturnsOk() {
         when(handler.handle(any())).thenReturn("data");
-        when(callbackDispatcher.submit(anyString(), any(), any())).thenReturn(false);
+        when(callbackDispatcher.submit(anyString(), any(CallbackPayload.class), any())).thenReturn(false);
         when(runtimeContextResolver.resolve(any(), any()))
                 .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
 
@@ -116,7 +120,8 @@ class InvokeControllerTest {
         ResponseEntity<Object> response = controller.invoke(request, null, null);
 
         assertEquals(200, response.getStatusCode().value());
-        assertEquals("data", response.getBody());
+        assertTrue(response.getBody() instanceof JsonNode);
+        assertEquals("data", ((JsonNode) response.getBody()).asText());
     }
 
     @Test
@@ -146,15 +151,37 @@ class InvokeControllerTest {
         when(handler.handle(any())).thenAnswer(inv -> { Thread.sleep(10_000); return null; });
         controller = new InvokeController(
             callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker,
-            new HandlerExecutor(50)); // 50ms timeout
+            new HandlerExecutor(50), new JsonOutputNormalizer(new ObjectMapper())); // 50ms timeout
 
         ResponseEntity<Object> response = controller.invoke(new InvocationRequest("in", null), "exec-id", null);
 
         assertEquals(504, response.getStatusCode().value());
         verify(callbackDispatcher).submit(
             eq("env-exec-id"),
-            argThat((InvocationResult r) -> !r.success() && "HANDLER_TIMEOUT".equals(r.error().code())),
+            argThat((CallbackPayload p) -> !p.success() && "HANDLER_TIMEOUT".equals(p.error().code())),
             any());
+    }
+
+    @Test
+    void invoke_normalizesOutputOnceForResponseAndCallback() {
+        when(handler.handle(any())).thenReturn(Map.of("wordCount", 4, "topWords", List.of()));
+        when(runtimeContextResolver.resolve(any(), any()))
+                .thenReturn(new InvocationRuntimeContext("exec-normalized", "trace-normalized"));
+
+        ResponseEntity<Object> response = controller.invoke(
+                new InvocationRequest(Map.of("text", "the quick brown fox"), Map.of()),
+                "exec-normalized",
+                "trace-normalized");
+
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody() instanceof JsonNode);
+        JsonNode body = (JsonNode) response.getBody();
+        assertEquals(4, body.get("wordCount").asInt());
+
+        ArgumentCaptor<CallbackPayload> payloadCaptor = ArgumentCaptor.forClass(CallbackPayload.class);
+        verify(callbackDispatcher).submit(eq("exec-normalized"), payloadCaptor.capture(), eq("trace-normalized"));
+        assertTrue(payloadCaptor.getValue().success());
+        assertEquals(4, payloadCaptor.getValue().output().get("wordCount").asInt());
     }
 
     @Test

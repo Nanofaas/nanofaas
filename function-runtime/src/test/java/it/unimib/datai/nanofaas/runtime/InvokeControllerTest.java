@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.runtime;
 
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.sdk.runtime.CallbackClient;
+import it.unimib.datai.nanofaas.sdk.runtime.CallbackPayload;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -33,7 +33,7 @@ class InvokeControllerTest {
 
     @Test
     void issue014_invokeContractReturnsInput() throws Exception {
-        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -44,7 +44,7 @@ class InvokeControllerTest {
 
     @Test
     void invokeUsesExecutionIdFromHeader() throws Exception {
-        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "header-exec-123")
@@ -52,29 +52,26 @@ class InvokeControllerTest {
                         .content("{\"input\": \"test\", \"metadata\": {}}"))
                 .andExpect(status().isOk());
 
-        // Verify callback was called with header execution ID
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("header-exec-123"), any(InvocationResult.class), any());
+                .sendResult(eq("header-exec-123"), any(CallbackPayload.class), any());
     }
 
     @Test
     void invokeUsesEnvExecutionIdWhenHeaderNotProvided() throws Exception {
-        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\": \"test\", \"metadata\": {}}"))
                 .andExpect(status().isOk());
 
-        // Verify callback was called with default/env execution ID (test-execution is the default)
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("test-execution"), any(InvocationResult.class), any());
+                .sendResult(eq("test-execution"), any(CallbackPayload.class), any());
     }
 
     @Test
     void invokeHeaderTakesPrecedenceOverEnv() throws Exception {
-        // This test verifies that when both header and env are set, header wins
-        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "header-takes-precedence")
@@ -82,14 +79,13 @@ class InvokeControllerTest {
                         .content("{\"input\": \"test\", \"metadata\": {}}"))
                 .andExpect(status().isOk());
 
-        // Verify header execution ID was used, not the env one
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("header-takes-precedence"), any(InvocationResult.class), any());
+                .sendResult(eq("header-takes-precedence"), any(CallbackPayload.class), any());
     }
 
     @Test
     void invokePropagatesTraceIdToCallback() throws Exception {
-        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "exec-123")
@@ -99,12 +95,12 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("exec-123"), any(InvocationResult.class), eq("trace-456"));
+                .sendResult(eq("exec-123"), any(CallbackPayload.class), eq("trace-456"));
     }
 
     @Test
     void invokePropagatesNullTraceIdWhenHeaderNotProvided() throws Exception {
-        when(callbackClient.sendResult(any(), any(), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "exec-789")
@@ -113,6 +109,6 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("exec-789"), any(InvocationResult.class), (String) isNull());
+                .sendResult(eq("exec-789"), any(CallbackPayload.class), (String) isNull());
     }
 }

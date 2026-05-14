@@ -234,4 +234,20 @@ class InvocationControllerTest {
 
         verify(invocationService).completeExecution("exec-4", result);
     }
+
+    @Test
+    void completeExecution_acceptsStructuredJsonObjectOutput() {
+        webClient.post()
+                .uri("/v1/internal/executions/exec-structured:complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {
+                          "success": true,
+                          "output": {"wordCount": 4, "topWords": [{"word":"the","count":1}]},
+                          "error": null
+                        }
+                        """)
+                .exchange()
+                .expectStatus().isNoContent();
+    }
 }

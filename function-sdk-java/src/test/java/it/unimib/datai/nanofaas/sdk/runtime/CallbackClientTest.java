@@ -1,8 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -30,7 +28,8 @@ class CallbackClientTest {
                 .build();
         client = new FastCallbackClient(
                 restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"),
+                new ObjectMapper());
     }
 
     @AfterEach
@@ -38,11 +37,23 @@ class CallbackClientTest {
         server.shutdown();
     }
 
+    private CallbackClient newCallbackClient(RestClient restClient, RuntimeSettings settings) {
+        return new FastCallbackClient(restClient, settings, new ObjectMapper());
+    }
+
+    private static CallbackPayload successPayload(Object value) {
+        return CallbackPayload.success(new ObjectMapper().valueToTree(value));
+    }
+
+    private static CallbackPayload errorPayload(String code, String message) {
+        return CallbackPayload.error(code, message);
+    }
+
     @Test
     void sendResult_success_buildsUrlAndSendsBody() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-1", InvocationResult.success("hello"), "trace-42");
+        boolean ok = client.sendResult("exec-1", successPayload("hello"), "trace-42");
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -53,53 +64,10 @@ class CallbackClientTest {
     }
 
     @Test
-    void sendResult_successWhenRestClientHasNoJacksonMessageConverter() throws Exception {
-        RestClient restClient = RestClient.builder()
-                .baseUrl(server.url("/").toString())
-                .messageConverters(converters -> converters.removeIf(converter ->
-                        converter.getClass().getName().contains("MappingJackson2HttpMessageConverter")))
-                .build();
-        CallbackClient clientWithoutJacksonConverter = newCallbackClient(
-                restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
-        server.enqueue(new MockResponse().setResponseCode(200));
-
-        boolean ok = clientWithoutJacksonConverter.sendResult("exec-native", InvocationResult.success("hello"), "trace-42");
-
-        assertTrue(ok);
-        RecordedRequest req = server.takeRequest();
-        assertTrue(req.getBody().readUtf8().contains("\"success\":true"));
-    }
-
-    @Test
-    void sendResult_fallsBackToTextOutputWhenResultSerializationFails() throws Exception {
-        RestClient restClient = RestClient.builder()
-                .baseUrl(server.url("/").toString())
-                .build();
-        CallbackClient fallbackClient = new CallbackClient(
-                restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"),
-                new FailingInvocationResultObjectMapper());
-        server.enqueue(new MockResponse().setResponseCode(200));
-
-        boolean ok = fallbackClient.sendResult(
-                "exec-fallback",
-                InvocationResult.success(new NativeLikeOutput("hello")),
-                "trace-42");
-
-        assertTrue(ok);
-        RecordedRequest req = server.takeRequest();
-        String body = req.getBody().readUtf8();
-        assertTrue(body.contains("\"success\":true"));
-        assertTrue(body.contains("\"output\":\"NativeLikeOutput[value=hello]\""));
-        assertTrue(body.contains("\"error\":null"));
-    }
-
-    @Test
     void sendResult_successWithoutTraceId_usesInjectedDefaultTraceHeader() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-2", InvocationResult.success("data"));
+        boolean ok = client.sendResult("exec-2", successPayload("data"), null);
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -111,56 +79,58 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient completeClient = newCallbackClient(
+        CallbackClient completeClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "env-exec-id",
                         "env-trace-id",
                         server.url("/v1/executions/exec-3:complete").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = completeClient.sendResult("exec-3", InvocationResult.success("ok"));
+        boolean ok = completeClient.sendResult("exec-3", successPayload("ok"), null);
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getPath().endsWith(":complete"));
-        // Should NOT append /exec-3:complete again
         assertFalse(req.getPath().contains("exec-3:complete/exec-3:complete"));
     }
 
     @Test
     void sendResult_nullBaseUrl_returnsFalse() {
         RestClient restClient = RestClient.create();
-        CallbackClient nullUrlClient = newCallbackClient(
+        CallbackClient nullUrlClient = new CallbackClient(
                 restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"));
+                new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"),
+                new ObjectMapper());
 
-        boolean ok = nullUrlClient.sendResult("exec-4", InvocationResult.success("data"));
+        boolean ok = nullUrlClient.sendResult("exec-4", successPayload("data"), null);
         assertFalse(ok);
     }
 
     @Test
     void sendResult_blankBaseUrl_returnsFalse() {
         RestClient restClient = RestClient.create();
-        CallbackClient blankUrlClient = newCallbackClient(
+        CallbackClient blankUrlClient = new CallbackClient(
                 restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"));
+                new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"),
+                new ObjectMapper());
 
-        boolean ok = blankUrlClient.sendResult("exec-5", InvocationResult.success("data"));
+        boolean ok = blankUrlClient.sendResult("exec-5", successPayload("data"), null);
         assertFalse(ok);
     }
 
     @Test
     void sendResult_nullExecutionId_returnsFalse() {
-        boolean ok = client.sendResult(null, InvocationResult.success("data"));
+        boolean ok = client.sendResult(null, successPayload("data"), null);
         assertFalse(ok);
     }
 
     @Test
     void sendResult_blankExecutionId_returnsFalse() {
-        boolean ok = client.sendResult("  ", InvocationResult.success("data"));
+        boolean ok = client.sendResult("  ", successPayload("data"), null);
         assertFalse(ok);
     }
 
@@ -169,7 +139,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(500));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-6", InvocationResult.success("retry-ok"));
+        boolean ok = client.sendResult("exec-6", successPayload("retry-ok"), null);
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
     }
@@ -180,7 +150,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(500));
         server.enqueue(new MockResponse().setResponseCode(500));
 
-        boolean ok = client.sendResult("exec-7", InvocationResult.error("ERR", "fail"));
+        boolean ok = client.sendResult("exec-7", errorPayload("ERR", "fail"), null);
         assertFalse(ok);
         assertEquals(3, server.getRequestCount());
     }
@@ -189,7 +159,7 @@ class CallbackClientTest {
     void sendResult_errorResult_sendsErrorPayload() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-8", InvocationResult.error("TIMEOUT", "timed out"), "t-1");
+        boolean ok = client.sendResult("exec-8", errorPayload("TIMEOUT", "timed out"), "t-1");
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -202,7 +172,7 @@ class CallbackClientTest {
     void sendResult_permanent4xxFailure_isNotRetried() {
         server.enqueue(new MockResponse().setResponseCode(400));
 
-        boolean ok = client.sendResult("exec-9", InvocationResult.error("ERR", "fail"));
+        boolean ok = client.sendResult("exec-9", errorPayload("ERR", "fail"), null);
 
         assertFalse(ok);
         assertEquals(1, server.getRequestCount());
@@ -213,7 +183,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(429));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-9b", InvocationResult.success("retry-ok"));
+        boolean ok = client.sendResult("exec-9b", successPayload("retry-ok"), null);
 
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
@@ -224,7 +194,7 @@ class CallbackClientTest {
         server.enqueue(new MockResponse().setResponseCode(408));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-9c", InvocationResult.success("retry-ok"));
+        boolean ok = client.sendResult("exec-9c", successPayload("retry-ok"), null);
 
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
@@ -236,15 +206,16 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient configuredClient = newCallbackClient(
+        CallbackClient configuredClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/callbacks").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
-        boolean ok = configuredClient.sendResult("exec-9", InvocationResult.success("data"));
+        boolean ok = configuredClient.sendResult("exec-9", successPayload("data"), null);
         assertTrue(ok);
 
         RecordedRequest req = server.takeRequest();
@@ -257,17 +228,18 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient placeholderClient = newCallbackClient(
+        CallbackClient placeholderClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "env-exec-id",
                         "env-trace-id",
                         server.url("/v1/executions/placeholder:complete").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        placeholderClient.sendResult("real-exec-id", InvocationResult.success("ok"));
+        placeholderClient.sendResult("real-exec-id", successPayload("ok"), null);
 
         RecordedRequest req = server.takeRequest();
         assertTrue(req.getPath().contains("real-exec-id:complete"),
@@ -283,23 +255,25 @@ class CallbackClientTest {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
                 .build();
-        CallbackClient trailingSlashClient = newCallbackClient(
+        CallbackClient trailingSlashClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/executions/").toString(),
-                        "handler"));
-        CallbackClient completeSuffixClient = newCallbackClient(
+                        "handler"),
+                new ObjectMapper());
+        CallbackClient completeSuffixClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/executions/exec-10:complete/").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
-        assertTrue(trailingSlashClient.sendResult("exec-10", InvocationResult.success("data")));
-        assertTrue(completeSuffixClient.sendResult("exec-10", InvocationResult.success("data")));
+        assertTrue(trailingSlashClient.sendResult("exec-10", successPayload("data"), null));
+        assertTrue(completeSuffixClient.sendResult("exec-10", successPayload("data"), null));
 
         RecordedRequest trailingSlashRequest = server.takeRequest();
         assertFalse(trailingSlashRequest.getPath().contains("//exec-10:complete"));
@@ -317,13 +291,14 @@ class CallbackClientTest {
                 .baseUrl(server.url("/").toString())
                 .build();
         String dirtyUrl = server.url("/v1/executions").toString() + "/ ";
-        CallbackClient dirtyClient = newCallbackClient(
+        CallbackClient dirtyClient = new CallbackClient(
                 restClient,
-                new RuntimeSettings("env", "trace", dirtyUrl, "handler"));
+                new RuntimeSettings("env", "trace", dirtyUrl, "handler"),
+                new ObjectMapper());
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        dirtyClient.sendResult("exec-clean", InvocationResult.success("data"));
+        dirtyClient.sendResult("exec-clean", successPayload("data"), null);
 
         RecordedRequest req = server.takeRequest();
         assertFalse(req.getPath().contains("//"), "Double slash in path: " + req.getPath());
@@ -336,8 +311,8 @@ class CallbackClientTest {
 
         AtomicBoolean interruptedAfterCall = new AtomicBoolean(false);
         Thread testThread = new Thread(() -> {
-            Thread.currentThread().interrupt(); // pre-interrupt before the call
-            client.sendResult("exec-interrupt", InvocationResult.success("x"), null);
+            Thread.currentThread().interrupt();
+            client.sendResult("exec-interrupt", successPayload("x"), null);
             interruptedAfterCall.set(Thread.currentThread().isInterrupted());
         });
         testThread.start();
@@ -347,28 +322,59 @@ class CallbackClientTest {
                 "Interrupt flag should be restored after InterruptedException in retry sleep");
     }
 
-    private static CallbackClient newCallbackClient(RestClient restClient, RuntimeSettings settings) {
-        return new CallbackClient(restClient, settings, new ObjectMapper());
+    @Test
+    void sendResult_doesNotStringifySuccessfulOutputs() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .build();
+        ObjectMapper mapper = new ObjectMapper();
+        CallbackClient strictClient = new CallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"),
+                mapper);
+        CallbackPayload payload = CallbackPayload.success(mapper.readTree("""
+                {"nested":{"value":"kept"}}
+                """));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        assertTrue(strictClient.sendResult("exec-strict", payload, "trace-42"));
+
+        String body = server.takeRequest().getBody().readUtf8();
+        assertTrue(body.contains("\"nested\":{\"value\":\"kept\"}"));
+        assertFalse(body.contains("NativeLikeOutput"));
     }
 
-    private record NativeLikeOutput(String value) {
-    }
+    @Test
+    void sendResult_sendsStructuredJsonNodeOutputWithoutMessageConverter() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .messageConverters(converters -> converters.removeIf(converter ->
+                        converter.getClass().getName().contains("MappingJackson2HttpMessageConverter")))
+                .build();
+        CallbackClient clientWithoutJacksonConverter = newCallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
+        ObjectMapper mapper = new ObjectMapper();
+        CallbackPayload payload = CallbackPayload.success(mapper.readTree("""
+                {"wordCount":4,"topWords":[{"word":"the","count":1}]}
+                """));
+        server.enqueue(new MockResponse().setResponseCode(200));
 
-    private static class FailingInvocationResultObjectMapper extends ObjectMapper {
-        @Override
-        public byte[] writeValueAsBytes(Object value) throws JsonProcessingException {
-            if (value instanceof InvocationResult) {
-                throw new JsonProcessingException("native serializer missing") {
-                };
-            }
-            return super.writeValueAsBytes(value);
-        }
+        boolean ok = clientWithoutJacksonConverter.sendResult("exec-json", payload, "trace-42");
+
+        assertTrue(ok);
+        RecordedRequest req = server.takeRequest();
+        String body = req.getBody().readUtf8();
+        assertTrue(body.contains("\"success\":true"));
+        assertTrue(body.contains("\"wordCount\":4"));
+        assertTrue(body.contains("\"topWords\""));
+        assertFalse(body.contains("NativeLikeOutput"));
     }
 
     /** Removes retry delays for fast test execution. */
     private static class FastCallbackClient extends CallbackClient {
-        FastCallbackClient(RestClient restClient, RuntimeSettings settings) {
-            super(restClient, settings, new ObjectMapper());
+        FastCallbackClient(RestClient restClient, RuntimeSettings settings, ObjectMapper mapper) {
+            super(restClient, settings, mapper);
         }
 
         @Override
