@@ -37,7 +37,7 @@ class CallbackDispatcherTest {
     void submit_delegatesToCallbackClient() throws Exception {
         CallbackClient callbackClient = mock(CallbackClient.class);
         CountDownLatch delivered = new CountDownLatch(1);
-        when(callbackClient.sendResult(anyString(), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendResult(anyString(), any(InvocationResult.class), any())).thenAnswer(invocation -> {
             delivered.countDown();
             return true;
         });
@@ -62,7 +62,7 @@ class CallbackDispatcherTest {
         CallbackClient callbackClient = mock(CallbackClient.class);
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        when(callbackClient.sendResult(anyString(), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendResult(anyString(), any(InvocationResult.class), any())).thenAnswer(invocation -> {
             running.countDown();
             assertTrue(release.await(2, TimeUnit.SECONDS));
             return true;
@@ -94,7 +94,7 @@ class CallbackDispatcherTest {
         AtomicInteger active = new AtomicInteger();
         AtomicInteger maxActive = new AtomicInteger();
         AtomicInteger daemonWorkers = new AtomicInteger();
-        when(callbackClient.sendResult(anyString(), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendResult(anyString(), any(InvocationResult.class), any())).thenAnswer(invocation -> {
             int current = active.incrementAndGet();
             maxActive.accumulateAndGet(current, Math::max);
             if (Thread.currentThread().isDaemon()) {
@@ -115,7 +115,7 @@ class CallbackDispatcherTest {
 
         assertTrue(started.await(1, TimeUnit.SECONDS));
         release.countDown();
-        verify(callbackClient, timeout(2000).times(2)).sendResult(anyString(), any(), any());
+        verify(callbackClient, timeout(2000).times(2)).sendResult(anyString(), any(InvocationResult.class), any());
         assertEquals(maxActive.get(), daemonWorkers.get(),
                 "Callback worker threads should be daemon threads");
         assertTrue(maxActive.get() >= 2);
@@ -126,7 +126,7 @@ class CallbackDispatcherTest {
         CallbackClient callbackClient = mock(CallbackClient.class);
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        when(callbackClient.sendResult(anyString(), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendResult(anyString(), any(InvocationResult.class), any())).thenAnswer(invocation -> {
             running.countDown();
             assertTrue(release.await(2, TimeUnit.SECONDS));
             return true;

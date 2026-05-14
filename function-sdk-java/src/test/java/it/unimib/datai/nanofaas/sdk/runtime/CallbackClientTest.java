@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -28,7 +29,12 @@ class CallbackClientTest {
                 .build();
         client = new FastCallbackClient(
                 restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"),
+                new ObjectMapper());
+    }
+
+    private CallbackClient newCallbackClient(RestClient restClient, RuntimeSettings settings) {
+        return new FastCallbackClient(restClient, settings, new ObjectMapper());
     }
 
     @AfterEach
@@ -72,7 +78,8 @@ class CallbackClientTest {
                         "env-exec-id",
                         "env-trace-id",
                         server.url("/v1/executions/exec-3:complete").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
@@ -90,7 +97,8 @@ class CallbackClientTest {
         RestClient restClient = RestClient.create();
         CallbackClient nullUrlClient = new CallbackClient(
                 restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"));
+                new RuntimeSettings("env-exec-id", "env-trace-id", null, "handler"),
+                new ObjectMapper());
 
         boolean ok = nullUrlClient.sendResult("exec-4", InvocationResult.success("data"));
         assertFalse(ok);
@@ -101,7 +109,8 @@ class CallbackClientTest {
         RestClient restClient = RestClient.create();
         CallbackClient blankUrlClient = new CallbackClient(
                 restClient,
-                new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"));
+                new RuntimeSettings("env-exec-id", "env-trace-id", "  ", "handler"),
+                new ObjectMapper());
 
         boolean ok = blankUrlClient.sendResult("exec-5", InvocationResult.success("data"));
         assertFalse(ok);
@@ -197,7 +206,8 @@ class CallbackClientTest {
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/callbacks").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
         boolean ok = configuredClient.sendResult("exec-9", InvocationResult.success("data"));
         assertTrue(ok);
@@ -218,7 +228,8 @@ class CallbackClientTest {
                         "env-exec-id",
                         "env-trace-id",
                         server.url("/v1/executions/placeholder:complete").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
@@ -244,14 +255,16 @@ class CallbackClientTest {
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/executions/").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
         CallbackClient completeSuffixClient = new CallbackClient(
                 restClient,
                 new RuntimeSettings(
                         "exec-env",
                         "trace-from-settings",
                         server.url("/v1/executions/exec-10:complete/").toString(),
-                        "handler"));
+                        "handler"),
+                new ObjectMapper());
 
         assertTrue(trailingSlashClient.sendResult("exec-10", InvocationResult.success("data")));
         assertTrue(completeSuffixClient.sendResult("exec-10", InvocationResult.success("data")));
@@ -274,7 +287,8 @@ class CallbackClientTest {
         String dirtyUrl = server.url("/v1/executions").toString() + "/ ";
         CallbackClient dirtyClient = new CallbackClient(
                 restClient,
-                new RuntimeSettings("env", "trace", dirtyUrl, "handler"));
+                new RuntimeSettings("env", "trace", dirtyUrl, "handler"),
+                new ObjectMapper());
 
         server.enqueue(new MockResponse().setResponseCode(200));
 
@@ -302,10 +316,37 @@ class CallbackClientTest {
                 "Interrupt flag should be restored after InterruptedException in retry sleep");
     }
 
+    @Test
+    void sendResult_sendsStructuredJsonNodeOutputWithoutMessageConverter() throws Exception {
+        RestClient restClient = RestClient.builder()
+                .baseUrl(server.url("/").toString())
+                .messageConverters(converters -> converters.removeIf(converter ->
+                        converter.getClass().getName().contains("MappingJackson2HttpMessageConverter")))
+                .build();
+        CallbackClient clientWithoutJacksonConverter = newCallbackClient(
+                restClient,
+                new RuntimeSettings("env-exec-id", "env-trace-id", server.url("/v1/executions").toString(), "handler"));
+        ObjectMapper mapper = new ObjectMapper();
+        CallbackPayload payload = CallbackPayload.success(mapper.readTree("""
+                {"wordCount":4,"topWords":[{"word":"the","count":1}]}
+                """));
+        server.enqueue(new MockResponse().setResponseCode(200));
+
+        boolean ok = clientWithoutJacksonConverter.sendResult("exec-json", payload, "trace-42");
+
+        assertTrue(ok);
+        RecordedRequest req = server.takeRequest();
+        String body = req.getBody().readUtf8();
+        assertTrue(body.contains("\"success\":true"));
+        assertTrue(body.contains("\"wordCount\":4"));
+        assertTrue(body.contains("\"topWords\""));
+        assertFalse(body.contains("NativeLikeOutput"));
+    }
+
     /** Removes retry delays for fast test execution. */
     private static class FastCallbackClient extends CallbackClient {
-        FastCallbackClient(RestClient restClient, RuntimeSettings settings) {
-            super(restClient, settings);
+        FastCallbackClient(RestClient restClient, RuntimeSettings settings, ObjectMapper mapper) {
+            super(restClient, settings, mapper);
         }
 
         @Override
