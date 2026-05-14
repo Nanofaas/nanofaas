@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,7 @@ import java.time.Duration;
  * explicit and bounded instead of inheriting arbitrary defaults from the host application.</p>
  */
 @Configuration
+@ImportRuntimeHints(NanofaasRuntimeHints.class)
 public class HttpClientConfig {
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
