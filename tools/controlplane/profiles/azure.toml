@@ -1,0 +1,12 @@
+# Azure defaults for azure-vm-loadtest TUI scenario.
+# Required fields: resource_group, location.
+# Optional fields: uncomment and set as needed.
+
+resource_group = "my-rg"
+location = "westeurope"
+vm_size = "Standard_B2s"
+loadgen_vm_size = "Standard_B1s"
+# image_urn = ""         # empty = Ubuntu 24.04 LTS default
+# ssh_key_path = ""      # empty = auto-discovery ~/.ssh/id_ed25519
+# vm_name = ""           # empty = "nanofaas-azure"
+# loadgen_name = ""      # empty = "nanofaas-azure-loadgen"
