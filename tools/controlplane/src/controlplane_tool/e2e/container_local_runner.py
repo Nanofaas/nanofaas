@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-container-local-backend.sh (M9).
 """
 from __future__ import annotations
 
-from tui_toolkit import phase, success, status, workflow_log, workflow_step
+from workflow_tasks import phase, success, status, workflow_log, workflow_step
 
 import os
 import subprocess

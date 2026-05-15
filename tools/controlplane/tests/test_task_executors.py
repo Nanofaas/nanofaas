@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.tasks.executors import HostCommandTaskExecutor, VmCommandTaskExecutor
-from controlplane_tool.tasks.models import CommandTaskSpec
+from workflow_tasks.tasks.executors import HostCommandTaskExecutor, VmCommandTaskExecutor
+from workflow_tasks.tasks.models import CommandTaskSpec
 
 
 @dataclass(frozen=True)

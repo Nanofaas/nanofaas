@@ -3,22 +3,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from controlplane_tool.tasks.models import CommandTaskSpec, ExecutionTarget
+from workflow_tasks.tasks.models import CommandTaskSpec, ExecutionTarget
 
 
 class RemoteCommandOperationLike(Protocol):
     @property
     def operation_id(self) -> str: ...
-
     @property
     def summary(self) -> str: ...
-
     @property
     def argv(self) -> tuple[str, ...]: ...
-
     @property
     def env(self) -> Mapping[str, str]: ...
-
     @property
     def execution_target(self) -> str: ...
 

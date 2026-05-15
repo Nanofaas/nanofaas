@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
-from controlplane_tool.workflow.workflow_models import WorkflowEvent
+from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
+from workflow_tasks.workflow.events import WorkflowEvent
 
 
 def task_started_event(task: CommandTaskSpec, *, flow_id: str) -> WorkflowEvent:

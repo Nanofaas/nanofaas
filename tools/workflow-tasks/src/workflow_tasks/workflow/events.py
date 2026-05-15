@@ -1,8 +1,3 @@
-"""Workflow event types — WorkflowEvent, WorkflowContext, WorkflowSink.
-
-These are the data types shared between event producers (runners) and the
-event renderer / sink layer.
-"""
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
@@ -40,8 +35,5 @@ class WorkflowEvent:
 
 
 class WorkflowSink(Protocol):
-    """Event receiver for workflow progress."""
-
-    def emit(self, event: "WorkflowEvent") -> None: ...
-
+    def emit(self, event: WorkflowEvent) -> None: ...
     def status(self, label: str) -> AbstractContextManager[None]: ...

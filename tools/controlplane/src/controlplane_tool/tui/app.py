@@ -15,7 +15,8 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
-from tui_toolkit import fail, header, phase, step, success, warning
+from tui_toolkit import header
+from workflow_tasks import fail, phase, step, success, warning
 from tui_toolkit.console import console
 from tui_toolkit.pickers import (
     Choice as _DescribedChoice,

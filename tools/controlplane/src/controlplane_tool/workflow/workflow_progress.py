@@ -4,8 +4,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Generator
 
-from tui_toolkit import get_workflow_context, workflow_step
-from controlplane_tool.workflow.workflow_models import WorkflowContext
+from workflow_tasks import get_workflow_context, workflow_step
+from workflow_tasks.workflow.events import WorkflowContext
 
 
 @dataclass(slots=True, frozen=True)

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from rich.console import Console
 
-from tui_toolkit import bind_workflow_sink
+from workflow_tasks import bind_workflow_sink
 from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep, ScenarioStepEvent
 from controlplane_tool.core.models import (
     CliTestConfig,
@@ -2379,7 +2379,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
 def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_completes(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
     import controlplane_tool.e2e.e2e_runner as e2e_runner
-    from tui_toolkit import phase, step
+    from workflow_tasks import phase, step
     from rich.console import Console
     import re
 

@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 from rich.live import Live
 
-from tui_toolkit import bind_workflow_sink
+from workflow_tasks import bind_workflow_sink
 from tui_toolkit.console import console
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
 from controlplane_tool.tui.event_applier import TuiEventApplier

@@ -16,7 +16,7 @@ import controlplane_tool.e2e.deploy_host_runner as deploy_host_runner_mod
 from controlplane_tool.scenario.components import cli as cli_components
 from controlplane_tool.scenario.components.cli import CliComponentContext
 from controlplane_tool.cli_validation.cli_host_runner import CliHostPlatformRunner
-from tui_toolkit import bind_workflow_context, bind_workflow_sink
+from workflow_tasks import bind_workflow_context, bind_workflow_sink
 from controlplane_tool.e2e.container_local_runner import ContainerLocalE2eRunner
 from controlplane_tool.e2e.deploy_host_runner import DeployHostE2eRunner
 from controlplane_tool.scenario.scenario_helpers import (
@@ -24,7 +24,7 @@ from controlplane_tool.scenario.scenario_helpers import (
     selected_functions as _selected_functions,
 )
 from controlplane_tool.core.shell_backend import ShellExecutionResult
-from controlplane_tool.workflow.workflow_models import WorkflowContext
+from workflow_tasks.workflow.events import WorkflowContext
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

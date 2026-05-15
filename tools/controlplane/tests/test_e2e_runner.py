@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tui_toolkit import bind_workflow_sink, workflow_log
+from workflow_tasks import bind_workflow_sink, workflow_log
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
 from controlplane_tool.scenario.scenario_loader import load_scenario_file
@@ -16,7 +16,7 @@ from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell, 
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_cluster_workflows import build_vm_cluster_prelude_plan
-from controlplane_tool.tasks.models import CommandTaskSpec
+from workflow_tasks.tasks.models import CommandTaskSpec
 
 
 def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:

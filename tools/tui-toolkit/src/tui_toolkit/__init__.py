@@ -1,7 +1,6 @@
-"""tui-toolkit — terminal UI widgets and workflow event renderer.
+"""tui-toolkit — terminal UI widgets with unified theming.
 
-Single-source-of-truth theming via Theme + AppBrand + UIContext. Configure
-once at startup with init_ui(); every widget reads the active context.
+Workflow event types and reporting helpers live in workflow_tasks.
 """
 from __future__ import annotations
 
@@ -14,37 +13,14 @@ from tui_toolkit.theme import DEFAULT_THEME, Theme
 
 # rendering primitives
 from tui_toolkit.chrome import render_screen_frame
-# Import the module itself as 'console' so that:
-#   tt.console          → the module (is not None ✓)
-#   import tui_toolkit.console as m → still resolves to the module ✓
-# Callers that need the Rich Console singleton use tui_toolkit.console.console.
 import tui_toolkit.console as console  # noqa: F401
 from tui_toolkit.console import get_content_width
 
 # pickers
 from tui_toolkit.pickers import Choice, Separator, multiselect, select
 
-# workflow events
-from tui_toolkit.events import WorkflowContext, WorkflowEvent, WorkflowSink
-from tui_toolkit.workflow import (
-    bind_workflow_context,
-    bind_workflow_sink,
-    build_log_event,
-    build_phase_event,
-    build_task_event,
-    fail,
-    get_workflow_context,
-    has_workflow_sink,
-    header,
-    phase,
-    skip,
-    status,
-    step,
-    success,
-    warning,
-    workflow_log,
-    workflow_step,
-)
+# startup banner
+from tui_toolkit.workflow import header
 
 __all__ = [
     "__version__",
@@ -57,11 +33,6 @@ __all__ = [
     "console", "get_content_width",
     # pickers
     "Choice", "Separator", "multiselect", "select",
-    # workflow events
-    "WorkflowContext", "WorkflowEvent", "WorkflowSink",
-    "bind_workflow_context", "bind_workflow_sink",
-    "build_log_event", "build_phase_event", "build_task_event",
-    "fail", "get_workflow_context", "has_workflow_sink",
-    "header", "phase", "skip", "status", "step", "success", "warning",
-    "workflow_log", "workflow_step",
+    # startup banner
+    "header",
 ]

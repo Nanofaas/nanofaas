@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-deploy-host-backend.sh (M9).
 """
 from __future__ import annotations
 
-from tui_toolkit import phase, success, workflow_log, workflow_step
+from workflow_tasks import phase, success, workflow_log, workflow_step
 
 import os
 import tempfile

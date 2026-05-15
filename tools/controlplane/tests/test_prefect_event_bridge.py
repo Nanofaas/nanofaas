@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.orchestation.prefect_event_bridge import PrefectEventBridge
+from workflow_tasks.integrations.prefect import PrefectEventBridge
 
 
 def test_prefect_event_bridge_emits_normalized_task_and_log_events() -> None:

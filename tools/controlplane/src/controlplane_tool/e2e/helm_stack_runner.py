@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-helm-stack-backend.sh (M11).
 """
 from __future__ import annotations
 
-from tui_toolkit import phase, step, success
+from workflow_tasks import phase, step, success
 
 import os
 from pathlib import Path

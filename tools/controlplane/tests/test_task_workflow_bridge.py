@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
-from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
+from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
+from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
 from controlplane_tool.workflow.task_events import task_result_event, task_started_event
 
 
@@ -29,7 +29,7 @@ def test_task_result_event_maps_failed_status_to_detail() -> None:
 
 
 def test_task_result_event_maps_skipped_status_to_terminal_tui_event() -> None:
-    bridge = TuiPrefectBridge()
+    bridge = WorkflowEventAggregator()
     task = CommandTaskSpec(task_id="x", summary="Run X", argv=("echo", "x"))
     result = TaskResult(task_id="x", status="skipped")
 

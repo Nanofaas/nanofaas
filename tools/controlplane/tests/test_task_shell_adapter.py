@@ -7,7 +7,7 @@ from controlplane_tool.core.task_shell_adapter import (
     ShellCommandTaskRunner,
     task_result_to_shell_result,
 )
-from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
+from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
 
 
 def test_shell_command_task_runner_adapts_shell_backend_to_task_runner_protocol() -> None:

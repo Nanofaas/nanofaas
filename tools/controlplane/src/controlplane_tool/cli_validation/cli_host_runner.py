@@ -7,7 +7,7 @@ Mirrors the logic of the deleted e2e-cli-host-backend.sh (M10).
 """
 from __future__ import annotations
 
-from tui_toolkit import phase, success, workflow_log, workflow_step
+from workflow_tasks import phase, success, workflow_log, workflow_step
 from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 import os

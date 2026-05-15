@@ -42,20 +42,25 @@ def test_grafana_runtime_is_compose_file_available_returns_false_when_missing(tm
     assert rt.is_compose_file_available() is False
 
 
-def test_grafana_runtime_start_skips_when_docker_unavailable(tmp_path, capsys) -> None:
+def test_grafana_runtime_start_skips_when_docker_unavailable(tmp_path) -> None:
     rt = _make_runtime(tmp_path, with_compose=True)
-    with patch("shutil.which", return_value=None):
+    with patch("shutil.which", return_value=None), \
+         patch("subprocess.run") as mock_run, \
+         patch("controlplane_tool.infra.runtimes.grafana_runtime.skip") as mock_skip:
         rt.start()
-    out = capsys.readouterr().out
-    assert "skipping" in out
+    mock_run.assert_not_called()
+    mock_skip.assert_called_once()
+    assert "skipping" in mock_skip.call_args[0][0].lower()
 
 
-def test_grafana_runtime_start_skips_when_compose_file_missing(tmp_path, capsys) -> None:
+def test_grafana_runtime_start_skips_when_compose_file_missing(tmp_path) -> None:
     rt = _make_runtime(tmp_path, with_compose=False)
-    with patch("shutil.which", return_value="/usr/bin/docker"):
+    with patch("shutil.which", return_value="/usr/bin/docker"), \
+         patch("subprocess.run") as mock_run, \
+         patch("controlplane_tool.infra.runtimes.grafana_runtime.skip") as mock_skip:
         rt.start()
-    out = capsys.readouterr().out
-    assert "skipping" in out
+    mock_run.assert_not_called()
+    mock_skip.assert_called_once()
 
 
 def test_grafana_runtime_start_calls_docker_compose_up(tmp_path) -> None:

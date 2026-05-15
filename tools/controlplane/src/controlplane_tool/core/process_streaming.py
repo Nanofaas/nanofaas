@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 from threading import Thread
 
-from tui_toolkit import workflow_log
+from workflow_tasks import workflow_log
 
 
 def spawn_logged_process(

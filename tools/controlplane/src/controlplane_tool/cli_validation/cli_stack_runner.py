@@ -11,7 +11,7 @@ from pathlib import Path
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep, plan_recipe_steps
-from tui_toolkit import phase, success, workflow_step
+from workflow_tasks import phase, success, workflow_step
 from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,
     resolve_scenario_release,

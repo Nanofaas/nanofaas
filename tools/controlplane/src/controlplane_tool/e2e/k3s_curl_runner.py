@@ -5,7 +5,7 @@ K3sCurlRunner: curl-based verifier for the shared k3s VM scenario.
 """
 from __future__ import annotations
 
-from tui_toolkit import phase, step, success
+from workflow_tasks import phase, step, success
 from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 import base64

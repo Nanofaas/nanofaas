@@ -1,9 +1,9 @@
-from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
-from controlplane_tool.workflow.workflow_events import build_log_event, build_task_event
+from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
+from workflow_tasks.workflow.event_builders import build_log_event, build_task_event
 
 
 def test_tui_bridge_maps_task_started_event_to_running_step() -> None:
-    bridge = TuiPrefectBridge()
+    bridge = WorkflowEventAggregator()
 
     bridge.handle_event(
         build_task_event(
@@ -21,7 +21,7 @@ def test_tui_bridge_maps_task_started_event_to_running_step() -> None:
 
 
 def test_tui_bridge_preserves_log_buffer_across_toggle() -> None:
-    bridge = TuiPrefectBridge()
+    bridge = WorkflowEventAggregator()
 
     bridge.handle_event(
         build_log_event(
@@ -39,7 +39,7 @@ def test_tui_bridge_preserves_log_buffer_across_toggle() -> None:
 
 
 def test_tui_bridge_routes_updated_cancelled_and_log_events_through_same_task_row() -> None:
-    bridge = TuiPrefectBridge()
+    bridge = WorkflowEventAggregator()
 
     bridge.handle_event(
         build_task_event(
@@ -76,7 +76,7 @@ def test_tui_bridge_routes_updated_cancelled_and_log_events_through_same_task_ro
 
 
 def test_tui_bridge_reuses_planned_placeholder_when_log_arrives_before_task_running() -> None:
-    bridge = TuiPrefectBridge(planned_steps=["Build core images"])
+    bridge = WorkflowEventAggregator(planned_steps=["Build core images"])
 
     bridge.handle_event(
         build_log_event(
@@ -101,7 +101,7 @@ def test_tui_bridge_reuses_planned_placeholder_when_log_arrives_before_task_runn
 
 
 def test_tui_bridge_routes_label_only_events_to_matching_planned_steps() -> None:
-    bridge = TuiPrefectBridge(planned_steps=["preflight", "bootstrap", "load_k6"])
+    bridge = WorkflowEventAggregator(planned_steps=["preflight", "bootstrap", "load_k6"])
 
     preflight = bridge.upsert_phase("preflight")
     bridge.mark_phase_running(preflight)
@@ -120,7 +120,7 @@ def test_tui_bridge_routes_label_only_events_to_matching_planned_steps() -> None
 
 
 def test_tui_bridge_task_updated_reactivates_failed_task() -> None:
-    bridge = TuiPrefectBridge()
+    bridge = WorkflowEventAggregator()
 
     bridge.handle_event(
         build_task_event(
@@ -147,7 +147,7 @@ def test_tui_bridge_task_updated_reactivates_failed_task() -> None:
 
 
 def test_tui_bridge_does_not_mark_lower_planned_step_success_when_higher_step_starts() -> None:
-    bridge = TuiPrefectBridge(
+    bridge = WorkflowEventAggregator(
         planned_steps=[
             "Ensure VM is running",
             "Provision base VM dependencies",
@@ -176,7 +176,7 @@ def test_tui_bridge_does_not_mark_lower_planned_step_success_when_higher_step_st
 
 
 def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
-    bridge = TuiPrefectBridge(
+    bridge = WorkflowEventAggregator(
         planned_steps=[
             "Ensure VM is running",
             "Provision base VM dependencies",
@@ -263,7 +263,7 @@ def test_nested_verify_events_do_not_create_new_top_level_rows() -> None:
 
 
 def test_parent_task_id_routes_child_under_parent_even_when_labels_match() -> None:
-    bridge = TuiPrefectBridge(
+    bridge = WorkflowEventAggregator(
         planned_steps=[
             "Run k3s-junit-curl verification",
             "Verify",
@@ -297,7 +297,7 @@ def test_parent_task_id_routes_child_under_parent_even_when_labels_match() -> No
 
 
 def test_parentless_task_event_does_not_attach_to_active_row() -> None:
-    bridge = TuiPrefectBridge(
+    bridge = WorkflowEventAggregator(
         planned_steps=[
             "Run k3s-junit-curl verification",
             "Teardown VM",
@@ -333,7 +333,7 @@ def test_parentless_task_event_does_not_attach_to_active_row() -> None:
 
 
 def test_unresolved_parent_task_does_not_fall_back_to_planned_row() -> None:
-    bridge = TuiPrefectBridge(
+    bridge = WorkflowEventAggregator(
         planned_steps=[
             "Run k3s-junit-curl verification",
             "Teardown VM",

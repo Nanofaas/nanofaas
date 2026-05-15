@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from controlplane_tool.tasks.adapters import operation_to_task_spec
+from workflow_tasks.tasks.adapters import operation_to_task_spec
 
 
 @dataclass(frozen=True)

@@ -20,6 +20,7 @@ dependencies = [
     "prefect>=3,<4",
     "shellcraft @ git+https://github.com/miciav/shellcraft.git",
     "tui-toolkit",
+    "workflow-tasks",
 ]
 
 [project.scripts]
@@ -49,6 +50,7 @@ dev = [
 
 [tool.uv.sources]
 tui-toolkit = { path = "../tui-toolkit", editable = true }
+workflow-tasks = { path = "../workflow-tasks", editable = true }
 
 [tool.ruff]
 target-version = "py311"
