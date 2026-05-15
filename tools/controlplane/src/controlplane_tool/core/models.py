@@ -10,7 +10,7 @@ LoadProfile = Literal["quick", "smoke", "stress"]
 MetricsGateMode = Literal["enforce", "warn", "off"]
 BuildAction = Literal["jar", "building", "run", "image", "native", "test", "inspect"]
 ProfileName = Literal["core", "k8s", "container-local", "all"]
-VmLifecycle = Literal["multipass", "external"]
+VmLifecycle = Literal["multipass", "external", "azure"]
 RuntimeKind = Literal["java", "rust"]
 FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "javascript", "fixture"]
 CliTestScenarioName = Literal["unit", "cli-stack", "host-platform", "deploy-host"]
@@ -25,6 +25,7 @@ ScenarioName = Literal[
     "deploy-host",
     "helm-stack",
     "two-vm-loadtest",
+    "azure-vm-loadtest",
 ]
 
 VM_BACKED_SCENARIOS = frozenset(
@@ -35,6 +36,7 @@ VM_BACKED_SCENARIOS = frozenset(
         "cli-host",
         "helm-stack",
         "two-vm-loadtest",
+        "azure-vm-loadtest",
     }
 )
 

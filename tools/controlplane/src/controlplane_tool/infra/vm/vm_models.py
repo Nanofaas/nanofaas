@@ -17,6 +17,11 @@ class VmRequest(BaseModel):
     # 12G gives enough headroom without starving the host.
     memory: str = "12G"
     disk: str = "30G"
+    azure_vm_size: str = "Standard_B2s"
+    azure_resource_group: str | None = None
+    azure_location: str | None = None
+    azure_image_urn: str | None = None
+    azure_ssh_key_path: str | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle_requirements(self) -> "VmRequest":
