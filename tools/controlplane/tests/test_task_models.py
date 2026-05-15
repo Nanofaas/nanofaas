@@ -1,7 +1,7 @@
 from types import MappingProxyType
 from typing import get_args
 
-from controlplane_tool.tasks.models import (
+from workflow_tasks.tasks.models import (
     CommandTaskSpec,
     ExecutionTarget,
     TaskResult,

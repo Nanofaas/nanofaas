@@ -84,28 +84,6 @@ source_modules =
 forbidden_modules =
     controlplane_tool.cli
 
-[importlinter:contract:tasks_are_logic_only]
-name = tasks must not depend on runtime, orchestration, cli, app, or tui packages
-type = forbidden
-source_modules =
-    controlplane_tool.tasks
-forbidden_modules =
-    controlplane_tool.app
-    controlplane_tool.building
-    controlplane_tool.cli
-    controlplane_tool.cli_validation
-    controlplane_tool.core
-    controlplane_tool.e2e
-    controlplane_tool.functions
-    controlplane_tool.infra
-    controlplane_tool.loadtest
-    controlplane_tool.orchestation
-    controlplane_tool.scenario
-    controlplane_tool.sut
-    controlplane_tool.tui
-    controlplane_tool.workflow
-    controlplane_tool.workspace
-
 [importlinter:contract:workflow_tasks_is_independent]
 name = workflow_tasks must not depend on controlplane
 type = forbidden

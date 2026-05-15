@@ -16,7 +16,7 @@ from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell, 
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_cluster_workflows import build_vm_cluster_prelude_plan
-from controlplane_tool.tasks.models import CommandTaskSpec
+from workflow_tasks.tasks.models import CommandTaskSpec
 
 
 def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:

@@ -8,7 +8,7 @@ from controlplane_tool.scenario.components.operations import (
     RemoteCommandOperation,
     ScenarioOperation,
 )
-from controlplane_tool.tasks.adapters import operation_to_task_spec
+from workflow_tasks.tasks.adapters import operation_to_task_spec
 
 _SUMMARY_OVERRIDES = {
     "cli.build_install_dist": "Build nanofaas-cli installDist in VM",

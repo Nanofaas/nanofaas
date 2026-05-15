@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from controlplane_tool.tasks.models import CommandTaskSpec
-from controlplane_tool.tasks.rendering import render_shell_command, render_task_command
+from workflow_tasks.tasks.models import CommandTaskSpec
+from workflow_tasks.tasks.rendering import render_shell_command, render_task_command
 
 
 def test_render_shell_command_quotes_arguments_and_env() -> None:

@@ -13,7 +13,7 @@ from controlplane_tool.loadtest.loadtest_bootstrap import LoadtestBootstrapConte
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, TargetRunResult
 from controlplane_tool.loadtest.report import render_report
 from controlplane_tool.core.run_models import StepResult
-from controlplane_tool.tasks.models import CommandTaskSpec
+from workflow_tasks.tasks.models import CommandTaskSpec
 
 LoadtestStepStatus = Literal["running", "passed", "failed"]
 

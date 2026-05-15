@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
+from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
 from controlplane_tool.workflow.workflow_models import WorkflowEvent
 
 

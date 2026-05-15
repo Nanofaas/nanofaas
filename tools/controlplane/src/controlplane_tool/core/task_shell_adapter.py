@@ -7,7 +7,7 @@ from controlplane_tool.core.shell_backend import (
     ShellExecutionResult,
     SubprocessShell,
 )
-from controlplane_tool.tasks.models import CommandTaskSpec, TaskResult
+from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
 
 
 class ShellCommandTaskRunner:

@@ -21,8 +21,8 @@ from controlplane_tool.core.models import RuntimeKind
 from controlplane_tool.core.shell_backend import ShellExecutionResult
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
-from controlplane_tool.tasks.adapters import operation_to_task_spec
-from controlplane_tool.tasks.rendering import render_task_command
+from workflow_tasks.tasks.adapters import operation_to_task_spec
+from workflow_tasks.tasks.rendering import render_task_command
 
 
 def control_image(local_registry: str) -> str:
