@@ -1,0 +1,30 @@
+[importlinter]
+root_package = workflow_tasks
+include_external_packages = True
+
+[importlinter:contract:tasks_are_independent]
+name = tasks must not import workflow or integrations
+type = forbidden
+source_modules = workflow_tasks.tasks
+forbidden_modules =
+    workflow_tasks.workflow
+    workflow_tasks.integrations
+
+[importlinter:contract:pure_types_are_logic_free]
+name = pure type modules must not import logic modules
+type = forbidden
+source_modules =
+    workflow_tasks.workflow.events
+    workflow_tasks.workflow.models
+    workflow_tasks.workflow.context
+forbidden_modules =
+    workflow_tasks.workflow.reporting
+    workflow_tasks.workflow.event_builders
+
+[importlinter:contract:no_external_deps]
+name = workflow_tasks must not import tui_toolkit or controlplane_tool
+type = forbidden
+source_modules = workflow_tasks
+forbidden_modules =
+    tui_toolkit
+    controlplane_tool
