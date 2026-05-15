@@ -423,6 +423,7 @@ dependencies = [
     { name = "tomli-w" },
     { name = "tui-toolkit" },
     { name = "typer" },
+    { name = "workflow-tasks" },
 ]
 
 [package.dev-dependencies]
@@ -453,6 +454,7 @@ requires-dist = [
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "tui-toolkit", editable = "../tui-toolkit" },
     { name = "typer", specifier = ">=0.12.5" },
+    { name = "workflow-tasks", editable = "../workflow-tasks" },
 ]
 
 [package.metadata.requires-dev]
@@ -2508,6 +2510,7 @@ dependencies = [
     { name = "prompt-toolkit" },
     { name = "questionary" },
     { name = "rich" },
+    { name = "workflow-tasks" },
 ]
 
 [package.metadata]
@@ -2515,10 +2518,19 @@ requires-dist = [
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "questionary", specifier = ">=2.1.1" },
     { name = "rich", specifier = ">=13.8" },
+    { name = "workflow-tasks", editable = "../workflow-tasks" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.3.4" }]
+dev = [
+    { name = "basedpyright", specifier = ">=1.39.3" },
+    { name = "grimp", specifier = ">=3.14" },
+    { name = "import-linter", specifier = ">=2.11" },
+    { name = "pydeps", specifier = ">=3.0.6" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.15.12" },
+]
 
 [[package]]
 name = "typer"
@@ -2783,6 +2795,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/36/4a/b27b182fdf24c9760a91481c6b97d9f536a15f6bc7c33d750eccaa245670/whenever-0.9.5-cp314-cp314t-win32.whl", hash = "sha256:681c9f4d322182df28037a33f0d4eadf7577fcd590130f7a5d23763a86ab5687", size = 417599, upload-time = "2026-01-11T19:47:36.201Z" },
     { url = "https://files.pythonhosted.org/packages/6d/93/712f65c4fc3c188b0c163cd650cb04a46f993a22d1ad3f66a3e4a42a39f8/whenever-0.9.5-cp314-cp314t-win_amd64.whl", hash = "sha256:37242c895078bb1bfc26bea460f6d92dc5bdfe4a59e95a4f9e01f99b90f0157e", size = 440654, upload-time = "2026-01-11T19:47:46.924Z" },
     { url = "https://files.pythonhosted.org/packages/91/fb/1b112af72e5a2b5ac66b5a6a478cc220117224c1481a2b1a35e87222a791/whenever-0.9.5-py3-none-any.whl", hash = "sha256:cc600303e703d57cc42c5db1c81bbc3becb8ef6fde5c46aee5d68c292239fc4b", size = 64873, upload-time = "2026-01-11T19:47:49.585Z" },
+]
+
+[[package]]
+name = "workflow-tasks"
+version = "0.1.0"
+source = { editable = "../workflow-tasks" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.39.3" },
+    { name = "grimp", specifier = ">=3.14" },
+    { name = "import-linter", specifier = ">=2.11" },
+    { name = "pydeps", specifier = ">=3.0.6" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.15.12" },
 ]
 
 [[package]]

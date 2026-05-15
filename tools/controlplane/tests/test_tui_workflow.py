@@ -1,6 +1,6 @@
 from rich.console import Console
 
-from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
+from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
 from controlplane_tool.tui.workflow import WorkflowDashboard, WorkflowStepState
 from controlplane_tool.workflow.workflow_events import (
     build_log_event,
@@ -175,7 +175,7 @@ def test_workflow_dashboard_tracks_task_updated_detail() -> None:
 
 
 def test_workflow_dashboard_renders_bridge_snapshot_with_cancelled_task_and_logs() -> None:
-    bridge = TuiPrefectBridge()
+    bridge = WorkflowEventAggregator()
     bridge.handle_event(
         build_task_event(
             kind="task.updated",

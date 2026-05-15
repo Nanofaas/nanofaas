@@ -10,7 +10,7 @@ from controlplane_tool.workflow.workflow_models import (
 )
 
 
-class TuiPrefectBridge:
+class WorkflowEventAggregator:
     def __init__(
         self,
         *,

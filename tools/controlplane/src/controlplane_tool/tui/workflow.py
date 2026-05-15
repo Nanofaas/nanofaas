@@ -16,7 +16,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from tui_toolkit import render_screen_frame
-from controlplane_tool.tui.prefect_bridge import TuiPrefectBridge
+from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
 from controlplane_tool.workflow.workflow_models import WorkflowEvent
 
 WorkflowState = Literal["pending", "running", "success", "failed", "cancelled"]
@@ -48,7 +48,7 @@ class WorkflowDashboard:
         self.footer_hint = footer_hint
         self.summary_lines = list(summary_lines or [])
         self.log_limit = log_limit
-        self._bridge = TuiPrefectBridge(
+        self._bridge = WorkflowEventAggregator(
             planned_steps=planned_steps,
             log_limit=log_limit,
         )

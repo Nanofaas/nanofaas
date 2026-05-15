@@ -1,22 +1,15 @@
-"""Workflow data models for the nanofaas control-plane tool.
-
-WorkflowEvent, WorkflowContext, WorkflowSink were moved to tui_toolkit.events
-and are re-exported here for backward compatibility.
-"""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Literal
 
-from tui_toolkit.events import WorkflowContext, WorkflowEvent, WorkflowSink
+from workflow_tasks.workflow.events import WorkflowContext, WorkflowEvent, WorkflowSink
+from workflow_tasks.workflow.models import TaskDefinition, TaskRun, WorkflowRun, WorkflowState
 
 
-def utc_now() -> datetime:
+def utc_now():
+    from datetime import UTC, datetime
     return datetime.now(UTC)
-
-
-WorkflowState = Literal["pending", "running", "success", "failed", "cancelled"]
 
 
 @dataclass(slots=True)
@@ -38,38 +31,9 @@ class TuiWorkflowSnapshot:
     show_logs: bool
 
 
-@dataclass(slots=True, frozen=True)
-class WorkflowRun:
-    flow_id: str
-    flow_run_id: str
-    status: str = "pending"
-    orchestrator_backend: str = "none"
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-
-
-@dataclass(slots=True, frozen=True)
-class TaskDefinition:
-    task_id: str
-    title: str = ""
-    detail: str = ""
-
-
-@dataclass(slots=True, frozen=True)
-class TaskRun:
-    flow_id: str
-    task_id: str
-    task_run_id: str
-    status: str = "pending"
-    title: str = ""
-    detail: str = ""
-
-
 __all__ = [
     "utc_now",
-    "WorkflowState",
+    "WorkflowState", "WorkflowRun", "TaskDefinition", "TaskRun",
     "TuiPhaseSnapshot", "TuiWorkflowSnapshot",
-    "WorkflowRun", "TaskDefinition", "TaskRun",
-    # re-exported from tui_toolkit.events
     "WorkflowContext", "WorkflowEvent", "WorkflowSink",
 ]

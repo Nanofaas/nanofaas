@@ -1,5 +1,7 @@
 [importlinter]
-root_package = controlplane_tool
+root_packages =
+    controlplane_tool
+    workflow_tasks
 
 [importlinter:contract:core_is_independent]
 name = core must not import feature packages
@@ -103,3 +105,11 @@ forbidden_modules =
     controlplane_tool.tui
     controlplane_tool.workflow
     controlplane_tool.workspace
+
+[importlinter:contract:workflow_tasks_is_independent]
+name = workflow_tasks must not depend on controlplane
+type = forbidden
+source_modules = workflow_tasks
+forbidden_modules =
+    controlplane_tool
+include_external_packages = True
