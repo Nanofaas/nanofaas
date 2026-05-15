@@ -49,6 +49,11 @@ def _build_vm_request(
     cpus: int,
     memory: str,
     disk: str,
+    azure_resource_group: str | None = None,
+    azure_location: str | None = None,
+    azure_vm_size: str = "Standard_B2s",
+    azure_image_urn: str | None = None,
+    azure_ssh_key_path: str | None = None,
 ) -> VmRequest:
     return VmRequest(
         lifecycle=lifecycle,
@@ -59,6 +64,11 @@ def _build_vm_request(
         cpus=cpus,
         memory=memory,
         disk=disk,
+        azure_resource_group=azure_resource_group,
+        azure_location=azure_location,
+        azure_vm_size=azure_vm_size,
+        azure_image_urn=azure_image_urn,
+        azure_ssh_key_path=azure_ssh_key_path,
     )
 
 
@@ -91,6 +101,11 @@ def _build_request(
     k6_vus: int | None = None,
     k6_duration: str | None = None,
     k6_payload: Path | None = None,
+    azure_resource_group: str | None = None,
+    azure_location: str | None = None,
+    azure_vm_size: str = "Standard_B2s",
+    azure_image_urn: str | None = None,
+    azure_ssh_key_path: str | None = None,
 ) -> E2eRequest:
     vm = None
     loadgen_vm = None
@@ -101,10 +116,13 @@ def _build_request(
         "cli-host",
         "helm-stack",
         "two-vm-loadtest",
+        "azure-vm-loadtest",
     }:
         stack_name = name
         if scenario == "two-vm-loadtest" and stack_name is None:
             stack_name = "nanofaas-e2e"
+        if scenario == "azure-vm-loadtest" and stack_name is None:
+            stack_name = "nanofaas-azure"
         vm = _build_vm_request(
             lifecycle=lifecycle,
             name=stack_name,
@@ -114,17 +132,30 @@ def _build_request(
             cpus=cpus,
             memory=memory,
             disk=disk,
+            azure_resource_group=azure_resource_group,
+            azure_location=azure_location,
+            azure_vm_size=azure_vm_size,
+            azure_image_urn=azure_image_urn,
+            azure_ssh_key_path=azure_ssh_key_path,
         )
-    if scenario == "two-vm-loadtest":
+    if scenario in {"two-vm-loadtest", "azure-vm-loadtest"}:
+        loadgen_name_default = (
+            "nanofaas-e2e-loadgen" if scenario == "two-vm-loadtest" else "nanofaas-azure-loadgen"
+        )
         loadgen_vm = _build_vm_request(
             lifecycle=lifecycle,
-            name=loadgen_name or "nanofaas-e2e-loadgen",
+            name=loadgen_name or loadgen_name_default,
             host=host,
             user=user,
             home=home,
             cpus=loadgen_cpus,
             memory=loadgen_memory,
             disk=loadgen_disk,
+            azure_resource_group=azure_resource_group,
+            azure_location=azure_location,
+            azure_vm_size="Standard_B1s",
+            azure_image_urn=azure_image_urn,
+            azure_ssh_key_path=azure_ssh_key_path,
         )
     return E2eRequest(
         scenario=scenario,
@@ -195,7 +226,7 @@ def _handle_validation(action) -> None:
 def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
     if scenario in {"container-local", "deploy-host"}:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
-    if scenario in {"helm-stack", "two-vm-loadtest"}:
+    if scenario in {"helm-stack", "two-vm-loadtest", "azure-vm-loadtest"}:
         return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-loadtest")
     if scenario == "cli-stack":
         return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
@@ -260,6 +291,11 @@ def _resolve_run_request(
     k6_vus: int | None = None,
     k6_duration: str | None = None,
     k6_payload: Path | None = None,
+    azure_resource_group: str | None = None,
+    azure_location: str | None = None,
+    azure_vm_size: str = "Standard_B2s",
+    azure_image_urn: str | None = None,
+    azure_ssh_key_path: str | None = None,
 ) -> E2eRequest:
     explicit_functions = parse_function_csv(functions_csv)
     if function_preset and explicit_functions:
@@ -431,6 +467,11 @@ def _resolve_run_request(
         k6_vus=k6_vus,
         k6_duration=k6_duration,
         k6_payload=k6_payload,
+        azure_resource_group=azure_resource_group,
+        azure_location=azure_location,
+        azure_vm_size=azure_vm_size,
+        azure_image_urn=azure_image_urn,
+        azure_ssh_key_path=azure_ssh_key_path,
     )
 
 
@@ -467,16 +508,23 @@ def e2e_run(
     k6_vus: int | None = typer.Option(None, "--vus", min=1),
     k6_duration: str | None = typer.Option(None, "--duration"),
     k6_payload: Path | None = typer.Option(None, "--k6-payload"),
+    azure_resource_group: str | None = typer.Option(None, "--azure-resource-group", help="Azure resource group (or set AZURE_RESOURCE_GROUP env var)."),
+    azure_location: str | None = typer.Option(None, "--azure-location", help="Azure location (or set AZURE_LOCATION env var)."),
+    azure_vm_size: str = typer.Option("Standard_B2s", "--azure-vm-size"),
+    azure_image_urn: str | None = typer.Option(None, "--azure-image-urn"),
+    azure_ssh_key_path: str | None = typer.Option(None, "--azure-ssh-key"),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
+        # Azure cloud-init creates "azureuser" by default; override "ubuntu" default.
+        effective_user = user if not (lifecycle == "azure" and user == "ubuntu") else "azureuser"
         request = _resolve_run_request(
             scenario=scenario,
             runtime=runtime,
             lifecycle=lifecycle,
             name=name,
             host=host,
-            user=user,
+            user=effective_user,
             home=home,
             cpus=cpus,
             memory=memory,
@@ -496,6 +544,11 @@ def e2e_run(
             k6_vus=k6_vus,
             k6_duration=k6_duration,
             k6_payload=k6_payload,
+            azure_resource_group=azure_resource_group,
+            azure_location=azure_location,
+            azure_vm_size=azure_vm_size,
+            azure_image_urn=azure_image_urn,
+            azure_ssh_key_path=azure_ssh_key_path,
         )
         runner = _runner()
         flow_name = f"e2e.{request.scenario}"
