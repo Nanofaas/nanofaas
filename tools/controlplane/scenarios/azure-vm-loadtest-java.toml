@@ -1,0 +1,10 @@
+name = "azure-vm-loadtest-java"
+base_scenario = "azure-vm-loadtest"
+runtime = "java"
+function_preset = "demo-loadtest"
+namespace = "nanofaas"
+local_registry = "localhost:5000"
+
+[load]
+profile = "quick"
+targets = ["word-stats-java"]

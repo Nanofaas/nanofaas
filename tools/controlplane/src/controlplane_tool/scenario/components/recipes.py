@@ -74,6 +74,19 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
         ),
         requires_managed_vm=True,
     ),
+    "azure-vm-loadtest": ScenarioRecipe(
+        name="azure-vm-loadtest",
+        component_ids=(
+            "vm.ensure_running",
+            "loadgen.ensure_running",
+            "loadgen.run_k6",
+            "metrics.prometheus_snapshot",
+            "loadtest.write_report",
+            "loadgen.down",
+            "vm.down",
+        ),
+        requires_managed_vm=True,
+    ),
     "cli-stack": ScenarioRecipe(
         name="cli-stack",
         component_ids=(

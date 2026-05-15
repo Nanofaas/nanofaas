@@ -86,6 +86,13 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         supported_runtimes=("java", "rust"),
         grouped_phases=True,
     ),
+    ScenarioDefinition(
+        name="azure-vm-loadtest",
+        description="Two-VM Azure load test: stack VM + k6 loadgen on Azure.",
+        requires_vm=True,
+        supported_runtimes=("java", "rust"),
+        grouped_phases=True,
+    ),
 )
 
 SCENARIO_INDEX = {scenario.name: scenario for scenario in SCENARIOS}
