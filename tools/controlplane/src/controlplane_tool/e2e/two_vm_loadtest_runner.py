@@ -8,6 +8,7 @@ from pathlib import Path
 
 from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
 from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.loadtest.prometheus_snapshots import capture_prometheus_snapshots
@@ -103,7 +104,7 @@ class TwoVmLoadtestRunner:
         self,
         *,
         repo_root: Path,
-        vm: VmOrchestrator | None = None,
+        vm: VmOrchestrator | AzureVmOrchestrator | None = None,
         shell: ShellBackend | None = None,
         host_resolver: Callable[[VmRequest], str] | None = None,
         runs_root: Path | None = None,

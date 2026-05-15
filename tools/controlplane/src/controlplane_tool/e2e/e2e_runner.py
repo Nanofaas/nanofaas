@@ -31,6 +31,7 @@ from controlplane_tool.core.shell_backend import (
     ShellBackend,
     SubprocessShell,
 )
+from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from workflow_tasks.workflow.events import WorkflowContext
@@ -85,10 +86,18 @@ def plan_recipe_steps(
         ),
     )
     vm_request = context.vm_request
-    remote_dir = runner.vm.remote_project_dir(vm_request)
+
+    # Select the orchestrator based on VM lifecycle.
+    vm_orch: VmOrchestrator | AzureVmOrchestrator
+    if request.vm and request.vm.lifecycle == "azure":
+        vm_orch = AzureVmOrchestrator(repo_root)
+    else:
+        vm_orch = runner.vm
+
+    remote_dir = vm_orch.remote_project_dir(vm_request)
     two_vm_runner = TwoVmLoadtestRunner(
         repo_root=repo_root,
-        vm=runner.vm,
+        vm=vm_orch,
         shell=runner.shell,
         host_resolver=host_resolver,
     )
@@ -96,19 +105,19 @@ def plan_recipe_steps(
     two_vm_prometheus_snapshot_path: Path | None = None
 
     def _on_ensure_running() -> None:
-        runner.vm.ensure_running(vm_request)
+        vm_orch.ensure_running(vm_request)
 
     def _on_loadgen_ensure_running() -> None:
-        runner.vm.ensure_running(loadgen_vm_request(context))
+        vm_orch.ensure_running(loadgen_vm_request(context))
 
     def _on_vm_down() -> None:
-        runner.vm.teardown(vm_request)
+        vm_orch.teardown(vm_request)
 
     def _on_loadgen_down() -> None:
-        runner.vm.teardown(loadgen_vm_request(context))
+        vm_orch.teardown(loadgen_vm_request(context))
 
     def _on_remote_exec(argv: tuple[str, ...], env: Mapping[str, str]) -> None:
-        result = runner.vm.exec_argv(vm_request, argv, env=dict(env), cwd=remote_dir)
+        result = vm_orch.exec_argv(vm_request, argv, env=dict(env), cwd=remote_dir)
         if result.return_code != 0:
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
 
@@ -243,17 +252,19 @@ class E2eRunner:
             raise ValueError(
                 f"Scenario '{request.scenario}' does not support runtime '{request.runtime}'"
             )
-        if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack", "two-vm-loadtest"}:
+        if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack",
+                                 "two-vm-loadtest", "azure-vm-loadtest"}:
             plan_request = request
             recipe = build_scenario_recipe(request.scenario)
             if (request.vm is None and recipe.requires_managed_vm) or (
-                request.scenario == "two-vm-loadtest" and request.loadgen_vm is None
+                request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"}
+                and request.loadgen_vm is None
             ):
                 context = resolve_scenario_environment(self.paths.workspace_root, request)
                 updates: dict[str, object] = {}
                 if request.vm is None and recipe.requires_managed_vm:
                     updates["vm"] = context.vm_request
-                if request.scenario == "two-vm-loadtest" and request.loadgen_vm is None:
+                if request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"} and request.loadgen_vm is None:
                     updates["loadgen_vm"] = loadgen_vm_request(context)
                 plan_request = request.model_copy(update=updates)
             return ScenarioPlan(
@@ -316,10 +327,14 @@ class E2eRunner:
                 shared_vm_request = VmRequest(lifecycle="multipass")
 
             loadgen_vm = None
-            if scenario.name == "two-vm-loadtest" and shared_vm_request is not None:
+            if scenario.name in {"two-vm-loadtest", "azure-vm-loadtest"} and shared_vm_request is not None:
                 loadgen_vm = loadgen_vm_request or VmRequest(
                     lifecycle=shared_vm_request.lifecycle,
-                    name="nanofaas-e2e-loadgen",
+                    name=(
+                        "nanofaas-e2e-loadgen"
+                        if scenario.name == "two-vm-loadtest"
+                        else "nanofaas-azure-loadgen"
+                    ),
                     host=shared_vm_request.host,
                     user=shared_vm_request.user,
                     home=shared_vm_request.home,
@@ -338,7 +353,7 @@ class E2eRunner:
                 local_registry=local_registry,
             )
             if scenario.requires_vm:
-                if scenario.name == "two-vm-loadtest":
+                if scenario.name in {"two-vm-loadtest", "azure-vm-loadtest"}:
                     steps = plan_recipe_steps(
                         self.paths.workspace_root,
                         request,
