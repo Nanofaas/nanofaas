@@ -116,3 +116,14 @@ class Profile(BaseModel):
     scenario: ScenarioSelectionConfig = Field(default_factory=ScenarioSelectionConfig)
     loadtest: LoadtestConfig = Field(default_factory=LoadtestConfig)
     cli_test: CliTestConfig = Field(default_factory=CliTestConfig)
+
+
+class AzureConfig(BaseModel):
+    resource_group: str
+    location: str
+    vm_size: str = "Standard_B2s"
+    loadgen_vm_size: str = "Standard_B1s"
+    image_urn: str | None = None
+    ssh_key_path: str | None = None
+    vm_name: str = "nanofaas-azure"
+    loadgen_name: str = "nanofaas-azure-loadgen"
