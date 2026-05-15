@@ -1,6 +1,7 @@
 # tools/tui-toolkit/.importlinter
 [importlinter]
 root_package = tui_toolkit
+include_external_packages = True
 
 [importlinter:contract:no_controlplane_dep]
 name = tui_toolkit must not import controlplane_tool
@@ -8,4 +9,12 @@ type = forbidden
 source_modules = tui_toolkit
 forbidden_modules =
     controlplane_tool
+include_external_packages = True
+
+[importlinter:contract:no_workflow_tasks_dep]
+name = tui_toolkit must not import workflow_tasks
+type = forbidden
+source_modules = tui_toolkit
+forbidden_modules =
+    workflow_tasks
 include_external_packages = True

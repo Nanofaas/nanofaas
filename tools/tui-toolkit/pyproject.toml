@@ -7,7 +7,6 @@ dependencies = [
     "rich>=13.8",
     "questionary>=2.1.1",
     "prompt-toolkit>=3.0",
-    "workflow-tasks",
 ]
 
 [build-system]
@@ -33,9 +32,6 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.15.12",
 ]
-
-[tool.uv.sources]
-workflow-tasks = { path = "../workflow-tasks", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
