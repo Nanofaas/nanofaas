@@ -2,7 +2,7 @@ from threading import Thread
 
 import pytest
 
-from tui_toolkit import (
+from workflow_tasks import (
     bind_workflow_context,
     bind_workflow_sink,
     fail,
@@ -15,7 +15,7 @@ from tui_toolkit import (
     warning,
     workflow_log,
 )
-from tui_toolkit.workflow import _render_event
+from controlplane_tool.tui.workflow_renderer import render_event as _render_event
 from workflow_tasks.workflow.event_builders import build_log_event, build_task_event
 from workflow_tasks.integrations.prefect import normalize_task_state
 from workflow_tasks.workflow.events import WorkflowContext

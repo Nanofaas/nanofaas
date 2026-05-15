@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tui_toolkit import bind_workflow_sink, workflow_log
+from workflow_tasks import bind_workflow_sink, workflow_log
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
 from controlplane_tool.scenario.scenario_loader import load_scenario_file
