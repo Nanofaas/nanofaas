@@ -24,7 +24,7 @@ from controlplane_tool.scenario.scenario_helpers import (
     selected_functions as _selected_functions,
 )
 from controlplane_tool.core.shell_backend import ShellExecutionResult
-from controlplane_tool.workflow.workflow_models import WorkflowContext
+from workflow_tasks.workflow.events import WorkflowContext
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from controlplane_tool.workflow.workflow_models import WorkflowEvent
+from workflow_tasks.workflow.events import WorkflowEvent
 
 
 class FakeSink:

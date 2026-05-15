@@ -16,8 +16,9 @@ from tui_toolkit import (
     workflow_log,
 )
 from tui_toolkit.workflow import _render_event
-from controlplane_tool.workflow.workflow_events import build_log_event, build_task_event, normalize_task_state
-from controlplane_tool.workflow.workflow_models import WorkflowContext
+from workflow_tasks.workflow.event_builders import build_log_event, build_task_event
+from workflow_tasks.integrations.prefect import normalize_task_state
+from workflow_tasks.workflow.events import WorkflowContext
 
 
 def test_bind_workflow_sink_routes_console_helpers(fake_sink) -> None:

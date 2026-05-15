@@ -1,4 +1,4 @@
-def test_workflow_sink_importable_from_workflow_models() -> None:
-    # After the move this must succeed without importing console
-    from controlplane_tool.workflow.workflow_models import WorkflowSink
+def test_workflow_sink_importable_from_workflow_tasks() -> None:
+    # WorkflowSink now lives in workflow_tasks; import must succeed without importing console
+    from workflow_tasks.workflow.events import WorkflowSink
     assert hasattr(WorkflowSink, "emit")

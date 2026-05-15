@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import time
 
+from workflow_tasks.workflow.events import WorkflowEvent
+from workflow_tasks.workflow.models import WorkflowState
 from controlplane_tool.workflow.workflow_models import (
     TuiPhaseSnapshot,
     TuiWorkflowSnapshot,
-    WorkflowEvent,
-    WorkflowState,
 )
 
 

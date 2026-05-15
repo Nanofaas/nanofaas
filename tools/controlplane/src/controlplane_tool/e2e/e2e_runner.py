@@ -33,7 +33,7 @@ from controlplane_tool.core.shell_backend import (
 )
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
-from controlplane_tool.workflow.workflow_models import WorkflowContext
+from workflow_tasks.workflow.events import WorkflowContext
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,5 @@
 from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
-from controlplane_tool.workflow.workflow_events import build_log_event, build_task_event
+from workflow_tasks.workflow.event_builders import build_log_event, build_task_event
 
 
 def test_tui_bridge_maps_task_started_event_to_running_step() -> None:

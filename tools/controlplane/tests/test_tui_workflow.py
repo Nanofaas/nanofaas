@@ -2,12 +2,8 @@ from rich.console import Console
 
 from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
 from controlplane_tool.tui.workflow import WorkflowDashboard, WorkflowStepState
-from controlplane_tool.workflow.workflow_events import (
-    build_log_event,
-    build_phase_event,
-    build_task_event,
-    normalize_task_state,
-)
+from workflow_tasks.workflow.event_builders import build_log_event, build_phase_event, build_task_event
+from workflow_tasks.integrations.prefect import normalize_task_state
 
 
 def test_workflow_dashboard_renders_log_and_phase_panels() -> None:
