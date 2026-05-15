@@ -491,6 +491,10 @@ _VM_LIFECYCLE_CHOICES = [
         "external",
         "Target an existing remote host or VM that you manage outside the tool, using SSH only.",
     ),
+    _value_choice(
+        "azure",
+        "Provision and manage VMs on Azure via OpenTofu. Requires profiles/azure.toml.",
+    ),
 ]
 
 _REGISTRY_ACTION_CHOICES = [
@@ -516,6 +520,12 @@ _PLATFORM_VALIDATION_CHOICES = [
         "two-vm-loadtest — Helm stack with dedicated k6 load generator VM",
         "two-vm-loadtest",
         "Bootstrap the Helm stack on one VM and run k6 from a second managed load generator VM.",
+    ),
+    _DescribedChoice(
+        "azure-vm-loadtest — Two-VM Azure load test with k6",
+        "azure-vm-loadtest",
+        "Provision two Azure VMs (stack + loadgen) via OpenTofu, run k6 load test, capture "
+        "Prometheus snapshots. Reads defaults from profiles/azure.toml.",
     ),
     _DescribedChoice(
         "container-local — local managed DEPLOYMENT",
@@ -948,7 +958,7 @@ class NanofaasTUI:
             if scenario_choice == _BACK_VALUE:
                 return
 
-            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest"):
+            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest", "azure-vm-loadtest"):
                 self._run_vm_e2e_scenario(scenario_choice)
             elif scenario_choice == "container-local":
                 self._run_container_local()
@@ -1011,6 +1021,110 @@ class NanofaasTUI:
                 ],
                 planned_steps=[step.summary for step in plan.steps],
                 action=_run_helm_stack_workflow,
+            )
+
+        elif scenario == "azure-vm-loadtest":
+            from pydantic import ValidationError
+            from controlplane_tool.workspace.azure_config import (
+                azure_config_path,
+                load_azure_config,
+            )
+            from controlplane_tool.cli.e2e_commands import _resolve_run_request
+            from controlplane_tool.e2e.e2e_runner import E2eRunner
+
+            try:
+                cfg = load_azure_config()
+            except FileNotFoundError:
+                warning(
+                    f"Missing azure.toml — create {azure_config_path()} "
+                    "with resource_group and location."
+                )
+                _acknowledge_static_view()
+                return
+            except ValidationError as exc:
+                first_error = exc.errors()[0]["msg"] if exc.errors() else "validation failed"
+                warning(f"Invalid azure.toml: {first_error}")
+                _acknowledge_static_view()
+                return
+
+            console.print(
+                Panel(
+                    f"resource_group: {cfg.resource_group}\n"
+                    f"location:       {cfg.location}\n"
+                    f"vm_size:        {cfg.vm_size} (stack) / {cfg.loadgen_vm_size} (loadgen)\n"
+                    f"vm_name:        {cfg.vm_name} / {cfg.loadgen_name}",
+                    title="Azure defaults (profiles/azure.toml)",
+                )
+            )
+
+            confirmed = _ask(
+                lambda: questionary.confirm(
+                    "Proceed with azure-vm-loadtest?", default=True, style=_STYLE
+                ).ask()
+            )
+            if not confirmed:
+                return
+
+            request = _resolve_run_request(
+                scenario="azure-vm-loadtest",
+                runtime="java",
+                lifecycle="azure",
+                name=cfg.vm_name,
+                host=None,
+                user="azureuser",
+                home=None,
+                cpus=4,
+                memory="12G",
+                disk="30G",
+                cleanup_vm=False,
+                namespace=None,
+                local_registry=None,
+                function_preset=None,
+                functions_csv=None,
+                scenario_file=None,
+                saved_profile=None,
+                loadgen_name=cfg.loadgen_name,
+                loadgen_cpus=2,
+                loadgen_memory="2G",
+                loadgen_disk="10G",
+                azure_resource_group=cfg.resource_group,
+                azure_location=cfg.location,
+                azure_vm_size=cfg.vm_size,
+                azure_image_urn=cfg.image_urn,
+                azure_ssh_key_path=cfg.ssh_key_path,
+            )
+            plan = E2eRunner(repo_root=repo_root).plan(request)
+
+            def _run_azure_loadtest_workflow(
+                dashboard: WorkflowDashboard, sink: TuiWorkflowSink
+            ) -> None:
+                def _on_step_event(event: Any) -> None:
+                    self._applier.apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
+                dashboard.append_log("Starting azure-vm-loadtest workflow")
+                sink._update()
+                flow = build_scenario_flow(
+                    "azure-vm-loadtest",
+                    repo_root=repo_root,
+                    request=request,
+                    event_listener=_on_step_event,
+                )
+                self._controller.run_shared_flow(flow)
+                dashboard.append_log("azure-vm-loadtest E2E completed")
+                sink._update()
+
+            self._controller.run_live_workflow(
+                title="E2E Scenarios",
+                summary_lines=[
+                    "Scenario: azure-vm-loadtest",
+                    f"Resource group: {cfg.resource_group}",
+                    f"Location: {cfg.location}",
+                    f"Stack VM: {cfg.vm_name} ({cfg.vm_size})",
+                    f"Loadgen VM: {cfg.loadgen_name} ({cfg.loadgen_vm_size})",
+                ],
+                planned_steps=[step.summary for step in plan.steps],
+                action=_run_azure_loadtest_workflow,
             )
 
         else:  # k3s-junit-curl

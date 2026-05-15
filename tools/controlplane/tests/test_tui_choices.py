@@ -2618,3 +2618,17 @@ def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
     assert request.vm.memory == "8G"
     assert request.loadgen_vm is not None
     assert request.loadgen_vm.name == "nanofaas-e2e-loadgen"
+
+
+def test_platform_validation_choices_includes_azure_vm_loadtest() -> None:
+    from controlplane_tool.tui.app import _PLATFORM_VALIDATION_CHOICES
+
+    values = [c.value for c in _PLATFORM_VALIDATION_CHOICES]
+    assert "azure-vm-loadtest" in values
+
+
+def test_vm_lifecycle_choices_includes_azure() -> None:
+    from controlplane_tool.tui.app import _VM_LIFECYCLE_CHOICES
+
+    values = [c.value for c in _VM_LIFECYCLE_CHOICES]
+    assert "azure" in values
