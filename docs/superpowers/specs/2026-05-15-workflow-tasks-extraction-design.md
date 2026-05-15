@@ -189,6 +189,102 @@ Tests covering integration logic (`WorkflowEventAggregator`, `WorkflowProgressRe
 
 ---
 
+## Tooling & Quality
+
+### Stack (identical across all three libraries)
+
+| Tool | Purpose |
+|------|---------|
+| `ruff` | Linter — rules F + SLF, line-length 100, target py311 |
+| `basedpyright` | Type checker — `typeCheckingMode = "basic"` |
+| `import-linter` | Architectural import contracts (intra-library) |
+| `pytest` + `pytest-cov` | Tests with coverage threshold enforcement |
+| `grimp` | Import graph analysis for coupling metrics |
+| `pydeps` | Dependency visualisation |
+| `devtools/quality.py` | Single script running all checks (same pattern as `controlplane-tool`) |
+
+`tui-toolkit` currently has only `pytest` in dev deps — it gains ruff, basedpyright, import-linter, grimp, pydeps as part of this work.
+
+### Coverage thresholds
+
+| Library | Threshold | Rationale |
+|---------|-----------|-----------|
+| `workflow-tasks` | 90% | Mostly moved code with existing tests |
+| `tui-toolkit` | 80% | UI/rendering harder to unit-test |
+
+### Import-linter contracts for `workflow-tasks`
+
+```ini
+[importlinter]
+root_package = workflow_tasks
+
+[importlinter:contract:tasks_are_independent]
+name = tasks must not import workflow or integrations
+type = forbidden
+source_modules = workflow_tasks.tasks
+forbidden_modules =
+    workflow_tasks.workflow
+    workflow_tasks.integrations
+
+[importlinter:contract:pure_types_are_logic_free]
+name = pure type modules must not import logic modules
+type = forbidden
+source_modules =
+    workflow_tasks.workflow.events
+    workflow_tasks.workflow.models
+    workflow_tasks.workflow.context
+forbidden_modules =
+    workflow_tasks.workflow.reporting
+    workflow_tasks.workflow.event_builders
+
+[importlinter:contract:no_external_deps]
+name = workflow_tasks must not import tui_toolkit or controlplane_tool
+type = forbidden
+source_modules = workflow_tasks
+forbidden_modules =
+    tui_toolkit
+    controlplane_tool
+```
+
+### Import-linter contracts for `tui-toolkit` (post PR2)
+
+```ini
+[importlinter]
+root_package = tui_toolkit
+
+[importlinter:contract:no_external_project_deps]
+name = tui_toolkit must not import workflow_tasks or controlplane_tool
+type = forbidden
+source_modules = tui_toolkit
+forbidden_modules =
+    workflow_tasks
+    controlplane_tool
+```
+
+### Cross-project coupling with `grimp`
+
+`grimp` supports multi-root analysis: when all three packages are installed in the same virtualenv, a single script can build the full import graph and verify no paths exist between projects that violate the architecture.
+
+Added as an extra step in `controlplane-tool/devtools/quality.py` (the integration layer — the only project with all three packages installed):
+
+```python
+import grimp
+
+graph = grimp.build_graph("controlplane_tool", "tui_toolkit", "workflow_tasks")
+
+# workflow_tasks must not reach tui_toolkit
+assert not graph.find_shortest_chain(
+    importer="workflow_tasks", imported="tui_toolkit"
+), "workflow_tasks must not import tui_toolkit"
+
+# tui_toolkit must not reach workflow_tasks
+assert not graph.find_shortest_chain(
+    importer="tui_toolkit", imported="workflow_tasks"
+), "tui_toolkit must not import workflow_tasks"
+```
+
+This gives a living cross-project coupling gate that fails CI if the boundaries are violated.
+
 ## Execution Plan
 
 Two PRs, same pattern as `tui-toolkit` extraction:
