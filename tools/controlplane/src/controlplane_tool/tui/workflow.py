@@ -17,7 +17,7 @@ from rich.tree import Tree
 
 from tui_toolkit import render_screen_frame
 from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
-from controlplane_tool.workflow.workflow_models import WorkflowEvent
+from workflow_tasks.workflow.events import WorkflowEvent
 
 WorkflowState = Literal["pending", "running", "success", "failed", "cancelled"]
 

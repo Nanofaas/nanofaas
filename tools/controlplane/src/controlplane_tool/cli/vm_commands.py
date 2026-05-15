@@ -5,7 +5,7 @@ from typing import cast
 import typer
 from pydantic import ValidationError
 
-from tui_toolkit import fail
+from workflow_tasks import fail
 from tui_toolkit.console import console
 from controlplane_tool.core.models import VmLifecycle
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
