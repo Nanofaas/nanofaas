@@ -28,14 +28,14 @@ class AzureVmLoadtestPlan:
     def task_ids(self) -> list[str]:
         return [s.step_id for s in self.steps if s.step_id]
 
-    def run(self) -> None:
+    def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.e2e_runner import ScenarioPlan
         legacy = ScenarioPlan(
             scenario=self.scenario,
             request=self.request,
             steps=self.steps,
         )
-        self.runner._execute_steps(legacy)
+        self.runner._execute_steps(legacy, event_listener=event_listener)
 
 
 def build_azure_vm_loadtest_plan(

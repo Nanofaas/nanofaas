@@ -394,3 +394,27 @@ def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
 
     assert isinstance(plan, CliStackPlan)
     assert "cli.build_install_dist" in plan.task_ids
+
+
+def test_two_vm_loadtest_plan_run_forwards_event_listener() -> None:
+    """Builder run() must accept and forward event_listener to _execute_steps."""
+    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+    from unittest.mock import MagicMock
+
+    captured: dict = {}
+
+    mock_runner = MagicMock()
+    mock_runner._execute_steps.side_effect = (
+        lambda plan, event_listener=None: captured.update({"event_listener": event_listener})
+    )
+
+    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="test.step")
+    plan = TwoVmLoadtestPlan(
+        scenario=MagicMock(), request=_make_request(), steps=[step], runner=mock_runner
+    )
+    listener = lambda event: None  # noqa: E731
+
+    plan.run(event_listener=listener)
+
+    assert captured["event_listener"] is listener
