@@ -245,3 +245,43 @@ def test_build_k3s_junit_curl_plan_returns_correct_type(tmp_path: Path) -> None:
     assert "tests.run_k3s_curl_checks" in plan.task_ids
     assert "tests.run_k8s_junit" in plan.task_ids
     assert "vm.down" in plan.task_ids
+
+
+def _make_helm_stack_request() -> E2eRequest:
+    return E2eRequest(
+        scenario="helm-stack",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+
+def test_helm_stack_plan_satisfies_protocol() -> None:
+    from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="loadtest.install_k6")
+    plan = HelmStackPlan(
+        scenario=MagicMock(), request=_make_helm_stack_request(), steps=[step], runner=MagicMock()
+    )
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert plan.task_ids == ["loadtest.install_k6"]
+
+
+def test_build_helm_stack_plan_returns_correct_type(tmp_path: Path) -> None:
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.helm_stack import (
+        HelmStackPlan,
+        build_helm_stack_plan,
+    )
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = build_helm_stack_plan(runner, _make_helm_stack_request())
+
+    assert isinstance(plan, HelmStackPlan)
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert len(plan.task_ids) > 0
+    assert "vm.ensure_running" in plan.task_ids
+    assert "helm.deploy_control_plane" in plan.task_ids
+    assert "loadtest.install_k6" in plan.task_ids
+    assert "loadtest.run" in plan.task_ids
