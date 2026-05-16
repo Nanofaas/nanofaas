@@ -177,3 +177,31 @@ def test_e2e_runner_plan_returns_azure_builder(tmp_path: Path) -> None:
 
     assert isinstance(plan, AzureVmLoadtestPlan)
     assert "functions.register" in plan.task_ids
+
+
+def test_build_scenario_flow_uses_plan_task_ids_for_two_vm(tmp_path: Path) -> None:
+    """build_scenario_flow must show functions.register (not cli.fn_apply_selected) for two-vm-loadtest."""
+    from controlplane_tool.scenario.scenario_flows import build_scenario_flow
+
+    flow = build_scenario_flow(
+        "two-vm-loadtest",
+        repo_root=Path("/repo"),
+        request=_make_request(),
+    )
+
+    assert "functions.register" in flow.task_ids
+    assert "cli.fn_apply_selected" not in flow.task_ids
+
+
+def test_build_scenario_flow_uses_plan_task_ids_for_azure_vm(tmp_path: Path) -> None:
+    """build_scenario_flow must show functions.register (not cli.fn_apply_selected) for azure-vm-loadtest."""
+    from controlplane_tool.scenario.scenario_flows import build_scenario_flow
+
+    flow = build_scenario_flow(
+        "azure-vm-loadtest",
+        repo_root=Path("/repo"),
+        request=_make_azure_request(),
+    )
+
+    assert "functions.register" in flow.task_ids
+    assert "cli.fn_apply_selected" not in flow.task_ids
