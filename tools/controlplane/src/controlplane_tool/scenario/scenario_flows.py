@@ -24,7 +24,13 @@ def scenario_task_ids(scenario: str) -> list[str]:
     if scenario in {"container-local", "deploy-host", "cli", "cli-host"}:
         return [f"tests.run_{scenario.replace('-', '_')}"]
     recipe = build_scenario_recipe(scenario)
-    return [component.component_id for component in compose_recipe(recipe)]
+    ids = [component.component_id for component in compose_recipe(recipe)]
+    if scenario in {"two-vm-loadtest", "azure-vm-loadtest"}:
+        ids = [
+            "functions.register" if i == "cli.fn_apply_selected" else i
+            for i in ids
+        ]
+    return ids
 
 
 def build_scenario_flow(

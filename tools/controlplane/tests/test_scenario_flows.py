@@ -380,8 +380,13 @@ def test_two_vm_loadtest_request_backed_flow_task_ids_derive_from_recipe() -> No
     )
     flow = build_scenario_flow("two-vm-loadtest", repo_root=Path("/repo"), request=request)
     recipe = build_scenario_recipe("two-vm-loadtest")
+    expected_ids = [component.component_id for component in compose_recipe(recipe)]
+    expected_ids = [
+        "functions.register" if i == "cli.fn_apply_selected" else i
+        for i in expected_ids
+    ]
 
-    assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
+    assert flow.task_ids == expected_ids
 
 
 def test_helm_stack_flow_task_ids_follow_recipe_composition(monkeypatch) -> None:
