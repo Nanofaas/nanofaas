@@ -611,6 +611,9 @@ def test_helm_stack_execute_resolves_vm_host_for_autoscaling_env() -> None:
 
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
+    from unittest.mock import patch
+    from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
+
     shell = RecordingShell()
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
     runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
@@ -619,7 +622,8 @@ def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
         {"verify_existing_stack": staticmethod(lambda resolved: None)},
     )()
 
-    runner.run_all(only=["k3s-junit-curl"], runtime="java")
+    with patch.object(K3sCurlRunner, "verify_existing_stack", return_value=None):
+        runner.run_all(only=["k3s-junit-curl"], runtime="java")
 
     launches = [command for command in shell.commands if command[:2] == ["multipass", "launch"]]
     assert len(launches) <= 1
@@ -664,7 +668,11 @@ def test_run_all_tears_down_vm_when_cleanup_vm_true() -> None:
         {"verify_existing_stack": staticmethod(lambda resolved: None)},
     )()
 
-    runner.run_all(only=["k3s-junit-curl"], runtime="java")
+    from unittest.mock import patch
+    from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
+
+    with patch.object(K3sCurlRunner, "verify_existing_stack", return_value=None):
+        runner.run_all(only=["k3s-junit-curl"], runtime="java")
 
     assert any("delete" in call for call in backend.calls)
 
@@ -1099,4 +1107,27 @@ def test_run_all_dispatches_builder_plans_via_plan_run(tmp_path: Path) -> None:
 
     assert "K3sJunitCurlPlan" in run_called, (
         "run_all() must call plan.run() for K3sJunitCurlPlan, not _execute_steps directly"
+    )
+
+
+def test_plan_and_plan_all_produce_consistent_step_ids_for_k3s(tmp_path: Path) -> None:
+    """plan() and plan_all() must return the same step IDs for k3s-junit-curl.
+
+    Before this fix, plan() used the recipe builder while plan_all() used
+    _planner.vm_backed_steps() — two different implementations. After the fix,
+    both use the same builder factory.
+    """
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = E2eRequest(
+        scenario="k3s-junit-curl",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+    plan_single = runner.plan(request)
+    plans_all = runner.plan_all(only=["k3s-junit-curl"])
+
+    assert len(plans_all) == 1
+    assert plan_single.task_ids == plans_all[0].task_ids, (
+        "plan() and plan_all() must produce the same step IDs for k3s-junit-curl"
     )

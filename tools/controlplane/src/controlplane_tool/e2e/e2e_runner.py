@@ -82,6 +82,7 @@ def plan_recipe_steps(
     release: str | None = None,
     manifest_root: Path | None = None,
     host_resolver: Callable[[VmRequest], str] | None = None,
+    multipass_client: MultipassClient | None = None,
 ) -> list[ScenarioPlanStep]:
     context: ScenarioExecutionContext = resolve_scenario_environment(
         repo_root,
@@ -90,7 +91,7 @@ def plan_recipe_steps(
         release=release,
     )
     recipe = build_scenario_recipe(scenario_name)
-    runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root, host_resolver=host_resolver)
+    runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root, host_resolver=host_resolver, multipass_client=multipass_client)
     cli_context = CliComponentContext(
         repo_root=repo_root,
         release=context.release,
@@ -298,6 +299,7 @@ class E2eRunner:
     ) -> None:
         self.paths = ToolPaths.repo_root(Path(repo_root))
         self.shell = shell or SubprocessShell()
+        self._multipass_client = multipass_client
         self.vm = VmOrchestrator(self.paths.workspace_root, shell=self.shell, multipass_client=multipass_client)
         self.manifest_root = manifest_root or (self.paths.runs_dir / "manifests")
         self._host_resolver = host_resolver
@@ -426,15 +428,19 @@ class E2eRunner:
                     plans.append(build_azure_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
+                if scenario.name == "k3s-junit-curl":
+                    from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
+                    plans.append(build_k3s_junit_curl_plan(self, request))
+                    vm_bootstrap_planned = True
+                    continue
+                if scenario.name == "helm-stack":
+                    from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
+                    plans.append(build_helm_stack_plan(self, request))
+                    vm_bootstrap_planned = True
+                    continue
                 steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                 vm_bootstrap_planned = True
-                if scenario.name == "k3s-junit-curl":
-                    from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
-                    plans.append(K3sJunitCurlPlan(scenario=scenario, request=request, steps=steps, runner=self))
-                elif scenario.name == "helm-stack":
-                    from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
-                    plans.append(HelmStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
-                elif scenario.name == "cli-stack":
+                if scenario.name == "cli-stack":
                     from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
                     plans.append(CliStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
                 else:

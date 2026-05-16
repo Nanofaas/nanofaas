@@ -612,13 +612,6 @@ class ScenarioPlanner:
         *,
         include_bootstrap: bool = True,
     ) -> list[ScenarioPlanStep]:
-        if request.scenario == "k3s-junit-curl":
-            return self.k3s_junit_curl_steps(request)
-        if request.scenario == "helm-stack":
-            return [
-                *self.k3s_vm_prelude_steps(request),
-                *self.helm_stack_tail_steps(request),
-            ]
         steps = []
         if include_bootstrap:
             steps.extend(self.vm_bootstrap_steps(request))

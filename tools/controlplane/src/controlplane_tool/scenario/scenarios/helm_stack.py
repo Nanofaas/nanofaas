@@ -50,6 +50,7 @@ def build_helm_stack_plan(
         shell=runner.shell,
         manifest_root=runner.manifest_root,
         host_resolver=runner._host_resolver,
+        multipass_client=runner._multipass_client,
     )
     return HelmStackPlan(
         scenario=scenario,
