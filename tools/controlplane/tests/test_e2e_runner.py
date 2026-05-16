@@ -1075,3 +1075,33 @@ def test_plan_and_plan_all_produce_consistent_step_ids_for_k3s(tmp_path: Path) -
     assert plan_single.task_ids == plans_all[0].task_ids, (
         "plan() and plan_all() must produce the same step IDs for k3s-junit-curl"
     )
+
+
+def test_plan_returns_typed_cli_vm_plan(tmp_path: Path) -> None:
+    """plan() must return CliVmPlan for cli scenario."""
+    from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(
+        scenario="cli",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    ))
+
+    assert isinstance(plan, CliVmPlan), f"Expected CliVmPlan, got {type(plan)}"
+    assert "cli.vm_e2e_flow" in plan.task_ids
+
+
+def test_plan_returns_typed_cli_host_plan(tmp_path: Path) -> None:
+    """plan() must return CliHostPlan for cli-host scenario."""
+    from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(
+        scenario="cli-host",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    ))
+
+    assert isinstance(plan, CliHostPlan), f"Expected CliHostPlan, got {type(plan)}"
+    assert "cli.host_platform_flow" in plan.task_ids
