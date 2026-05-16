@@ -116,7 +116,7 @@ class TwoVmLoadtestRunner:
         self.host_resolver = host_resolver
         self.runs_root = Path(runs_root) if runs_root is not None else self.paths.runs_dir
 
-    def run_k6(self, request: E2eRequest) -> TwoVmK6Result:
+    def run_k6(self, request: E2eRequest, *, target_override: str | None = None) -> TwoVmK6Result:
         if request.vm is None:
             raise ValueError("two-vm-loadtest requires a stack VM request")
         if request.loadgen_vm is None:
@@ -151,7 +151,7 @@ class TwoVmLoadtestRunner:
                 )
             )
 
-        target_function = two_vm_target_function(request)
+        target_function = target_override if target_override is not None else two_vm_target_function(request)
         command = build_k6_command(
             RemoteK6RunConfig(
                 script_path=Path(remote_paths.script_path),
@@ -186,6 +186,10 @@ class TwoVmLoadtestRunner:
             started_at=started_at,
             ended_at=ended_at,
         )
+
+    def run_k6_for_function(self, request: E2eRequest, fn_key: str) -> TwoVmK6Result:
+        """Run k6 against a single named function. Called by RunK6Matrix for each target."""
+        return self.run_k6(request, target_override=fn_key)
 
     def capture_prometheus_snapshots(self, request: E2eRequest, k6_result: TwoVmK6Result) -> Path:
         if request.vm is None:
