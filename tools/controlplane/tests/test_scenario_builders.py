@@ -327,3 +327,43 @@ def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
     assert "cli.fn_list_selected" in plan.task_ids
     assert "cli.fn_invoke_selected.echo-test" in plan.task_ids
     assert "vm.down" in plan.task_ids
+
+
+def test_e2e_runner_plan_returns_k3s_junit_curl_builder(tmp_path: Path) -> None:
+    """E2eRunner.plan() must return K3sJunitCurlPlan for k3s-junit-curl."""
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(_make_k3s_request())
+
+    assert isinstance(plan, K3sJunitCurlPlan)
+    assert "vm.ensure_running" in plan.task_ids
+    assert "tests.run_k3s_curl_checks" in plan.task_ids
+
+
+def test_e2e_runner_plan_returns_helm_stack_builder(tmp_path: Path) -> None:
+    """E2eRunner.plan() must return HelmStackPlan for helm-stack."""
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(_make_helm_stack_request())
+
+    assert isinstance(plan, HelmStackPlan)
+    assert "loadtest.install_k6" in plan.task_ids
+
+
+def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
+    """E2eRunner.plan() must return CliStackPlan for cli-stack."""
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(_make_cli_stack_request())
+
+    assert isinstance(plan, CliStackPlan)
+    assert "cli.build_install_dist" in plan.task_ids

@@ -333,6 +333,15 @@ class E2eRunner:
             if request.scenario == "azure-vm-loadtest":
                 from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
                 return build_azure_vm_loadtest_plan(self, plan_request)
+            if request.scenario == "k3s-junit-curl":
+                from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
+                return build_k3s_junit_curl_plan(self, plan_request)
+            if request.scenario == "helm-stack":
+                from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
+                return build_helm_stack_plan(self, plan_request)
+            if request.scenario == "cli-stack":
+                from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
+                return build_cli_stack_plan(self, plan_request)
             return ScenarioPlan(
                 scenario=scenario,
                 request=plan_request,
@@ -623,7 +632,10 @@ class E2eRunner:
         self._discard_planning_commands(initial_count)
         from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
         from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
-        if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan)):
+        from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+        from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
+        from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
+        if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan)):
             plan.run()
         else:
             self.execute(plan, event_listener=event_listener)
