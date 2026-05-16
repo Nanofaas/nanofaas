@@ -642,17 +642,10 @@ class E2eRunner:
         initial_count = self._recorded_command_count()
         plan = self.plan(request)
         self._discard_planning_commands(initial_count)
-        from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
-        from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
-        from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
-        from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
-        from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
-        from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
-        from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
-        if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan, CliVmPlan, CliHostPlan)):
-            plan.run(event_listener=event_listener)
-        else:
+        if isinstance(plan, ScenarioPlan):
             self.execute(plan, event_listener=event_listener)
+        else:
+            plan.run(event_listener=event_listener)
         return plan
 
     def run_all(
@@ -685,19 +678,11 @@ class E2eRunner:
         )
         succeeded = False
         try:
-            from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
-            from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
-            from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
-            from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
-            from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
-            from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
-            from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
-            _BUILDER_TYPES = (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan, CliVmPlan, CliHostPlan)
             for plan in plans:
-                if isinstance(plan, _BUILDER_TYPES):
-                    plan.run()
-                else:
+                if isinstance(plan, ScenarioPlan):
                     self._execute_steps(plan)
+                else:
+                    plan.run()
             succeeded = True
             return plans
         finally:

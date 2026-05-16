@@ -1177,3 +1177,23 @@ def test_plan_raises_for_unknown_vm_scenario(tmp_path: Path) -> None:
     ):
         with pytest.raises(ValueError, match="Unsupported VM-backed scenario"):
             runner.plan(request)
+
+
+def test_run_dispatches_new_builder_without_explicit_registration(tmp_path: Path) -> None:
+    """run() must dispatch any non-ScenarioPlan object via plan.run() — no registration needed."""
+    from unittest.mock import MagicMock, patch
+    from controlplane_tool.e2e.e2e_runner import ScenarioPlan as LegacyPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+
+    fake_builder = MagicMock(spec_set=["task_ids", "run", "request", "steps", "scenario"])
+    fake_builder.task_ids = ["step.one"]
+    fake_request = E2eRequest(scenario="cli", runtime="java", vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"))
+    fake_builder.request = fake_request
+
+    assert not isinstance(fake_builder, LegacyPlan), "Sanity check: fake builder is not legacy ScenarioPlan"
+
+    with patch.object(runner, "plan", return_value=fake_builder):
+        runner.run(fake_request)
+
+    fake_builder.run.assert_called_once()
