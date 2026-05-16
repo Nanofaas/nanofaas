@@ -1075,3 +1075,28 @@ def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) 
     assert captured.get("event_listener") is listener, (
         "event_listener was not forwarded — run() must call plan.run(event_listener=event_listener)"
     )
+
+
+def test_run_all_dispatches_builder_plans_via_plan_run(tmp_path: Path) -> None:
+    """run_all() must call plan.run() for builder plans, not _execute_steps directly."""
+    from unittest.mock import patch
+    from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+
+    run_called: list[str] = []
+
+    def capturing_run(self_plan, event_listener=None):  # noqa: ANN001
+        run_called.append(type(self_plan).__name__)
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path, host_resolver=lambda _: "10.0.0.1")
+    runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
+        "_Verifier",
+        (),
+        {"verify_existing_stack": staticmethod(lambda resolved: None)},
+    )()
+
+    with patch.object(K3sJunitCurlPlan, "run", capturing_run):
+        runner.run_all(only=["k3s-junit-curl"])
+
+    assert "K3sJunitCurlPlan" in run_called, (
+        "run_all() must call plan.run() for K3sJunitCurlPlan, not _execute_steps directly"
+    )

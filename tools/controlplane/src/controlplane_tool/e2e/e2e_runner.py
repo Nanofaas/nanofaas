@@ -667,8 +667,17 @@ class E2eRunner:
         )
         succeeded = False
         try:
+            from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
+            from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
+            from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+            from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
+            from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
+            _BUILDER_TYPES = (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan)
             for plan in plans:
-                self._execute_steps(plan)
+                if isinstance(plan, _BUILDER_TYPES):
+                    plan.run()
+                else:
+                    self._execute_steps(plan)
             succeeded = True
             return plans
         finally:
