@@ -8,6 +8,7 @@ from typing import Callable, Literal
 from multipass import MultipassClient
 
 from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmK6Result, TwoVmLoadtestRunner
+from controlplane_tool.scenario.tasks.loadtest import K6MatrixResult, RunK6Matrix
 from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -103,6 +104,7 @@ def plan_recipe_steps(
     )
     two_vm_k6_result: TwoVmK6Result | None = None
     two_vm_prometheus_snapshot_path: Path | None = None
+    two_vm_k6_matrix_result: K6MatrixResult | None = None
 
     def _on_ensure_running() -> None:
         vm_orch.ensure_running(vm_request)
@@ -122,8 +124,16 @@ def plan_recipe_steps(
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
 
     def _on_loadgen_run_k6() -> None:
-        nonlocal two_vm_k6_result
-        two_vm_k6_result = two_vm_runner.run_k6(request)
+        nonlocal two_vm_k6_result, two_vm_k6_matrix_result
+        matrix_result = RunK6Matrix(
+            task_id="loadgen.run_k6",
+            title="Run k6 against all targets",
+            runner=two_vm_runner,
+            request=request,
+        ).run()
+        two_vm_k6_matrix_result = matrix_result
+        if matrix_result.results:
+            two_vm_k6_result = matrix_result.results[0]
 
     def _on_prometheus_snapshot() -> None:
         nonlocal two_vm_prometheus_snapshot_path
