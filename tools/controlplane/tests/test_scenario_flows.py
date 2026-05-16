@@ -339,6 +339,39 @@ def test_two_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
     assert recipe.component_ids == platform_prefix + tail
 
 
+def test_azure_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
+    helm_recipe = build_scenario_recipe("helm-stack")
+    recipe = build_scenario_recipe("azure-vm-loadtest")
+    platform_prefix = (
+        "vm.ensure_running",
+        "vm.provision_base",
+        "repo.sync_to_vm",
+        "registry.ensure_container",
+        "images.build_core",
+        "images.build_selected_functions",
+        "k3s.install",
+        "k3s.configure_registry",
+        "namespace.install",
+        "helm.deploy_control_plane",
+        "helm.deploy_function_runtime",
+    )
+    tail = (
+        "cli.build_install_dist",
+        "cli.fn_apply_selected",
+        "loadgen.ensure_running",
+        "loadgen.provision_base",
+        "loadgen.install_k6",
+        "loadgen.run_k6",
+        "metrics.prometheus_snapshot",
+        "loadtest.write_report",
+        "loadgen.down",
+        "vm.down",
+    )
+
+    assert helm_recipe.component_ids[: len(platform_prefix)] == platform_prefix
+    assert recipe.component_ids == platform_prefix + tail
+
+
 def test_two_vm_loadtest_request_backed_flow_task_ids_derive_from_recipe() -> None:
     request = E2eRequest(
         scenario="two-vm-loadtest",
