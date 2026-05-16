@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -45,6 +45,21 @@ class ScenarioPlan:
     scenario: ScenarioDefinition
     request: E2eRequest
     steps: list[ScenarioPlanStep]
+    executor: "Callable[[ScenarioPlan], None] | None" = field(
+        default=None, repr=False, compare=False
+    )
+
+    @property
+    def task_ids(self) -> list[str]:
+        """Step IDs in execution order, for TUI dry-run planning."""
+        return [s.step_id for s in self.steps if s.step_id]
+
+    def run(self) -> None:
+        if self.executor is None:
+            raise RuntimeError(
+                "ScenarioPlan.run() requires an executor — use E2eRunner.execute(plan)"
+            )
+        self.executor(self)
 
 
 ScenarioExecutionStatus = Literal["running", "success", "failed"]

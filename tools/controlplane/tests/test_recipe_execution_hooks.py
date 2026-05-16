@@ -116,3 +116,33 @@ def test_register_functions_step_has_correct_step_id() -> None:
     )
     assert step.step_id == "functions.register"
     assert step.action is not None
+
+
+def test_scenario_plan_protocol_is_satisfied_by_existing_dataclass() -> None:
+    """Existing ScenarioPlan dataclass must satisfy the new ScenarioPlan Protocol."""
+    from controlplane_tool.scenario.scenarios import ScenarioPlan as ScenarioPlanProtocol
+    from controlplane_tool.e2e.e2e_runner import ScenarioPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    step = ScenarioPlanStep(summary="x", command=["echo", "x"], step_id="test.step")
+    plan = ScenarioPlan(
+        scenario=MagicMock(),
+        request=MagicMock(),
+        steps=[step],
+    )
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert plan.task_ids == ["test.step"]
+
+
+def test_scenario_plan_task_ids_skips_empty_step_ids() -> None:
+    """Steps without step_id are excluded from task_ids."""
+    from controlplane_tool.e2e.e2e_runner import ScenarioPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    steps = [
+        ScenarioPlanStep(summary="a", command=["echo"], step_id="a.step"),
+        ScenarioPlanStep(summary="b", command=["echo"], step_id=""),
+        ScenarioPlanStep(summary="c", command=["echo"], step_id="c.step"),
+    ]
+    plan = ScenarioPlan(scenario=MagicMock(), request=MagicMock(), steps=steps)
+    assert plan.task_ids == ["a.step", "c.step"]
