@@ -31,3 +31,8 @@ def test_public_api_exports_reporting_helpers() -> None:
 
 def test_version_is_set() -> None:
     assert workflow_tasks.__version__ == "0.1.0"
+
+
+def test_public_api_exports_task_and_workflow() -> None:
+    assert hasattr(workflow_tasks, "Task")
+    assert hasattr(workflow_tasks, "Workflow")

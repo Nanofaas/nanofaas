@@ -7,6 +7,8 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+from workflow_tasks.core.task import Task
+from workflow_tasks.core.workflow import Workflow
 from workflow_tasks.tasks.adapters import RemoteCommandOperationLike, operation_to_task_spec
 from workflow_tasks.tasks.executors import HostCommandTaskExecutor, VmCommandTaskExecutor
 from workflow_tasks.tasks.models import CommandTaskSpec, ExecutionTarget, TaskResult, TaskStatus
@@ -34,6 +36,8 @@ from workflow_tasks.workflow.reporting import (
 
 __all__ = [
     "__version__",
+    # core
+    "Task", "Workflow",
     # tasks
     "CommandTaskSpec", "ExecutionTarget", "TaskResult", "TaskStatus",
     "HostCommandTaskExecutor", "VmCommandTaskExecutor",
