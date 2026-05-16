@@ -150,3 +150,30 @@ def test_build_azure_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> No
     assert len(plan.task_ids) > 0
     assert "functions.register" in plan.task_ids
     assert "cli.fn_apply_selected" not in plan.task_ids
+
+
+def test_e2e_runner_plan_returns_two_vm_builder(tmp_path: Path) -> None:
+    """E2eRunner.plan() must return TwoVmLoadtestPlan for two-vm-loadtest."""
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(_make_request())
+
+    assert isinstance(plan, TwoVmLoadtestPlan)
+    assert "functions.register" in plan.task_ids
+    assert "cli.fn_apply_selected" not in plan.task_ids
+
+
+def test_e2e_runner_plan_returns_azure_builder(tmp_path: Path) -> None:
+    """E2eRunner.plan() must return AzureVmLoadtestPlan for azure-vm-loadtest."""
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(_make_azure_request())
+
+    assert isinstance(plan, AzureVmLoadtestPlan)
+    assert "functions.register" in plan.task_ids

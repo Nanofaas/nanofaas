@@ -327,6 +327,12 @@ class E2eRunner:
                 if request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"} and request.loadgen_vm is None:
                     updates["loadgen_vm"] = loadgen_vm_request(context)
                 plan_request = request.model_copy(update=updates)
+            if request.scenario == "two-vm-loadtest":
+                from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
+                return build_two_vm_loadtest_plan(self, plan_request)
+            if request.scenario == "azure-vm-loadtest":
+                from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
+                return build_azure_vm_loadtest_plan(self, plan_request)
             return ScenarioPlan(
                 scenario=scenario,
                 request=plan_request,
@@ -615,7 +621,12 @@ class E2eRunner:
         initial_count = self._recorded_command_count()
         plan = self.plan(request)
         self._discard_planning_commands(initial_count)
-        self.execute(plan, event_listener=event_listener)
+        from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
+        from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
+        if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan)):
+            plan.run()
+        else:
+            self.execute(plan, event_listener=event_listener)
         return plan
 
     def run_all(
