@@ -351,9 +351,8 @@ class E2eRunner:
             if request.scenario == "cli-host":
                 from controlplane_tool.scenario.scenarios.cli_host import build_cli_host_plan
                 return build_cli_host_plan(self, request)
-            steps = self._planner.vm_backed_steps(request)
-        else:
-            steps = self._planner.local_steps(request)
+            raise ValueError(f"Unsupported VM-backed scenario: {request.scenario!r}")
+        steps = self._planner.local_steps(request)
         return ScenarioPlan(scenario=scenario, request=request, steps=steps)
 
     def plan_all(
@@ -455,7 +454,7 @@ class E2eRunner:
                     from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
                     plans.append(CliHostPlan(scenario=scenario, request=request, steps=steps, runner=self))
                 else:
-                    plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
+                    raise ValueError(f"Unsupported VM-backed scenario in plan_all(): {scenario.name!r}")
                 continue
 
             plans.append(ScenarioPlan(scenario=scenario, request=request, steps=self._planner.local_steps(request)))

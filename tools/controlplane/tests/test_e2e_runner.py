@@ -1151,3 +1151,29 @@ def test_plan_and_plan_all_produce_consistent_step_ids_for_cli_host(tmp_path: Pa
     [all_plan] = runner.plan_all(only=["cli-host"])
 
     assert single_plan.task_ids == all_plan.task_ids
+
+
+def test_plan_raises_for_unknown_vm_scenario(tmp_path: Path) -> None:
+    """plan() must raise ValueError for VM scenarios without a builder."""
+    from unittest.mock import patch
+    from controlplane_tool.scenario.catalog import ScenarioDefinition
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    unknown_scenario = ScenarioDefinition(
+        name="unknown-vm-scenario",
+        description="Unknown VM scenario for testing.",
+        requires_vm=True,
+        supported_runtimes=("java",),
+    )
+    # Bypass Literal validation to construct a request with an unregistered scenario name.
+    request = E2eRequest.model_construct(
+        scenario="unknown-vm-scenario",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+    with patch(
+        "controlplane_tool.e2e.e2e_runner.resolve_scenario",
+        return_value=unknown_scenario,
+    ):
+        with pytest.raises(ValueError, match="Unsupported VM-backed scenario"):
+            runner.plan(request)
