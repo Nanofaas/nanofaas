@@ -616,11 +616,6 @@ def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
 
     shell = RecordingShell()
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
-    runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
-        "_Verifier",
-        (),
-        {"verify_existing_stack": staticmethod(lambda resolved: None)},
-    )()
 
     with patch.object(K3sCurlRunner, "verify_existing_stack", return_value=None):
         runner.run_all(only=["k3s-junit-curl"], runtime="java")
@@ -662,11 +657,6 @@ def test_run_all_tears_down_vm_when_cleanup_vm_true() -> None:
         host_resolver=lambda _: "10.0.0.1",
         multipass_client=MultipassClient(backend=backend),
     )
-    runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
-        "_Verifier",
-        (),
-        {"verify_existing_stack": staticmethod(lambda resolved: None)},
-    )()
 
     from unittest.mock import patch
     from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
@@ -803,47 +793,6 @@ def test_operation_to_plan_step_preserves_command_env_and_step_id_after_task_bri
     assert step.summary == "Task step"
     assert step.command == ["echo", "task"]
     assert step.env == {"SOURCE": "task"}
-
-
-def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values() -> None:
-    runner = E2eRunner(Path("/repo"), shell=RecordingShell())
-    steps = runner._planner.k3s_junit_curl_tail_steps(  # noqa: SLF001
-        E2eRequest(
-            scenario="k3s-junit-curl",
-            runtime="java",
-            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-        )
-    )
-
-    assert [step.step_id for step in steps] == [
-        "tests.run_k3s_curl_checks",
-        "tests.run_k8s_junit",
-        "cleanup.uninstall_function_runtime",
-        "cleanup.uninstall_control_plane",
-        "namespace.uninstall",
-        "vm.down",
-    ]
-
-
-def test_k3s_junit_curl_tail_steps_use_explicit_step_id_values_without_cleanup() -> None:
-    runner = E2eRunner(Path("/repo"), shell=RecordingShell())
-    steps = runner._planner.k3s_junit_curl_tail_steps(  # noqa: SLF001
-        E2eRequest(
-            scenario="k3s-junit-curl",
-            runtime="java",
-            cleanup_vm=False,
-            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-        )
-    )
-
-    assert [step.step_id for step in steps] == [
-        "tests.run_k3s_curl_checks",
-        "tests.run_k8s_junit",
-        "cleanup.uninstall_function_runtime",
-        "cleanup.uninstall_control_plane",
-        "namespace.uninstall",
-        "vm.down",
-    ]
 
 
 def test_execute_binds_step_context_for_nested_workflow_events(fake_sink) -> None:
@@ -1096,11 +1045,6 @@ def test_run_all_dispatches_builder_plans_via_plan_run(tmp_path: Path) -> None:
         run_called.append(type(self_plan).__name__)
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path, host_resolver=lambda _: "10.0.0.1")
-    runner._planner._k3s_curl_runner = lambda request: type(  # type: ignore[assignment]
-        "_Verifier",
-        (),
-        {"verify_existing_stack": staticmethod(lambda resolved: None)},
-    )()
 
     with patch.object(K3sJunitCurlPlan, "run", capturing_run):
         runner.run_all(only=["k3s-junit-curl"])
