@@ -205,3 +205,43 @@ def test_build_scenario_flow_uses_plan_task_ids_for_azure_vm(tmp_path: Path) -> 
 
     assert "functions.register" in flow.task_ids
     assert "cli.fn_apply_selected" not in flow.task_ids
+
+
+def _make_k3s_request() -> E2eRequest:
+    return E2eRequest(
+        scenario="k3s-junit-curl",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+    )
+
+
+def test_k3s_junit_curl_plan_satisfies_protocol() -> None:
+    from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="vm.ensure_running")
+    plan = K3sJunitCurlPlan(
+        scenario=MagicMock(), request=_make_k3s_request(), steps=[step], runner=MagicMock()
+    )
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert plan.task_ids == ["vm.ensure_running"]
+
+
+def test_build_k3s_junit_curl_plan_returns_correct_type(tmp_path: Path) -> None:
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.k3s_junit_curl import (
+        K3sJunitCurlPlan,
+        build_k3s_junit_curl_plan,
+    )
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = build_k3s_junit_curl_plan(runner, _make_k3s_request())
+
+    assert isinstance(plan, K3sJunitCurlPlan)
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert len(plan.task_ids) > 0
+    assert "vm.ensure_running" in plan.task_ids
+    assert "tests.run_k3s_curl_checks" in plan.task_ids
+    assert "tests.run_k8s_junit" in plan.task_ids
+    assert "vm.down" in plan.task_ids
