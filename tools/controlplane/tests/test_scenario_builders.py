@@ -285,3 +285,45 @@ def test_build_helm_stack_plan_returns_correct_type(tmp_path: Path) -> None:
     assert "helm.deploy_control_plane" in plan.task_ids
     assert "loadtest.install_k6" in plan.task_ids
     assert "loadtest.run" in plan.task_ids
+
+
+def _make_cli_stack_request() -> E2eRequest:
+    return E2eRequest(
+        scenario="cli-stack",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        namespace="nanofaas-cli-stack-e2e",
+    )
+
+
+def test_cli_stack_plan_satisfies_protocol() -> None:
+    from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="cli.build_install_dist")
+    plan = CliStackPlan(
+        scenario=MagicMock(), request=_make_cli_stack_request(), steps=[step], runner=MagicMock()
+    )
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert plan.task_ids == ["cli.build_install_dist"]
+
+
+def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.cli_stack import (
+        CliStackPlan,
+        build_cli_stack_plan,
+    )
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = build_cli_stack_plan(runner, _make_cli_stack_request())
+
+    assert isinstance(plan, CliStackPlan)
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert len(plan.task_ids) > 0
+    assert "vm.ensure_running" in plan.task_ids
+    assert "cli.build_install_dist" in plan.task_ids
+    assert "cli.fn_list_selected" in plan.task_ids
+    assert "cli.fn_invoke_selected.echo-test" in plan.task_ids
+    assert "vm.down" in plan.task_ids
