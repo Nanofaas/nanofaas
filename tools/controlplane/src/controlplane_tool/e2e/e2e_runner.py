@@ -622,7 +622,7 @@ class E2eRunner:
         from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
         from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
         if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan)):
-            plan.run()
+            plan.run(event_listener=event_listener)
         else:
             self.execute(plan, event_listener=event_listener)
         return plan

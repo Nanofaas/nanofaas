@@ -1010,3 +1010,29 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
         f"Expected AzureVmLoadtestPlan, got {type(plans[0])}"
     )
     assert "functions.register" in plans[0].task_ids
+
+
+def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) -> None:
+    """E2eRunner.run() must forward event_listener when dispatching to a builder plan."""
+    from unittest.mock import patch
+
+    captured: dict = {}
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
+    )
+    listener = lambda event: None  # noqa: E731
+
+    with patch.object(
+        runner,
+        "_execute_steps",
+        side_effect=lambda plan, event_listener=None: captured.update({"event_listener": event_listener}),
+    ):
+        runner.run(request, event_listener=listener)
+
+    assert captured.get("event_listener") is listener, (
+        "event_listener was not forwarded — run() must call plan.run(event_listener=event_listener)"
+    )
