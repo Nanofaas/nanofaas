@@ -30,7 +30,7 @@ class EnsureVmRunning:
 class ProvisionBase:
     task_id: str
     title: str
-    vm: _VmRunner
+    vm: VmOrchestrator
     request: VmRequest
     install_helm: bool = False
 
@@ -42,7 +42,7 @@ class ProvisionBase:
 class SyncProject:
     task_id: str
     title: str
-    vm: _VmRunner
+    vm: VmOrchestrator
     request: VmRequest
 
     def run(self) -> None:
