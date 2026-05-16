@@ -38,7 +38,7 @@ class Workflow:
             try:
                 with workflow_step(task_id=task.task_id, title=task.title):
                     task.run()
-            except BaseException as exc:
+            except Exception as exc:
                 cleanup_errors.append(str(exc))
 
         if main_error is not None:

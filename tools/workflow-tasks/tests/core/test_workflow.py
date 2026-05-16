@@ -105,3 +105,14 @@ def test_workflow_cleanup_error_raised_after_main_error() -> None:
 def test_workflow_with_no_tasks_runs_cleanly() -> None:
     workflow = Workflow(tasks=[])
     workflow.run()  # should not raise
+
+
+def test_workflow_cleanup_only_failure_raised() -> None:
+    calls: list[str] = []
+    workflow = Workflow(
+        tasks=[_OkTask(task_id="a", title="A", calls=calls)],
+        cleanup_tasks=[_FailTask(task_id="cleanup", title="Cleanup", calls=calls)],
+    )
+    with pytest.raises(RuntimeError, match="Cleanup failed"):
+        workflow.run()
+    assert calls == ["a", "cleanup"]
