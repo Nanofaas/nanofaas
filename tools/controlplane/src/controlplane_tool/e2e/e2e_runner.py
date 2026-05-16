@@ -428,7 +428,17 @@ class E2eRunner:
                     continue
                 steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                 vm_bootstrap_planned = True
-                plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
+                if scenario.name == "k3s-junit-curl":
+                    from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+                    plans.append(K3sJunitCurlPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                elif scenario.name == "helm-stack":
+                    from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
+                    plans.append(HelmStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                elif scenario.name == "cli-stack":
+                    from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
+                    plans.append(CliStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                else:
+                    plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
                 continue
 
             plans.append(ScenarioPlan(scenario=scenario, request=request, steps=self._planner.local_steps(request)))

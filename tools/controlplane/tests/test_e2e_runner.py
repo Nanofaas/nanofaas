@@ -998,6 +998,45 @@ def test_plan_all_returns_typed_builder_for_two_vm_loadtest(tmp_path: Path) -> N
     assert "loadgen.run_k6" in plans[0].task_ids
 
 
+def test_plan_all_returns_typed_builder_for_k3s_junit_curl(tmp_path: Path) -> None:
+    """plan_all() must return K3sJunitCurlPlan for k3s-junit-curl, not generic ScenarioPlan."""
+    from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["k3s-junit-curl"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], K3sJunitCurlPlan), (
+        f"Expected K3sJunitCurlPlan, got {type(plans[0])}"
+    )
+
+
+def test_plan_all_returns_typed_builder_for_helm_stack(tmp_path: Path) -> None:
+    """plan_all() must return HelmStackPlan for helm-stack."""
+    from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["helm-stack"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], HelmStackPlan), (
+        f"Expected HelmStackPlan, got {type(plans[0])}"
+    )
+
+
+def test_plan_all_returns_typed_builder_for_cli_stack(tmp_path: Path) -> None:
+    """plan_all() must return CliStackPlan for cli-stack."""
+    from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["cli-stack"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], CliStackPlan), (
+        f"Expected CliStackPlan, got {type(plans[0])}"
+    )
+
+
 def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) -> None:
     """plan_all() must return AzureVmLoadtestPlan for azure-vm-loadtest."""
     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
