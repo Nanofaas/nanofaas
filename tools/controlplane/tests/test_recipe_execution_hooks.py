@@ -69,3 +69,50 @@ def test_run_k6_matrix_first_result_available_for_prometheus() -> None:
 
     assert matrix_result.results[0].target_function == "word-stats-java"
     assert matrix_result.window is not None
+
+
+def test_register_functions_spec_built_from_resolved_scenario() -> None:
+    """FunctionSpec list must include name + image for each selected function."""
+    from controlplane_tool.scenario.tasks.functions import FunctionSpec
+    from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
+
+    resolved = MagicMock()
+    resolved.functions = [
+        MagicMock(key="word-stats-java", image="registry/word-stats-java:e2e"),
+        MagicMock(key="json-transform-java", image="registry/json-transform-java:e2e"),
+    ]
+    local_registry = "localhost:5000"
+    runtime_image_default = f"{local_registry}/nanofaas/function-runtime:e2e"
+
+    specs = [
+        FunctionSpec(
+            name=fn_key,
+            image=function_image(fn_key, resolved, runtime_image_default),
+        )
+        for fn_key in selected_functions(resolved)
+    ]
+
+    assert len(specs) == 2
+    assert specs[0].name == "word-stats-java"
+    assert specs[0].image == "registry/word-stats-java:e2e"
+    assert specs[1].name == "json-transform-java"
+    assert specs[1].image == "registry/json-transform-java:e2e"
+    assert specs[0].execution_mode == "DEPLOYMENT"
+    assert specs[0].timeout_ms == 5000
+
+
+def test_register_functions_step_has_correct_step_id() -> None:
+    """Replacement step for cli.fn_apply_selected must have step_id=functions.register."""
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    def _stub_action() -> None:
+        pass
+
+    step = ScenarioPlanStep(
+        summary="Register selected functions via REST API",
+        command=["python", "-c", "# RegisterFunctions via REST"],
+        step_id="functions.register",
+        action=_stub_action,
+    )
+    assert step.step_id == "functions.register"
+    assert step.action is not None

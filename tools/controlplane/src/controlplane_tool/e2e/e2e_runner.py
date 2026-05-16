@@ -8,7 +8,9 @@ from typing import Callable, Literal
 from multipass import MultipassClient
 
 from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmK6Result, TwoVmLoadtestRunner
+from controlplane_tool.scenario.tasks.functions import FunctionSpec, RegisterFunctions
 from controlplane_tool.scenario.tasks.loadtest import K6MatrixResult, RunK6Matrix
+from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
 from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.catalog import ScenarioDefinition, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -123,6 +125,30 @@ def plan_recipe_steps(
         if result.return_code != 0:
             raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
 
+    def _resolve_cp_host() -> str:
+        if host_resolver is not None:
+            return host_resolver(vm_request)
+        return vm_orch.connection_host(vm_request)
+
+    def _on_register_functions() -> None:
+        runtime_image_default = f"{context.local_registry}/nanofaas/function-runtime:e2e"
+        fn_keys = selected_functions(request.resolved_scenario)
+        specs = [
+            FunctionSpec(
+                name=fn_key,
+                image=function_image(fn_key, request.resolved_scenario, runtime_image_default),
+            )
+            for fn_key in fn_keys
+        ]
+        cp_host = _resolve_cp_host()
+        cp_url = f"http://{cp_host}:{TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT}"
+        RegisterFunctions(
+            task_id="functions.register",
+            title="Register functions",
+            control_plane_url=cp_url,
+            specs=specs,
+        ).run()
+
     def _on_loadgen_run_k6() -> None:
         nonlocal two_vm_k6_result, two_vm_k6_matrix_result
         matrix_result = RunK6Matrix(
@@ -232,6 +258,15 @@ def plan_recipe_steps(
                     action=_on_write_report,
                 )
                 for step in component_steps
+            ]
+        if component.component_id == "cli.fn_apply_selected":
+            component_steps = [
+                ScenarioPlanStep(
+                    summary="Register selected functions via REST API",
+                    command=["python", "-c", "# RegisterFunctions via REST"],
+                    step_id="functions.register",
+                    action=_on_register_functions,
+                )
             ]
         steps.extend(component_steps)
     return steps
