@@ -246,7 +246,7 @@ def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
         "helm.deploy_control_plane",
         "helm.deploy_function_runtime",
         "cli.build_install_dist",
-        "cli.fn_apply_selected.echo-test",
+        "functions.register",
         "loadgen.ensure_running",
         "loadgen.provision_base",
         "loadgen.install_k6",
@@ -259,7 +259,7 @@ def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
     assert all(step.step_id for step in plan.steps)
     assert [step.summary for step in plan.steps[-10:]] == [
         "Build nanofaas-cli installDist in VM",
-        "Apply selected function 'echo-test'",
+        "Register selected functions via REST API",
         "Ensure loadgen VM is running",
         "Provision loadgen base dependencies",
         "Install k6 on loadgen VM",
@@ -399,19 +399,16 @@ def test_two_vm_loadtest_applies_functions_before_running_k6(tmp_path: Path) -> 
     plan = runner.plan(request)
 
     step_ids = [step.step_id for step in plan.steps]
-    apply_steps = [
-        index
-        for index, step_id in enumerate(step_ids)
-        if step_id.startswith("cli.fn_apply_selected.")
-    ]
-    assert apply_steps
-    assert max(apply_steps) < step_ids.index("loadgen.run_k6")
+    assert "functions.register" in step_ids
     assert "cli.build_install_dist" in step_ids
-    assert all(
-        step.env.get("NANOFAAS_ENDPOINT") == "http://127.0.0.1:30080"
-        for step in plan.steps
-        if step.step_id.startswith("cli.fn_apply_selected.")
+    register_index = step_ids.index("functions.register")
+    k6_index = step_ids.index("loadgen.run_k6")
+    assert register_index < k6_index, (
+        f"functions.register (idx {register_index}) must precede loadgen.run_k6 (idx {k6_index})"
     )
+    register_step = next(s for s in plan.steps if s.step_id == "functions.register")
+    assert register_step.action is not None
+    assert register_step.summary == "Register selected functions via REST API"
 
 
 def test_two_vm_loadtest_plan_wires_prometheus_snapshot_action() -> None:
