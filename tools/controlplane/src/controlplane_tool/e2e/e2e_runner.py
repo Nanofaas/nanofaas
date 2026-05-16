@@ -274,7 +274,7 @@ def plan_recipe_steps(
                 )
                 for step in component_steps
             ]
-        if component.component_id == "cli.fn_apply_selected":
+        if component.component_id == "cli.fn_apply_selected" and scenario_name in {"two-vm-loadtest", "azure-vm-loadtest"}:
             component_steps = [
                 ScenarioPlanStep(
                     summary="Register selected functions via REST API",

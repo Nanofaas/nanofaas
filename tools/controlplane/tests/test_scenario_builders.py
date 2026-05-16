@@ -327,9 +327,33 @@ def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
     assert "cli.fn_list_selected" in plan.task_ids
     assert "cli.fn_invoke_selected.echo-test" in plan.task_ids
     assert "vm.down" in plan.task_ids
-    # plan_recipe_steps remaps cli.fn_apply_selected → functions.register unconditionally
-    assert "functions.register" in plan.task_ids
-    assert "cli.fn_apply_selected" not in plan.task_ids
+    # cli-stack uses CLI fn apply, not REST API (loadtest-only remap)
+    fn_apply_tasks = [t for t in plan.task_ids if t.startswith("cli.fn_apply_selected")]
+    assert fn_apply_tasks, "cli-stack must include CLI fn apply tasks"
+    assert "functions.register" not in plan.task_ids
+
+
+def test_cli_stack_plan_uses_cli_fn_apply_not_rest_api(tmp_path: Path) -> None:
+    """cli-stack must use CLI fn apply, not the REST API registration.
+
+    Regression test: plan_recipe_steps must NOT remap cli.fn_apply_selected to
+    functions.register for cli-stack — that remap is only for loadtest scenarios.
+    """
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = build_cli_stack_plan(runner, _make_cli_stack_request())
+
+    # Check that at least one fn_apply_selected task exists (e.g., cli.fn_apply_selected.echo-test)
+    fn_apply_tasks = [t for t in plan.task_ids if t.startswith("cli.fn_apply_selected")]
+    assert fn_apply_tasks, (
+        "cli-stack must use the CLI for fn apply (not REST API)"
+    )
+    assert "functions.register" not in plan.task_ids, (
+        "functions.register must not appear in cli-stack — it's a loadtest-only step"
+    )
 
 
 def test_e2e_runner_plan_returns_k3s_junit_curl_builder(tmp_path: Path) -> None:
