@@ -342,18 +342,6 @@ class E2eRunner:
             if request.scenario == "cli-stack":
                 from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
                 return build_cli_stack_plan(self, plan_request)
-            return ScenarioPlan(
-                scenario=scenario,
-                request=plan_request,
-                steps=plan_recipe_steps(
-                    self.paths.workspace_root,
-                    plan_request,
-                    request.scenario,
-                    shell=self.shell,
-                    manifest_root=self.manifest_root,
-                    host_resolver=self._host_resolver,
-                ),
-            )
         steps = (
             self._planner.vm_backed_steps(request)
             if scenario.requires_vm

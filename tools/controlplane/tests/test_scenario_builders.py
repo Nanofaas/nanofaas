@@ -327,6 +327,9 @@ def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
     assert "cli.fn_list_selected" in plan.task_ids
     assert "cli.fn_invoke_selected.echo-test" in plan.task_ids
     assert "vm.down" in plan.task_ids
+    # plan_recipe_steps remaps cli.fn_apply_selected → functions.register unconditionally
+    assert "functions.register" in plan.task_ids
+    assert "cli.fn_apply_selected" not in plan.task_ids
 
 
 def test_e2e_runner_plan_returns_k3s_junit_curl_builder(tmp_path: Path) -> None:
