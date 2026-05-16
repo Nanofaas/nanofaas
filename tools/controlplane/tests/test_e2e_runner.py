@@ -1127,3 +1127,27 @@ def test_plan_all_returns_typed_cli_host_plan(tmp_path: Path) -> None:
 
     assert len(plans) == 1
     assert isinstance(plans[0], CliHostPlan), f"Expected CliHostPlan, got {type(plans[0])}"
+
+
+def test_plan_and_plan_all_produce_consistent_step_ids_for_cli(tmp_path: Path) -> None:
+    """plan() and plan_all(only=['cli']) must produce the same step IDs."""
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    vm = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+    request = E2eRequest(scenario="cli", runtime="java", vm=vm)
+
+    single_plan = runner.plan(request)
+    [all_plan] = runner.plan_all(only=["cli"])
+
+    assert single_plan.task_ids == all_plan.task_ids
+
+
+def test_plan_and_plan_all_produce_consistent_step_ids_for_cli_host(tmp_path: Path) -> None:
+    """plan() and plan_all(only=['cli-host']) must produce the same step IDs."""
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    vm = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+    request = E2eRequest(scenario="cli-host", runtime="java", vm=vm)
+
+    single_plan = runner.plan(request)
+    [all_plan] = runner.plan_all(only=["cli-host"])
+
+    assert single_plan.task_ids == all_plan.task_ids
