@@ -1105,3 +1105,25 @@ def test_plan_returns_typed_cli_host_plan(tmp_path: Path) -> None:
 
     assert isinstance(plan, CliHostPlan), f"Expected CliHostPlan, got {type(plan)}"
     assert "cli.host_platform_flow" in plan.task_ids
+
+
+def test_plan_all_returns_typed_cli_vm_plan(tmp_path: Path) -> None:
+    """plan_all() must return CliVmPlan for cli scenario."""
+    from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["cli"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], CliVmPlan), f"Expected CliVmPlan, got {type(plans[0])}"
+
+
+def test_plan_all_returns_typed_cli_host_plan(tmp_path: Path) -> None:
+    """plan_all() must return CliHostPlan for cli-host scenario."""
+    from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["cli-host"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], CliHostPlan), f"Expected CliHostPlan, got {type(plans[0])}"

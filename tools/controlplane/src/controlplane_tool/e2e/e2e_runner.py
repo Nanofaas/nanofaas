@@ -344,11 +344,16 @@ class E2eRunner:
             if request.scenario == "cli-stack":
                 from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
                 return build_cli_stack_plan(self, plan_request)
-        steps = (
-            self._planner.vm_backed_steps(request)
-            if scenario.requires_vm
-            else self._planner.local_steps(request)
-        )
+        if scenario.requires_vm:
+            if request.scenario == "cli":
+                from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
+                return build_cli_vm_plan(self, request)
+            if request.scenario == "cli-host":
+                from controlplane_tool.scenario.scenarios.cli_host import build_cli_host_plan
+                return build_cli_host_plan(self, request)
+            steps = self._planner.vm_backed_steps(request)
+        else:
+            steps = self._planner.local_steps(request)
         return ScenarioPlan(scenario=scenario, request=request, steps=steps)
 
     def plan_all(
@@ -443,6 +448,12 @@ class E2eRunner:
                 if scenario.name == "cli-stack":
                     from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
                     plans.append(CliStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                elif scenario.name == "cli":
+                    from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
+                    plans.append(CliVmPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                elif scenario.name == "cli-host":
+                    from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
+                    plans.append(CliHostPlan(scenario=scenario, request=request, steps=steps, runner=self))
                 else:
                     plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
                 continue
@@ -637,7 +648,9 @@ class E2eRunner:
         from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
         from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
         from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
-        if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan)):
+        from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
+        from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
+        if isinstance(plan, (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan, CliVmPlan, CliHostPlan)):
             plan.run(event_listener=event_listener)
         else:
             self.execute(plan, event_listener=event_listener)
@@ -678,7 +691,9 @@ class E2eRunner:
             from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
             from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
             from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
-            _BUILDER_TYPES = (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan)
+            from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
+            from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
+            _BUILDER_TYPES = (TwoVmLoadtestPlan, AzureVmLoadtestPlan, K3sJunitCurlPlan, HelmStackPlan, CliStackPlan, CliVmPlan, CliHostPlan)
             for plan in plans:
                 if isinstance(plan, _BUILDER_TYPES):
                     plan.run()
