@@ -95,3 +95,58 @@ def test_build_two_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None
     assert "cli.fn_apply_selected" not in plan.task_ids
     assert "loadgen.run_k6" in plan.task_ids
     assert "vm.down" in plan.task_ids
+
+
+def _make_azure_request() -> E2eRequest:
+    return E2eRequest(
+        scenario="azure-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(
+            lifecycle="azure",
+            name="nanofaas-azure",
+            azure_resource_group="my-rg",
+            azure_location="westeurope",
+        ),
+        loadgen_vm=VmRequest(
+            lifecycle="azure",
+            name="nanofaas-azure-loadgen",
+            azure_resource_group="my-rg",
+            azure_location="westeurope",
+            azure_vm_size="Standard_B1s",
+        ),
+    )
+
+
+def test_azure_vm_loadtest_plan_satisfies_protocol() -> None:
+    from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="vm.ensure_running")
+    plan = AzureVmLoadtestPlan(
+        scenario=MagicMock(),
+        request=_make_azure_request(),
+        steps=[step],
+        runner=MagicMock(),
+    )
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert plan.task_ids == ["vm.ensure_running"]
+
+
+def test_build_azure_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None:
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.azure_vm_loadtest import (
+        AzureVmLoadtestPlan,
+        build_azure_vm_loadtest_plan,
+    )
+    from controlplane_tool.core.shell_backend import RecordingShell
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = _make_azure_request()
+
+    plan = build_azure_vm_loadtest_plan(runner, request)
+
+    assert isinstance(plan, AzureVmLoadtestPlan)
+    assert isinstance(plan, ScenarioPlanProtocol)
+    assert len(plan.task_ids) > 0
+    assert "functions.register" in plan.task_ids
+    assert "cli.fn_apply_selected" not in plan.task_ids
