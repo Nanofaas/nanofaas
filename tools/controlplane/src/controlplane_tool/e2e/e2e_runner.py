@@ -416,17 +416,15 @@ class E2eRunner:
                 local_registry=local_registry,
             )
             if scenario.requires_vm:
-                if scenario.name in {"two-vm-loadtest", "azure-vm-loadtest"}:
-                    steps = plan_recipe_steps(
-                        self.paths.workspace_root,
-                        request,
-                        scenario.name,
-                        shell=self.shell,
-                        manifest_root=self.manifest_root,
-                        host_resolver=self._host_resolver,
-                    )
+                if scenario.name == "two-vm-loadtest":
+                    from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
+                    plans.append(build_two_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
-                    plans.append(ScenarioPlan(scenario=scenario, request=request, steps=steps))
+                    continue
+                if scenario.name == "azure-vm-loadtest":
+                    from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
+                    plans.append(build_azure_vm_loadtest_plan(self, request))
+                    vm_bootstrap_planned = True
                     continue
                 steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                 vm_bootstrap_planned = True

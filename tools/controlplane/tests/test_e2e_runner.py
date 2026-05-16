@@ -981,3 +981,32 @@ def test_execute_reports_main_and_cleanup_failures() -> None:
     assert "Broken step" in message
     assert "Cleanup failed:" in message
     assert "cleanup failed" in message
+
+
+def test_plan_all_returns_typed_builder_for_two_vm_loadtest(tmp_path: Path) -> None:
+    """plan_all() must return TwoVmLoadtestPlan for two-vm-loadtest, not generic ScenarioPlan."""
+    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["two-vm-loadtest"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], TwoVmLoadtestPlan), (
+        f"Expected TwoVmLoadtestPlan, got {type(plans[0])}"
+    )
+    assert "functions.register" in plans[0].task_ids
+    assert "loadgen.run_k6" in plans[0].task_ids
+
+
+def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) -> None:
+    """plan_all() must return AzureVmLoadtestPlan for azure-vm-loadtest."""
+    from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["azure-vm-loadtest"])
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], AzureVmLoadtestPlan), (
+        f"Expected AzureVmLoadtestPlan, got {type(plans[0])}"
+    )
+    assert "functions.register" in plans[0].task_ids
