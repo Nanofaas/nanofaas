@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class CliHostPlan:
-    """ScenarioPlan Protocol implementation for the cli-host scenario."""
+    """ScenarioPlan Protocol implementation for cli."""
 
     scenario: ScenarioDefinition
     request: E2eRequest
@@ -26,6 +26,7 @@ class CliHostPlan:
 
     def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.e2e_runner import ScenarioPlan
+
         legacy = ScenarioPlan(
             scenario=self.scenario,
             request=self.request,
@@ -34,8 +35,12 @@ class CliHostPlan:
         self.runner._execute_steps(legacy, event_listener=event_listener)
 
 
-def build_cli_host_plan(runner: "E2eRunner", request: E2eRequest) -> CliHostPlan:
+def build_cli_host_plan(
+    runner: "E2eRunner",
+    request: E2eRequest,
+) -> CliHostPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
+
     scenario = resolve_scenario("cli-host")
     steps = runner._planner.vm_backed_steps(request)
     return CliHostPlan(scenario=scenario, request=request, steps=steps, runner=runner)
