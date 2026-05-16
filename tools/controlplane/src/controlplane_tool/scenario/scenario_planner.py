@@ -553,9 +553,6 @@ class ScenarioPlanner:
         ]
 
     def vm_scenario_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
-        if request.scenario == "k3s-junit-curl":
-            return self.k3s_junit_curl_steps(request)
-
         if request.scenario == "cli":
             return [
                 self._step(
