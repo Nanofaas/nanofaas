@@ -658,13 +658,7 @@ class NanofaasTUI:
                 except KeyboardInterrupt:
                     console.print("\n  [dim]← back[/]")
                 except Exception as exc:  # noqa: BLE001
-                    tb = traceback.format_exc(limit=8).strip()
-                    body = f"[bold red]✗  {escape(str(exc))}[/]"
-                    if tb:
-                        body += f"\n\n[dim]{escape(tb)}[/]"
-                    console.print()
-                    console.print(Panel(body, border_style="red", padding=(0, 2)))
-                    console.print()
+                    fail(str(exc), detail=traceback.format_exc(limit=8))
         except KeyboardInterrupt:
             pass
         console.print("\n[dim]Bye.[/]\n")
