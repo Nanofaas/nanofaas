@@ -29,8 +29,8 @@ class AzureVmLoadtestPlan:
         return [s.step_id for s in self.steps if s.step_id]
 
     def run(self, event_listener=None) -> None:
-        from controlplane_tool.e2e.e2e_runner import ScenarioPlan
-        legacy = ScenarioPlan(
+        from controlplane_tool.e2e.e2e_runner import E2ePlan
+        legacy = E2ePlan(
             scenario=self.scenario,
             request=self.request,
             steps=self.steps,
