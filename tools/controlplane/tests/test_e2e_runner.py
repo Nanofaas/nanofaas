@@ -1206,3 +1206,29 @@ def test_plan_returns_scenario_plan_protocol(tmp_path: Path) -> None:
     plan = runner.plan(E2eRequest(scenario="docker", runtime="java"))
 
     assert isinstance(plan, ScenarioPlanProtocol), f"Expected ScenarioPlanProtocol, got {type(plan)}"
+
+
+def test_run_all_forwards_event_listener_to_builder_plans(tmp_path: Path) -> None:
+    """run_all() must forward event_listener to plan.run() for builder plans."""
+    from unittest.mock import patch
+    from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
+    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    vm = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+    fake_steps = [ScenarioPlanStep(summary="s", command=["echo", "hi"], step_id="s.one")]
+    fake_plan = CliVmPlan(
+        scenario=runner.plan(E2eRequest(scenario="cli", runtime="java", vm=vm)).scenario,
+        request=E2eRequest(scenario="cli", runtime="java", vm=vm),
+        steps=fake_steps,
+        runner=runner,
+    )
+
+    def listener(event):
+        pass
+
+    with patch.object(runner, "plan_all", return_value=[fake_plan]):
+        with patch.object(fake_plan, "run") as mock_run:
+            runner.run_all(event_listener=listener)
+
+    mock_run.assert_called_once_with(event_listener=listener)

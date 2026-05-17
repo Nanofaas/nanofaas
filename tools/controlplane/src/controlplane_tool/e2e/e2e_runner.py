@@ -660,6 +660,7 @@ class E2eRunner:
         cleanup_vm: bool = True,
         namespace: str | None = None,
         local_registry: str = "localhost:5000",
+        event_listener: Callable[[ScenarioStepEvent], None] | None = None,
     ) -> list[ScenarioPlan]:
         initial_count = self._recorded_command_count()
         plans = self.plan_all(
@@ -681,9 +682,9 @@ class E2eRunner:
         try:
             for plan in plans:
                 if isinstance(plan, E2ePlan):
-                    self._execute_steps(plan)
+                    self._execute_steps(plan, event_listener=event_listener)
                 else:
-                    plan.run()
+                    plan.run(event_listener=event_listener)
             succeeded = True
             return plans
         finally:
