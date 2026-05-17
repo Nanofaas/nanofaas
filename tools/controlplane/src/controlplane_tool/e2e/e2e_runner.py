@@ -443,19 +443,19 @@ class E2eRunner:
                     plans.append(build_helm_stack_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
-                vm_bootstrap_planned = True
                 if scenario.name == "cli-stack":
+                    steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                     from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
                     plans.append(CliStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
                 elif scenario.name == "cli":
-                    from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
-                    plans.append(CliVmPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                    from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
+                    plans.append(build_cli_vm_plan(self, request, include_bootstrap=not vm_bootstrap_planned))
                 elif scenario.name == "cli-host":
-                    from controlplane_tool.scenario.scenarios.cli_host import CliHostPlan
-                    plans.append(CliHostPlan(scenario=scenario, request=request, steps=steps, runner=self))
+                    from controlplane_tool.scenario.scenarios.cli_host import build_cli_host_plan
+                    plans.append(build_cli_host_plan(self, request, include_bootstrap=not vm_bootstrap_planned))
                 else:
                     raise ValueError(f"Unsupported VM-backed scenario in plan_all(): {scenario.name!r}")
+                vm_bootstrap_planned = True
                 continue
 
             plans.append(E2ePlan(scenario=scenario, request=request, steps=self._planner.local_steps(request)))

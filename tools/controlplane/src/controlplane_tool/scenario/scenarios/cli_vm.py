@@ -38,9 +38,10 @@ class CliVmPlan:
 def build_cli_vm_plan(
     runner: "E2eRunner",
     request: E2eRequest,
+    include_bootstrap: bool = True,
 ) -> CliVmPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
 
     scenario = resolve_scenario("cli")
-    steps = runner._planner.vm_backed_steps(request)
+    steps = runner._planner.vm_backed_steps(request, include_bootstrap=include_bootstrap)
     return CliVmPlan(scenario=scenario, request=request, steps=steps, runner=runner)

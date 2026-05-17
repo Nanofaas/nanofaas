@@ -38,9 +38,10 @@ class CliHostPlan:
 def build_cli_host_plan(
     runner: "E2eRunner",
     request: E2eRequest,
+    include_bootstrap: bool = True,
 ) -> CliHostPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
 
     scenario = resolve_scenario("cli-host")
-    steps = runner._planner.vm_backed_steps(request)
+    steps = runner._planner.vm_backed_steps(request, include_bootstrap=include_bootstrap)
     return CliHostPlan(scenario=scenario, request=request, steps=steps, runner=runner)
