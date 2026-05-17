@@ -6,7 +6,7 @@ from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_com
 
 
 def test_default_two_vm_k6_script_reads_payload_in_init_context() -> None:
-    script = Path("tools/controlplane/assets/k6/two-vm-function-invoke.js").read_text(
+    script = (Path(__file__).parent.parent / "assets/k6/two-vm-function-invoke.js").read_text(
         encoding="utf-8"
     )
 
