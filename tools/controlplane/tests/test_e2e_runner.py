@@ -1232,3 +1232,13 @@ def test_run_all_forwards_event_listener_to_builder_plans(tmp_path: Path) -> Non
             runner.run_all(event_listener=listener)
 
     mock_run.assert_called_once_with(event_listener=listener)
+
+
+def test_plan_docker_returns_e2e_plan(tmp_path: Path) -> None:
+    """plan() for local scenario returns E2ePlan (non-VM path)."""
+    from controlplane_tool.e2e.e2e_runner import E2ePlan
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(scenario="docker", runtime="java"))
+
+    assert isinstance(plan, E2ePlan)

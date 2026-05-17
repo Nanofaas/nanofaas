@@ -309,49 +309,49 @@ class E2eRunner:
         )
         self._resolver = CommandResolver(host_resolver=host_resolver)
 
+    def _prepare_recipe_request(self, request: E2eRequest) -> E2eRequest:
+        recipe = build_scenario_recipe(request.scenario)
+        if (request.vm is None and recipe.requires_managed_vm) or (
+            request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"}
+            and request.loadgen_vm is None
+        ):
+            context = resolve_scenario_environment(self.paths.workspace_root, request)
+            updates: dict[str, object] = {}
+            if request.vm is None and recipe.requires_managed_vm:
+                updates["vm"] = context.vm_request
+            if request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"} and request.loadgen_vm is None:
+                updates["loadgen_vm"] = loadgen_vm_request(context)
+            return request.model_copy(update=updates)
+        return request
+
     def plan(self, request: E2eRequest) -> ScenarioPlan:
         scenario = resolve_scenario(request.scenario)
         if request.runtime not in scenario.supported_runtimes:
             raise ValueError(
                 f"Scenario '{request.scenario}' does not support runtime '{request.runtime}'"
             )
-        if request.scenario in {"k3s-junit-curl", "helm-stack", "cli-stack",
-                                 "two-vm-loadtest", "azure-vm-loadtest"}:
-            plan_request = request
-            recipe = build_scenario_recipe(request.scenario)
-            if (request.vm is None and recipe.requires_managed_vm) or (
-                request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"}
-                and request.loadgen_vm is None
-            ):
-                context = resolve_scenario_environment(self.paths.workspace_root, request)
-                updates: dict[str, object] = {}
-                if request.vm is None and recipe.requires_managed_vm:
-                    updates["vm"] = context.vm_request
-                if request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"} and request.loadgen_vm is None:
-                    updates["loadgen_vm"] = loadgen_vm_request(context)
-                plan_request = request.model_copy(update=updates)
-            if request.scenario == "two-vm-loadtest":
-                from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
-                return build_two_vm_loadtest_plan(self, plan_request)
-            if request.scenario == "azure-vm-loadtest":
-                from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
-                return build_azure_vm_loadtest_plan(self, plan_request)
-            if request.scenario == "k3s-junit-curl":
-                from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
-                return build_k3s_junit_curl_plan(self, plan_request)
-            if request.scenario == "helm-stack":
-                from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
-                return build_helm_stack_plan(self, plan_request)
-            if request.scenario == "cli-stack":
-                from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
-                return build_cli_stack_plan(self, plan_request)
+        if request.scenario == "two-vm-loadtest":
+            from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
+            return build_two_vm_loadtest_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "azure-vm-loadtest":
+            from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
+            return build_azure_vm_loadtest_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "k3s-junit-curl":
+            from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
+            return build_k3s_junit_curl_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "helm-stack":
+            from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
+            return build_helm_stack_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "cli-stack":
+            from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
+            return build_cli_stack_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "cli":
+            from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
+            return build_cli_vm_plan(self, request)
+        if request.scenario == "cli-host":
+            from controlplane_tool.scenario.scenarios.cli_host import build_cli_host_plan
+            return build_cli_host_plan(self, request)
         if scenario.requires_vm:
-            if request.scenario == "cli":
-                from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
-                return build_cli_vm_plan(self, request)
-            if request.scenario == "cli-host":
-                from controlplane_tool.scenario.scenarios.cli_host import build_cli_host_plan
-                return build_cli_host_plan(self, request)
             raise ValueError(f"Unsupported VM-backed scenario: {request.scenario!r}")
         steps = self._planner.local_steps(request)
         return E2ePlan(scenario=scenario, request=request, steps=steps)
