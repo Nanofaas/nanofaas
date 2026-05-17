@@ -26,6 +26,7 @@ from controlplane_tool.scenario.components.executor import (
     ScenarioPlanStep,
     operations_to_plan_steps,
 )
+from controlplane_tool.scenario.scenarios import ScenarioPlan
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.two_vm_loadtest_config import TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT
 from controlplane_tool.scenario.components.two_vm_loadtest import loadgen_vm_request
@@ -41,11 +42,11 @@ from workflow_tasks.workflow.events import WorkflowContext
 
 
 @dataclass(frozen=True)
-class ScenarioPlan:
+class E2ePlan:
     scenario: ScenarioDefinition
     request: E2eRequest
     steps: list[ScenarioPlanStep]
-    executor: "Callable[[ScenarioPlan], None] | None" = field(
+    executor: "Callable[[E2ePlan], None] | None" = field(
         default=None, repr=False, compare=False
     )
 
@@ -54,10 +55,10 @@ class ScenarioPlan:
         """Step IDs in execution order, for TUI dry-run planning."""
         return [s.step_id for s in self.steps if s.step_id]
 
-    def run(self) -> None:
+    def run(self, event_listener=None) -> None:
         if self.executor is None:
             raise RuntimeError(
-                "ScenarioPlan.run() requires an executor — use E2eRunner.execute(plan)"
+                "E2ePlan.run() requires an executor — use E2eRunner.execute(plan)"
             )
         self.executor(self)
 
@@ -353,7 +354,7 @@ class E2eRunner:
                 return build_cli_host_plan(self, request)
             raise ValueError(f"Unsupported VM-backed scenario: {request.scenario!r}")
         steps = self._planner.local_steps(request)
-        return ScenarioPlan(scenario=scenario, request=request, steps=steps)
+        return E2ePlan(scenario=scenario, request=request, steps=steps)
 
     def plan_all(
         self,
@@ -457,7 +458,7 @@ class E2eRunner:
                     raise ValueError(f"Unsupported VM-backed scenario in plan_all(): {scenario.name!r}")
                 continue
 
-            plans.append(ScenarioPlan(scenario=scenario, request=request, steps=self._planner.local_steps(request)))
+            plans.append(E2ePlan(scenario=scenario, request=request, steps=self._planner.local_steps(request)))
         return plans
 
     def _emit_event(
@@ -489,7 +490,7 @@ class E2eRunner:
 
     def _execute_steps(
         self,
-        plan: ScenarioPlan,
+        plan: E2ePlan,
         event_listener: Callable[[ScenarioStepEvent], None] | None = None,
     ) -> None:
         ip_cache: dict[str, str] = {}
@@ -526,7 +527,7 @@ class E2eRunner:
 
     def _execute_step(
         self,
-        plan: ScenarioPlan,
+        plan: E2ePlan,
         step_index: int,
         total_steps: int,
         step: ScenarioPlanStep,
@@ -621,7 +622,7 @@ class E2eRunner:
 
     def execute(
         self,
-        plan: ScenarioPlan,
+        plan: E2ePlan,
         *,
         event_listener: Callable[[ScenarioStepEvent], None] | None = None,
     ) -> None:
@@ -642,7 +643,7 @@ class E2eRunner:
         initial_count = self._recorded_command_count()
         plan = self.plan(request)
         self._discard_planning_commands(initial_count)
-        if isinstance(plan, ScenarioPlan):
+        if isinstance(plan, E2ePlan):
             self.execute(plan, event_listener=event_listener)
         else:
             plan.run(event_listener=event_listener)
@@ -679,7 +680,7 @@ class E2eRunner:
         succeeded = False
         try:
             for plan in plans:
-                if isinstance(plan, ScenarioPlan):
+                if isinstance(plan, E2ePlan):
                     self._execute_steps(plan)
                 else:
                     plan.run()

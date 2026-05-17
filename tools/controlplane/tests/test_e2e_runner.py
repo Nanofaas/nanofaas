@@ -4,7 +4,7 @@ import pytest
 
 from workflow_tasks import bind_workflow_sink, workflow_log
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan, ScenarioPlanStep
+from controlplane_tool.e2e.e2e_runner import E2eRunner, E2ePlan, ScenarioPlanStep
 from controlplane_tool.scenario.scenario_loader import load_scenario_file
 from controlplane_tool.scenario.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario.components.composer import compose_recipe
@@ -797,7 +797,7 @@ def test_operation_to_plan_step_preserves_command_env_and_step_id_after_task_bri
 
 def test_execute_binds_step_context_for_nested_workflow_events(fake_sink) -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plan = ScenarioPlan(
+    plan = E2ePlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
@@ -822,7 +822,7 @@ def test_execute_binds_step_context_for_nested_workflow_events(fake_sink) -> Non
 
 def test_execute_rejects_step_without_id() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plan = ScenarioPlan(
+    plan = E2ePlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
@@ -840,7 +840,7 @@ def test_execute_rejects_step_without_id() -> None:
 
 def test_execute_emits_step_progress_events() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plan = ScenarioPlan(
+    plan = E2ePlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
@@ -867,7 +867,7 @@ def test_execute_emits_failure_event_when_step_fails() -> None:
         stderr_map={("false",): "kaboom"},
     )
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
-    plan = ScenarioPlan(
+    plan = E2ePlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken")],
@@ -892,7 +892,7 @@ def test_execute_runs_always_cleanup_steps_after_failure() -> None:
     shell = ScriptedShell(return_code_map={("false",): 7})
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
     cleanup_calls: list[str] = []
-    plan = ScenarioPlan(
+    plan = E2ePlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
@@ -916,7 +916,7 @@ def test_execute_runs_always_cleanup_steps_after_failure() -> None:
 def test_execute_reports_main_and_cleanup_failures() -> None:
     shell = ScriptedShell(return_code_map={("false",): 7})
     runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
-    plan = ScenarioPlan(
+    plan = E2ePlan(
         scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
         request=E2eRequest(scenario="docker", runtime="java"),
         steps=[
@@ -1180,9 +1180,8 @@ def test_plan_raises_for_unknown_vm_scenario(tmp_path: Path) -> None:
 
 
 def test_run_dispatches_new_builder_without_explicit_registration(tmp_path: Path) -> None:
-    """run() must dispatch any non-ScenarioPlan object via plan.run() — no registration needed."""
+    """run() must dispatch any non-E2ePlan object via plan.run() — no registration needed."""
     from unittest.mock import MagicMock, patch
-    from controlplane_tool.e2e.e2e_runner import ScenarioPlan as LegacyPlan
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
 
@@ -1191,9 +1190,19 @@ def test_run_dispatches_new_builder_without_explicit_registration(tmp_path: Path
     fake_request = E2eRequest(scenario="cli", runtime="java", vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"))
     fake_builder.request = fake_request
 
-    assert not isinstance(fake_builder, LegacyPlan), "Sanity check: fake builder is not legacy ScenarioPlan"
+    assert not isinstance(fake_builder, E2ePlan), "Sanity check: fake builder is not E2ePlan"
 
     with patch.object(runner, "plan", return_value=fake_builder):
         runner.run(fake_request)
 
     fake_builder.run.assert_called_once()
+
+
+def test_plan_returns_scenario_plan_protocol(tmp_path: Path) -> None:
+    """plan() must return an object satisfying the ScenarioPlan Protocol."""
+    from controlplane_tool.scenario.scenarios import ScenarioPlan as ScenarioPlanProtocol
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(scenario="docker", runtime="java"))
+
+    assert isinstance(plan, ScenarioPlanProtocol), f"Expected ScenarioPlanProtocol, got {type(plan)}"
