@@ -22,7 +22,7 @@ class TuiEventApplier:
             dashboard.mark_step_success(event.step_index)
             dashboard.append_log(f"[done] {event.step.summary}")
             return
-        dashboard.mark_step_failed(event.step_index)
+        dashboard.mark_step_failed(event.step_index, event.error or "")
         dashboard.append_log(
             f"[fail] {event.step.summary}" + (f" ({event.error})" if event.error else "")
         )
