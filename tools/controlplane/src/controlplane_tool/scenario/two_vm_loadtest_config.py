@@ -3,8 +3,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from workflow_tasks.loadtest.models import PrometheusQuery
+
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
+
+LOADTEST_PROMETHEUS_QUERIES: tuple[PrometheusQuery, ...] = (
+    PrometheusQuery("function_dispatch_total", "function_dispatch_total", required=True),
+    PrometheusQuery("function_success_total", "function_success_total", required=True),
+    PrometheusQuery("function_error_total", "function_error_total"),
+    PrometheusQuery("function_latency_ms", "function_latency_ms"),
+    PrometheusQuery("function_e2e_latency_ms", "function_e2e_latency_ms"),
+    PrometheusQuery("process_cpu_usage", "process_cpu_usage"),
+    PrometheusQuery("jvm_memory_used_bytes", "jvm_memory_used_bytes"),
+)
+
+LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = (
+    "vm.stack.ensure_running",
+    "vm.loadgen.ensure_running",
+    "loadgen.install_k6",
+    "loadgen.run_k6",
+    "loadgen.fetch_results",
+    "metrics.prometheus_snapshot",
+    "loadtest.write_report",
+    "vm.loadgen.destroy",
+)
 
 
 TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT = 30080

@@ -84,7 +84,9 @@ class AzureVmOrchestrator:
         *,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
+        dry_run: bool = False,
     ) -> ShellExecutionResult:
+        del dry_run  # Azure SDK has no dry-run mode; accepted for protocol compatibility
         vm = self._client(request).get_vm(self._vm_name(request))
         result = vm.exec_structured(list(argv), env=env, cwd=cwd)
         return ShellExecutionResult(

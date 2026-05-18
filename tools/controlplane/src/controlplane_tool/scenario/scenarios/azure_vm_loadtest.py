@@ -16,15 +16,21 @@ from workflow_tasks import (
     WriteK6Report,
     workflow_step,
 )
-from workflow_tasks.loadtest.models import K6Config, K6Stage, PrometheusQuery
+from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm_lifecycle_adapters import AzureVmAdapter
-from controlplane_tool.loadtest.loadtest_adapters import HttpPrometheusClient, VmFileFetcher
+from controlplane_tool.loadtest.loadtest_adapters import (
+    HttpPrometheusClient,
+    OrchestratorVmRunner,
+    VmFileFetcher,
+)
 from controlplane_tool.scenario.catalog import ScenarioDefinition
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 from controlplane_tool.scenario.two_vm_loadtest_config import (
+    LOADTEST_PROMETHEUS_QUERIES,
+    LOADTEST_STATIC_TASK_IDS,
     two_vm_control_plane_url,
     two_vm_load_stages,
     two_vm_prometheus_url,
@@ -36,28 +42,6 @@ if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
 
 
-_PROMETHEUS_QUERIES: tuple[PrometheusQuery, ...] = (
-    PrometheusQuery("function_dispatch_total", "function_dispatch_total", required=True),
-    PrometheusQuery("function_success_total", "function_success_total", required=True),
-    PrometheusQuery("function_error_total", "function_error_total"),
-    PrometheusQuery("function_latency_ms", "function_latency_ms"),
-    PrometheusQuery("function_e2e_latency_ms", "function_e2e_latency_ms"),
-    PrometheusQuery("process_cpu_usage", "process_cpu_usage"),
-    PrometheusQuery("jvm_memory_used_bytes", "jvm_memory_used_bytes"),
-)
-
-_STATIC_TASK_IDS: tuple[str, ...] = (
-    "vm.stack.ensure_running",
-    "vm.loadgen.ensure_running",
-    "loadgen.install_k6",
-    "loadgen.run_k6",
-    "loadgen.fetch_results",
-    "metrics.prometheus_snapshot",
-    "loadtest.write_report",
-    "vm.loadgen.destroy",
-)
-
-
 @dataclass
 class AzureVmLoadtestPlan:
     scenario: ScenarioDefinition
@@ -67,9 +51,9 @@ class AzureVmLoadtestPlan:
 
     @property
     def task_ids(self) -> list[str]:
-        return list(_STATIC_TASK_IDS)
+        return list(LOADTEST_STATIC_TASK_IDS)
 
-    def run(self, event_listener=None) -> None:  # noqa: SLF001
+    def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
         from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
 
@@ -82,15 +66,15 @@ class AzureVmLoadtestPlan:
 
         stack_config = VmConfig(
             name=request.vm.name,
-            cpus=getattr(request.vm, "cpus", 4),
-            memory=getattr(request.vm, "memory", "12G"),
-            disk=getattr(request.vm, "disk", "40G"),
+            cpus=request.vm.cpus,
+            memory=request.vm.memory,
+            disk=request.vm.disk,
         )
         loadgen_config = VmConfig(
             name=request.loadgen_vm.name,
-            cpus=getattr(request.loadgen_vm, "cpus", 2),
-            memory=getattr(request.loadgen_vm, "memory", "8G"),
-            disk=getattr(request.loadgen_vm, "disk", "30G"),
+            cpus=request.loadgen_vm.cpus,
+            memory=request.loadgen_vm.memory,
+            disk=request.loadgen_vm.disk,
         )
 
         ensure_stack = EnsureVmRunning(
@@ -117,17 +101,18 @@ class AzureVmLoadtestPlan:
             payload_name=request.k6_payload.name if request.k6_payload is not None else None,
         )
         run_dir = run_dir_creator._create_run_dir()  # noqa: SLF001
+        control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
 
         k6_config = K6Config(
             script_path=Path(remote_paths.script_path),
-            target_url=two_vm_control_plane_url(request.vm, host=stack_info.host),
+            target_url=control_plane_url,
             summary_output_path=Path(remote_paths.summary_path),
             stages=tuple(
                 K6Stage(duration=d, target=t)
                 for d, t in two_vm_load_stages(request)
             ),
             env={
-                "NANOFAAS_URL": two_vm_control_plane_url(request.vm, host=stack_info.host),
+                "NANOFAAS_URL": control_plane_url,
                 "NANOFAAS_FUNCTION": two_vm_target_function(request),
                 **(
                     {"NANOFAAS_PAYLOAD": str(remote_paths.payload_path)}
@@ -135,24 +120,13 @@ class AzureVmLoadtestPlan:
                     else {}
                 ),
             },
-            vus=getattr(request, "k6_vus", None),
-            duration=getattr(request, "k6_duration", None),
+            vus=request.k6_vus,
+            duration=request.k6_duration,
             payload_path=Path(remote_paths.payload_path) if remote_paths.payload_path else None,
         )
 
-        loadgen_request = request.loadgen_vm
-
-        class _LoadgenAzureRunner:
-            def run_vm_command(self_, argv, *, env, remote_dir, dry_run):  # noqa: N805
-                return azure_orch.exec_argv(
-                    loadgen_request,
-                    argv,
-                    env=env or None,
-                    cwd=remote_dir,
-                )
-
-        loadgen_runner = _LoadgenAzureRunner()
-        fetcher = VmFileFetcher(vm=azure_orch, request=loadgen_request)
+        loadgen_runner = OrchestratorVmRunner(azure_orch, request.loadgen_vm)
+        fetcher = VmFileFetcher(vm=azure_orch, request=request.loadgen_vm)
         prom_client = HttpPrometheusClient(
             url=two_vm_prometheus_url(request.vm, host=stack_info.host)
         )
@@ -185,7 +159,7 @@ class AzureVmLoadtestPlan:
                     task_id="metrics.prometheus_snapshot",
                     title="Capture Prometheus snapshots (Azure)",
                     client=prom_client,
-                    queries=_PROMETHEUS_QUERIES,
+                    queries=LOADTEST_PROMETHEUS_QUERIES,
                     window=lambda: TimeWindow(
                         start=k6_task.result.started_at,
                         end=k6_task.result.ended_at,
