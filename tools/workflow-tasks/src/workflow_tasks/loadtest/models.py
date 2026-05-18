@@ -23,6 +23,7 @@ class K6Config:
     payload_path: Path | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "stages", tuple(self.stages))
         object.__setattr__(self, "env", dict(self.env))
 
 
