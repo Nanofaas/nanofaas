@@ -36,3 +36,26 @@ def test_version_is_set() -> None:
 def test_public_api_exports_task_and_workflow() -> None:
     assert hasattr(workflow_tasks, "Task")
     assert hasattr(workflow_tasks, "Workflow")
+
+
+def test_public_api_exports_vm_tasks() -> None:
+    assert hasattr(workflow_tasks, "VmConfig")
+    assert hasattr(workflow_tasks, "VmInfo")
+    assert hasattr(workflow_tasks, "VmLifecycle")
+    assert hasattr(workflow_tasks, "EnsureVmRunning")
+    assert hasattr(workflow_tasks, "DestroyVm")
+
+
+def test_public_api_exports_loadtest_tasks() -> None:
+    assert hasattr(workflow_tasks, "K6Config")
+    assert hasattr(workflow_tasks, "K6Stage")
+    assert hasattr(workflow_tasks, "K6RunResult")
+    assert hasattr(workflow_tasks, "TimeWindow")
+    assert hasattr(workflow_tasks, "PrometheusQuery")
+    assert hasattr(workflow_tasks, "RemoteFileFetcher")
+    assert hasattr(workflow_tasks, "PrometheusClient")
+    assert hasattr(workflow_tasks, "InstallK6")
+    assert hasattr(workflow_tasks, "RunK6")
+    assert hasattr(workflow_tasks, "FetchVmResults")
+    assert hasattr(workflow_tasks, "CapturePrometheusSnapshot")
+    assert hasattr(workflow_tasks, "WriteK6Report")

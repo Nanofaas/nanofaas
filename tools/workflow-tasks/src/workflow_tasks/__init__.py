@@ -33,6 +33,21 @@ from workflow_tasks.workflow.reporting import (
     workflow_log,
     workflow_step,
 )
+from workflow_tasks.vm import DestroyVm, EnsureVmRunning, VmConfig, VmInfo, VmLifecycle
+from workflow_tasks.loadtest import (
+    CapturePrometheusSnapshot,
+    FetchVmResults,
+    InstallK6,
+    K6Config,
+    K6RunResult,
+    K6Stage,
+    PrometheusClient,
+    PrometheusQuery,
+    RemoteFileFetcher,
+    RunK6,
+    TimeWindow,
+    WriteK6Report,
+)
 
 __all__ = [
     "__version__",
@@ -51,4 +66,10 @@ __all__ = [
     "build_task_event", "build_phase_event", "build_log_event",
     "phase", "step", "success", "warning", "skip", "fail",
     "workflow_log", "workflow_step", "status",
+    # vm
+    "VmConfig", "VmInfo", "VmLifecycle", "EnsureVmRunning", "DestroyVm",
+    # loadtest
+    "K6Config", "K6Stage", "K6RunResult", "TimeWindow", "PrometheusQuery",
+    "RemoteFileFetcher", "PrometheusClient",
+    "InstallK6", "RunK6", "FetchVmResults", "CapturePrometheusSnapshot", "WriteK6Report",
 ]

@@ -31,3 +31,19 @@ def test_tasks_subpackage_does_not_import_workflow() -> None:
     import workflow_tasks.tasks.rendering  # noqa: F401
     # If we got here without importing workflow subpackage transitively, we're good.
     # The import-linter contract enforces this at the CI gate.
+
+
+def test_vm_subpackage_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.vm")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_loadtest_subpackage_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.loadtest")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
