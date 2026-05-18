@@ -297,6 +297,40 @@ def test_capture_prometheus_snapshot_accepts_callable_window(tmp_path: Path) -> 
     assert called == [True]
 
 
+def test_capture_prometheus_snapshot_raises_when_required_query_fails(tmp_path: Path) -> None:
+    class _FailingClient:
+        def query_range(self, expr: str, window: TimeWindow, step_seconds: int = 5) -> list[dict]:
+            raise RuntimeError("prometheus unreachable")
+
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=_FailingClient(),
+        queries=(PrometheusQuery(name="critical_metric", expr="some_metric", required=True),),
+        window=_make_window(),
+        output_dir=tmp_path,
+    )
+    with pytest.raises(RuntimeError, match="critical_metric"):
+        task.run()
+
+
+def test_capture_prometheus_snapshot_raises_when_required_query_returns_empty(tmp_path: Path) -> None:
+    class _EmptyClient:
+        def query_range(self, expr: str, window: TimeWindow, step_seconds: int = 5) -> list[dict]:
+            return []
+
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=_EmptyClient(),
+        queries=(PrometheusQuery(name="critical_metric", expr="some_metric", required=True),),
+        window=_make_window(),
+        output_dir=tmp_path,
+    )
+    with pytest.raises(RuntimeError, match="critical_metric"):
+        task.run()
+
+
 # ---------------------------------------------------------------------------
 # WriteK6Report tests
 # ---------------------------------------------------------------------------
