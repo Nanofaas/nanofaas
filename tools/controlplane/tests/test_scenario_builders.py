@@ -104,17 +104,17 @@ def _make_azure_request() -> E2eRequest:
 
 def test_azure_vm_loadtest_plan_satisfies_protocol() -> None:
     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
-    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 
-    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="vm.ensure_running")
     plan = AzureVmLoadtestPlan(
         scenario=MagicMock(),
         request=_make_azure_request(),
-        steps=[step],
+        steps=[],
         runner=MagicMock(),
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["vm.ensure_running"]
+    # task_ids is now static — derived from _STATIC_TASK_IDS, not from steps
+    assert "loadgen.run_k6" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids
 
 
 def test_build_azure_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -133,8 +133,10 @@ def test_build_azure_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> No
     assert isinstance(plan, AzureVmLoadtestPlan)
     assert isinstance(plan, ScenarioPlanProtocol)
     assert len(plan.task_ids) > 0
-    assert "functions.register" in plan.task_ids
-    assert "cli.fn_apply_selected" not in plan.task_ids
+    assert "loadgen.run_k6" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids
+    assert "vm.loadgen.ensure_running" in plan.task_ids
+    assert "loadtest.write_report" in plan.task_ids
 
 
 def test_e2e_runner_plan_returns_two_vm_builder(tmp_path: Path) -> None:
@@ -161,7 +163,8 @@ def test_e2e_runner_plan_returns_azure_builder(tmp_path: Path) -> None:
     plan = runner.plan(_make_azure_request())
 
     assert isinstance(plan, AzureVmLoadtestPlan)
-    assert "functions.register" in plan.task_ids
+    assert "loadgen.run_k6" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids
 
 
 def test_build_scenario_flow_uses_plan_task_ids_for_two_vm(tmp_path: Path) -> None:

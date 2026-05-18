@@ -768,7 +768,8 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
     assert isinstance(plans[0], AzureVmLoadtestPlan), (
         f"Expected AzureVmLoadtestPlan, got {type(plans[0])}"
     )
-    assert "functions.register" in plans[0].task_ids
+    assert "loadgen.run_k6" in plans[0].task_ids
+    assert "vm.stack.ensure_running" in plans[0].task_ids
 
 
 def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) -> None:
