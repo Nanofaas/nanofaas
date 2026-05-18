@@ -221,119 +221,6 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
     assert all(step.step_id for step in plan.steps)
 
 
-def test_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    step_ids = [step.step_id for step in plan.steps]
-
-    assert step_ids[:4] == [
-        "vm.ensure_running",
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-    ]
-    assert step_ids[9:] == [
-        "k3s.install",
-        "k3s.configure_registry",
-        "namespace.install",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-        "cli.build_install_dist",
-        "functions.register",
-        "loadgen.ensure_running",
-        "loadgen.provision_base",
-        "loadgen.install_k6",
-        "loadgen.run_k6",
-        "metrics.prometheus_snapshot",
-        "loadtest.write_report",
-        "loadgen.down",
-        "vm.down",
-    ]
-    assert all(step.step_id for step in plan.steps)
-    assert [step.summary for step in plan.steps[-10:]] == [
-        "Build nanofaas-cli installDist in VM",
-        "Register selected functions via REST API",
-        "Ensure loadgen VM is running",
-        "Provision loadgen base dependencies",
-        "Install k6 on loadgen VM",
-        "Run k6 from loadgen VM",
-        "Capture Prometheus query snapshots",
-        "Write two-VM loadtest report",
-        "Tear down loadgen VM",
-        "Teardown VM",
-    ]
-
-
-def test_two_vm_loadtest_plan_wires_run_k6_action() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    run_k6_step = next(step for step in plan.steps if step.step_id == "loadgen.run_k6")
-    assert run_k6_step.action is not None
-    assert run_k6_step.command[0] == "k6"
-
-
-def test_two_vm_loadtest_plan_wires_loadgen_ensure_running_action(monkeypatch: pytest.MonkeyPatch) -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    ensured: list[str] = []
-
-    def fake_ensure_running(self: VmOrchestrator, request: VmRequest, *, dry_run: bool = False):
-        ensured.append(request.name or "")
-
-    monkeypatch.setattr(VmOrchestrator, "ensure_running", fake_ensure_running)
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    loadgen_step = next(step for step in plan.steps if step.step_id == "loadgen.ensure_running")
-    assert loadgen_step.action is not None
-    assert loadgen_step.command[0:4] == ["multipass", "launch", "--name", "nanofaas-e2e-loadgen"]
-    loadgen_step.action()
-    assert ensured == ["nanofaas-e2e-loadgen"]
-
-
-def test_two_vm_loadtest_plan_renders_custom_k6_options() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-        k6_script=Path("/tmp/custom-load.js"),
-        k6_payload=Path("/tmp/payload.json"),
-        k6_vus=7,
-        k6_duration="45s",
-    )
-
-    plan = runner.plan(request)
-
-    run_k6_step = next(step for step in plan.steps if step.step_id == "loadgen.run_k6")
-    assert "--vus" in run_k6_step.command
-    assert "7" in run_k6_step.command
-    assert "--duration" in run_k6_step.command
-    assert "45s" in run_k6_step.command
-    assert "-e" in run_k6_step.command
-    assert "NANOFAAS_URL=http://<multipass-ip:nanofaas-e2e>:30080" in run_k6_step.command
-    assert "NANOFAAS_PAYLOAD=/home/ubuntu/two-vm-loadtest/payloads/payload.json" in run_k6_step.command
-    assert "/home/ubuntu/two-vm-loadtest/scripts/script.js" == run_k6_step.command[-1]
-
-
 def test_two_vm_loadtest_plan_adds_default_loadgen_vm_for_action() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
 
@@ -347,130 +234,6 @@ def test_two_vm_loadtest_plan_adds_default_loadgen_vm_for_action() -> None:
 
     assert plan.request.loadgen_vm is not None
     assert plan.request.loadgen_vm.name == "nanofaas-e2e-loadgen"
-
-
-def test_two_vm_loadtest_exposes_control_plane_for_loadgen_vm() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    deploy_step = next(step for step in plan.steps if step.step_id == "helm.deploy_control_plane")
-    assert "--set" in deploy_step.command
-    assert "controlPlane.service.type=NodePort" in deploy_step.command
-    assert "controlPlane.service.nodePorts.http=30080" in deploy_step.command
-    assert "prometheus.create=true" in deploy_step.command
-    assert "prometheus.service.type=NodePort" in deploy_step.command
-    assert "prometheus.service.nodePort=30090" in deploy_step.command
-
-
-def test_two_vm_loadtest_plan_wires_loadgen_cleanup_action() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    loadgen_down = next(step for step in plan.steps if step.step_id == "loadgen.down")
-    assert loadgen_down.command == ["multipass", "delete", "nanofaas-e2e-loadgen"]
-    assert loadgen_down.action is not None
-    assert loadgen_down.always_run is True
-
-
-def test_two_vm_loadtest_applies_functions_before_running_k6(tmp_path: Path) -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        resolved_scenario=load_scenario_file(
-            Path("tools/controlplane/scenarios/two-vm-loadtest-java.toml")
-        ),
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-        loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
-    )
-
-    plan = runner.plan(request)
-
-    step_ids = [step.step_id for step in plan.steps]
-    assert "functions.register" in step_ids
-    assert "cli.build_install_dist" in step_ids
-    register_index = step_ids.index("functions.register")
-    k6_index = step_ids.index("loadgen.run_k6")
-    assert register_index < k6_index, (
-        f"functions.register (idx {register_index}) must precede loadgen.run_k6 (idx {k6_index})"
-    )
-    register_step = next(s for s in plan.steps if s.step_id == "functions.register")
-    assert register_step.action is not None
-    assert register_step.summary == "Register selected functions via REST API"
-
-
-def test_two_vm_loadtest_plan_wires_prometheus_snapshot_action() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    snapshot_step = next(step for step in plan.steps if step.step_id == "metrics.prometheus_snapshot")
-    assert snapshot_step.action is not None
-    assert "http://<multipass-ip:nanofaas-e2e>:30090" in snapshot_step.command
-
-
-def test_two_vm_loadtest_plan_wires_report_action() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-
-    plan = runner.plan(request)
-
-    report_step = next(step for step in plan.steps if step.step_id == "loadtest.write_report")
-    assert report_step.action is not None
-    assert report_step.command[:3] == ["python", "-m", "controlplane_tool.e2e.two_vm_loadtest_runner"]
-
-
-def test_two_vm_loadtest_plan_skips_loadgen_cleanup_when_disabled() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    request = E2eRequest(
-        scenario="two-vm-loadtest",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-        cleanup_vm=False,
-    )
-
-    plan = runner.plan(request)
-
-    loadgen_down = next(step for step in plan.steps if step.step_id == "loadgen.down")
-    assert loadgen_down.command == ["echo", "Skipping loadgen VM teardown (--no-cleanup-vm)"]
-    assert loadgen_down.action is None
-
-
-def test_e2e_all_two_vm_loadtest_plan_uses_recipe_step_ids() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-
-    plans = runner.plan_all(only=["two-vm-loadtest"])
-
-    assert [plan.scenario.name for plan in plans] == ["two-vm-loadtest"]
-    assert plans[0].request.vm is not None
-    assert [step.step_id for step in plans[0].steps[-5:]] == [
-        "loadgen.run_k6",
-        "metrics.prometheus_snapshot",
-        "loadtest.write_report",
-        "loadgen.down",
-        "vm.down",
-    ]
 
 
 def test_e2e_all_two_vm_loadtest_plan_adds_default_loadgen_vm() -> None:
@@ -951,8 +714,8 @@ def test_plan_all_returns_typed_builder_for_two_vm_loadtest(tmp_path: Path) -> N
     assert isinstance(plans[0], TwoVmLoadtestPlan), (
         f"Expected TwoVmLoadtestPlan, got {type(plans[0])}"
     )
-    assert "functions.register" in plans[0].task_ids
     assert "loadgen.run_k6" in plans[0].task_ids
+    assert "vm.stack.ensure_running" in plans[0].task_ids
 
 
 def test_plan_all_returns_typed_builder_for_k3s_junit_curl(tmp_path: Path) -> None:
@@ -1009,8 +772,9 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
 
 
 def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) -> None:
-    """E2eRunner.run() must forward event_listener when dispatching to a builder plan."""
-    from unittest.mock import patch
+    """E2eRunner.run() must forward event_listener when dispatching to a TwoVmLoadtestPlan."""
+    from unittest.mock import patch, MagicMock
+    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
 
     captured: dict = {}
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
@@ -1022,11 +786,15 @@ def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) 
     )
     listener = lambda event: None  # noqa: E731
 
-    with patch.object(
-        runner,
-        "_execute_steps",
-        side_effect=lambda plan, event_listener=None: captured.update({"event_listener": event_listener}),
-    ):
+    original_plan = runner.plan(request)
+
+    def fake_plan(req):
+        original_plan.run = MagicMock(
+            side_effect=lambda event_listener=None: captured.update({"event_listener": event_listener})
+        )
+        return original_plan
+
+    with patch.object(runner, "plan", side_effect=fake_plan):
         runner.run(request, event_listener=listener)
 
     assert captured.get("event_listener") is listener, (

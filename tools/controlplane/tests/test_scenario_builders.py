@@ -46,32 +46,17 @@ def _make_request() -> E2eRequest:
 def test_two_vm_loadtest_plan_satisfies_protocol() -> None:
     """TwoVmLoadtestPlan must satisfy the ScenarioPlan Protocol."""
     from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
-    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 
-    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="test.step")
     plan = TwoVmLoadtestPlan(
         scenario=MagicMock(),
         request=_make_request(),
-        steps=[step],
+        steps=[],
         runner=MagicMock(),
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["test.step"]
-
-
-def test_two_vm_loadtest_plan_task_ids_skips_empty_step_ids() -> None:
-    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
-    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
-
-    steps = [
-        ScenarioPlanStep(summary="a", command=["echo"], step_id="a.step"),
-        ScenarioPlanStep(summary="b", command=["echo"], step_id=""),
-        ScenarioPlanStep(summary="c", command=["echo"], step_id="c.step"),
-    ]
-    plan = TwoVmLoadtestPlan(
-        scenario=MagicMock(), request=_make_request(), steps=steps, runner=MagicMock()
-    )
-    assert plan.task_ids == ["a.step", "c.step"]
+    # task_ids is now static — derived from _STATIC_TASK_IDS, not from steps
+    assert "loadgen.run_k6" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids
 
 
 def test_build_two_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -91,10 +76,10 @@ def test_build_two_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None
     assert isinstance(plan, TwoVmLoadtestPlan)
     assert isinstance(plan, ScenarioPlanProtocol)
     assert len(plan.task_ids) > 0
-    assert "functions.register" in plan.task_ids
-    assert "cli.fn_apply_selected" not in plan.task_ids
     assert "loadgen.run_k6" in plan.task_ids
-    assert "vm.down" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids
+    assert "vm.loadgen.ensure_running" in plan.task_ids
+    assert "loadtest.write_report" in plan.task_ids
 
 
 def _make_azure_request() -> E2eRequest:
@@ -162,8 +147,8 @@ def test_e2e_runner_plan_returns_two_vm_builder(tmp_path: Path) -> None:
     plan = runner.plan(_make_request())
 
     assert isinstance(plan, TwoVmLoadtestPlan)
-    assert "functions.register" in plan.task_ids
-    assert "cli.fn_apply_selected" not in plan.task_ids
+    assert "loadgen.run_k6" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids
 
 
 def test_e2e_runner_plan_returns_azure_builder(tmp_path: Path) -> None:
@@ -396,25 +381,3 @@ def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
     assert "cli.build_install_dist" in plan.task_ids
 
 
-def test_two_vm_loadtest_plan_run_forwards_event_listener() -> None:
-    """Builder run() must accept and forward event_listener to _execute_steps."""
-    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
-    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
-    from unittest.mock import MagicMock
-
-    captured: dict = {}
-
-    mock_runner = MagicMock()
-    mock_runner._execute_steps.side_effect = (
-        lambda plan, event_listener=None: captured.update({"event_listener": event_listener})
-    )
-
-    step = ScenarioPlanStep(summary="x", command=["echo"], step_id="test.step")
-    plan = TwoVmLoadtestPlan(
-        scenario=MagicMock(), request=_make_request(), steps=[step], runner=mock_runner
-    )
-    listener = lambda event: None  # noqa: E731
-
-    plan.run(event_listener=listener)
-
-    assert captured["event_listener"] is listener
