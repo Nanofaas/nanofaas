@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from workflow_tasks.loadtest.models import PrometheusQuery, TimeWindow
+from workflow_tasks.loadtest.ports import PrometheusClient, RemoteFileFetcher
 
 if TYPE_CHECKING:
     from workflow_tasks.loadtest.models import K6Config, K6RunResult
@@ -90,3 +96,144 @@ class RunK6:
         if self._result is None:
             raise RuntimeError("RunK6.run() has not been called")
         return self._result
+
+
+@dataclass
+class FetchVmResults:
+    task_id: str
+    title: str
+    fetcher: RemoteFileFetcher
+    remote_source: str
+    local_dest: Path
+
+    def run(self) -> Path:
+        self.local_dest.mkdir(parents=True, exist_ok=True)
+        self.fetcher.fetch_from(self.remote_source, self.local_dest)
+        return self.local_dest
+
+
+@dataclass
+class CapturePrometheusSnapshot:
+    task_id: str
+    title: str
+    client: PrometheusClient
+    queries: tuple[PrometheusQuery, ...]
+    window: TimeWindow | Callable[[], TimeWindow]
+    output_dir: Path
+
+    def _resolve_window(self) -> TimeWindow:
+        if callable(self.window):
+            return self.window()
+        return self.window
+
+    def run(self) -> Path:
+        window = self._resolve_window()
+        metrics_dir = self.output_dir / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+
+        result: dict[str, dict] = {}
+        for q in self.queries:
+            entry: dict[str, object] = {"query": q.expr, "required": q.required, "points": []}
+            try:
+                points = self.client.query_range(q.expr, window)
+            except RuntimeError as exc:
+                if q.required:
+                    raise RuntimeError(f"required query '{q.name}' failed: {exc}") from exc
+                entry["error"] = str(exc)
+                result[q.name] = entry
+                continue
+            if q.required and not points:
+                raise RuntimeError(f"required query '{q.name}' returned no data")
+            entry["points"] = points
+            result[q.name] = entry
+
+        snapshot = {
+            "start": window.start.isoformat(),
+            "end": window.end.isoformat(),
+            "queries": result,
+        }
+        dest = metrics_dir / "prometheus-snapshot.json"
+        dest.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+        return dest
+
+
+def _render_k6_html(k6_summary: dict, prom_snapshot: dict | None) -> str:
+    metrics = k6_summary.get("metrics", {})
+    rows: list[str] = []
+    for name, entry in metrics.items():
+        if not isinstance(entry, dict):
+            continue
+        values = entry.get("values", {})
+        formatted = " | ".join(
+            f"{k}: {v:.3g}" if isinstance(v, float) else f"{k}: {v}"
+            for k, v in values.items()
+        )
+        rows.append(f"<tr><td>{name}</td><td>{entry.get('type', '')}</td><td>{formatted}</td></tr>")
+
+    prom_section = ""
+    if prom_snapshot:
+        queries = prom_snapshot.get("queries", {})
+        prom_rows = [
+            f"<tr><td>{metric}</td><td>{len(data.get('points', []))} points</td></tr>"
+            for metric, data in queries.items()
+            if isinstance(data, dict)
+        ]
+        if prom_rows:
+            prom_section = (
+                "<h2>Prometheus Metrics</h2>"
+                "<table><tr><th>Metric</th><th>Data</th></tr>"
+                + "".join(prom_rows)
+                + "</table>"
+            )
+
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        "<title>k6 Loadtest Report</title>\n"
+        "<style>\n"
+        "  body { font-family: sans-serif; max-width: 1000px; margin: 0 auto; padding: 24px; }\n"
+        "  h1, h2 { border-bottom: 1px solid #eee; padding-bottom: 8px; }\n"
+        "  table { border-collapse: collapse; width: 100%; margin: 16px 0; }\n"
+        "  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }\n"
+        "  th { background: #f5f5f5; font-weight: 600; }\n"
+        "  tr:hover { background: #fafafa; }\n"
+        "</style>\n"
+        "</head>\n"
+        "<body>\n"
+        "<h1>k6 Loadtest Report</h1>\n"
+        "<h2>k6 Metrics</h2>\n"
+        "<table>\n"
+        "<tr><th>Metric</th><th>Type</th><th>Values</th></tr>\n"
+        + "".join(rows)
+        + "\n</table>\n"
+        + prom_section
+        + "\n</body>\n</html>"
+    )
+
+
+@dataclass
+class WriteK6Report:
+    task_id: str
+    title: str
+    data_dir: Path
+    output_dir: Path
+
+    def run(self) -> Path:
+        k6_summary_path = self.data_dir / "k6-summary.json"
+        k6_summary = json.loads(k6_summary_path.read_text(encoding="utf-8"))
+
+        prom_path = self.data_dir / "metrics" / "prometheus-snapshot.json"
+        prom_snapshot: dict | None = None
+        if prom_path.exists():
+            try:
+                prom_snapshot = json.loads(prom_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                pass
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        html = _render_k6_html(k6_summary, prom_snapshot)
+        dest = self.output_dir / "report.html"
+        dest.write_text(html, encoding="utf-8")
+        return dest

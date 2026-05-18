@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from workflow_tasks.loadtest.models import K6Config, K6RunResult, K6Stage
-from workflow_tasks.loadtest.tasks import InstallK6, RunK6
+from workflow_tasks.loadtest.models import K6Config, K6RunResult, K6Stage, PrometheusQuery, TimeWindow
+from workflow_tasks.loadtest.tasks import (
+    CapturePrometheusSnapshot,
+    FetchVmResults,
+    InstallK6,
+    RunK6,
+    WriteK6Report,
+)
 
 
 @dataclass
@@ -161,3 +168,203 @@ def test_run_k6_injects_payload_path_when_set(tmp_path: Path) -> None:
     task.run()
     argv_str = " ".join(runner.commands[0][0])
     assert "NANOFAAS_PAYLOAD=/remote/payloads/data.json" in argv_str
+
+
+# ---------------------------------------------------------------------------
+# Helpers for new tasks
+# ---------------------------------------------------------------------------
+
+
+class _RecordingFetcher:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path]] = []
+
+    def fetch_from(self, remote: str, local: Path) -> None:
+        self.calls.append((remote, local))
+
+
+class _RecordingPrometheusClient:
+    def __init__(self, points: list[dict] | None = None) -> None:
+        self._points = points or [{"timestamp": "2026-01-01T10:00:00Z", "value": 1.0}]
+        self.calls: list[tuple[str, TimeWindow, int]] = []
+
+    def query_range(
+        self, expr: str, window: TimeWindow, step_seconds: int = 5
+    ) -> list[dict]:
+        self.calls.append((expr, window, step_seconds))
+        return self._points
+
+
+def _make_window() -> TimeWindow:
+    return TimeWindow(
+        start=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 1, 1, 10, 30, tzinfo=timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# FetchVmResults tests
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_vm_results_calls_fetcher(tmp_path: Path) -> None:
+    fetcher = _RecordingFetcher()
+    task = FetchVmResults(
+        task_id="loadgen.fetch_results",
+        title="Fetch results",
+        fetcher=fetcher,
+        remote_source="/remote/results",
+        local_dest=tmp_path / "results",
+    )
+    returned = task.run()
+    assert fetcher.calls == [("/remote/results", tmp_path / "results")]
+    assert returned == tmp_path / "results"
+
+
+def test_fetch_vm_results_creates_local_dest(tmp_path: Path) -> None:
+    fetcher = _RecordingFetcher()
+    dest = tmp_path / "deep" / "nested" / "results"
+    task = FetchVmResults(
+        task_id="loadgen.fetch_results",
+        title="Fetch results",
+        fetcher=fetcher,
+        remote_source="/remote/results",
+        local_dest=dest,
+    )
+    task.run()
+    assert dest.exists()
+
+
+# ---------------------------------------------------------------------------
+# CapturePrometheusSnapshot tests
+# ---------------------------------------------------------------------------
+
+
+def test_capture_prometheus_snapshot_queries_all_metrics(tmp_path: Path) -> None:
+    client = _RecordingPrometheusClient()
+    queries = (
+        PrometheusQuery(name="req_total", expr="sum(http_requests_total)"),
+        PrometheusQuery(name="latency", expr="http_req_duration"),
+    )
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=client,
+        queries=queries,
+        window=_make_window(),
+        output_dir=tmp_path,
+    )
+    task.run()
+    queried_exprs = [call[0] for call in client.calls]
+    assert "sum(http_requests_total)" in queried_exprs
+    assert "http_req_duration" in queried_exprs
+
+
+def test_capture_prometheus_snapshot_writes_json(tmp_path: Path) -> None:
+    client = _RecordingPrometheusClient()
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=client,
+        queries=(PrometheusQuery(name="req", expr="http_requests_total"),),
+        window=_make_window(),
+        output_dir=tmp_path,
+    )
+    dest = task.run()
+    assert dest.exists()
+    data = json.loads(dest.read_text())
+    assert "queries" in data
+    assert "req" in data["queries"]
+
+
+def test_capture_prometheus_snapshot_accepts_callable_window(tmp_path: Path) -> None:
+    client = _RecordingPrometheusClient()
+    called: list[bool] = []
+
+    def lazy_window() -> TimeWindow:
+        called.append(True)
+        return _make_window()
+
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=client,
+        queries=(PrometheusQuery(name="req", expr="http_requests_total"),),
+        window=lazy_window,
+        output_dir=tmp_path,
+    )
+    task.run()
+    assert called == [True]
+
+
+# ---------------------------------------------------------------------------
+# WriteK6Report tests
+# ---------------------------------------------------------------------------
+
+
+def test_write_k6_report_generates_html(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    summary = {
+        "metrics": {
+            "http_req_duration": {
+                "type": "trend",
+                "values": {"avg": 123.4, "p(90)": 200.5, "p(95)": 350.2},
+            },
+            "http_reqs": {
+                "type": "counter",
+                "values": {"count": 1000, "rate": 10.5},
+            },
+        }
+    }
+    (data_dir / "k6-summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    task = WriteK6Report(
+        task_id="loadtest.write_report",
+        title="Write report",
+        data_dir=data_dir,
+        output_dir=tmp_path,
+    )
+    report_path = task.run()
+    assert report_path.exists()
+    html = report_path.read_text()
+    assert "http_req_duration" in html
+    assert "http_reqs" in html
+
+
+def test_write_k6_report_includes_prometheus_section_when_snapshot_present(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    (data_dir / "metrics").mkdir(parents=True)
+    (data_dir / "k6-summary.json").write_text(json.dumps({"metrics": {}}), encoding="utf-8")
+    snapshot = {
+        "queries": {
+            "function_dispatch_total": {"points": [{"timestamp": "t", "value": 1.0}]}
+        }
+    }
+    (data_dir / "metrics" / "prometheus-snapshot.json").write_text(
+        json.dumps(snapshot), encoding="utf-8"
+    )
+
+    task = WriteK6Report(
+        task_id="loadtest.write_report",
+        title="Write report",
+        data_dir=data_dir,
+        output_dir=tmp_path,
+    )
+    html = task.run().read_text()
+    assert "function_dispatch_total" in html
+
+
+def test_write_k6_report_works_without_prometheus_snapshot(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "k6-summary.json").write_text(json.dumps({"metrics": {}}), encoding="utf-8")
+
+    task = WriteK6Report(
+        task_id="loadtest.write_report",
+        title="Write report",
+        data_dir=data_dir,
+        output_dir=tmp_path,
+    )
+    report_path = task.run()
+    assert report_path.exists()
