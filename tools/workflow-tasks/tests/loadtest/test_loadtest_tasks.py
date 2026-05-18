@@ -115,3 +115,49 @@ def test_run_k6_result_property_returns_after_run(tmp_path: Path) -> None:
     task = RunK6(task_id="loadgen.run_k6", title="Run k6", runner=runner, config=config, remote_dir="/home/ubuntu")
     task.run()
     assert task.result.passed is True
+
+
+def test_run_k6_passes_vus_flag_when_set(tmp_path: Path) -> None:
+    runner = _RecordingVmRunner()
+    config = K6Config(
+        script_path=Path("/remote/scripts/test.js"),
+        target_url="http://10.0.0.1:8080",
+        summary_output_path=Path("/remote/results/summary.json"),
+        vus=10,
+    )
+    task = RunK6(task_id="loadgen.run_k6", title="Run k6", runner=runner, config=config, remote_dir="/home/ubuntu")
+    task.run()
+    argv = runner.commands[0][0]
+    assert "--vus" in argv
+    assert "10" in argv
+    assert "--stage" not in argv
+
+
+def test_run_k6_passes_duration_flag_when_set(tmp_path: Path) -> None:
+    runner = _RecordingVmRunner()
+    config = K6Config(
+        script_path=Path("/remote/scripts/test.js"),
+        target_url="http://10.0.0.1:8080",
+        summary_output_path=Path("/remote/results/summary.json"),
+        duration="2m",
+    )
+    task = RunK6(task_id="loadgen.run_k6", title="Run k6", runner=runner, config=config, remote_dir="/home/ubuntu")
+    task.run()
+    argv = runner.commands[0][0]
+    assert "--duration" in argv
+    assert "2m" in argv
+    assert "--stage" not in argv
+
+
+def test_run_k6_injects_payload_path_when_set(tmp_path: Path) -> None:
+    runner = _RecordingVmRunner()
+    config = K6Config(
+        script_path=Path("/remote/scripts/test.js"),
+        target_url="http://10.0.0.1:8080",
+        summary_output_path=Path("/remote/results/summary.json"),
+        payload_path=Path("/remote/payloads/data.json"),
+    )
+    task = RunK6(task_id="loadgen.run_k6", title="Run k6", runner=runner, config=config, remote_dir="/home/ubuntu")
+    task.run()
+    argv_str = " ".join(runner.commands[0][0])
+    assert "NANOFAAS_PAYLOAD=/remote/payloads/data.json" in argv_str
