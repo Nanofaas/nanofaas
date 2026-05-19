@@ -59,7 +59,7 @@ def test_teardown_calls_vm_delete(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.get_vm.return_value = mock_vm
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -76,7 +76,7 @@ def test_teardown_silences_vm_not_found(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.get_vm.side_effect = VmNotFoundError("nanofaas-azure")
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -91,7 +91,7 @@ def test_teardown_silences_vm_not_found(tmp_path, monkeypatch):
 def test_ensure_running_calls_client_ensure_running(tmp_path, monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -110,7 +110,7 @@ def test_ensure_running_calls_client_ensure_running(tmp_path, monkeypatch):
 def test_ensure_running_passes_azure_fields(tmp_path, monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -142,7 +142,7 @@ def test_exec_argv_calls_exec_structured_and_maps_result(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.get_vm.return_value = mock_vm
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -166,7 +166,7 @@ def test_exec_argv_passes_env(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.get_vm.return_value = mock_vm
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -185,7 +185,7 @@ def test_transfer_to_calls_vm_transfer(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.get_vm.return_value = mock_vm
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -206,7 +206,7 @@ def test_transfer_from_uses_scp_subprocess(tmp_path, monkeypatch):
     mock_client = MagicMock()
     mock_client.get_vm.return_value = mock_vm
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.azure_vm_adapter.AzureClient",
+        "workflow_tasks.vm.azure.AzureClient",
         lambda **kwargs: mock_client,
     )
 
@@ -216,7 +216,7 @@ def test_transfer_from_uses_scp_subprocess(tmp_path, monkeypatch):
         scp_calls.append(list(cmd))
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("controlplane_tool.infra.vm.azure_vm_adapter.subprocess.run", fake_run)
+    monkeypatch.setattr("workflow_tasks.vm.azure.subprocess.run", fake_run)
 
     dest = tmp_path / "k6-summary.json"
     orch = _make_orchestrator(tmp_path)
