@@ -200,9 +200,9 @@ def test_vm_orchestrator_matches_ansible_private_key_to_multipass_public_key(
     rsa_private.write_text("rsa-private", encoding="utf-8")
     rsa_public.write_text("ssh-rsa BBBB second@example\n", encoding="utf-8")
 
-    monkeypatch.setattr("controlplane_tool.infra.vm.vm_adapter.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("workflow_tasks.vm.multipass.Path.home", lambda: tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.vm_adapter.find_ssh_public_key",
+        "workflow_tasks.vm.multipass.find_ssh_public_key",
         lambda: "ssh-rsa BBBB second@example",
     )
 
@@ -233,9 +233,9 @@ def test_vm_orchestrator_sets_private_key_none_when_no_on_disk_match(
     rsa_private.write_text("rsa-private", encoding="utf-8")
     rsa_public.write_text("ssh-rsa BBBB other@example\n", encoding="utf-8")
 
-    monkeypatch.setattr("controlplane_tool.infra.vm.vm_adapter.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("workflow_tasks.vm.multipass.Path.home", lambda: tmp_path)
     monkeypatch.setattr(
-        "controlplane_tool.infra.vm.vm_adapter.find_ssh_public_key",
+        "workflow_tasks.vm.multipass.find_ssh_public_key",
         lambda: "ssh-ed25519 AAAA agent@example",
     )
 
