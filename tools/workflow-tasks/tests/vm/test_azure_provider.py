@@ -86,7 +86,7 @@ def test_ssh_key_from_request(mock_client_cls) -> None:
 
 
 @patch("workflow_tasks.vm.azure.AzureClient")
-@patch("workflow_tasks.vm.azure._find_ssh_private_key", return_value=Path("/home/user/.ssh/id_rsa"))
+@patch("workflow_tasks.vm.azure._find_ssh_private_key_path", return_value=Path("/home/user/.ssh/id_rsa"))
 def test_ssh_key_fallback(mock_find, mock_client_cls) -> None:
     provider = _make_provider()
     req = _make_request(azure_ssh_key_path=None)
@@ -194,24 +194,10 @@ def test_transfer_from_no_ssh_key(mock_client_cls, mock_subproc) -> None:
     mock_subproc.return_value = proc
     provider = _make_provider()
     req = _make_request(azure_ssh_key_path=None)
-    # patch _find_ssh_private_key to return None so no -i flag
-    with patch("workflow_tasks.vm.azure._find_ssh_private_key", return_value=None):
+    # patch _find_ssh_private_key_path to return None so no -i flag
+    with patch("workflow_tasks.vm.azure._find_ssh_private_key_path", return_value=None):
         result = provider.transfer_from(req, source="/remote/file", destination=Path("/local"))
     assert result.return_code == 0
     assert "-i" not in result.command
 
 
-def test_find_ssh_private_key_no_ssh_dir() -> None:
-    from workflow_tasks.vm.azure import _find_ssh_private_key
-    with patch("workflow_tasks.vm.azure.Path") as mock_path_cls:
-        mock_home = MagicMock()
-        mock_ssh_dir = MagicMock()
-        mock_path_cls.home.return_value = mock_home
-        mock_home.__truediv__ = lambda self, x: mock_ssh_dir
-        # Make all key checks return non-existent
-        mock_priv = MagicMock()
-        mock_priv.exists.return_value = False
-        mock_ssh_dir.__truediv__ = lambda self, x: mock_priv
-        result = _find_ssh_private_key()
-        # Should return None when no keys exist
-        assert result is None or isinstance(result, Path)

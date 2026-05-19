@@ -49,6 +49,14 @@ class VmRequest(BaseModel):
         return self
 
 
+def vm_remote_home(request: VmRequest) -> str:
+    if request.home:
+        return request.home
+    if request.user == "root":
+        return "/root"
+    return f"/home/{request.user}"
+
+
 class _VmEnvSettings(BaseSettings):
     model_config = SettingsConfigDict(env_ignore_empty=True)
 

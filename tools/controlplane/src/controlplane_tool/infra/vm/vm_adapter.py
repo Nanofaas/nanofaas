@@ -4,9 +4,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from multipass import MultipassCommandError
-from shellcraft.backend import ShellExecutionResult
 
-from workflow_tasks.vm.multipass import MultipassVmProvider, repo_rsync_command, repo_sync_ssh_rsh
+from workflow_tasks.vm.multipass import MultipassVmProvider, _ok, _sdk_error, repo_rsync_command, repo_sync_ssh_rsh
 from workflow_tasks.vm.models import VmRequest
 from controlplane_tool.workspace.paths import ToolPaths
 
@@ -45,17 +44,11 @@ class VmOrchestrator(MultipassVmProvider):
             )
         self.ansible = ansible
 
-    def _remote_project_dir(self, request: VmRequest) -> str:
+    def remote_project_dir(self, request: VmRequest) -> str:
         return f"{self._remote_home(request)}/nanofaas"
 
-    def _kubeconfig_path(self, request: VmRequest) -> str:
-        return f"{self._remote_home(request)}/.kube/config"
-
-    def remote_project_dir(self, request: VmRequest) -> str:
-        return self._remote_project_dir(request)
-
     def kubeconfig_path(self, request: VmRequest) -> str:
-        return self._kubeconfig_path(request)
+        return f"{self._remote_home(request)}/.kube/config"
 
     def remote_path_for_local(
         self,
@@ -67,7 +60,7 @@ class VmOrchestrator(MultipassVmProvider):
     ) -> str:
         path = Path(local_path).resolve()
         root = Path(local_root or self.paths.workspace_root).resolve()
-        remote_dir = self._remote_project_dir(request)
+        remote_dir = self.remote_project_dir(request)
 
         try:
             relative = path.relative_to(root)
@@ -87,7 +80,7 @@ class VmOrchestrator(MultipassVmProvider):
         dry_run: bool = False,
     ) -> ShellExecutionResult:
         source = Path(source_dir or self.paths.workspace_root)
-        destination = remote_dir or self._remote_project_dir(request)
+        destination = remote_dir or self.remote_project_dir(request)
 
         if request.lifecycle == "external":
             return self._shell_run(
@@ -137,7 +130,7 @@ class VmOrchestrator(MultipassVmProvider):
     ) -> ShellExecutionResult:
         return self.ansible.provision_k3s(
             request,
-            kubeconfig_path=kubeconfig_path or self._kubeconfig_path(request),
+            kubeconfig_path=kubeconfig_path or self.kubeconfig_path(request),
             k3s_version=k3s_version,
             dry_run=dry_run,
         )
@@ -199,7 +192,7 @@ class VmOrchestrator(MultipassVmProvider):
         destination: Path,
         dry_run: bool = False,
     ) -> ShellExecutionResult:
-        kubeconfig_path = self._kubeconfig_path(request)
+        kubeconfig_path = self.kubeconfig_path(request)
         if request.lifecycle == "external":
             return self._shell_run(
                 ["scp", f"{request.user}@{request.host}:{kubeconfig_path}", str(destination)],
@@ -209,15 +202,10 @@ class VmOrchestrator(MultipassVmProvider):
         name = self._vm_name(request)
         transfer_cmd = ["multipass", "transfer", f"{name}:{kubeconfig_path}", str(destination)]
         if dry_run:
-            return ShellExecutionResult(command=transfer_cmd, return_code=0, stdout="")
+            return _ok(transfer_cmd)
 
         try:
             self._client.get_vm(name).transfer(f"{name}:{kubeconfig_path}", str(destination))
         except MultipassCommandError as e:
-            return ShellExecutionResult(
-                command=e.args_list,
-                return_code=e.returncode,
-                stdout=e.stdout,
-                stderr=e.stderr,
-            )
-        return ShellExecutionResult(command=transfer_cmd, return_code=0, stdout="")
+            return _sdk_error(e)
+        return _ok(transfer_cmd)

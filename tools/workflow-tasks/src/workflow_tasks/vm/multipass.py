@@ -1,4 +1,3 @@
-# tools/workflow-tasks/src/workflow_tasks/vm/multipass.py
 from __future__ import annotations
 
 import shlex
@@ -7,7 +6,7 @@ from pathlib import Path
 from multipass import MultipassClient, MultipassCommandError, VmNotFoundError, find_ssh_public_key
 from shellcraft.backend import ShellBackend, ShellExecutionResult, SubprocessShell
 
-from workflow_tasks.vm.models import VmRequest
+from workflow_tasks.vm.models import VmRequest, vm_remote_home
 
 
 REPO_SYNC_EXCLUDE_PATTERNS = (
@@ -123,11 +122,7 @@ class MultipassVmProvider:
         return _vm_name_default(request)
 
     def _remote_home(self, request: VmRequest) -> str:
-        if request.home:
-            return request.home
-        if request.user == "root":
-            return "/root"
-        return f"/home/{request.user}"
+        return vm_remote_home(request)
 
     def _shell_run(self, command: list[str], *, dry_run: bool = False) -> ShellExecutionResult:
         return self.shell.run(command, cwd=self.workspace_root, dry_run=dry_run)

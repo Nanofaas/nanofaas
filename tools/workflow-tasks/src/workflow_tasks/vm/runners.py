@@ -1,4 +1,3 @@
-# tools/workflow-tasks/src/workflow_tasks/vm/runners.py
 from __future__ import annotations
 
 from pathlib import Path

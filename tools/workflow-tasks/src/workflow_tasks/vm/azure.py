@@ -7,20 +7,8 @@ from azure_vm import AzureClient
 from azure_vm.exceptions import VmNotFoundError
 from shellcraft.backend import ShellExecutionResult
 
-from workflow_tasks.vm.models import VmRequest
-
-
-def _find_ssh_private_key() -> Path | None:
-    ssh_dir = Path.home() / ".ssh"
-    for name in ("id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"):
-        priv = ssh_dir / name
-        if priv.exists():
-            return priv
-    return None
-
-
-def _ok(command: list[str]) -> ShellExecutionResult:
-    return ShellExecutionResult(command=command, return_code=0, stdout="")
+from workflow_tasks.vm.models import VmRequest, vm_remote_home
+from workflow_tasks.vm.multipass import _find_ssh_private_key_path, _ok
 
 
 class AzureVmProvider:
@@ -43,14 +31,10 @@ class AzureVmProvider:
     def _ssh_key(self, request: VmRequest) -> Path | None:
         if request.azure_ssh_key_path:
             return Path(request.azure_ssh_key_path)
-        return _find_ssh_private_key()
+        return _find_ssh_private_key_path()
 
     def remote_home(self, request: VmRequest) -> str:
-        if request.home:
-            return request.home
-        if request.user == "root":
-            return "/root"
-        return f"/home/{request.user}"
+        return vm_remote_home(request)
 
     def remote_project_dir(self, request: VmRequest) -> str:
         return f"{self.remote_home(request)}/nanofaas"
