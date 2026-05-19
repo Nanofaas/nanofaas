@@ -45,7 +45,7 @@ def test_http_prometheus_client_delegates_to_query_fn() -> None:
     fake_points = [{"timestamp": "t", "value": 1.0}]
 
     with patch(
-        "controlplane_tool.loadtest.loadtest_adapters.query_prometheus_range_series",
+        "workflow_tasks.loadtest.adapters.query_prometheus_range_series",
         return_value=fake_points,
     ) as mock_fn:
         client = HttpPrometheusClient(url="http://prometheus:9090")
