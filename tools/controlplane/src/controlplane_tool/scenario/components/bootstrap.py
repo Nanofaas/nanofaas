@@ -5,15 +5,12 @@ from types import MappingProxyType
 
 from multipass import find_ssh_public_key
 
+from workflow_tasks.vm.multipass import _find_ssh_private_key_path, repo_rsync_command, repo_sync_ssh_rsh
+
 from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
-from controlplane_tool.infra.vm.vm_adapter import (
-    _find_ssh_private_key_path,
-    repo_rsync_command,
-    repo_sync_ssh_rsh,
-)
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

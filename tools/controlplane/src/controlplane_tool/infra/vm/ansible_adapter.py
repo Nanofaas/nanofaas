@@ -29,7 +29,7 @@ class AnsibleAdapter:
         self.paths = ToolPaths.repo_root(Path(repo_root))
         self.shell = shell or SubprocessShell()
         if host_resolver is None:
-            from controlplane_tool.infra.vm.vm_adapter import resolve_connection_host
+            from workflow_tasks.vm.multipass import resolve_connection_host
 
             client = multipass_client or MultipassClient()
             host_resolver = lambda request, dry_run=False: resolve_connection_host(
