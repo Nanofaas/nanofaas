@@ -47,3 +47,19 @@ def test_loadtest_subpackage_does_not_import_controlplane_tool() -> None:
             del sys.modules[key]
     importlib.import_module("workflow_tasks.loadtest")
     assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_vm_multipass_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.vm.multipass")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_vm_azure_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.vm.azure")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)

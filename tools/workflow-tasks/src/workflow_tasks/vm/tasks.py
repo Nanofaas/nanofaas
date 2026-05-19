@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from workflow_tasks.vm.models import VmConfig, VmInfo
-    from workflow_tasks.vm.ports import VmLifecycle
+    from workflow_tasks.vm.ports import VmLifecycleProtocol
 
 
 @dataclass
 class EnsureVmRunning:
     task_id: str
     title: str
-    lifecycle: "VmLifecycle"
+    lifecycle: "VmLifecycleProtocol"
     config: "VmConfig"
 
     def run(self) -> "VmInfo":
@@ -23,7 +23,7 @@ class EnsureVmRunning:
 class DestroyVm:
     task_id: str
     title: str
-    lifecycle: "VmLifecycle"
+    lifecycle: "VmLifecycleProtocol"
     info: "VmInfo"
 
     def run(self) -> None:

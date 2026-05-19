@@ -59,3 +59,15 @@ def test_public_api_exports_loadtest_tasks() -> None:
     assert hasattr(workflow_tasks, "FetchVmResults")
     assert hasattr(workflow_tasks, "CapturePrometheusSnapshot")
     assert hasattr(workflow_tasks, "WriteK6Report")
+
+
+def test_public_api_exports_vm_infrastructure() -> None:
+    assert hasattr(workflow_tasks, "VmRequest")
+    assert hasattr(workflow_tasks, "MultipassVmProvider")
+    assert hasattr(workflow_tasks, "AzureVmProvider")
+    assert hasattr(workflow_tasks, "OrchestratorVmRunner")
+    assert hasattr(workflow_tasks, "VmFileFetcher")
+    assert hasattr(workflow_tasks, "VmLifecycleAdapter")
+    assert hasattr(workflow_tasks, "MultipassVmAdapter")
+    assert hasattr(workflow_tasks, "AzureVmAdapter")
+    assert hasattr(workflow_tasks, "HttpPrometheusClient")
