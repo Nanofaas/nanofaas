@@ -48,6 +48,7 @@ class WorkflowDashboard:
         self.footer_hint = footer_hint
         self.summary_lines = list(summary_lines or [])
         self.log_limit = log_limit
+        self.error_detail: str | None = None
         self._bridge = WorkflowEventAggregator(
             planned_steps=planned_steps,
             log_limit=log_limit,
@@ -171,6 +172,15 @@ class WorkflowDashboard:
     def _phases_panel_height(self) -> int:
         return max(1, len(self.steps)) + 2
 
+    def _error_detail_panel(self):
+        if not self.error_detail:
+            return None
+        return Panel(
+            Text(self.error_detail.strip()),
+            title="[red]Error Detail[/]",
+            border_style="red",
+        )
+
     def _nested_panel_height(self) -> int:
         nested_roots = [step for step in self.steps if step.children]
         if not nested_roots:
@@ -196,6 +206,7 @@ class WorkflowDashboard:
             phases.add_row("[dim]Waiting for workflow steps...[/]", "")
         phases_panel = Panel(phases, title="Execution Phases", border_style="cyan dim")
         nested_panel = self._nested_detail_panel()
+        error_panel = self._error_detail_panel()
 
         max_log_lines = max(1, self._log_panel_height() - 2)
         log_body = (
@@ -204,11 +215,12 @@ class WorkflowDashboard:
             else Text("No log output yet.", style="dim")
         )
         if not self.show_logs:
-            content = (
-                Group(summary_panel, phases_panel, nested_panel)
-                if nested_panel is not None
-                else Group(summary_panel, phases_panel)
-            )
+            left_pane = [summary_panel, phases_panel]
+            if nested_panel is not None:
+                left_pane.append(nested_panel)
+            if error_panel is not None:
+                left_pane.append(error_panel)
+            content = Group(*left_pane)
             return render_screen_frame(
                 title=self.title,
                 body=content,
@@ -229,6 +241,8 @@ class WorkflowDashboard:
         left_pane = [summary_panel, phases_panel]
         if nested_panel is not None:
             left_pane.append(nested_panel)
+        if error_panel is not None:
+            left_pane.append(error_panel)
         layout.add_row(Group(*left_pane), log_panel)
         return render_screen_frame(
             title=self.title,

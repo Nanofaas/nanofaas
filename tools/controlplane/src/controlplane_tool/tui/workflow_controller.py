@@ -6,7 +6,9 @@ that were previously on NanofaasTUI.
 """
 from __future__ import annotations
 
+import sys
 import traceback as _traceback
+from threading import Event
 from typing import Any, Callable
 
 from rich.live import Live
@@ -41,6 +43,9 @@ class TuiWorkflowController:
             planned_steps=planned_steps,
         )
         live: Live | None = None
+        _exc: Exception | None = None
+        _waiting_for_key: Event = Event()
+        _exit_signal: Event = Event()
 
         def _refresh() -> None:
             if live is not None:
@@ -52,8 +57,11 @@ class TuiWorkflowController:
             if key.lower() == "l":
                 dashboard.toggle_logs()
                 _refresh()
+            elif _waiting_for_key.is_set():
+                _exit_signal.set()
 
         key_listener = WorkflowKeyListener(_handle_key)
+        result = None
         with Live(
             dashboard.render(), console=console, refresh_per_second=8, transient=False
         ) as active_live:
@@ -65,13 +73,22 @@ class TuiWorkflowController:
                     try:
                         result = action(dashboard, sink)
                     except Exception as exc:
-                        _fail(str(exc), detail=_traceback.format_exc(limit=8))
-                        _refresh()
-                        raise
+                        tb = _traceback.format_exc(limit=12)
+                        _fail(str(exc), detail=tb)
+                        dashboard.error_detail = tb
+                        _exc = exc
                     _refresh()
-                    return result
+                    dashboard.footer_hint = "Press any key to continue"
+                    _refresh()
+                    if sys.stdin.isatty():
+                        _waiting_for_key.set()
+                        _exit_signal.wait(timeout=300)
             finally:
                 key_listener.stop()
+
+        if _exc is not None:
+            raise _exc
+        return result
 
     def run_shared_flow(
         self,
