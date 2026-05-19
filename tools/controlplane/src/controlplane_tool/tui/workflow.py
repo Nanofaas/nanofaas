@@ -172,7 +172,7 @@ class WorkflowDashboard:
     def _phases_panel_height(self) -> int:
         return max(1, len(self.steps)) + 2
 
-    def _error_detail_panel(self):
+    def _error_detail_panel(self) -> Panel | None:
         if not self.error_detail:
             return None
         return Panel(
@@ -180,6 +180,15 @@ class WorkflowDashboard:
             title="[red]Error Detail[/]",
             border_style="red",
         )
+
+    @staticmethod
+    def _build_left_pane(summary_panel, phases_panel, nested_panel, error_panel) -> list:
+        pane = [summary_panel, phases_panel]
+        if nested_panel is not None:
+            pane.append(nested_panel)
+        if error_panel is not None:
+            pane.append(error_panel)
+        return pane
 
     def _nested_panel_height(self) -> int:
         nested_roots = [step for step in self.steps if step.children]
@@ -214,16 +223,12 @@ class WorkflowDashboard:
             if self.log_lines
             else Text("No log output yet.", style="dim")
         )
+        left_pane = self._build_left_pane(summary_panel, phases_panel, nested_panel, error_panel)
+
         if not self.show_logs:
-            left_pane = [summary_panel, phases_panel]
-            if nested_panel is not None:
-                left_pane.append(nested_panel)
-            if error_panel is not None:
-                left_pane.append(error_panel)
-            content = Group(*left_pane)
             return render_screen_frame(
                 title=self.title,
-                body=content,
+                body=Group(*left_pane),
                 breadcrumb=self.breadcrumb,
                 footer_hint=self.footer_hint,
             )
@@ -238,11 +243,6 @@ class WorkflowDashboard:
         layout = Table.grid(expand=True)
         layout.add_column(ratio=5)
         layout.add_column(ratio=7)
-        left_pane = [summary_panel, phases_panel]
-        if nested_panel is not None:
-            left_pane.append(nested_panel)
-        if error_panel is not None:
-            left_pane.append(error_panel)
         layout.add_row(Group(*left_pane), log_panel)
         return render_screen_frame(
             title=self.title,

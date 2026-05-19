@@ -54,11 +54,12 @@ class TuiWorkflowController:
         sink = TuiWorkflowSink(dashboard, refresh=_refresh)
 
         def _handle_key(key: str) -> None:
+            if _waiting_for_key.is_set():
+                _exit_signal.set()
+                return
             if key.lower() == "l":
                 dashboard.toggle_logs()
                 _refresh()
-            elif _waiting_for_key.is_set():
-                _exit_signal.set()
 
         key_listener = WorkflowKeyListener(_handle_key)
         result = None
@@ -77,12 +78,11 @@ class TuiWorkflowController:
                         _fail(str(exc), detail=tb)
                         dashboard.error_detail = tb
                         _exc = exc
-                    _refresh()
                     dashboard.footer_hint = "Press any key to continue"
                     _refresh()
                     if sys.stdin.isatty():
                         _waiting_for_key.set()
-                        _exit_signal.wait(timeout=300)
+                        _exit_signal.wait(timeout=60)
             finally:
                 key_listener.stop()
 
