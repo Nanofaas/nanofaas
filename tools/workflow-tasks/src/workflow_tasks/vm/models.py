@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import Literal
+
+from pydantic import BaseModel, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from dataclasses import dataclass
 
 
@@ -17,3 +22,55 @@ class VmInfo:
     host: str
     user: str
     home: str
+
+
+VmLifecycle = Literal["multipass", "external", "azure"]
+
+
+class VmRequest(BaseModel):
+    lifecycle: VmLifecycle
+    name: str | None = None
+    host: str | None = None
+    user: str = "ubuntu"
+    home: str | None = None
+    cpus: int = 4
+    memory: str = "12G"
+    disk: str = "30G"
+    azure_vm_size: str = "Standard_B2s"
+    azure_resource_group: str | None = None
+    azure_location: str | None = None
+    azure_image_urn: str | None = None
+    azure_ssh_key_path: str | None = None
+
+    @model_validator(mode="after")
+    def validate_lifecycle_requirements(self) -> "VmRequest":
+        if self.lifecycle == "external" and not self.host:
+            raise ValueError("host is required for external lifecycle")
+        return self
+
+
+class _VmEnvSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_ignore_empty=True)
+
+    e2e_vm_lifecycle: VmLifecycle = "multipass"
+    vm_name: str | None = None
+    e2e_vm_host: str | None = None
+    e2e_vm_user: str = "ubuntu"
+    e2e_vm_home: str | None = None
+    cpus: int = 4
+    memory: str = "12G"
+    disk: str = "30G"
+
+
+def vm_request_from_env() -> VmRequest:
+    s = _VmEnvSettings()
+    return VmRequest(
+        lifecycle=s.e2e_vm_lifecycle,
+        name=s.vm_name,
+        host=s.e2e_vm_host,
+        user=s.e2e_vm_user,
+        home=s.e2e_vm_home,
+        cpus=s.cpus,
+        memory=s.memory,
+        disk=s.disk,
+    )
