@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 import re
-from typing import Any
 
-import httpx
+from workflow_tasks.loadtest.prometheus import (
+    _prometheus_api_get,
+    query_prometheus_range_series,
+)
+
+__all__ = [
+    "_prometheus_api_get",
+    "query_prometheus_range_series",
+]
 
 _METRIC_NAME = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 _JAVA_METRIC_LITERAL = re.compile(r'"(function_[a-z0-9_]+(?:_ms|_total)?)"')
@@ -85,20 +91,6 @@ def discover_control_plane_metric_names(repo_root: Path) -> set[str]:
     return set(_JAVA_METRIC_LITERAL.findall(text))
 
 
-def _prometheus_api_get(
-    base_url: str, path: str, params: dict[str, str], timeout_seconds: float = 4.0
-) -> Any:
-    url = f"{base_url.rstrip('/')}{path}"
-    try:
-        response = httpx.get(url, params=params, timeout=timeout_seconds)
-        data = response.json()
-    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
-        raise RuntimeError(f"prometheus api request failed for {path}: {exc}") from exc
-    if data.get("status") != "success":
-        raise RuntimeError(f"prometheus api failed for {path}: {data}")
-    return data.get("data")
-
-
 def query_prometheus_metric_names(base_url: str) -> set[str]:
     data = _prometheus_api_get(base_url, "/api/v1/label/__name__/values", {})
     if not isinstance(data, list):
@@ -110,50 +102,3 @@ def query_prometheus_metric_names(base_url: str) -> set[str]:
     return names
 
 
-def query_prometheus_range_series(
-    base_url: str,
-    metric_name: str,
-    start: datetime,
-    end: datetime,
-    step_seconds: int = 2,
-) -> list[dict[str, float | str]]:
-    data = _prometheus_api_get(
-        base_url,
-        "/api/v1/query_range",
-        {
-            "query": metric_name,
-            "start": str(start.timestamp()),
-            "end": str(end.timestamp()),
-            "step": f"{step_seconds}s",
-        },
-    )
-    if not isinstance(data, dict):
-        raise RuntimeError("invalid prometheus query_range payload")
-    result = data.get("result", [])
-    if not isinstance(result, list):
-        raise RuntimeError("invalid prometheus query_range payload")
-
-    # Merge samples across label dimensions by timestamp.
-    merged: dict[float, float] = {}
-    for series in result:
-        if not isinstance(series, dict):
-            continue
-        values = series.get("values", [])
-        if not isinstance(values, list):
-            continue
-        for sample in values:
-            if not isinstance(sample, list) or len(sample) != 2:
-                continue
-            raw_ts, raw_value = sample
-            try:
-                ts = float(raw_ts)
-                value = float(raw_value)
-            except (TypeError, ValueError):
-                continue
-            merged[ts] = merged.get(ts, 0.0) + value
-
-    points: list[dict[str, float | str]] = []
-    for timestamp in sorted(merged):
-        iso = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
-        points.append({"timestamp": iso, "value": float(merged[timestamp])})
-    return points

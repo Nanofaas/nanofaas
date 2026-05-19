@@ -54,7 +54,7 @@ def test_build_required_metric_series_from_prometheus_payloads() -> None:
 
 def test_query_prometheus_metric_names_wraps_transport_errors(monkeypatch) -> None:
     monkeypatch.setattr(
-        "controlplane_tool.loadtest.metrics.httpx.get",
+        "workflow_tasks.loadtest.prometheus.httpx.get",
         lambda *args, **kwargs: (_ for _ in ()).throw(httpx.RequestError("connection refused")),
     )
 
@@ -66,7 +66,7 @@ def test_query_prometheus_metric_names_accepts_list_data_payload(monkeypatch) ->
     payload = {"status": "success", "data": ["function_dispatch_total", "function_latency_ms", "up"]}
     mock_response = MagicMock(spec=httpx.Response)
     mock_response.json.return_value = payload
-    monkeypatch.setattr("controlplane_tool.loadtest.metrics.httpx.get", lambda *a, **kw: mock_response)
+    monkeypatch.setattr("workflow_tasks.loadtest.prometheus.httpx.get", lambda *a, **kw: mock_response)
 
     names = query_prometheus_metric_names("http://127.0.0.1:9090")
 
