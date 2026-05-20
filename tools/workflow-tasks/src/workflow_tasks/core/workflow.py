@@ -19,8 +19,11 @@ class Workflow:
 
     @property
     def task_ids(self) -> list[str]:
-        """Stable list of task IDs in execution order. Used by TUI for dry-run planning."""
         return [t.task_id for t in self.tasks + self.cleanup_tasks]
+
+    @property
+    def phase_titles(self) -> list[str]:
+        return [t.title for t in self.tasks + self.cleanup_tasks]
 
     def run(self) -> None:
         main_error: BaseException | None = None

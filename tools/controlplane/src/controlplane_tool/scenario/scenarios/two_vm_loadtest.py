@@ -31,6 +31,7 @@ from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     LOADTEST_PROMETHEUS_QUERIES,
     LOADTEST_STATIC_TASK_IDS,
+    LOADTEST_TASK_TITLES,
     two_vm_control_plane_url,
     two_vm_load_stages,
     two_vm_prometheus_url,
@@ -55,16 +56,7 @@ class TwoVmLoadtestPlan:
 
     @property
     def phase_titles(self) -> list[str]:
-        return [
-            "Ensure stack VM running",
-            "Ensure loadgen VM running",
-            "Install k6 on loadgen VM",
-            "Run k6 loadtest",
-            "Fetch k6 results from loadgen VM",
-            "Capture Prometheus snapshots",
-            "Write loadtest report",
-            "Destroy loadgen VM",
-        ]
+        return list(LOADTEST_TASK_TITLES.values())
 
     def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
@@ -73,31 +65,13 @@ class TwoVmLoadtestPlan:
         vm_runner_impl = TwoVmLoadtestRunner(repo_root=self.runner.paths.workspace_root)
         lifecycle = MultipassVmAdapter(vm_runner_impl.vm)
 
-        stack_config = VmConfig(
-            name=request.vm.name,
-            cpus=request.vm.cpus,
-            memory=request.vm.memory,
-            disk=request.vm.disk,
-        )
-        loadgen_config = VmConfig(
-            name=request.loadgen_vm.name,
-            cpus=request.loadgen_vm.cpus,
-            memory=request.loadgen_vm.memory,
-            disk=request.loadgen_vm.disk,
-        )
+        stack_config = VmConfig(name=request.vm.name, cpus=request.vm.cpus, memory=request.vm.memory, disk=request.vm.disk)
+        loadgen_config = VmConfig(name=request.loadgen_vm.name, cpus=request.loadgen_vm.cpus, memory=request.loadgen_vm.memory, disk=request.loadgen_vm.disk)
 
-        ensure_stack = EnsureVmRunning(
-            task_id="vm.stack.ensure_running",
-            title="Ensure stack VM running",
-            lifecycle=lifecycle,
-            config=stack_config,
-        )
-        ensure_loadgen = EnsureVmRunning(
-            task_id="vm.loadgen.ensure_running",
-            title="Ensure loadgen VM running",
-            lifecycle=lifecycle,
-            config=loadgen_config,
-        )
+        _t = LOADTEST_TASK_TITLES
+
+        ensure_stack = EnsureVmRunning(task_id="vm.stack.ensure_running", title=_t["vm.stack.ensure_running"], lifecycle=lifecycle, config=stack_config)
+        ensure_loadgen = EnsureVmRunning(task_id="vm.loadgen.ensure_running", title=_t["vm.loadgen.ensure_running"], lifecycle=lifecycle, config=loadgen_config)
 
         with workflow_step(task_id=ensure_stack.task_id, title=ensure_stack.title):
             stack_info = ensure_stack.run()
@@ -105,10 +79,7 @@ class TwoVmLoadtestPlan:
             loadgen_info = ensure_loadgen.run()
 
         remote_home = loadgen_info.home
-        remote_paths = two_vm_remote_paths(
-            remote_home,
-            payload_name=request.k6_payload.name if request.k6_payload is not None else None,
-        )
+        remote_paths = two_vm_remote_paths(remote_home, payload_name=request.k6_payload.name if request.k6_payload is not None else None)
         run_dir = vm_runner_impl._create_run_dir()  # noqa: SLF001
         control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
 
@@ -116,18 +87,11 @@ class TwoVmLoadtestPlan:
             script_path=Path(remote_paths.script_path),
             target_url=control_plane_url,
             summary_output_path=Path(remote_paths.summary_path),
-            stages=tuple(
-                K6Stage(duration=d, target=t)
-                for d, t in two_vm_load_stages(request)
-            ),
+            stages=tuple(K6Stage(duration=d, target=t) for d, t in two_vm_load_stages(request)),
             env={
                 "NANOFAAS_URL": control_plane_url,
                 "NANOFAAS_FUNCTION": two_vm_target_function(request),
-                **(
-                    {"NANOFAAS_PAYLOAD": str(remote_paths.payload_path)}
-                    if remote_paths.payload_path
-                    else {}
-                ),
+                **({"NANOFAAS_PAYLOAD": str(remote_paths.payload_path)} if remote_paths.payload_path else {}),
             },
             vus=request.k6_vus,
             duration=request.k6_duration,
@@ -136,59 +100,27 @@ class TwoVmLoadtestPlan:
 
         loadgen_runner = OrchestratorVmRunner(vm_runner_impl.vm, request.loadgen_vm)
         fetcher = VmFileFetcher(vm=vm_runner_impl.vm, request=request.loadgen_vm)
-        prom_client = HttpPrometheusClient(
-            url=two_vm_prometheus_url(request.vm, host=stack_info.host)
-        )
+        prom_client = HttpPrometheusClient(url=two_vm_prometheus_url(request.vm, host=stack_info.host))
 
-        k6_task = RunK6(
-            task_id="loadgen.run_k6",
-            title="Run k6 loadtest",
-            runner=loadgen_runner,
-            config=k6_config,
-            remote_dir=remote_home,
-        )
+        k6_task = RunK6(task_id="loadgen.run_k6", title=_t["loadgen.run_k6"], runner=loadgen_runner, config=k6_config, remote_dir=remote_home)
 
         workflow = Workflow(
             tasks=[
-                InstallK6(
-                    task_id="loadgen.install_k6",
-                    title="Install k6 on loadgen VM",
-                    runner=loadgen_runner,
-                    remote_dir=remote_home,
-                ),
+                InstallK6(task_id="loadgen.install_k6", title=_t["loadgen.install_k6"], runner=loadgen_runner, remote_dir=remote_home),
                 k6_task,
-                FetchVmResults(
-                    task_id="loadgen.fetch_results",
-                    title="Fetch k6 results from loadgen VM",
-                    fetcher=fetcher,
-                    remote_source=remote_paths.summary_path,
-                    local_dest=run_dir,
-                ),
+                FetchVmResults(task_id="loadgen.fetch_results", title=_t["loadgen.fetch_results"], fetcher=fetcher, remote_source=remote_paths.summary_path, local_dest=run_dir),
                 CapturePrometheusSnapshot(
                     task_id="metrics.prometheus_snapshot",
-                    title="Capture Prometheus snapshots",
+                    title=_t["metrics.prometheus_snapshot"],
                     client=prom_client,
                     queries=LOADTEST_PROMETHEUS_QUERIES,
-                    window=lambda: TimeWindow(
-                        start=k6_task.result.started_at,
-                        end=k6_task.result.ended_at,
-                    ),
+                    window=lambda: TimeWindow(start=k6_task.result.started_at, end=k6_task.result.ended_at),
                     output_dir=run_dir,
                 ),
-                WriteK6Report(
-                    task_id="loadtest.write_report",
-                    title="Write loadtest report",
-                    data_dir=run_dir,
-                    output_dir=run_dir,
-                ),
+                WriteK6Report(task_id="loadtest.write_report", title=_t["loadtest.write_report"], data_dir=run_dir, output_dir=run_dir),
             ],
             cleanup_tasks=[
-                DestroyVm(
-                    task_id="vm.loadgen.destroy",
-                    title="Destroy loadgen VM",
-                    lifecycle=lifecycle,
-                    info=loadgen_info,
-                ),
+                DestroyVm(task_id="vm.loadgen.destroy", title=_t["vm.loadgen.destroy"], lifecycle=lifecycle, info=loadgen_info),
             ],
         )
         workflow.run()
