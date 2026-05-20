@@ -184,14 +184,15 @@ class WorkflowEventAggregator:
         if phase is not None:
             self._sync_phase_metadata(phase, event.title or phase.label, event.task_id, event.detail)
             return phase
-        if not self._phases:
-            return self._upsert_top_level_phase(
-                event.title or event.task_id or "Task",
-                task_id=event.task_id,
-                detail=event.detail,
-            )
         phase = self._next_unassigned_top_level_phase()
         if phase is None:
+            # No pre-planned slot available — create a dynamic phase for any event with a task_id.
+            if event.task_id:
+                return self._upsert_top_level_phase(
+                    event.title or event.task_id,
+                    task_id=event.task_id,
+                    detail=event.detail,
+                )
             return None
         if event.title and event.title != phase.label:
             return None
