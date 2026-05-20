@@ -53,6 +53,19 @@ class TwoVmLoadtestPlan:
     def task_ids(self) -> list[str]:
         return list(LOADTEST_STATIC_TASK_IDS)
 
+    @property
+    def phase_titles(self) -> list[str]:
+        return [
+            "Ensure stack VM running",
+            "Ensure loadgen VM running",
+            "Install k6 on loadgen VM",
+            "Run k6 loadtest",
+            "Fetch k6 results from loadgen VM",
+            "Capture Prometheus snapshots",
+            "Write loadtest report",
+            "Destroy loadgen VM",
+        ]
+
     def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
 

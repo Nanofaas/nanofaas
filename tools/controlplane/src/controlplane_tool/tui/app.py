@@ -1019,7 +1019,7 @@ class NanofaasTUI:
                     f"Scenario: {scenario}",
                     "Mode: self-bootstrapping VM-backed scenario",
                 ],
-                planned_steps=[step.summary for step in plan.steps],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
                 action=_run_helm_stack_workflow,
             )
 

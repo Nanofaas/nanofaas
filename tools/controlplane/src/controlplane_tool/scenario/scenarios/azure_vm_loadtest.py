@@ -53,6 +53,19 @@ class AzureVmLoadtestPlan:
     def task_ids(self) -> list[str]:
         return list(LOADTEST_STATIC_TASK_IDS)
 
+    @property
+    def phase_titles(self) -> list[str]:
+        return [
+            "Ensure stack VM running (Azure)",
+            "Ensure loadgen VM running (Azure)",
+            "Install k6 on loadgen VM (Azure)",
+            "Run k6 loadtest (Azure)",
+            "Fetch k6 results from loadgen VM (Azure)",
+            "Capture Prometheus snapshots (Azure)",
+            "Write loadtest report (Azure)",
+            "Destroy loadgen VM (Azure)",
+        ]
+
     def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
         from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
