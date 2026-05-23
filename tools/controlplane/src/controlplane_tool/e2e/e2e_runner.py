@@ -403,6 +403,8 @@ class E2eRunner:
                 continue
 
             if scenario.requires_vm and shared_vm_request is None:
+                if scenario.name in {"azure-vm-loadtest", "proxmox-vm-loadtest"}:
+                    continue  # cloud-provider scenarios require explicit credentials
                 shared_vm_request = VmRequest(lifecycle="multipass")
 
             loadgen_vm = None

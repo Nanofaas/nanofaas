@@ -758,11 +758,17 @@ def test_plan_all_returns_typed_builder_for_cli_stack(tmp_path: Path) -> None:
 
 
 def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) -> None:
-    """plan_all() must return AzureVmLoadtestPlan for azure-vm-loadtest."""
+    """plan_all() must return AzureVmLoadtestPlan when explicit azure credentials are provided."""
     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
 
+    azure_request = VmRequest(
+        lifecycle="azure",
+        name="nanofaas-azure",
+        azure_resource_group="my-rg",
+        azure_location="westeurope",
+    )
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["azure-vm-loadtest"])
+    plans = runner.plan_all(only=["azure-vm-loadtest"], vm_request=azure_request)
 
     assert len(plans) == 1
     assert isinstance(plans[0], AzureVmLoadtestPlan), (
@@ -770,6 +776,41 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
     )
     assert "loadgen.run_k6" in plans[0].task_ids
     assert "vm.stack.ensure_running" in plans[0].task_ids
+
+
+def test_plan_all_skips_azure_vm_loadtest_without_credentials(tmp_path: Path) -> None:
+    """plan_all() must skip azure-vm-loadtest when no vm_request is provided."""
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["azure-vm-loadtest"])
+
+    assert len(plans) == 0
+
+
+def test_plan_all_returns_typed_builder_for_proxmox_vm_loadtest(tmp_path: Path) -> None:
+    """plan_all() must return ProxmoxVmLoadtestPlan when explicit proxmox credentials are provided."""
+    from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import ProxmoxVmLoadtestPlan
+
+    proxmox_request = VmRequest(
+        lifecycle="proxmox",
+        name="nanofaas-proxmox",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_password="secret",
+    )
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["proxmox-vm-loadtest"], vm_request=proxmox_request)
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], ProxmoxVmLoadtestPlan)
+    assert "loadgen.run_k6" in plans[0].task_ids
+
+
+def test_plan_all_skips_proxmox_vm_loadtest_without_credentials(tmp_path: Path) -> None:
+    """plan_all() must skip proxmox-vm-loadtest when no vm_request is provided."""
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["proxmox-vm-loadtest"])
+
+    assert len(plans) == 0
 
 
 def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) -> None:

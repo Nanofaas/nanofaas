@@ -263,7 +263,7 @@ def _handle_validation(action) -> None:
 def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
     if scenario in {"container-local", "deploy-host"}:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
-    if scenario in {"helm-stack", "two-vm-loadtest", "azure-vm-loadtest"}:
+    if scenario in {"helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
         return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-loadtest")
     if scenario == "cli-stack":
         return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
