@@ -31,9 +31,9 @@ from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     LOADTEST_PROMETHEUS_QUERIES,
     LOADTEST_STATIC_TASK_IDS,
+    TWO_VM_PROMETHEUS_NODE_PORT,
     two_vm_control_plane_url,
     two_vm_load_stages,
-    two_vm_prometheus_url,
     two_vm_remote_paths,
     two_vm_target_function,
 )
@@ -112,13 +112,20 @@ class ProxmoxVmLoadtestPlan:
         with workflow_step(task_id=ensure_loadgen.task_id, title=ensure_loadgen.title):
             loadgen_info = ensure_loadgen.run()
 
+        stack_guest_host = proxmox_orch.guest_host(request.vm)
+        prometheus_host, prometheus_port = proxmox_orch.publish_port(
+            request.vm,
+            service="PROMETHEUS",
+            guest_port=TWO_VM_PROMETHEUS_NODE_PORT,
+        )
+
         remote_home = loadgen_info.home
         remote_paths = two_vm_remote_paths(
             remote_home,
             payload_name=request.k6_payload.name if request.k6_payload is not None else None,
         )
         run_dir = run_dir_creator._create_run_dir()  # noqa: SLF001
-        control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
+        control_plane_url = two_vm_control_plane_url(request.vm, host=stack_guest_host)
 
         k6_config = K6Config(
             script_path=Path(remote_paths.script_path),
@@ -145,7 +152,7 @@ class ProxmoxVmLoadtestPlan:
         loadgen_runner = OrchestratorVmRunner(proxmox_orch, request.loadgen_vm)
         fetcher = VmFileFetcher(vm=proxmox_orch, request=request.loadgen_vm)
         prom_client = HttpPrometheusClient(
-            url=two_vm_prometheus_url(request.vm, host=stack_info.host)
+            url=f"http://{prometheus_host}:{prometheus_port}"
         )
 
         k6_task = RunK6(task_id=s_run_k6.task_id, title=s_run_k6.title, runner=loadgen_runner, config=k6_config, remote_dir=remote_home)
