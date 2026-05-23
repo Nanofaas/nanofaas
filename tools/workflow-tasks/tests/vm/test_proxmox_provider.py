@@ -150,21 +150,45 @@ def test_ensure_running(mock_client_cls) -> None:
     assert result.return_code == 0
 
 
+@patch("workflow_tasks.vm.proxmox.subprocess.run")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_exec_argv(mock_client_cls) -> None:
+def test_exec_argv(mock_client_cls, mock_subproc) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
-    exec_result = MagicMock()
-    exec_result.exit_code = 0
-    exec_result.stdout = "output"
-    exec_result.stderr = ""
-    vm_mock.exec_structured.return_value = exec_result
     mock_client_cls.return_value = client_mock
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = "output"
+    proc.stderr = ""
+    mock_subproc.return_value = proc
     provider = _make_provider()
     req = _make_request()
     result = provider.exec_argv(req, ["echo", "hello"])
     assert result.return_code == 0
     assert result.stdout == "output"
-    vm_mock.exec_structured.assert_called_once_with(["echo", "hello"], env=None, cwd=None)
+    called_cmd = mock_subproc.call_args[0][0]
+    assert called_cmd[0] == "ssh"
+    assert "ubuntu@192.168.1.100" in called_cmd
+    assert "echo hello" in called_cmd[-1]
+
+
+@patch("workflow_tasks.vm.proxmox.subprocess.run")
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_exec_argv_with_cwd_and_env(mock_client_cls, mock_subproc) -> None:
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    mock_client_cls.return_value = client_mock
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = ""
+    proc.stderr = ""
+    mock_subproc.return_value = proc
+    provider = _make_provider()
+    req = _make_request()
+    result = provider.exec_argv(req, ["ls"], cwd="/home/ubuntu", env={"FOO": "bar"})
+    assert result.return_code == 0
+    remote_cmd = mock_subproc.call_args[0][0][-1]
+    assert "cd /home/ubuntu" in remote_cmd
+    assert "FOO=bar" in remote_cmd
+    assert "ls" in remote_cmd
 
 
 @patch("workflow_tasks.vm.proxmox.subprocess.run")

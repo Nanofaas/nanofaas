@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -96,13 +97,28 @@ class ProxmoxVmProvider:
         dry_run: bool = False,
     ) -> ShellExecutionResult:
         del dry_run
-        client = self._client(request)
-        vm = client.get_vm(self._vm_name(request))
-        result = vm.exec_structured(list(argv), env=env, cwd=cwd)
+        host = self.connection_host(request)
+        ssh_key = self._ssh_key(request)
+        user = request.user or "ubuntu"
+
+        ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes"]
+        if ssh_key:
+            ssh_cmd += ["-i", str(ssh_key)]
+
+        remote_parts: list[str] = []
+        if cwd:
+            remote_parts.append(f"cd {shlex.quote(cwd)} &&")
+        if env:
+            remote_parts.append("env")
+            remote_parts.extend(f"{k}={shlex.quote(v)}" for k, v in env.items())
+        remote_parts.extend(shlex.quote(a) for a in argv)
+
+        ssh_cmd += [f"{user}@{host}", " ".join(remote_parts)]
+        proc = subprocess.run(ssh_cmd, capture_output=True, text=True)
         return ShellExecutionResult(
-            return_code=result.exit_code,
-            stdout=result.stdout or "",
-            stderr=result.stderr or "",
+            return_code=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
             command=list(argv),
         )
 
