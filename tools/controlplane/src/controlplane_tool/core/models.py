@@ -129,3 +129,14 @@ class AzureConfig(BaseModel):
     ssh_key_path: str | None = None
     vm_name: str = "nanofaas-azure"
     loadgen_name: str = "nanofaas-azure-loadgen"
+
+
+class ProxmoxConfig(BaseModel):
+    host: str
+    node: str
+    user: str = "root@pam"
+    password: str
+    template_id: int | None = None
+    ssh_key_path: str | None = None
+    vm_name: str = "nanofaas-proxmox"
+    loadgen_name: str = "nanofaas-proxmox-loadgen"
