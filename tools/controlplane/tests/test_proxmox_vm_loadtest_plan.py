@@ -35,7 +35,7 @@ def test_proxmox_vm_loadtest_plan_task_ids() -> None:
     runner.paths.workspace_root = "/workspace"
     request = MagicMock()
     plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
-    assert plan.task_ids == list(LOADTEST_STATIC_TASK_IDS)
+    assert plan.task_ids == [*LOADTEST_STATIC_TASK_IDS, "vm.stack.destroy"]
 
 
 def test_proxmox_vm_loadtest_plan_phase_titles_count() -> None:
@@ -53,7 +53,7 @@ def test_proxmox_vm_loadtest_plan_phase_titles_count() -> None:
     request.loadgen_vm.memory = "2G"
     request.loadgen_vm.disk = "10G"
     plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
-    # 2 EnsureVmRunning (pre) + 5 Workflow tasks + 1 cleanup = 8 phases via task_ids
+    # 2 EnsureVmRunning (pre) + 5 Workflow tasks + 2 cleanups (loadgen + stack) = 9 phases
     assert len(plan.phase_titles) == len(plan.task_ids)
 
 

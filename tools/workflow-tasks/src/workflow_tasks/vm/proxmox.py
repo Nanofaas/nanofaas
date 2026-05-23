@@ -6,6 +6,7 @@ from pathlib import Path
 
 from proxmox_sdk import ProxmoxClient
 from proxmox_sdk.exceptions import VmNotFoundError
+from proxmox_sdk.routing import ProxmoxRoutingManager
 
 from shellcraft.backend import ShellExecutionResult
 from workflow_tasks.vm.models import VmRequest, vm_remote_home
@@ -50,6 +51,15 @@ class ProxmoxVmProvider:
             return Path(request.proxmox_ssh_key_path)
         return _find_ssh_private_key_path()
 
+    def _routing_manager(self, request: VmRequest) -> ProxmoxRoutingManager:
+        host = request.proxmox_host or ""
+        # proxmox_user is "root@pam" → SSH login is "root"
+        ssh_user = (request.proxmox_user or "root@pam").split("@")[0]
+        ssh_key = self._ssh_key(request)
+        if ssh_key:
+            return ProxmoxRoutingManager.from_key(host, ssh_user, str(ssh_key))
+        return ProxmoxRoutingManager.from_password(host, ssh_user, request.proxmox_password or "")
+
     def remote_home(self, request: VmRequest) -> str:
         return vm_remote_home(request)
 
@@ -84,6 +94,13 @@ class ProxmoxVmProvider:
             vm = client.get_vm(name)
             vm.delete()
         except VmNotFoundError:
+            pass
+        try:
+            mgr = self._routing_manager(request)
+            rules = [r for r in mgr.list_rules() if r.vm_name == name]
+            if rules:
+                mgr.remove_rules(rules)
+        except Exception:
             pass
         return _ok(["proxmox", "delete", name])
 

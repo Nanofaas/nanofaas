@@ -120,6 +120,36 @@ def test_teardown_success(mock_client_cls) -> None:
     assert result.return_code == 0
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_teardown_removes_nat_rules_for_vm(mock_client_cls, mock_routing_cls) -> None:
+    from proxmox_sdk.routing import PortMapping
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    mock_client_cls.return_value = client_mock
+    mgr_mock = MagicMock()
+    matching_rule = PortMapping(vm_id=100, vm_name="test-vm", vm_ip="10.0.0.10", vm_port=22, service="SSH", host_port=20000)
+    other_rule = PortMapping(vm_id=200, vm_name="other-vm", vm_ip="10.0.0.20", vm_port=22, service="SSH", host_port=20001)
+    mgr_mock.list_rules.return_value = [matching_rule, other_rule]
+    mock_routing_cls.from_key.return_value = mgr_mock
+    provider = _make_provider()
+    req = _make_request()
+    result = provider.teardown(req)
+    assert result.return_code == 0
+    mgr_mock.remove_rules.assert_called_once_with([matching_rule])
+
+
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_teardown_nat_failure_does_not_prevent_success(mock_client_cls, mock_routing_cls) -> None:
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    mock_client_cls.return_value = client_mock
+    mock_routing_cls.from_key.side_effect = RuntimeError("SSH failed")
+    provider = _make_provider()
+    req = _make_request()
+    result = provider.teardown(req)
+    assert result.return_code == 0
+
+
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
 def test_teardown_vm_not_found_is_ignored(mock_client_cls) -> None:
     from proxmox_sdk.exceptions import VmNotFoundError
