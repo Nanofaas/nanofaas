@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from proxmox_sdk import ProxmoxClient
 from proxmox_sdk.exceptions import VmNotFoundError
@@ -13,7 +12,6 @@ from workflow_tasks.vm.multipass import _find_ssh_private_key_path, _ok
 
 
 def _parse_memory_mb(memory: str) -> int:
-    """Convert memory string like '4G' or '512M' to MB integer."""
     s = memory.strip().upper()
     if s.endswith("G"):
         return int(s[:-1]) * 1024
@@ -23,7 +21,6 @@ def _parse_memory_mb(memory: str) -> int:
 
 
 def _parse_disk_gb(disk: str) -> int:
-    """Convert disk string like '20G' or '512M' to GB integer."""
     s = disk.strip().upper()
     if s.endswith("G"):
         return int(s[:-1])
@@ -92,12 +89,13 @@ class ProxmoxVmProvider:
     def exec_argv(
         self,
         request: VmRequest,
-        argv: list[str],
+        argv: tuple[str, ...] | list[str],
         *,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
         dry_run: bool = False,
     ) -> ShellExecutionResult:
+        del dry_run
         client = self._client(request)
         vm = client.get_vm(self._vm_name(request))
         result = vm.exec_structured(list(argv), env=env, cwd=cwd)

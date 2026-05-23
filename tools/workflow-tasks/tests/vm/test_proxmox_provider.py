@@ -182,7 +182,6 @@ def test_transfer_to(mock_client_cls, mock_subproc) -> None:
     result = provider.transfer_to(req, source=Path("/local/file"), destination="/remote/file")
     assert result.return_code == 0
     assert "scp" in result.command
-    # verify scp command structure includes source and destination
     cmd = result.command
     assert "/local/file" in cmd
     assert "ubuntu@192.168.1.100:/remote/file" in cmd
