@@ -3,10 +3,11 @@ from __future__ import annotations
 import shlex
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from proxmox_sdk import ProxmoxClient
 from proxmox_sdk.exceptions import VmNotFoundError
-from proxmox_sdk.routing import ProxmoxRoutingManager
+from proxmox_sdk.routing import PortMapping, ProxmoxRoutingManager
 
 from shellcraft.backend import ShellExecutionResult
 from workflow_tasks.vm.models import VmRequest, vm_remote_home
@@ -34,6 +35,7 @@ def _parse_disk_gb(disk: str) -> int:
 class ProxmoxVmProvider:
     def __init__(self, repo_root: Path) -> None:
         self.repo_root = Path(repo_root)
+        self._ssh_endpoints: dict[str, tuple[str, int]] = {}
 
     def _client(self, request: VmRequest) -> ProxmoxClient:
         return ProxmoxClient(
@@ -60,6 +62,42 @@ class ProxmoxVmProvider:
             return ProxmoxRoutingManager.from_key(host, ssh_user, str(ssh_key))
         return ProxmoxRoutingManager.from_password(host, ssh_user, request.proxmox_password or "")
 
+    def _publish_ssh(self, request: VmRequest, *, vm: Any, guest_ip: str) -> PortMapping:
+        mapping = PortMapping(
+            vm_id=int(vm.vm_id),
+            vm_name=self._vm_name(request),
+            vm_ip=guest_ip,
+            vm_port=22,
+            service="SSH",
+        )
+        [published] = self._routing_manager(request).add_rules([mapping])
+        if published.host_port is None:
+            raise RuntimeError(f"Proxmox SSH NAT rule for {mapping.vm_name} has no host port")
+        return published
+
+    def _published_rule(self, request: VmRequest, service: str = "SSH") -> PortMapping:
+        name = self._vm_name(request)
+        rules = [
+            r for r in self._routing_manager(request).list_rules()
+            if r.vm_name == name and r.service == service
+        ]
+        if not rules:
+            raise RuntimeError(f"Missing Proxmox NAT rule for {name} service {service}")
+        rule = rules[0]
+        if rule.host_port is None:
+            raise RuntimeError(f"Proxmox NAT rule for {name} service {service} has no host port")
+        return rule
+
+    def _ssh_endpoint(self, request: VmRequest) -> tuple[str, int]:
+        name = self._vm_name(request)
+        if name in self._ssh_endpoints:
+            return self._ssh_endpoints[name]
+        try:
+            rule = self._published_rule(request, "SSH")
+            return request.proxmox_host or "", int(rule.host_port)
+        except RuntimeError:
+            return self.connection_host(request), 22
+
     def remote_home(self, request: VmRequest) -> str:
         return vm_remote_home(request)
 
@@ -77,7 +115,7 @@ class ProxmoxVmProvider:
         cores = request.cpus or 2
         memory_mb = _parse_memory_mb(request.memory or "2G")
         disk_gb = _parse_disk_gb(request.disk or "20G")
-        client.ensure_running(
+        vm = client.ensure_running(
             name,
             template_id=request.proxmox_template_id,
             node=request.proxmox_node,
@@ -85,6 +123,10 @@ class ProxmoxVmProvider:
             memory_mb=memory_mb,
             disk_gb=disk_gb,
         )
+        vm.wait_ready()
+        guest_ip = vm.wait_for_ip()
+        published = self._publish_ssh(request, vm=vm, guest_ip=guest_ip)
+        self._ssh_endpoints[name] = (request.proxmox_host or "", int(published.host_port))
         return _ok(["proxmox", "ensure_running", name])
 
     def teardown(self, request: VmRequest) -> ShellExecutionResult:
