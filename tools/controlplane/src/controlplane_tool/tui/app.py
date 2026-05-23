@@ -528,6 +528,12 @@ _PLATFORM_VALIDATION_CHOICES = [
         "Prometheus snapshots. Reads defaults from profiles/azure.toml.",
     ),
     _DescribedChoice(
+        "proxmox-vm-loadtest — Two-VM Proxmox VE load test with k6",
+        "proxmox-vm-loadtest",
+        "Clone two VMs on Proxmox VE (stack + loadgen), run k6 load test, capture "
+        "Prometheus snapshots. Reads defaults from profiles/proxmox.toml.",
+    ),
+    _DescribedChoice(
         "container-local — local managed DEPLOYMENT",
         "container-local",
         "Run the managed DEPLOYMENT workflow entirely on the local machine without provisioning a VM first.",
@@ -958,7 +964,7 @@ class NanofaasTUI:
             if scenario_choice == _BACK_VALUE:
                 return
 
-            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest", "azure-vm-loadtest"):
+            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"):
                 self._run_vm_e2e_scenario(scenario_choice)
             elif scenario_choice == "container-local":
                 self._run_container_local()

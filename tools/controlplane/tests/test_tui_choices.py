@@ -904,6 +904,7 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     assert "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
     assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
     assert "two-vm-loadtest — Helm stack with dedicated k6 load generator VM" in captured["choices"]
+    assert "proxmox-vm-loadtest — Two-VM Proxmox VE load test with k6" in captured["choices"]
 
 
 def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
@@ -926,6 +927,28 @@ def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
     NanofaasTUI()._e2e_menu()
 
     assert called["scenario"] == "two-vm-loadtest"
+
+
+def test_tui_e2e_menu_routes_proxmox_vm_loadtest_to_vm_runner(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    answers = iter(["proxmox-vm-loadtest", "back"])
+    called: dict[str, object] = {}
+
+    def fake_select(*args, **kwargs):  # noqa: ANN001
+        return _Prompt(next(answers))
+
+    monkeypatch.setattr(tui_app.questionary, "select", fake_select)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+    monkeypatch.setattr(
+        NanofaasTUI,
+        "_run_vm_e2e_scenario",
+        lambda self, scenario: called.update({"scenario": scenario}),
+    )
+
+    NanofaasTUI()._e2e_menu()
+
+    assert called["scenario"] == "proxmox-vm-loadtest"
 
 
 def test_tui_submenus_include_back_entries(monkeypatch) -> None:
