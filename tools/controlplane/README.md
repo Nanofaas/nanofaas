@@ -59,6 +59,7 @@ scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript
 scripts/controlplane.sh e2e run helm-stack --dry-run
 scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
 scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
+scripts/controlplane.sh e2e run proxmox-vm-loadtest --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
 scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
@@ -75,6 +76,70 @@ scripts/e2e-loadtest.sh --profile demo-java --dry-run
 For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH operations and treats `e2e all` as one shared VM session with one final teardown point. Use `--no-cleanup-vm` to preserve a Multipass VM after the run; external VM lifecycle mode is always preserved.
 
 `two-vm-loadtest` reuses the Helm stack bootstrap on one VM and provisions a second loadgen VM for k6. It invokes the selected function through the control-plane NodePort, captures Prometheus snapshots, and writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. The sample manifest is `tools/controlplane/scenarios/two-vm-loadtest-java.toml`.
+
+## Proxmox VM load test
+
+`proxmox-vm-loadtest` mirrors the two-VM load test but provisions both VMs on a Proxmox VE cluster instead of Multipass. It clones a VM template for the stack node and the k6 loadgen node, runs the same Helm/k6 workflow, and tears the VMs down on completion.
+
+### Setup
+
+Proxmox credentials are stored in a gitignored file so that passwords never enter the repository:
+
+```bash
+cp tools/controlplane/profiles/proxmox.toml.example \
+   tools/controlplane/profiles/proxmox.toml
+```
+
+Edit `proxmox.toml` and fill in at least the three required fields:
+
+```toml
+host     = "192.168.1.100"   # Proxmox server IP or hostname
+node     = "pve"             # Proxmox node name
+password = "changeme"        # API password for the user below
+```
+
+Optional fields (uncomment as needed):
+
+```toml
+# user        = "root@pam"
+# template_id = 100
+# ssh_key_path = ""
+# vm_name      = "nanofaas-proxmox"
+# loadgen_name = "nanofaas-proxmox-loadgen"
+```
+
+### Running via TUI
+
+```bash
+scripts/controlplane.sh tui
+# Navigate to: Load Testing → proxmox-vm-loadtest
+# The TUI reads proxmox.toml automatically and shows a confirmation panel.
+```
+
+### Running via CLI
+
+```bash
+# Dry-run (reads proxmox.toml for display but does not touch the cluster)
+scripts/controlplane.sh e2e run proxmox-vm-loadtest --dry-run
+
+# Live run — credentials can come from proxmox.toml (TUI path) or be passed directly
+scripts/controlplane.sh e2e run proxmox-vm-loadtest \
+  --lifecycle proxmox \
+  --proxmox-host 192.168.1.100 \
+  --proxmox-node pve \
+  --proxmox-password secret \
+  --proxmox-template-id 100
+
+# Preserve the VMs after the run for inspection
+scripts/controlplane.sh e2e run proxmox-vm-loadtest \
+  --lifecycle proxmox \
+  --proxmox-host 192.168.1.100 \
+  --proxmox-node pve \
+  --proxmox-password secret \
+  --no-cleanup-vm
+```
+
+All six `--proxmox-*` flags (`--proxmox-host`, `--proxmox-node`, `--proxmox-user`, `--proxmox-password`, `--proxmox-template-id`, `--proxmox-ssh-key`) mirror the fields in `proxmox.toml` and override whatever the config file supplies.
 
 Use the canonical wrapper for saved-profile / interactive runs as well:
 
