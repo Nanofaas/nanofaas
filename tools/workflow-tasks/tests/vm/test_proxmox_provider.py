@@ -98,7 +98,7 @@ def test_ssh_key_fallback(mock_find, mock_client_cls) -> None:
 
 
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_connection_host(mock_client_cls) -> None:
+def test_connection_host_returns_guest_ip(mock_client_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
     mock_client_cls.return_value = client_mock
     provider = _make_provider()
@@ -107,6 +107,16 @@ def test_connection_host(mock_client_cls) -> None:
     assert host == "192.168.1.100"
     client_mock.get_vm.assert_called_once_with("test-vm")
     vm_mock.wait_for_ip.assert_called_once()
+
+
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_guest_host_returns_guest_ip(mock_client_cls) -> None:
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    mock_client_cls.return_value = client_mock
+    provider = _make_provider()
+    req = _make_request()
+
+    assert provider.guest_host(req) == "192.168.1.100"
 
 
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
@@ -178,6 +188,49 @@ def test_ensure_running(mock_client_cls) -> None:
         disk_gb=20,
     )
     assert result.return_code == 0
+
+
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_ensure_running_waits_ready_and_publishes_ssh_nat(mock_client_cls, mock_routing_cls) -> None:
+    from proxmox_sdk.routing import PortMapping
+
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    vm_mock.vm_id = 123
+    vm_mock.node = "pve"
+    vm_mock.wait_for_ip.return_value = "10.0.2.27"
+    client_mock.ensure_running.return_value = vm_mock
+    mock_client_cls.return_value = client_mock
+    mgr_mock = MagicMock()
+    mgr_mock.add_rules.return_value = [
+        PortMapping(
+            vm_id=123,
+            vm_name="test-vm",
+            vm_ip="10.0.2.27",
+            vm_port=22,
+            service="SSH",
+            host_port=20000,
+        )
+    ]
+    mock_routing_cls.from_key.return_value = mgr_mock
+
+    provider = _make_provider()
+    req = _make_request(cpus=2, memory="4G", disk="20G")
+
+    result = provider.ensure_running(req)
+
+    assert result.return_code == 0
+    vm_mock.wait_ready.assert_called_once()
+    vm_mock.wait_for_ip.assert_called_once()
+    mgr_mock.add_rules.assert_called_once()
+    mapping = mgr_mock.add_rules.call_args[0][0][0]
+    assert mapping == PortMapping(
+        vm_id=123,
+        vm_name="test-vm",
+        vm_ip="10.0.2.27",
+        vm_port=22,
+        service="SSH",
+    )
 
 
 @patch("workflow_tasks.vm.proxmox.subprocess.run")

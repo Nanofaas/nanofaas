@@ -104,6 +104,9 @@ class ProxmoxVmProvider:
     def remote_project_dir(self, request: VmRequest) -> str:
         return f"{self.remote_home(request)}/nanofaas"
 
+    def guest_host(self, request: VmRequest) -> str:
+        return self.connection_host(request)
+
     def connection_host(self, request: VmRequest) -> str:
         client = self._client(request)
         vm = client.get_vm(self._vm_name(request))
