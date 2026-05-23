@@ -55,3 +55,24 @@ def test_proxmox_vm_loadtest_plan_phase_titles_count() -> None:
     plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
     # 2 EnsureVmRunning (pre) + 5 Workflow tasks + 1 cleanup = 8 phases via task_ids
     assert len(plan.phase_titles) == len(plan.task_ids)
+
+
+def test_e2e_runner_plan_returns_proxmox_vm_loadtest_plan(tmp_path) -> None:
+    from pathlib import Path
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import ProxmoxVmLoadtestPlan
+    from controlplane_tool.core.shell_backend import RecordingShell
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
+    )
+    plan = runner.plan(request)
+    assert isinstance(plan, ProxmoxVmLoadtestPlan)
+    assert "loadgen.run_k6" in plan.task_ids
+    assert "vm.stack.ensure_running" in plan.task_ids

@@ -310,16 +310,22 @@ class E2eRunner:
         self._resolver = CommandResolver(host_resolver=host_resolver)
 
     def _prepare_recipe_request(self, request: E2eRequest) -> E2eRequest:
-        recipe = build_scenario_recipe(request.scenario)
-        if (request.vm is None and recipe.requires_managed_vm) or (
-            request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"}
+        loadgen_scenarios = {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}
+        try:
+            recipe = build_scenario_recipe(request.scenario)
+            requires_managed_vm = recipe.requires_managed_vm
+        except ValueError:
+            recipe = None
+            requires_managed_vm = False
+        if (request.vm is None and requires_managed_vm) or (
+            request.scenario in loadgen_scenarios
             and request.loadgen_vm is None
         ):
             context = resolve_scenario_environment(self.paths.workspace_root, request)
             updates: dict[str, object] = {}
-            if request.vm is None and recipe.requires_managed_vm:
+            if request.vm is None and requires_managed_vm:
                 updates["vm"] = context.vm_request
-            if request.scenario in {"two-vm-loadtest", "azure-vm-loadtest"} and request.loadgen_vm is None:
+            if request.scenario in loadgen_scenarios and request.loadgen_vm is None:
                 updates["loadgen_vm"] = loadgen_vm_request(context)
             return request.model_copy(update=updates)
         return request
@@ -336,6 +342,9 @@ class E2eRunner:
         if request.scenario == "azure-vm-loadtest":
             from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
             return build_azure_vm_loadtest_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "proxmox-vm-loadtest":
+            from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
+            return build_proxmox_vm_loadtest_plan(runner=self, request=self._prepare_recipe_request(request))
         if request.scenario == "k3s-junit-curl":
             from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
             return build_k3s_junit_curl_plan(self, self._prepare_recipe_request(request))
@@ -397,13 +406,15 @@ class E2eRunner:
                 shared_vm_request = VmRequest(lifecycle="multipass")
 
             loadgen_vm = None
-            if scenario.name in {"two-vm-loadtest", "azure-vm-loadtest"} and shared_vm_request is not None:
+            if scenario.name in {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"} and shared_vm_request is not None:
                 loadgen_vm = loadgen_vm_request or VmRequest(
                     lifecycle=shared_vm_request.lifecycle,
                     name=(
                         "nanofaas-e2e-loadgen"
                         if scenario.name == "two-vm-loadtest"
                         else "nanofaas-azure-loadgen"
+                        if scenario.name == "azure-vm-loadtest"
+                        else "nanofaas-proxmox-loadgen"
                     ),
                     host=shared_vm_request.host,
                     user=shared_vm_request.user,
@@ -431,6 +442,11 @@ class E2eRunner:
                 if scenario.name == "azure-vm-loadtest":
                     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
                     plans.append(build_azure_vm_loadtest_plan(self, request))
+                    vm_bootstrap_planned = True
+                    continue
+                if scenario.name == "proxmox-vm-loadtest":
+                    from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
+                    plans.append(build_proxmox_vm_loadtest_plan(runner=self, request=request))
                     vm_bootstrap_planned = True
                     continue
                 if scenario.name == "k3s-junit-curl":
