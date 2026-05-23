@@ -105,6 +105,10 @@ class ProxmoxVmProvider:
         return f"{self.remote_home(request)}/nanofaas"
 
     def publish_port(self, request: VmRequest, *, service: str, guest_port: int) -> tuple[str, int]:
+        try:
+            return self.published_endpoint(request, service=service)
+        except RuntimeError:
+            pass
         vm = self._client(request).get_vm(self._vm_name(request))
         guest_ip = vm.wait_for_ip()
         mapping = PortMapping(
@@ -156,8 +160,11 @@ class ProxmoxVmProvider:
         name = self._vm_name(request)
         try:
             vm = client.get_vm(name)
-            if vm.info().state.value == "running":
-                vm.stop()
+            try:
+                if vm.info().state.value == "running":
+                    vm.stop()
+            except Exception:
+                pass
             vm.delete()
         except VmNotFoundError:
             pass

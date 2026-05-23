@@ -42,6 +42,12 @@ if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
 
 
+@dataclass(frozen=True)
+class _SkeletonStep:
+    task_id: str
+    title: str
+
+
 @dataclass
 class ProxmoxVmLoadtestPlan:
     scenario: ScenarioDefinition
@@ -51,14 +57,15 @@ class ProxmoxVmLoadtestPlan:
 
     @property
     def task_ids(self) -> list[str]:
-        return [*LOADTEST_STATIC_TASK_IDS, "vm.stack.destroy"]
+        pre, wf = self._skeleton()
+        return [t.task_id for t in pre] + wf.task_ids
 
     @property
     def phase_titles(self) -> list[str]:
         pre, wf = self._skeleton()
         return [t.title for t in pre] + wf.phase_titles
 
-    def _skeleton(self) -> "tuple[list[EnsureVmRunning], Workflow]":
+    def _skeleton(self) -> "tuple[list[EnsureVmRunning | _SkeletonStep], Workflow]":
         """Task objects with None adapters — only task_id and title are valid here."""
         r = self.request
         sc = VmConfig(name=r.vm.name or "", cpus=r.vm.cpus, memory=r.vm.memory, disk=r.vm.disk)
@@ -66,6 +73,7 @@ class ProxmoxVmLoadtestPlan:
         pre = [
             EnsureVmRunning(task_id="vm.stack.ensure_running", title="Ensure stack VM running (Proxmox)", lifecycle=None, config=sc),  # type: ignore[arg-type]
             EnsureVmRunning(task_id="vm.loadgen.ensure_running", title="Ensure loadgen VM running (Proxmox)", lifecycle=None, config=lc),  # type: ignore[arg-type]
+            _SkeletonStep(task_id="vm.stack.publish_ports", title="Publish Proxmox NAT ports"),
         ]
         wf = Workflow(
             tasks=[
@@ -97,7 +105,7 @@ class ProxmoxVmLoadtestPlan:
             repo_root=self.runner.paths.workspace_root, vm=proxmox_orch
         )
 
-        [s_ensure_stack, s_ensure_loadgen], s_wf = self._skeleton()
+        [s_ensure_stack, s_ensure_loadgen, s_publish_ports], s_wf = self._skeleton()
         [s_install_k6, s_run_k6, s_fetch, s_prom, s_report] = s_wf.tasks
         s_destroy_loadgen, s_destroy_stack = s_wf.cleanup_tasks if s_wf.cleanup_tasks else (None, None)
 
@@ -112,12 +120,13 @@ class ProxmoxVmLoadtestPlan:
         with workflow_step(task_id=ensure_loadgen.task_id, title=ensure_loadgen.title):
             loadgen_info = ensure_loadgen.run()
 
-        stack_guest_host = proxmox_orch.guest_host(request.vm)
-        prometheus_host, prometheus_port = proxmox_orch.publish_port(
-            request.vm,
-            service="PROMETHEUS",
-            guest_port=TWO_VM_PROMETHEUS_NODE_PORT,
-        )
+        with workflow_step(task_id=s_publish_ports.task_id, title=s_publish_ports.title):
+            stack_guest_host = stack_info.host
+            prometheus_host, prometheus_port = proxmox_orch.publish_port(
+                request.vm,
+                service="PROMETHEUS",
+                guest_port=TWO_VM_PROMETHEUS_NODE_PORT,
+            )
 
         remote_home = loadgen_info.home
         remote_paths = two_vm_remote_paths(

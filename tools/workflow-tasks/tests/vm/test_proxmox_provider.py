@@ -409,6 +409,7 @@ def test_publish_port_returns_runner_facing_endpoint(mock_client_cls, mock_routi
     vm_mock.wait_for_ip.return_value = "10.0.2.50"
     mock_client_cls.return_value = client_mock
     mgr_mock = MagicMock()
+    mgr_mock.list_rules.return_value = []
     mgr_mock.add_rules.return_value = [
         PortMapping(
             vm_id=123,

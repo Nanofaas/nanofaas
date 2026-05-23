@@ -30,12 +30,22 @@ def test_build_proxmox_vm_loadtest_plan_returns_correct_type() -> None:
 def test_proxmox_vm_loadtest_plan_task_ids() -> None:
     from unittest.mock import MagicMock
     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
-    from controlplane_tool.scenario.two_vm_loadtest_config import LOADTEST_STATIC_TASK_IDS
     runner = MagicMock()
     runner.paths.workspace_root = "/workspace"
     request = MagicMock()
     plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
-    assert plan.task_ids == [*LOADTEST_STATIC_TASK_IDS, "vm.stack.destroy"]
+    assert plan.task_ids == [
+        "vm.stack.ensure_running",
+        "vm.loadgen.ensure_running",
+        "vm.stack.publish_ports",
+        "loadgen.install_k6",
+        "loadgen.run_k6",
+        "loadgen.fetch_results",
+        "metrics.prometheus_snapshot",
+        "loadtest.write_report",
+        "vm.loadgen.destroy",
+        "vm.stack.destroy",
+    ]
 
 
 def test_proxmox_vm_loadtest_plan_phase_titles_count() -> None:
@@ -53,7 +63,7 @@ def test_proxmox_vm_loadtest_plan_phase_titles_count() -> None:
     request.loadgen_vm.memory = "2G"
     request.loadgen_vm.disk = "10G"
     plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
-    # 2 EnsureVmRunning (pre) + 5 Workflow tasks + 2 cleanups (loadgen + stack) = 9 phases
+    # 3 pre steps (EnsureVmRunning ×2 + publish_ports) + 5 Workflow tasks + 2 cleanups = 10 phases
     assert len(plan.phase_titles) == len(plan.task_ids)
 
 
