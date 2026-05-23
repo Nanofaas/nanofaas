@@ -10,7 +10,7 @@ def test_proxmox_lifecycle_accepted() -> None:
     assert req.lifecycle == "proxmox"
 
 
-def test_proxmox_fields_all_optional_except_host_and_node() -> None:
+def test_proxmox_fields_all_optional() -> None:
     req = VmRequest(lifecycle="proxmox", proxmox_host="10.0.0.1", proxmox_node="node1")
     assert req.proxmox_host == "10.0.0.1"
     assert req.proxmox_node == "node1"
@@ -32,3 +32,10 @@ def test_proxmox_all_fields_set() -> None:
     )
     assert req.proxmox_template_id == 100
     assert req.proxmox_user == "root@pam"
+    assert req.proxmox_password == "secret"
+    assert req.proxmox_ssh_key_path == "/home/user/.ssh/id_rsa"
+
+
+def test_proxmox_minimal_request() -> None:
+    req = VmRequest(lifecycle="proxmox")
+    assert req.lifecycle == "proxmox"
