@@ -1162,7 +1162,7 @@ class NanofaasTUI:
                     f"host:         {cfg.host}\n"
                     f"node:         {cfg.node}\n"
                     f"user:         {cfg.user}\n"
-                    f"template_id:  {cfg.template_id or '(not set)'}\n"
+                    f"template_id:  {cfg.template_id if cfg.template_id is not None else '(not set)'}\n"
                     f"vm_name:      {cfg.vm_name} / {cfg.loadgen_name}",
                     title="Proxmox defaults (profiles/proxmox.toml)",
                 )
