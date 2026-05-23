@@ -137,6 +137,8 @@ class ProxmoxVmProvider:
         name = self._vm_name(request)
         try:
             vm = client.get_vm(name)
+            if vm.info().state.value == "running":
+                vm.stop()
             vm.delete()
         except VmNotFoundError:
             pass

@@ -75,10 +75,14 @@ class ProxmoxVmLoadtestPlan:
                 CapturePrometheusSnapshot(task_id="metrics.prometheus_snapshot", title="Capture Prometheus snapshots (Proxmox)", client=None, queries=None, window=None, output_dir=None),  # type: ignore[arg-type]
                 WriteK6Report(task_id="loadtest.write_report", title="Write loadtest report (Proxmox)", data_dir=None, output_dir=None),  # type: ignore[arg-type]
             ],
-            cleanup_tasks=[
-                DestroyVm(task_id="vm.loadgen.destroy", title="Destroy loadgen VM (Proxmox)", lifecycle=None, info=None),  # type: ignore[arg-type]
-                DestroyVm(task_id="vm.stack.destroy", title="Destroy stack VM (Proxmox)", lifecycle=None, info=None),  # type: ignore[arg-type]
-            ],
+            cleanup_tasks=(
+                [
+                    DestroyVm(task_id="vm.loadgen.destroy", title="Destroy loadgen VM (Proxmox)", lifecycle=None, info=None),  # type: ignore[arg-type]
+                    DestroyVm(task_id="vm.stack.destroy", title="Destroy stack VM (Proxmox)", lifecycle=None, info=None),  # type: ignore[arg-type]
+                ]
+                if getattr(r, "cleanup_vm", True)
+                else []
+            ),
         )
         return pre, wf
 
@@ -95,7 +99,7 @@ class ProxmoxVmLoadtestPlan:
 
         [s_ensure_stack, s_ensure_loadgen], s_wf = self._skeleton()
         [s_install_k6, s_run_k6, s_fetch, s_prom, s_report] = s_wf.tasks
-        [s_destroy_loadgen, s_destroy_stack] = s_wf.cleanup_tasks
+        s_destroy_loadgen, s_destroy_stack = s_wf.cleanup_tasks if s_wf.cleanup_tasks else (None, None)
 
         stack_config = VmConfig(name=request.vm.name, cpus=request.vm.cpus, memory=request.vm.memory, disk=request.vm.disk)
         loadgen_config = VmConfig(name=request.loadgen_vm.name, cpus=request.loadgen_vm.cpus, memory=request.loadgen_vm.memory, disk=request.loadgen_vm.disk)
@@ -160,10 +164,14 @@ class ProxmoxVmLoadtestPlan:
                 ),
                 WriteK6Report(task_id=s_report.task_id, title=s_report.title, data_dir=run_dir, output_dir=run_dir),
             ],
-            cleanup_tasks=[
-                DestroyVm(task_id=s_destroy_loadgen.task_id, title=s_destroy_loadgen.title, lifecycle=lifecycle, info=loadgen_info),
-                DestroyVm(task_id=s_destroy_stack.task_id, title=s_destroy_stack.title, lifecycle=lifecycle, info=stack_info),
-            ],
+            cleanup_tasks=(
+                [
+                    DestroyVm(task_id=s_destroy_loadgen.task_id, title=s_destroy_loadgen.title, lifecycle=lifecycle, info=loadgen_info),
+                    DestroyVm(task_id=s_destroy_stack.task_id, title=s_destroy_stack.title, lifecycle=lifecycle, info=stack_info),
+                ]
+                if request.cleanup_vm
+                else []
+            ),
         )
         workflow.run()
 

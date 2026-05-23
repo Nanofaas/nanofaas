@@ -140,6 +140,7 @@ def test_guest_host_returns_guest_ip(mock_client_cls) -> None:
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
 def test_teardown_success(mock_client_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
+    vm_mock.info.return_value.state.value = "stopped"
     mock_client_cls.return_value = client_mock
     provider = _make_provider()
     req = _make_request()
@@ -153,6 +154,7 @@ def test_teardown_success(mock_client_cls) -> None:
 def test_teardown_removes_nat_rules_for_vm(mock_client_cls, mock_routing_cls) -> None:
     from proxmox_sdk.routing import PortMapping
     client_mock, vm_mock = _make_proxmox_client_mock()
+    vm_mock.info.return_value.state.value = "stopped"
     mock_client_cls.return_value = client_mock
     mgr_mock = MagicMock()
     matching_rule = PortMapping(vm_id=100, vm_name="test-vm", vm_ip="10.0.0.10", vm_port=22, service="SSH", host_port=20000)
@@ -164,6 +166,23 @@ def test_teardown_removes_nat_rules_for_vm(mock_client_cls, mock_routing_cls) ->
     result = provider.teardown(req)
     assert result.return_code == 0
     mgr_mock.remove_rules.assert_called_once_with([matching_rule])
+
+
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_teardown_stops_running_vm_before_delete(mock_client_cls, mock_routing_cls) -> None:
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    vm_mock.info.return_value.state.value = "running"
+    mock_client_cls.return_value = client_mock
+    _mock_ssh_nat_rule(mock_routing_cls)
+    provider = _make_provider()
+    req = _make_request()
+
+    result = provider.teardown(req)
+
+    assert result.return_code == 0
+    vm_mock.stop.assert_called_once()
+    vm_mock.delete.assert_called_once()
 
 
 @patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
@@ -182,6 +201,7 @@ def test_teardown_nat_failure_does_not_prevent_success(mock_client_cls, mock_rou
 def test_teardown_vm_not_found_is_ignored(mock_client_cls) -> None:
     from proxmox_sdk.exceptions import VmNotFoundError
     client_mock, vm_mock = _make_proxmox_client_mock()
+    vm_mock.info.return_value.state.value = "stopped"
     vm_mock.delete.side_effect = VmNotFoundError("gone")
     mock_client_cls.return_value = client_mock
     provider = _make_provider()

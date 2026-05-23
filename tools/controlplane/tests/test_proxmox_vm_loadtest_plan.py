@@ -57,6 +57,19 @@ def test_proxmox_vm_loadtest_plan_phase_titles_count() -> None:
     assert len(plan.phase_titles) == len(plan.task_ids)
 
 
+def test_proxmox_vm_loadtest_plan_skips_destroy_when_no_cleanup(tmp_path) -> None:
+    from unittest.mock import MagicMock
+    from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
+
+    runner = MagicMock()
+    runner.paths.workspace_root = "/workspace"
+    request = MagicMock()
+    request.cleanup_vm = False
+    plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
+    _, wf = plan._skeleton()
+    assert wf.cleanup_tasks == []
+
+
 def test_e2e_runner_plan_returns_proxmox_vm_loadtest_plan(tmp_path) -> None:
     from pathlib import Path
     from controlplane_tool.e2e.e2e_runner import E2eRunner
