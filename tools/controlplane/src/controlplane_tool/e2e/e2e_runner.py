@@ -344,7 +344,7 @@ class E2eRunner:
             return build_azure_vm_loadtest_plan(self, self._prepare_recipe_request(request))
         if request.scenario == "proxmox-vm-loadtest":
             from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
-            return build_proxmox_vm_loadtest_plan(runner=self, request=self._prepare_recipe_request(request))
+            return build_proxmox_vm_loadtest_plan(self, self._prepare_recipe_request(request))
         if request.scenario == "k3s-junit-curl":
             from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
             return build_k3s_junit_curl_plan(self, self._prepare_recipe_request(request))
@@ -446,7 +446,7 @@ class E2eRunner:
                     continue
                 if scenario.name == "proxmox-vm-loadtest":
                     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
-                    plans.append(build_proxmox_vm_loadtest_plan(runner=self, request=request))
+                    plans.append(build_proxmox_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
                 if scenario.name == "k3s-junit-curl":
