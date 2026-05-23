@@ -51,3 +51,13 @@ def test_azure_vm_adapter_factory() -> None:
 
     info = adapter.ensure_running(config)
     assert info.host == "4.5.6.7"
+
+
+def test_proxmox_vm_adapter_factory() -> None:
+    from pathlib import Path
+    from workflow_tasks.vm.proxmox import ProxmoxVmProvider
+    from workflow_tasks.vm.adapters import ProxmoxVmAdapter
+
+    provider = ProxmoxVmProvider(repo_root=Path("/repo"))
+    adapter = ProxmoxVmAdapter(provider)
+    assert adapter._lifecycle == "proxmox"

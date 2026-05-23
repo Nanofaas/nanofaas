@@ -71,3 +71,8 @@ def test_public_api_exports_vm_infrastructure() -> None:
     assert hasattr(workflow_tasks, "MultipassVmAdapter")
     assert hasattr(workflow_tasks, "AzureVmAdapter")
     assert hasattr(workflow_tasks, "HttpPrometheusClient")
+
+
+def test_public_api_exports_proxmox_provider() -> None:
+    assert hasattr(workflow_tasks, "ProxmoxVmProvider")
+    assert hasattr(workflow_tasks, "ProxmoxVmAdapter")
