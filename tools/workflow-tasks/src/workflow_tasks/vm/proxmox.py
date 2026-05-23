@@ -104,6 +104,25 @@ class ProxmoxVmProvider:
     def remote_project_dir(self, request: VmRequest) -> str:
         return f"{self.remote_home(request)}/nanofaas"
 
+    def publish_port(self, request: VmRequest, *, service: str, guest_port: int) -> tuple[str, int]:
+        vm = self._client(request).get_vm(self._vm_name(request))
+        guest_ip = vm.wait_for_ip()
+        mapping = PortMapping(
+            vm_id=int(vm.vm_id),
+            vm_name=self._vm_name(request),
+            vm_ip=guest_ip,
+            vm_port=guest_port,
+            service=service,
+        )
+        [published] = self._routing_manager(request).add_rules([mapping])
+        if published.host_port is None:
+            raise RuntimeError(f"Proxmox NAT rule for {mapping.vm_name} service {service} has no host port")
+        return request.proxmox_host or "", int(published.host_port)
+
+    def published_endpoint(self, request: VmRequest, *, service: str) -> tuple[str, int]:
+        rule = self._published_rule(request, service)
+        return request.proxmox_host or "", int(rule.host_port)
+
     def guest_host(self, request: VmRequest) -> str:
         return self.connection_host(request)
 

@@ -397,3 +397,33 @@ def test_transfer_from_no_ssh_key(mock_client_cls, mock_subproc, mock_routing_cl
         result = provider.transfer_from(req, source="/remote/file", destination=Path("/local"))
     assert result.return_code == 0
     assert "-i" not in result.command
+
+
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
+@patch("workflow_tasks.vm.proxmox.ProxmoxClient")
+def test_publish_port_returns_runner_facing_endpoint(mock_client_cls, mock_routing_cls) -> None:
+    from proxmox_sdk.routing import PortMapping
+
+    client_mock, vm_mock = _make_proxmox_client_mock()
+    vm_mock.vm_id = 123
+    vm_mock.wait_for_ip.return_value = "10.0.2.50"
+    mock_client_cls.return_value = client_mock
+    mgr_mock = MagicMock()
+    mgr_mock.add_rules.return_value = [
+        PortMapping(
+            vm_id=123,
+            vm_name="test-vm",
+            vm_ip="10.0.2.50",
+            vm_port=30090,
+            service="PROMETHEUS",
+            host_port=20090,
+        )
+    ]
+    mock_routing_cls.from_key.return_value = mgr_mock
+    provider = _make_provider()
+    req = _make_request(proxmox_host="pve.example.com")
+
+    endpoint = provider.publish_port(req, service="PROMETHEUS", guest_port=30090)
+
+    assert endpoint == ("pve.example.com", 20090)
+    mgr_mock.add_rules.assert_called_once()
