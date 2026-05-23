@@ -1127,6 +1127,112 @@ class NanofaasTUI:
                 action=_run_azure_loadtest_workflow,
             )
 
+        elif scenario == "proxmox-vm-loadtest":
+            from pydantic import ValidationError
+            from controlplane_tool.workspace.proxmox_config import (
+                proxmox_config_path,
+                load_proxmox_config,
+            )
+            from controlplane_tool.cli.e2e_commands import _resolve_run_request
+            from controlplane_tool.e2e.e2e_runner import E2eRunner
+
+            try:
+                cfg = load_proxmox_config()
+            except FileNotFoundError:
+                warning(
+                    f"Missing proxmox.toml — copy profiles/proxmox.toml.example to "
+                    f"{proxmox_config_path()} and fill in your values."
+                )
+                _acknowledge_static_view()
+                return
+            except ValidationError as exc:
+                first_error = exc.errors()[0]["msg"] if exc.errors() else "validation failed"
+                warning(f"Invalid proxmox.toml: {first_error}")
+                _acknowledge_static_view()
+                return
+
+            console.print(
+                Panel(
+                    f"host:         {cfg.host}\n"
+                    f"node:         {cfg.node}\n"
+                    f"user:         {cfg.user}\n"
+                    f"template_id:  {cfg.template_id or '(not set)'}\n"
+                    f"vm_name:      {cfg.vm_name} / {cfg.loadgen_name}",
+                    title="Proxmox defaults (profiles/proxmox.toml)",
+                )
+            )
+
+            confirmed = _ask(
+                lambda: questionary.confirm(
+                    "Proceed with proxmox-vm-loadtest?", default=True, style=_STYLE
+                ).ask()
+            )
+            if not confirmed:
+                return
+
+            request = _resolve_run_request(
+                scenario="proxmox-vm-loadtest",
+                runtime="java",
+                lifecycle="proxmox",
+                name=cfg.vm_name,
+                host=None,
+                user="ubuntu",
+                home=None,
+                cpus=4,
+                memory="8G",
+                disk="20G",
+                cleanup_vm=False,
+                namespace=None,
+                local_registry=None,
+                function_preset=None,
+                functions_csv=None,
+                scenario_file=None,
+                saved_profile=None,
+                loadgen_name=cfg.loadgen_name,
+                loadgen_cpus=2,
+                loadgen_memory="2G",
+                loadgen_disk="10G",
+                proxmox_host=cfg.host,
+                proxmox_node=cfg.node,
+                proxmox_user=cfg.user,
+                proxmox_password=cfg.password,
+                proxmox_template_id=cfg.template_id,
+                proxmox_ssh_key_path=cfg.ssh_key_path,
+            )
+            plan = E2eRunner(repo_root=repo_root).plan(request)
+
+            def _run_proxmox_loadtest_workflow(
+                dashboard: WorkflowDashboard, sink: TuiWorkflowSink
+            ) -> None:
+                def _on_step_event(event: Any) -> None:
+                    self._applier.apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
+                dashboard.append_log("Starting proxmox-vm-loadtest workflow")
+                sink._update()
+                flow = build_scenario_flow(
+                    "proxmox-vm-loadtest",
+                    repo_root=repo_root,
+                    request=request,
+                    event_listener=_on_step_event,
+                )
+                self._controller.run_shared_flow(flow)
+                dashboard.append_log("proxmox-vm-loadtest E2E completed")
+                sink._update()
+
+            self._controller.run_live_workflow(
+                title="E2E Scenarios",
+                summary_lines=[
+                    "Scenario: proxmox-vm-loadtest",
+                    f"Host: {cfg.host}",
+                    f"Node: {cfg.node}",
+                    f"Stack VM: {cfg.vm_name}",
+                    f"Loadgen VM: {cfg.loadgen_name}",
+                ],
+                planned_steps=[step.summary for step in plan.steps],
+                action=_run_proxmox_loadtest_workflow,
+            )
+
         else:  # k3s-junit-curl
             from controlplane_tool.e2e.e2e_runner import E2eRunner
             from controlplane_tool.cli.e2e_commands import _resolve_run_request

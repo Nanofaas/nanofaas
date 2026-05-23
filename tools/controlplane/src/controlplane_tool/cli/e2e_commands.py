@@ -54,6 +54,12 @@ def _build_vm_request(
     azure_vm_size: str = "Standard_B2s",
     azure_image_urn: str | None = None,
     azure_ssh_key_path: str | None = None,
+    proxmox_host: str | None = None,
+    proxmox_node: str | None = None,
+    proxmox_user: str | None = None,
+    proxmox_password: str | None = None,
+    proxmox_template_id: int | None = None,
+    proxmox_ssh_key_path: str | None = None,
 ) -> VmRequest:
     return VmRequest(
         lifecycle=lifecycle,
@@ -69,6 +75,12 @@ def _build_vm_request(
         azure_vm_size=azure_vm_size,
         azure_image_urn=azure_image_urn,
         azure_ssh_key_path=azure_ssh_key_path,
+        proxmox_host=proxmox_host,
+        proxmox_node=proxmox_node,
+        proxmox_user=proxmox_user,
+        proxmox_password=proxmox_password,
+        proxmox_template_id=proxmox_template_id,
+        proxmox_ssh_key_path=proxmox_ssh_key_path,
     )
 
 
@@ -106,6 +118,12 @@ def _build_request(
     azure_vm_size: str = "Standard_B2s",
     azure_image_urn: str | None = None,
     azure_ssh_key_path: str | None = None,
+    proxmox_host: str | None = None,
+    proxmox_node: str | None = None,
+    proxmox_user: str | None = None,
+    proxmox_password: str | None = None,
+    proxmox_template_id: int | None = None,
+    proxmox_ssh_key_path: str | None = None,
 ) -> E2eRequest:
     vm = None
     loadgen_vm = None
@@ -117,12 +135,15 @@ def _build_request(
         "helm-stack",
         "two-vm-loadtest",
         "azure-vm-loadtest",
+        "proxmox-vm-loadtest",
     }:
         stack_name = name
         if scenario == "two-vm-loadtest" and stack_name is None:
             stack_name = "nanofaas-e2e"
         if scenario == "azure-vm-loadtest" and stack_name is None:
             stack_name = "nanofaas-azure"
+        if scenario == "proxmox-vm-loadtest" and stack_name is None:
+            stack_name = "nanofaas-proxmox"
         vm = _build_vm_request(
             lifecycle=lifecycle,
             name=stack_name,
@@ -137,10 +158,20 @@ def _build_request(
             azure_vm_size=azure_vm_size,
             azure_image_urn=azure_image_urn,
             azure_ssh_key_path=azure_ssh_key_path,
+            proxmox_host=proxmox_host,
+            proxmox_node=proxmox_node,
+            proxmox_user=proxmox_user,
+            proxmox_password=proxmox_password,
+            proxmox_template_id=proxmox_template_id,
+            proxmox_ssh_key_path=proxmox_ssh_key_path,
         )
-    if scenario in {"two-vm-loadtest", "azure-vm-loadtest"}:
+    if scenario in {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
         loadgen_name_default = (
-            "nanofaas-e2e-loadgen" if scenario == "two-vm-loadtest" else "nanofaas-azure-loadgen"
+            "nanofaas-e2e-loadgen"
+            if scenario == "two-vm-loadtest"
+            else "nanofaas-azure-loadgen"
+            if scenario == "azure-vm-loadtest"
+            else "nanofaas-proxmox-loadgen"
         )
         loadgen_vm = _build_vm_request(
             lifecycle=lifecycle,
@@ -156,6 +187,12 @@ def _build_request(
             azure_vm_size="Standard_B1s",
             azure_image_urn=azure_image_urn,
             azure_ssh_key_path=azure_ssh_key_path,
+            proxmox_host=proxmox_host,
+            proxmox_node=proxmox_node,
+            proxmox_user=proxmox_user,
+            proxmox_password=proxmox_password,
+            proxmox_template_id=proxmox_template_id,
+            proxmox_ssh_key_path=proxmox_ssh_key_path,
         )
     return E2eRequest(
         scenario=scenario,
@@ -296,6 +333,12 @@ def _resolve_run_request(
     azure_vm_size: str = "Standard_B2s",
     azure_image_urn: str | None = None,
     azure_ssh_key_path: str | None = None,
+    proxmox_host: str | None = None,
+    proxmox_node: str | None = None,
+    proxmox_user: str | None = None,
+    proxmox_password: str | None = None,
+    proxmox_template_id: int | None = None,
+    proxmox_ssh_key_path: str | None = None,
 ) -> E2eRequest:
     explicit_functions = parse_function_csv(functions_csv)
     if function_preset and explicit_functions:
@@ -472,6 +515,12 @@ def _resolve_run_request(
         azure_vm_size=azure_vm_size,
         azure_image_urn=azure_image_urn,
         azure_ssh_key_path=azure_ssh_key_path,
+        proxmox_host=proxmox_host,
+        proxmox_node=proxmox_node,
+        proxmox_user=proxmox_user,
+        proxmox_password=proxmox_password,
+        proxmox_template_id=proxmox_template_id,
+        proxmox_ssh_key_path=proxmox_ssh_key_path,
     )
 
 
@@ -513,6 +562,12 @@ def e2e_run(
     azure_vm_size: str = typer.Option("Standard_B2s", "--azure-vm-size"),
     azure_image_urn: str | None = typer.Option(None, "--azure-image-urn"),
     azure_ssh_key_path: str | None = typer.Option(None, "--azure-ssh-key"),
+    proxmox_host: str | None = typer.Option(None, "--proxmox-host", help="Proxmox server IP or hostname."),
+    proxmox_node: str | None = typer.Option(None, "--proxmox-node", help="Proxmox node name."),
+    proxmox_user: str | None = typer.Option(None, "--proxmox-user", help="Proxmox API user (default: root@pam)."),
+    proxmox_password: str | None = typer.Option(None, "--proxmox-password", help="Proxmox API password."),
+    proxmox_template_id: int | None = typer.Option(None, "--proxmox-template-id", help="VM template ID to clone from."),
+    proxmox_ssh_key_path: str | None = typer.Option(None, "--proxmox-ssh-key", help="SSH private key for SCP transfers."),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
@@ -549,6 +604,12 @@ def e2e_run(
             azure_vm_size=azure_vm_size,
             azure_image_urn=azure_image_urn,
             azure_ssh_key_path=azure_ssh_key_path,
+            proxmox_host=proxmox_host,
+            proxmox_node=proxmox_node,
+            proxmox_user=proxmox_user,
+            proxmox_password=proxmox_password,
+            proxmox_template_id=proxmox_template_id,
+            proxmox_ssh_key_path=proxmox_ssh_key_path,
         )
         runner = _runner()
         flow_name = f"e2e.{request.scenario}"
