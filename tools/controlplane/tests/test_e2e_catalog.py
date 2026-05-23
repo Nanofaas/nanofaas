@@ -15,6 +15,7 @@ def test_catalog_lists_expected_suite_names() -> None:
         "helm-stack",
         "two-vm-loadtest",
         "azure-vm-loadtest",
+        "proxmox-vm-loadtest",
     ]
 
 
