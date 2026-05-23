@@ -159,11 +159,11 @@ class ProxmoxVmProvider:
         dry_run: bool = False,
     ) -> ShellExecutionResult:
         del dry_run
-        host = self.connection_host(request)
+        host, port = self._ssh_endpoint(request)
         ssh_key = self._ssh_key(request)
         user = request.user or "ubuntu"
 
-        ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes"]
+        ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "-p", str(port)]
         if ssh_key:
             ssh_cmd += ["-i", str(ssh_key)]
 
@@ -191,10 +191,10 @@ class ProxmoxVmProvider:
         source: Path,
         destination: str,
     ) -> ShellExecutionResult:
-        host = self.connection_host(request)
+        host, port = self._ssh_endpoint(request)
         ssh_key = self._ssh_key(request)
         user = request.user or "ubuntu"
-        scp_cmd = ["scp"]
+        scp_cmd = ["scp", "-P", str(port)]
         if ssh_key:
             scp_cmd += ["-i", str(ssh_key)]
         scp_cmd += [str(source), f"{user}@{host}:{destination}"]
@@ -213,10 +213,10 @@ class ProxmoxVmProvider:
         source: str,
         destination: Path,
     ) -> ShellExecutionResult:
-        host = self.connection_host(request)
+        host, port = self._ssh_endpoint(request)
         ssh_key = self._ssh_key(request)
         user = request.user or "ubuntu"
-        scp_cmd = ["scp"]
+        scp_cmd = ["scp", "-P", str(port)]
         if ssh_key:
             scp_cmd += ["-i", str(ssh_key)]
         scp_cmd += [f"{user}@{host}:{source}", str(destination)]

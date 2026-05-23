@@ -38,6 +38,24 @@ def _make_proxmox_client_mock() -> tuple:
     return client, vm
 
 
+def _mock_ssh_nat_rule(mock_routing_cls, *, host_port: int = 20000) -> MagicMock:
+    from proxmox_sdk.routing import PortMapping
+
+    mgr_mock = MagicMock()
+    mgr_mock.list_rules.return_value = [
+        PortMapping(
+            vm_id=123,
+            vm_name="test-vm",
+            vm_ip="10.0.2.27",
+            vm_port=22,
+            service="SSH",
+            host_port=host_port,
+        )
+    ]
+    mock_routing_cls.from_key.return_value = mgr_mock
+    return mgr_mock
+
+
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
 def test_remote_home_default(mock_client_cls) -> None:
     provider = _make_provider()
@@ -172,10 +190,21 @@ def test_teardown_vm_not_found_is_ignored(mock_client_cls) -> None:
     assert result.return_code == 0
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_ensure_running(mock_client_cls) -> None:
+def test_ensure_running(mock_client_cls, mock_routing_cls) -> None:
+    from proxmox_sdk.routing import PortMapping
     client_mock = MagicMock()
+    vm_mock = MagicMock()
+    vm_mock.vm_id = 123
+    vm_mock.wait_for_ip.return_value = "10.0.2.27"
+    client_mock.ensure_running.return_value = vm_mock
     mock_client_cls.return_value = client_mock
+    mgr_mock = MagicMock()
+    mgr_mock.add_rules.return_value = [
+        PortMapping(vm_id=123, vm_name="test-vm", vm_ip="10.0.2.27", vm_port=22, service="SSH", host_port=20000)
+    ]
+    mock_routing_cls.from_key.return_value = mgr_mock
     provider = _make_provider()
     req = _make_request(cpus=2, memory="4G", disk="20G")
     result = provider.ensure_running(req)
@@ -233,32 +262,38 @@ def test_ensure_running_waits_ready_and_publishes_ssh_nat(mock_client_cls, mock_
     )
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
 @patch("workflow_tasks.vm.proxmox.subprocess.run")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_exec_argv(mock_client_cls, mock_subproc) -> None:
+def test_exec_argv(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
     mock_client_cls.return_value = client_mock
+    _mock_ssh_nat_rule(mock_routing_cls, host_port=20022)
     proc = MagicMock()
     proc.returncode = 0
     proc.stdout = "output"
     proc.stderr = ""
     mock_subproc.return_value = proc
     provider = _make_provider()
-    req = _make_request()
+    req = _make_request(proxmox_host="pve.example.com")
+
     result = provider.exec_argv(req, ["echo", "hello"])
+
     assert result.return_code == 0
     assert result.stdout == "output"
     called_cmd = mock_subproc.call_args[0][0]
-    assert called_cmd[0] == "ssh"
-    assert "ubuntu@192.168.1.100" in called_cmd
+    assert called_cmd[:7] == ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "-p", "20022"]
+    assert "ubuntu@pve.example.com" in called_cmd
     assert "echo hello" in called_cmd[-1]
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
 @patch("workflow_tasks.vm.proxmox.subprocess.run")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_exec_argv_with_cwd_and_env(mock_client_cls, mock_subproc) -> None:
+def test_exec_argv_with_cwd_and_env(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
     mock_client_cls.return_value = client_mock
+    _mock_ssh_nat_rule(mock_routing_cls)
     proc = MagicMock()
     proc.returncode = 0
     proc.stdout = ""
@@ -266,7 +301,9 @@ def test_exec_argv_with_cwd_and_env(mock_client_cls, mock_subproc) -> None:
     mock_subproc.return_value = proc
     provider = _make_provider()
     req = _make_request()
+
     result = provider.exec_argv(req, ["ls"], cwd="/home/ubuntu", env={"FOO": "bar"})
+
     assert result.return_code == 0
     remote_cmd = mock_subproc.call_args[0][0][-1]
     assert "cd /home/ubuntu" in remote_cmd
@@ -274,51 +311,61 @@ def test_exec_argv_with_cwd_and_env(mock_client_cls, mock_subproc) -> None:
     assert "ls" in remote_cmd
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
 @patch("workflow_tasks.vm.proxmox.subprocess.run")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_transfer_to(mock_client_cls, mock_subproc) -> None:
+def test_transfer_to(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
     mock_client_cls.return_value = client_mock
+    _mock_ssh_nat_rule(mock_routing_cls, host_port=20022)
     proc = MagicMock()
     proc.returncode = 0
     proc.stdout = ""
     proc.stderr = ""
     mock_subproc.return_value = proc
     provider = _make_provider()
-    req = _make_request()
+    req = _make_request(proxmox_host="pve.example.com")
+
     result = provider.transfer_to(req, source=Path("/local/file"), destination="/remote/file")
+
     assert result.return_code == 0
-    assert "scp" in result.command
     cmd = result.command
+    assert cmd[:3] == ["scp", "-P", "20022"]
     assert "/local/file" in cmd
-    assert "ubuntu@192.168.1.100:/remote/file" in cmd
+    assert "ubuntu@pve.example.com:/remote/file" in cmd
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
 @patch("workflow_tasks.vm.proxmox.subprocess.run")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_transfer_from(mock_client_cls, mock_subproc) -> None:
+def test_transfer_from(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
     mock_client_cls.return_value = client_mock
+    _mock_ssh_nat_rule(mock_routing_cls, host_port=20022)
     proc = MagicMock()
     proc.returncode = 0
     proc.stdout = ""
     proc.stderr = ""
     mock_subproc.return_value = proc
     provider = _make_provider()
-    req = _make_request()
+    req = _make_request(proxmox_host="pve.example.com")
+
     result = provider.transfer_from(req, source="/remote/file", destination=Path("/local/file"))
+
     assert result.return_code == 0
-    assert "scp" in result.command
     cmd = result.command
-    assert "ubuntu@192.168.1.100:/remote/file" in cmd
+    assert cmd[:3] == ["scp", "-P", "20022"]
+    assert "ubuntu@pve.example.com:/remote/file" in cmd
     assert "/local/file" in cmd
 
 
+@patch("workflow_tasks.vm.proxmox.ProxmoxRoutingManager")
 @patch("workflow_tasks.vm.proxmox.subprocess.run")
 @patch("workflow_tasks.vm.proxmox.ProxmoxClient")
-def test_transfer_from_no_ssh_key(mock_client_cls, mock_subproc) -> None:
+def test_transfer_from_no_ssh_key(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
     client_mock, vm_mock = _make_proxmox_client_mock()
     mock_client_cls.return_value = client_mock
+    _mock_ssh_nat_rule(mock_routing_cls)
     proc = MagicMock()
     proc.returncode = 0
     proc.stdout = ""
