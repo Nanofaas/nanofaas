@@ -26,6 +26,7 @@ ScenarioName = Literal[
     "helm-stack",
     "two-vm-loadtest",
     "azure-vm-loadtest",
+    "proxmox-vm-loadtest",
 ]
 
 VM_BACKED_SCENARIOS = frozenset(
@@ -37,6 +38,7 @@ VM_BACKED_SCENARIOS = frozenset(
         "helm-stack",
         "two-vm-loadtest",
         "azure-vm-loadtest",
+        "proxmox-vm-loadtest",
     }
 )
 
