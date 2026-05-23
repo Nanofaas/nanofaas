@@ -87,7 +87,7 @@ class ProxmoxVmLoadtestPlan:
 
         request = self.request
         proxmox_orch = ProxmoxVmOrchestrator(repo_root=self.runner.paths.workspace_root)
-        lifecycle = ProxmoxVmAdapter(proxmox_orch)
+        lifecycle = ProxmoxVmAdapter(proxmox_orch, credentials=request.vm)
         run_dir_creator = TwoVmLoadtestRunner(
             repo_root=self.runner.paths.workspace_root, vm=proxmox_orch
         )
