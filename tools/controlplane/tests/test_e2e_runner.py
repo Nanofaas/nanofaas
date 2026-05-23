@@ -813,6 +813,29 @@ def test_plan_all_skips_proxmox_vm_loadtest_without_credentials(tmp_path: Path) 
     assert len(plans) == 0
 
 
+def test_plan_all_propagates_proxmox_credentials_to_loadgen_vm(tmp_path) -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    vm_request = VmRequest(
+        lifecycle="proxmox",
+        proxmox_host="pve.example.com",
+        proxmox_node="venus",
+        proxmox_user="root@pam",
+        proxmox_password="secret",
+        proxmox_template_id=101,
+        proxmox_ssh_key_path="/home/user/.ssh/id_rsa",
+    )
+    plans = runner.plan_all(only=["proxmox-vm-loadtest"], vm_request=vm_request)
+
+    assert len(plans) == 1
+    loadgen_vm = plans[0].request.loadgen_vm
+    assert loadgen_vm.proxmox_host == "pve.example.com"
+    assert loadgen_vm.proxmox_node == "venus"
+    assert loadgen_vm.proxmox_user == "root@pam"
+    assert loadgen_vm.proxmox_password == "secret"
+    assert loadgen_vm.proxmox_template_id == 101
+    assert loadgen_vm.proxmox_ssh_key_path == "/home/user/.ssh/id_rsa"
+
+
 def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) -> None:
     """E2eRunner.run() must forward event_listener when dispatching to a TwoVmLoadtestPlan."""
     from unittest.mock import patch, MagicMock

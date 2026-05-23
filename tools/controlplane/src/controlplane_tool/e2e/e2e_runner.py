@@ -424,6 +424,12 @@ class E2eRunner:
                     cpus=2,
                     memory="2G",
                     disk="10G",
+                    proxmox_host=shared_vm_request.proxmox_host,
+                    proxmox_node=shared_vm_request.proxmox_node,
+                    proxmox_user=shared_vm_request.proxmox_user,
+                    proxmox_password=shared_vm_request.proxmox_password,
+                    proxmox_template_id=shared_vm_request.proxmox_template_id,
+                    proxmox_ssh_key_path=shared_vm_request.proxmox_ssh_key_path,
                 )
 
             request = E2eRequest(
