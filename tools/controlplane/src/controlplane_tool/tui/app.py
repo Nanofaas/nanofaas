@@ -1129,7 +1129,7 @@ class NanofaasTUI:
                     f"Stack VM: {cfg.vm_name} ({cfg.vm_size})",
                     f"Loadgen VM: {cfg.loadgen_name} ({cfg.loadgen_vm_size})",
                 ],
-                planned_steps=[step.summary for step in plan.steps],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
                 action=_run_azure_loadtest_workflow,
             )
 
@@ -1235,7 +1235,7 @@ class NanofaasTUI:
                     f"Stack VM: {cfg.vm_name}",
                     f"Loadgen VM: {cfg.loadgen_name}",
                 ],
-                planned_steps=[step.summary for step in plan.steps],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
                 action=_run_proxmox_loadtest_workflow,
             )
 
