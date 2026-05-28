@@ -94,11 +94,23 @@ comando utente (CLI/TUI)
 Ogni sotto-progetto ha il proprio spec→plan→implementazione, mantiene la CLI funzionante e
 i test verdi, e usa GitNexus `impact` prima di spostare simboli (come da CLAUDE.md).
 
-1. **Fondamenta libreria — componenti di esecuzione.** Sposta `scenario/tasks/*` e i
-   `scenario/components/*` riusabili in `workflow_tasks/components/`. controlplane re-importa
-   via shim temporanei. Aggiorna import-linter. Nessun cambiamento di comportamento.
-2. **Infra in libreria.** `AnsibleAdapter` + runner VM + risoluzione path →
-   `workflow_tasks/infra/`. YAML resta in `ops/`, path iniettato.
+> **Nota (2026-05-28):** l'ordine originale "componenti poi infra" è stato corretto dopo
+> analisi delle dipendenze: i componenti dipendono dal kernel infra (`VmOrchestrator`,
+> `ShellExecutionResult`, data-model `operations`/`models`), quindi il kernel va per primo.
+
+1. **Kernel in libreria.** Sposta in `workflow_tasks` con re-export shim in controlplane,
+   comportamento invariato: `core/shell_backend.py` → `workflow_tasks/shell.py`;
+   `scenario/components/{operations,models}.py` → `workflow_tasks/components/`;
+   `infra/vm/vm_adapter.VmOrchestrator` + `infra/vm/ansible_adapter.AnsibleAdapter` →
+   `workflow_tasks/vm/orchestrator.py` + `workflow_tasks/infra/ansible.py`, scorporando
+   `ToolPaths` (la libreria calcola `workspace_root = repo_root` e
+   `ansible_root = repo_root/ops/ansible` per convenzione; `ToolPaths` resta in controlplane).
+   `azure_vm_adapter`/`proxmox_vm_adapter` sono già alias dei provider di libreria: nessun
+   lavoro. YAML Ansible resta in `ops/`.
+2. **Componenti riusabili in libreria.** `scenario/components/{bootstrap,cleanup,helm,images,
+   namespace,registry,verification}` + `composer`/`recipes`/`executor`/`environment` +
+   `scenario/tasks/*` → `workflow_tasks/components/`, appoggiandosi al kernel del passo 1.
+   Disaccoppia da `e2e_models`/`cli_validation`/`scenario_*` dove necessario.
 3. **Runtime in libreria.** `orchestation/prefect_*` + `run_local_flow` + `adapters` →
    `workflow_tasks`. `flow_catalog` resta in controlplane (assembly).
 4. **Pulizia controlplane.** Elimina shim `workflow/` e re-export; fondi/snellisci plumbing
