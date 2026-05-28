@@ -9,6 +9,8 @@ from workflow_tasks.shell import (
     ShellExecutionResult,
     SubprocessShell,
 )
+from workflow_tasks.workflow.context import bind_workflow_sink
+from workflow_tasks.workflow.events import WorkflowEvent
 
 
 def test_shell_execution_result_captures_stdout_stderr() -> None:
@@ -46,28 +48,30 @@ def test_scripted_shell_returns_configured_return_code() -> None:
     assert result.return_code == 1
 
 
+class _FakeSink:
+    def __init__(self) -> None:
+        self.events: list[WorkflowEvent] = []
+        self.status_labels: list[str] = []
+
+    def emit(self, event: WorkflowEvent) -> None:
+        self.events.append(event)
+
+    @contextmanager
+    def status(self, label: str):
+        self.status_labels.append(label)
+        yield
+
+
 def test_subprocess_shell_routes_output_to_workflow_log_when_sink_active() -> None:
     """When a workflow sink is bound, _emit_output forwards lines to it via workflow_log.
 
     bind_workflow_sink is a context manager; we use it as such for setup/teardown.
     The sink must satisfy the WorkflowSink protocol (emit + status methods).
     """
-    captured: list[tuple[str, str]] = []
-
-    class CaptureSink:
-        def emit(self, event) -> None:
-            if event.kind == "log.line":
-                captured.append((event.stream, event.line))
-
-        @contextmanager
-        def status(self, label: str):
-            yield
-
-    from workflow_tasks.workflow.context import bind_workflow_sink
-
-    sink = CaptureSink()
+    sink = _FakeSink()
     with bind_workflow_sink(sink):
         shell = SubprocessShell()
         shell._emit_output("stdout", "hello-line")
 
-    assert ("stdout", "hello-line") in captured
+    log_events = [(e.stream, e.line) for e in sink.events if e.kind == "log.line"]
+    assert ("stdout", "hello-line") in log_events
