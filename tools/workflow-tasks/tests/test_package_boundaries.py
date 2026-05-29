@@ -128,3 +128,27 @@ def test_components_images_does_not_import_controlplane_tool() -> None:
             del sys.modules[key]
     importlib.import_module("workflow_tasks.components.images")
     assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_loadtest_remote_k6_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.loadtest.remote_k6")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_loadtest_two_vm_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.loadtest.two_vm")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_helm_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.helm")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
