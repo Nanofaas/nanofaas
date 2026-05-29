@@ -15,6 +15,11 @@ def test_public_api_exports_executors() -> None:
     assert hasattr(workflow_tasks, "VmCommandTaskExecutor")
 
 
+def test_public_api_exports_command_task() -> None:
+    assert hasattr(workflow_tasks, "CommandTask")
+    assert hasattr(workflow_tasks, "command_task_from_operation")
+
+
 def test_public_api_exports_workflow_types() -> None:
     assert hasattr(workflow_tasks, "WorkflowEvent")
     assert hasattr(workflow_tasks, "WorkflowContext")
