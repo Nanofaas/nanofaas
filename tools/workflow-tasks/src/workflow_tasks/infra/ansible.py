@@ -27,7 +27,7 @@ class AnsibleAdapter:
         multipass_client: MultipassClient | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
-        self.workspace_root = self.repo_root
+        # Repo layout convention: Ansible assets live at <repo_root>/ops/ansible/
         self.ansible_root = self.repo_root / "ops" / "ansible"
         self.shell = shell or SubprocessShell()
         if host_resolver is None:
@@ -105,7 +105,7 @@ class AnsibleAdapter:
         )
         return self.shell.run(
             command,
-            cwd=self.workspace_root,
+            cwd=self.repo_root,
             env=env,
             dry_run=dry_run,
         )
@@ -132,7 +132,7 @@ class AnsibleAdapter:
         )
         return self.shell.run(
             command,
-            cwd=self.workspace_root,
+            cwd=self.repo_root,
             env=env,
             dry_run=dry_run,
         )
@@ -156,7 +156,7 @@ class AnsibleAdapter:
         )
         return self.shell.run(
             command,
-            cwd=self.workspace_root,
+            cwd=self.repo_root,
             env=env,
             dry_run=dry_run,
         )
@@ -176,7 +176,7 @@ class AnsibleAdapter:
         )
         return self.shell.run(
             command,
-            cwd=self.workspace_root,
+            cwd=self.repo_root,
             env=env,
             dry_run=dry_run,
         )
