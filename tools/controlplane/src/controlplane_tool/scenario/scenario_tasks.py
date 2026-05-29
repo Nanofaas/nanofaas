@@ -5,6 +5,7 @@ from pathlib import Path
 
 from controlplane_tool.infra.ops.helm_ops import HelmOps
 from controlplane_tool.building.image_ops import ImageOps
+from workflow_tasks.components.remote_script import k8s_e2e_test_vm_script  # noqa: F401
 
 
 def _shell_join(command: list[str]) -> str:
@@ -303,23 +304,3 @@ def helm_namespace_uninstall_vm_script(
     )
 
 
-def k8s_e2e_test_vm_script(
-    *,
-    remote_dir: str,
-    kubeconfig_path: str,
-    runtime_image: str,
-    namespace: str,
-    remote_manifest_path: str | None = None,
-) -> str:
-    manifest_property = ""
-    if remote_manifest_path is not None:
-        manifest_property = f"-Dnanofaas.e2e.scenarioManifest={shlex.quote(remote_manifest_path)} "
-    command = (
-        f"KUBECONFIG={shlex.quote(kubeconfig_path)} "
-        f"FUNCTION_RUNTIME_IMAGE={shlex.quote(runtime_image)} "
-        f"NANOFAAS_E2E_NAMESPACE={shlex.quote(namespace)} "
-        f"./gradlew :control-plane-modules:k8s-deployment-provider:test "
-        f"{manifest_property}-PrunE2e --tests "
-        "it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest --no-daemon"
-    )
-    return _render_remote_script(remote_dir=remote_dir, commands=[command])
