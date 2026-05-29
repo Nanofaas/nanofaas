@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from multipass import MultipassCommandError
 
-from workflow_tasks.shell import ShellExecutionResult
+from shellcraft.backend import ShellExecutionResult
 from workflow_tasks.vm.multipass import MultipassVmProvider, _ok, _sdk_error, repo_rsync_command, repo_sync_ssh_rsh
 from workflow_tasks.vm.models import VmRequest
 
