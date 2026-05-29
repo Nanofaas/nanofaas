@@ -4,6 +4,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from workflow_tasks.loadtest.models import PrometheusQuery
+from workflow_tasks.loadtest.two_vm import (  # noqa: F401
+    LOADTEST_SCENARIOS,
+    TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+    TWO_VM_PROMETHEUS_NODE_PORT,
+    TWO_VM_REMOTE_DIR_NAME,
+)
 
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
@@ -29,25 +36,10 @@ LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = (
     "vm.loadgen.destroy",
 )
 
-LOADTEST_SCENARIOS: frozenset[str] = frozenset(
-    {
-        "two-vm-loadtest",
-        "azure-vm-loadtest",
-        "proxmox-vm-loadtest",
-    }
-)
-
-
 def remap_loadtest_component_id(scenario_name: str, component_id: str) -> str:
     if scenario_name in LOADTEST_SCENARIOS and component_id == "cli.fn_apply_selected":
         return "functions.register"
     return component_id
-
-
-TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT = 30080
-TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT = 30081
-TWO_VM_PROMETHEUS_NODE_PORT = 30090
-TWO_VM_REMOTE_DIR_NAME = "two-vm-loadtest"
 
 
 @dataclass(frozen=True, slots=True)
