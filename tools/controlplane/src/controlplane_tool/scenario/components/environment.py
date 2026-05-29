@@ -5,7 +5,6 @@ from pathlib import Path
 from controlplane_tool.cli_validation.cli_test_models import CLI_TEST_VM_BACKED_SCENARIOS, CliTestRequest
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.core.models import VM_BACKED_SCENARIOS
-from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from controlplane_tool.scenario.scenario_manifest import write_scenario_manifest
 from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,
