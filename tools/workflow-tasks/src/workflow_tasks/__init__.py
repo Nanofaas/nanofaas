@@ -10,6 +10,7 @@ __version__ = "0.1.0"
 from workflow_tasks.core.task import Task
 from workflow_tasks.core.workflow import Workflow
 from workflow_tasks.tasks.adapters import RemoteCommandOperationLike, operation_to_task_spec
+from workflow_tasks.tasks.command_task import CommandTask, command_task_from_operation
 from workflow_tasks.tasks.executors import HostCommandTaskExecutor, VmCommandTaskExecutor
 from workflow_tasks.tasks.models import CommandTaskSpec, ExecutionTarget, TaskResult, TaskStatus
 from workflow_tasks.tasks.rendering import render_shell_command, render_task_command
@@ -78,6 +79,7 @@ __all__ = [
     "HostCommandTaskExecutor", "VmCommandTaskExecutor",
     "render_shell_command", "render_task_command",
     "RemoteCommandOperationLike", "operation_to_task_spec",
+    "CommandTask", "command_task_from_operation",
     # workflow types
     "WorkflowContext", "WorkflowEvent", "WorkflowSink",
     "WorkflowState", "WorkflowRun", "TaskDefinition", "TaskRun",
