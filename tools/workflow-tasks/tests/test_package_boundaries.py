@@ -192,3 +192,11 @@ def test_components_bootstrap_does_not_import_controlplane_tool() -> None:
             del sys.modules[key]
     importlib.import_module("workflow_tasks.components.bootstrap")
     assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_function_tasks_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.function_tasks")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
