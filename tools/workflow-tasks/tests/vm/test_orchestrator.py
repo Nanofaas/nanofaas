@@ -32,9 +32,6 @@ def _make_orch(
         ansible=mock_ansible,
         multipass_client=mock_client,
     )
-    # If ansible was injected, replace the auto-constructed one
-    if ansible is not None:
-        orch.ansible = ansible
     return orch
 
 
