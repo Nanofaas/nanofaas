@@ -347,7 +347,7 @@ def test_plan_recipe_steps_rewrites_proxmox_repo_sync_and_ansible_commands(
         FakeProxmox,
     )
     monkeypatch.setattr(
-        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        "workflow_tasks.components.bootstrap._find_ssh_private_key_path",
         lambda _: None,
     )
 
@@ -426,7 +426,7 @@ def test_plan_recipe_steps_defers_proxmox_ssh_endpoint_until_actions(
         FakeProxmox,
     )
     monkeypatch.setattr(
-        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        "workflow_tasks.components.bootstrap._find_ssh_private_key_path",
         lambda _: None,
     )
 
@@ -498,7 +498,7 @@ def test_plan_recipe_steps_replaces_existing_proxmox_ansible_private_key(
         FakeProxmox,
     )
     monkeypatch.setattr(
-        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        "workflow_tasks.components.bootstrap._find_ssh_private_key_path",
         lambda _: Path("/old/key"),
     )
 
@@ -581,7 +581,7 @@ def test_proxmox_host_command_failure_reports_stdout_and_stderr(monkeypatch) -> 
         FakeProxmox,
     )
     monkeypatch.setattr(
-        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        "workflow_tasks.components.bootstrap._find_ssh_private_key_path",
         lambda _: None,
     )
 
