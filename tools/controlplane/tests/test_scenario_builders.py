@@ -384,3 +384,15 @@ def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
     assert "cli.build_install_dist" in plan.task_ids
 
 
+def test_proxmox_vm_loadtest_task_ids_include_functions_register() -> None:
+    """proxmox-vm-loadtest uses REST function registration like the loadtest scenarios."""
+    ids = scenario_task_ids("proxmox-vm-loadtest")
+    assert "functions.register" in ids
+    assert "cli.fn_apply_selected" not in ids
+
+
+def test_proxmox_vm_loadtest_task_ids_order() -> None:
+    ids = scenario_task_ids("proxmox-vm-loadtest")
+    assert ids.index("cli.build_install_dist") < ids.index("functions.register")
+    assert ids.index("functions.register") < ids.index("loadgen.ensure_running")
+

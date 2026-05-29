@@ -140,3 +140,6 @@ class ProxmoxConfig(BaseModel):
     ssh_key_path: str | None = None
     vm_name: str = "nanofaas-proxmox"
     loadgen_name: str = "nanofaas-proxmox-loadgen"
+    cpus: int = 4
+    memory: str = "8G"
+    disk: str = "20G"

@@ -13,6 +13,22 @@
       aarch64: arm64
       arm64: arm64
   pre_tasks:
+    - name: Expand root partition and filesystem to full disk size
+      ansible.builtin.raw: |
+        ROOT=$(findmnt -n -o SOURCE /)
+        if echo "$ROOT" | grep -q 'mapper'; then
+          PART=/dev/$(lsblk -no PKNAME "$ROOT" | tail -1)
+        else
+          PART="$ROOT"
+        fi
+        DISK=/dev/$(lsblk -no PKNAME "$PART" | tail -1)
+        NUM=$(echo "$PART" | grep -oE '[0-9]+$')
+        growpart "$DISK" "$NUM" 2>/dev/null || true
+        pvresize "$PART" 2>/dev/null || true
+        lvextend -l +100%FREE "$ROOT" 2>/dev/null || true
+        resize2fs "$ROOT" 2>/dev/null || true
+      changed_when: false
+
     - name: Ensure python3 is present on the target
       ansible.builtin.raw: |
         if command -v python3 >/dev/null 2>&1; then
@@ -30,7 +46,7 @@
 
     - name: Resolve Helm architecture
       ansible.builtin.set_fact:
-        helm_arch: "{{ helm_arch_map.get(ansible_architecture, '') }}"
+        helm_arch: '{{ helm_arch_map.get(ansible_facts["architecture"], "") }}'
   tasks:
     - name: Install base packages
       ansible.builtin.apt:
@@ -74,7 +90,7 @@
 
     - name: Fail when Helm is requested on an unsupported architecture
       ansible.builtin.fail:
-        msg: "Unsupported architecture for Helm: {{ ansible_architecture }}"
+        msg: 'Unsupported architecture for Helm: {{ ansible_facts["architecture"] }}'
       when:
         - install_helm | bool
         - helm_arch | length == 0

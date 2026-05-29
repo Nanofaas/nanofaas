@@ -62,6 +62,29 @@ def test_install_k6_runs_bash_install_command() -> None:
     assert remote_dir == "/home/ubuntu"
 
 
+def test_install_k6_waits_for_cloud_init_and_apt_locks() -> None:
+    runner = _RecordingVmRunner()
+    task = InstallK6(task_id="loadgen.install_k6", title="Install k6", runner=runner, remote_dir="/home/ubuntu")
+
+    task.run()
+
+    command = runner.commands[0][0][-1]
+    assert "cloud-init status --wait" in command
+    assert "/var/lib/apt/lists/lock" in command
+    assert "DPkg::Lock::Timeout=120" in command
+    assert "fi && curl -fsSL" in command
+
+
+def test_install_k6_gpg_import_is_non_interactive() -> None:
+    runner = _RecordingVmRunner()
+    task = InstallK6(task_id="loadgen.install_k6", title="Install k6", runner=runner, remote_dir="/home/ubuntu")
+
+    task.run()
+
+    command = runner.commands[0][0][-1]
+    assert "sudo gpg --yes --dearmor" in command
+
+
 def test_install_k6_raises_on_nonzero_exit() -> None:
     runner = _RecordingVmRunner(return_code=1)
     task = InstallK6(task_id="loadgen.install_k6", title="Install k6", runner=runner, remote_dir="/home/ubuntu")

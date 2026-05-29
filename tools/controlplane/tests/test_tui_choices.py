@@ -2643,6 +2643,65 @@ def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
     assert request.loadgen_vm.name == "nanofaas-e2e-loadgen"
 
 
+def test_tui_proxmox_vm_loadtest_keeps_cleanup_phases_enabled(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+    import controlplane_tool.e2e.e2e_runner as e2e_runner
+    import controlplane_tool.workspace.proxmox_config as proxmox_config
+
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app.questionary, "confirm", lambda *args, **kwargs: _Prompt(True))
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+    monkeypatch.setattr(
+        proxmox_config,
+        "load_proxmox_config",
+        lambda: SimpleNamespace(
+            host="pve.example.com",
+            node="venus",
+            user="root@pam",
+            password="secret",
+            template_id=101,
+            ssh_key_path=None,
+            vm_name="nanofaas-proxmox",
+            loadgen_name="nanofaas-proxmox-loadgen",
+        ),
+    )
+
+    def fake_plan(self, request):  # noqa: ANN001
+        called["plan_request"] = request
+        return SimpleNamespace(
+            phase_titles=[
+                "Ensure stack VM running (Proxmox)",
+                "Destroy loadgen VM (Proxmox)",
+                "Destroy stack VM (Proxmox)",
+            ]
+        )
+
+    def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
+        called["scenario"] = scenario
+        called["request"] = kwargs["request"]
+        return LocalFlowDefinition(flow_id="e2e.proxmox_vm_loadtest", task_ids=[], run=lambda: "ok")
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        called["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(e2e_runner.E2eRunner, "plan", fake_plan)
+    monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+    monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", lambda self, flow: None)
+
+    NanofaasTUI()._run_vm_e2e_scenario("proxmox-vm-loadtest")
+
+    request = called["request"]
+    assert called["scenario"] == "proxmox-vm-loadtest"
+    assert request.cleanup_vm is True
+    assert "Destroy loadgen VM (Proxmox)" in called["planned_steps"]
+    assert "Destroy stack VM (Proxmox)" in called["planned_steps"]
+
+
 def test_platform_validation_choices_includes_azure_vm_loadtest() -> None:
     from controlplane_tool.tui.app import _PLATFORM_VALIDATION_CHOICES
 

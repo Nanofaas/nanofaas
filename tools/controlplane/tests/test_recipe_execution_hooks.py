@@ -4,6 +4,7 @@ import pytest
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
@@ -146,3 +147,463 @@ def test_scenario_plan_task_ids_skips_empty_step_ids() -> None:
     ]
     plan = E2ePlan(scenario=MagicMock(), request=MagicMock(), steps=steps)
     assert plan.task_ids == ["a.step", "c.step"]
+
+
+def test_control_plane_nodeports_enabled_for_all_vm_loadtest_scenarios() -> None:
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+    from controlplane_tool.core.models import ScenarioName
+    from workflow_tasks.vm.models import VmLifecycle
+
+    scenarios: tuple[tuple[ScenarioName, VmLifecycle], ...] = (
+        ("two-vm-loadtest", "multipass"),
+        ("azure-vm-loadtest", "azure"),
+        ("proxmox-vm-loadtest", "proxmox"),
+    )
+
+    for scenario_name, lifecycle in scenarios:
+        steps = plan_recipe_steps(
+            Path("/repo"),
+            E2eRequest(
+                scenario=scenario_name,
+                runtime="java",
+                vm=VmRequest(lifecycle=lifecycle, name=f"{scenario_name}-stack"),
+                loadgen_vm=VmRequest(lifecycle=lifecycle, name=f"{scenario_name}-loadgen"),
+            ),
+            scenario_name,
+            component_ids=("helm.deploy_control_plane",),
+        )
+
+        assert len(steps) == 1
+        command = " ".join(steps[0].command)
+        assert "controlPlane.service.type=NodePort" in command
+        assert "prometheus.service.type=NodePort" in command
+
+
+def test_plan_recipe_steps_uses_proxmox_provider_for_proxmox_lifecycle(monkeypatch) -> None:
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+
+    calls: list[str] = []
+
+    class FakeProxmox:
+        def __init__(self, repo_root):
+            calls.append(str(repo_root))
+
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+        def ensure_running(self, request):
+            calls.append(f"ensure:{request.name}")
+
+        def teardown(self, request):
+            calls.append(f"teardown:{request.name}")
+
+        def exec_argv(self, request, argv, env=None, cwd=None):
+            calls.append(f"exec:{request.name}:{argv[0]}")
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+        def connection_host(self, request):
+            return "10.0.2.10"
+
+        def ssh_endpoint(self, request):
+            return ("149.132.176.73", 20001)
+
+        def ssh_private_key_path(self, request):
+            return Path("/tmp/id_ed25519")
+
+        def wait_for_ssh(self, request):
+            return None
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmox,
+    )
+
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="loadgen"),
+    )
+
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "proxmox-vm-loadtest",
+        component_ids=("vm.ensure_running", "images.build_core"),
+    )
+
+    assert steps[0].action is not None
+    steps[0].action()
+
+    assert calls[0] == "/repo"
+    assert "ensure:stack" in calls
+
+
+def test_proxmox_register_functions_uses_published_control_plane_endpoint(
+    monkeypatch,
+) -> None:
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+    from controlplane_tool.scenario.two_vm_loadtest_config import (
+        TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+    )
+
+    captured: dict[str, str] = {}
+
+    class FakeProxmox:
+        def __init__(self, repo_root):
+            pass
+
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+        def connection_host(self, request):
+            return "10.0.2.10"
+
+        def publish_port(self, request, *, service, guest_port):
+            assert service == "CONTROL_PLANE_HTTP"
+            assert guest_port == TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT
+            return ("149.132.176.73", 30080)
+
+    class FakeRegisterFunctions:
+        def __init__(self, *, task_id, title, control_plane_url, specs):
+            captured["control_plane_url"] = control_plane_url
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmox,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.e2e.e2e_runner.RegisterFunctions",
+        FakeRegisterFunctions,
+    )
+
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="loadgen"),
+    )
+
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "proxmox-vm-loadtest",
+        component_ids=("cli.fn_apply_selected",),
+    )
+
+    assert steps[0].action is not None
+    steps[0].action()
+
+    assert captured["control_plane_url"] == "http://149.132.176.73:30080"
+
+
+def test_plan_recipe_steps_rewrites_proxmox_repo_sync_and_ansible_commands(
+    monkeypatch,
+) -> None:
+    from controlplane_tool.core.shell_backend import RecordingShell
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+
+    class FakeProxmox:
+        def __init__(self, repo_root):
+            pass
+
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+        def ensure_running(self, request):
+            pass
+
+        def teardown(self, request):
+            pass
+
+        def exec_argv(self, request, argv, env=None, cwd=None):
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+        def connection_host(self, request):
+            return "10.0.2.10"
+
+        def ssh_endpoint(self, request):
+            return ("149.132.176.73", 20001)
+
+        def ssh_private_key_path(self, request):
+            return Path("/tmp/id_ed25519")
+
+        def wait_for_ssh(self, request):
+            return None
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmox,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        lambda _: None,
+    )
+
+    shell = RecordingShell()
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="loadgen"),
+    )
+
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "proxmox-vm-loadtest",
+        shell=shell,
+        component_ids=("repo.sync_to_vm", "vm.provision_base"),
+    )
+    for step in steps:
+        assert step.action is not None
+        step.action()
+
+    rsync_command = shell.commands[0]
+    ansible_command = shell.commands[1]
+
+    assert "ubuntu@149.132.176.73:/home/ubuntu/nanofaas/" in rsync_command
+    assert "-p 20001" in rsync_command[rsync_command.index("-e") + 1]
+    assert ansible_command[ansible_command.index("-i") + 1] == "149.132.176.73,"
+    assert "-e" in ansible_command
+    assert "ansible_port=20001" in ansible_command
+    assert "--private-key" in ansible_command
+    assert ansible_command[ansible_command.index("--private-key") + 1] == "/tmp/id_ed25519"
+
+
+def test_plan_recipe_steps_defers_proxmox_ssh_endpoint_until_actions(
+    monkeypatch,
+) -> None:
+    from controlplane_tool.core.shell_backend import RecordingShell
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+
+    calls: list[str] = []
+
+    class FakeProxmox:
+        def __init__(self, repo_root):
+            pass
+
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+        def ensure_running(self, request):
+            pass
+
+        def teardown(self, request):
+            pass
+
+        def exec_argv(self, request, argv, env=None, cwd=None):
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+        def connection_host(self, request):
+            return "10.0.2.10"
+
+        def ssh_endpoint(self, request):
+            calls.append(f"ssh_endpoint:{request.name}")
+            return ("149.132.176.73", 20001)
+
+        def ssh_private_key_path(self, request):
+            return Path("/tmp/id_ed25519")
+
+        def wait_for_ssh(self, request):
+            return None
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmox,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        lambda _: None,
+    )
+
+    shell = RecordingShell()
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="loadgen"),
+    )
+
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "proxmox-vm-loadtest",
+        shell=shell,
+        component_ids=("repo.sync_to_vm", "vm.provision_base"),
+    )
+
+    assert calls == []
+
+    assert steps[0].action is not None
+    steps[0].action()
+    assert calls == ["ssh_endpoint:stack"]
+
+    assert steps[1].action is not None
+    steps[1].action()
+    assert calls == ["ssh_endpoint:stack", "ssh_endpoint:stack"]
+
+
+def test_plan_recipe_steps_replaces_existing_proxmox_ansible_private_key(
+    monkeypatch,
+) -> None:
+    from controlplane_tool.core.shell_backend import RecordingShell
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+
+    class FakeProxmox:
+        def __init__(self, repo_root):
+            pass
+
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+        def ensure_running(self, request):
+            pass
+
+        def teardown(self, request):
+            pass
+
+        def exec_argv(self, request, argv, env=None, cwd=None):
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+        def connection_host(self, request):
+            return "10.0.2.10"
+
+        def ssh_endpoint(self, request):
+            return ("149.132.176.73", 20001)
+
+        def ssh_private_key_path(self, request):
+            return Path("/tmp/proxmox_key")
+
+        def wait_for_ssh(self, request):
+            return None
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmox,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        lambda _: Path("/old/key"),
+    )
+
+    shell = RecordingShell()
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="loadgen"),
+    )
+
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "proxmox-vm-loadtest",
+        shell=shell,
+        component_ids=("vm.provision_base",),
+    )
+    assert steps[0].action is not None
+    steps[0].action()
+
+    ansible_command = shell.commands[0]
+
+    assert "--private-key" in ansible_command
+    assert ansible_command[ansible_command.index("--private-key") + 1] == "/tmp/proxmox_key"
+    assert "/old/key" not in ansible_command
+
+
+def test_proxmox_host_command_failure_reports_stdout_and_stderr(monkeypatch) -> None:
+    from controlplane_tool.core.shell_backend import ShellBackend, ShellExecutionResult
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+
+    class FailingShell(ShellBackend):
+        def __init__(self):
+            self.commands: list[list[str]] = []
+
+        def run(self, command, *, cwd=None, env=None, dry_run=False):
+            self.commands.append(command)
+            return ShellExecutionResult(
+                command=command,
+                return_code=2,
+                stdout="PLAY RECAP\nnanofaas : failed=1\n",
+                stderr="[WARNING]: Module remote_tmp /root/.ansible/tmp did not exist\n",
+                dry_run=dry_run,
+                env=dict(env or {}),
+            )
+
+    class FakeProxmox:
+        def __init__(self, repo_root):
+            pass
+
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+        def ensure_running(self, request):
+            pass
+
+        def teardown(self, request):
+            pass
+
+        def exec_argv(self, request, argv, env=None, cwd=None):
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+        def connection_host(self, request):
+            return "10.0.2.10"
+
+        def ssh_endpoint(self, request):
+            return ("149.132.176.73", 20001)
+
+        def ssh_private_key_path(self, request):
+            return Path("/tmp/id_ed25519")
+
+        def wait_for_ssh(self, request):
+            return None
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmox,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.scenario.components.bootstrap._find_ssh_private_key_path",
+        lambda _: None,
+    )
+
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="loadgen"),
+    )
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "proxmox-vm-loadtest",
+        shell=FailingShell(),
+        component_ids=("vm.provision_base",),
+    )
+
+    assert steps[0].action is not None
+    with pytest.raises(RuntimeError) as exc_info:
+        steps[0].action()
+
+    detail = str(exc_info.value)
+    assert "PLAY RECAP" in detail
+    assert "failed=1" in detail
+    assert "remote_tmp" in detail

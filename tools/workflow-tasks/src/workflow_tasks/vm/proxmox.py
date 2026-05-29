@@ -16,6 +16,8 @@ from shellcraft.backend import ShellExecutionResult
 from workflow_tasks.vm.models import VmRequest, vm_remote_home
 from workflow_tasks.vm.multipass import _find_ssh_private_key_path, _ok
 
+_PROXMOX_GUEST_READY_TIMEOUT_SECONDS = 300.0
+
 
 def _parse_memory_mb(memory: str) -> int:
     s = memory.strip().upper()
@@ -181,7 +183,6 @@ class ProxmoxVmProvider:
         return f"{stderr}{diagnostic}\n"
 
     def _wait_for_ssh(self, host: str, port: int, *, timeout: float = 120.0) -> None:
-        """Probe the NAT-forwarded SSH port until it accepts TCP connections."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
@@ -191,11 +192,47 @@ class ProxmoxVmProvider:
                 time.sleep(2.0)
         raise RuntimeError(
             f"SSH at {host}:{port} did not become reachable within {timeout:.0f}s"
-            " — cloud-init may still be rebooting the VM"
         )
+
+    def _wait_for_cloud_init(
+        self,
+        host: str,
+        port: int,
+        request: VmRequest,
+        *,
+        timeout: float = 300.0,
+    ) -> None:
+        """Poll `cloud-init status` until done, tolerating SSH gaps from reboot."""
+        ssh_key = self._ssh_key(request)
+        user = request.user or "ubuntu"
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            cmd = [
+                "ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+                "-o", "ConnectTimeout=5", "-p", str(port),
+            ]
+            if ssh_key:
+                cmd += ["-i", str(ssh_key)]
+            cmd += [
+                f"{user}@{host}",
+                "if command -v cloud-init >/dev/null 2>&1; then cloud-init status; else echo 'status: done'; fi",
+            ]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                output = result.stdout.strip()
+                if "status: done" in output or "status: error" in output:
+                    return
+                # "status: running" — keep polling
+            except Exception:
+                pass  # SSH temporarily down (cloud-init reboot in progress)
+            time.sleep(5.0)
 
     def ssh_endpoint(self, request: VmRequest) -> tuple[str, int]:
         return self._ssh_endpoint(request)
+
+    def wait_for_ssh(self, request: VmRequest, *, timeout: float = 120.0) -> None:
+        host, port = self._ssh_endpoint(request)
+        self._wait_for_ssh(host, port, timeout=timeout)
 
     def ssh_private_key_path(self, request: VmRequest) -> Path | None:
         return self._ssh_key(request)
@@ -222,6 +259,31 @@ class ProxmoxVmProvider:
         vm = client.get_vm(self._vm_name(request))
         return vm.wait_for_ip()
 
+    def _wait_for_vm_ready(self, vm: Any, *, total_timeout: float = 600.0) -> None:
+        deadline = time.monotonic() + total_timeout
+        last_exc: Exception = RuntimeError("wait_ready never attempted")
+        while time.monotonic() < deadline:
+            try:
+                vm.wait_ready()
+                return
+            except Exception as exc:
+                last_exc = exc
+                if time.monotonic() >= deadline:
+                    break
+        raise last_exc
+
+    def _wait_for_vm_ip(self, vm: Any, *, total_timeout: float = 600.0) -> str:
+        deadline = time.monotonic() + total_timeout
+        last_exc: Exception = RuntimeError("wait_for_ip never attempted")
+        while time.monotonic() < deadline:
+            try:
+                return vm.wait_for_ip()
+            except Exception as exc:
+                last_exc = exc
+                if time.monotonic() >= deadline:
+                    break
+        raise last_exc
+
     def ensure_running(self, request: VmRequest) -> ShellExecutionResult:
         client = self._client(request)
         name = self._vm_name(request)
@@ -237,12 +299,15 @@ class ProxmoxVmProvider:
             disk_gb=disk_gb,
             cloud_init_config=self._cloud_init_config(request),
         )
-        vm.wait_ready()
-        guest_ip = vm.wait_for_ip()
+        self._wait_for_vm_ready(vm)
+        guest_ip = self._wait_for_vm_ip(vm)
         published = self._publish_ssh(request, vm=vm, guest_ip=guest_ip)
         host = request.proxmox_host or ""
         port = int(cast(int, published.host_port))
         self._ssh_endpoints[name] = (host, port)
+        self._wait_for_ssh(host, port)
+        self._wait_for_cloud_init(host, port, request)
+        # Re-probe SSH: cloud-init may have rebooted the VM before finishing
         self._wait_for_ssh(host, port)
         return _ok(["proxmox", "ensure_running", name])
 

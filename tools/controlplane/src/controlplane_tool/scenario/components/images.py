@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -140,6 +141,19 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
     return tuple(operations)
 
 
+def _prune_image_op(fn_key: str, image: str) -> RemoteCommandOperation:
+    # Remove local image layers after push to prevent disk exhaustion across multiple GraalVM builds.
+    # Legacy Docker builder leaves large dangling layers; prune reclaims them immediately.
+    cmd = f"docker image rm {shlex.quote(image)} && docker image prune -f"
+    return RemoteCommandOperation(
+        operation_id=f"images.prune_selected_functions.{fn_key}",
+        summary=f"Prune {fn_key} local image",
+        argv=("bash", "-c", cmd),
+        env=_frozen_env(),
+        execution_target="vm",
+    )
+
+
 def plan_build_selected_functions(
     context: ScenarioExecutionContext,
 ) -> tuple[ScenarioOperation, ...]:
@@ -174,6 +188,7 @@ def plan_build_selected_functions(
                     execution_target="vm",
                 )
             )
+            operations.append(_prune_image_op(fn_key, image))
             continue
 
         operations.append(
@@ -202,6 +217,7 @@ def plan_build_selected_functions(
                 execution_target="vm",
             )
         )
+        operations.append(_prune_image_op(fn_key, image))
     return tuple(operations)
 
 

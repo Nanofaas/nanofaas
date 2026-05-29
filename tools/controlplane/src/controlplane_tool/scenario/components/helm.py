@@ -8,6 +8,7 @@ from controlplane_tool.scenario.components.models import ScenarioComponentDefini
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.components.images import control_image, runtime_image
 from controlplane_tool.scenario.two_vm_loadtest_config import (
+    LOADTEST_SCENARIOS,
     TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
     TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
     TWO_VM_PROMETHEUS_NODE_PORT,
@@ -108,7 +109,7 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
     values = control_plane_helm_values(
         namespace=namespace,
         control_plane_image=control_image(context.local_registry),
-        expose_node_port=context.scenario_name == "two-vm-loadtest",
+        expose_node_port=context.scenario_name in LOADTEST_SCENARIOS,
     )
     return (
         RemoteCommandOperation(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Any, Callable, Literal, Protocol, cast
 
 from multipass import MultipassClient
 
@@ -28,7 +28,10 @@ from controlplane_tool.scenario.components.executor import (
 )
 from controlplane_tool.scenario.scenarios import ScenarioPlan
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
-from controlplane_tool.scenario.two_vm_loadtest_config import TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT
+from controlplane_tool.scenario.two_vm_loadtest_config import (
+    LOADTEST_SCENARIOS,
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+)
 from controlplane_tool.scenario.components.two_vm_loadtest import loadgen_vm_request
 from controlplane_tool.scenario.scenario_planner import ScenarioPlanner
 from controlplane_tool.core.shell_backend import (
@@ -39,6 +42,41 @@ from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from workflow_tasks.workflow.events import WorkflowContext
+from workflow_tasks.vm.multipass import repo_rsync_command, repo_sync_ssh_rsh
+
+
+class _RecipeVmOrchestrator(Protocol):
+    def remote_project_dir(self, request: VmRequest) -> str: ...
+    def ensure_running(self, request: VmRequest) -> Any: ...
+    def teardown(self, request: VmRequest) -> Any: ...
+    def exec_argv(
+        self,
+        request: VmRequest,
+        argv: tuple[str, ...] | list[str],
+        *,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        dry_run: bool = False,
+    ) -> Any: ...
+    def connection_host(self, request: VmRequest) -> str: ...
+
+
+class _ProxmoxRecipeVmOrchestrator(_RecipeVmOrchestrator, Protocol):
+    def ssh_endpoint(self, request: VmRequest) -> tuple[str, int]: ...
+    def wait_for_ssh(self, request: VmRequest, *, timeout: float = 120.0) -> None: ...
+    def ssh_private_key_path(self, request: VmRequest) -> Path | None: ...
+    def publish_port(
+        self,
+        request: VmRequest,
+        *,
+        service: str,
+        guest_port: int,
+    ) -> tuple[str, int]: ...
+
+
+def _command_failure_output(stdout: str | None, stderr: str | None) -> str:
+    parts = [part.strip() for part in (stdout, stderr) if part and part.strip()]
+    return "\n\n".join(parts)
 
 
 @dataclass(frozen=True)
@@ -84,6 +122,7 @@ def plan_recipe_steps(
     manifest_root: Path | None = None,
     host_resolver: Callable[[VmRequest], str] | None = None,
     multipass_client: MultipassClient | None = None,
+    component_ids: tuple[str, ...] | None = None,
 ) -> list[ScenarioPlanStep]:
     context: ScenarioExecutionContext = resolve_scenario_environment(
         repo_root,
@@ -92,11 +131,17 @@ def plan_recipe_steps(
         release=release,
     )
     recipe = build_scenario_recipe(scenario_name)
+    if component_ids is not None:
+        recipe = recipe.__class__(
+            name=recipe.name,
+            component_ids=component_ids,
+            requires_managed_vm=recipe.requires_managed_vm,
+        )
     runner = E2eRunner(repo_root, shell=shell, manifest_root=manifest_root, host_resolver=host_resolver, multipass_client=multipass_client)
     cli_context = CliComponentContext(
         repo_root=repo_root,
-        release=context.release,
-        namespace=context.namespace,
+        release=cast(str, context.release),
+        namespace=cast(str, context.namespace),
         local_registry=context.local_registry,
         resolved_scenario=context.resolved_scenario,
         control_plane_endpoint=(
@@ -108,16 +153,20 @@ def plan_recipe_steps(
     vm_request = context.vm_request
 
     # Select the orchestrator based on VM lifecycle.
-    vm_orch: VmOrchestrator | AzureVmOrchestrator
+    vm_orch: _RecipeVmOrchestrator
     if request.vm and request.vm.lifecycle == "azure":
         vm_orch = AzureVmOrchestrator(repo_root)
+    elif request.vm and request.vm.lifecycle == "proxmox":
+        from controlplane_tool.infra.vm.proxmox_vm_adapter import ProxmoxVmOrchestrator
+
+        vm_orch = ProxmoxVmOrchestrator(repo_root=repo_root)
     else:
         vm_orch = runner.vm
 
     remote_dir = vm_orch.remote_project_dir(vm_request)
     two_vm_runner = TwoVmLoadtestRunner(
         repo_root=repo_root,
-        vm=vm_orch,
+        vm=cast(Any, vm_orch),
         shell=runner.shell,
         host_resolver=host_resolver,
     )
@@ -140,7 +189,49 @@ def plan_recipe_steps(
     def _on_remote_exec(argv: tuple[str, ...], env: Mapping[str, str]) -> None:
         result = vm_orch.exec_argv(vm_request, argv, env=dict(env), cwd=remote_dir)
         if result.return_code != 0:
-            raise RuntimeError(result.stderr or result.stdout or f"exit {result.return_code}")
+            raise RuntimeError(
+                _command_failure_output(result.stdout, result.stderr)
+                or f"exit {result.return_code}"
+            )
+
+    def _run_host_command(command: list[str], env: Mapping[str, str]) -> None:
+        result = runner.shell.run(command, cwd=repo_root, env=dict(env))
+        if result.return_code != 0:
+            raise RuntimeError(
+                _command_failure_output(result.stdout, result.stderr)
+                or f"exit {result.return_code}"
+            )
+
+    def _rewrite_ansible_inventory_for_proxmox(
+        argv: tuple[str, ...] | list[str],
+    ) -> list[str]:
+        if request.vm is None or request.vm.lifecycle != "proxmox":
+            return list(argv)
+        proxmox_orch = cast(_ProxmoxRecipeVmOrchestrator, vm_orch)
+        host, port = proxmox_orch.ssh_endpoint(vm_request)
+        rewritten = list(argv)
+        if "-i" in rewritten:
+            rewritten[rewritten.index("-i") + 1] = f"{host},"
+        rewritten.extend(["-e", f"ansible_port={port}"])
+        key = proxmox_orch.ssh_private_key_path(vm_request)
+        if key is not None:
+            if "--private-key" in rewritten:
+                rewritten[rewritten.index("--private-key") + 1] = str(key)
+            else:
+                rewritten.extend(["--private-key", str(key)])
+        return rewritten
+
+    def _repo_sync_command_for_proxmox() -> list[str]:
+        proxmox_orch = cast(_ProxmoxRecipeVmOrchestrator, vm_orch)
+        host, port = proxmox_orch.ssh_endpoint(vm_request)
+        key = proxmox_orch.ssh_private_key_path(vm_request)
+        return repo_rsync_command(
+            source=repo_root,
+            user=vm_request.user,
+            host=host,
+            destination=remote_dir,
+            ssh_rsh=repo_sync_ssh_rsh(key, port=port),
+        )
 
     def _resolve_cp_host() -> str:
         if host_resolver is not None:
@@ -157,8 +248,17 @@ def plan_recipe_steps(
             )
             for fn_key in fn_keys
         ]
-        cp_host = _resolve_cp_host()
-        cp_url = f"http://{cp_host}:{TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT}"
+        if request.vm is not None and request.vm.lifecycle == "proxmox":
+            proxmox_orch = cast(_ProxmoxRecipeVmOrchestrator, vm_orch)
+            cp_host, cp_port = proxmox_orch.publish_port(
+                vm_request,
+                service="CONTROL_PLANE_HTTP",
+                guest_port=TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+            )
+        else:
+            cp_host = _resolve_cp_host()
+            cp_port = TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT
+        cp_url = f"http://{cp_host}:{cp_port}"
         RegisterFunctions(
             task_id="functions.register",
             title="Register functions",
@@ -276,7 +376,10 @@ def plan_recipe_steps(
                 )
                 for step in component_steps
             ]
-        if component.component_id == "cli.fn_apply_selected" and scenario_name in {"two-vm-loadtest", "azure-vm-loadtest"}:
+        if (
+            component.component_id == "cli.fn_apply_selected"
+            and scenario_name in LOADTEST_SCENARIOS
+        ):
             component_steps = [
                 ScenarioPlanStep(
                     summary="Register selected functions via REST API",
@@ -285,6 +388,44 @@ def plan_recipe_steps(
                     action=_on_register_functions,
                 )
             ]
+        if request.vm is not None and request.vm.lifecycle == "proxmox":
+            if component.component_id == "repo.sync_to_vm":
+                component_steps = [
+                    ScenarioPlanStep(
+                        summary=step.summary,
+                        command=step.command,
+                        env=step.env,
+                        step_id=step.step_id,
+                        action=lambda env=step.env: _run_host_command(
+                            _repo_sync_command_for_proxmox(),
+                            env,
+                        ),
+                    )
+                    for step in component_steps
+                ]
+            if component.component_id in {
+                "vm.provision_base",
+                "registry.ensure_container",
+                "k3s.install",
+                "k3s.configure_registry",
+            }:
+                proxmox_orch_ref = cast(_ProxmoxRecipeVmOrchestrator, vm_orch)
+                component_steps = [
+                    ScenarioPlanStep(
+                        summary=step.summary,
+                        command=step.command,
+                        env=step.env,
+                        step_id=step.step_id,
+                        action=lambda original_command=step.command, env=step.env: (
+                            proxmox_orch_ref.wait_for_ssh(vm_request)
+                            or _run_host_command(
+                                _rewrite_ansible_inventory_for_proxmox(original_command),
+                                env,
+                            )
+                        ),
+                    )
+                    for step in component_steps
+                ]
         steps.extend(component_steps)
     return steps
 
@@ -599,7 +740,7 @@ class E2eRunner:
                 dry_run=False,
             )
             if result.return_code != 0:
-                output = (result.stderr or result.stdout or "").strip()
+                output = _command_failure_output(result.stdout, result.stderr)
                 self._emit_event(
                     event_listener,
                     step_index=step_index,
@@ -655,8 +796,9 @@ class E2eRunner:
             self._execute_steps(plan, event_listener=event_listener)
             succeeded = True
         finally:
-            if succeeded and self._should_teardown(plan.request):
-                self.vm.teardown(plan.request.vm)
+            teardown_request = plan.request.vm
+            if succeeded and teardown_request is not None and self._should_teardown(plan.request):
+                self.vm.teardown(teardown_request)
 
     def run(
         self,
@@ -699,7 +841,11 @@ class E2eRunner:
         )
         self._discard_planning_commands(initial_count)
         shared_vm_request = next(
-            (plan.request.vm for plan in plans if plan.request.vm is not None),
+            (
+                cast(E2ePlan, plan).request.vm
+                for plan in plans
+                if isinstance(plan, E2ePlan) and plan.request.vm is not None
+            ),
             None,
         )
         succeeded = False
@@ -712,6 +858,10 @@ class E2eRunner:
             succeeded = True
             return plans
         finally:
-            final_request = plans[-1].request if plans else None
-            if succeeded and self._should_teardown(final_request):
+            final_request = (
+                cast(E2ePlan, plans[-1]).request
+                if plans and isinstance(plans[-1], E2ePlan)
+                else None
+            )
+            if succeeded and shared_vm_request is not None and self._should_teardown(final_request):
                 self.vm.teardown(shared_vm_request)

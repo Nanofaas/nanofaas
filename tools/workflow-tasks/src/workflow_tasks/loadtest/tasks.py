@@ -20,10 +20,18 @@ _K6_INSTALL_CMD: tuple[str, ...] = (
     "-lc",
     (
         "which k6 || ("
-        "curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg"
+        "if command -v cloud-init >/dev/null 2>&1; then sudo cloud-init status --wait || true; fi"
+        " && for i in $(seq 1 60); do "
+        "if sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; "
+        "then sleep 5; else break; fi; done"
+        " && if sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; "
+        "then echo 'apt locks still held after waiting' >&2; exit 1; fi"
+        " && "
+        "curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg"
         " && echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main'"
         " | sudo tee /etc/apt/sources.list.d/k6.list"
-        " && sudo apt-get update -qq && sudo apt-get install -y k6)"
+        " && sudo apt-get -o DPkg::Lock::Timeout=120 update -qq"
+        " && sudo apt-get -o DPkg::Lock::Timeout=120 install -y k6)"
     ),
 )
 

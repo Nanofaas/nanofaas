@@ -18,18 +18,30 @@ LOADTEST_PROMETHEUS_QUERIES: tuple[PrometheusQuery, ...] = (
     PrometheusQuery("jvm_memory_used_bytes", "jvm_memory_used_bytes"),
 )
 
-LOADTEST_TASK_TITLES: dict[str, str] = {
-    "vm.stack.ensure_running": "Ensure stack VM running",
-    "vm.loadgen.ensure_running": "Ensure loadgen VM running",
-    "loadgen.install_k6": "Install k6 on loadgen VM",
-    "loadgen.run_k6": "Run k6 loadtest",
-    "loadgen.fetch_results": "Fetch k6 results from loadgen VM",
-    "metrics.prometheus_snapshot": "Capture Prometheus snapshots",
-    "loadtest.write_report": "Write loadtest report",
-    "vm.loadgen.destroy": "Destroy loadgen VM",
-}
+LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = (
+    "vm.stack.ensure_running",
+    "vm.loadgen.ensure_running",
+    "loadgen.install_k6",
+    "loadgen.run_k6",
+    "loadgen.fetch_results",
+    "metrics.prometheus_snapshot",
+    "loadtest.write_report",
+    "vm.loadgen.destroy",
+)
 
-LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = tuple(LOADTEST_TASK_TITLES)
+LOADTEST_SCENARIOS: frozenset[str] = frozenset(
+    {
+        "two-vm-loadtest",
+        "azure-vm-loadtest",
+        "proxmox-vm-loadtest",
+    }
+)
+
+
+def remap_loadtest_component_id(scenario_name: str, component_id: str) -> str:
+    if scenario_name in LOADTEST_SCENARIOS and component_id == "cli.fn_apply_selected":
+        return "functions.register"
+    return component_id
 
 
 TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT = 30080
