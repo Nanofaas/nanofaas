@@ -37,6 +37,8 @@ class ScenarioExecutionContext:
 
     repo_root: Path
     scenario_name: str
+    # str rather than a Literal/RuntimeKind to keep this library module free of
+    # controlplane type aliases (do not narrow this back — it would re-introduce coupling).
     runtime: str
     namespace: str | None
     local_registry: str
