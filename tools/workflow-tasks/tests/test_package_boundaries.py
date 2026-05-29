@@ -112,3 +112,19 @@ def test_components_context_does_not_import_controlplane_tool() -> None:
             del sys.modules[key]
     importlib.import_module("workflow_tasks.components.context")
     assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_namespace_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.namespace")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_images_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.images")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
