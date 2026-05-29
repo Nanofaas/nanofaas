@@ -152,3 +152,35 @@ def test_components_helm_does_not_import_controlplane_tool() -> None:
             del sys.modules[key]
     importlib.import_module("workflow_tasks.components.helm")
     assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_platform_commands_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.platform_commands")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_remote_script_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.remote_script")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_verification_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.verification")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_cleanup_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.cleanup")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
