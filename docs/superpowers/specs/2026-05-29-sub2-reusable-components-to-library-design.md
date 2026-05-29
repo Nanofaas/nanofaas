@@ -21,21 +21,28 @@ I componenti (`bootstrap`, `cleanup`, `helm`, `images`, `namespace`, `registry`,
 `verification`, `two_vm_loadtest`) ricevono tutti un `ScenarioExecutionContext`. L'esplorazione
 ha stabilito:
 
-- **I componenti non leggono MAI `context.request`** (0 accessi a `.request.*`). Il campo
-  `request: E2eRequest | CliTestRequest` serve solo alla factory e ai runner, non ai componenti.
-- L'unico accesso a campo-di-campo è `context.resolved_scenario.namespace` (solo `.namespace`).
-- I campi letti dai componenti sono: `vm_request` (26), `resolved_scenario.namespace` (9),
+- **Nessuno legge `context.request`** — né i componenti né i runner (verificato: gli `.request`
+  in `e2e_runner` sono su `plan.request`, oggetto diverso). Il campo
+  `request: E2eRequest | CliTestRequest` è **vestigiale**: `vm_cluster_workflows` lo riempie
+  già con un valore fittizio (`request=cast(Any, vm_request)`). → **si cancella** (semplificazione).
+- I componenti accedono a `context.resolved_scenario` per **due** cose (correzione rispetto alla
+  prima stesura): `.namespace` (9 volte) **e** `.functions[].{key, family, runtime, image}`
+  (in `images.py`, via `function_image_specs`). Quindi serve un **Protocol a 2 livelli**, non
+  solo `.namespace`.
+- I campi letti dai componenti sono: `vm_request` (26), `resolved_scenario` (.namespace + .functions),
   `local_registry` (13), `namespace` (12), `repo_root` (9), `manifest_path` (5), `release` (4),
   `runtime` (3), `scenario_name` (1).
 
 Quindi:
 
 - La libreria definisce un **`ScenarioExecutionContext` neutro** (in `workflow_tasks/components/
-  context.py`) con i soli campi che i componenti leggono. `resolved_scenario` diventa un campo
-  con solo ciò che serve (es. `resolved_scenario_namespace: str | None`, oppure un `Protocol`
-  minimale con `.namespace`); **`ResolvedScenario` NON sale in libreria**.
-- `RuntimeKind` (= `Literal["java","rust"]`, alias banale) viene ridefinito in libreria
-  (o il campo diventa `runtime: str`).
+  context.py`) con i soli campi che i componenti leggono, **senza** il campo `request`.
+  `resolved_scenario` è tipizzato con due `Protocol` strutturali in libreria:
+  `ResolvedScenarioView` (`namespace: str | None`, `functions: Sequence[ResolvedFunctionView]`)
+  e `ResolvedFunctionView` (`key: str`, `family: str | None`, `runtime: str`, `image: str | None`).
+  **`ResolvedScenario`/`ResolvedFunction` NON salgono in libreria**: restano in controlplane e
+  soddisfano i Protocol strutturalmente.
+- `runtime` nel context diventa `runtime: str` (evita di far salire `RuntimeKind`).
 - La factory `resolve_scenario_environment` + `default_managed_vm_request` + `_managed_vm_request`
   (che conoscono `E2eRequest|CliTestRequest`, `scenario_defaults`, `scenario_manifest`,
   `VM_BACKED_SCENARIOS`, `build_scenario_recipe`) **restano in controlplane** come assembly e
@@ -57,28 +64,36 @@ Alcune dipendenze sono contratti dati/utility realmente condivisibili e salgono 
 
 ## Componenti per gruppo e sequenza (2a / 2b / 2c)
 
-**2a — Context neutro + componenti puliti.**
-- Crea `workflow_tasks/components/context.py` (context neutro) + factory shim/adapter in
-  controlplane che costruisce il context neutro.
-- Migra i componenti che dipendono solo da kernel + context: `cleanup`, `images`, `namespace`,
-  `registry`, `recipes`, `composer`. Shim in controlplane.
+> Scoperte che raffinano l'ordine: `composer._load_all_components()` importa **tutti** i
+> componenti concreti all'init → `composer` si sposta **per ultimo**. `cleanup` importa
+> `verification.plan_verify_cli_platform_status_fails` → va con `verification` (2b), non è
+> "pulito". `recipes` è dati di prodotto (quali componenti per scenario) → decisione rimandata
+> (potrebbe restare in controlplane come catalogo di assembly).
 
-**2b — Contratti condivisi + componenti context-only.**
-- Sposta `remote_k6` → `workflow_tasks/loadtest/`; sposta la parte condivisa di
-  `two_vm_loadtest_config`.
-- Migra `bootstrap` (oggi usa `ToolPaths` solo per path → riceve `repo_root`/path iniettati come
-  il kernel), `helm`, `two_vm_loadtest`, `verification` (i suoi command-builder
-  `platform_status_command`/`k8s_e2e_test_vm_script` vengono **iniettati** o spostati se
-  generici).
+**2a — Fondamenta: context neutro + registry.**
+- Migra `registry.py` (ComponentRegistry, dipende solo dal kernel `models`) → libreria. Warm-up
+  pulito, nessun context.
+- Crea `workflow_tasks/components/context.py`: `ScenarioExecutionContext` neutro + i Protocol
+  `ResolvedScenarioView`/`ResolvedFunctionView`, senza il campo `request`. Ricabla i 3
+  costruttori/consumatori in controlplane: `environment.resolve_scenario_environment` (factory,
+  rimuove `request=`), `infra/vm/vm_cluster_workflows.py` (rimuove `request=cast(Any,...)`),
+  `e2e/e2e_runner.py` (il punto che passa `context.resolved_scenario` a `CliComponentContext`
+  usa `request.resolved_scenario`, stesso oggetto). Test verdi.
 
-**2c — Casi speciali.**
-- `tasks/{cli,functions,k8s,vm}` → libreria (dipendono dal kernel VmOrchestrator già migrato).
-- `tasks/loadtest.py`: `two_vm_loadtest_runner` è **orchestrazione** → resta in controlplane;
-  migra solo la parte componibile, iniettando il runner.
-- `cli.py`: ha un **context proprio** (con `control_plane_endpoint`) e dipende da
-  `cli_validation` + `scenario_helpers`. Decisione in 2c: o resta in controlplane (è
-  CLI-validation specifico) o si estrae un core generico con la parte `cli_validation` iniettata.
-  Default: **resta in controlplane** salvo emerga una parte chiaramente generica.
+**2b — Componenti context-consumer + contratti condivisi.**
+- Migra `images`, `namespace` (solo kernel + context neutro).
+- Sposta `remote_k6` → `workflow_tasks/loadtest/`; parte condivisa di `two_vm_loadtest_config`.
+- Migra `bootstrap` (path da `repo_root` iniettato), `helm`, `two_vm_loadtest`, `verification`
+  (command-builder `platform_status_command`/`k8s_e2e_test_vm_script` iniettati o spostati se
+  generici), e `cleanup` (con `verification`).
+
+**2c — Casi speciali + chiusura.**
+- `tasks/{cli,functions,k8s,vm}` → libreria (kernel VmOrchestrator già migrato).
+- `tasks/loadtest.py`: `two_vm_loadtest_runner` è **orchestrazione** → resta; migra solo la parte
+  componibile, iniettando il runner.
+- `cli.py`: context proprio (`control_plane_endpoint`) + `cli_validation` + `scenario_helpers`.
+  Default: **resta in controlplane** salvo parte chiaramente generica.
+- `composer.py` (per ultimo, eager-load di tutti i componenti) e decisione su `recipes`.
 
 ## Semplificazione e cancellazione (portata onesta)
 
