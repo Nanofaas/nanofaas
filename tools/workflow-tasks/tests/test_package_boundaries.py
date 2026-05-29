@@ -63,3 +63,36 @@ def test_vm_azure_does_not_import_controlplane_tool() -> None:
             del sys.modules[key]
     importlib.import_module("workflow_tasks.vm.azure")
     assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_shell_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.shell")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_components_subpackage_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.components.operations")
+    importlib.import_module("workflow_tasks.components.models")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_infra_subpackage_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.infra.ansible")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
+
+
+def test_vm_orchestrator_does_not_import_controlplane_tool() -> None:
+    for key in list(sys.modules.keys()):
+        if key.startswith("controlplane_tool"):
+            del sys.modules[key]
+    importlib.import_module("workflow_tasks.vm.orchestrator")
+    assert not any(k.startswith("controlplane_tool") for k in sys.modules)
