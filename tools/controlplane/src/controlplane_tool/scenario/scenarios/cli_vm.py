@@ -67,6 +67,20 @@ class CliVmPlan:
             return ["vm.ensure_running"] + workflow.task_ids
         return workflow.task_ids
 
+    @property
+    def phase_titles(self) -> list[str]:
+        """Ordered display titles of the workflow phases (for the TUI).
+
+        Mirrors ``workflow_task_ids``: when ``include_bootstrap`` is True, prepends
+        the EnsureVmRunning title (run separately by ``run()``) then the Workflow
+        task titles; otherwise just the task titles.
+        """
+        workflow = self._assemble(include_bootstrap=self.include_bootstrap)
+        titles = [t.title for t in workflow.tasks + workflow.cleanup_tasks]
+        if self.include_bootstrap:
+            return ["Ensure VM is running"] + titles
+        return titles
+
     # ── workflow assembly ───────────────────────────────────────────────────────
 
     def _build_setup(self) -> _Setup:

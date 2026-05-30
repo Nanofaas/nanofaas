@@ -98,6 +98,29 @@ def test_workflow_commands_match_resolved_recipe_commands() -> None:
     assert compared > 0
 
 
+def _recipe_summaries(request: E2eRequest) -> list[str]:
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "k3s-junit-curl",
+        shell=RecordingShell(),
+        host_resolver=lambda _: "10.0.0.1",
+    )
+    return [s.summary for s in steps]
+
+
+def test_phase_titles_match_recipe_summaries_with_cleanup() -> None:
+    request = _request(cleanup_vm=True)
+    plan = _workflow_plan(request)
+    assert plan.phase_titles == _recipe_summaries(request)
+
+
+def test_phase_titles_match_recipe_summaries_no_cleanup() -> None:
+    request = _request(cleanup_vm=False)
+    plan = _workflow_plan(request)
+    assert plan.phase_titles == _recipe_summaries(request)
+
+
 def test_workflow_task_ids_match_recipe_no_cleanup() -> None:
     request = _request(cleanup_vm=False)
     recipe_ids = _recipe_ids(request)

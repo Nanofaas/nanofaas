@@ -56,6 +56,23 @@ def test_workflow_task_ids_match_recipe() -> None:
     assert workflow_ids == recipe_ids
 
 
+def _recipe_summaries(request: E2eRequest) -> list[str]:
+    steps = plan_recipe_steps(
+        Path("/repo"),
+        request,
+        "helm-stack",
+        shell=RecordingShell(),
+        host_resolver=lambda _: "10.0.0.1",
+    )
+    return [s.summary for s in steps]
+
+
+def test_phase_titles_match_recipe_summaries() -> None:
+    request = _request()
+    plan = _workflow_plan(request)
+    assert plan.phase_titles == _recipe_summaries(request)
+
+
 def test_workflow_commands_match_resolved_recipe_commands() -> None:
     """Each honest CommandTask must reproduce the recipe step's *executed* command.
 

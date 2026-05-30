@@ -73,6 +73,28 @@ def test_workflow_task_ids_match_planner_without_bootstrap() -> None:
     assert workflow_ids == legacy_ids
 
 
+def test_phase_titles_match_planner_summaries_with_bootstrap() -> None:
+    request = _request()
+    runner = _runner()
+    legacy_summaries = [
+        s.summary
+        for s in runner._planner.vm_backed_steps(request, include_bootstrap=True)
+    ]
+    plan = build_cli_vm_plan(runner, request, include_bootstrap=True)
+    assert plan.phase_titles == legacy_summaries
+
+
+def test_phase_titles_match_planner_summaries_without_bootstrap() -> None:
+    request = _request()
+    runner = _runner()
+    legacy_summaries = [
+        s.summary
+        for s in runner._planner.vm_backed_steps(request, include_bootstrap=False)
+    ]
+    plan = build_cli_vm_plan(runner, request, include_bootstrap=False)
+    assert plan.phase_titles == legacy_summaries
+
+
 def test_workflow_commands_match_resolved_planner_commands() -> None:
     """Each honest CommandTask must reproduce the planner step's *executed* command.
 

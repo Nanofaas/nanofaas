@@ -56,6 +56,20 @@ class HelmStackPlan:
         workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
         return ["vm.ensure_running"] + workflow.task_ids
 
+    @property
+    def phase_titles(self) -> list[str]:
+        """Ordered display titles of the workflow phases (for the TUI).
+
+        Mirrors ``workflow_task_ids``: prepends the EnsureVmRunning title (run
+        separately by ``run()``) then the titles of the Workflow tasks (helm-stack
+        has no cleanup tasks).
+        """
+        setup = self._build_setup()
+        workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
+        return ["Ensure VM is running"] + [
+            t.title for t in workflow.tasks + workflow.cleanup_tasks
+        ]
+
     # ── workflow assembly ───────────────────────────────────────────────────────
 
     def _build_setup(self) -> _Setup:

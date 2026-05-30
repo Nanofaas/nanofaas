@@ -61,6 +61,20 @@ class K3sJunitCurlPlan:
         workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
         return ["vm.ensure_running"] + workflow.task_ids
 
+    @property
+    def phase_titles(self) -> list[str]:
+        """Ordered display titles of the workflow phases (for the TUI).
+
+        Mirrors ``workflow_task_ids``: prepends the EnsureVmRunning title (run
+        separately by ``run()``) then the titles of the Workflow tasks and
+        cleanup tasks, in execution order.
+        """
+        setup = self._build_setup()
+        workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
+        return ["Ensure VM is running"] + [
+            t.title for t in workflow.tasks + workflow.cleanup_tasks
+        ]
+
     # ── workflow assembly ───────────────────────────────────────────────────────
 
     def _build_setup(self) -> _Setup:
@@ -91,7 +105,7 @@ class K3sJunitCurlPlan:
                     cleanup_tasks.append(
                         DestroyVm(
                             task_id="vm.down",
-                            title="Tear down VM",
+                            title="Teardown VM",
                             lifecycle=lifecycle,
                             info=vm_info(),
                         )
@@ -102,7 +116,7 @@ class K3sJunitCurlPlan:
                     cleanup_tasks.append(
                         CallableTask(
                             task_id="vm.down",
-                            title="Skip VM teardown (--no-cleanup-vm)",
+                            title="Teardown VM",
                             action=lambda: None,
                         )
                     )
