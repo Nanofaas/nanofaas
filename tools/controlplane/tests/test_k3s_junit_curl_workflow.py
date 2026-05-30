@@ -78,14 +78,15 @@ def test_workflow_commands_match_resolved_recipe_commands() -> None:
         host_resolver=lambda _: "10.0.0.1",
     )
     resolver = CommandResolver(host_resolver=lambda _: "10.0.0.1")
-    workflow = build_k3s_junit_curl_plan(runner, request)._assemble(
-        lambda: VmInfo(name="", host="", user="", home="")
+    plan = build_k3s_junit_curl_plan(runner, request)
+    workflow = plan._assemble(
+        plan._build_setup(), lambda: VmInfo(name="", host="", user="", home="")
     )
 
     compared = 0
     for task in workflow.tasks + workflow.cleanup_tasks:
         if not isinstance(task, CommandTask):
-            continue  # EnsureVmRunning / DestroyVm / K3sCurlVerifyTask have no command
+            continue  # DestroyVm / CallableTask have no command
         step = recipe[task.task_id]
         cache: dict[str, str] = {}
         expected_argv = resolver._resolve_command(list(step.command), request.vm, cache, runner.vm)
@@ -97,13 +98,14 @@ def test_workflow_commands_match_resolved_recipe_commands() -> None:
     assert compared > 0
 
 
-def test_workflow_omits_vm_down_when_no_cleanup() -> None:
+def test_workflow_task_ids_match_recipe_no_cleanup() -> None:
     request = _request(cleanup_vm=False)
     recipe_ids = _recipe_ids(request)
     workflow_ids = _workflow_plan(request).workflow_task_ids
 
     # The legacy recipe keeps a 'vm.down' step (an echo no-op) even with
-    # --no-cleanup-vm; the honest Workflow omits the DestroyVm cleanup task.
+    # --no-cleanup-vm; the honest Workflow preserves it as a no-op CallableTask so
+    # the task_id lists are fully identical in both modes.
     assert "vm.down" in recipe_ids
-    assert "vm.down" not in workflow_ids
-    assert workflow_ids == [sid for sid in recipe_ids if sid != "vm.down"]
+    assert "vm.down" in workflow_ids
+    assert workflow_ids == recipe_ids
