@@ -46,6 +46,27 @@ if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
 
 
+# Display-summary overrides keyed by task_id/operation_id. Duplicated from
+# ``components/executor.py`` (the legacy recipe path still uses it until C4.4);
+# applied here to CommandTask *titles* so the converted Workflow scenarios show
+# identical step names to the legacy recipe path.
+_SUMMARY_OVERRIDES = {
+    "cli.build_install_dist": "Build nanofaas-cli installDist in VM",
+    "cli.platform_install": "Install nanofaas into k3s through the CLI",
+    "cli.platform_status": "Run platform status",
+    "repo.sync_to_vm": "Sync project to VM",
+    "registry.ensure_container": "Ensure registry container",
+    "k3s.configure_registry": "Configure k3s registry",
+    "helm.deploy_control_plane": "Deploy control-plane via Helm",
+    "helm.deploy_function_runtime": "Deploy function-runtime via Helm",
+    "namespace.install": "Install namespace Helm release",
+    "namespace.uninstall": "Uninstall namespace Helm release",
+    "cleanup.uninstall_control_plane": "Uninstall control-plane Helm release",
+    "cleanup.uninstall_function_runtime": "Uninstall function-runtime Helm release",
+    "cleanup.verify_cli_platform_status_fails": "Verify cli-stack status fails",
+}
+
+
 @dataclass
 class CallableTask:
     """A Task that runs an injected callable.
@@ -140,7 +161,7 @@ def host_command_task_from_step(
     )
     return CommandTask(
         task_id=step.step_id,
-        title=step.summary,
+        title=_SUMMARY_OVERRIDES.get(step.step_id, step.summary),
         spec=spec,
         executor=host_executor,
     )
@@ -204,10 +225,11 @@ def build_command_tasks(
                 if result is not None:
                     tasks.append(result)
                     continue
+            title = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
             if operation.execution_target == "vm":
                 tasks.append(
                     command_task_from_operation(
-                        operation, vm_executor, remote_dir=remote_dir
+                        operation, vm_executor, title=title, remote_dir=remote_dir
                     )
                 )
             else:
@@ -218,5 +240,7 @@ def build_command_tasks(
                     vm=vm_orch,
                     ip_cache=ip_cache,
                 )
-                tasks.append(command_task_from_operation(resolved, host_executor))
+                tasks.append(
+                    command_task_from_operation(resolved, host_executor, title=title)
+                )
     return tasks
