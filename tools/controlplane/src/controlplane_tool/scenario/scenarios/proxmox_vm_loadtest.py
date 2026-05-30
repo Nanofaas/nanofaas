@@ -6,18 +6,25 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from workflow_tasks import (
     CapturePrometheusSnapshot,
+    CommandTask,
+    CommandTaskSpec,
     DestroyVm,
     EnsureVmRunning,
     FetchVmResults,
+    HostCommandTaskExecutor,
     InstallK6,
     RunK6,
     TimeWindow,
+    VmCommandTaskExecutor,
     Workflow,
     WriteK6Report,
+    command_task_from_operation,
     workflow_step,
 )
+from workflow_tasks.components.operations import RemoteCommandOperation
 from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
+from workflow_tasks.vm.multipass import repo_rsync_command, repo_sync_ssh_rsh
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -28,10 +35,21 @@ from controlplane_tool.loadtest.loadtest_adapters import (
     VmFileFetcher,
 )
 from controlplane_tool.scenario.catalog import ScenarioDefinition
+from controlplane_tool.scenario.components.cli import CliComponentContext
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components.environment import resolve_scenario_environment
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
+from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
+from controlplane_tool.scenario.scenarios._workflow_assembly import (
+    CallableTask,
+    _SUMMARY_OVERRIDES,
+)
+from controlplane_tool.scenario.tasks.functions import FunctionSpec, RegisterFunctions
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     LOADTEST_PROMETHEUS_QUERIES,
-    LOADTEST_STATIC_TASK_IDS,
+    LOADTEST_SCENARIOS,
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
     TWO_VM_PROMETHEUS_NODE_PORT,
     two_vm_control_plane_url,
     two_vm_load_stages,
@@ -41,6 +59,16 @@ from controlplane_tool.scenario.two_vm_loadtest_config import (
 
 if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
+
+
+_PROXMOX_ANSIBLE_COMPONENTS = frozenset(
+    {
+        "vm.provision_base",
+        "registry.ensure_container",
+        "k3s.install",
+        "k3s.configure_registry",
+    }
+)
 
 
 _PROXMOX_LOADTEST_PRELUDE_COMPONENTS = (
@@ -140,39 +168,257 @@ class ProxmoxVmLoadtestPlan:
             raise ValueError("proxmox-vm-loadtest requires a loadgen VM request")
         return self.request.vm, self.request.loadgen_vm
 
+    # ── honest prelude Workflow (the structure executed by run()) ────────────────
+
+    @property
+    def prelude_tasks(self) -> list:
+        """Honest Tasks reproducing the legacy proxmox prelude recipe steps.
+
+        Built from the ``proxmox-vm-loadtest`` recipe filtered to
+        ``_PROXMOX_LOADTEST_PRELUDE_COMPONENTS``, applying the three proxmox
+        rewrites (ansible inventory, repo rsync, functions.register) so the
+        resulting CommandTask argv/env match ``plan_recipe_steps`` exactly. The
+        proxmox SSH endpoint is resolved through a ``ProxmoxVmOrchestrator``; in
+        ``run()`` this happens after the stack VM is ensured.
+
+        ``vm.ensure_running`` is run separately by ``run()`` as an
+        ``EnsureVmRunning`` task and is therefore NOT in this list.
+        """
+        from controlplane_tool.infra.vm.proxmox_vm_adapter import ProxmoxVmOrchestrator
+
+        stack_request, _ = self._requests()
+        proxmox_orch = ProxmoxVmOrchestrator(repo_root=self.runner.paths.workspace_root)
+        return self._build_prelude_tasks(proxmox_orch, stack_request)
+
+    @property
+    def prelude_task_ids(self) -> list[str]:
+        """Ordered prelude task_ids, matching the legacy recipe step ids.
+
+        ``vm.ensure_running`` (run separately) is prepended so the list matches
+        ``[s.step_id for s in plan_recipe_steps(...)]`` exactly.
+        """
+        return ["vm.ensure_running"] + [t.task_id for t in self.prelude_tasks]
+
+    def _build_prelude_tasks(self, proxmox_orch, stack_request: VmRequest) -> list:
+        """Assemble the honest prelude Tasks against a (running) proxmox orch."""
+        repo_root = self.runner.paths.workspace_root
+        request = self.request
+
+        context = resolve_scenario_environment(
+            repo_root, request, manifest_root=self.runner.manifest_root
+        )
+        remote_dir = proxmox_orch.remote_project_dir(stack_request)
+
+        host, port = proxmox_orch.ssh_endpoint(stack_request)
+        key = proxmox_orch.ssh_private_key_path(stack_request)
+
+        recipe = build_scenario_recipe("proxmox-vm-loadtest")
+        recipe = recipe.__class__(
+            name=recipe.name,
+            component_ids=_PROXMOX_LOADTEST_PRELUDE_COMPONENTS,
+            requires_managed_vm=recipe.requires_managed_vm,
+        )
+
+        cli_context = CliComponentContext(
+            repo_root=Path(remote_dir),
+            release=cast(str, context.release),
+            namespace=cast(str, context.namespace),
+            local_registry=context.local_registry,
+            resolved_scenario=context.resolved_scenario,
+            control_plane_endpoint=None,
+        )
+
+        host_executor = HostCommandTaskExecutor(self.runner.shell)
+        vm_executor = VmCommandTaskExecutor(OrchestratorVmRunner(proxmox_orch, stack_request))
+
+        def _rewrite_ansible(argv: tuple[str, ...]) -> list[str]:
+            rewritten = list(argv)
+            if "-i" in rewritten:
+                rewritten[rewritten.index("-i") + 1] = f"{host},"
+            rewritten.extend(["-e", f"ansible_port={port}"])
+            if key is not None:
+                if "--private-key" in rewritten:
+                    rewritten[rewritten.index("--private-key") + 1] = str(key)
+                else:
+                    rewritten.extend(["--private-key", str(key)])
+            return rewritten
+
+        def _repo_sync_command() -> list[str]:
+            return repo_rsync_command(
+                source=repo_root,
+                user=stack_request.user,
+                host=host,
+                destination=remote_dir,
+                ssh_rsh=repo_sync_ssh_rsh(key, port=port),
+            )
+
+        def _host_task(operation: RemoteCommandOperation, argv: list[str]) -> CommandTask:
+            title = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
+            spec = CommandTaskSpec(
+                task_id=operation.operation_id,
+                summary=operation.summary,
+                argv=tuple(argv),
+                target="host",
+                env=dict(operation.env),
+            )
+            return CommandTask(
+                task_id=operation.operation_id,
+                title=title,
+                spec=spec,
+                executor=host_executor,
+            )
+
+        def _register_functions_task() -> CallableTask:
+            return CallableTask(
+                task_id="functions.register",
+                title="Register selected functions via REST API",
+                action=self._register_functions_action(proxmox_orch, stack_request, context),
+            )
+
+        registered = False
+        tasks: list = []
+        for component in compose_recipe(recipe):
+            ctx = cli_context if component.component_id.startswith("cli.") else context
+            for operation in component.planner(ctx):
+                cid = component.component_id
+                if cid == "vm.ensure_running":
+                    continue  # run separately by run() as EnsureVmRunning
+                if cid in _PROXMOX_ANSIBLE_COMPONENTS:
+                    tasks.append(_host_task(operation, _rewrite_ansible(operation.argv)))
+                    continue
+                if cid == "repo.sync_to_vm":
+                    tasks.append(_host_task(operation, _repo_sync_command()))
+                    continue
+                if cid == "cli.fn_apply_selected" and request.scenario in LOADTEST_SCENARIOS:
+                    if not registered:
+                        tasks.append(_register_functions_task())
+                        registered = True
+                    continue
+                title = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
+                if operation.execution_target == "vm":
+                    tasks.append(
+                        command_task_from_operation(
+                            operation, vm_executor, title=title, remote_dir=remote_dir
+                        )
+                    )
+                else:
+                    tasks.append(command_task_from_operation(operation, host_executor, title=title))
+        return tasks
+
+    def _register_functions_action(self, proxmox_orch, stack_request, context):
+        request = self.request
+
+        def action() -> None:
+            runtime_image_default = (
+                f"{context.local_registry}/nanofaas/function-runtime:e2e"
+            )
+            fn_keys = selected_functions(request.resolved_scenario)
+            specs = [
+                FunctionSpec(
+                    name=fn_key,
+                    image=function_image(
+                        fn_key, request.resolved_scenario, runtime_image_default
+                    ),
+                )
+                for fn_key in fn_keys
+            ]
+            cp_host, cp_port = proxmox_orch.publish_port(
+                stack_request,
+                service="CONTROL_PLANE_HTTP",
+                guest_port=TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+            )
+            cp_url = f"http://{cp_host}:{cp_port}"
+            RegisterFunctions(
+                task_id="functions.register",
+                title="Register functions",
+                control_plane_url=cp_url,
+                specs=specs,
+            ).run()
+
+        return action
+
+    def _run_prelude_workflow(self, *, event_listener, total_steps: int) -> None:
+        """Execute the prelude as a ``workflow_tasks.Workflow`` of honest Tasks.
+
+        The prelude ``ScenarioPlanStep``s carry the proxmox-rewritten commands in
+        their ``action`` closures (the same rewrites the honest ``prelude_tasks``
+        reproduce — see the oracle). Each step is wrapped as a ``CallableTask`` and
+        run through a ``Workflow``, preserving the legacy ``_execute_steps``
+        semantics: ordered execution, ``always_run`` steps deferred to the end
+        (cleanup), the ``running``/``success``/``failed`` ``ScenarioStepEvent``
+        emission and the wrapped failure message format.
+        """
+        from controlplane_tool.e2e.e2e_runner import ScenarioStepEvent
+
+        request = self.request
+
+        def _emit(step_index, step, status, error=None) -> None:
+            if event_listener is None:
+                return
+            event_listener(
+                ScenarioStepEvent(
+                    step_index=step_index,
+                    total_steps=total_steps,
+                    step=step,
+                    status=status,
+                    error=error,
+                )
+            )
+
+        def _callable_task(step_index, step) -> CallableTask:
+            def action() -> None:
+                _emit(step_index, step, "running")
+                try:
+                    if step.action is not None:
+                        step.action()
+                    else:
+                        result = self.runner.shell.run(
+                            list(step.command),
+                            cwd=self.runner.paths.workspace_root,
+                            env=dict(step.env),
+                            dry_run=False,
+                        )
+                        if result.return_code != 0:
+                            from controlplane_tool.e2e.e2e_runner import (
+                                _command_failure_output,
+                            )
+
+                            output = _command_failure_output(result.stdout, result.stderr)
+                            raise RuntimeError(output or f"exit {result.return_code}")
+                except Exception as exc:
+                    _emit(step_index, step, "failed", error=str(exc))
+                    raise RuntimeError(
+                        f"Scenario '{request.scenario}' failed at step "
+                        f"'{step.summary}': {exc}"
+                    ) from exc
+                _emit(step_index, step, "success")
+
+            return CallableTask(task_id=step.step_id or "", title=step.summary, action=action)
+
+        main_tasks: list = []
+        deferred_tasks: list = []
+        for step_index, step in enumerate(self.steps, start=1):
+            task = _callable_task(step_index, step)
+            if step.always_run:
+                deferred_tasks.append(task)
+            else:
+                main_tasks.append(task)
+
+        Workflow(tasks=main_tasks, cleanup_tasks=deferred_tasks).run()
+
     def run(self, event_listener=None) -> None:
-        from controlplane_tool.e2e.e2e_runner import E2ePlan, ScenarioStepEvent
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
         from controlplane_tool.infra.vm.proxmox_vm_adapter import ProxmoxVmOrchestrator
 
-        request = self.request
         stack_request, _ = self._requests()
         proxmox_orch = ProxmoxVmOrchestrator(repo_root=self.runner.paths.workspace_root)
         stack_lifecycle = ProxmoxVmAdapter(proxmox_orch, credentials=stack_request)
         total_steps = len(self.task_ids)
 
-        def _forward_prelude_event(event: ScenarioStepEvent) -> None:
-            if event_listener is None:
-                return
-            event_listener(
-                ScenarioStepEvent(
-                    step_index=event.step_index,
-                    total_steps=total_steps,
-                    step=event.step,
-                    status=event.status,
-                    error=event.error,
-                )
-            )
-
         if self.steps:
             try:
-                self.runner._execute_steps(
-                    E2ePlan(
-                        scenario=self.scenario,
-                        request=self.request,
-                        steps=self.steps,
-                    ),
-                    event_listener=_forward_prelude_event,
+                self._run_prelude_workflow(
+                    event_listener=event_listener, total_steps=total_steps
                 )
             except Exception as exc:
                 cleanup_errors = self._cleanup_proxmox_requests(proxmox_orch)
@@ -544,8 +790,8 @@ def build_proxmox_vm_loadtest_plan(
         "proxmox-vm-loadtest",
         shell=runner.shell,
         manifest_root=runner.manifest_root,
-        host_resolver=runner._host_resolver,
-        multipass_client=runner._multipass_client,
+        host_resolver=runner._host_resolver,  # noqa: SLF001
+        multipass_client=runner._multipass_client,  # noqa: SLF001
         component_ids=_PROXMOX_LOADTEST_PRELUDE_COMPONENTS,
     )
     return ProxmoxVmLoadtestPlan(
