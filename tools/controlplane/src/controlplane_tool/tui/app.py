@@ -1326,7 +1326,7 @@ class NanofaasTUI:
             self._controller.run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=summary_lines,
-                planned_steps=[step.summary for step in plan.steps],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
                 action=_run_k8s_vm_workflow,
             )
 
@@ -1446,7 +1446,7 @@ class NanofaasTUI:
                 f"Scenario: {scenario}",
                 f"Runtime: {runtime}",
             ],
-            planned_steps=[step.summary for step in plan.steps],
+            planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
             action=_run_generic_e2e_workflow,
         )
 
@@ -1511,7 +1511,7 @@ class NanofaasTUI:
                     "Mode: canonical self-bootstrapping VM-backed CLI stack",
                     *selection.summary_lines,
                 ],
-                planned_steps=[s.summary for s in cli_stack_plan.steps],
+                planned_steps=getattr(cli_stack_plan, "phase_titles", None) or [s.summary for s in cli_stack_plan.steps],
                 action=_run_cli_stack_workflow,
             )
             return
@@ -1775,16 +1775,21 @@ def _show_plan_table(plan: Any) -> None:
     """Render a ScenarioPlan or similar plan object in a Rich table."""
     if plan is None:
         return
-    # Try to show steps/phases as a table
-    steps = getattr(plan, "steps", None) or getattr(plan, "phases", None)
+    # Try to show phase titles (workflow plans) or steps/phases as a table.
+    phase_titles = getattr(plan, "phase_titles", None)
+    steps = phase_titles or getattr(plan, "steps", None) or getattr(plan, "phases", None)
     if steps:
         table = Table(title="Execution plan", border_style="cyan dim")
         table.add_column("#", style="dim", justify="right")
         table.add_column("Step", style="cyan")
         table.add_column("Status", justify="center")
         for i, s in enumerate(steps, 1):
-            label = getattr(s, "name", None) or getattr(s, "label", None) or str(s)
-            status_val = getattr(s, "status", "—")
+            if isinstance(s, str):
+                label: object = s
+                status_val: object = "—"
+            else:
+                label = getattr(s, "name", None) or getattr(s, "label", None) or str(s)
+                status_val = getattr(s, "status", "—")
             table.add_row(str(i), escape(str(label)), escape(str(status_val)))
         console.print(table)
     else:

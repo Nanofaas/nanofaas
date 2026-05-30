@@ -212,7 +212,9 @@ def test_k3s_junit_curl_plan_satisfies_protocol() -> None:
         scenario=MagicMock(), request=_make_k3s_request(), steps=[step], runner=MagicMock()
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["vm.ensure_running"]
+    # task_ids now derives from the honest Workflow (workflow_task_ids); the
+    # Protocol still exposes the steps list, asserted here without assembly.
+    assert [s.step_id for s in plan.steps] == ["vm.ensure_running"]
 
 
 def test_build_k3s_junit_curl_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -252,7 +254,9 @@ def test_helm_stack_plan_satisfies_protocol() -> None:
         scenario=MagicMock(), request=_make_helm_stack_request(), steps=[step], runner=MagicMock()
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["loadtest.install_k6"]
+    # task_ids now derives from the honest Workflow (workflow_task_ids); the
+    # Protocol still exposes the steps list, asserted here without assembly.
+    assert [s.step_id for s in plan.steps] == ["loadtest.install_k6"]
 
 
 def test_build_helm_stack_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -293,7 +297,9 @@ def test_cli_stack_plan_satisfies_protocol() -> None:
         scenario=MagicMock(), request=_make_cli_stack_request(), steps=[step], runner=MagicMock()
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["cli.build_install_dist"]
+    # task_ids now derives from the honest Workflow (workflow_task_ids); the
+    # Protocol still exposes the steps list, asserted here without assembly.
+    assert [s.step_id for s in plan.steps] == ["cli.build_install_dist"]
 
 
 def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:

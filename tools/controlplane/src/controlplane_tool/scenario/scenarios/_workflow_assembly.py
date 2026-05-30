@@ -95,8 +95,16 @@ class _Setup:
 
 
 def build_setup(runner: "E2eRunner", request: E2eRequest) -> _Setup:
-    """Build the shared environment/config once (used by run() and introspection)."""
-    context = resolve_scenario_environment(runner.paths.workspace_root, request)
+    """Build the shared environment/config once (used by run() and introspection).
+
+    Passes ``manifest_root`` so the resolved-scenario manifest is written and its
+    path injected into the scenario context (mirroring the legacy recipe planning
+    path); the k8s-junit step depends on the ``nanofaas.e2e.scenarioManifest``
+    system property pointing at this manifest.
+    """
+    context = resolve_scenario_environment(
+        runner.paths.workspace_root, request, manifest_root=runner.manifest_root
+    )
     vm_request = context.vm_request
     lifecycle = MultipassVmAdapter(runner.vm)
     vm_config = VmConfig(
@@ -142,6 +150,7 @@ def host_command_task_from_step(
     vm: VmOrchestrator,
     ip_cache: dict[str, str],
     host_executor: HostCommandTaskExecutor,
+    resolve_host: bool = True,
 ) -> CommandTask:
     """Convert a host ``ScenarioPlanStep`` into an honest host ``CommandTask``.
 
@@ -149,9 +158,16 @@ def host_command_task_from_step(
     ``ScenarioPlanner.vm_backed_steps`` rather than a recipe. Substitutes
     ``<multipass-ip:NAME>`` placeholders in the step's command/env at assembly
     time, mirroring ``resolve_host_operation`` for recipe operations.
+
+    *resolve_host*: when False the raw step command/env are kept (used to derive
+    cheap task_ids/display titles without a running VM).
     """
-    argv = resolver._resolve_command(list(step.command), request.vm, ip_cache, vm)  # noqa: SLF001
-    env = resolver._resolve_env(dict(step.env), request.vm, ip_cache, vm)  # noqa: SLF001
+    if resolve_host:
+        argv = resolver._resolve_command(list(step.command), request.vm, ip_cache, vm)  # noqa: SLF001
+        env = resolver._resolve_env(dict(step.env), request.vm, ip_cache, vm)  # noqa: SLF001
+    else:
+        argv = list(step.command)
+        env = dict(step.env)
     spec = CommandTaskSpec(
         task_id=step.step_id,
         summary=step.summary,
@@ -180,6 +196,49 @@ HANDLED = object()
 SpecialHandler = Callable[[RemoteCommandOperation], Optional[object]]
 
 
+def workflow_display_steps(
+    tasks: list,
+    *,
+    prepend_ensure_running: bool = True,
+) -> list[ScenarioPlanStep]:
+    """Build lightweight display ``ScenarioPlanStep``s from a Workflow's tasks.
+
+    Used by the recipe-derived workflow scenarios (k3s/helm/cli-stack) to keep a
+    ``steps`` field for CLI dry-run rendering WITHOUT re-running the legacy recipe
+    engine (``plan_recipe_steps``). Each task becomes a ``ScenarioPlanStep`` with:
+    ``summary`` from the task title, ``command``/``env`` from the CommandTask spec
+    (empty for non-command tasks like DestroyVm/CallableTask), and the task_id as
+    ``step_id``. ``vm.ensure_running`` is run separately by the plan's ``run()`` and
+    is prepended here so the displayed step list matches the legacy recipe order.
+    """
+    steps: list[ScenarioPlanStep] = []
+    if prepend_ensure_running:
+        steps.append(
+            ScenarioPlanStep(
+                summary="Ensure VM is running",
+                command=[],
+                step_id="vm.ensure_running",
+            )
+        )
+    for task in tasks:
+        spec = getattr(task, "spec", None)
+        if spec is not None:
+            command = list(spec.argv)
+            env = dict(spec.env)
+        else:
+            command = []
+            env = {}
+        steps.append(
+            ScenarioPlanStep(
+                summary=task.title,
+                command=command,
+                env=env,
+                step_id=task.task_id,
+            )
+        )
+    return steps
+
+
 def build_command_tasks(
     runner: "E2eRunner",
     request: E2eRequest,
@@ -188,6 +247,7 @@ def build_command_tasks(
     *,
     special_handler: SpecialHandler | None = None,
     context_selector: Callable[[object], object] | None = None,
+    resolve_host: bool = True,
 ) -> list:
     """Route each composed recipe operation to an honest CommandTask.
 
@@ -200,6 +260,11 @@ def build_command_tasks(
     Scenarios that need a per-component context (e.g. cli-stack's ``cli.*``
     planners need a ``CliComponentContext``) pass a callable mapping each
     component to the context its planner expects.
+
+    *resolve_host*: when True (the default, used by ``run()``) host operations have
+    their ``<multipass-ip:NAME>`` placeholders resolved against the live VM. When
+    False (used to derive cheap display steps / task_ids without a running VM) the
+    raw operation command/env are kept — matching the legacy unresolved plan steps.
 
     Returns the ordered list of command Tasks. Cleanup Tasks (if any) are the
     handler's responsibility — it should append them to a list it closes over.
@@ -233,14 +298,18 @@ def build_command_tasks(
                     )
                 )
             else:
-                resolved = resolve_host_operation(
-                    operation,
-                    resolver=resolver,
-                    request=request,
-                    vm=vm_orch,
-                    ip_cache=ip_cache,
+                host_op = (
+                    resolve_host_operation(
+                        operation,
+                        resolver=resolver,
+                        request=request,
+                        vm=vm_orch,
+                        ip_cache=ip_cache,
+                    )
+                    if resolve_host
+                    else operation
                 )
                 tasks.append(
-                    command_task_from_operation(resolved, host_executor, title=title)
+                    command_task_from_operation(host_op, host_executor, title=title)
                 )
     return tasks

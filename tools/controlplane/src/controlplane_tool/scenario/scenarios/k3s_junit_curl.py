@@ -46,7 +46,7 @@ class K3sJunitCurlPlan:
 
     @property
     def task_ids(self) -> list[str]:
-        return [s.step_id for s in self.steps if s.step_id]
+        return self.workflow_task_ids
 
     @property
     def workflow_task_ids(self) -> list[str]:
@@ -58,7 +58,9 @@ class K3sJunitCurlPlan:
         # The info for the (possible) DestroyVm cleanup task is irrelevant to the
         # id list, so a placeholder VmInfo is fine here.
         setup = self._build_setup()
-        workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
+        workflow = self._assemble(
+            setup, lambda: VmInfo(name="", host="", user="", home=""), resolve_host=False
+        )
         return ["vm.ensure_running"] + workflow.task_ids
 
     @property
@@ -70,7 +72,9 @@ class K3sJunitCurlPlan:
         cleanup tasks, in execution order.
         """
         setup = self._build_setup()
-        workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
+        workflow = self._assemble(
+            setup, lambda: VmInfo(name="", host="", user="", home=""), resolve_host=False
+        )
         return ["Ensure VM is running"] + [
             t.title for t in workflow.tasks + workflow.cleanup_tasks
         ]
@@ -80,7 +84,13 @@ class K3sJunitCurlPlan:
     def _build_setup(self) -> _Setup:
         return build_setup(self.runner, self.request)
 
-    def _assemble(self, setup: _Setup, vm_info: "Callable[[], VmInfo]") -> Workflow:
+    def _assemble(
+        self,
+        setup: _Setup,
+        vm_info: "Callable[[], VmInfo]",
+        *,
+        resolve_host: bool = True,
+    ) -> Workflow:
         """Build the Workflow of honest Tasks for this scenario.
 
         The returned Workflow contains ONLY the command/verify tasks (+ a cleanup
@@ -133,7 +143,12 @@ class K3sJunitCurlPlan:
 
         recipe = build_scenario_recipe("k3s-junit-curl")
         tasks = build_command_tasks(
-            runner, request, setup, recipe, special_handler=special_handler
+            runner,
+            request,
+            setup,
+            recipe,
+            special_handler=special_handler,
+            resolve_host=resolve_host,
         )
         return Workflow(tasks=tasks, cleanup_tasks=cleanup_tasks)
 
@@ -164,22 +179,25 @@ def build_k3s_junit_curl_plan(
     runner: "E2eRunner",
     request: E2eRequest,
 ) -> K3sJunitCurlPlan:
-    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario.scenarios._workflow_assembly import (
+        workflow_display_steps,
+    )
 
     scenario = resolve_scenario("k3s-junit-curl")
-    steps = plan_recipe_steps(
-        runner.paths.workspace_root,
-        request,
-        "k3s-junit-curl",
-        shell=runner.shell,
-        manifest_root=runner.manifest_root,
-        host_resolver=runner._host_resolver,
-        multipass_client=runner._multipass_client,
-    )
-    return K3sJunitCurlPlan(
+    plan = K3sJunitCurlPlan(
         scenario=scenario,
         request=request,
-        steps=steps,
+        steps=[],
         runner=runner,
     )
+    # Lightweight display steps derived from the honest Workflow (NOT the legacy
+    # recipe engine), so CLI dry-run still renders commands. The TUI uses
+    # phase_titles; task identity comes from workflow_task_ids.
+    workflow = plan._assemble(
+        plan._build_setup(),
+        lambda: VmInfo(name="", host="", user="", home=""),
+        resolve_host=False,
+    )
+    plan.steps = workflow_display_steps(workflow.tasks + workflow.cleanup_tasks)
+    return plan

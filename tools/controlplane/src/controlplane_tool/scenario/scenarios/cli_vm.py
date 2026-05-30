@@ -52,7 +52,7 @@ class CliVmPlan:
 
     @property
     def task_ids(self) -> list[str]:
-        return [s.step_id for s in self.steps if s.step_id]
+        return self.workflow_task_ids
 
     @property
     def workflow_task_ids(self) -> list[str]:
@@ -62,7 +62,9 @@ class CliVmPlan:
         is not part of the Workflow's ``tasks``; we prepend its id here so the list
         matches the legacy planner exactly. When False there is no ensure step.
         """
-        workflow = self._assemble(include_bootstrap=self.include_bootstrap)
+        workflow = self._assemble(
+            include_bootstrap=self.include_bootstrap, resolve_host=False
+        )
         if self.include_bootstrap:
             return ["vm.ensure_running"] + workflow.task_ids
         return workflow.task_ids
@@ -75,7 +77,9 @@ class CliVmPlan:
         the EnsureVmRunning title (run separately by ``run()``) then the Workflow
         task titles; otherwise just the task titles.
         """
-        workflow = self._assemble(include_bootstrap=self.include_bootstrap)
+        workflow = self._assemble(
+            include_bootstrap=self.include_bootstrap, resolve_host=False
+        )
         titles = [t.title for t in workflow.tasks + workflow.cleanup_tasks]
         if self.include_bootstrap:
             return ["Ensure VM is running"] + titles
@@ -86,13 +90,16 @@ class CliVmPlan:
     def _build_setup(self) -> _Setup:
         return build_setup(self.runner, self.request)
 
-    def _assemble(self, *, include_bootstrap: bool) -> Workflow:
+    def _assemble(
+        self, *, include_bootstrap: bool, resolve_host: bool = True
+    ) -> Workflow:
         """Build the Workflow of honest Tasks for this scenario.
 
         Converts every planner step except ``vm.ensure_running`` (handled by
         ``run()`` as EnsureVmRunning) into a host CommandTask, resolving
         ``<multipass-ip:NAME>`` placeholders at assembly time. There are no cleanup
-        tasks for cli.
+        tasks for cli. When *resolve_host* is False the raw step commands are kept
+        (used to derive task_ids/phase_titles without a running VM).
         """
         runner = self.runner
         request = self.request
@@ -116,6 +123,7 @@ class CliVmPlan:
                     vm=runner.vm,
                     ip_cache=ip_cache,
                     host_executor=host_executor,
+                    resolve_host=resolve_host,
                 )
             )
         return Workflow(tasks=tasks, cleanup_tasks=[])

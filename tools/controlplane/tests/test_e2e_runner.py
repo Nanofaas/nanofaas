@@ -91,7 +91,10 @@ def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("e2e-k3s-curl-backend.sh" in command for command in rendered)
     assert any("K8sE2eTest" in command for command in rendered)
-    assert any("controlplane_tool.e2e.k3s_curl_runner" in command for command in rendered)
+    # The honest Workflow runs the k3s-curl verification in-process (a CallableTask)
+    # rather than shelling out to controlplane_tool.e2e.k3s_curl_runner, so its
+    # display step has no subprocess command; assert the step is present by id.
+    assert "tests.run_k3s_curl_checks" in [step.step_id for step in plan.steps]
     assert all(step.step_id for step in plan.steps)
 
 

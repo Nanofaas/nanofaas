@@ -57,7 +57,7 @@ class CliStackPlan:
 
     @property
     def task_ids(self) -> list[str]:
-        return [s.step_id for s in self.steps if s.step_id]
+        return self.workflow_task_ids
 
     @property
     def workflow_task_ids(self) -> list[str]:
@@ -67,7 +67,9 @@ class CliStackPlan:
         ``tasks``; we prepend its id here so the list matches the recipe exactly.
         """
         setup = self._build_setup()
-        workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
+        workflow = self._assemble(
+            setup, lambda: VmInfo(name="", host="", user="", home=""), resolve_host=False
+        )
         return ["vm.ensure_running"] + workflow.task_ids
 
     @property
@@ -79,7 +81,9 @@ class CliStackPlan:
         cleanup tasks, in execution order.
         """
         setup = self._build_setup()
-        workflow = self._assemble(setup, lambda: VmInfo(name="", host="", user="", home=""))
+        workflow = self._assemble(
+            setup, lambda: VmInfo(name="", host="", user="", home=""), resolve_host=False
+        )
         return ["Ensure VM is running"] + [
             t.title for t in workflow.tasks + workflow.cleanup_tasks
         ]
@@ -89,7 +93,13 @@ class CliStackPlan:
     def _build_setup(self) -> _Setup:
         return build_setup(self.runner, self.request)
 
-    def _assemble(self, setup: _Setup, vm_info: "Callable[[], VmInfo]") -> Workflow:
+    def _assemble(
+        self,
+        setup: _Setup,
+        vm_info: "Callable[[], VmInfo]",
+        *,
+        resolve_host: bool = True,
+    ) -> Workflow:
         """Build the Workflow of honest Tasks for this scenario.
 
         The returned Workflow contains ONLY the command/verify tasks (+ a cleanup
@@ -178,6 +188,7 @@ class CliStackPlan:
             recipe,
             special_handler=special_handler,
             context_selector=context_selector,
+            resolve_host=resolve_host,
         )
         return Workflow(tasks=tasks, cleanup_tasks=cleanup_tasks)
 
@@ -208,22 +219,25 @@ def build_cli_stack_plan(
     runner: "E2eRunner",
     request: E2eRequest,
 ) -> CliStackPlan:
-    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario.scenarios._workflow_assembly import (
+        workflow_display_steps,
+    )
 
     scenario = resolve_scenario("cli-stack")
-    steps = plan_recipe_steps(
-        runner.paths.workspace_root,
-        request,
-        "cli-stack",
-        shell=runner.shell,
-        manifest_root=runner.manifest_root,
-        host_resolver=runner._host_resolver,
-        multipass_client=runner._multipass_client,
-    )
-    return CliStackPlan(
+    plan = CliStackPlan(
         scenario=scenario,
         request=request,
-        steps=steps,
+        steps=[],
         runner=runner,
     )
+    # Lightweight display steps derived from the honest Workflow (NOT the legacy
+    # recipe engine), so CLI dry-run still renders commands. The TUI uses
+    # phase_titles; task identity comes from workflow_task_ids.
+    workflow = plan._assemble(
+        plan._build_setup(),
+        lambda: VmInfo(name="", host="", user="", home=""),
+        resolve_host=False,
+    )
+    plan.steps = workflow_display_steps(workflow.tasks + workflow.cleanup_tasks)
+    return plan
