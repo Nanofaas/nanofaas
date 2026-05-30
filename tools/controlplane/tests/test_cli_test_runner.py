@@ -49,41 +49,93 @@ def test_cli_stack_runner_defaults_to_managed_vm_without_host_env(monkeypatch) -
     assert runner.vm_request.lifecycle == "multipass"
 
 
-def test_cli_stack_runner_plan_steps_compose_recipe_directly_matches_shared_planner() -> None:
-    """cli_stack_runner composes the cli-stack recipe directly (no plan_recipe_steps).
+# Snapshot of the cli-stack plan composed directly by CliStackRunner (originally
+# derived from the shared recipe planner; the recipe engine is being deleted, so
+# these literals are now the source of truth). step_ids + summaries are portable;
+# commands carry machine-specific ansible --private-key paths, so commands are
+# spot-checked rather than fully snapshotted.
+_CLI_STACK_RUNNER_STEP_IDS = [
+    "vm.ensure_running",
+    "vm.provision_base",
+    "repo.sync_to_vm",
+    "registry.ensure_container",
+    "images.build_core.boot_jars",
+    "images.build_core.control_image",
+    "images.build_core.runtime_image",
+    "images.build_core.push_control_image",
+    "images.build_core.push_runtime_image",
+    "k3s.install",
+    "k3s.configure_registry",
+    "namespace.install",
+    "cli.build_install_dist",
+    "cli.platform_install",
+    "cli.platform_status",
+    "cli.fn_apply_selected.echo-test",
+    "cli.fn_list_selected",
+    "cli.fn_invoke_selected.echo-test",
+    "cli.fn_enqueue_selected.echo-test",
+    "cli.fn_delete_selected.echo-test",
+    "cleanup.uninstall_control_plane",
+    "namespace.uninstall",
+    "cleanup.verify_cli_platform_status_fails",
+    "vm.down",
+]
 
-    Behavior-preserving oracle: the directly-composed steps must reproduce the
-    step_ids, commands, env, and summaries the shared e2e recipe planner produces
-    for cli-stack (with cleanup_vm defaulting to True). cli_stack_runner runs every
-    step locally using only command/env, so .action is intentionally not compared.
+_CLI_STACK_RUNNER_SUMMARIES = [
+    "Ensure VM is running",
+    "Provision base VM dependencies",
+    "Sync project to VM",
+    "Ensure registry container",
+    "Build core JVM artifacts",
+    "Build control-plane image",
+    "Build function-runtime image",
+    "Push control-plane image",
+    "Push function-runtime image",
+    "Install k3s",
+    "Configure k3s registry",
+    "Install namespace Helm release",
+    "Build nanofaas-cli installDist in VM",
+    "Install nanofaas into k3s through the CLI",
+    "Run platform status",
+    "Apply selected function 'echo-test'",
+    "List selected functions",
+    "Invoke selected function 'echo-test'",
+    "Enqueue selected function 'echo-test'",
+    "Delete selected function 'echo-test'",
+    "Uninstall control-plane Helm release",
+    "Uninstall namespace Helm release",
+    "Verify cli-stack status fails",
+    "Teardown VM",
+]
+
+
+def test_cli_stack_runner_plan_steps_compose_recipe_directly_matches_snapshot() -> None:
+    """cli_stack_runner composes the cli-stack recipe directly (no recipe engine).
+
+    Behavior-preserving snapshot oracle: the directly-composed steps must reproduce
+    the step_ids and summaries pinned above, and spot-check the load-bearing CLI
+    commands. cli_stack_runner runs every step locally using only command/env.
     """
-    from controlplane_tool.e2e.e2e_models import E2eRequest
-    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
-
     runner = cli_stack_runner_mod.CliStackRunner(
         repo_root=Path("/repo"),
         vm_request=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
 
-    expected = plan_recipe_steps(
-        runner.repo_root,
-        E2eRequest(
-            scenario="cli-stack",
-            runtime=runner.runtime,
-            vm=runner.vm_request,
-            namespace=runner.namespace,
-            local_registry=runner.local_registry,
-        ),
-        "cli-stack",
-        shell=RecordingShell(),
-        release=runner.release,
-    )
-
     actual = runner.plan_steps()
 
-    assert [s.step_id for s in actual] == [s.step_id for s in expected]
-    assert [(s.summary, s.command, s.env) for s in actual] == [
-        (s.summary, s.command, s.env) for s in expected
+    assert [s.step_id for s in actual] == _CLI_STACK_RUNNER_STEP_IDS
+    assert [s.summary for s in actual] == _CLI_STACK_RUNNER_SUMMARIES
+
+    by_id = {s.step_id: s for s in actual}
+    cli_bin = (
+        "/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli"
+    )
+    assert list(by_id["cli.fn_invoke_selected.echo-test"].command) == [
+        cli_bin, "invoke", "echo-test", "-d",
+        '{"input": {"message": "hello-from-cli-stack"}}',
+    ]
+    assert list(by_id["cli.platform_install"].command)[:3] == [
+        cli_bin, "platform", "install",
     ]
 
 

@@ -1,3 +1,11 @@
+"""DELETE IN TASK 5 (C4-final): this file exercises ``plan_recipe_steps`` directly.
+
+The proxmox-rewrite coverage (ansible inventory/port/private-key rewrite, the
+repo.sync_to_vm rsync rewrite and the private-key replacement) has been MIGRATED
+to ``test_proxmox_prelude_workflow.py``, which asserts the proxmox prelude
+Workflow's honest CommandTask argv/env reproduce the same rewrites. Once
+``plan_recipe_steps`` is removed, this whole module goes away.
+"""
 from __future__ import annotations
 
 import pytest

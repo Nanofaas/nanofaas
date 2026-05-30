@@ -330,7 +330,7 @@ def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
 def test_cli_stack_plan_uses_cli_fn_apply_not_rest_api(tmp_path: Path) -> None:
     """cli-stack must use CLI fn apply, not the REST API registration.
 
-    Regression test: plan_recipe_steps must NOT remap cli.fn_apply_selected to
+    Regression test: the cli-stack planner must NOT remap cli.fn_apply_selected to
     functions.register for cli-stack — that remap is only for loadtest scenarios.
     """
     from controlplane_tool.e2e.e2e_runner import E2eRunner
