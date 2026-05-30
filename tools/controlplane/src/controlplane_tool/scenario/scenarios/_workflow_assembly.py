@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Optional
 
 from workflow_tasks import (
+    CommandTask,
+    CommandTaskSpec,
     HostCommandTaskExecutor,
     VmCommandTaskExecutor,
     command_task_from_operation,
@@ -38,6 +40,7 @@ from controlplane_tool.loadtest.loadtest_adapters import OrchestratorVmRunner
 from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.environment import resolve_scenario_environment
+from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 
 if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
@@ -107,6 +110,39 @@ def resolve_host_operation(
         argv=tuple(argv),
         env=env,
         execution_target=operation.execution_target,
+    )
+
+
+def host_command_task_from_step(
+    step: ScenarioPlanStep,
+    *,
+    resolver: CommandResolver,
+    request: E2eRequest,
+    vm: VmOrchestrator,
+    ip_cache: dict[str, str],
+    host_executor: HostCommandTaskExecutor,
+) -> CommandTask:
+    """Convert a host ``ScenarioPlanStep`` into an honest host ``CommandTask``.
+
+    Used by planner-step scenarios (e.g. ``cli``) whose steps come from
+    ``ScenarioPlanner.vm_backed_steps`` rather than a recipe. Substitutes
+    ``<multipass-ip:NAME>`` placeholders in the step's command/env at assembly
+    time, mirroring ``resolve_host_operation`` for recipe operations.
+    """
+    argv = resolver._resolve_command(list(step.command), request.vm, ip_cache, vm)  # noqa: SLF001
+    env = resolver._resolve_env(dict(step.env), request.vm, ip_cache, vm)  # noqa: SLF001
+    spec = CommandTaskSpec(
+        task_id=step.step_id,
+        summary=step.summary,
+        argv=tuple(argv),
+        target="host",
+        env=env,
+    )
+    return CommandTask(
+        task_id=step.step_id,
+        title=step.summary,
+        spec=spec,
+        executor=host_executor,
     )
 
 
