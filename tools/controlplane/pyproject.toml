@@ -67,6 +67,7 @@ select = ["F", "SLF"]
 "src/controlplane_tool/e2e/e2e_runner.py" = ["SLF001"]
 "src/controlplane_tool/scenario/scenarios/two_vm_loadtest.py" = ["SLF001"]
 "src/controlplane_tool/scenario/scenarios/k3s_junit_curl.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/helm_stack.py" = ["SLF001"]
 "src/controlplane_tool/tui/app.py" = ["SLF001"]
 "tests/**/*.py" = ["F841", "SLF001"]
 
