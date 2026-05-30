@@ -130,12 +130,19 @@ def build_command_tasks(
     recipe,
     *,
     special_handler: SpecialHandler | None = None,
+    context_selector: Callable[[object], object] | None = None,
 ) -> list:
     """Route each composed recipe operation to an honest CommandTask.
 
     Operations are routed by ``execution_target`` (host vs vm). Scenario-specific
     operations are delegated to *special_handler*, which may append its own Tasks
     (returning ``HANDLED``) or signal default routing (returning ``None``).
+
+    *context_selector* (optional) chooses the planner context per component. When
+    ``None`` (the default), every component's planner receives ``setup.context``.
+    Scenarios that need a per-component context (e.g. cli-stack's ``cli.*``
+    planners need a ``CliComponentContext``) pass a callable mapping each
+    component to the context its planner expects.
 
     Returns the ordered list of command Tasks. Cleanup Tasks (if any) are the
     handler's responsibility — it should append them to a list it closes over.
@@ -152,7 +159,8 @@ def build_command_tasks(
 
     tasks: list = []
     for component in compose_recipe(recipe):
-        for operation in component.planner(context):
+        ctx = context_selector(component) if context_selector is not None else context
+        for operation in component.planner(ctx):
             if special_handler is not None:
                 result = special_handler(operation)
                 if result is HANDLED:
