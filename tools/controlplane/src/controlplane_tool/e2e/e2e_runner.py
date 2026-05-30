@@ -84,9 +84,8 @@ class E2ePlan:
     scenario: ScenarioDefinition
     request: E2eRequest
     steps: list[ScenarioPlanStep]
-    executor: "Callable[[E2ePlan], None] | None" = field(
-        default=None, repr=False, compare=False
-    )
+    shell: "ShellBackend | None" = field(default=None, repr=False, compare=False)
+    workspace_root: "Path | None" = field(default=None, repr=False, compare=False)
 
     @property
     def task_ids(self) -> list[str]:
@@ -94,11 +93,41 @@ class E2ePlan:
         return [s.step_id for s in self.steps if s.step_id]
 
     def run(self, event_listener=None) -> None:
-        if self.executor is None:
+        # Local (non-VM) scenarios are plain ordered host commands with no
+        # placeholders (request.vm is None). Build a workflow_tasks.Workflow of
+        # host CommandTasks and run it: ordered execution, stop on first non-zero
+        # exit, run on the host shell with cwd=workspace_root and the step's env.
+        # event_listener is unused; the Workflow emits progress via workflow_step.
+        del event_listener
+        if self.shell is None:
             raise RuntimeError(
-                "E2ePlan.run() requires an executor — use E2eRunner.execute(plan)"
+                "E2ePlan.run() requires a shell — construct it via E2eRunner.plan()"
             )
-        self.executor(self)
+        from workflow_tasks import (
+            CommandTask,
+            CommandTaskSpec,
+            HostCommandTaskExecutor,
+            Workflow,
+        )
+
+        host_executor = HostCommandTaskExecutor(self.shell)
+        tasks = [
+            CommandTask(
+                task_id=step.step_id,
+                title=step.summary,
+                spec=CommandTaskSpec(
+                    task_id=step.step_id,
+                    summary=step.summary,
+                    argv=tuple(step.command),
+                    target="host",
+                    env=dict(step.env),
+                    cwd=self.workspace_root,
+                ),
+                executor=host_executor,
+            )
+            for step in self.steps
+        ]
+        Workflow(tasks=tasks).run()
 
 
 ScenarioExecutionStatus = Literal["running", "success", "failed"]
@@ -504,7 +533,13 @@ class E2eRunner:
         if scenario.requires_vm:
             raise ValueError(f"Unsupported VM-backed scenario: {request.scenario!r}")
         steps = self._planner.local_steps(request)
-        return E2ePlan(scenario=scenario, request=request, steps=steps)
+        return E2ePlan(
+            scenario=scenario,
+            request=request,
+            steps=steps,
+            shell=self.shell,
+            workspace_root=self.paths.workspace_root,
+        )
 
     def plan_all(
         self,
@@ -623,7 +658,15 @@ class E2eRunner:
                 vm_bootstrap_planned = True
                 continue
 
-            plans.append(E2ePlan(scenario=scenario, request=request, steps=self._planner.local_steps(request)))
+            plans.append(
+                E2ePlan(
+                    scenario=scenario,
+                    request=request,
+                    steps=self._planner.local_steps(request),
+                    shell=self.shell,
+                    workspace_root=self.paths.workspace_root,
+                )
+            )
         return plans
 
     def _emit_event(
@@ -793,7 +836,7 @@ class E2eRunner:
     ) -> None:
         succeeded = False
         try:
-            self._execute_steps(plan, event_listener=event_listener)
+            plan.run(event_listener=event_listener)
             succeeded = True
         finally:
             teardown_request = plan.request.vm
@@ -851,10 +894,7 @@ class E2eRunner:
         succeeded = False
         try:
             for plan in plans:
-                if isinstance(plan, E2ePlan):
-                    self._execute_steps(plan, event_listener=event_listener)
-                else:
-                    plan.run(event_listener=event_listener)
+                plan.run(event_listener=event_listener)
             succeeded = True
             return plans
         finally:

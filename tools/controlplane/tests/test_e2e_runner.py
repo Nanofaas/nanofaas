@@ -366,7 +366,11 @@ def test_helm_stack_execute_resolves_vm_host_for_autoscaling_env() -> None:
         )
     )
 
-    runner.execute(plan)
+    # _execute_steps is the legacy recipe-step engine still used to resolve
+    # <multipass-ip:NAME> placeholders for VM-backed display steps; helm-stack's
+    # own run() drives a Workflow with a real VM, so exercise the step engine
+    # directly to assert host resolution into the autoscaling env.
+    runner._execute_steps(plan)
 
     autoscaling_call = next(
         env for command, env in shell.calls if "experiments/autoscaling.py" in " ".join(command)
@@ -578,7 +582,7 @@ def test_execute_binds_step_context_for_nested_workflow_events(fake_sink) -> Non
     )
 
     with bind_workflow_sink(fake_sink):
-        runner.execute(plan)
+        runner._execute_steps(plan)
 
     assert len(fake_sink.events) == 1
     assert fake_sink.events[0].flow_id == "docker"
@@ -601,7 +605,7 @@ def test_execute_rejects_step_without_id() -> None:
     )
 
     with pytest.raises(ValueError, match="step_id"):
-        runner.execute(plan)
+        runner._execute_steps(plan)
 
 
 def test_execute_emits_step_progress_events() -> None:
@@ -617,7 +621,7 @@ def test_execute_emits_step_progress_events() -> None:
 
     events = []
 
-    runner.execute(plan, event_listener=events.append)
+    runner._execute_steps(plan, event_listener=events.append)
 
     assert [(event.step_index, event.status, event.step.summary) for event in events] == [
         (1, "running", "First step"),
@@ -642,7 +646,7 @@ def test_execute_emits_failure_event_when_step_fails() -> None:
     events = []
 
     try:
-        runner.execute(plan, event_listener=events.append)
+        runner._execute_steps(plan, event_listener=events.append)
     except RuntimeError as exc:
         assert "Broken step" in str(exc)
     else:
@@ -674,7 +678,7 @@ def test_execute_runs_always_cleanup_steps_after_failure() -> None:
     )
 
     with pytest.raises(RuntimeError, match="Broken step"):
-        runner.execute(plan)
+        runner._execute_steps(plan)
 
     assert cleanup_calls == ["vm.down"]
 
@@ -698,7 +702,7 @@ def test_execute_reports_main_and_cleanup_failures() -> None:
     )
 
     with pytest.raises(RuntimeError) as excinfo:
-        runner.execute(plan)
+        runner._execute_steps(plan)
 
     message = str(excinfo.value)
     assert "Broken step" in message
@@ -1078,3 +1082,29 @@ def test_plan_docker_returns_e2e_plan(tmp_path: Path) -> None:
     plan = runner.plan(E2eRequest(scenario="docker", runtime="java"))
 
     assert isinstance(plan, E2ePlan)
+
+
+def test_e2e_plan_run_executes_host_commands_via_workflow(tmp_path: Path) -> None:
+    """E2ePlan.run() executes the local steps as host CommandTasks on the shell."""
+    shell = RecordingShell()
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(scenario="buildpack", runtime="java"))
+
+    plan.run()
+
+    # Both buildpack local steps are run on the host shell, in order.
+    assert shell.commands[0][:2] == ["./gradlew", ":function-runtime:bootBuildImage"]
+    assert any(cmd[:1] == ["./scripts/controlplane.sh"] for cmd in shell.commands)
+
+
+def test_e2e_plan_run_stops_on_first_failed_command(tmp_path: Path) -> None:
+    """E2ePlan.run() raises on the first non-zero exit and stops."""
+    shell = ScriptedShell(
+        return_code_map={("./gradlew", ":function-runtime:bootBuildImage",
+                          "-PfunctionRuntimeImage=nanofaas/function-runtime:buildpack"): 3},
+    )
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(scenario="buildpack", runtime="java"))
+
+    with pytest.raises(Exception):
+        plan.run()
