@@ -49,23 +49,42 @@ def test_cli_stack_runner_defaults_to_managed_vm_without_host_env(monkeypatch) -
     assert runner.vm_request.lifecycle == "multipass"
 
 
-def test_cli_stack_runner_plan_steps_delegate_to_shared_recipe_planner(monkeypatch) -> None:
-    sentinel_steps = [
-        ScenarioPlanStep(summary="recipe step", command=["echo", "recipe-step"])
-    ]
-    monkeypatch.setattr(
-        cli_stack_runner_mod,
-        "plan_recipe_steps",
-        lambda *args, **kwargs: sentinel_steps,
-        raising=False,
-    )
+def test_cli_stack_runner_plan_steps_compose_recipe_directly_matches_shared_planner() -> None:
+    """cli_stack_runner composes the cli-stack recipe directly (no plan_recipe_steps).
+
+    Behavior-preserving oracle: the directly-composed steps must reproduce the
+    step_ids, commands, env, and summaries the shared e2e recipe planner produces
+    for cli-stack (with cleanup_vm defaulting to True). cli_stack_runner runs every
+    step locally using only command/env, so .action is intentionally not compared.
+    """
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
 
     runner = cli_stack_runner_mod.CliStackRunner(
         repo_root=Path("/repo"),
         vm_request=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
 
-    assert runner.plan_steps() == sentinel_steps
+    expected = plan_recipe_steps(
+        runner.repo_root,
+        E2eRequest(
+            scenario="cli-stack",
+            runtime=runner.runtime,
+            vm=runner.vm_request,
+            namespace=runner.namespace,
+            local_registry=runner.local_registry,
+        ),
+        "cli-stack",
+        shell=RecordingShell(),
+        release=runner.release,
+    )
+
+    actual = runner.plan_steps()
+
+    assert [s.step_id for s in actual] == [s.step_id for s in expected]
+    assert [(s.summary, s.command, s.env) for s in actual] == [
+        (s.summary, s.command, s.env) for s in expected
+    ]
 
 
 def test_cli_test_runner_cli_stack_plan_promotes_missing_vm_to_managed_context(monkeypatch) -> None:

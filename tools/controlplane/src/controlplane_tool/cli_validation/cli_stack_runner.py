@@ -10,13 +10,22 @@ import shlex
 from pathlib import Path
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep, plan_recipe_steps
 from workflow_tasks import phase, success, workflow_step
 from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,
     resolve_scenario_release,
 )
-from controlplane_tool.scenario.components.environment import default_managed_vm_request
+from controlplane_tool.scenario.components.cli import CliComponentContext
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components.environment import (
+    default_managed_vm_request,
+    resolve_scenario_environment,
+)
+from controlplane_tool.scenario.components.executor import (
+    _SUMMARY_OVERRIDES,
+    ScenarioPlanStep,
+)
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_helpers import (
     resolve_scenario as _resolve_scenario,
 )
@@ -132,12 +141,44 @@ class CliStackRunner:
             namespace=effective_namespace,
             local_registry=self.local_registry,
         )
-        return plan_recipe_steps(
+        # Compose the cli-stack recipe directly instead of going through the shared
+        # e2e recipe planner. cli_stack_runner runs every step LOCALLY in its own
+        # run() loop (using only command/env), so it needs the raw operation argv —
+        # no remote-exec/ensure-running/teardown callbacks are required here.
+        context = resolve_scenario_environment(
             self.repo_root,
             request,
-            "cli-stack",
             release=self.release,
         )
+        # cli.* planners need the VM-side repo root and platform identifiers; the
+        # control plane endpoint is None for cli-stack (it talks to the in-VM API
+        # via KUBECONFIG/namespace, not an explicit endpoint).
+        cli_context = CliComponentContext(
+            repo_root=Path(self._vm.remote_project_dir(context.vm_request)),
+            release=context.release,
+            namespace=context.namespace,
+            local_registry=context.local_registry,
+            resolved_scenario=context.resolved_scenario,
+            control_plane_endpoint=None,
+        )
+
+        steps: list[ScenarioPlanStep] = []
+        for component in compose_recipe(build_scenario_recipe("cli-stack")):
+            ctx = (
+                cli_context
+                if component.component_id.startswith("cli.")
+                else context
+            )
+            for op in component.planner(ctx):
+                steps.append(
+                    ScenarioPlanStep(
+                        summary=_SUMMARY_OVERRIDES.get(op.operation_id, op.summary),
+                        command=list(op.argv),
+                        env=dict(op.env),
+                        step_id=op.operation_id,
+                    )
+                )
+        return steps
 
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
