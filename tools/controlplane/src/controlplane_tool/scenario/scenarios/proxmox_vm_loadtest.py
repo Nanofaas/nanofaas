@@ -114,12 +114,32 @@ class ProxmoxVmLoadtestPlan:
     @property
     def task_ids(self) -> list[str]:
         pre, wf = self._skeleton()
-        return [s.step_id for s in self.steps if s.step_id] + [t.task_id for t in pre] + wf.task_ids
+        return self._display_prelude_task_ids() + [t.task_id for t in pre] + wf.task_ids
 
     @property
     def phase_titles(self) -> list[str]:
         pre, wf = self._skeleton()
-        return [s.summary for s in self.steps] + [t.title for t in pre] + wf.phase_titles
+        return self._display_prelude_titles() + [t.title for t in pre] + wf.phase_titles
+
+    def _display_prelude_tasks(self) -> list:
+        """Honest prelude Tasks built WITHOUT a live VM (for task_ids/titles).
+
+        Uses ``resolve_host=False`` so no proxmox SSH endpoint is resolved — the
+        TUI only needs the ordered task_ids/titles, not resolved commands.
+        """
+        from controlplane_tool.infra.vm.proxmox_vm_adapter import ProxmoxVmOrchestrator
+
+        stack_request, _ = self._requests()
+        proxmox_orch = ProxmoxVmOrchestrator(repo_root=self.runner.paths.workspace_root)
+        return self._build_prelude_tasks(proxmox_orch, stack_request, resolve_host=False)
+
+    def _display_prelude_task_ids(self) -> list[str]:
+        return ["vm.ensure_running"] + [t.task_id for t in self._display_prelude_tasks()]
+
+    def _display_prelude_titles(self) -> list[str]:
+        return ["Ensure stack VM running (Proxmox)"] + [
+            t.title for t in self._display_prelude_tasks()
+        ]
 
     def _skeleton(self) -> "tuple[list[EnsureVmRunning | _SkeletonStep], Workflow]":
         """Task objects with None adapters — only task_id and title are valid here."""
@@ -195,22 +215,37 @@ class ProxmoxVmLoadtestPlan:
         """Ordered prelude task_ids, matching the legacy recipe step ids.
 
         ``vm.ensure_running`` (run separately) is prepended so the list matches
-        ``[s.step_id for s in plan_recipe_steps(...)]`` exactly.
+        the legacy recipe step ids exactly (see the oracle test).
         """
         return ["vm.ensure_running"] + [t.task_id for t in self.prelude_tasks]
 
-    def _build_prelude_tasks(self, proxmox_orch, stack_request: VmRequest) -> list:
-        """Assemble the honest prelude Tasks against a (running) proxmox orch."""
+    def _build_prelude_tasks(
+        self, proxmox_orch, stack_request: VmRequest, *, resolve_host: bool = True
+    ) -> list:
+        """Assemble the honest prelude Tasks against a (running) proxmox orch.
+
+        *resolve_host*: when True (the default, used by ``run()`` and the oracle)
+        the proxmox SSH endpoint / key / remote dir are resolved through the live
+        orchestrator (the stack VM must already be running). When False (used to
+        derive cheap display task_ids/titles without a running VM) placeholder
+        endpoint values are used — the TUI shows titles/task_ids, not resolved
+        commands, so the placeholders are never executed.
+        """
         repo_root = self.runner.paths.workspace_root
         request = self.request
 
         context = resolve_scenario_environment(
             repo_root, request, manifest_root=self.runner.manifest_root
         )
-        remote_dir = proxmox_orch.remote_project_dir(stack_request)
 
-        host, port = proxmox_orch.ssh_endpoint(stack_request)
-        key = proxmox_orch.ssh_private_key_path(stack_request)
+        if resolve_host:
+            remote_dir = proxmox_orch.remote_project_dir(stack_request)
+            host, port = proxmox_orch.ssh_endpoint(stack_request)
+            key = proxmox_orch.ssh_private_key_path(stack_request)
+        else:
+            remote_dir = f"/home/{stack_request.user or 'ubuntu'}/nanofaas"
+            host, port = "<proxmox-host>", 0
+            key = None
 
         recipe = build_scenario_recipe("proxmox-vm-loadtest")
         recipe = recipe.__class__(
@@ -337,74 +372,64 @@ class ProxmoxVmLoadtestPlan:
 
         return action
 
-    def _run_prelude_workflow(self, *, event_listener, total_steps: int) -> None:
-        """Execute the prelude as a ``workflow_tasks.Workflow`` of honest Tasks.
+    def _run_prelude_workflow(
+        self, prelude_tasks: list, *, event_listener, total_steps: int
+    ) -> int:
+        """Execute the honest prelude Tasks as a ``workflow_tasks.Workflow``.
 
-        The prelude ``ScenarioPlanStep``s carry the proxmox-rewritten commands in
-        their ``action`` closures (the same rewrites the honest ``prelude_tasks``
-        reproduce — see the oracle). Each step is wrapped as a ``CallableTask`` and
-        run through a ``Workflow``, preserving the legacy ``_execute_steps``
-        semantics: ordered execution, ``always_run`` steps deferred to the end
-        (cleanup), the ``running``/``success``/``failed`` ``ScenarioStepEvent``
-        emission and the wrapped failure message format.
+        Each honest Task (``CommandTask``/``CallableTask`` produced by
+        ``_build_prelude_tasks``) is wrapped in a ``CallableTask`` that emits the
+        ``running``/``success``/``failed`` ``ScenarioStepEvent`` around it, then the
+        wrappers are run through a ``Workflow`` — preserving ordered execution and
+        the wrapped failure-message format of the legacy ``_execute_steps`` path.
+
+        Returns the number of prelude tasks executed (the tail-event offset).
         """
         from controlplane_tool.e2e.e2e_runner import ScenarioStepEvent
 
         request = self.request
 
-        def _emit(step_index, step, status, error=None) -> None:
+        def _step(task) -> ScenarioPlanStep:
+            return ScenarioPlanStep(
+                summary=task.title,
+                command=["python", "-c", f"# {task.task_id}"],
+                step_id=task.task_id,
+            )
+
+        def _emit(step_index, task, status, error=None) -> None:
             if event_listener is None:
                 return
             event_listener(
                 ScenarioStepEvent(
                     step_index=step_index,
                     total_steps=total_steps,
-                    step=step,
+                    step=_step(task),
                     status=status,
                     error=error,
                 )
             )
 
-        def _callable_task(step_index, step) -> CallableTask:
+        def _wrapped(step_index, task) -> CallableTask:
             def action() -> None:
-                _emit(step_index, step, "running")
+                _emit(step_index, task, "running")
                 try:
-                    if step.action is not None:
-                        step.action()
-                    else:
-                        result = self.runner.shell.run(
-                            list(step.command),
-                            cwd=self.runner.paths.workspace_root,
-                            env=dict(step.env),
-                            dry_run=False,
-                        )
-                        if result.return_code != 0:
-                            from controlplane_tool.e2e.e2e_runner import (
-                                _command_failure_output,
-                            )
-
-                            output = _command_failure_output(result.stdout, result.stderr)
-                            raise RuntimeError(output or f"exit {result.return_code}")
+                    task.run()
                 except Exception as exc:
-                    _emit(step_index, step, "failed", error=str(exc))
+                    _emit(step_index, task, "failed", error=str(exc))
                     raise RuntimeError(
                         f"Scenario '{request.scenario}' failed at step "
-                        f"'{step.summary}': {exc}"
+                        f"'{task.title}': {exc}"
                     ) from exc
-                _emit(step_index, step, "success")
+                _emit(step_index, task, "success")
 
-            return CallableTask(task_id=step.step_id or "", title=step.summary, action=action)
+            return CallableTask(task_id=task.task_id, title=task.title, action=action)
 
-        main_tasks: list = []
-        deferred_tasks: list = []
-        for step_index, step in enumerate(self.steps, start=1):
-            task = _callable_task(step_index, step)
-            if step.always_run:
-                deferred_tasks.append(task)
-            else:
-                main_tasks.append(task)
-
-        Workflow(tasks=main_tasks, cleanup_tasks=deferred_tasks).run()
+        wrappers = [
+            _wrapped(step_index, task)
+            for step_index, task in enumerate(prelude_tasks, start=1)
+        ]
+        Workflow(tasks=wrappers).run()
+        return len(prelude_tasks)
 
     def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
@@ -415,18 +440,36 @@ class ProxmoxVmLoadtestPlan:
         stack_lifecycle = ProxmoxVmAdapter(proxmox_orch, credentials=stack_request)
         total_steps = len(self.task_ids)
 
-        if self.steps:
-            try:
-                self._run_prelude_workflow(
-                    event_listener=event_listener, total_steps=total_steps
-                )
-            except Exception as exc:
-                cleanup_errors = self._cleanup_proxmox_requests(proxmox_orch)
-                if cleanup_errors:
-                    raise RuntimeError(
-                        f"{exc}\n\nCleanup failed:\n" + "\n".join(cleanup_errors)
-                    ) from exc
-                raise
+        # The stack VM must be running before the honest prelude Tasks are built:
+        # _build_prelude_tasks resolves the proxmox SSH endpoint (host/port/key)
+        # eagerly. This ensure is a silent prerequisite (its own task identity is
+        # the tail's vm.stack.ensure_running, emitted there); the prelude events
+        # cover only the honest CommandTasks, so the tail offset == len(prelude).
+        stack_config = VmConfig(
+            name=stack_request.name or "",
+            cpus=stack_request.cpus,
+            memory=stack_request.memory,
+            disk=stack_request.disk,
+        )
+        prelude_offset = 0
+        try:
+            EnsureVmRunning(
+                task_id="vm.ensure_running",
+                title="Ensure stack VM running (Proxmox)",
+                lifecycle=stack_lifecycle,
+                config=stack_config,
+            ).run()
+            prelude_tasks = self._build_prelude_tasks(proxmox_orch, stack_request)
+            prelude_offset = self._run_prelude_workflow(
+                prelude_tasks, event_listener=event_listener, total_steps=total_steps
+            )
+        except Exception as exc:
+            cleanup_errors = self._cleanup_proxmox_requests(proxmox_orch)
+            if cleanup_errors:
+                raise RuntimeError(
+                    f"{exc}\n\nCleanup failed:\n" + "\n".join(cleanup_errors)
+                ) from exc
+            raise
 
         run_dir_creator = TwoVmLoadtestRunner(
             repo_root=self.runner.paths.workspace_root, vm=cast(Any, proxmox_orch)
@@ -450,7 +493,7 @@ class ProxmoxVmLoadtestPlan:
             tail_tasks,
             cleanup_tasks,
             event_listener=event_listener,
-            offset=len([s for s in self.steps if s.step_id]),
+            offset=prelude_offset,
             total_steps=total_steps,
         )
 
@@ -780,23 +823,21 @@ def build_proxmox_vm_loadtest_plan(
     runner: "E2eRunner",
     request: E2eRequest,
 ) -> ProxmoxVmLoadtestPlan:
-    from controlplane_tool.e2e.e2e_runner import plan_recipe_steps
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario.scenarios._workflow_assembly import (
+        workflow_display_steps,
+    )
 
     scenario = resolve_scenario("proxmox-vm-loadtest")
-    steps = plan_recipe_steps(
-        runner.paths.workspace_root,
-        request,
-        "proxmox-vm-loadtest",
-        shell=runner.shell,
-        manifest_root=runner.manifest_root,
-        host_resolver=runner._host_resolver,  # noqa: SLF001
-        multipass_client=runner._multipass_client,  # noqa: SLF001
-        component_ids=_PROXMOX_LOADTEST_PRELUDE_COMPONENTS,
-    )
-    return ProxmoxVmLoadtestPlan(
+    plan = ProxmoxVmLoadtestPlan(
         scenario=scenario,
         request=request,
-        steps=steps,
+        steps=[],
         runner=runner,
     )
+    # Lightweight display steps derived from the honest prelude Tasks (NOT the
+    # legacy recipe engine), so CLI dry-run still renders commands. Built with
+    # resolve_host=False so no live VM is needed; vm.ensure_running is prepended
+    # to match the recipe order. The TUI uses phase_titles for display.
+    plan.steps = workflow_display_steps(plan._display_prelude_tasks())  # noqa: SLF001
+    return plan

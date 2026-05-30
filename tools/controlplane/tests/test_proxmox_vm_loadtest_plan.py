@@ -145,13 +145,14 @@ def test_e2e_runner_plan_returns_proxmox_vm_loadtest_plan(tmp_path) -> None:
 
 def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatch, tmp_path) -> None:
     from pathlib import Path
+    from types import SimpleNamespace
 
     from controlplane_tool.core.shell_backend import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
-    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+    from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import ProxmoxVmLoadtestPlan
 
     torn_down: list[str] = []
@@ -160,15 +161,36 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
         def __init__(self, repo_root):
             self.repo_root = repo_root
 
+        # run() ensures the stack VM (silent prerequisite) before building the
+        # honest prelude tasks; these stubs satisfy the EnsureVmRunning path.
+        def ensure_running(self, request):
+            return SimpleNamespace()
+
+        def connection_host(self, request):
+            return "10.0.0.10"
+
         def teardown(self, request):
             torn_down.append(request.name)
-
-    def fail_prelude() -> None:
-        raise RuntimeError("prelude exploded")
 
     monkeypatch.setattr(
         "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
         FakeProxmoxVmOrchestrator,
+    )
+
+    # Make the honest prelude FAIL via a synthetic honest Task (bypasses real
+    # _build_prelude_tasks / SSH resolution): run() must run the honest prelude
+    # tasks, so the failure here proves it does — and trigger NAT/VM cleanup.
+    def fake_build_prelude_tasks(self, proxmox_orch, stack_request, *, resolve_host=True):
+        return [
+            CallableTask(
+                task_id="prelude.fail",
+                title="Fail prelude",
+                action=lambda: (_ for _ in ()).throw(RuntimeError("prelude exploded")),
+            )
+        ]
+
+    monkeypatch.setattr(
+        ProxmoxVmLoadtestPlan, "_build_prelude_tasks", fake_build_prelude_tasks
     )
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
@@ -182,14 +204,7 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
     plan = ProxmoxVmLoadtestPlan(
         scenario=resolve_scenario("proxmox-vm-loadtest"),
         request=request,
-        steps=[
-            ScenarioPlanStep(
-                summary="Fail prelude",
-                command=["false"],
-                step_id="prelude.fail",
-                action=fail_prelude,
-            )
-        ],
+        steps=[],
         runner=runner,
     )
 
@@ -208,7 +223,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
-    from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+    from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
     import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
 
     class FakeProxmoxVmOrchestrator:
@@ -262,6 +277,24 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
     monkeypatch.setattr(proxmox_plan, "WriteK6Report", FakeTask)
     monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeTask)
 
+    # The honest prelude is a single synthetic no-op Task (bypasses real
+    # _build_prelude_tasks / SSH resolution). run() must execute it, so the tail
+    # events start AFTER it.
+    def fake_build_prelude_tasks(self, proxmox_orch, stack_request, *, resolve_host=True):
+        return [
+            CallableTask(
+                task_id="prelude.noop",
+                title="Prelude no-op",
+                action=lambda: None,
+            )
+        ]
+
+    monkeypatch.setattr(
+        proxmox_plan.ProxmoxVmLoadtestPlan,
+        "_build_prelude_tasks",
+        fake_build_prelude_tasks,
+    )
+
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
         scenario="proxmox-vm-loadtest",
@@ -273,14 +306,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
     plan = proxmox_plan.ProxmoxVmLoadtestPlan(
         scenario=resolve_scenario("proxmox-vm-loadtest"),
         request=request,
-        steps=[
-            ScenarioPlanStep(
-                summary="Prelude no-op",
-                command=["true"],
-                step_id="prelude.noop",
-                action=lambda: None,
-            )
-        ],
+        steps=[],
         runner=runner,
     )
     events = []
@@ -378,6 +404,13 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     monkeypatch.setattr(proxmox_plan, "FetchVmResults", FakeTask)
     monkeypatch.setattr(proxmox_plan, "CapturePrometheusSnapshot", FakeTask)
     monkeypatch.setattr(proxmox_plan, "WriteK6Report", FakeTask)
+    # This test exercises the tail lifecycle credentials, not the prelude; use an
+    # empty honest prelude so run() skips real SSH-resolving prelude building.
+    monkeypatch.setattr(
+        proxmox_plan.ProxmoxVmLoadtestPlan,
+        "_build_prelude_tasks",
+        lambda self, proxmox_orch, stack_request, *, resolve_host=True: [],
+    )
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
