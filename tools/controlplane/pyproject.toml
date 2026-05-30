@@ -70,6 +70,7 @@ select = ["F", "SLF"]
 "src/controlplane_tool/scenario/scenarios/helm_stack.py" = ["SLF001"]
 "src/controlplane_tool/scenario/scenarios/cli_stack.py" = ["SLF001"]
 "src/controlplane_tool/scenario/scenarios/cli_vm.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/cli_host.py" = ["SLF001"]
 "src/controlplane_tool/tui/app.py" = ["SLF001"]
 "tests/**/*.py" = ["F841", "SLF001"]
 
