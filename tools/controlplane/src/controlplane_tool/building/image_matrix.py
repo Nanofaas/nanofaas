@@ -112,6 +112,11 @@ def plan_build_command(repo_root: Path, name: str, full_image: str, arch: str) -
             f"-P{target.image_param}={full_image}",
             f"-PimagePlatform={_platform(arch)}",
         ]
+        if target.profile_aware:
+            # Mirror `controlplane-tool image --profile all`: select all optional
+            # control-plane modules into the image (a bare bootBuildImage would use
+            # gradle's defaults).
+            command.append("-PcontrolPlaneModules=all")
         if arch == "arm64":
             command += [
                 "-PimageBuilder=dashaun/builder:tiny",

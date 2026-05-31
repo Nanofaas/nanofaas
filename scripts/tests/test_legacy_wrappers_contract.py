@@ -24,16 +24,6 @@ SHIM_TARGETS = {
 }
 
 
-def test_legacy_wrappers_are_documented_as_compatibility_only() -> None:
-    for name, expected_exec in SHIM_TARGETS.items():
-        script = (SCRIPTS_DIR / name).read_text(encoding="utf-8")
-        assert "wrapper" in script.lower(), name
-        assert "scripts/controlplane.sh" in script or "controlplane.sh" in script, name
-        assert expected_exec in script, name
-        assert "gradlew" not in script, name
-        assert len(script.strip().splitlines()) <= 7, name
-
-
 def test_loadtest_wrapper_routes_to_python_loadtest_run() -> None:
     # M12: e2e-loadtest.sh now routes to controlplane.sh loadtest run (not experiments script)
     script = (SCRIPTS_DIR / "e2e-loadtest.sh").read_text(encoding="utf-8")

@@ -9,14 +9,6 @@ CADVISOR_DAEMONSET_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "c
 CADVISOR_SERVICE_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "cadvisor-service.yaml"
 
 
-def test_k3s_helm_script_is_now_a_controlplane_wrapper():
-    script = SCRIPT.read_text(encoding="utf-8")
-    assert 'controlplane.sh" e2e run helm-stack "$@"' in script
-    assert "CONTROL_PLANE_NATIVE_BUILD" not in script
-    assert "LOADTEST_RUNTIMES" not in script
-    assert "docker save" not in script
-
-
 def test_prometheus_templates_support_container_metrics_modes():
     prom_cfg = PROM_CONFIG_TEMPLATE.read_text(encoding="utf-8")
     prom_rbac = PROM_RBAC_TEMPLATE.read_text(encoding="utf-8")

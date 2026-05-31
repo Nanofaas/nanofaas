@@ -89,6 +89,17 @@ def test_plan_build_gradle_target_sets_native_env() -> None:
     assert "NATIVE_IMAGE_BUILD_ARGS" in cmd.env
 
 
+def test_control_plane_gradle_selects_all_modules() -> None:
+    cmd = im.plan_build_command(Path("/repo"), "control-plane", "ghcr.io/x/cp:1", "amd64")
+    assert ":control-plane:bootBuildImage" in cmd.command
+    assert "-PcontrolPlaneModules=all" in cmd.command
+
+
+def test_non_profile_gradle_target_omits_module_selection() -> None:
+    cmd = im.plan_build_command(Path("/repo"), "function-runtime", "ghcr.io/x/fr:1", "amd64")
+    assert "-PcontrolPlaneModules=all" not in cmd.command
+
+
 def test_plan_build_gradle_arm64_adds_tiny_builder() -> None:
     cmd = im.plan_build_command(Path("/repo"), "java-word-stats", "ghcr.io/x/jw:1", "arm64")
     assert "-PimageBuilder=dashaun/builder:tiny" in cmd.command
