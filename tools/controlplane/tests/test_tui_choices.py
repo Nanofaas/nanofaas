@@ -2664,6 +2664,9 @@ def test_tui_proxmox_vm_loadtest_keeps_cleanup_phases_enabled(monkeypatch) -> No
             ssh_key_path=None,
             vm_name="nanofaas-proxmox",
             loadgen_name="nanofaas-proxmox-loadgen",
+            cpus=4,
+            memory="8G",
+            disk="20G",
         ),
     )
 

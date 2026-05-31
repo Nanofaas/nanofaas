@@ -340,11 +340,41 @@ def test_buildpack_plan_assigns_step_ids_to_all_executable_steps() -> None:
 
 
 def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
+    import json
     from unittest.mock import patch
+    from multipass import FakeBackend, MultipassClient
+    from multipass._backend import CommandResult
     from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
 
+    name = "nanofaas-e2e"
+    info_payload = json.dumps({
+        "info": {
+            name: {
+                "state": "Running",
+                "ipv4": ["10.0.0.1"],
+                "image_release": "24.04",
+                "image_hash": "",
+                "cpu_count": 1,
+                "memory": {},
+                "disks": {},
+                "mounts": {},
+            }
+        }
+    })
+    backend = FakeBackend({
+        ("multipass", "info", name, "--format", "json"): CommandResult(
+            args=[], returncode=0, stdout=info_payload, stderr=""
+        ),
+    })
+    backend.set_default(CommandResult(args=[], returncode=0, stdout="", stderr=""))
+
     shell = RecordingShell()
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
+    runner = E2eRunner(
+        repo_root=Path("/repo"),
+        shell=shell,
+        host_resolver=lambda _: "10.0.0.1",
+        multipass_client=MultipassClient(backend=backend),
+    )
 
     with patch.object(K3sCurlRunner, "verify_existing_stack", return_value=None):
         runner.run_all(only=["k3s-junit-curl"], runtime="java")
