@@ -9,7 +9,7 @@ from controlplane_tool.core.runtime_primitives import (
     read_json_field,
     write_json_file,
 )
-from controlplane_tool.core.shell_backend import RecordingShell
+from workflow_tasks.shell import RecordingShell
 
 
 def test_runtime_primitives_wrap_process_execution_without_shell_scripts() -> None:

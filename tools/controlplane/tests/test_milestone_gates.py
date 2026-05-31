@@ -156,7 +156,7 @@ def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
 
 
 def test_m11_ansible_adapter_has_provision_contract() -> None:
-    from controlplane_tool.infra.vm.ansible_adapter import AnsibleAdapter
+    from workflow_tasks.infra.ansible import AnsibleAdapter
 
     adapter = AnsibleAdapter.__new__(AnsibleAdapter)
     assert hasattr(adapter, "provision_base")
@@ -165,7 +165,7 @@ def test_m11_ansible_adapter_has_provision_contract() -> None:
 
 
 def test_m11_vm_orchestrator_has_lifecycle_contract() -> None:
-    from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+    from workflow_tasks.vm.orchestrator import VmOrchestrator
 
     orch = VmOrchestrator.__new__(VmOrchestrator)
     assert hasattr(orch, "ensure_running")

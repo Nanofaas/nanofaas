@@ -33,7 +33,7 @@ from controlplane_tool.loadtest.report import render_report
 from controlplane_tool.core.run_models import RunResult, StepResult
 from controlplane_tool.scenario.scenario_loader import load_scenario_file, resolve_scenario_spec
 from controlplane_tool.scenario.scenario_models import ScenarioSpec
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_tasks import (
     configure_k3s_registry_task,

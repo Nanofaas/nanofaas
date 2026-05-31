@@ -16,8 +16,8 @@ from controlplane_tool.scenario.components import namespace as namespace_compone
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
-from controlplane_tool.core.shell_backend import ShellExecutionResult
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.shell import ShellExecutionResult
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from workflow_tasks.tasks.adapters import operation_to_task_spec
 from workflow_tasks.tasks.rendering import render_task_command

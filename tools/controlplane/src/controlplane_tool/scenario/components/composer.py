@@ -8,7 +8,7 @@ from controlplane_tool.scenario.components.models import (
     ScenarioRecipe,
     _planner_not_implemented,
 )
-from controlplane_tool.scenario.components.registry import ComponentRegistry
+from workflow_tasks.components.registry import ComponentRegistry
 
 _registry = ComponentRegistry()
 

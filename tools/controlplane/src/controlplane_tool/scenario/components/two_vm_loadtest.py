@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from controlplane_tool.infra.vm.vm_models import VmRequest
-from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
+from workflow_tasks.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 from controlplane_tool.scenario.components.bootstrap import (
     plan_loadtest_install_k6,
     plan_vm_ensure_running,

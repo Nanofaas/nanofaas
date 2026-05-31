@@ -21,7 +21,7 @@ from controlplane_tool.scenario.scenario_runtime import (
     wait_for_http_any_status,
 )
 from controlplane_tool.infra.runtimes.registry_runtime import ensure_local_registry
-from controlplane_tool.core.shell_backend import ShellExecutionResult, SubprocessShell
+from workflow_tasks.shell import ShellExecutionResult, SubprocessShell
 from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 if TYPE_CHECKING:

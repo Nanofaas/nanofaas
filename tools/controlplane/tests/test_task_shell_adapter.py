@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.core.shell_backend import RecordingShell
+from workflow_tasks.shell import RecordingShell
 from controlplane_tool.core.task_shell_adapter import (
     ShellCommandTaskRunner,
     task_result_to_shell_result,

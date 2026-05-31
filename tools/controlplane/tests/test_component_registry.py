@@ -1,5 +1,5 @@
 import pytest
-from controlplane_tool.scenario.components.registry import ComponentRegistry
+from workflow_tasks.components.registry import ComponentRegistry
 from controlplane_tool.scenario.components import ScenarioComponentDefinition
 
 

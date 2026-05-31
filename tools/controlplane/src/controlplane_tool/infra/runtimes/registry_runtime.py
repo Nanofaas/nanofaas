@@ -12,7 +12,7 @@ import platform
 import time
 
 from controlplane_tool.scenario.scenario_runtime import wait_for_http_ok
-from controlplane_tool.core.shell_backend import ShellBackend, ShellExecutionResult, SubprocessShell
+from workflow_tasks.shell import ShellBackend, ShellExecutionResult, SubprocessShell
 from controlplane_tool.workspace.settings import ToolSettings
 
 

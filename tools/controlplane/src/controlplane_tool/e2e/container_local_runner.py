@@ -30,7 +30,7 @@ from controlplane_tool.scenario.scenario_runtime import (
     select_container_runtime,
     wait_for_http_ok,
 )
-from controlplane_tool.core.shell_backend import ShellExecutionResult, SubprocessShell
+from workflow_tasks.shell import ShellExecutionResult, SubprocessShell
 from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 if TYPE_CHECKING:

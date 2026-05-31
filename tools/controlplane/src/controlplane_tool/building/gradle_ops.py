@@ -16,7 +16,7 @@ from controlplane_tool.building.requests import BuildRequest
 from controlplane_tool.building.gradle_planner import build_gradle_command
 from controlplane_tool.infra.runtimes.mockk8s import default_mockk8s_test_selectors
 from controlplane_tool.core.models import BuildAction, Profile
-from controlplane_tool.core.shell_backend import SubprocessShell
+from workflow_tasks.shell import SubprocessShell
 
 
 @dataclass(frozen=True)

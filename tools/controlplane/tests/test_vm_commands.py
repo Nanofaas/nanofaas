@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 from controlplane_tool.orchestation.prefect_models import FlowRunResult
 from controlplane_tool.app.main import app
-from controlplane_tool.core.shell_backend import ShellExecutionResult
+from workflow_tasks.shell import ShellExecutionResult
 from controlplane_tool.cli.vm_commands import _emit_result
 
 

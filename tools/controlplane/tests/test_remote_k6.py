@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
+from workflow_tasks.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 
 
 def test_default_two_vm_k6_script_reads_payload_in_init_context() -> None:

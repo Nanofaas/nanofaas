@@ -12,8 +12,8 @@ from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
 from controlplane_tool.workspace.paths import ToolPaths
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 from controlplane_tool.scenario.scenario_manifest import write_scenario_manifest
-from controlplane_tool.core.shell_backend import ShellBackend, ShellExecutionResult
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.shell import ShellBackend, ShellExecutionResult
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

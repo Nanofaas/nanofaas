@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
+from workflow_tasks.shell import ShellBackend, SubprocessShell
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.loadtest.prometheus_snapshots import capture_prometheus_snapshots
 from controlplane_tool.loadtest.report import render_report
-from controlplane_tool.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
+from workflow_tasks.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
     two_vm_load_stages,

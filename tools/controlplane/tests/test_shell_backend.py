@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from unittest.mock import MagicMock, patch
 
-from controlplane_tool.core.shell_backend import (
+from workflow_tasks.shell import (
     RecordingShell,
     ScriptedShell,
     ShellExecutionResult,

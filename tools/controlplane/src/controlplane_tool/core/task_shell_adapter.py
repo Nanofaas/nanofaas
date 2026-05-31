@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.core.shell_backend import (
+from workflow_tasks.shell import (
     ShellBackend,
     ShellExecutionResult,
     SubprocessShell,

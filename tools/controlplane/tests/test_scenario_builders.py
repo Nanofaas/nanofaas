@@ -66,7 +66,7 @@ def test_build_two_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None
         TwoVmLoadtestPlan,
         build_two_vm_loadtest_plan,
     )
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = _make_request()
@@ -123,7 +123,7 @@ def test_build_azure_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> No
         AzureVmLoadtestPlan,
         build_azure_vm_loadtest_plan,
     )
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = _make_azure_request()
@@ -143,7 +143,7 @@ def test_e2e_runner_plan_returns_two_vm_builder(tmp_path: Path) -> None:
     """E2eRunner.plan() must return TwoVmLoadtestPlan for two-vm-loadtest."""
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(_make_request())
@@ -157,7 +157,7 @@ def test_e2e_runner_plan_returns_azure_builder(tmp_path: Path) -> None:
     """E2eRunner.plan() must return AzureVmLoadtestPlan for azure-vm-loadtest."""
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(_make_azure_request())
@@ -223,7 +223,7 @@ def test_build_k3s_junit_curl_plan_returns_correct_type(tmp_path: Path) -> None:
         K3sJunitCurlPlan,
         build_k3s_junit_curl_plan,
     )
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = build_k3s_junit_curl_plan(runner, _make_k3s_request())
@@ -265,7 +265,7 @@ def test_build_helm_stack_plan_returns_correct_type(tmp_path: Path) -> None:
         HelmStackPlan,
         build_helm_stack_plan,
     )
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = build_helm_stack_plan(runner, _make_helm_stack_request())
@@ -308,7 +308,7 @@ def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
         CliStackPlan,
         build_cli_stack_plan,
     )
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = build_cli_stack_plan(runner, _make_cli_stack_request())
@@ -335,7 +335,7 @@ def test_cli_stack_plan_uses_cli_fn_apply_not_rest_api(tmp_path: Path) -> None:
     """
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = build_cli_stack_plan(runner, _make_cli_stack_request())
@@ -354,7 +354,7 @@ def test_e2e_runner_plan_returns_k3s_junit_curl_builder(tmp_path: Path) -> None:
     """E2eRunner.plan() must return K3sJunitCurlPlan for k3s-junit-curl."""
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.k3s_junit_curl import K3sJunitCurlPlan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(_make_k3s_request())
@@ -368,7 +368,7 @@ def test_e2e_runner_plan_returns_helm_stack_builder(tmp_path: Path) -> None:
     """E2eRunner.plan() must return HelmStackPlan for helm-stack."""
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(_make_helm_stack_request())
@@ -381,7 +381,7 @@ def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
     """E2eRunner.plan() must return CliStackPlan for cli-stack."""
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(_make_cli_stack_request())
