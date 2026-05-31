@@ -31,3 +31,6 @@ tools/controlplane/runs/
 tools/controlplane/profiles/proxmox.toml
 recovery/
 .gitnexus
+
+# coverage artifacts
+.coverage
