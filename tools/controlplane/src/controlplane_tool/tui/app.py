@@ -528,6 +528,12 @@ _PLATFORM_VALIDATION_CHOICES = [
         "Prometheus snapshots. Reads defaults from profiles/azure.toml.",
     ),
     _DescribedChoice(
+        "proxmox-vm-loadtest — Two-VM Proxmox VE load test with k6",
+        "proxmox-vm-loadtest",
+        "Clone two VMs on Proxmox VE (stack + loadgen), run k6 load test, capture "
+        "Prometheus snapshots. Reads defaults from profiles/proxmox.toml.",
+    ),
+    _DescribedChoice(
         "container-local — local managed DEPLOYMENT",
         "container-local",
         "Run the managed DEPLOYMENT workflow entirely on the local machine without provisioning a VM first.",
@@ -958,7 +964,7 @@ class NanofaasTUI:
             if scenario_choice == _BACK_VALUE:
                 return
 
-            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest", "azure-vm-loadtest"):
+            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"):
                 self._run_vm_e2e_scenario(scenario_choice)
             elif scenario_choice == "container-local":
                 self._run_container_local()
@@ -1123,8 +1129,114 @@ class NanofaasTUI:
                     f"Stack VM: {cfg.vm_name} ({cfg.vm_size})",
                     f"Loadgen VM: {cfg.loadgen_name} ({cfg.loadgen_vm_size})",
                 ],
-                planned_steps=[step.summary for step in plan.steps],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
                 action=_run_azure_loadtest_workflow,
+            )
+
+        elif scenario == "proxmox-vm-loadtest":
+            from pydantic import ValidationError
+            from controlplane_tool.workspace.proxmox_config import (
+                proxmox_config_path,
+                load_proxmox_config,
+            )
+            from controlplane_tool.cli.e2e_commands import _resolve_run_request
+            from controlplane_tool.e2e.e2e_runner import E2eRunner
+
+            try:
+                cfg = load_proxmox_config()
+            except FileNotFoundError:
+                warning(
+                    f"Missing proxmox.toml — copy profiles/proxmox.toml.example to "
+                    f"{proxmox_config_path()} and fill in your values."
+                )
+                _acknowledge_static_view()
+                return
+            except ValidationError as exc:
+                first_error = exc.errors()[0]["msg"] if exc.errors() else "validation failed"
+                warning(f"Invalid proxmox.toml: {first_error}")
+                _acknowledge_static_view()
+                return
+
+            console.print(
+                Panel(
+                    f"host:         {cfg.host}\n"
+                    f"node:         {cfg.node}\n"
+                    f"user:         {cfg.user}\n"
+                    f"template_id:  {cfg.template_id if cfg.template_id is not None else '(not set)'}\n"
+                    f"vm_name:      {cfg.vm_name} / {cfg.loadgen_name}",
+                    title="Proxmox defaults (profiles/proxmox.toml)",
+                )
+            )
+
+            confirmed = _ask(
+                lambda: questionary.confirm(
+                    "Proceed with proxmox-vm-loadtest?", default=True, style=_STYLE
+                ).ask()
+            )
+            if not confirmed:
+                return
+
+            request = _resolve_run_request(
+                scenario="proxmox-vm-loadtest",
+                runtime="java",
+                lifecycle="proxmox",
+                name=cfg.vm_name,
+                host=None,
+                user="ubuntu",
+                home=None,
+                cpus=cfg.cpus,
+                memory=cfg.memory,
+                disk=cfg.disk,
+                cleanup_vm=True,
+                namespace=None,
+                local_registry=None,
+                function_preset=None,
+                functions_csv=None,
+                scenario_file=None,
+                saved_profile=None,
+                loadgen_name=cfg.loadgen_name,
+                loadgen_cpus=2,
+                loadgen_memory="2G",
+                loadgen_disk="10G",
+                proxmox_host=cfg.host,
+                proxmox_node=cfg.node,
+                proxmox_user=cfg.user,
+                proxmox_password=cfg.password,
+                proxmox_template_id=cfg.template_id,
+                proxmox_ssh_key_path=cfg.ssh_key_path,
+            )
+            plan = E2eRunner(repo_root=repo_root).plan(request)
+
+            def _run_proxmox_loadtest_workflow(
+                dashboard: WorkflowDashboard, sink: TuiWorkflowSink
+            ) -> None:
+                def _on_step_event(event: Any) -> None:
+                    self._applier.apply_e2e_step_event(dashboard, event)
+                    sink._update()
+
+                dashboard.append_log("Starting proxmox-vm-loadtest workflow")
+                sink._update()
+                flow = build_scenario_flow(
+                    "proxmox-vm-loadtest",
+                    repo_root=repo_root,
+                    request=request,
+                    event_listener=_on_step_event,
+                )
+                self._controller.run_shared_flow(flow)
+                dashboard.append_log("proxmox-vm-loadtest E2E completed")
+                sink._update()
+
+            self._controller.run_live_workflow(
+                title="E2E Scenarios",
+                summary_lines=[
+                    "Scenario: proxmox-vm-loadtest",
+                    f"Host: {cfg.host}",
+                    f"Node: {cfg.node}",
+                    f"Stack VM: {cfg.vm_name}",
+                    f"Loadgen VM: {cfg.loadgen_name}",
+                ],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
+                action=_run_proxmox_loadtest_workflow,
             )
 
         else:  # k3s-junit-curl
@@ -1214,7 +1326,7 @@ class NanofaasTUI:
             self._controller.run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=summary_lines,
-                planned_steps=[step.summary for step in plan.steps],
+                planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
                 action=_run_k8s_vm_workflow,
             )
 
@@ -1334,7 +1446,7 @@ class NanofaasTUI:
                 f"Scenario: {scenario}",
                 f"Runtime: {runtime}",
             ],
-            planned_steps=[step.summary for step in plan.steps],
+            planned_steps=getattr(plan, "phase_titles", None) or [step.summary for step in plan.steps],
             action=_run_generic_e2e_workflow,
         )
 
@@ -1399,7 +1511,7 @@ class NanofaasTUI:
                     "Mode: canonical self-bootstrapping VM-backed CLI stack",
                     *selection.summary_lines,
                 ],
-                planned_steps=[s.summary for s in cli_stack_plan.steps],
+                planned_steps=getattr(cli_stack_plan, "phase_titles", None) or [s.summary for s in cli_stack_plan.steps],
                 action=_run_cli_stack_workflow,
             )
             return
@@ -1663,16 +1775,21 @@ def _show_plan_table(plan: Any) -> None:
     """Render a ScenarioPlan or similar plan object in a Rich table."""
     if plan is None:
         return
-    # Try to show steps/phases as a table
-    steps = getattr(plan, "steps", None) or getattr(plan, "phases", None)
+    # Try to show phase titles (workflow plans) or steps/phases as a table.
+    phase_titles = getattr(plan, "phase_titles", None)
+    steps = phase_titles or getattr(plan, "steps", None) or getattr(plan, "phases", None)
     if steps:
         table = Table(title="Execution plan", border_style="cyan dim")
         table.add_column("#", style="dim", justify="right")
         table.add_column("Step", style="cyan")
         table.add_column("Status", justify="center")
         for i, s in enumerate(steps, 1):
-            label = getattr(s, "name", None) or getattr(s, "label", None) or str(s)
-            status_val = getattr(s, "status", "—")
+            if isinstance(s, str):
+                label: object = s
+                status_val: object = "—"
+            else:
+                label = getattr(s, "name", None) or getattr(s, "label", None) or str(s)
+                status_val = getattr(s, "status", "—")
             table.add_row(str(i), escape(str(label)), escape(str(status_val)))
         console.print(table)
     else:

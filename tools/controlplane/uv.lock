@@ -493,6 +493,7 @@ dependencies = [
     { name = "multipass-sdk" },
     { name = "plotly" },
     { name = "prefect" },
+    { name = "proxmox-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
@@ -525,6 +526,7 @@ requires-dist = [
     { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=83b3704" },
     { name = "plotly", specifier = ">=5.24.1" },
     { name = "prefect", specifier = ">=3,<4" },
+    { name = "proxmox-sdk", git = "https://github.com/miciav/proxmox-sdk.git?rev=9e20703" },
     { name = "pydantic", specifier = ">=2.9.2" },
     { name = "pydantic-settings", specifier = ">=2.5" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -1677,6 +1679,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/96/06e01a7b38dce6fe1db213e061a4602dd6032a8a97ef6c1a862537732421/prompt_toolkit-3.0.52.tar.gz", hash = "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855", size = 434198, upload-time = "2025-08-27T15:24:02.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/84/03/0d3ce49e2505ae70cf43bc5bb3033955d2fc9f932163e84dc0779cc47f48/prompt_toolkit-3.0.52-py3-none-any.whl", hash = "sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955", size = 391431, upload-time = "2025-08-27T15:23:59.498Z" },
+]
+
+[[package]]
+name = "proxmox-sdk"
+version = "0.2.0"
+source = { git = "https://github.com/miciav/proxmox-sdk.git?rev=9e20703#9e2070384c92a03dffdfb3ac7e248f0861cb0537" }
+dependencies = [
+    { name = "paramiko" },
+    { name = "proxmoxer" },
+    { name = "requests" },
+]
+
+[[package]]
+name = "proxmoxer"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/22/2e/5481ad9cc91eff6e585eabac5be94879bc2297b8b615c7427bce610d1447/proxmoxer-2.3.0.tar.gz", hash = "sha256:0b0b2067187af1fc6d4257a46ac68c8fd79cc25d2813637cdae7a9a98fbfd11f", size = 30830, upload-time = "2026-03-04T02:19:48.816Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/fa/598ceae13e96ac97cf8e9b481433587b87edddb4bb9200632bd8bd80e448/proxmoxer-2.3.0-py3-none-any.whl", hash = "sha256:1c03445e95cf9c53b6e50614dbaf561e0e1eb3ec878cf45ddde4bc4421c56743", size = 19796, upload-time = "2026-03-04T02:19:47.724Z" },
 ]
 
 [[package]]
@@ -2939,8 +2960,26 @@ wheels = [
 name = "workflow-tasks"
 version = "0.1.0"
 source = { editable = "../workflow-tasks" }
+dependencies = [
+    { name = "azure-vm-sdk" },
+    { name = "httpx" },
+    { name = "multipass-sdk" },
+    { name = "proxmox-sdk" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "shellcraft" },
+]
 
 [package.metadata]
+requires-dist = [
+    { name = "azure-vm-sdk", git = "https://github.com/miciav/azure-vm-sdk.git?rev=2311b1c" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=83b3704" },
+    { name = "proxmox-sdk", git = "https://github.com/miciav/proxmox-sdk.git?rev=9e20703" },
+    { name = "pydantic", specifier = ">=2.9.2" },
+    { name = "pydantic-settings", specifier = ">=2.5" },
+    { name = "shellcraft", git = "https://github.com/miciav/shellcraft.git" },
+]
 
 [package.metadata.requires-dev]
 dev = [

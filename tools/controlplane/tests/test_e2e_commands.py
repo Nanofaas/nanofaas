@@ -534,3 +534,156 @@ def test_e2e_run_exposes_cleanup_vm_switches() -> None:
     assert result.exit_code == 0
     assert "--cleanup-vm" in result.stdout
     assert "--no-cleanup-vm" in result.stdout
+
+
+def test_proxmox_vm_loadtest_default_vm_name_is_nanofaas_proxmox() -> None:
+    request = _build_request(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        lifecycle="proxmox",
+        name=None,
+        host=None,
+        user="root",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_password="secret",
+    )
+
+    assert request.vm is not None
+    assert request.vm.name == "nanofaas-proxmox"
+    assert request.vm.lifecycle == "proxmox"
+
+
+def test_proxmox_vm_loadtest_creates_loadgen_vm_with_default_name() -> None:
+    request = _build_request(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        lifecycle="proxmox",
+        name=None,
+        host=None,
+        user="root",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_password="secret",
+    )
+
+    assert request.loadgen_vm is not None
+    assert request.loadgen_vm.name == "nanofaas-proxmox-loadgen"
+    assert request.loadgen_vm.lifecycle == "proxmox"
+
+
+def test_proxmox_vm_loadtest_propagates_credentials_to_stack_vm() -> None:
+    request = _build_request(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        lifecycle="proxmox",
+        name=None,
+        host=None,
+        user="root",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="",
+        proxmox_host="10.0.0.1",
+        proxmox_node="node1",
+        proxmox_user="admin@pam",
+        proxmox_password="topsecret",
+        proxmox_template_id=100,
+        proxmox_ssh_key_path="/home/user/.ssh/id_rsa",
+    )
+
+    vm = request.vm
+    assert vm is not None
+    assert vm.proxmox_host == "10.0.0.1"
+    assert vm.proxmox_node == "node1"
+    assert vm.proxmox_user == "admin@pam"
+    assert vm.proxmox_password == "topsecret"
+    assert vm.proxmox_template_id == 100
+    assert vm.proxmox_ssh_key_path == "/home/user/.ssh/id_rsa"
+
+
+def test_proxmox_vm_loadtest_propagates_credentials_to_loadgen_vm() -> None:
+    request = _build_request(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        lifecycle="proxmox",
+        name=None,
+        host=None,
+        user="root",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="",
+        proxmox_host="10.0.0.1",
+        proxmox_node="node1",
+        proxmox_user="admin@pam",
+        proxmox_password="topsecret",
+        proxmox_template_id=100,
+        proxmox_ssh_key_path="/home/user/.ssh/id_rsa",
+    )
+
+    lg = request.loadgen_vm
+    assert lg is not None
+    assert lg.proxmox_host == "10.0.0.1"
+    assert lg.proxmox_node == "node1"
+    assert lg.proxmox_user == "admin@pam"
+    assert lg.proxmox_password == "topsecret"
+    assert lg.proxmox_template_id == 100
+    assert lg.proxmox_ssh_key_path == "/home/user/.ssh/id_rsa"
+
+
+def test_proxmox_vm_loadtest_accepts_custom_vm_names() -> None:
+    request = _build_request(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        lifecycle="proxmox",
+        name="my-stack",
+        host=None,
+        user="root",
+        home=None,
+        cpus=4,
+        memory="8G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry="",
+        loadgen_name="my-loadgen",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_password="secret",
+    )
+
+    assert request.vm is not None
+    assert request.vm.name == "my-stack"
+    assert request.loadgen_vm is not None
+    assert request.loadgen_vm.name == "my-loadgen"
+
+
+def test_e2e_run_exposes_proxmox_options() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["e2e", "run", "--help"])
+
+    assert result.exit_code == 0
+    assert "--proxmox-host" in result.stdout
+    assert "--proxmox-node" in result.stdout
+    assert "--proxmox-passwo" in result.stdout  # truncated in terminal help output

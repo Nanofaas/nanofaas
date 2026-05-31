@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, cast
 
 from controlplane_tool.scenario.components import bootstrap as bootstrap_components
 from controlplane_tool.scenario.components import helm as helm_components
@@ -17,7 +16,6 @@ from controlplane_tool.scenario.components import namespace as namespace_compone
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
 from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
-from controlplane_tool.core.models import RuntimeKind
 from controlplane_tool.core.shell_backend import ShellExecutionResult
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -117,9 +115,8 @@ def build_vm_cluster_prelude_plan(
 ) -> VmClusterPreludePlan:
     scenario_context = ScenarioExecutionContext(
         repo_root=vm.repo_root,
-        request=cast(Any, vm_request),
         scenario_name="legacy",
-        runtime=cast(RuntimeKind, runtime),
+        runtime=runtime,
         namespace=namespace,
         local_registry=local_registry,
         resolved_scenario=resolved_scenario,

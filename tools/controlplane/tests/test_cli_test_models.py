@@ -34,7 +34,6 @@ def test_cli_test_request_cli_stack_environment_is_managed(tmp_path: Path) -> No
 
     context = resolve_scenario_environment(repo_root=tmp_path, request=request)
 
-    assert context.request is request
     assert context.vm_request == VmRequest(lifecycle="multipass", name="nanofaas-e2e")
 
 

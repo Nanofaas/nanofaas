@@ -10,7 +10,7 @@ LoadProfile = Literal["quick", "smoke", "stress"]
 MetricsGateMode = Literal["enforce", "warn", "off"]
 BuildAction = Literal["jar", "building", "run", "image", "native", "test", "inspect"]
 ProfileName = Literal["core", "k8s", "container-local", "all"]
-VmLifecycle = Literal["multipass", "external", "azure"]
+VmLifecycle = Literal["multipass", "external", "azure", "proxmox"]
 RuntimeKind = Literal["java", "rust"]
 FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "javascript", "fixture"]
 CliTestScenarioName = Literal["unit", "cli-stack", "host-platform", "deploy-host"]
@@ -26,6 +26,7 @@ ScenarioName = Literal[
     "helm-stack",
     "two-vm-loadtest",
     "azure-vm-loadtest",
+    "proxmox-vm-loadtest",
 ]
 
 VM_BACKED_SCENARIOS = frozenset(
@@ -37,6 +38,7 @@ VM_BACKED_SCENARIOS = frozenset(
         "helm-stack",
         "two-vm-loadtest",
         "azure-vm-loadtest",
+        "proxmox-vm-loadtest",
     }
 )
 
@@ -127,3 +129,17 @@ class AzureConfig(BaseModel):
     ssh_key_path: str | None = None
     vm_name: str = "nanofaas-azure"
     loadgen_name: str = "nanofaas-azure-loadgen"
+
+
+class ProxmoxConfig(BaseModel):
+    host: str
+    node: str
+    user: str = "root@pam"
+    password: str
+    template_id: int | None = None
+    ssh_key_path: str | None = None
+    vm_name: str = "nanofaas-proxmox"
+    loadgen_name: str = "nanofaas-proxmox-loadgen"
+    cpus: int = 4
+    memory: str = "8G"
+    disk: str = "20G"

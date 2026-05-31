@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from controlplane_tool.cli_validation.cli_test_models import CLI_TEST_VM_BACKED_SCENARIOS, CliTestRequest
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.core.models import RuntimeKind, VM_BACKED_SCENARIOS
-from controlplane_tool.scenario.scenario_models import ResolvedScenario
+from controlplane_tool.core.models import VM_BACKED_SCENARIOS
 from controlplane_tool.scenario.scenario_manifest import write_scenario_manifest
 from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,
@@ -14,22 +12,7 @@ from controlplane_tool.scenario.scenario_defaults import (
 )
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.infra.vm.vm_models import VmRequest
-
-
-@dataclass(frozen=True, slots=True)
-class ScenarioExecutionContext:
-    repo_root: Path
-    request: E2eRequest | CliTestRequest
-    scenario_name: str
-    runtime: RuntimeKind
-    namespace: str | None
-    local_registry: str
-    resolved_scenario: ResolvedScenario | None
-    vm_request: VmRequest
-    cleanup_vm: bool
-    manifest_path: Path | None = None
-    release: str | None = None
-    loadgen_vm_request: VmRequest | None = None
+from workflow_tasks.components.context import ScenarioExecutionContext
 
 
 def default_managed_vm_request() -> VmRequest:
@@ -77,7 +60,6 @@ def resolve_scenario_environment(
 
     return ScenarioExecutionContext(
         repo_root=repo_root,
-        request=request,
         scenario_name=request.scenario,
         runtime=request.runtime,
         namespace=effective_namespace,

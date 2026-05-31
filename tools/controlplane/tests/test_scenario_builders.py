@@ -212,7 +212,9 @@ def test_k3s_junit_curl_plan_satisfies_protocol() -> None:
         scenario=MagicMock(), request=_make_k3s_request(), steps=[step], runner=MagicMock()
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["vm.ensure_running"]
+    # task_ids now derives from the honest Workflow (workflow_task_ids); the
+    # Protocol still exposes the steps list, asserted here without assembly.
+    assert [s.step_id for s in plan.steps] == ["vm.ensure_running"]
 
 
 def test_build_k3s_junit_curl_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -252,7 +254,9 @@ def test_helm_stack_plan_satisfies_protocol() -> None:
         scenario=MagicMock(), request=_make_helm_stack_request(), steps=[step], runner=MagicMock()
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["loadtest.install_k6"]
+    # task_ids now derives from the honest Workflow (workflow_task_ids); the
+    # Protocol still exposes the steps list, asserted here without assembly.
+    assert [s.step_id for s in plan.steps] == ["loadtest.install_k6"]
 
 
 def test_build_helm_stack_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -293,7 +297,9 @@ def test_cli_stack_plan_satisfies_protocol() -> None:
         scenario=MagicMock(), request=_make_cli_stack_request(), steps=[step], runner=MagicMock()
     )
     assert isinstance(plan, ScenarioPlanProtocol)
-    assert plan.task_ids == ["cli.build_install_dist"]
+    # task_ids now derives from the honest Workflow (workflow_task_ids); the
+    # Protocol still exposes the steps list, asserted here without assembly.
+    assert [s.step_id for s in plan.steps] == ["cli.build_install_dist"]
 
 
 def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
@@ -324,7 +330,7 @@ def test_build_cli_stack_plan_returns_correct_type(tmp_path: Path) -> None:
 def test_cli_stack_plan_uses_cli_fn_apply_not_rest_api(tmp_path: Path) -> None:
     """cli-stack must use CLI fn apply, not the REST API registration.
 
-    Regression test: plan_recipe_steps must NOT remap cli.fn_apply_selected to
+    Regression test: the cli-stack planner must NOT remap cli.fn_apply_selected to
     functions.register for cli-stack — that remap is only for loadtest scenarios.
     """
     from controlplane_tool.e2e.e2e_runner import E2eRunner
@@ -383,4 +389,16 @@ def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
     assert isinstance(plan, CliStackPlan)
     assert "cli.build_install_dist" in plan.task_ids
 
+
+def test_proxmox_vm_loadtest_task_ids_include_functions_register() -> None:
+    """proxmox-vm-loadtest uses REST function registration like the loadtest scenarios."""
+    ids = scenario_task_ids("proxmox-vm-loadtest")
+    assert "functions.register" in ids
+    assert "cli.fn_apply_selected" not in ids
+
+
+def test_proxmox_vm_loadtest_task_ids_order() -> None:
+    ids = scenario_task_ids("proxmox-vm-loadtest")
+    assert ids.index("cli.build_install_dist") < ids.index("functions.register")
+    assert ids.index("functions.register") < ids.index("loadgen.ensure_running")
 

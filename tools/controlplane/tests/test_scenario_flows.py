@@ -444,3 +444,24 @@ def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
 
     assert flow.run() == "ok"
     assert called["request"].helm_noninteractive is False
+
+
+def test_proxmox_vm_loadtest_flow_uses_loadtest_recipe_ids() -> None:
+    flow = build_scenario_flow(
+        "proxmox-vm-loadtest",
+        repo_root=Path("/repo"),
+        request=E2eRequest(
+            scenario="proxmox-vm-loadtest",
+            runtime="java",
+            vm=VmRequest(lifecycle="proxmox", name="nanofaas-proxmox"),
+            loadgen_vm=VmRequest(lifecycle="proxmox", name="nanofaas-proxmox-loadgen"),
+        ),
+    )
+
+    assert "vm.ensure_running" in flow.task_ids
+    assert "registry.ensure_container" in flow.task_ids
+    assert "k3s.install" in flow.task_ids
+    assert "helm.deploy_control_plane" in flow.task_ids
+    assert "functions.register" in flow.task_ids
+    assert "loadgen.ensure_running" in flow.task_ids
+    assert "cli.fn_apply_selected" not in flow.task_ids

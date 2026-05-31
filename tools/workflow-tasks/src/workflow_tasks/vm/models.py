@@ -24,7 +24,7 @@ class VmInfo:
     home: str
 
 
-VmLifecycle = Literal["multipass", "external", "azure"]
+VmLifecycle = Literal["multipass", "external", "azure", "proxmox"]
 
 
 class VmRequest(BaseModel):
@@ -41,6 +41,12 @@ class VmRequest(BaseModel):
     azure_location: str | None = None
     azure_image_urn: str | None = None
     azure_ssh_key_path: str | None = None
+    proxmox_host: str | None = None
+    proxmox_node: str | None = None
+    proxmox_user: str | None = None
+    proxmox_password: str | None = None
+    proxmox_template_id: int | None = None
+    proxmox_ssh_key_path: str | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle_requirements(self) -> "VmRequest":

@@ -5,7 +5,6 @@ Extracted from E2eRunner. Owns all step-construction logic.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -15,11 +14,6 @@ from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 from controlplane_tool.scenario.scenario_manifest import write_scenario_manifest
 from controlplane_tool.core.shell_backend import ShellBackend, ShellExecutionResult
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
-from controlplane_tool.infra.vm.vm_cluster_workflows import (
-    control_image,
-    function_image_specs,
-    runtime_image,
-)
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
@@ -59,44 +53,6 @@ class ScenarioPlanner:
     ) -> ScenarioPlanStep:
         return ScenarioPlanStep(summary=summary, command=result.command, env=result.env, step_id=step_id)
 
-    def _backend_step(
-        self,
-        summary: str,
-        script_name: str,
-        *,
-        env: dict[str, str] | None = None,
-    ) -> ScenarioPlanStep:
-        script = self.paths.workspace_root / "scripts" / "lib" / script_name
-        return self._step(summary, ["bash", str(script)], env=env, step_id=f"backend.{script_name}")
-
-    def _remote_exec_step(
-        self,
-        summary: str,
-        request: VmRequest,
-        command: str,
-        *,
-        step_id: str = "",
-    ) -> ScenarioPlanStep:
-        result = self.vm.remote_exec(request, command=command, dry_run=True)
-        return self._step_from_result(summary, result, step_id=step_id)
-
-    def _run_remote_operation(
-        self,
-        request: E2eRequest,
-        argv: tuple[str, ...],
-        env: Mapping[str, str],
-    ) -> None:
-        vm_request = self._require_vm(request)
-        result = self.vm.exec_argv(
-            vm_request,
-            argv,
-            env=dict(env),
-            cwd=self.vm.remote_project_dir(vm_request),
-            dry_run=False,
-        )
-        if result.return_code != 0:
-            raise RuntimeError((result.stderr or result.stdout or f"exit {result.return_code}").strip())
-
     # ── environment helpers ──────────────────────────────────────────────────
 
     def _with_manifest_env(
@@ -115,13 +71,6 @@ class ScenarioPlanner:
         if request.resolved_scenario is None:
             return None
         return write_scenario_manifest(request.resolved_scenario, root=self.manifest_root)
-
-    def _remote_manifest_path(self, request: VmRequest, local_manifest: Path) -> str:
-        return self.vm.remote_path_for_local(
-            request,
-            local_manifest,
-            fallback_subdir="tools/controlplane/runs/manifests",
-        )
 
     def _require_vm(self, request: E2eRequest) -> VmRequest:
         if request.vm is None:
@@ -170,17 +119,6 @@ class ScenarioPlanner:
         if vm_request.home:
             env["E2E_VM_HOME"] = vm_request.home
         return env
-
-    # ── image helpers ────────────────────────────────────────────────────────
-
-    def _control_image(self, request: E2eRequest) -> str:
-        return control_image(request.local_registry)
-
-    def _runtime_image(self, request: E2eRequest) -> str:
-        return runtime_image(request.local_registry)
-
-    def _function_image_specs(self, request: E2eRequest) -> list[tuple[str, str, str, str]]:
-        return function_image_specs(request.resolved_scenario, self._runtime_image(request))
 
     def _k3s_curl_runner(self, request: E2eRequest) -> K3sCurlRunner:
         return K3sCurlRunner(

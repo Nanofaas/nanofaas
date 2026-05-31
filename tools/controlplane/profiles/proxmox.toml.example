@@ -1,0 +1,16 @@
+# Proxmox configuration for proxmox-vm-loadtest.
+# Copy this file to proxmox.toml and fill in your values.
+# proxmox.toml is gitignored — do not commit it.
+#
+# Required fields: host, node, password.
+
+host     = "192.168.1.100"   # Proxmox server IP or hostname
+node     = "pve"             # Proxmox node name
+password = "changeme"        # API password for the user below
+
+# Optional fields — uncomment and set as needed.
+# user        = "root@pam"              # default: root@pam
+# template_id = 100                     # VM template ID to clone from
+# ssh_key_path = ""                     # empty = auto-discovery ~/.ssh/id_rsa
+# vm_name      = "nanofaas-proxmox"     # empty = nanofaas-proxmox
+# loadgen_name = "nanofaas-proxmox-loadgen"

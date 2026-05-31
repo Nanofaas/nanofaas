@@ -8,7 +8,6 @@ from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.scenario.components import bootstrap, helm, namespace as namespace_components
 from controlplane_tool.scenario.components import images, cleanup
 from controlplane_tool.scenario.components import resolve_scenario_environment
-from controlplane_tool.scenario.components import operation_to_plan_step
 from controlplane_tool.scenario.components.composer import (
     compose_recipe,
     recipe_task_ids,
@@ -305,38 +304,6 @@ def test_build_scenario_recipe_returns_isolated_component_ids() -> None:
 
     assert "extra.component" not in recipe.component_ids
     assert recipe.component_ids[-1] == "vm.down"
-
-
-def test_operation_executor_translates_typed_operations_to_plan_steps() -> None:
-    request = E2eRequest(scenario="cli-stack", cleanup_vm=False)
-    operation = RemoteCommandOperation(
-        operation_id="vm.down",
-        summary="Tear down VM",
-        argv=("multipass", "delete", "nanofaas-e2e"),
-    )
-
-    step = operation_to_plan_step(operation, request=request)
-
-    assert step.summary == "Tear down VM"
-    assert step.command == ["echo", "Skipping VM teardown (--no-cleanup-vm)"]
-
-
-def test_operation_executor_inverts_cli_cleanup_status_check() -> None:
-    request = E2eRequest(scenario="cli-stack")
-    operation = RemoteCommandOperation(
-        operation_id="cleanup.verify_cli_platform_status_fails",
-        summary="Verify CLI platform status fails after cleanup",
-        argv=("nanofaas-cli", "platform", "status", "-n", "nanofaas-cli-stack-e2e"),
-        execution_target="vm",
-    )
-
-    step = operation_to_plan_step(
-        operation,
-        request=request,
-        on_remote_exec=lambda argv, env: (_ for _ in ()).throw(RuntimeError("expected failure")),  # noqa: ARG005
-    )
-
-    step.action()
 
 
 def test_helm_stack_tail_runs_loadtest_inside_vm() -> None:

@@ -10,13 +10,30 @@ import shlex
 from pathlib import Path
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.e2e.e2e_runner import ScenarioPlanStep, plan_recipe_steps
-from workflow_tasks import phase, success, workflow_step
+from workflow_tasks import (
+    CommandTask,
+    CommandTaskSpec,
+    HostCommandTaskExecutor,
+    Workflow,
+    phase,
+    success,
+    workflow_step,
+)
 from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,
     resolve_scenario_release,
 )
-from controlplane_tool.scenario.components.environment import default_managed_vm_request
+from controlplane_tool.scenario.components.cli import CliComponentContext
+from controlplane_tool.scenario.components.composer import compose_recipe
+from controlplane_tool.scenario.components.environment import (
+    default_managed_vm_request,
+    resolve_scenario_environment,
+)
+from controlplane_tool.scenario.components.executor import (
+    ScenarioPlanStep,
+)
+from controlplane_tool.scenario.scenarios._workflow_assembly import _SUMMARY_OVERRIDES
+from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_helpers import (
     resolve_scenario as _resolve_scenario,
 )
@@ -24,7 +41,6 @@ from controlplane_tool.core.shell_backend import SubprocessShell
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_cluster_workflows import control_image, runtime_image
 from controlplane_tool.infra.vm.vm_models import VmRequest
-from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 
 class CliStackRunner:
@@ -132,30 +148,74 @@ class CliStackRunner:
             namespace=effective_namespace,
             local_registry=self.local_registry,
         )
-        return plan_recipe_steps(
+        # Compose the cli-stack recipe directly instead of going through the shared
+        # e2e recipe planner. cli_stack_runner runs every step LOCALLY in its own
+        # run() loop (using only command/env), so it needs the raw operation argv —
+        # no remote-exec/ensure-running/teardown callbacks are required here.
+        context = resolve_scenario_environment(
             self.repo_root,
             request,
-            "cli-stack",
             release=self.release,
+        )
+        # cli.* planners need the VM-side repo root and platform identifiers; the
+        # control plane endpoint is None for cli-stack (it talks to the in-VM API
+        # via KUBECONFIG/namespace, not an explicit endpoint).
+        cli_context = CliComponentContext(
+            repo_root=Path(self._vm.remote_project_dir(context.vm_request)),
+            release=context.release,
+            namespace=context.namespace,
+            local_registry=context.local_registry,
+            resolved_scenario=context.resolved_scenario,
+            control_plane_endpoint=None,
+        )
+
+        steps: list[ScenarioPlanStep] = []
+        for component in compose_recipe(build_scenario_recipe("cli-stack")):
+            ctx = (
+                cli_context
+                if component.component_id.startswith("cli.")
+                else context
+            )
+            for op in component.planner(ctx):
+                steps.append(
+                    ScenarioPlanStep(
+                        summary=_SUMMARY_OVERRIDES.get(op.operation_id, op.summary),
+                        command=list(op.argv),
+                        env=dict(op.env),
+                        step_id=op.operation_id,
+                    )
+                )
+        return steps
+
+    def _command_task(
+        self, step: ScenarioPlanStep, *, executor: HostCommandTaskExecutor
+    ) -> CommandTask:
+        if not step.step_id:
+            raise ValueError(
+                f"CLI stack planned step '{step.summary}' is missing a stable step_id"
+            )
+        return CommandTask(
+            task_id=step.step_id,
+            title=step.summary,
+            spec=CommandTaskSpec(
+                task_id=step.step_id,
+                summary=step.summary,
+                argv=tuple(step.command),
+                target="host",
+                env=dict(step.env),
+                cwd=self.repo_root,
+            ),
+            executor=executor,
         )
 
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
+        host_executor = HostCommandTaskExecutor(self._shell)
+        tasks = [
+            self._command_task(step, executor=host_executor)
+            for step in self.plan_steps(resolved)
+        ]
         phase("Verify")
         with workflow_step(task_id="cli-stack.verify", title="Verify"):
-            reporter = WorkflowProgressReporter.current()
-            for planned_step in self.plan_steps(resolved):
-                if not planned_step.step_id:
-                    raise ValueError(
-                        f"CLI stack planned step '{planned_step.summary}' is missing a stable step_id"
-                    )
-                with reporter.child(planned_step.step_id, planned_step.summary):
-                    result = self._shell.run(
-                        planned_step.command,
-                        cwd=self.repo_root,
-                        env=planned_step.env,
-                        dry_run=False,
-                    )
-                    if result.return_code != 0:
-                        raise RuntimeError(result.stderr or result.stdout or f"{planned_step.summary} failed")
+            Workflow(tasks=tasks).run()
         success("CLI stack workflow")

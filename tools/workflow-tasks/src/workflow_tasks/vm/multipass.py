@@ -74,8 +74,14 @@ def resolve_connection_host(
     raise RuntimeError(f"Multipass VM '{_vm_name_default(request)}' has no IPv4 address")
 
 
-def repo_sync_ssh_rsh(private_key_path: Path | None = None) -> str:
+def repo_sync_ssh_rsh(
+    private_key_path: Path | None = None,
+    *,
+    port: int | None = None,
+) -> str:
     parts = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
+    if port is not None:
+        parts.extend(["-p", str(port)])
     if private_key_path is not None:
         parts.extend(["-i", str(private_key_path)])
     return shlex.join(parts)
@@ -102,7 +108,7 @@ def repo_rsync_command(
 class MultipassVmProvider:
     """Generic multipass VM provider: lifecycle, command execution, file transfer.
 
-    Subclass to add project-specific operations (see VmOrchestrator in controlplane_tool).
+    Subclass to add project-specific operations (see VmOrchestrator in workflow_tasks.vm.orchestrator).
     Takes workspace_root directly — no ToolPaths dependency.
     """
 

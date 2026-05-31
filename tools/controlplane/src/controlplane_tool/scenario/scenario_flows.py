@@ -15,6 +15,7 @@ from controlplane_tool.scenario.components import default_managed_vm_request
 from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_helpers import resolve_scenario as _resolve_scenario
+from controlplane_tool.scenario.two_vm_loadtest_config import remap_loadtest_component_id
 
 ContainerLocalE2eRunner = None
 DeployHostE2eRunner = None
@@ -24,12 +25,10 @@ def scenario_task_ids(scenario: str) -> list[str]:
     if scenario in {"container-local", "deploy-host", "cli", "cli-host"}:
         return [f"tests.run_{scenario.replace('-', '_')}"]
     recipe = build_scenario_recipe(scenario)
-    ids = [component.component_id for component in compose_recipe(recipe)]
-    if scenario in {"two-vm-loadtest", "azure-vm-loadtest"}:
-        ids = [
-            "functions.register" if i == "cli.fn_apply_selected" else i
-            for i in ids
-        ]
+    ids = [
+        remap_loadtest_component_id(scenario, component.component_id)
+        for component in compose_recipe(recipe)
+    ]
     return ids
 
 

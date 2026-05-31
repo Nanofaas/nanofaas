@@ -28,5 +28,6 @@ experiments/loadtest/results/
 experiments/.image-cache/
 tooling/runs/
 tools/controlplane/runs/
+tools/controlplane/profiles/proxmox.toml
 recovery/
 .gitnexus

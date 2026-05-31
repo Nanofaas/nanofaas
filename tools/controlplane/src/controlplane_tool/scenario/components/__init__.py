@@ -11,8 +11,6 @@ from controlplane_tool.scenario.components.operations import (
 )
 from controlplane_tool.scenario.components.executor import (
     ScenarioPlanStep,
-    operation_to_plan_step,
-    operations_to_plan_steps,
 )
 from controlplane_tool.scenario.components.environment import (
     ScenarioExecutionContext,
@@ -35,8 +33,6 @@ __all__ = [
     "build_scenario_recipe",
     "compose_recipe",
     "default_managed_vm_request",
-    "operation_to_plan_step",
-    "operations_to_plan_steps",
     "plan_autoscaling_experiment",
     "plan_loadtest_run",
     "recipe_task_ids",

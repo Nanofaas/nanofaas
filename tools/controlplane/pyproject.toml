@@ -18,6 +18,7 @@ dependencies = [
     "rich>=13.8",
     "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
     "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@2311b1c",
+    "proxmox-sdk @ git+https://github.com/miciav/proxmox-sdk.git@9e20703",
     "prefect>=3,<4",
     "shellcraft @ git+https://github.com/miciav/shellcraft.git",
     "tui-toolkit",
@@ -65,6 +66,11 @@ select = ["F", "SLF"]
 "src/controlplane_tool/cli_validation/cli_test_runner.py" = ["SLF001"]
 "src/controlplane_tool/e2e/e2e_runner.py" = ["SLF001"]
 "src/controlplane_tool/scenario/scenarios/two_vm_loadtest.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/k3s_junit_curl.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/helm_stack.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/cli_stack.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/cli_vm.py" = ["SLF001"]
+"src/controlplane_tool/scenario/scenarios/cli_host.py" = ["SLF001"]
 "src/controlplane_tool/tui/app.py" = ["SLF001"]
 "tests/**/*.py" = ["F841", "SLF001"]
 

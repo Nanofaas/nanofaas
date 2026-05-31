@@ -93,6 +93,13 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         supported_runtimes=("java", "rust"),
         grouped_phases=True,
     ),
+    ScenarioDefinition(
+        name="proxmox-vm-loadtest",
+        description="Two-VM Proxmox load test: stack VM + k6 loadgen on Proxmox VE.",
+        requires_vm=True,
+        supported_runtimes=("java", "rust"),
+        grouped_phases=True,
+    ),
 )
 
 SCENARIO_INDEX = {scenario.name: scenario for scenario in SCENARIOS}

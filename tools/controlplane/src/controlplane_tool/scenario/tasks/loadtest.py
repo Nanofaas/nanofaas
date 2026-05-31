@@ -34,7 +34,7 @@ class InstallK6:
     def run(self) -> None:
         result = self.vm.exec_argv(
             self.request,
-            ("bash", "-lc", "which k6 || (curl -fsSL https://pkg.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg && echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main' | sudo tee /etc/apt/sources.list.d/k6.list && sudo apt-get update -qq && sudo apt-get install -y k6)"),
+            ("bash", "-lc", "which k6 || (curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg && echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main' | sudo tee /etc/apt/sources.list.d/k6.list && sudo apt-get update -qq && sudo apt-get install -y k6)"),
             cwd=self.remote_dir,
         )
         if result.return_code != 0:

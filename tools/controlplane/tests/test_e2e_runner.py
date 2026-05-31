@@ -2,21 +2,17 @@ from pathlib import Path
 
 import pytest
 
-from workflow_tasks import bind_workflow_sink, workflow_log
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.e2e.e2e_runner import E2eRunner, E2ePlan, ScenarioPlanStep
+from controlplane_tool.e2e.e2e_runner import E2eRunner, E2ePlan
 from controlplane_tool.scenario.scenario_loader import load_scenario_file
 from controlplane_tool.scenario.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario.components.composer import compose_recipe
-from controlplane_tool.scenario.components import operation_to_plan_step
-from controlplane_tool.scenario.components import RemoteCommandOperation
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_models import ScenarioSpec
-from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell, ShellBackend, ShellExecutionResult
+from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell
 from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_cluster_workflows import build_vm_cluster_prelude_plan
-from workflow_tasks.tasks.models import CommandTaskSpec
 
 
 def test_dry_run_plan_describes_vm_backed_scenario_steps() -> None:
@@ -91,7 +87,10 @@ def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
     rendered = [" ".join(step.command) for step in plan.steps]
     assert not any("e2e-k3s-curl-backend.sh" in command for command in rendered)
     assert any("K8sE2eTest" in command for command in rendered)
-    assert any("controlplane_tool.e2e.k3s_curl_runner" in command for command in rendered)
+    # The honest Workflow runs the k3s-curl verification in-process (a CallableTask)
+    # rather than shelling out to controlplane_tool.e2e.k3s_curl_runner, so its
+    # display step has no subprocess command; assert the step is present by id.
+    assert "tests.run_k3s_curl_checks" in [step.step_id for step in plan.steps]
     assert all(step.step_id for step in plan.steps)
 
 
@@ -340,45 +339,42 @@ def test_buildpack_plan_assigns_step_ids_to_all_executable_steps() -> None:
     assert all(step.step_id for step in plan.steps)
 
 
-def test_helm_stack_execute_resolves_vm_host_for_autoscaling_env() -> None:
-    class CapturingShell(ShellBackend):
-        def __init__(self) -> None:
-            self.calls: list[tuple[list[str], dict[str, str]]] = []
+def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
+    import json
+    from unittest.mock import patch
+    from multipass import FakeBackend, MultipassClient
+    from multipass._backend import CommandResult
+    from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
 
-        def run(self, command, *, cwd=None, env=None, dry_run=False):  # noqa: ANN001
-            self.calls.append((list(command), dict(env or {})))
-            return ShellExecutionResult(command=list(command), return_code=0, env=dict(env or {}), dry_run=dry_run)
+    name = "nanofaas-e2e"
+    info_payload = json.dumps({
+        "info": {
+            name: {
+                "state": "Running",
+                "ipv4": ["10.0.0.1"],
+                "image_release": "24.04",
+                "image_hash": "",
+                "cpu_count": 1,
+                "memory": {},
+                "disks": {},
+                "mounts": {},
+            }
+        }
+    })
+    backend = FakeBackend({
+        ("multipass", "info", name, "--format", "json"): CommandResult(
+            args=[], returncode=0, stdout=info_payload, stderr=""
+        ),
+    })
+    backend.set_default(CommandResult(args=[], returncode=0, stdout="", stderr=""))
 
-    shell = CapturingShell()
+    shell = RecordingShell()
     runner = E2eRunner(
         repo_root=Path("/repo"),
         shell=shell,
         host_resolver=lambda _: "10.0.0.1",
+        multipass_client=MultipassClient(backend=backend),
     )
-    plan = runner.plan(
-        E2eRequest(
-            scenario="helm-stack",
-            runtime="java",
-            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-        )
-    )
-
-    runner.execute(plan)
-
-    autoscaling_call = next(
-        env for command, env in shell.calls if "experiments/autoscaling.py" in " ".join(command)
-    )
-    assert autoscaling_call["NAMESPACE"] == "nanofaas-e2e"
-    assert autoscaling_call["E2E_VM_HOST"] == "10.0.0.1"
-    assert autoscaling_call["E2E_PUBLIC_HOST"] == "10.0.0.1"
-
-
-def test_run_all_bootstraps_vm_once_and_reuses_it() -> None:
-    from unittest.mock import patch
-    from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner
-
-    shell = RecordingShell()
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, host_resolver=lambda _: "10.0.0.1")
 
     with patch.object(K3sCurlRunner, "verify_existing_stack", return_value=None):
         runner.run_all(only=["k3s-junit-curl"], runtime="java")
@@ -514,195 +510,6 @@ def test_k3s_junit_curl_plan_binds_user_kubeconfig_for_cluster_steps() -> None:
     assert all(step.step_id for step in plan.steps)
 
 
-def test_operation_to_plan_step_uses_operation_id_as_step_identity() -> None:
-    request = E2eRequest(
-        scenario="k3s-junit-curl",
-        runtime="java",
-        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
-    )
-    operation = RemoteCommandOperation(
-        operation_id="tests.run_k3s_curl_checks",
-        summary="Run k3s-junit-curl verification",
-        argv=("python", "-m", "controlplane_tool.e2e.k3s_curl_runner", "verify-existing-stack"),
-    )
-
-    step = operation_to_plan_step(operation, request=request, on_k3s_curl_verify=lambda: None)
-
-    assert step.step_id == "tests.run_k3s_curl_checks"
-
-
-def test_operation_to_plan_step_preserves_command_env_and_step_id_after_task_bridge(monkeypatch) -> None:
-    operation = RemoteCommandOperation(
-        operation_id="operation.step",
-        summary="Operation step",
-        argv=("echo", "operation"),
-        env={"SOURCE": "operation"},
-        execution_target="host",
-    )
-    request = E2eRequest(scenario="docker")
-    monkeypatch.setattr(
-        "controlplane_tool.scenario.components.executor.operation_to_task_spec",
-        lambda _operation: CommandTaskSpec(
-            task_id="task.step",
-            summary="Task step",
-            argv=("echo", "task"),
-            env={"SOURCE": "task"},
-        ),
-    )
-
-    step = operation_to_plan_step(operation, request=request)
-
-    assert step.step_id == "task.step"
-    assert step.summary == "Task step"
-    assert step.command == ["echo", "task"]
-    assert step.env == {"SOURCE": "task"}
-
-
-def test_execute_binds_step_context_for_nested_workflow_events(fake_sink) -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plan = E2ePlan(
-        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
-        request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[
-            ScenarioPlanStep(
-                summary="Run top-level verification",
-                command=["echo", "noop"],
-                env={},
-                step_id="tests.run_k3s_curl_checks",
-                action=lambda: workflow_log("nested progress"),
-            )
-        ],
-    )
-
-    with bind_workflow_sink(fake_sink):
-        runner.execute(plan)
-
-    assert len(fake_sink.events) == 1
-    assert fake_sink.events[0].flow_id == "docker"
-    assert fake_sink.events[0].task_id == "tests.run_k3s_curl_checks"
-    assert fake_sink.events[0].line == "nested progress"
-
-
-def test_execute_rejects_step_without_id() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plan = E2ePlan(
-        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
-        request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[
-            ScenarioPlanStep(
-                summary="Broken step",
-                command=["false"],
-                step_id="",
-            )
-        ],
-    )
-
-    with pytest.raises(ValueError, match="step_id"):
-        runner.execute(plan)
-
-
-def test_execute_emits_step_progress_events() -> None:
-    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
-    plan = E2ePlan(
-        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
-        request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[
-            ScenarioPlanStep(summary="First step", command=["echo", "one"], step_id="docker.first"),
-            ScenarioPlanStep(summary="Second step", command=["echo", "two"], step_id="docker.second"),
-        ],
-    )
-
-    events = []
-
-    runner.execute(plan, event_listener=events.append)
-
-    assert [(event.step_index, event.status, event.step.summary) for event in events] == [
-        (1, "running", "First step"),
-        (1, "success", "First step"),
-        (2, "running", "Second step"),
-        (2, "success", "Second step"),
-    ]
-
-
-def test_execute_emits_failure_event_when_step_fails() -> None:
-    shell = ScriptedShell(
-        return_code_map={("false",): 7},
-        stderr_map={("false",): "kaboom"},
-    )
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
-    plan = E2ePlan(
-        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
-        request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken")],
-    )
-
-    events = []
-
-    try:
-        runner.execute(plan, event_listener=events.append)
-    except RuntimeError as exc:
-        assert "Broken step" in str(exc)
-    else:
-        raise AssertionError("expected runner.execute() to fail")
-
-    assert [(event.step_index, event.status, event.step.summary) for event in events] == [
-        (1, "running", "Broken step"),
-        (1, "failed", "Broken step"),
-    ]
-
-
-def test_execute_runs_always_cleanup_steps_after_failure() -> None:
-    shell = ScriptedShell(return_code_map={("false",): 7})
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
-    cleanup_calls: list[str] = []
-    plan = E2ePlan(
-        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
-        request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[
-            ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken"),
-            ScenarioPlanStep(
-                summary="Cleanup step",
-                command=["echo", "cleanup"],
-                step_id="vm.down",
-                action=lambda: cleanup_calls.append("vm.down"),
-                always_run=True,
-            ),
-        ],
-    )
-
-    with pytest.raises(RuntimeError, match="Broken step"):
-        runner.execute(plan)
-
-    assert cleanup_calls == ["vm.down"]
-
-
-def test_execute_reports_main_and_cleanup_failures() -> None:
-    shell = ScriptedShell(return_code_map={("false",): 7})
-    runner = E2eRunner(repo_root=Path("/repo"), shell=shell)
-    plan = E2ePlan(
-        scenario=runner.plan(E2eRequest(scenario="docker", runtime="java")).scenario,
-        request=E2eRequest(scenario="docker", runtime="java"),
-        steps=[
-            ScenarioPlanStep(summary="Broken step", command=["false"], step_id="docker.broken"),
-            ScenarioPlanStep(
-                summary="Cleanup step",
-                command=["echo", "cleanup"],
-                step_id="vm.down",
-                action=lambda: (_ for _ in ()).throw(RuntimeError("cleanup failed")),
-                always_run=True,
-            ),
-        ],
-    )
-
-    with pytest.raises(RuntimeError) as excinfo:
-        runner.execute(plan)
-
-    message = str(excinfo.value)
-    assert "Broken step" in message
-    assert "Cleanup failed:" in message
-    assert "cleanup failed" in message
-
-
 def test_plan_all_returns_typed_builder_for_two_vm_loadtest(tmp_path: Path) -> None:
     """plan_all() must return TwoVmLoadtestPlan for two-vm-loadtest, not generic ScenarioPlan."""
     from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
@@ -758,11 +565,17 @@ def test_plan_all_returns_typed_builder_for_cli_stack(tmp_path: Path) -> None:
 
 
 def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) -> None:
-    """plan_all() must return AzureVmLoadtestPlan for azure-vm-loadtest."""
+    """plan_all() must return AzureVmLoadtestPlan when explicit azure credentials are provided."""
     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import AzureVmLoadtestPlan
 
+    azure_request = VmRequest(
+        lifecycle="azure",
+        name="nanofaas-azure",
+        azure_resource_group="my-rg",
+        azure_location="westeurope",
+    )
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["azure-vm-loadtest"])
+    plans = runner.plan_all(only=["azure-vm-loadtest"], vm_request=azure_request)
 
     assert len(plans) == 1
     assert isinstance(plans[0], AzureVmLoadtestPlan), (
@@ -772,10 +585,67 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
     assert "vm.stack.ensure_running" in plans[0].task_ids
 
 
+def test_plan_all_skips_azure_vm_loadtest_without_credentials(tmp_path: Path) -> None:
+    """plan_all() must skip azure-vm-loadtest when no vm_request is provided."""
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["azure-vm-loadtest"])
+
+    assert len(plans) == 0
+
+
+def test_plan_all_returns_typed_builder_for_proxmox_vm_loadtest(tmp_path: Path) -> None:
+    """plan_all() must return ProxmoxVmLoadtestPlan when explicit proxmox credentials are provided."""
+    from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import ProxmoxVmLoadtestPlan
+
+    proxmox_request = VmRequest(
+        lifecycle="proxmox",
+        name="nanofaas-proxmox",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_password="secret",
+    )
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["proxmox-vm-loadtest"], vm_request=proxmox_request)
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], ProxmoxVmLoadtestPlan)
+    assert "loadgen.run_k6" in plans[0].task_ids
+
+
+def test_plan_all_skips_proxmox_vm_loadtest_without_credentials(tmp_path: Path) -> None:
+    """plan_all() must skip proxmox-vm-loadtest when no vm_request is provided."""
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    plans = runner.plan_all(only=["proxmox-vm-loadtest"])
+
+    assert len(plans) == 0
+
+
+def test_plan_all_propagates_proxmox_credentials_to_loadgen_vm(tmp_path) -> None:
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    vm_request = VmRequest(
+        lifecycle="proxmox",
+        proxmox_host="pve.example.com",
+        proxmox_node="venus",
+        proxmox_user="root@pam",
+        proxmox_password="secret",
+        proxmox_template_id=101,
+        proxmox_ssh_key_path="/home/user/.ssh/id_rsa",
+    )
+    plans = runner.plan_all(only=["proxmox-vm-loadtest"], vm_request=vm_request)
+
+    assert len(plans) == 1
+    loadgen_vm = plans[0].request.loadgen_vm
+    assert loadgen_vm.proxmox_host == "pve.example.com"
+    assert loadgen_vm.proxmox_node == "venus"
+    assert loadgen_vm.proxmox_user == "root@pam"
+    assert loadgen_vm.proxmox_password == "secret"
+    assert loadgen_vm.proxmox_template_id == 101
+    assert loadgen_vm.proxmox_ssh_key_path == "/home/user/.ssh/id_rsa"
+
+
 def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) -> None:
     """E2eRunner.run() must forward event_listener when dispatching to a TwoVmLoadtestPlan."""
     from unittest.mock import patch, MagicMock
-    from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
 
     captured: dict = {}
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
@@ -1011,3 +881,29 @@ def test_plan_docker_returns_e2e_plan(tmp_path: Path) -> None:
     plan = runner.plan(E2eRequest(scenario="docker", runtime="java"))
 
     assert isinstance(plan, E2ePlan)
+
+
+def test_e2e_plan_run_executes_host_commands_via_workflow(tmp_path: Path) -> None:
+    """E2ePlan.run() executes the local steps as host CommandTasks on the shell."""
+    shell = RecordingShell()
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(scenario="buildpack", runtime="java"))
+
+    plan.run()
+
+    # Both buildpack local steps are run on the host shell, in order.
+    assert shell.commands[0][:2] == ["./gradlew", ":function-runtime:bootBuildImage"]
+    assert any(cmd[:1] == ["./scripts/controlplane.sh"] for cmd in shell.commands)
+
+
+def test_e2e_plan_run_stops_on_first_failed_command(tmp_path: Path) -> None:
+    """E2ePlan.run() raises on the first non-zero exit and stops."""
+    shell = ScriptedShell(
+        return_code_map={("./gradlew", ":function-runtime:bootBuildImage",
+                          "-PfunctionRuntimeImage=nanofaas/function-runtime:buildpack"): 3},
+    )
+    runner = E2eRunner(repo_root=Path("/repo"), shell=shell, manifest_root=tmp_path)
+    plan = runner.plan(E2eRequest(scenario="buildpack", runtime="java"))
+
+    with pytest.raises(Exception):
+        plan.run()

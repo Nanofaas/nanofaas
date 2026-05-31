@@ -51,3 +51,74 @@ def test_azure_vm_adapter_factory() -> None:
 
     info = adapter.ensure_running(config)
     assert info.host == "4.5.6.7"
+
+
+def test_proxmox_vm_adapter_factory() -> None:
+    from pathlib import Path
+    from workflow_tasks.vm.proxmox import ProxmoxVmProvider
+    from workflow_tasks.vm.adapters import ProxmoxVmAdapter
+
+    provider = ProxmoxVmProvider(repo_root=Path("/repo"))
+    adapter = ProxmoxVmAdapter(provider)
+    assert adapter._lifecycle == "proxmox"
+
+
+def test_proxmox_vm_adapter_propagates_credentials_to_ensure_running() -> None:
+    from workflow_tasks.vm.adapters import ProxmoxVmAdapter
+    from workflow_tasks.vm.models import VmRequest
+
+    orch = _make_orchestrator("10.0.0.5")
+    credentials = VmRequest(
+        lifecycle="proxmox",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_user="root@pam",
+        proxmox_password="secret",
+        proxmox_template_id=101,
+    )
+    adapter = ProxmoxVmAdapter(orch, credentials=credentials)
+    config = VmConfig(name="nanofaas-proxmox", cpus=4, memory="8G", disk="30G")
+
+    adapter.ensure_running(config)
+
+    call_args = orch.ensure_running.call_args[0][0]
+    assert call_args.proxmox_host == "192.168.1.100"
+    assert call_args.proxmox_node == "pve"
+    assert call_args.proxmox_password == "secret"
+    assert call_args.proxmox_template_id == 101
+    assert call_args.name == "nanofaas-proxmox"
+    assert call_args.cpus == 4
+
+
+def test_proxmox_vm_adapter_propagates_credentials_to_destroy() -> None:
+    from workflow_tasks.vm.adapters import ProxmoxVmAdapter
+    from workflow_tasks.vm.models import VmRequest
+
+    orch = _make_orchestrator()
+    credentials = VmRequest(
+        lifecycle="proxmox",
+        proxmox_host="192.168.1.100",
+        proxmox_node="pve",
+        proxmox_password="secret",
+    )
+    adapter = ProxmoxVmAdapter(orch, credentials=credentials)
+    info = VmInfo(name="nanofaas-proxmox-loadgen", host="10.0.0.5", user="ubuntu", home="/home/ubuntu")
+
+    adapter.destroy(info)
+
+    call_args = orch.teardown.call_args[0][0]
+    assert call_args.proxmox_host == "192.168.1.100"
+    assert call_args.proxmox_password == "secret"
+    assert call_args.name == "nanofaas-proxmox-loadgen"
+
+
+def test_vm_lifecycle_adapter_without_credentials_uses_bare_request() -> None:
+    orch = _make_orchestrator("10.0.0.1")
+    adapter = VmLifecycleAdapter(orch, lifecycle="multipass")
+    config = VmConfig(name="vm1", cpus=2, memory="4G", disk="20G")
+
+    adapter.ensure_running(config)
+
+    call_args = orch.ensure_running.call_args[0][0]
+    assert call_args.lifecycle == "multipass"
+    assert call_args.name == "vm1"

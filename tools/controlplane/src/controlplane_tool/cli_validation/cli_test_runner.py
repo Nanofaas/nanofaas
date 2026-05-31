@@ -52,8 +52,22 @@ class CliTestRunner:
             del commands[initial_count:]
 
     def _execute_steps(self, plan: CliTestPlan) -> None:
+        # Resolve each step's command/env exactly as before (multipass-ip
+        # placeholders only when request.vm is set), then run them as an ordered
+        # workflow_tasks.Workflow of host CommandTasks. The Workflow stops at the
+        # first non-zero exit, preserving the prior stop-on-failure behavior; the
+        # finally-teardown in run() still fires because run() raises out of here.
+        from workflow_tasks import (
+            CommandTask,
+            CommandTaskSpec,
+            HostCommandTaskExecutor,
+            Workflow,
+        )
+
+        host_executor = HostCommandTaskExecutor(self.shell)
         ip_cache: dict[str, str] = {}
-        for step in plan.steps:
+        tasks: list[CommandTask] = []
+        for index, step in enumerate(plan.steps):
             command = step.command
             env = step.env
             if plan.request.vm is not None:
@@ -69,16 +83,31 @@ class CliTestRunner:
                     ip_cache,
                     self.e2e_runner.vm,
                 )
-            result = self.shell.run(
-                command,
-                cwd=self.paths.workspace_root,
-                env=env,
-                dry_run=False,
-            )
-            if result.return_code != 0:
-                raise RuntimeError(
-                    f"cli-test scenario '{plan.request.scenario}' failed at step '{step.summary}'"
+            task_id = step.step_id or self._fallback_task_id(step, index)
+            tasks.append(
+                CommandTask(
+                    task_id=task_id,
+                    title=step.summary,
+                    spec=CommandTaskSpec(
+                        task_id=task_id,
+                        summary=step.summary,
+                        argv=tuple(command),
+                        target="host",
+                        env=dict(env),
+                        cwd=self.paths.workspace_root,
+                    ),
+                    executor=host_executor,
                 )
+            )
+        Workflow(tasks=tasks).run()
+
+    @staticmethod
+    def _fallback_task_id(step: ScenarioPlanStep, index: int) -> str:
+        slug = "".join(
+            char if char.isalnum() else "-" for char in step.summary.lower()
+        ).strip("-")
+        slug = "-".join(filter(None, slug.split("-"))) or "step"
+        return f"{index:02d}-{slug}"
 
     def _should_teardown(self, vm_request: VmRequest | None, *, keep_vm: bool) -> bool:
         return vm_request is not None and vm_request.lifecycle == "multipass" and not keep_vm

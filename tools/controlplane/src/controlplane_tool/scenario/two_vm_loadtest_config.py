@@ -4,6 +4,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from workflow_tasks.loadtest.models import PrometheusQuery
+from workflow_tasks.loadtest.two_vm import (  # noqa: F401
+    LOADTEST_SCENARIOS,
+    TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+    TWO_VM_PROMETHEUS_NODE_PORT,
+    TWO_VM_REMOTE_DIR_NAME,
+)
 
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
@@ -18,24 +25,21 @@ LOADTEST_PROMETHEUS_QUERIES: tuple[PrometheusQuery, ...] = (
     PrometheusQuery("jvm_memory_used_bytes", "jvm_memory_used_bytes"),
 )
 
-LOADTEST_TASK_TITLES: dict[str, str] = {
-    "vm.stack.ensure_running": "Ensure stack VM running",
-    "vm.loadgen.ensure_running": "Ensure loadgen VM running",
-    "loadgen.install_k6": "Install k6 on loadgen VM",
-    "loadgen.run_k6": "Run k6 loadtest",
-    "loadgen.fetch_results": "Fetch k6 results from loadgen VM",
-    "metrics.prometheus_snapshot": "Capture Prometheus snapshots",
-    "loadtest.write_report": "Write loadtest report",
-    "vm.loadgen.destroy": "Destroy loadgen VM",
-}
+LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = (
+    "vm.stack.ensure_running",
+    "vm.loadgen.ensure_running",
+    "loadgen.install_k6",
+    "loadgen.run_k6",
+    "loadgen.fetch_results",
+    "metrics.prometheus_snapshot",
+    "loadtest.write_report",
+    "vm.loadgen.destroy",
+)
 
-LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = tuple(LOADTEST_TASK_TITLES)
-
-
-TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT = 30080
-TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT = 30081
-TWO_VM_PROMETHEUS_NODE_PORT = 30090
-TWO_VM_REMOTE_DIR_NAME = "two-vm-loadtest"
+def remap_loadtest_component_id(scenario_name: str, component_id: str) -> str:
+    if scenario_name in LOADTEST_SCENARIOS and component_id == "cli.fn_apply_selected":
+        return "functions.register"
+    return component_id
 
 
 @dataclass(frozen=True, slots=True)

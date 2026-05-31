@@ -65,6 +65,13 @@ def test_repo_sync_ssh_rsh_with_key() -> None:
     assert "id_ed25519" in rsh
 
 
+def test_repo_sync_ssh_rsh_with_port_and_key() -> None:
+    key = Path("/home/user/.ssh/id_ed25519")
+    rsh = repo_sync_ssh_rsh(key, port=20001)
+    assert "-p 20001" in rsh
+    assert f"-i {key}" in rsh
+
+
 def test_repo_rsync_command_no_ssh_rsh() -> None:
     cmd = repo_rsync_command(
         source=Path("/local/repo"),
