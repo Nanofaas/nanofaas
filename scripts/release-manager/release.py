@@ -4,7 +4,6 @@ import subprocess
 import shutil
 import re
 import argparse
-import shlex
 from pathlib import Path
 import questionary
 from rich.console import Console
@@ -103,28 +102,6 @@ def run_with_disk_retry(cmd, retries=1):
         console.print("[dim]--- stderr ---[/dim]")
         console.print(f"[dim]{err.rstrip()}[/dim]")
     sys.exit(1)
-
-def resolve_native_active_processors():
-    value = os.getenv("NATIVE_ACTIVE_PROCESSORS", "").strip()
-    if value:
-        try:
-            parsed = int(value)
-            if parsed >= 1:
-                return str(parsed)
-        except ValueError:
-            pass
-    detected = os.cpu_count() or 4
-    if detected < 1:
-        detected = 4
-    return str(detected)
-
-def resolve_native_image_build_args():
-    explicit = os.getenv("NATIVE_IMAGE_BUILD_ARGS", "").strip()
-    if explicit:
-        return explicit
-    xmx = os.getenv("NATIVE_IMAGE_XMX", "8g").strip() or "8g"
-    active_processors = resolve_native_active_processors()
-    return f"-H:+AddAllCharsets -J-Xmx{xmx} -J-XX:ActiveProcessorCount={active_processors}"
 
 def smoke_test_service_image(image, component, timeout_seconds=25, allowed_error_patterns=None):
     """
@@ -226,127 +203,24 @@ def generate_release_notes(new_v, commits):
     return notes.strip()
 
 def build_and_push_arm64(version):
-    """Local ARM64 builds for Mac M-series users"""
+    """Local ARM64 builds for Mac M-series users — delegates to controlplane-tool images."""
     console.print("\n[bold]Starting local ARM64 builds...[/bold]")
-    
     tag = f"v{version}"
     base_image = f"{REGISTRY}/{GH_OWNER}/{GH_REPO}"
-    
-    oci_source = f"https://github.com/{GH_OWNER}/{GH_REPO}"
-    platform = "linux/arm64"
-    # Paketo "builder-jammy-*" images are amd64-only; use a multi-arch builder for real ARM64 native images.
-    builder_image = "dashaun/builder:tiny"
-    run_image = "paketobuildpacks/run-jammy-tiny:latest"
-    native_image_build_args = shlex.quote(resolve_native_image_build_args())
 
-    # 1. Control Plane
-    cp_image = f"{base_image}/control-plane:{tag}-arm64"
-    console.print(f"[blue]Building {cp_image}...[/blue]")
-    run_with_disk_retry(
-        f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./scripts/controlplane.sh image --profile all -- "
-        f"-PcontrolPlaneImage={cp_image} -PimagePlatform={platform} "
-        f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
-    )
+    run_with_disk_retry(f"./scripts/controlplane.sh images --arch arm64 --arch-suffix --tag {tag}")
+
+    # Post-build smoke tests for the two service images (images are already built+pushed;
+    # the local images still exist, so the smoke run validates them).
     smoke_test_service_image(
-        cp_image,
+        f"{base_image}/control-plane:{tag}-arm64",
         "control-plane",
         allowed_error_patterns=[
             "Error creating bean with name 'kubernetesClient'",
             "io.fabric8.kubernetes.client.KubernetesClientException",
         ],
     )
-    run_command(f"docker push {cp_image}")
-
-    # 2. Java Runtime (referenced in job template)
-    jr_image = f"{base_image}/function-runtime:{tag}-arm64"
-    console.print(f"[blue]Building {jr_image}...[/blue]")
-    try:
-        run_with_disk_retry(
-            f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./gradlew :function-runtime:bootBuildImage "
-            f"-PfunctionRuntimeImage={jr_image} -PimagePlatform={platform} "
-            f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
-        )
-        smoke_test_service_image(jr_image, "function-runtime")
-        run_command(f"docker push {jr_image}")
-    except:
-        console.print("[yellow]Warning: Could not build function-runtime, skipping.[/yellow]")
-
-    # 3. Watchdog
-    wd_image = f"{base_image}/watchdog:{tag}-arm64"
-    console.print(f"[blue]Building {wd_image}...[/blue]")
-    try:
-        run_command(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {wd_image} watchdog/"
-        )
-        run_command(f"docker push {wd_image}")
-    except:
-        console.print("[yellow]Warning: Could not build watchdog, skipping.[/yellow]")
-
-    # 4. Java Demo Functions
-    java_examples = {
-        "word-stats": ":examples:java:word-stats:bootBuildImage",
-        "json-transform": ":examples:java:json-transform:bootBuildImage",
-    }
-    for example, gradle_task in java_examples.items():
-        img = f"{base_image}/java-{example}:{tag}-arm64"
-        console.print(f"[blue]Building Java {example} ({img})...[/blue]")
-        run_with_disk_retry(
-            f"NATIVE_IMAGE_BUILD_ARGS={native_image_build_args} BP_OCI_SOURCE={oci_source} ./gradlew {gradle_task} "
-            f"-PfunctionImage={img} -PimagePlatform={platform} "
-            f"-PimageBuilder={builder_image} -PimageRunImage={run_image}"
-        )
-        run_command(f"docker push {img}")
-
-    # 5. Python Demo Functions
-    for example in ["word-stats", "json-transform"]:
-        img = f"{base_image}/python-{example}:{tag}-arm64"
-        console.print(f"[blue]Building Python {example} ({img})...[/blue]")
-        run_command(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {img} -f examples/python/{example}/Dockerfile ."
-        )
-        run_command(f"docker push {img}")
-
-    # 6. Go Demo Functions
-    for example in ["word-stats", "json-transform"]:
-        img = f"{base_image}/go-{example}:{tag}-arm64"
-        console.print(f"[blue]Building Go {example} ({img})...[/blue]")
-        run_command(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {img} -f examples/go/{example}/Dockerfile ."
-        )
-        run_command(f"docker push {img}")
-
-    # 7. Exec (Bash) Demo Functions
-    for example in ["word-stats", "json-transform"]:
-        img = f"{base_image}/exec-{example}:{tag}-arm64"
-        console.print(f"[blue]Building Exec {example} ({img})...[/blue]")
-        run_command(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {img} -f examples/bash/{example}/Dockerfile ."
-        )
-        run_command(f"docker push {img}")
-
-    # 8. JavaScript Demo Functions
-    for example in ["word-stats", "json-transform"]:
-        img = f"{base_image}/javascript-{example}:{tag}-arm64"
-        console.print(f"[blue]Building JavaScript {example} ({img})...[/blue]")
-        run_command(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {img} -f examples/javascript/{example}/Dockerfile ."
-        )
-        run_command(f"docker push {img}")
-
-    # 9. Java Lite Demo Functions (native image via multi-stage Dockerfile)
-    for example in ["word-stats", "json-transform"]:
-        img = f"{base_image}/java-lite-{example}:{tag}-arm64"
-        console.print(f"[blue]Building Java Lite {example} native image ({img})...[/blue]")
-        run_with_disk_retry(
-            f"docker build --platform {platform} --label org.opencontainers.image.source={oci_source} "
-            f"-t {img} -f examples/java/{example}-lite/Dockerfile ."
-        )
-        run_command(f"docker push {img}")
+    smoke_test_service_image(f"{base_image}/function-runtime:{tag}-arm64", "function-runtime")
 
     console.print("[green]✓ Local ARM64 images pushed to GHCR.[/green]")
 
