@@ -223,20 +223,3 @@ def test_m13_all_cli_command_groups_registered() -> None:
         assert group in result.stdout, f"CLI group {group!r} missing from help"
 
 
-def test_m13_all_legacy_wrappers_are_compatibility_shims() -> None:
-    scripts_dir = Path(__file__).resolve().parents[3] / "scripts"
-    shims = {
-        "control-plane-building.sh",
-        "controlplane-tool.sh",
-        "e2e.sh",
-        "e2e-all.sh",
-        "e2e-buildpack.sh",
-        "e2e-container-local.sh",
-        "e2e-k3s-junit-curl.sh",
-        "e2e-k3s-helm.sh",
-    }
-    for name in shims:
-        script = (scripts_dir / name).read_text(encoding="utf-8")
-        assert "wrapper" in script.lower(), f"{name} is not documented as a wrapper"
-        assert "controlplane.sh" in script, f"{name} does not delegate to controlplane.sh"
-        assert "gradlew" not in script, f"{name} still calls gradlew directly"

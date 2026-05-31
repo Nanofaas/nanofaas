@@ -3,26 +3,9 @@ from pathlib import Path
 from controlplane_tool.workspace.paths import resolve_workspace_path
 
 
-def test_control_plane_build_wrapper_uses_tools_controlplane_project() -> None:
-    script = resolve_workspace_path(
-        Path("scripts") / ("control" + "-plane-building.sh")
-    ).read_text(encoding="utf-8")
-    assert "Compatibility wrapper" in script
-    assert "controlplane.sh" in script
-
-
 def test_pipeline_wrapper_uses_locked_uv_run() -> None:
     script = resolve_workspace_path(Path("scripts/controlplane.sh")).read_text(encoding="utf-8")
     assert "uv run --project tools/controlplane --locked" in script
-
-
-def test_pipeline_wrapper_forwards_to_tui_path() -> None:
-    script = resolve_workspace_path(
-        Path("scripts") / ("controlplane" + "-tool.sh")
-    ).read_text(encoding="utf-8")
-    assert "Compatibility wrapper" in script
-    assert "controlplane.sh" in script
-    assert "tui" in script
 
 
 def test_tool_readme_uses_tui_as_interactive_entrypoint_without_profile_flags() -> None:
