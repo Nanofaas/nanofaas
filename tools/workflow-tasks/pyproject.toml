@@ -43,10 +43,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# NOTE: --cov-fail-under temporarily lowered to 70 during the component-library migration
-# (sub-project 2): components are moving in as command-string builders with partial tests.
-# Restore to 90 once comprehensive component tests land (sub-project 4 cleanup).
-addopts = "-q --cov=workflow_tasks --cov-report=term-missing --cov-fail-under=70"
+addopts = "-q --cov=workflow_tasks --cov-report=term-missing --cov-fail-under=90"
 
 [tool.coverage.run]
 omit = ["*/devtools/quality.py"]
