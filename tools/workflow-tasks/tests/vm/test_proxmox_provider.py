@@ -475,6 +475,9 @@ def test_ensure_running_allows_slow_proxmox_guest_agent(
         )
     ]
     mock_routing_cls.from_key.return_value = mgr_mock
+    # Slow guest agent: wait_ready raises once before succeeding; the
+    # ensure_running retry wrapper must tolerate it (no per-call timeout).
+    vm_mock.wait_ready.side_effect = [RuntimeError("qemu guest agent not ready"), None]
     provider = _make_provider()
     private_key = tmp_path / "id_ed25519"
     public_key = tmp_path / "id_ed25519.pub"
@@ -484,8 +487,10 @@ def test_ensure_running_allows_slow_proxmox_guest_agent(
 
     provider.ensure_running(req)
 
-    vm_mock.wait_ready.assert_called_once_with(timeout=300.0)
-    vm_mock.wait_for_ip.assert_called_once_with(timeout=300.0)
+    # Retried until the slow agent became ready (called twice, no per-call timeout).
+    assert vm_mock.wait_ready.call_count == 2
+    vm_mock.wait_ready.assert_called_with()
+    vm_mock.wait_for_ip.assert_called_once_with()
 
 
 @patch("workflow_tasks.vm.proxmox.socket.create_connection")
