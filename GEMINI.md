@@ -56,9 +56,9 @@ The system consists of four main modules:
 | **Build All** | `./gradlew build` |
 | **Run Tests** | `./gradlew test` |
 | **Run Specific Test** | `./gradlew :control-plane:test --tests com.nanofaas.controlplane.core.QueueManagerTest` |
-| **Local E2E** | `./scripts/e2e.sh` (Uses Testcontainers) |
-| **Buildpack E2E** | `./scripts/e2e-buildpack.sh` |
-| **K8s E2E** | `./scripts/e2e-k3s-junit-curl.sh` or `./gradlew k8sE2e` |
+| **Local E2E** | `./scripts/controlplane.sh e2e run docker` (Uses Testcontainers) |
+| **Buildpack E2E** | `./scripts/controlplane.sh e2e run buildpack` |
+| **K8s E2E** | `./scripts/controlplane.sh e2e run k3s-junit-curl` or `./gradlew k8sE2e` |
 
 ### Running Locally
 

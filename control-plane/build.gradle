@@ -140,7 +140,7 @@ if (k8sDisk) {
 if (k8sRemoteDir) {
     k8sEnv.REMOTE_DIR = k8sRemoteDir.toString()
 }
-def k8sE2eCommand = ['bash', 'scripts/e2e-k3s-junit-curl.sh']
+def k8sE2eCommand = ['bash', 'scripts/controlplane.sh', 'e2e', 'run', 'k3s-junit-curl']
 if (!k8sCleanupVm) {
     k8sE2eCommand << '--no-cleanup-vm'
 }

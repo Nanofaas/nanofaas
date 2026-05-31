@@ -125,7 +125,7 @@ run_deploy_case() {
         LOADTEST_WORKLOADS="${LOADTEST_WORKLOADS}" \
         LOADTEST_RUNTIMES="${LOADTEST_RUNTIMES}" \
         CONTROL_PLANE_RUST_DIR="${CONTROL_PLANE_RUST_DIR:-}" \
-        bash "${PROJECT_ROOT}/scripts/e2e-k3s-helm.sh"
+        bash "${PROJECT_ROOT}/scripts/controlplane.sh" e2e run helm-stack
     ) > "${deploy_log}" 2>&1
 }
 
