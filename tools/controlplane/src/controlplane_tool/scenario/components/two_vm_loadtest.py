@@ -5,15 +5,15 @@ from pathlib import Path
 
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from workflow_tasks.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
-from controlplane_tool.scenario.components.bootstrap import (
+from workflow_tasks.components.bootstrap import (
     plan_loadtest_install_k6,
     plan_vm_ensure_running,
     plan_vm_provision_base,
 )
-from controlplane_tool.scenario.components.cleanup import plan_vm_down
+from workflow_tasks.components.cleanup import plan_vm_down
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
-from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
-from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
+from workflow_tasks.components.models import ScenarioComponentDefinition
+from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
     two_vm_load_stages,

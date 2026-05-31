@@ -9,12 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from controlplane_tool.scenario.components import bootstrap as bootstrap_components
-from controlplane_tool.scenario.components import helm as helm_components
-from controlplane_tool.scenario.components import images as image_components
-from controlplane_tool.scenario.components import namespace as namespace_components
+from workflow_tasks.components import bootstrap as bootstrap_components
+from workflow_tasks.components import helm as helm_components
+from workflow_tasks.components import images as image_components
+from workflow_tasks.components import namespace as namespace_components
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
-from controlplane_tool.scenario.components.operations import RemoteCommandOperation, ScenarioOperation
+from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from workflow_tasks.shell import ShellExecutionResult
 from workflow_tasks.vm.orchestrator import VmOrchestrator

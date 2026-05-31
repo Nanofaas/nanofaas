@@ -3,7 +3,7 @@ composer.py — Assembles scenario recipes from registered components.
 """
 from __future__ import annotations
 
-from controlplane_tool.scenario.components.models import (
+from workflow_tasks.components.models import (
     ScenarioComponentDefinition,
     ScenarioRecipe,
     _planner_not_implemented,
@@ -15,12 +15,12 @@ _registry = ComponentRegistry()
 
 def _load_all_components() -> None:
     """Import all component modules and register their constants."""
-    from controlplane_tool.scenario.components.bootstrap import (
+    from workflow_tasks.components.bootstrap import (
         VM_ENSURE_RUNNING, VM_PROVISION_BASE, REPO_SYNC_TO_VM,
         REGISTRY_ENSURE_CONTAINER, K3S_INSTALL, K3S_CONFIGURE_REGISTRY,
         LOADTEST_INSTALL_K6,
     )
-    from controlplane_tool.scenario.components.cleanup import (
+    from workflow_tasks.components.cleanup import (
         UNINSTALL_CONTROL_PLANE, UNINSTALL_FUNCTION_RUNTIME,
         VERIFY_CLI_PLATFORM_STATUS_FAILS, VM_DOWN,
     )
@@ -29,11 +29,11 @@ def _load_all_components() -> None:
         CLI_FN_APPLY_SELECTED, CLI_FN_LIST_SELECTED, CLI_FN_INVOKE_SELECTED,
         CLI_FN_ENQUEUE_SELECTED, CLI_FN_DELETE_SELECTED,
     )
-    from controlplane_tool.scenario.components.helm import (
+    from workflow_tasks.components.helm import (
         HELM_DEPLOY_CONTROL_PLANE, HELM_DEPLOY_FUNCTION_RUNTIME,
     )
-    from controlplane_tool.scenario.components.images import BUILD_CORE, BUILD_SELECTED_FUNCTIONS
-    from controlplane_tool.scenario.components.namespace import (
+    from workflow_tasks.components.images import BUILD_CORE, BUILD_SELECTED_FUNCTIONS
+    from workflow_tasks.components.namespace import (
         NAMESPACE_INSTALL,
         NAMESPACE_UNINSTALL,
     )
@@ -46,7 +46,7 @@ def _load_all_components() -> None:
         LOADTEST_WRITE_REPORT,
         METRICS_PROMETHEUS_SNAPSHOT,
     )
-    from controlplane_tool.scenario.components.verification import (
+    from workflow_tasks.components.verification import (
         plan_run_k3s_curl_checks, plan_run_k8s_junit,
         plan_loadtest_run, plan_autoscaling_experiment,
     )

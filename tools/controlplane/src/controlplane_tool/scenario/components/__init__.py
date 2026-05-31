@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from controlplane_tool.scenario.components.composer import compose_recipe, recipe_task_ids
-from controlplane_tool.scenario.components.models import (
+from workflow_tasks.components.models import (
     ScenarioComponentDefinition,
     ScenarioRecipe,
 )
-from controlplane_tool.scenario.components.operations import (
+from workflow_tasks.components.operations import (
     RemoteCommandOperation,
     ScenarioOperation,
 )
@@ -18,7 +18,7 @@ from controlplane_tool.scenario.components.environment import (
     resolve_scenario_environment,
 )
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
-from controlplane_tool.scenario.components.verification import (
+from workflow_tasks.components.verification import (
     plan_autoscaling_experiment,
     plan_loadtest_run,
 )

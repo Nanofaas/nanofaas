@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.scenario.components import bootstrap, helm, namespace as namespace_components
-from controlplane_tool.scenario.components import images, cleanup
+from workflow_tasks.components import bootstrap, helm, namespace as namespace_components
+from workflow_tasks.components import images, cleanup
 from controlplane_tool.scenario.components import resolve_scenario_environment
 from controlplane_tool.scenario.components.composer import (
     compose_recipe,
