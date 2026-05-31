@@ -30,9 +30,9 @@ This app is implemented in Python and managed with `uv`.
 From repository root:
 
 ```bash
-scripts/controlplane-tool.sh --help
-scripts/controlplane-tool.sh --profile-name dev
-scripts/controlplane-tool.sh --profile-name dev --use-saved-profile
+scripts/controlplane.sh tui --help
+scripts/controlplane.sh tui --profile-name dev
+scripts/controlplane.sh tui --profile-name dev --use-saved-profile
 ```
 
 ## CLI options

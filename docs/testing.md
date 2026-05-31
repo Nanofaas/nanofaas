@@ -186,7 +186,7 @@ E2E_KUBECONFIG_SERVER=<optional-https-server-url>
 Examples:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/e2e-k3s-junit-curl.sh
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-junit-curl
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
@@ -242,37 +242,37 @@ if [[ "${E2E_VM_LIFECYCLE:-multipass}" == "multipass" ]]; then
 fi
 ```
 
-### K3s JUnit Curl E2E (`scripts/e2e-k3s-junit-curl.sh`)
+### K3s JUnit Curl E2E (`scripts/controlplane.sh e2e run k3s-junit-curl`)
 
 Deploys the shared Helm stack on k3s, runs the curl-based API checks, then runs `K8sE2eTest` against the same installation.
 The script is a wrapper over `scripts/controlplane.sh e2e run k3s-junit-curl`.
 
 ```bash
-./scripts/e2e-k3s-junit-curl.sh
-./scripts/e2e-k3s-junit-curl.sh --no-cleanup-vm
+./scripts/controlplane.sh e2e run k3s-junit-curl
+./scripts/controlplane.sh e2e run k3s-junit-curl --no-cleanup-vm
 ```
 
-### Docker E2E (`scripts/e2e.sh`)
+### Docker E2E (`scripts/controlplane.sh e2e run docker`)
 
 Runs control-plane + function-runtime in local Docker containers using
 Testcontainers and RestAssured. No Kubernetes needed.
 The script is a wrapper over `scripts/controlplane.sh e2e run docker`.
 
 ```bash
-./scripts/e2e.sh
+./scripts/controlplane.sh e2e run docker
 ```
 
 The SDK parity suite `SdkExamplesE2eTest` now covers Java Spring SDK, Java lite SDK,
 and Go SDK example containers against the same control-plane flows.
 
-### Buildpack E2E (`scripts/e2e-buildpack.sh`)
+### Buildpack E2E (`scripts/controlplane.sh e2e run buildpack`)
 
 Same as Docker E2E but builds images using Cloud Native Buildpacks instead
 of Dockerfiles.
 The script is a wrapper over `scripts/controlplane.sh e2e run buildpack`.
 
 ```bash
-./scripts/e2e-buildpack.sh
+./scripts/controlplane.sh e2e run buildpack
 ```
 
 ### Kubernetes E2E (JUnit on k3s)
@@ -281,7 +281,7 @@ JUnit-based E2E now runs as the second verifier inside `k3s-junit-curl`, against
 
 ```bash
 scripts/controlplane.sh e2e run k3s-junit-curl
-./scripts/e2e-k3s-junit-curl.sh
+./scripts/controlplane.sh e2e run k3s-junit-curl
 ./gradlew k8sE2e
 ```
 
@@ -310,15 +310,14 @@ Preset-backed and scenario-backed deploy runs iterate the full resolved function
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 ```
 
-### Load Testing (`scripts/e2e-k3s-helm.sh` + `scripts/e2e-loadtest.sh`)
+### Load Testing (`scripts/controlplane.sh e2e run helm-stack` + `scripts/e2e-loadtest.sh`)
 
 Full Helm-based deployment with k6 load testing and Grafana dashboard.
 See [docs/e2e-tutorial.md](e2e-tutorial.md) for a detailed walkthrough.
-`scripts/e2e-k3s-helm.sh` is a wrapper over `scripts/controlplane.sh e2e run helm-stack`.
 `scripts/e2e-loadtest.sh` is a compatibility wrapper over `experiments/e2e-loadtest.sh`, not over `scripts/controlplane.sh loadtest run`.
 
 ```bash
-./scripts/e2e-k3s-helm.sh     # deploy nanofaas with Helm
+./scripts/controlplane.sh e2e run helm-stack     # deploy nanofaas with Helm
 ./scripts/e2e-loadtest.sh     # run k6 load tests + Grafana
 ./scripts/e2e-loadtest.sh --profile demo-java --dry-run
 ./scripts/e2e-loadtest.sh --help
@@ -462,9 +461,9 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | CLI Stack E2E | Canonical VM-backed CLI stack validation | SSH key; Multipass optional for managed VM lifecycle | `scripts/controlplane.sh cli-test run cli-stack` |
 | Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | SSH key + Helm on host; Multipass optional | `scripts/controlplane.sh cli-test run host-platform` |
 | Host CLI Deploy E2E | Host-only deploy build+push+register | Docker + Python 3 | `scripts/controlplane.sh cli-test run deploy-host` |
-| K3s JUnit Curl E2E | Shared Helm deploy + curl API checks + `K8sE2eTest` | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-junit-curl.sh` |
-| Docker E2E | Core flow | Docker | `./scripts/e2e.sh` |
-| Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/e2e-buildpack.sh` |
-| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-junit-curl.sh` or `./gradlew k8sE2e` |
-| Load test | Performance | SSH + k6; Multipass optional for managed VM lifecycle | `./scripts/e2e-k3s-helm.sh && ./scripts/e2e-loadtest.sh` |
+| K3s JUnit Curl E2E | Shared Helm deploy + curl API checks + `K8sE2eTest` | SSH; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run k3s-junit-curl` |
+| Docker E2E | Core flow | Docker | `./scripts/controlplane.sh e2e run docker` |
+| Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/controlplane.sh e2e run buildpack` |
+| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run k3s-junit-curl` or `./gradlew k8sE2e` |
+| Load test | Performance | SSH + k6; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run helm-stack && ./scripts/e2e-loadtest.sh` |
 | Control-plane module matrix | Compile-time module compatibility | JDK 21 | `./scripts/test-control-plane-module-combinations.sh` |
