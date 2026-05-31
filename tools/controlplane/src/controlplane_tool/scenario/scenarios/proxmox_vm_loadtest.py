@@ -197,7 +197,7 @@ class ProxmoxVmLoadtestPlan:
         Built from the ``proxmox-vm-loadtest`` recipe filtered to
         ``_PROXMOX_LOADTEST_PRELUDE_COMPONENTS``, applying the three proxmox
         rewrites (ansible inventory, repo rsync, functions.register) so the
-        resulting CommandTask argv/env match ``plan_recipe_steps`` exactly. The
+        resulting CommandTask argv/env match the legacy recipe engine exactly. The
         proxmox SSH endpoint is resolved through a ``ProxmoxVmOrchestrator``; in
         ``run()`` this happens after the stack VM is ensured.
 

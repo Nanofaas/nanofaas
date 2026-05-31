@@ -166,3 +166,33 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
     assert dict(command_tasks["helm.deploy_control_plane"].spec.env) == {
         "KUBECONFIG": "/home/ubuntu/.kube/config"
     }
+
+
+def test_autoscaling_task_resolves_vm_host_env() -> None:
+    """The autoscaling experiment task resolves the VM host into its env.
+
+    Replaces the legacy ``_execute_steps`` test that asserted host resolution into
+    the autoscaling env. The autoscaling experiment runs on the HOST (unlike
+    ``loadtest.run`` which runs on the VM and keeps ``<multipass-ip:NAME>``
+    placeholders verbatim), so the honest Workflow resolves the VM host via the
+    ``host_resolver`` at assembly time: E2E_VM_HOST / E2E_PUBLIC_HOST become the
+    resolved IP, and NAMESPACE is forwarded.
+    """
+    from workflow_tasks import CommandTask, VmInfo
+
+    plan = build_helm_stack_plan(
+        E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), host_resolver=lambda _: "10.0.0.1"),
+        _request(),
+    )
+    workflow = plan._assemble(
+        plan._build_setup(), lambda: VmInfo(name="", host="", user="", home="")
+    )
+    autoscaling = next(
+        t
+        for t in workflow.tasks + workflow.cleanup_tasks
+        if isinstance(t, CommandTask) and t.task_id == "experiments.autoscaling"
+    )
+    env = dict(autoscaling.spec.env)
+    assert env["NAMESPACE"] == "nanofaas-e2e"
+    assert env["E2E_VM_HOST"] == "10.0.0.1"
+    assert env["E2E_PUBLIC_HOST"] == "10.0.0.1"

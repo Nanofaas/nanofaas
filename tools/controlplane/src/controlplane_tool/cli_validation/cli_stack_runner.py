@@ -22,9 +22,9 @@ from controlplane_tool.scenario.components.environment import (
     resolve_scenario_environment,
 )
 from controlplane_tool.scenario.components.executor import (
-    _SUMMARY_OVERRIDES,
     ScenarioPlanStep,
 )
+from controlplane_tool.scenario.scenarios._workflow_assembly import _SUMMARY_OVERRIDES
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_helpers import (
     resolve_scenario as _resolve_scenario,

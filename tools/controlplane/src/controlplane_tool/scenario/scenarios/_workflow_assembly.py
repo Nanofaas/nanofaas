@@ -205,7 +205,7 @@ def workflow_display_steps(
 
     Used by the recipe-derived workflow scenarios (k3s/helm/cli-stack) to keep a
     ``steps`` field for CLI dry-run rendering WITHOUT re-running the legacy recipe
-    engine (``plan_recipe_steps``). Each task becomes a ``ScenarioPlanStep`` with:
+    engine. Each task becomes a ``ScenarioPlanStep`` with:
     ``summary`` from the task title, ``command``/``env`` from the CommandTask spec
     (empty for non-command tasks like DestroyVm/CallableTask), and the task_id as
     ``step_id``. ``vm.ensure_running`` is run separately by the plan's ``run()`` and
