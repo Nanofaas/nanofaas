@@ -7,7 +7,7 @@ from controlplane_tool.orchestation.adapters import ShellCommandAdapter
 from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest
 from controlplane_tool.loadtest.loadtest_tasks import LoadtestAdapter, LoadtestStepEvent
-from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+from workflow_tasks.orchestration import run_local_flow
 from controlplane_tool.core.run_models import RunResult
 
 

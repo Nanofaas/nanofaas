@@ -8,7 +8,7 @@ from typing import Generator
 from typing import TypeVar
 from uuid import uuid4
 
-from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from workflow_tasks.orchestration.models import FlowRunResult
 
 T = TypeVar("T")
 
@@ -21,12 +21,12 @@ def _generated_flow_run_id() -> str:
     return str(uuid4())
 
 
-def _prefect_backend_name() -> str:
+def _prefect_backend_name() -> str:  # pragma: no cover - prefect-only path
     return "prefect-local" if not os.getenv("PREFECT_API_URL") else "prefect-api"
 
 
 @contextmanager
-def _quiet_prefect_runtime() -> Generator[None, None, None]:
+def _quiet_prefect_runtime() -> Generator[None, None, None]:  # pragma: no cover - prefect-only path
     from prefect.events.clients import NullEventsClient
     from prefect.events.worker import EventsWorker
     from prefect.logging.configuration import setup_logging
@@ -102,7 +102,7 @@ def run_local_flow(
     except ImportError:
         return _run_without_prefect(flow_id, flow_fn, *args, orchestrator_backend="none", **kwargs)
 
-    if not os.getenv("PREFECT_API_URL"):
+    if not os.getenv("PREFECT_API_URL"):  # pragma: no cover - requires prefect installed
         return _run_without_prefect(
             flow_id,
             flow_fn,
@@ -111,7 +111,7 @@ def run_local_flow(
             **kwargs,
         )
 
-    started_at = _now_utc()
+    started_at = _now_utc()  # pragma: no cover - prefect-only path below
     captured_flow_run_id = _generated_flow_run_id()
 
     @prefect_flow(name=flow_id, log_prints=False)

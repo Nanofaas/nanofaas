@@ -28,7 +28,7 @@ from controlplane_tool.loadtest.loadtest_tasks import LoadtestAdapter
 from controlplane_tool.core.models import BuildAction, Profile, ProfileName
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes import default_registry_url
-from controlplane_tool.orchestation.prefect_models import LocalFlowDefinition
+from workflow_tasks.orchestration import LocalFlowDefinition
 from controlplane_tool.loadtest.report import render_report
 from controlplane_tool.core.run_models import RunResult, StepResult
 from controlplane_tool.scenario.scenario_loader import load_scenario_file, resolve_scenario_spec

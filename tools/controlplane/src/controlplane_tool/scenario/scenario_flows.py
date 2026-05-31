@@ -5,7 +5,7 @@ from pathlib import Path
 
 from controlplane_tool.e2e.e2e_runner import E2eRunner
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.orchestation.prefect_models import LocalFlowDefinition
+from workflow_tasks.orchestration import LocalFlowDefinition
 from controlplane_tool.infra.runtimes import default_registry_url
 from controlplane_tool.scenario.scenario_defaults import (
     resolve_scenario_namespace,

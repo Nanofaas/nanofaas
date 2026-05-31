@@ -14,7 +14,7 @@ from controlplane_tool.loadtest.loadtest_tasks import (
     write_loadtest_report_task,
 )
 from controlplane_tool.workspace.paths import default_tool_paths
-from controlplane_tool.orchestation.prefect_models import LocalFlowDefinition
+from workflow_tasks.orchestration import LocalFlowDefinition
 from controlplane_tool.core.run_models import RunResult
 
 

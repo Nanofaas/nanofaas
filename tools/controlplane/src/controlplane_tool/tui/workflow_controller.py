@@ -16,7 +16,7 @@ from rich.live import Live
 from workflow_tasks import bind_workflow_sink
 from workflow_tasks import fail as _fail
 from tui_toolkit.console import console
-from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+from workflow_tasks.orchestration import run_local_flow
 from controlplane_tool.tui.event_applier import TuiEventApplier
 from controlplane_tool.tui.workflow import TuiWorkflowSink, WorkflowDashboard, WorkflowKeyListener
 

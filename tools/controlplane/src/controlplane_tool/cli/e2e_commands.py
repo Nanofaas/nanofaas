@@ -12,7 +12,7 @@ from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition,
 from controlplane_tool.functions.catalog import function_runtime_allowlist_for_scenario
 from controlplane_tool.core.models import ScenarioSelectionConfig
 from controlplane_tool.workspace.paths import default_tool_paths
-from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+from workflow_tasks.orchestration import run_local_flow
 from controlplane_tool.workspace.profiles import load_profile
 from controlplane_tool.scenario.scenario_loader import load_scenario_file
 from controlplane_tool.scenario.selection_resolution import (

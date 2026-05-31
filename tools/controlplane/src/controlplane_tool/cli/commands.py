@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.core.models import BuildAction, ProfileName
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition
-from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+from workflow_tasks.orchestration import run_local_flow
 
 CLI_CONTEXT_SETTINGS = {
     "allow_extra_args": True,
