@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path as _Path
+
 import typer
 from pydantic import ValidationError
+from shellcraft.runners import CommandRunner
 
+from controlplane_tool.building import image_matrix
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.core.models import BuildAction, ProfileName
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition
 from workflow_tasks.orchestration import run_local_flow
+from workflow_tasks.shell import SubprocessShell
 
 CLI_CONTEXT_SETTINGS = {
     "allow_extra_args": True,
@@ -194,6 +199,28 @@ def install_cli_commands(app: typer.Typer) -> None:
             modules=modules,
             dry_run=dry_run,
             extra_gradle_arg=extra_gradle_arg,
+        )
+
+    @app.command("images", context_settings=CLI_CONTEXT_SETTINGS)
+    def images_command(
+        tag: str | None = typer.Option(None, "--tag", help="Image tag (default: version from build.gradle)."),
+        only: str = typer.Option("all", "--only", help="Comma-separated target names or 'all'."),
+        arch: str = typer.Option("amd64", "--arch", help="amd64 | arm64 | multi."),
+        arch_suffix: bool = typer.Option(False, "--arch-suffix/--no-arch-suffix", help="Append -<arch> to the tag."),
+        push: bool = typer.Option(True, "--push/--no-push", help="Push images after building."),
+        runtime: str = typer.Option("docker", "--runtime", help="Container runtime CLI."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print planned build/push commands only."),
+    ) -> None:
+        repo_root = _Path.cwd()
+        resolved_tag = tag or image_matrix.resolve_current_version(repo_root)
+        try:
+            targets = image_matrix.select_targets(only)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        runner = CommandRunner(shell=SubprocessShell(), repo_root=repo_root)
+        image_matrix.run_image_matrix(
+            runner=runner, repo_root=repo_root, targets=targets, tag=resolved_tag,
+            arch=arch, use_arch_suffix=arch_suffix, push=push, runtime=runtime, dry_run=dry_run,
         )
 
     @app.command("native", context_settings=CLI_CONTEXT_SETTINGS)

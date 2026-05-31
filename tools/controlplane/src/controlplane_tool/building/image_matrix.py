@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from shellcraft.runners import PlannedCommand
+from shellcraft.runners import CommandRunner, PlannedCommand
 
 REGISTRY = "ghcr.io"
 GH_OWNER = "miciav"
@@ -131,3 +132,32 @@ def plan_build_command(repo_root: Path, name: str, full_image: str, arch: str) -
 
 def plan_push_command(repo_root: Path, full_image: str, *, runtime: str = "docker") -> PlannedCommand:
     return PlannedCommand(command=[runtime, "push", full_image], cwd=Path(repo_root), env={})
+
+
+def run_image_matrix(
+    *,
+    runner: CommandRunner,
+    repo_root: Path,
+    targets: Sequence[str],
+    tag: str,
+    arch: str,
+    use_arch_suffix: bool,
+    push: bool,
+    runtime: str,
+    dry_run: bool,
+) -> list[str]:
+    """Build (and optionally push) each target. Returns the built image references."""
+    built: list[str] = []
+    for name in targets:
+        full_image = image_reference(name, tag, arch, use_arch_suffix=use_arch_suffix)
+        build = plan_build_command(repo_root, name, full_image, arch)
+        result = build.run(runner, dry_run=dry_run)
+        if result.return_code != 0:
+            raise RuntimeError(f"build failed for {name} (exit {result.return_code})")
+        built.append(full_image)
+        if push:
+            push_cmd = plan_push_command(repo_root, full_image, runtime=runtime)
+            push_result = push_cmd.run(runner, dry_run=dry_run)
+            if push_result.return_code != 0:
+                raise RuntimeError(f"push failed for {full_image} (exit {push_result.return_code})")
+    return built

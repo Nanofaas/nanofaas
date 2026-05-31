@@ -103,3 +103,37 @@ def test_plan_push_command() -> None:
 def test_control_plane_is_marked_profile_target() -> None:
     assert im.IMAGE_MATRIX["control-plane"].profile_aware is True
     assert im.IMAGE_MATRIX["function-runtime"].profile_aware is False
+
+
+def test_run_image_matrix_dry_run_records_build_then_push(monkeypatch) -> None:
+    from workflow_tasks.shell import RecordingShell
+    from shellcraft.runners import CommandRunner
+
+    monkeypatch.delenv("NATIVE_IMAGE_BUILD_ARGS", raising=False)
+    shell = RecordingShell()
+    runner = CommandRunner(shell=shell, repo_root=Path("/repo"))
+
+    im.run_image_matrix(
+        runner=runner, repo_root=Path("/repo"),
+        targets=["watchdog"], tag="9.9.9", arch="amd64",
+        use_arch_suffix=False, push=True, runtime="docker", dry_run=True,
+    )
+
+    assert ["docker", "build", "--platform", "linux/amd64",
+            "--label", "org.opencontainers.image.source=https://github.com/miciav/nanofaas",
+            "-t", "ghcr.io/miciav/nanofaas/watchdog:9.9.9", "-f", "watchdog/Dockerfile", "."] in shell.commands
+    assert ["docker", "push", "ghcr.io/miciav/nanofaas/watchdog:9.9.9"] in shell.commands
+
+
+def test_run_image_matrix_no_push_skips_push() -> None:
+    from workflow_tasks.shell import RecordingShell
+    from shellcraft.runners import CommandRunner
+
+    shell = RecordingShell()
+    runner = CommandRunner(shell=shell, repo_root=Path("/repo"))
+    im.run_image_matrix(
+        runner=runner, repo_root=Path("/repo"),
+        targets=["watchdog"], tag="1", arch="amd64",
+        use_arch_suffix=False, push=False, runtime="docker", dry_run=True,
+    )
+    assert not any(c[:2] == ["docker", "push"] for c in shell.commands)
