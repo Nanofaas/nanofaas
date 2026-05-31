@@ -202,7 +202,7 @@ run_deploy_case() {
         HOST_REBUILD_IMAGES="${HOST_REBUILD_IMAGES}" \
         LOADTEST_WORKLOADS="${LOADTEST_WORKLOADS}" \
         LOADTEST_RUNTIMES="${LOADTEST_RUNTIMES}" \
-        bash "${PROJECT_ROOT}/scripts/e2e-k3s-helm.sh"
+        bash "${PROJECT_ROOT}/scripts/controlplane.sh" e2e run helm-stack
     ) > "${deploy_log}" 2>&1
 }
 
