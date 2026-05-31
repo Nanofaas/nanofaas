@@ -2,13 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.core.runtime_primitives import (
-    CommandRunner,
-    ContainerRuntimeOps,
-    KubectlOps,
-    read_json_field,
-    write_json_file,
-)
+from shellcraft.runners import CommandRunner, ContainerRuntimeOps, KubectlOps
+from shellcraft.fileutil import read_json_field, write_json_file
 from workflow_tasks.shell import RecordingShell
 
 

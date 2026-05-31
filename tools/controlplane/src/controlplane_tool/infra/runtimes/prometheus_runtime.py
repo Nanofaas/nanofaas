@@ -147,7 +147,7 @@ class PrometheusRuntimeManager:
         return spec
 
     def _pick_local_port(self) -> int:
-        from controlplane_tool.core.net_utils import pick_local_port
+        from shellcraft.net import pick_local_port
         return pick_local_port(preferred=9090)
 
     def _docker(self, args: list[str], check: bool) -> ShellExecutionResult:

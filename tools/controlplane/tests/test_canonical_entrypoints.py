@@ -47,7 +47,7 @@ def test_primary_docs_and_workflows_use_canonical_controlplane_surface() -> None
 
 def test_python_runtime_primitives_are_available() -> None:
     """Fails until runtime_primitives.py and control_plane_api.py are created (M8)."""
-    from controlplane_tool.core.runtime_primitives import CommandRunner
+    from shellcraft.runners import CommandRunner
     from controlplane_tool.functions.control_plane_api import ControlPlaneApi
 
     assert CommandRunner is not None

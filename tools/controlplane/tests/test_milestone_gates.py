@@ -87,8 +87,8 @@ def test_m9_local_e2e_group_is_removed_from_main_cli() -> None:
 
 
 def test_m9_container_local_e2e_runner_is_importable() -> None:
-    from controlplane_tool.e2e.local_e2e_runner import ContainerLocalE2eRunner  # noqa: F401
-    from controlplane_tool.e2e.local_e2e_runner import DeployHostE2eRunner  # noqa: F401
+    from controlplane_tool.e2e.container_local_runner import ContainerLocalE2eRunner  # noqa: F401
+    from controlplane_tool.e2e.deploy_host_runner import DeployHostE2eRunner  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,8 @@ def test_m11_k3s_common_shell_is_deleted() -> None:
 
 
 def test_m11_k3s_runtime_is_importable() -> None:
-    from controlplane_tool.infra.vm.k3s_runtime import K3sCurlRunner, HelmStackRunner  # noqa: F401
+    from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner  # noqa: F401
+    from controlplane_tool.e2e.helm_stack_runner import HelmStackRunner  # noqa: F401
 
 
 def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
