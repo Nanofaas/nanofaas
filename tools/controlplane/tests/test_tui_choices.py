@@ -16,7 +16,7 @@ from controlplane_tool.core.models import (
     TestsConfig,
 )
 from controlplane_tool.building.module_catalog import module_choices
-from controlplane_tool.orchestation.prefect_models import FlowRunResult, LocalFlowDefinition
+from workflow_tasks.orchestration import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
 import controlplane_tool.tui.workflow_controller as tui_wfc
 from controlplane_tool.tui.app import NanofaasTUI

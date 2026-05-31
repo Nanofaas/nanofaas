@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from controlplane_tool.app.main import app
 from controlplane_tool.building.tasks import CommandExecutionResult
-from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from workflow_tasks.orchestration import FlowRunResult
 from controlplane_tool.cli.commands import GradleCommandExecutor
 
 

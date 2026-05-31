@@ -12,7 +12,7 @@ from controlplane_tool.orchestation.infra_flows import (
     vm_flow_task_ids,
 )
 from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
-from controlplane_tool.orchestation.prefect_models import LocalFlowDefinition
+from workflow_tasks.orchestration import LocalFlowDefinition
 from controlplane_tool.infra.runtimes import default_registry_url
 from controlplane_tool.scenario.scenario_flows import build_scenario_flow, scenario_task_ids
 

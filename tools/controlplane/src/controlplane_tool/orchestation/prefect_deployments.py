@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
-from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+from workflow_tasks.orchestration import run_local_flow
 
 
 @dataclass(slots=True)

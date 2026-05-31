@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from typer.testing import CliRunner
 
-from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from workflow_tasks.orchestration import FlowRunResult
 from controlplane_tool.cli.e2e_commands import _build_request, _resolve_run_request
 from controlplane_tool.app.main import app
 

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import controlplane_tool.orchestation.pipeline as pipeline_mod
 from controlplane_tool.core.models import ControlPlaneConfig, Profile, ReportConfig, TestsConfig
-from controlplane_tool.orchestation.prefect_models import FlowRunResult
+from workflow_tasks.orchestration import FlowRunResult
 from controlplane_tool.orchestation.pipeline import PipelineRunner
 
 

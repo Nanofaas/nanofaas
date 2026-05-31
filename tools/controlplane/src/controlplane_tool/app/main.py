@@ -10,7 +10,7 @@ from controlplane_tool.cli.test_commands import install_cli_test_commands
 from controlplane_tool.cli.e2e_commands import install_e2e_commands
 from controlplane_tool.cli.function_commands import install_function_commands
 from controlplane_tool.cli.loadtest_commands import install_loadtest_commands
-from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+from workflow_tasks.orchestration import run_local_flow
 from controlplane_tool.cli.vm_commands import install_vm_commands
 
 app = typer.Typer(

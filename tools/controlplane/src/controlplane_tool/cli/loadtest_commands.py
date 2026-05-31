@@ -285,7 +285,7 @@ def run_loadtest_request(
     if runner is not None:
         result = runner.run(request)
     else:
-        from controlplane_tool.orchestation.prefect_runtime import run_local_flow
+        from workflow_tasks.orchestration import run_local_flow
 
         flow = resolve_flow_definition(
             f"loadtest.{request.load_profile.name}",
