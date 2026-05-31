@@ -23,7 +23,7 @@ from controlplane_tool.scenario.scenario_helpers import (
     function_image as _function_image,
     selected_functions as _selected_functions,
 )
-from controlplane_tool.core.shell_backend import ShellExecutionResult
+from workflow_tasks.shell import ShellExecutionResult
 from workflow_tasks.workflow.events import WorkflowContext
 from controlplane_tool.infra.vm.vm_models import VmRequest
 

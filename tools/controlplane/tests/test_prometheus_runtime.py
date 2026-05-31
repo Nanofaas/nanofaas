@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 
 from controlplane_tool.infra.runtimes import PrometheusRuntimeManager, PrometheusSession
-from controlplane_tool.core.shell_backend import ShellExecutionResult
+from workflow_tasks.shell import ShellExecutionResult
 
 
 def test_ensure_prometheus_uses_existing_endpoint(tmp_path: Path, monkeypatch) -> None:

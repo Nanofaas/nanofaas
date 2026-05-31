@@ -9,8 +9,8 @@ from controlplane_tool.scenario.scenario_loader import resolve_scenario_spec
 from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_models import ScenarioSpec
-from controlplane_tool.core.shell_backend import RecordingShell, ScriptedShell
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.shell import RecordingShell, ScriptedShell
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_cluster_workflows import build_vm_cluster_prelude_plan
 

@@ -155,7 +155,7 @@ class ControlPlaneRuntimeManager:
             return False
 
     def _pick_local_port(self, preferred: int, blocked_ports: set[int] | None = None) -> int:
-        from controlplane_tool.core.net_utils import pick_local_port
+        from shellcraft.net import pick_local_port
         return pick_local_port(preferred=preferred, blocked=blocked_ports)
 
     def _tail(self, log_path: Path, max_chars: int = 400) -> str:

@@ -19,18 +19,14 @@ from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 
 from controlplane_tool.functions.control_plane_api import ControlPlaneApi
 from controlplane_tool.core.process_streaming import spawn_logged_process
-from controlplane_tool.core.runtime_primitives import (
-    CommandRunner,
-    read_json_field,
-    wrap_payload,
-    write_json_file,
-)
+from shellcraft.runners import CommandRunner
+from shellcraft.fileutil import read_json_field, wrap_payload, write_json_file
 from controlplane_tool.scenario.scenario_helpers import resolve_scenario as _resolve_scenario_file
 from controlplane_tool.scenario.scenario_runtime import (
     select_container_runtime,
     wait_for_http_ok,
 )
-from controlplane_tool.core.shell_backend import ShellExecutionResult, SubprocessShell
+from workflow_tasks.shell import ShellExecutionResult, SubprocessShell
 from controlplane_tool.workflow.workflow_progress import WorkflowProgressReporter
 
 if TYPE_CHECKING:

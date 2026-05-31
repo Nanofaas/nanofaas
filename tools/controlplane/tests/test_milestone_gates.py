@@ -87,8 +87,8 @@ def test_m9_local_e2e_group_is_removed_from_main_cli() -> None:
 
 
 def test_m9_container_local_e2e_runner_is_importable() -> None:
-    from controlplane_tool.e2e.local_e2e_runner import ContainerLocalE2eRunner  # noqa: F401
-    from controlplane_tool.e2e.local_e2e_runner import DeployHostE2eRunner  # noqa: F401
+    from controlplane_tool.e2e.container_local_runner import ContainerLocalE2eRunner  # noqa: F401
+    from controlplane_tool.e2e.deploy_host_runner import DeployHostE2eRunner  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,8 @@ def test_m11_k3s_common_shell_is_deleted() -> None:
 
 
 def test_m11_k3s_runtime_is_importable() -> None:
-    from controlplane_tool.infra.vm.k3s_runtime import K3sCurlRunner, HelmStackRunner  # noqa: F401
+    from controlplane_tool.e2e.k3s_curl_runner import K3sCurlRunner  # noqa: F401
+    from controlplane_tool.e2e.helm_stack_runner import HelmStackRunner  # noqa: F401
 
 
 def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
@@ -156,7 +157,7 @@ def test_m11_k3s_e2e_group_is_removed_from_main_cli() -> None:
 
 
 def test_m11_ansible_adapter_has_provision_contract() -> None:
-    from controlplane_tool.infra.vm.ansible_adapter import AnsibleAdapter
+    from workflow_tasks.infra.ansible import AnsibleAdapter
 
     adapter = AnsibleAdapter.__new__(AnsibleAdapter)
     assert hasattr(adapter, "provision_base")
@@ -165,7 +166,7 @@ def test_m11_ansible_adapter_has_provision_contract() -> None:
 
 
 def test_m11_vm_orchestrator_has_lifecycle_contract() -> None:
-    from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+    from workflow_tasks.vm.orchestrator import VmOrchestrator
 
     orch = VmOrchestrator.__new__(VmOrchestrator)
     assert hasattr(orch, "ensure_running")

@@ -19,7 +19,7 @@ def test_proxmox_vm_loadtest_in_vm_backed_scenarios() -> None:
 
 def test_build_proxmox_vm_loadtest_plan_returns_correct_type(tmp_path) -> None:
     from pathlib import Path
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -38,7 +38,7 @@ def test_build_proxmox_vm_loadtest_plan_returns_correct_type(tmp_path) -> None:
 
 def test_proxmox_vm_loadtest_plan_task_ids_include_platform_prefix() -> None:
     from pathlib import Path
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -84,7 +84,7 @@ def test_proxmox_vm_loadtest_plan_task_ids_include_platform_prefix() -> None:
 
 def test_proxmox_vm_loadtest_plan_phase_titles_count(tmp_path) -> None:
     from pathlib import Path
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -103,7 +103,7 @@ def test_proxmox_vm_loadtest_plan_phase_titles_count(tmp_path) -> None:
 
 def test_proxmox_vm_loadtest_plan_skips_destroy_when_no_cleanup(tmp_path) -> None:
     from pathlib import Path
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -126,7 +126,7 @@ def test_e2e_runner_plan_returns_proxmox_vm_loadtest_plan(tmp_path) -> None:
     from pathlib import Path
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import ProxmoxVmLoadtestPlan
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.infra.vm.vm_models import VmRequest
 
@@ -147,7 +147,7 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
     from pathlib import Path
     from types import SimpleNamespace
 
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -218,7 +218,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
     from pathlib import Path
     from types import SimpleNamespace
 
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -332,7 +332,7 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     from pathlib import Path
     from types import SimpleNamespace
 
-    from controlplane_tool.core.shell_backend import RecordingShell
+    from workflow_tasks.shell import RecordingShell
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmK6Result, TwoVmLoadtestRunner
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 _VmRunner = VmOrchestrator | AzureVmOrchestrator

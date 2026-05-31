@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from controlplane_tool.cli_validation.cli_platform_workflow import platform_install_command, platform_status_command
-from controlplane_tool.scenario.components.models import ScenarioComponentDefinition
-from controlplane_tool.scenario.components.operations import RemoteCommandOperation
+from workflow_tasks.components.platform_commands import platform_install_command, platform_status_command
+from workflow_tasks.components.models import ScenarioComponentDefinition
+from workflow_tasks.components.operations import RemoteCommandOperation
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from controlplane_tool.scenario.scenario_helpers import function_image, function_payload, selected_functions
 

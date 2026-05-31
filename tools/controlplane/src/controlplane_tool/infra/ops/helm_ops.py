@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from controlplane_tool.core.runtime_primitives import PlannedCommand
+from shellcraft.runners import PlannedCommand
 
 
 @dataclass(slots=True)

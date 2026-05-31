@@ -34,8 +34,8 @@ from controlplane_tool.scenario.scenario_tasks import (
     helm_upgrade_install_vm_script,
     helm_uninstall_vm_script,
 )
-from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.shell import ShellBackend, SubprocessShell
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest, vm_request_from_env
 
 if TYPE_CHECKING:

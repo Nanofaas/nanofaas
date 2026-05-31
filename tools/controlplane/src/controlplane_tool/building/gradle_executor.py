@@ -10,7 +10,7 @@ from controlplane_tool.building.gradle_planner import (
 from controlplane_tool.building.requests import BuildRequest
 from controlplane_tool.building.tasks import CommandExecutionResult
 from controlplane_tool.core.models import BuildAction, ProfileName
-from controlplane_tool.core.shell_backend import SubprocessShell
+from workflow_tasks.shell import SubprocessShell
 
 
 class GradleCommandExecutor:

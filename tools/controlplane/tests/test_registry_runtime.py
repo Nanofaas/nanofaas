@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from controlplane_tool.infra.runtimes import ensure_local_registry
 from controlplane_tool.infra.runtimes import LocalRegistry
-from controlplane_tool.core.shell_backend import ShellBackend, ShellExecutionResult
+from workflow_tasks.shell import ShellBackend, ShellExecutionResult
 
 
 def test_local_registry_default_address() -> None:

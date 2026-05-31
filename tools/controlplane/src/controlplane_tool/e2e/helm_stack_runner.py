@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 from controlplane_tool.infra.runtimes.registry_runtime import LocalRegistry
-from controlplane_tool.core.shell_backend import ShellBackend, SubprocessShell
+from workflow_tasks.shell import ShellBackend, SubprocessShell
 from controlplane_tool.infra.vm.vm_models import VmRequest, vm_request_from_env
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Callable
 
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.core.shell_backend import RecordingShell
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.shell import RecordingShell
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from controlplane_tool.infra.vm.vm_tasks import provision_base_task
 

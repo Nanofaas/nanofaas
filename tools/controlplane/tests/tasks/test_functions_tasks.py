@@ -4,7 +4,7 @@ import json
 import pytest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from controlplane_tool.scenario.tasks.functions import FunctionSpec, RegisterFunctions
+from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
 
 
 class _CapturingHandler(BaseHTTPRequestHandler):
@@ -102,7 +102,7 @@ def test_register_functions_raises_on_http_error() -> None:
 
 def test_register_functions_no_cli_dependency() -> None:
     import inspect
-    from controlplane_tool.scenario.tasks import functions
+    from workflow_tasks.components import function_tasks as functions
     source = inspect.getsource(functions)
     assert "nanofaas-cli" not in source
     assert "fn apply" not in source

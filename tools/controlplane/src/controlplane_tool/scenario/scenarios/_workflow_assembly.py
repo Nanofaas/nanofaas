@@ -34,7 +34,7 @@ from workflow_tasks.components.operations import RemoteCommandOperation
 from workflow_tasks.vm.models import VmConfig
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
 from controlplane_tool.loadtest.loadtest_adapters import OrchestratorVmRunner
 from controlplane_tool.scenario.command_resolver import CommandResolver

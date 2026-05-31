@@ -11,7 +11,7 @@ from controlplane_tool.core.models import VmLifecycle
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.orchestation.prefect_runtime import run_local_flow
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 VM_CONTEXT_SETTINGS = {

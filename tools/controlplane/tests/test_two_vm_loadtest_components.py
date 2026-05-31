@@ -4,7 +4,7 @@ from pathlib import Path
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.vm_models import VmRequest
-from controlplane_tool.scenario.components.operations import RemoteCommandOperation
+from workflow_tasks.components.operations import RemoteCommandOperation
 from controlplane_tool.scenario.components.environment import resolve_scenario_environment
 import controlplane_tool.scenario.components.two_vm_loadtest as two_vm_loadtest
 

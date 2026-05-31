@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from controlplane_tool.scenario.components.models import ScenarioRecipe
+from workflow_tasks.components.models import ScenarioRecipe
 
 
 _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from controlplane_tool.core.shell_backend import ShellExecutionResult
+from workflow_tasks.shell import ShellExecutionResult
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
 from controlplane_tool.infra.vm.vm_models import VmRequest

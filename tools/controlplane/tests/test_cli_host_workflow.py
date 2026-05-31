@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from controlplane_tool.core.shell_backend import RecordingShell
+from workflow_tasks.shell import RecordingShell
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner
 from controlplane_tool.infra.vm.vm_models import VmRequest

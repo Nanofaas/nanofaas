@@ -45,7 +45,7 @@ from controlplane_tool.scenario.scenarios._workflow_assembly import (
     CallableTask,
     _SUMMARY_OVERRIDES,
 )
-from controlplane_tool.scenario.tasks.functions import FunctionSpec, RegisterFunctions
+from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     LOADTEST_PROMETHEUS_QUERIES,
     LOADTEST_SCENARIOS,

@@ -20,11 +20,11 @@ from controlplane_tool.scenario.scenarios import ScenarioPlan
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.components.two_vm_loadtest import loadgen_vm_request
 from controlplane_tool.scenario.scenario_planner import ScenarioPlanner
-from controlplane_tool.core.shell_backend import (
+from workflow_tasks.shell import (
     ShellBackend,
     SubprocessShell,
 )
-from controlplane_tool.infra.vm.vm_adapter import VmOrchestrator
+from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 

@@ -6,7 +6,6 @@ from typing import Generator
 from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
-from rich.text import Text
 
 import tui_toolkit.console as _console_mod
 from tui_toolkit.context import get_ui
