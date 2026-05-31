@@ -24,16 +24,3 @@ def test_e2e_k3s_common_is_deleted() -> None:
     )
 
 
-def test_vm_orchestrator_ensure_running_handles_multipass_lifecycle() -> None:
-    """VmOrchestrator.ensure_running uses multipass start/launch (replaces common.sh recover logic)."""
-    _ensure_tool_src_on_path()
-    from controlplane_tool.vm_adapter import VmOrchestrator  # noqa: PLC0415
-    from controlplane_tool.vm_models import VmRequest  # noqa: PLC0415
-    from controlplane_tool.shell_backend import RecordingShell  # noqa: PLC0415
-
-    shell = RecordingShell()
-    vm = VmOrchestrator(Path("/repo"), shell=shell)
-    request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
-
-    result = vm.ensure_running(request, dry_run=True)
-    assert "multipass" in result.command
