@@ -17,8 +17,7 @@ def test_word_stats_dockerfile_builds_sdk_before_app_install() -> None:
     assert "RUN npm run build" in dockerfile
     assert "COPY examples/javascript/word-stats /src/examples/javascript/word-stats" in dockerfile
     assert "WORKDIR /src/examples/javascript/word-stats" in dockerfile
-    assert "npm --prefix ../../../function-sdk-javascript ci" in package_json
-    assert "npm --prefix ../../../function-sdk-javascript install" not in package_json
+    assert "npm --prefix ../../../function-sdk-javascript install" in package_json
 
 
 def test_json_transform_dockerfile_builds_sdk_before_app_install() -> None:
@@ -30,5 +29,4 @@ def test_json_transform_dockerfile_builds_sdk_before_app_install() -> None:
     assert "RUN npm run build" in dockerfile
     assert "COPY examples/javascript/json-transform /src/examples/javascript/json-transform" in dockerfile
     assert "WORKDIR /src/examples/javascript/json-transform" in dockerfile
-    assert "npm --prefix ../../../function-sdk-javascript ci" in package_json
-    assert "npm --prefix ../../../function-sdk-javascript install" not in package_json
+    assert "npm --prefix ../../../function-sdk-javascript install" in package_json

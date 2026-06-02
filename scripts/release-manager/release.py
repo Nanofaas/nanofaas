@@ -284,14 +284,6 @@ def pack_javascript_sdk(dry_run=False):
     run_command(cmd)
 
 
-def publish_javascript_sdk():
-    ok, _, _ = try_command("cd function-sdk-javascript && npm whoami")
-    if not ok:
-        console.print("[yellow]npm auth unavailable; skipping JavaScript SDK publish.[/yellow]")
-        return
-    if questionary.confirm("Publish JavaScript SDK to npm?").ask():
-        run_command("cd function-sdk-javascript && npm publish --access public")
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="Do not perform any changes")
@@ -404,8 +396,6 @@ def main():
         os.remove(tag_file)
         if questionary.confirm(f"Push tag {tag_name}?").ask():
             run_command(f"git push origin {tag_name}")
-
-        publish_javascript_sdk()
 
         # 8. Optional Local Image Builds (run last so tagging isn't blocked by long local builds)
         if questionary.confirm("Build and push images from this machine (ARM64)?").ask():
