@@ -17,6 +17,11 @@ class HostResolver(Protocol):
     def __call__(self, request: VmRequest, *, dry_run: bool = False) -> str: ...
 
 
+def bundled_ansible_root() -> Path:
+    """Path to the Ansible playbooks bundled inside the library."""
+    return Path(__file__).parent / "ansible_assets"
+
+
 class AnsibleAdapter:
     def __init__(
         self,
@@ -32,7 +37,7 @@ class AnsibleAdapter:
         self.ansible_root = (
             Path(ansible_root)
             if ansible_root is not None
-            else Path(__file__).parent / "ansible_assets"
+            else bundled_ansible_root()
         )
         self.shell = shell or SubprocessShell()
         if host_resolver is None:
