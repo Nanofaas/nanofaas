@@ -10,8 +10,7 @@ Automated tool to manage nanoFaaS releases using a GitHub-centric workflow.
 - **Release Notes**: Automatically generates a summary of changes from commit history.
 - **GitOps Ready**: Pushes tags to GitHub to trigger the automated CI/CD pipeline.
 - **Safety First**: Supports `--dry-run` and validates `gh` authentication status.
-- **JavaScript SDK Packaging**: Refreshes the JavaScript SDK lockfile with `npm install --package-lock-only` and validates packaging with `npm pack --dry-run`.
-- **Optional npm Publication**: If npm auth is available, the release flow can publish `nanofaas-function-sdk` to npm.
+- **JavaScript SDK Packaging**: Refreshes the JavaScript SDK lockfile with `npm install --package-lock-only` and validates packaging with `npm pack --dry-run`. The SDK is consumed locally (via `file:` references) and is not published to npm.
 - **ARM64 Parity**: Optional ARM64 image builds include the JavaScript demo images.
 
 ## Prerequisites
@@ -40,7 +39,6 @@ uv run --project scripts/release-manager scripts/release-manager/release.py
     -   Refresh the JavaScript SDK lockfile and run the `npm pack --dry-run` packaging gate.
     -   Commit and Push the new version, including the refreshed JavaScript lockfile.
     -   Create and Push the Tag (triggers GitOps).
-    -   Optionally publish `nanofaas-function-sdk` to npm.
     -   Optionally build and push ARM64 images, including the JavaScript demos.
 
 ### Options
