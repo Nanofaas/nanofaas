@@ -48,3 +48,8 @@ class ScenarioExecutionContext:
     manifest_path: Path | None = None
     release: str | None = None
     loadgen_vm_request: VmRequest | None = None
+    # Controlplane-tool verification commands, injected by the controlplane context
+    # factory. Empty by default so this library module stays controlplane-agnostic.
+    k3s_curl_verify_command: tuple[str, ...] = ()
+    loadtest_run_command: tuple[str, ...] = ()
+    autoscaling_command: tuple[str, ...] = ()
