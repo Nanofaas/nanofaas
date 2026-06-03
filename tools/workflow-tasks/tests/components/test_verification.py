@@ -25,6 +25,9 @@ def _ctx(*, manifest: Path | None = None) -> ScenarioExecutionContext:
         vm_request=VmRequest(lifecycle="multipass", name="nanofaas-e2e", user="ubuntu"),
         cleanup_vm=True,
         manifest_path=manifest,
+        k3s_curl_verify_command=("verify", "k3s"),
+        loadtest_run_command=("loadtest", "go"),
+        autoscaling_command=("autoscale", "go"),
     )
 
 
@@ -43,7 +46,26 @@ def test_run_k8s_junit_embeds_gradle_e2e_script() -> None:
     assert "k8s-deployment-provider:test" in rendered
 
 
-def test_run_k3s_curl_checks_runs_controlplane_runner() -> None:
+def test_run_k3s_curl_checks_uses_injected_command() -> None:
     ops = ver.plan_run_k3s_curl_checks(_ctx())
-    rendered = " ".join(ops[0].argv)
-    assert "controlplane_tool.e2e.k3s_curl_runner" in rendered
+    assert ops[0].argv == ("verify", "k3s")
+
+
+def test_loadtest_run_uses_injected_command() -> None:
+    ops = ver.plan_loadtest_run(_ctx())
+    assert ops[0].argv == ("loadtest", "go")
+    assert ops[0].execution_target == "vm"
+
+
+def test_autoscaling_uses_injected_command() -> None:
+    ops = ver.plan_autoscaling_experiment(_ctx())
+    assert ops[0].argv == ("autoscale", "go")
+
+
+def test_planner_raises_when_command_not_injected() -> None:
+    import dataclasses
+    import pytest
+
+    ctx = dataclasses.replace(_ctx(), loadtest_run_command=())
+    with pytest.raises(ValueError):
+        ver.plan_loadtest_run(ctx)
