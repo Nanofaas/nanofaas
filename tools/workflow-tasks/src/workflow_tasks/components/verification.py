@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 from types import MappingProxyType
 
 from workflow_tasks.components.platform_commands import platform_status_command
@@ -12,6 +11,12 @@ from workflow_tasks.components.remote_script import k8s_e2e_test_vm_script
 
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
     return MappingProxyType(dict(env or {}))
+
+
+def _require_command(command: tuple[str, ...], name: str) -> tuple[str, ...]:
+    if not command:
+        raise ValueError(f"context.{name} was not provided by the context factory")
+    return command
 
 
 def _namespace(context: ScenarioExecutionContext) -> str:
@@ -117,7 +122,7 @@ def plan_run_k3s_curl_checks(context: ScenarioExecutionContext) -> tuple[Scenari
         RemoteCommandOperation(
             operation_id="tests.run_k3s_curl_checks",
             summary="Run k3s-junit-curl verification",
-            argv=("python", "-m", "controlplane_tool.e2e.k3s_curl_runner", "verify-existing-stack"),
+            argv=_require_command(context.k3s_curl_verify_command, "k3s_curl_verify_command"),
             env=_frozen_env(),
         ),
     )
@@ -145,7 +150,6 @@ def plan_run_k8s_junit(context: ScenarioExecutionContext) -> tuple[ScenarioOpera
 
 
 def plan_loadtest_run(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
-    controlplane_tool_project = "tools/controlplane"
     env = dict(_managed_vm_env(context))
     remote_manifest_path = _remote_manifest_path(context)
     if remote_manifest_path is not None:
@@ -154,16 +158,7 @@ def plan_loadtest_run(context: ScenarioExecutionContext) -> tuple[ScenarioOperat
         RemoteCommandOperation(
             operation_id="loadtest.run",
             summary="Run k6 loadtest via controlplane runner",
-            argv=(
-                "uv",
-                "run",
-                "--project",
-                str(controlplane_tool_project),
-                "--locked",
-                "controlplane-tool",
-                "loadtest",
-                "run",
-            ),
+            argv=_require_command(context.loadtest_run_command, "loadtest_run_command"),
             env=_frozen_env(env),
             execution_target="vm",
         ),
@@ -171,7 +166,6 @@ def plan_loadtest_run(context: ScenarioExecutionContext) -> tuple[ScenarioOperat
 
 
 def plan_autoscaling_experiment(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
-    controlplane_tool_project = Path(context.repo_root) / "tools" / "controlplane"
     env = dict(_managed_vm_env(context))
     if context.manifest_path is not None:
         env["NANOFAAS_SCENARIO_PATH"] = str(context.manifest_path)
@@ -179,15 +173,7 @@ def plan_autoscaling_experiment(context: ScenarioExecutionContext) -> tuple[Scen
         RemoteCommandOperation(
             operation_id="experiments.autoscaling",
             summary="Run autoscaling experiment (Python)",
-            argv=(
-                "uv",
-                "run",
-                "--project",
-                str(controlplane_tool_project),
-                "--locked",
-                "python",
-                str(Path(context.repo_root) / "experiments" / "autoscaling.py"),
-            ),
+            argv=_require_command(context.autoscaling_command, "autoscaling_command"),
             env=_frozen_env(env),
         ),
     )
