@@ -14,6 +14,7 @@ from workflow_tasks.components import helm as helm_components
 from workflow_tasks.components import images as image_components
 from workflow_tasks.components import namespace as namespace_components
 from controlplane_tool.scenario.components.environment import ScenarioExecutionContext
+from controlplane_tool.scenario.components import verification_commands as _vc
 from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from workflow_tasks.shell import ShellExecutionResult
@@ -122,6 +123,9 @@ def build_vm_cluster_prelude_plan(
         resolved_scenario=resolved_scenario,
         vm_request=vm_request,
         cleanup_vm=True,
+        k3s_curl_verify_command=_vc.k3s_curl_verify_command(),
+        loadtest_run_command=_vc.loadtest_run_command(),
+        autoscaling_command=_vc.autoscaling_command(vm.repo_root),
     )
     remote_dir = vm.remote_project_dir(vm_request)
     bootstrap_plan = {

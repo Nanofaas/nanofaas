@@ -13,6 +13,7 @@ from controlplane_tool.scenario.scenario_defaults import (
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from workflow_tasks.components.context import ScenarioExecutionContext
+from controlplane_tool.scenario.components import verification_commands as _vc
 
 
 def default_managed_vm_request() -> VmRequest:
@@ -70,4 +71,7 @@ def resolve_scenario_environment(
         manifest_path=manifest_path,
         release=effective_release,
         loadgen_vm_request=getattr(request, "loadgen_vm", None),
+        k3s_curl_verify_command=_vc.k3s_curl_verify_command(),
+        loadtest_run_command=_vc.loadtest_run_command(),
+        autoscaling_command=_vc.autoscaling_command(repo_root),
     )
