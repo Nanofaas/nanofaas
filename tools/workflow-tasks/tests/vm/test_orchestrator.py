@@ -61,7 +61,7 @@ def test_install_dependencies_delegates_to_ansible_provision_base() -> None:
     orch.install_dependencies(request, dry_run=True)
 
     rendered = " ".join(shell.commands[-1])
-    assert "ops/ansible/playbooks/provision-base.yml" in rendered
+    assert "infra/ansible_assets/playbooks/provision-base.yml" in rendered
 
 
 def test_remote_path_for_local_uses_repo_root_as_default_root() -> None:

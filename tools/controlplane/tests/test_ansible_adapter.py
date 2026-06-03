@@ -5,7 +5,7 @@ from workflow_tasks.shell import RecordingShell
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
-def test_provision_base_uses_ops_ansible_root() -> None:
+def test_provision_base_uses_bundled_ansible_root() -> None:
     shell = RecordingShell()
     adapter = AnsibleAdapter(repo_root=Path("/repo"), shell=shell)
     request = VmRequest(lifecycle="external", host="vm.example.test", user="dev")
@@ -14,7 +14,7 @@ def test_provision_base_uses_ops_ansible_root() -> None:
 
     command = shell.commands[0]
     assert "ansible-playbook" in command
-    assert "ops/ansible/playbooks/provision-base.yml" in " ".join(command)
+    assert "infra/ansible_assets/playbooks/provision-base.yml" in " ".join(command)
     assert "vm.example.test," in command
 
 

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workflow_tasks.infra.ansible import bundled_ansible_root
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+_ANSIBLE_ROOT = bundled_ansible_root()
 
 
 def test_provision_base_uses_ansible_facts_namespace_for_architecture() -> None:
-    playbook = _repo_root() / "ops" / "ansible" / "playbooks" / "provision-base.yml"
+    playbook = _ANSIBLE_ROOT / "playbooks" / "provision-base.yml"
 
     content = playbook.read_text(encoding="utf-8")
 
@@ -17,7 +17,7 @@ def test_provision_base_uses_ansible_facts_namespace_for_architecture() -> None:
 
 
 def test_ansible_config_disables_deprecation_warnings() -> None:
-    config = _repo_root() / "ops" / "ansible" / "ansible.cfg"
+    config = _ANSIBLE_ROOT / "ansible.cfg"
 
     content = config.read_text(encoding="utf-8")
 
@@ -25,7 +25,7 @@ def test_ansible_config_disables_deprecation_warnings() -> None:
 
 
 def test_ansible_config_preserves_ssh_connection_multiplexing() -> None:
-    config = _repo_root() / "ops" / "ansible" / "ansible.cfg"
+    config = _ANSIBLE_ROOT / "ansible.cfg"
 
     content = config.read_text(encoding="utf-8")
 

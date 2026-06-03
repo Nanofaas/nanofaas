@@ -33,7 +33,7 @@ scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
 
 For VM-backed E2E plans, the tool resolves the actual SSH target for Ansible/SSH operations and no longer plans against `localhost`. `e2e all` computes one shared VM bootstrap block for VM-backed scenarios, then runs scenario-specific workflows on top of that session. `--no-cleanup-vm` preserves the installed stack and VM state for debugging; external VM lifecycle mode is never destroyed by the tool.
 
-Operational Ansible assets are now canonical under `ops/ansible/`.
+VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`).
 
 The raw `./gradlew ... -PcontrolPlaneModules=...` workflow is still supported for low-level/advanced scenarios.
 

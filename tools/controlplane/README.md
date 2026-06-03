@@ -158,7 +158,7 @@ In the live workflow view, the left pane is plan-ordered top-level phases only. 
 
 `loadtest run` is the canonical surface for load generation and Prometheus validation. The top-level `scripts/e2e-loadtest.sh` wrapper stays separate because it still models the legacy experimental workflow rather than the generic `loadtest run` planner.
 
-Operational Ansible assets are canonical under `ops/ansible/`.
+VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`).
 
 ## Profiles and overrides
 

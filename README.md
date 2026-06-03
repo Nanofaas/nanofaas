@@ -20,7 +20,7 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 - Java 21 (SDKMAN recommended)
 - Docker-compatible container runtime (Docker Desktop or equivalent)
 - For Kubernetes E2E: `python3`, OpenSSH client, internet access, and a Debian/Ubuntu-style target VM
-- Operational Ansible assets live under `ops/ansible/`
+- VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`)
 - [Multipass](https://multipass.run) only if you want the scripts to create/manage the VM (`E2E_VM_LIFECYCLE=multipass`)
 
 ## Quickstart (local)
@@ -77,7 +77,7 @@ The same generalized selection model is available at `Validation -> cli -> cli-s
 
 For VM-backed scenarios, provisioning is executed against the resolved VM host over SSH/Ansible rather than `localhost`. `scripts/controlplane.sh e2e all ...` plans one shared VM bootstrap block for VM-backed scenarios, reuses that session across scenarios, and tears the Multipass VM down once at the end unless `--no-cleanup-vm` is set. When `E2E_VM_LIFECYCLE=external`, the tool never attempts VM teardown.
 
-The canonical operational asset root for VM provisioning is `ops/ansible/`.
+The VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library at `tools/workflow-tasks/src/workflow_tasks/infra/ansible_assets/`.
 
 Artifacts are written under:
 

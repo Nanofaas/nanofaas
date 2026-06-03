@@ -16,6 +16,14 @@ from controlplane_tool.e2e.e2e_runner import E2eRunner
 from controlplane_tool.infra.vm.vm_models import VmRequest
 from workflow_tasks.shell import RecordingShell
 from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
+from workflow_tasks.infra.ansible import bundled_ansible_root
+
+_ANSIBLE_ROOT = bundled_ansible_root()
+_ANSIBLE_CFG = str(_ANSIBLE_ROOT / "ansible.cfg")
+
+
+def _playbook(name: str) -> str:
+    return str(_ANSIBLE_ROOT / "playbooks" / name)
 
 
 # --- Literal snapshots (captured from the legacy recipe; now the source of truth) ---
@@ -207,7 +215,7 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
     provision_argv = list(command_tasks["vm.provision_base"].spec.argv)
     assert provision_argv[0] == "ansible-playbook"
     assert provision_argv[provision_argv.index("-i") + 1] == "10.0.0.1,"
-    assert provision_argv[-1] == "/repo/ops/ansible/playbooks/provision-base.yml"
+    assert provision_argv[-1] == _playbook("provision-base.yml")
     assert dict(command_tasks["vm.provision_base"].spec.env) == {
-        "ANSIBLE_CONFIG": "/repo/ops/ansible/ansible.cfg"
+        "ANSIBLE_CONFIG": _ANSIBLE_CFG
     }

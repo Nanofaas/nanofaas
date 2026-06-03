@@ -68,7 +68,7 @@ cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime p
 cd experiments && python -m pytest tests/ -v
 ```
 
-Ansible assets for VM provisioning live under `ops/ansible/`.
+VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library (`tools/workflow-tasks/src/workflow_tasks/infra/ansible_assets/`).
 
 ## Architecture Overview
 
@@ -159,7 +159,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **mcFaas** (15758 symbols, 42726 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mcFaas** (15748 symbols, 42716 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

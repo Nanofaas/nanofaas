@@ -190,7 +190,7 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
-Canonical Ansible asset root: `ops/ansible/`.
+Ansible playbooks are bundled in the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`).
 
 JavaScript authoring remains first-class under `function-sdk-javascript/` and `examples/javascript/`.
 V2 also wires JavaScript into `tools/controlplane` presets, saved profiles, and VM-backed dry-run/E2E flows such as `k3s-junit-curl` and `cli-stack`.
