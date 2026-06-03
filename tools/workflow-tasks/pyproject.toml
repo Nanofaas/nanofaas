@@ -28,7 +28,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-workflow_tasks = ["py.typed"]
+workflow_tasks = ["py.typed", "infra/ansible_assets/ansible.cfg", "infra/ansible_assets/requirements.txt", "infra/ansible_assets/playbooks/*.yml"]
 
 [dependency-groups]
 dev = [

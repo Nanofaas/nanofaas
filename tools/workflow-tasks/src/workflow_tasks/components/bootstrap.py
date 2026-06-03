@@ -49,8 +49,9 @@ def _ansible_operation(
     playbook_name: str,
     extra_vars: Mapping[str, str],
 ) -> RemoteCommandOperation:
-    # Repo layout convention: Ansible assets live at <repo_root>/ops/ansible/
-    ansible_root = context.repo_root / "ops" / "ansible"
+    # Playbooks are bundled with the library.
+    from workflow_tasks.infra.ansible import AnsibleAdapter
+    ansible_root = AnsibleAdapter(repo_root=context.repo_root).ansible_root
     extra_args: list[str] = []
     for key, value in extra_vars.items():
         extra_args.extend(["-e", f"{key}={value}"])

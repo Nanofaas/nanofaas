@@ -25,10 +25,15 @@ class AnsibleAdapter:
         host_resolver: HostResolver | None = None,
         private_key_path: Path | None = None,
         multipass_client: MultipassClient | None = None,
+        ansible_root: Path | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
-        # Repo layout convention: Ansible assets live at <repo_root>/ops/ansible/
-        self.ansible_root = self.repo_root / "ops" / "ansible"
+        # Playbooks are bundled with the library; callers may override.
+        self.ansible_root = (
+            Path(ansible_root)
+            if ansible_root is not None
+            else Path(__file__).parent / "ansible_assets"
+        )
         self.shell = shell or SubprocessShell()
         if host_resolver is None:
             from workflow_tasks.vm.multipass import resolve_connection_host

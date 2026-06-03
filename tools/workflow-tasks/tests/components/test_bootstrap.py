@@ -30,14 +30,14 @@ def _ctx(*, lifecycle: str = "external", host: str | None = "vm.test") -> Scenar
 def test_provision_base_uses_ops_ansible_playbook_path() -> None:
     ops = bs.plan_vm_provision_base(_ctx())
     rendered = " ".join(str(a) for a in ops[0].argv)
-    assert "ops/ansible/playbooks/" in rendered
+    assert "infra/ansible_assets/playbooks/" in rendered
     assert "provision-base" in rendered
 
 
 def test_provision_base_sets_ansible_config_env() -> None:
     ops = bs.plan_vm_provision_base(_ctx())
     env = dict(ops[0].env)
-    assert any("ops/ansible/ansible.cfg" in str(v) for v in env.values())
+    assert any("infra/ansible_assets/ansible.cfg" in str(v) for v in env.values())
 
 
 def test_k3s_install_planner_runs() -> None:
