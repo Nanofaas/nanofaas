@@ -11,7 +11,6 @@ def test_default_paths_are_rooted_under_tools_controlplane() -> None:
     assert paths.scenarios_dir == Path("/repo/tools/controlplane/scenarios")
     assert paths.scenario_payloads_dir == Path("/repo/tools/controlplane/scenarios/payloads")
     assert paths.ops_root == Path("/repo/ops")
-    assert paths.ansible_root == Path("/repo/ops/ansible")
 
 
 def test_resolve_workspace_path_prefers_active_worktree_root(

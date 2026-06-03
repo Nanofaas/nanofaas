@@ -24,6 +24,15 @@ from pathlib import Path
 
 import pytest
 
+from workflow_tasks.infra.ansible import bundled_ansible_root
+
+_ANSIBLE_ROOT = bundled_ansible_root()
+_ANSIBLE_CFG = str(_ANSIBLE_ROOT / "ansible.cfg")
+
+
+def _playbook(name: str) -> str:
+    return str(_ANSIBLE_ROOT / "playbooks" / name)
+
 # Deterministic proxmox SSH endpoint / key produced by _FakeProxmoxVmOrchestrator
 # and baked into the literal snapshot below.
 _HOST = "203.0.113.5"
@@ -135,10 +144,10 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
             "-e", "install_helm=true",
             "-e", "helm_version=3.16.4",
             "-e", "vm_user=ubuntu",
-            "/repo/ops/ansible/playbooks/provision-base.yml",
+            _playbook("provision-base.yml"),
             "-e", "ansible_port=2222",
         ],
-        "env": {"ANSIBLE_CONFIG": "/repo/ops/ansible/ansible.cfg"},
+        "env": {"ANSIBLE_CONFIG": _ANSIBLE_CFG},
     },
     "repo.sync_to_vm": {
         "argv": [
@@ -160,10 +169,10 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
             "-e", "registry_host=localhost",
             "-e", "registry_port=5000",
             "-e", "registry_container_name=nanofaas-e2e-registry",
-            "/repo/ops/ansible/playbooks/ensure-registry.yml",
+            _playbook("ensure-registry.yml"),
             "-e", "ansible_port=2222",
         ],
-        "env": {"ANSIBLE_CONFIG": "/repo/ops/ansible/ansible.cfg"},
+        "env": {"ANSIBLE_CONFIG": _ANSIBLE_CFG},
     },
     "images.build_core.boot_jars": {
         "argv": [
@@ -200,10 +209,10 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
             "--private-key", "/keys/proxmox_id",
             "-e", "vm_user=ubuntu",
             "-e", "kubeconfig_path=/home/ubuntu/.kube/config",
-            "/repo/ops/ansible/playbooks/provision-k3s.yml",
+            _playbook("provision-k3s.yml"),
             "-e", "ansible_port=2222",
         ],
-        "env": {"ANSIBLE_CONFIG": "/repo/ops/ansible/ansible.cfg"},
+        "env": {"ANSIBLE_CONFIG": _ANSIBLE_CFG},
     },
     "k3s.configure_registry": {
         "argv": [
@@ -212,10 +221,10 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
             "-e", "registry=localhost:5000",
             "-e", "registry_host=localhost",
             "-e", "registry_port=5000",
-            "/repo/ops/ansible/playbooks/configure-k3s-registry.yml",
+            _playbook("configure-k3s-registry.yml"),
             "-e", "ansible_port=2222",
         ],
-        "env": {"ANSIBLE_CONFIG": "/repo/ops/ansible/ansible.cfg"},
+        "env": {"ANSIBLE_CONFIG": _ANSIBLE_CFG},
     },
     "namespace.install": {
         "argv": [

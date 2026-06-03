@@ -10,6 +10,10 @@ from pathlib import Path
 import os
 from unittest.mock import patch
 
+from workflow_tasks.infra.ansible import bundled_ansible_root
+
+_ANSIBLE_ROOT = bundled_ansible_root()
+
 from controlplane_tool.infra.runtimes import ensure_local_registry
 from controlplane_tool.infra.runtimes import LocalRegistry
 from workflow_tasks.shell import ShellBackend, ShellExecutionResult
@@ -64,9 +68,8 @@ def test_local_registry_address_used_directly_in_image() -> None:
 
 
 def test_registry_playbooks_split_container_runtime_and_k3s_configuration() -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-    ensure_registry = (repo_root / "ops/ansible/playbooks/ensure-registry.yml").read_text(encoding="utf-8")
-    configure_k3s = (repo_root / "ops/ansible/playbooks/configure-k3s-registry.yml").read_text(
+    ensure_registry = (_ANSIBLE_ROOT / "playbooks" / "ensure-registry.yml").read_text(encoding="utf-8")
+    configure_k3s = (_ANSIBLE_ROOT / "playbooks" / "configure-k3s-registry.yml").read_text(
         encoding="utf-8"
     )
 
