@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 if ! command -v uv >/dev/null 2>&1; then
-  echo "uv not found. Install uv or provision the VM with ops/ansible/playbooks/provision-base.yml" >&2
+  echo "uv not found. Install uv (https://github.com/astral-sh/uv) and retry." >&2
   exit 1
 fi
 
