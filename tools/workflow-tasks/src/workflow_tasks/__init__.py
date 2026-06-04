@@ -69,6 +69,7 @@ from workflow_tasks.loadtest import (
     WriteK6Report,
     query_prometheus_range_series,
 )
+from workflow_tasks.infra.ansible import RunPlaybook
 
 __all__ = [
     "__version__",
@@ -95,6 +96,7 @@ __all__ = [
     "MultipassVmProvider", "AzureVmProvider", "ProxmoxVmProvider",
     "OrchestratorVmRunner", "VmFileFetcher",
     "VmLifecycleAdapter", "MultipassVmAdapter", "AzureVmAdapter", "ProxmoxVmAdapter",
+    "RunPlaybook",
     # loadtest
     "K6Config", "K6Stage", "K6RunResult", "TimeWindow", "PrometheusQuery",
     "RemoteFileFetcher", "PrometheusClient",

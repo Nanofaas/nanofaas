@@ -1,7 +1,9 @@
 from pathlib import Path
 
-from workflow_tasks.infra.ansible import AnsibleAdapter
-from workflow_tasks.shell import RecordingShell
+import pytest
+
+from workflow_tasks.infra.ansible import AnsibleAdapter, RunPlaybook
+from workflow_tasks.shell import RecordingShell, ShellBackend, ShellExecutionResult
 from workflow_tasks.vm.models import VmRequest
 
 
@@ -45,3 +47,47 @@ def test_install_k6_uses_install_k6_playbook() -> None:
     adapter.install_k6(_external_request())
 
     assert shell.commands[0][-1].endswith("playbooks/install-k6.yml")
+
+
+class _FailingShell(ShellBackend):
+    """Minimal shell that always fails — pattern mirrors tests/infra/test_ansible.py."""
+
+    def run(self, command, *, cwd=None, env=None, dry_run=False) -> ShellExecutionResult:
+        return ShellExecutionResult(command=command, return_code=2, stderr="boom")
+
+
+def test_run_playbook_task_runs_playbook_and_returns_none() -> None:
+    shell = RecordingShell()
+    adapter = AnsibleAdapter(
+        repo_root=Path("/repo"),
+        shell=shell,
+        host_resolver=lambda request, dry_run=False: "10.0.0.5",
+    )
+    task = RunPlaybook(
+        task_id="loadgen.install_k6",
+        title="Install k6 on loadgen VM",
+        adapter=adapter,
+        playbook="install-k6.yml",
+        request=_external_request(),
+    )
+
+    assert task.run() is None
+    assert shell.commands[0][-1].endswith("playbooks/install-k6.yml")
+
+
+def test_run_playbook_task_raises_on_nonzero_exit() -> None:
+    adapter = AnsibleAdapter(
+        repo_root=Path("/repo"),
+        shell=_FailingShell(),
+        host_resolver=lambda request, dry_run=False: "10.0.0.5",
+    )
+    task = RunPlaybook(
+        task_id="loadgen.install_k6",
+        title="Install k6",
+        adapter=adapter,
+        playbook="install-k6.yml",
+        request=_external_request(),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        task.run()

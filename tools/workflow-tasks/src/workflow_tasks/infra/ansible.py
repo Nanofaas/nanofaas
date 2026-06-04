@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -209,3 +210,32 @@ class AnsibleAdapter:
             registry=registry,
             dry_run=dry_run,
         )
+
+
+@dataclass
+class RunPlaybook:
+    """Honest Task that runs an ansible playbook on the host via AnsibleAdapter.
+
+    Connectivity is parametric through the injected adapter (host_resolver +
+    private_key_path) and extra_vars (e.g. ansible_port for non-22 SSH).
+    Satisfies the workflow_tasks.Task protocol; raises on non-zero exit so
+    Workflow.run() stops and triggers cleanup.
+    """
+
+    task_id: str
+    title: str
+    adapter: AnsibleAdapter
+    playbook: str
+    request: VmRequest
+    extra_vars: dict[str, str] | None = None
+
+    def run(self) -> None:
+        result = self.adapter.run_playbook(
+            self.playbook, self.request, extra_vars=self.extra_vars
+        )
+        if result.return_code != 0:
+            raise RuntimeError(
+                result.stderr.strip()
+                or result.stdout.strip()
+                or f"{self.task_id} failed (exit {result.return_code})"
+            )
