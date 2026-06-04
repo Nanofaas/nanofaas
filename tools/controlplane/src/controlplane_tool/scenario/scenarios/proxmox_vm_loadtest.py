@@ -19,6 +19,7 @@ from workflow_tasks import (
     Workflow,
     WriteK6Report,
     command_task_from_operation,
+    install_k6_task,
     workflow_step,
 )
 from workflow_tasks.components.operations import RemoteCommandOperation
@@ -728,11 +729,16 @@ class ProxmoxVmLoadtestPlan:
             )
 
         def _install_k6() -> None:
-            InstallK6(
+            host, port = proxmox_orch.ssh_endpoint(loadgen_request)
+            install_k6_task(
                 task_id=s_install_k6.task_id,
                 title=s_install_k6.title,
-                runner=cast(Any, _loadgen_runner()),
-                remote_dir=state["loadgen_info"].home,
+                repo_root=self.runner.paths.workspace_root,
+                shell=self.runner.shell,
+                host=host,
+                user=loadgen_request.user,
+                private_key=proxmox_orch.ssh_private_key_path(loadgen_request),
+                port=port,
             ).run()
 
         def _run_k6() -> None:
