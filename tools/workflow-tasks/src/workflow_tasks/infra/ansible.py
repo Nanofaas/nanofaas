@@ -79,6 +79,27 @@ class AnsibleAdapter:
         env = {"ANSIBLE_CONFIG": str(self.ansible_root / "ansible.cfg")}
         return command, env
 
+    def run_playbook(
+        self,
+        playbook_name: str,
+        request: VmRequest,
+        *,
+        extra_vars: dict[str, str] | None = None,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        command, env = self._build_command(
+            playbook_name, request, extra_vars=extra_vars, dry_run=dry_run
+        )
+        return self.shell.run(command, cwd=self.repo_root, env=env, dry_run=dry_run)
+
+    def install_k6(
+        self,
+        request: VmRequest,
+        *,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        return self.run_playbook("install-k6.yml", request, dry_run=dry_run)
+
     def _registry_extra_vars(
         self,
         *,
@@ -103,7 +124,7 @@ class AnsibleAdapter:
         helm_version: str = "3.16.4",
         dry_run: bool = False,
     ) -> ShellExecutionResult:
-        command, env = self._build_command(
+        return self.run_playbook(
             "provision-base.yml",
             request,
             extra_vars={
@@ -111,12 +132,6 @@ class AnsibleAdapter:
                 "helm_version": helm_version.removeprefix("v"),
                 "vm_user": request.user,
             },
-            dry_run=dry_run,
-        )
-        return self.shell.run(
-            command,
-            cwd=self.repo_root,
-            env=env,
             dry_run=dry_run,
         )
 
@@ -134,16 +149,10 @@ class AnsibleAdapter:
         }
         if k3s_version:
             extra_vars["k3s_version_override"] = k3s_version
-        command, env = self._build_command(
+        return self.run_playbook(
             "provision-k3s.yml",
             request,
             extra_vars=extra_vars,
-            dry_run=dry_run,
-        )
-        return self.shell.run(
-            command,
-            cwd=self.repo_root,
-            env=env,
             dry_run=dry_run,
         )
 
@@ -155,19 +164,13 @@ class AnsibleAdapter:
         container_name: str = "nanofaas-e2e-registry",
         dry_run: bool = False,
     ) -> ShellExecutionResult:
-        command, env = self._build_command(
+        return self.run_playbook(
             "ensure-registry.yml",
             request,
             extra_vars=self._registry_extra_vars(
                 registry=registry,
                 container_name=container_name,
             ),
-            dry_run=dry_run,
-        )
-        return self.shell.run(
-            command,
-            cwd=self.repo_root,
-            env=env,
             dry_run=dry_run,
         )
 
@@ -178,16 +181,10 @@ class AnsibleAdapter:
         registry: str,
         dry_run: bool = False,
     ) -> ShellExecutionResult:
-        command, env = self._build_command(
+        return self.run_playbook(
             "configure-k3s-registry.yml",
             request,
             extra_vars=self._registry_extra_vars(registry=registry),
-            dry_run=dry_run,
-        )
-        return self.shell.run(
-            command,
-            cwd=self.repo_root,
-            env=env,
             dry_run=dry_run,
         )
 
