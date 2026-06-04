@@ -239,3 +239,40 @@ class RunPlaybook:
                 or result.stdout.strip()
                 or f"{self.task_id} failed (exit {result.return_code})"
             )
+
+
+def install_k6_task(
+    *,
+    task_id: str,
+    title: str,
+    repo_root: Path,
+    shell: ShellBackend,
+    host: str,
+    user: str,
+    private_key: Path | None = None,
+    port: int | None = None,
+) -> RunPlaybook:
+    """Build a RunPlaybook for the k6 install against a resolved VM endpoint.
+
+    The single, shared way to install k6 via ansible. Per-lifecycle connectivity
+    is captured as plain arguments:
+      - multipass: host=<resolved IP>, default user, multipass key, port=None
+      - proxmox:   host=<proxmox host>, port=<published SSH port>, proxmox key
+      - azure:     host=<public IP>, azure key, port=None
+    """
+    adapter = AnsibleAdapter(
+        repo_root=repo_root,
+        shell=shell,
+        host_resolver=lambda request, dry_run=False: host,
+        private_key_path=private_key,
+    )
+    request = VmRequest(lifecycle="external", host=host, user=user)
+    extra_vars = {"ansible_port": str(port)} if port is not None else None
+    return RunPlaybook(
+        task_id=task_id,
+        title=title,
+        adapter=adapter,
+        playbook="install-k6.yml",
+        request=request,
+        extra_vars=extra_vars,
+    )

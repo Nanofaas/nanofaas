@@ -91,3 +91,45 @@ def test_run_playbook_task_raises_on_nonzero_exit() -> None:
 
     with pytest.raises(RuntimeError, match="boom"):
         task.run()
+
+
+from workflow_tasks.infra.ansible import install_k6_task
+
+
+def test_install_k6_task_factory_builds_runplaybook_with_connectivity() -> None:
+    shell = RecordingShell()
+    task = install_k6_task(
+        task_id="loadgen.install_k6",
+        title="Install k6 on loadgen VM",
+        repo_root=Path("/repo"),
+        shell=shell,
+        host="10.0.0.5",
+        user="ubuntu",
+        private_key=Path("/keys/id_ed25519"),
+        port=2222,
+    )
+
+    assert isinstance(task, RunPlaybook)
+    assert task.task_id == "loadgen.install_k6"
+    assert task.playbook == "install-k6.yml"
+
+    task.run()
+    command = shell.commands[0]
+    assert "10.0.0.5," in command
+    assert "ubuntu" in command
+    assert "/keys/id_ed25519" in command
+    assert "ansible_port=2222" in command
+
+
+def test_install_k6_task_factory_omits_port_when_none() -> None:
+    shell = RecordingShell()
+    task = install_k6_task(
+        task_id="loadgen.install_k6",
+        title="Install k6",
+        repo_root=Path("/repo"),
+        shell=shell,
+        host="10.0.0.5",
+        user="ubuntu",
+    )
+    task.run()
+    assert not any("ansible_port=" in arg for arg in shell.commands[0])
