@@ -13,9 +13,10 @@ from workflow_tasks import (
     RunK6,
     TimeWindow,
     Workflow,
-    WriteK6Report,
     workflow_step,
+    WriteK6Report,
 )
+from workflow_tasks.components.models import ScenarioRecipe
 from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
 
@@ -28,9 +29,13 @@ from controlplane_tool.loadtest.loadtest_adapters import (
 )
 from controlplane_tool.scenario.catalog import ScenarioDefinition
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+from controlplane_tool.scenario.scenarios._workflow_assembly import (
+    _Setup,
+    build_command_tasks,
+    build_setup,
+)
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     LOADTEST_PROMETHEUS_QUERIES,
-    LOADTEST_STATIC_TASK_IDS,
     two_vm_control_plane_url,
     two_vm_load_stages,
     two_vm_prometheus_url,
@@ -42,6 +47,46 @@ if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
 
 
+# Components run on the stack VM before loadgen starts.
+# vm.ensure_running is handled separately (EnsureVmRunning task outside the Workflow).
+_TWO_VM_STACK_PRELUDE_COMPONENTS: tuple[str, ...] = (
+    "vm.provision_base",
+    "repo.sync_to_vm",
+    "registry.ensure_container",
+    "images.build_core",
+    "images.build_selected_functions",
+    "k3s.install",
+    "k3s.configure_registry",
+    "namespace.install",
+    "helm.deploy_control_plane",
+    "helm.deploy_function_runtime",
+)
+
+# Static task IDs used for TUI dry-run planning and test assertions.
+# Component IDs for provisioning phases (expand to multiple operations at runtime).
+_TWO_VM_STATIC_TASK_IDS: tuple[str, ...] = (
+    "vm.stack.ensure_running",
+    "vm.provision_base",
+    "repo.sync_to_vm",
+    "registry.ensure_container",
+    "images.build_core",
+    "images.build_selected_functions",
+    "k3s.install",
+    "k3s.configure_registry",
+    "namespace.install",
+    "helm.deploy_control_plane",
+    "helm.deploy_function_runtime",
+    "vm.loadgen.ensure_running",
+    "loadgen.install_k6",
+    "loadgen.run_k6",
+    "loadgen.fetch_results",
+    "metrics.prometheus_snapshot",
+    "loadtest.write_report",
+    "vm.loadgen.destroy",
+    "vm.stack.destroy",
+)
+
+
 @dataclass
 class TwoVmLoadtestPlan:
     scenario: ScenarioDefinition
@@ -51,60 +96,84 @@ class TwoVmLoadtestPlan:
 
     @property
     def task_ids(self) -> list[str]:
-        return list(LOADTEST_STATIC_TASK_IDS)
+        return list(_TWO_VM_STATIC_TASK_IDS)
 
     @property
     def phase_titles(self) -> list[str]:
-        pre, wf = self._skeleton()
-        return [t.title for t in pre] + wf.phase_titles
-
-    def _skeleton(self) -> "tuple[list[EnsureVmRunning], Workflow]":
-        """Task objects with None adapters — only task_id and title are valid here."""
-        r = self.request
-        sc = VmConfig(name=r.vm.name or "", cpus=r.vm.cpus, memory=r.vm.memory, disk=r.vm.disk)
-        lc = VmConfig(name=r.loadgen_vm.name or "", cpus=r.loadgen_vm.cpus, memory=r.loadgen_vm.memory, disk=r.loadgen_vm.disk)
-        pre = [
-            EnsureVmRunning(task_id="vm.stack.ensure_running", title="Ensure stack VM running", lifecycle=None, config=sc),  # type: ignore[arg-type]
-            EnsureVmRunning(task_id="vm.loadgen.ensure_running", title="Ensure loadgen VM running", lifecycle=None, config=lc),  # type: ignore[arg-type]
-        ]
-        wf = Workflow(
-            tasks=[
-                InstallK6(task_id="loadgen.install_k6", title="Install k6 on loadgen VM", runner=None, remote_dir=None),  # type: ignore[arg-type]
-                RunK6(task_id="loadgen.run_k6", title="Run k6 loadtest", runner=None, config=None, remote_dir=None),  # type: ignore[arg-type]
-                FetchVmResults(task_id="loadgen.fetch_results", title="Fetch k6 results from loadgen VM", fetcher=None, remote_source=None, local_dest=None),  # type: ignore[arg-type]
-                CapturePrometheusSnapshot(task_id="metrics.prometheus_snapshot", title="Capture Prometheus snapshots", client=None, queries=None, window=None, output_dir=None),  # type: ignore[arg-type]
-                WriteK6Report(task_id="loadtest.write_report", title="Write loadtest report", data_dir=None, output_dir=None),  # type: ignore[arg-type]
-            ],
-            cleanup_tasks=[
-                DestroyVm(task_id="vm.loadgen.destroy", title="Destroy loadgen VM", lifecycle=None, info=None),  # type: ignore[arg-type]
-            ],
+        setup = self._build_setup()
+        stack_tasks = self._build_stack_prelude_tasks(setup, resolve_host=False)
+        return (
+            ["Ensure stack VM running"]
+            + [t.title for t in stack_tasks]
+            + [
+                "Ensure loadgen VM running",
+                "Install k6 on loadgen VM",
+                "Run k6 loadtest",
+                "Fetch k6 results from loadgen VM",
+                "Capture Prometheus snapshots",
+                "Write loadtest report",
+                "Destroy loadgen VM",
+                "Destroy stack VM",
+            ]
         )
-        return pre, wf
+
+    def _build_setup(self) -> _Setup:
+        return build_setup(self.runner, self.request)
+
+    def _build_stack_prelude_tasks(self, setup: _Setup, *, resolve_host: bool = True) -> list:
+        recipe = ScenarioRecipe(
+            name="two-vm-loadtest-stack",
+            component_ids=_TWO_VM_STACK_PRELUDE_COMPONENTS,
+            requires_managed_vm=True,
+        )
+        return build_command_tasks(
+            self.runner, self.request, setup, recipe, resolve_host=resolve_host
+        )
 
     def run(self, event_listener=None) -> None:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
 
+        setup = self._build_setup()
         request = self.request
-        vm_runner_impl = TwoVmLoadtestRunner(repo_root=self.runner.paths.workspace_root)
-        lifecycle = MultipassVmAdapter(vm_runner_impl.vm)
 
-        [s_ensure_stack, s_ensure_loadgen], s_wf = self._skeleton()
-        [s_install_k6, s_run_k6, s_fetch, s_prom, s_report] = s_wf.tasks
-        [s_destroy] = s_wf.cleanup_tasks
-
-        stack_config = VmConfig(name=request.vm.name, cpus=request.vm.cpus, memory=request.vm.memory, disk=request.vm.disk)
-        loadgen_config = VmConfig(name=request.loadgen_vm.name, cpus=request.loadgen_vm.cpus, memory=request.loadgen_vm.memory, disk=request.loadgen_vm.disk)
-
-        ensure_stack = EnsureVmRunning(task_id=s_ensure_stack.task_id, title=s_ensure_stack.title, lifecycle=lifecycle, config=stack_config)
-        ensure_loadgen = EnsureVmRunning(task_id=s_ensure_loadgen.task_id, title=s_ensure_loadgen.title, lifecycle=lifecycle, config=loadgen_config)
-
+        # ── 1. Ensure stack VM running ──────────────────────────────────────────
+        ensure_stack = EnsureVmRunning(
+            task_id="vm.stack.ensure_running",
+            title="Ensure stack VM running",
+            lifecycle=setup.lifecycle,
+            config=setup.vm_config,
+        )
         with workflow_step(task_id=ensure_stack.task_id, title=ensure_stack.title):
             stack_info = ensure_stack.run()
+
+        # ── 2. Stack provisioning (provision, sync, build, k3s, deploy) ────────
+        stack_tasks = self._build_stack_prelude_tasks(setup)
+        Workflow(tasks=stack_tasks).run()
+
+        # ── 3. Ensure loadgen VM running ────────────────────────────────────────
+        lifecycle = setup.lifecycle
+        loadgen_config = VmConfig(
+            name=request.loadgen_vm.name or "",
+            cpus=request.loadgen_vm.cpus,
+            memory=request.loadgen_vm.memory,
+            disk=request.loadgen_vm.disk,
+        )
+        ensure_loadgen = EnsureVmRunning(
+            task_id="vm.loadgen.ensure_running",
+            title="Ensure loadgen VM running",
+            lifecycle=lifecycle,
+            config=loadgen_config,
+        )
         with workflow_step(task_id=ensure_loadgen.task_id, title=ensure_loadgen.title):
             loadgen_info = ensure_loadgen.run()
 
+        # ── 4. Loadgen workflow ─────────────────────────────────────────────────
+        vm_runner_impl = TwoVmLoadtestRunner(repo_root=self.runner.paths.workspace_root)
         remote_home = loadgen_info.home
-        remote_paths = two_vm_remote_paths(remote_home, payload_name=request.k6_payload.name if request.k6_payload is not None else None)
+        remote_paths = two_vm_remote_paths(
+            remote_home,
+            payload_name=request.k6_payload.name if request.k6_payload is not None else None,
+        )
         run_dir = vm_runner_impl._create_run_dir()  # noqa: SLF001
         control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
 
@@ -127,27 +196,66 @@ class TwoVmLoadtestPlan:
         fetcher = VmFileFetcher(vm=vm_runner_impl.vm, request=request.loadgen_vm)
         prom_client = HttpPrometheusClient(url=two_vm_prometheus_url(request.vm, host=stack_info.host))
 
-        k6_task = RunK6(task_id=s_run_k6.task_id, title=s_run_k6.title, runner=loadgen_runner, config=k6_config, remote_dir=remote_home)
+        k6_task = RunK6(
+            task_id="loadgen.run_k6",
+            title="Run k6 loadtest",
+            runner=loadgen_runner,
+            config=k6_config,
+            remote_dir=remote_home,
+        )
 
-        workflow = Workflow(
+        cleanup: list = []
+        if getattr(request, "cleanup_vm", True):
+            cleanup = [
+                DestroyVm(
+                    task_id="vm.loadgen.destroy",
+                    title="Destroy loadgen VM",
+                    lifecycle=lifecycle,
+                    info=loadgen_info,
+                ),
+                DestroyVm(
+                    task_id="vm.stack.destroy",
+                    title="Destroy stack VM",
+                    lifecycle=setup.lifecycle,
+                    info=stack_info,
+                ),
+            ]
+
+        Workflow(
             tasks=[
-                InstallK6(task_id=s_install_k6.task_id, title=s_install_k6.title, runner=loadgen_runner, remote_dir=remote_home),
+                InstallK6(
+                    task_id="loadgen.install_k6",
+                    title="Install k6 on loadgen VM",
+                    runner=loadgen_runner,
+                    remote_dir=remote_home,
+                ),
                 k6_task,
-                FetchVmResults(task_id=s_fetch.task_id, title=s_fetch.title, fetcher=fetcher, remote_source=remote_paths.summary_path, local_dest=run_dir),
+                FetchVmResults(
+                    task_id="loadgen.fetch_results",
+                    title="Fetch k6 results from loadgen VM",
+                    fetcher=fetcher,
+                    remote_source=remote_paths.summary_path,
+                    local_dest=run_dir,
+                ),
                 CapturePrometheusSnapshot(
-                    task_id=s_prom.task_id, title=s_prom.title,
+                    task_id="metrics.prometheus_snapshot",
+                    title="Capture Prometheus snapshots",
                     client=prom_client,
                     queries=LOADTEST_PROMETHEUS_QUERIES,
-                    window=lambda: TimeWindow(start=k6_task.result.started_at, end=k6_task.result.ended_at),
+                    window=lambda: TimeWindow(
+                        start=k6_task.result.started_at, end=k6_task.result.ended_at
+                    ),
                     output_dir=run_dir,
                 ),
-                WriteK6Report(task_id=s_report.task_id, title=s_report.title, data_dir=run_dir, output_dir=run_dir),
+                WriteK6Report(
+                    task_id="loadtest.write_report",
+                    title="Write loadtest report",
+                    data_dir=run_dir,
+                    output_dir=run_dir,
+                ),
             ],
-            cleanup_tasks=[
-                DestroyVm(task_id=s_destroy.task_id, title=s_destroy.title, lifecycle=lifecycle, info=loadgen_info),
-            ],
-        )
-        workflow.run()
+            cleanup_tasks=cleanup,
+        ).run()
 
 
 def build_two_vm_loadtest_plan(
