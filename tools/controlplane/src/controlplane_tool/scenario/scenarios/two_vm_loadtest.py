@@ -9,16 +9,19 @@ from workflow_tasks import (
     DestroyVm,
     EnsureVmRunning,
     FetchVmResults,
-    InstallK6,
     RunK6,
     TimeWindow,
     Workflow,
+    install_k6_task,
     workflow_step,
     WriteK6Report,
 )
 from workflow_tasks.components.models import ScenarioRecipe
 from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
+from workflow_tasks.vm.multipass import _find_ssh_private_key_path
+
+from multipass import find_ssh_public_key
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
@@ -223,11 +226,14 @@ class TwoVmLoadtestPlan:
 
         Workflow(
             tasks=[
-                InstallK6(
+                install_k6_task(
                     task_id="loadgen.install_k6",
                     title="Install k6 on loadgen VM",
-                    runner=loadgen_runner,
-                    remote_dir=remote_home,
+                    repo_root=self.runner.paths.workspace_root,
+                    shell=self.runner.shell,
+                    host=loadgen_info.host,
+                    user=request.loadgen_vm.user,
+                    private_key=_find_ssh_private_key_path(find_ssh_public_key()),
                 ),
                 k6_task,
                 FetchVmResults(
