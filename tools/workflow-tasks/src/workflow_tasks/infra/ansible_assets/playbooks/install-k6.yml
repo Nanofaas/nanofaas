@@ -31,27 +31,6 @@
         k6_arch: "{{ k6_arch_map.get(ansible_architecture, '') }}"
 
   tasks:
-    - name: Fail when k6 is requested on an unsupported architecture
-      ansible.builtin.fail:
-        msg: "Unsupported architecture for k6: {{ ansible_architecture }}"
-      when: k6_arch | length == 0
-
-    - name: Resolve latest k6 release from GitHub
-      ansible.builtin.uri:
-        url: "{{ k6_release_api_url }}"
-        headers:
-          Accept: application/vnd.github+json
-        return_content: true
-        status_code: 200
-      delegate_to: localhost
-      become: false
-      run_once: true
-      register: k6_release
-
-    - name: Set target k6 version
-      ansible.builtin.set_fact:
-        k6_target_version: "{{ k6_release.json.tag_name }}"
-
     - name: Check installed k6 version
       ansible.builtin.command: k6 version
       register: k6_installed
@@ -67,34 +46,84 @@
             else ""
           }}
 
-    - name: Ensure k6 archive extraction directory exists
-      ansible.builtin.file:
-        path: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}"
-        state: directory
-        mode: "0755"
-      when: k6_installed_version != k6_target_version
+    # ── Ubuntu: install via Grafana apt repository ───────────────────────────
+    - name: Install k6 via apt (Ubuntu)
+      when: ansible_distribution == 'Ubuntu' and k6_installed_version == ""
+      block:
+        - name: Download Grafana GPG key for k6
+          ansible.builtin.get_url:
+            url: https://dl.k6.io/key.gpg
+            dest: /tmp/k6-keyring.gpg
+            mode: "0644"
 
-    - name: Download k6 release archive
-      ansible.builtin.get_url:
-        url: "https://github.com/grafana/k6/releases/download/{{ k6_target_version }}/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
-        dest: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
-        mode: "0644"
-      when: k6_installed_version != k6_target_version
+        - name: Dearmor Grafana GPG key
+          ansible.builtin.command:
+            cmd: gpg --yes --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg /tmp/k6-keyring.gpg
+          args:
+            creates: /usr/share/keyrings/k6-archive-keyring.gpg
 
-    - name: Extract k6 release archive
-      ansible.builtin.unarchive:
-        src: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
-        dest: "/tmp"
-        remote_src: true
-        creates: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}/k6"
-      when: k6_installed_version != k6_target_version
+        - name: Add k6 apt repository
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/k6.list
+            content: "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main\n"
+            mode: "0644"
 
-    - name: Install k6 binary
-      ansible.builtin.copy:
-        src: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}/k6"
-        dest: /usr/local/bin/k6
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0755"
-      when: k6_installed_version != k6_target_version
+        - name: Install k6 via apt
+          ansible.builtin.apt:
+            name: k6
+            state: present
+            update_cache: true
+            lock_timeout: 120
+
+    # ── Non-Ubuntu: install via GitHub binary download ───────────────────────
+    - name: Install k6 via binary download (non-Ubuntu)
+      when: ansible_distribution != 'Ubuntu' and k6_installed_version == ""
+      block:
+        - name: Fail when k6 is requested on an unsupported architecture
+          ansible.builtin.fail:
+            msg: "Unsupported architecture for k6: {{ ansible_architecture }}"
+          when: k6_arch | length == 0
+
+        - name: Resolve latest k6 release from GitHub
+          ansible.builtin.uri:
+            url: "{{ k6_release_api_url }}"
+            headers:
+              Accept: application/vnd.github+json
+            return_content: true
+            status_code: 200
+          delegate_to: localhost
+          become: false
+          run_once: true
+          register: k6_release
+
+        - name: Set target k6 version
+          ansible.builtin.set_fact:
+            k6_target_version: "{{ k6_release.json.tag_name }}"
+
+        - name: Ensure k6 archive extraction directory exists
+          ansible.builtin.file:
+            path: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}"
+            state: directory
+            mode: "0755"
+
+        - name: Download k6 release archive
+          ansible.builtin.get_url:
+            url: "https://github.com/grafana/k6/releases/download/{{ k6_target_version }}/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
+            dest: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
+            mode: "0644"
+
+        - name: Extract k6 release archive
+          ansible.builtin.unarchive:
+            src: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}.tar.gz"
+            dest: "/tmp"
+            remote_src: true
+            creates: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}/k6"
+
+        - name: Install k6 binary
+          ansible.builtin.copy:
+            src: "/tmp/k6-{{ k6_target_version }}-linux-{{ k6_arch }}/k6"
+            dest: /usr/local/bin/k6
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0755"

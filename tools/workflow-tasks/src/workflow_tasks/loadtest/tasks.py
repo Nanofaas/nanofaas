@@ -15,24 +15,22 @@ if TYPE_CHECKING:
     from workflow_tasks.tasks.executors import VmCommandRunner
 
 
+# Install k6 by downloading the binary from GitHub releases.
+# Avoids apt-repo setup entirely: curl|gpg pipelines fail silently when the key URL
+# changes or network is flaky, leaving apt unaware of the k6 package.
 _K6_INSTALL_CMD: tuple[str, ...] = (
     "bash",
     "-lc",
-    (
-        "which k6 || ("
-        "if command -v cloud-init >/dev/null 2>&1; then sudo cloud-init status --wait || true; fi"
-        " && for i in $(seq 1 60); do "
-        "if sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; "
-        "then sleep 5; else break; fi; done"
-        " && if sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; "
-        "then echo 'apt locks still held after waiting' >&2; exit 1; fi"
-        " && "
-        "curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg"
-        " && echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main'"
-        " | sudo tee /etc/apt/sources.list.d/k6.list"
-        " && sudo apt-get -o DPkg::Lock::Timeout=120 update -qq"
-        " && sudo apt-get -o DPkg::Lock::Timeout=120 install -y k6)"
-    ),
+    "which k6 2>/dev/null && exit 0; "
+    "set -euo pipefail; "
+    "K6_VER=$(curl -fsSL https://api.github.com/repos/grafana/k6/releases/latest"
+    " | python3 -c \"import json,sys; print(json.load(sys.stdin)['tag_name'])\"); "
+    "ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); "
+    "TMP=$(mktemp -d); "
+    "curl -fsSL \"https://github.com/grafana/k6/releases/download/${K6_VER}/k6-${K6_VER}-linux-${ARCH}.tar.gz\""
+    " | tar -xz -C \"$TMP\"; "
+    "sudo install -m 0755 \"$TMP/k6-${K6_VER}-linux-${ARCH}/k6\" /usr/local/bin/k6; "
+    "rm -rf \"$TMP\"",
 )
 
 
