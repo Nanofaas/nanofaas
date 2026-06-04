@@ -62,27 +62,29 @@ def test_install_k6_runs_bash_install_command() -> None:
     assert remote_dir == "/home/ubuntu"
 
 
-def test_install_k6_waits_for_cloud_init_and_apt_locks() -> None:
+def test_install_k6_is_idempotent_and_downloads_binary() -> None:
     runner = _RecordingVmRunner()
     task = InstallK6(task_id="loadgen.install_k6", title="Install k6", runner=runner, remote_dir="/home/ubuntu")
 
     task.run()
 
     command = runner.commands[0][0][-1]
-    assert "cloud-init status --wait" in command
-    assert "/var/lib/apt/lists/lock" in command
-    assert "DPkg::Lock::Timeout=120" in command
-    assert "fi && curl -fsSL" in command
+    assert "which k6 2>/dev/null && exit 0" in command
+    assert "api.github.com/repos/grafana/k6/releases/latest" in command
+    assert "tar -xz" in command
+    assert "/usr/local/bin/k6" in command
 
 
-def test_install_k6_gpg_import_is_non_interactive() -> None:
+def test_install_k6_uses_binary_download_not_apt() -> None:
     runner = _RecordingVmRunner()
     task = InstallK6(task_id="loadgen.install_k6", title="Install k6", runner=runner, remote_dir="/home/ubuntu")
 
     task.run()
 
     command = runner.commands[0][0][-1]
-    assert "sudo gpg --yes --dearmor" in command
+    assert "github.com/grafana/k6/releases/download" in command
+    assert "apt-get install" not in command
+    assert "gpg" not in command
 
 
 def test_install_k6_raises_on_nonzero_exit() -> None:
