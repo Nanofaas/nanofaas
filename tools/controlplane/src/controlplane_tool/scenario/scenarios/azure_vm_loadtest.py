@@ -14,6 +14,7 @@ from workflow_tasks import (
     TimeWindow,
     Workflow,
     WriteK6Report,
+    install_k6_task,
     workflow_step,
 )
 from workflow_tasks.loadtest.models import K6Config, K6Stage
@@ -147,7 +148,15 @@ class AzureVmLoadtestPlan:
 
         workflow = Workflow(
             tasks=[
-                InstallK6(task_id=s_install_k6.task_id, title=s_install_k6.title, runner=loadgen_runner, remote_dir=remote_home),
+                install_k6_task(
+                    task_id=s_install_k6.task_id,
+                    title=s_install_k6.title,
+                    repo_root=self.runner.paths.workspace_root,
+                    shell=self.runner.shell,
+                    host=azure_orch.connection_host(request.loadgen_vm),
+                    user=request.loadgen_vm.user,
+                    private_key=azure_orch.ssh_private_key_path(request.loadgen_vm),
+                ),
                 k6_task,
                 FetchVmResults(task_id=s_fetch.task_id, title=s_fetch.title, fetcher=fetcher, remote_source=remote_paths.summary_path, local_dest=run_dir),
                 CapturePrometheusSnapshot(

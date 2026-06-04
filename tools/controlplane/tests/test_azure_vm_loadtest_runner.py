@@ -109,3 +109,13 @@ def test_runner_executes_k6_with_control_plane_url(tmp_path):
     exec_calls = mock_orch.exec_argv.call_args_list
     all_exec_args = " ".join(str(c) for c in exec_calls)
     assert "http://10.0.0.1:30080" in all_exec_args
+
+
+def test_azure_loadgen_install_uses_runplaybook_not_bash() -> None:
+    import inspect
+
+    from controlplane_tool.scenario.scenarios import azure_vm_loadtest
+
+    source = inspect.getsource(azure_vm_loadtest.AzureVmLoadtestPlan.run)
+    assert "install_k6_task(" in source
+    assert "InstallK6(" not in source
