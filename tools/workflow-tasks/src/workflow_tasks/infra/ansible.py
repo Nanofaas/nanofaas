@@ -93,14 +93,6 @@ class AnsibleAdapter:
         )
         return self.shell.run(command, cwd=self.repo_root, env=env, dry_run=dry_run)
 
-    def install_k6(
-        self,
-        request: VmRequest,
-        *,
-        dry_run: bool = False,
-    ) -> ShellExecutionResult:
-        return self.run_playbook("install-k6.yml", request, dry_run=dry_run)
-
     def _registry_extra_vars(
         self,
         *,

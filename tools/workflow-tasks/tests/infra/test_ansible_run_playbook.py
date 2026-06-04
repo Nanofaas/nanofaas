@@ -36,19 +36,6 @@ def test_run_playbook_builds_ansible_command_and_runs_on_host() -> None:
     assert command[-1].endswith("playbooks/install-k6.yml")
 
 
-def test_install_k6_uses_install_k6_playbook() -> None:
-    shell = RecordingShell()
-    adapter = AnsibleAdapter(
-        repo_root=Path("/repo"),
-        shell=shell,
-        host_resolver=lambda request, dry_run=False: "10.0.0.5",
-    )
-
-    adapter.install_k6(_external_request())
-
-    assert shell.commands[0][-1].endswith("playbooks/install-k6.yml")
-
-
 class _FailingShell(ShellBackend):
     """Minimal shell that always fails — pattern mirrors tests/infra/test_ansible.py."""
 
