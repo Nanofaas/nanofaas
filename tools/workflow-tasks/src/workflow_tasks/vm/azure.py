@@ -33,6 +33,9 @@ class AzureVmProvider:
             return Path(request.azure_ssh_key_path)
         return _find_ssh_private_key_path()
 
+    def ssh_private_key_path(self, request: VmRequest) -> Path | None:
+        return self._ssh_key(request)
+
     def remote_home(self, request: VmRequest) -> str:
         return vm_remote_home(request)
 

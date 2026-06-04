@@ -95,6 +95,15 @@ def test_ssh_key_fallback(mock_find, mock_client_cls) -> None:
 
 
 @patch("workflow_tasks.vm.azure.AzureClient")
+def test_ssh_private_key_path_public(mock_client_cls, tmp_path) -> None:
+    key = tmp_path / "id_ed25519"
+    key.write_text("x")
+    provider = _make_provider()
+    req = _make_request(azure_ssh_key_path=str(key))
+    assert provider.ssh_private_key_path(req) == key
+
+
+@patch("workflow_tasks.vm.azure.AzureClient")
 def test_connection_host(mock_client_cls) -> None:
     client_mock, vm_mock = _make_azure_client_mock()
     mock_client_cls.return_value = client_mock
