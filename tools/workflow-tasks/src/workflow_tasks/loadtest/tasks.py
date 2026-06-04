@@ -53,6 +53,12 @@ def _build_k6_argv(config: "K6Config") -> tuple[str, ...]:
 
 @dataclass
 class InstallK6:
+    """DEPRECATED: bash binary-download k6 install (runs on the VM).
+
+    Superseded by the ansible path: ``install_k6_task`` / ``RunPlaybook`` with
+    ``install-k6.yml``. Retained for back-compat until all loadtest scenarios
+    (azure, proxmox) are migrated. Do not use in new code.
+    """
     task_id: str
     title: str
     runner: "VmCommandRunner"
