@@ -233,6 +233,12 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
         def publish_port(self, request, *, service, guest_port):
             return "127.0.0.1", 30090
 
+        def ssh_endpoint(self, request):
+            return "127.0.0.1", 2222
+
+        def ssh_private_key_path(self, request):
+            return None
+
         def teardown(self, request):
             return None
 
@@ -270,7 +276,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
         FakeTwoVmLoadtestRunner,
     )
     monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "InstallK6", FakeTask)
+    monkeypatch.setattr(proxmox_plan, "install_k6_task", FakeTask)
     monkeypatch.setattr(proxmox_plan, "RunK6", FakeTask)
     monkeypatch.setattr(proxmox_plan, "FetchVmResults", FakeTask)
     monkeypatch.setattr(proxmox_plan, "CapturePrometheusSnapshot", FakeTask)
@@ -349,6 +355,12 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
         def publish_port(self, request, *, service, guest_port):
             return "127.0.0.1", 30090
 
+        def ssh_endpoint(self, request):
+            return "127.0.0.1", 2222
+
+        def ssh_private_key_path(self, request):
+            return None
+
         def teardown(self, request):
             return None
 
@@ -399,7 +411,7 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     )
     monkeypatch.setattr(proxmox_plan, "ProxmoxVmAdapter", fake_proxmox_adapter)
     monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "InstallK6", FakeTask)
+    monkeypatch.setattr(proxmox_plan, "install_k6_task", FakeTask)
     monkeypatch.setattr(proxmox_plan, "RunK6", FakeTask)
     monkeypatch.setattr(proxmox_plan, "FetchVmResults", FakeTask)
     monkeypatch.setattr(proxmox_plan, "CapturePrometheusSnapshot", FakeTask)
@@ -440,3 +452,13 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     assert adapter_credentials == ["proxmox-stack", "proxmox-loadgen"]
     assert ("proxmox-stack", "proxmox-stack") in ensure_lifecycles
     assert ("proxmox-loadgen", "proxmox-loadgen") in ensure_lifecycles
+
+
+def test_proxmox_loadgen_install_uses_runplaybook_not_bash() -> None:
+    import inspect
+
+    from controlplane_tool.scenario.scenarios import proxmox_vm_loadtest
+
+    source = inspect.getsource(proxmox_vm_loadtest.ProxmoxVmLoadtestPlan._tail_tasks)
+    assert "install_k6_task(" in source
+    assert "InstallK6(" not in source

@@ -38,3 +38,14 @@ def test_two_vm_loadtest_plan_has_expected_task_ids() -> None:
     # Cleanup
     assert "vm.loadgen.destroy" in ids
     assert "vm.stack.destroy" in ids
+
+
+def test_two_vm_loadgen_install_uses_runplaybook_not_bash() -> None:
+    """The loadgen install step must be the ansible RunPlaybook, not bash InstallK6."""
+    import inspect
+
+    from controlplane_tool.scenario.scenarios import two_vm_loadtest
+
+    source = inspect.getsource(two_vm_loadtest.TwoVmLoadtestPlan.run)
+    assert "install_k6_task(" in source
+    assert "InstallK6(" not in source
