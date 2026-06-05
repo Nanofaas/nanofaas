@@ -59,3 +59,14 @@ def test_two_vm_run_uploads_k6_script_to_loadgen() -> None:
 
     source = inspect.getsource(two_vm_loadtest.TwoVmLoadtestPlan.run)
     assert "prepare_loadgen" in source
+
+
+def test_two_vm_run_registers_functions_on_control_plane() -> None:
+    """run() must register the selected functions, else k6 invokes a non-existent
+    function (400) and the required Prometheus dispatch metrics have no data."""
+    import inspect
+
+    from controlplane_tool.scenario.scenarios import two_vm_loadtest
+
+    source = inspect.getsource(two_vm_loadtest.TwoVmLoadtestPlan.run)
+    assert "RegisterFunctions" in source

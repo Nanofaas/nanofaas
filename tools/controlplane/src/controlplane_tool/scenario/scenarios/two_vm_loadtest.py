@@ -16,6 +16,7 @@ from workflow_tasks import (
     workflow_step,
     WriteK6Report,
 )
+from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
 from workflow_tasks.components.models import ScenarioRecipe
 from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
@@ -32,6 +33,7 @@ from controlplane_tool.loadtest.loadtest_adapters import (
 )
 from controlplane_tool.scenario.catalog import ScenarioDefinition
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
 from controlplane_tool.scenario.scenarios._workflow_assembly import (
     _Setup,
     build_command_tasks,
@@ -182,6 +184,24 @@ class TwoVmLoadtestPlan:
         vm_runner_impl.prepare_loadgen(request, remote_paths)
         run_dir = vm_runner_impl._create_run_dir()  # noqa: SLF001
         control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
+
+        # Register the selected functions on the control plane (REST) before k6 runs.
+        # Without this /v1/functions is empty, every invocation 400s, no dispatch
+        # happens, and the required Prometheus metrics (function_dispatch_total) have
+        # no data — failing the Prometheus-snapshot phase.
+        runtime_image_default = f"{setup.context.local_registry}/nanofaas/function-runtime:e2e"
+        RegisterFunctions(
+            task_id="functions.register",
+            title="Register functions",
+            control_plane_url=control_plane_url,
+            specs=[
+                FunctionSpec(
+                    name=fn_key,
+                    image=function_image(fn_key, request.resolved_scenario, runtime_image_default),
+                )
+                for fn_key in selected_functions(request.resolved_scenario)
+            ],
+        ).run()
 
         k6_config = K6Config(
             script_path=Path(remote_paths.script_path),
