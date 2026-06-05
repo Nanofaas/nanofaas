@@ -46,38 +46,14 @@
             else ""
           }}
 
-    # ── Ubuntu: install via Grafana apt repository ───────────────────────────
-    - name: Install k6 via apt (Ubuntu)
-      when: ansible_distribution == 'Ubuntu' and k6_installed_version == ""
-      block:
-        - name: Download Grafana GPG key for k6
-          ansible.builtin.get_url:
-            url: https://dl.k6.io/key.gpg
-            dest: /tmp/k6-keyring.gpg
-            mode: "0644"
-
-        - name: Dearmor Grafana GPG key
-          ansible.builtin.command:
-            cmd: gpg --yes --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg /tmp/k6-keyring.gpg
-          args:
-            creates: /usr/share/keyrings/k6-archive-keyring.gpg
-
-        - name: Add k6 apt repository
-          ansible.builtin.copy:
-            dest: /etc/apt/sources.list.d/k6.list
-            content: "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main\n"
-            mode: "0644"
-
-        - name: Install k6 via apt
-          ansible.builtin.apt:
-            name: k6
-            state: present
-            update_cache: true
-            lock_timeout: 120
-
-    # ── Non-Ubuntu: install via GitHub binary download ───────────────────────
-    - name: Install k6 via binary download (non-Ubuntu)
-      when: ansible_distribution != 'Ubuntu' and k6_installed_version == ""
+    # ── Install k6 from the official GitHub release archive ──────────────────
+    # Always use the release tarball (handles amd64 AND arm64). The Grafana apt
+    # repo (dl.k6.io/deb) has no arm64 package, so `apt install k6` fails on
+    # arm64 hosts (e.g. Apple-Silicon multipass) with "No package matching 'k6'".
+    # The binary download is the arch-correct, proven approach — the same one the
+    # legacy bash installer adopted for exactly this reason.
+    - name: Install k6 from the GitHub release archive
+      when: k6_installed_version == ""
       block:
         - name: Fail when k6 is requested on an unsupported architecture
           ansible.builtin.fail:
