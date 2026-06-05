@@ -120,3 +120,37 @@ def test_install_k6_task_factory_omits_port_when_none() -> None:
     )
     task.run()
     assert not any("ansible_port=" in arg for arg in shell.commands[0])
+
+
+class _AnsibleLikeFailingShell(ShellBackend):
+    """Mimics ansible: real failure on stdout, benign WARNING on stderr."""
+
+    def run(self, command, *, cwd=None, env=None, dry_run=False) -> ShellExecutionResult:
+        return ShellExecutionResult(
+            command=command,
+            return_code=2,
+            stdout="fatal: [10.0.0.5]: FAILED! => No package matching 'k6' is available",
+            stderr="[WARNING]: Module remote_tmp /root/.ansible/tmp did not exist",
+        )
+
+
+def test_run_playbook_error_surfaces_stdout_failure_not_just_stderr_warning() -> None:
+    adapter = AnsibleAdapter(
+        repo_root=Path("/repo"),
+        shell=_AnsibleLikeFailingShell(),
+        host_resolver=lambda request, dry_run=False: "10.0.0.5",
+    )
+    task = RunPlaybook(
+        task_id="loadgen.install_k6",
+        title="Install k6",
+        adapter=adapter,
+        playbook="install-k6.yml",
+        request=_external_request(),
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        task.run()
+
+    message = str(exc.value)
+    # The real ansible failure (on stdout) must be surfaced, not masked by the stderr warning.
+    assert "No package matching 'k6'" in message

@@ -226,10 +226,14 @@ class RunPlaybook:
             self.playbook, self.request, extra_vars=self.extra_vars
         )
         if result.return_code != 0:
+            # Surface stdout AND stderr: ansible reports task failures on stdout
+            # (PLAY RECAP / "fatal: ... FAILED!") while benign warnings go to stderr,
+            # so stderr alone would mask the real error.
+            detail = "\n".join(
+                part for part in (result.stdout.strip(), result.stderr.strip()) if part
+            )
             raise RuntimeError(
-                result.stderr.strip()
-                or result.stdout.strip()
-                or f"{self.task_id} failed (exit {result.return_code})"
+                detail or f"{self.task_id} failed (exit {result.return_code})"
             )
 
 
