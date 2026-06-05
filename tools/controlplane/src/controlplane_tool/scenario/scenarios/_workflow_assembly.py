@@ -36,7 +36,6 @@ from workflow_tasks.vm.models import VmConfig
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
-from controlplane_tool.loadtest.loadtest_adapters import OrchestratorVmRunner
 from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.connectivity import (
     ConnectivityStrategy,
@@ -232,6 +231,7 @@ def build_command_tasks(
     special_handler: SpecialHandler | None = None,
     context_selector: Callable[[object], object] | None = None,
     resolve_host: bool = True,
+    connectivity: ConnectivityStrategy | None = None,
 ) -> list:
     """Route each composed recipe operation to an honest CommandTask.
 
@@ -258,10 +258,11 @@ def build_command_tasks(
     vm_orch = runner.vm
     remote_dir = vm_orch.remote_project_dir(vm_request)
 
+    if connectivity is None:
+        connectivity = MultipassConnectivity(runner=runner, request=request)
+
     host_executor = HostCommandTaskExecutor(runner.shell)
-    vm_executor = VmCommandTaskExecutor(OrchestratorVmRunner(vm_orch, vm_request))
-    resolver = CommandResolver(host_resolver=runner._host_resolver)  # noqa: SLF001
-    ip_cache: dict[str, str] = {}
+    vm_executor = VmCommandTaskExecutor(connectivity.vm_runner(vm_request))
 
     tasks: list = []
     for component in compose_recipe(recipe):
@@ -283,13 +284,7 @@ def build_command_tasks(
                 )
             else:
                 host_op = (
-                    resolve_host_operation(
-                        operation,
-                        resolver=resolver,
-                        request=request,
-                        vm=vm_orch,
-                        ip_cache=ip_cache,
-                    )
+                    connectivity.resolve_host_operation(operation)
                     if resolve_host
                     else operation
                 )
