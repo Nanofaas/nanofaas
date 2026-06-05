@@ -36,8 +36,12 @@ from workflow_tasks.vm.models import VmConfig
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from workflow_tasks.vm.orchestrator import VmOrchestrator
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
-from controlplane_tool.loadtest.loadtest_adapters import OrchestratorVmRunner
 from controlplane_tool.scenario.command_resolver import CommandResolver
+from controlplane_tool.scenario.connectivity import (
+    ConnectivityStrategy,
+    MultipassConnectivity,
+    resolve_host_operation,
+)
 from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.environment import resolve_scenario_environment
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
@@ -118,27 +122,6 @@ def build_setup(runner: "E2eRunner", request: E2eRequest) -> _Setup:
         vm_request=vm_request,
         lifecycle=lifecycle,
         vm_config=vm_config,
-    )
-
-
-def resolve_host_operation(
-    operation: RemoteCommandOperation,
-    *,
-    resolver: CommandResolver,
-    request: E2eRequest,
-    vm: VmOrchestrator,
-    ip_cache: dict[str, str],
-) -> RemoteCommandOperation:
-    """Substitute <multipass-ip:NAME> placeholders in a host operation's argv/env."""
-    # TODO(C-followup): promote CommandResolver.resolve_operation to public.
-    argv = resolver._resolve_command(list(operation.argv), request.vm, ip_cache, vm)  # noqa: SLF001
-    env = resolver._resolve_env(dict(operation.env), request.vm, ip_cache, vm)  # noqa: SLF001
-    return RemoteCommandOperation(
-        operation_id=operation.operation_id,
-        summary=operation.summary,
-        argv=tuple(argv),
-        env=env,
-        execution_target=operation.execution_target,
     )
 
 
@@ -248,6 +231,7 @@ def build_command_tasks(
     special_handler: SpecialHandler | None = None,
     context_selector: Callable[[object], object] | None = None,
     resolve_host: bool = True,
+    connectivity: ConnectivityStrategy | None = None,
 ) -> list:
     """Route each composed recipe operation to an honest CommandTask.
 
@@ -274,10 +258,11 @@ def build_command_tasks(
     vm_orch = runner.vm
     remote_dir = vm_orch.remote_project_dir(vm_request)
 
+    if connectivity is None:
+        connectivity = MultipassConnectivity(runner=runner, request=request)
+
     host_executor = HostCommandTaskExecutor(runner.shell)
-    vm_executor = VmCommandTaskExecutor(OrchestratorVmRunner(vm_orch, vm_request))
-    resolver = CommandResolver(host_resolver=runner._host_resolver)  # noqa: SLF001
-    ip_cache: dict[str, str] = {}
+    vm_executor = VmCommandTaskExecutor(connectivity.vm_runner(vm_request))
 
     tasks: list = []
     for component in compose_recipe(recipe):
@@ -299,13 +284,7 @@ def build_command_tasks(
                 )
             else:
                 host_op = (
-                    resolve_host_operation(
-                        operation,
-                        resolver=resolver,
-                        request=request,
-                        vm=vm_orch,
-                        ip_cache=ip_cache,
-                    )
+                    connectivity.resolve_host_operation(operation)
                     if resolve_host
                     else operation
                 )
