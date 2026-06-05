@@ -2,22 +2,64 @@ from __future__ import annotations
 
 from workflow_tasks.components.models import ScenarioRecipe
 
+# ── Reusable recipe fragments ────────────────────────────────────────────────
+# Provisioning shared by every managed-VM scenario, up to and including the
+# namespace Helm release (the last step before scenarios diverge).
+BASE_PROVISION: tuple[str, ...] = (
+    "vm.ensure_running",
+    "vm.provision_base",
+    "repo.sync_to_vm",
+    "registry.ensure_container",
+    "images.build_core",
+    "images.build_selected_functions",
+    "k3s.install",
+    "k3s.configure_registry",
+    "namespace.install",
+)
+
+# Deploy nanofaas via Helm (control-plane + function-runtime). Used by every
+# scenario except cli-stack, which installs through the CLI instead.
+HELM_DEPLOY: tuple[str, ...] = (
+    "helm.deploy_control_plane",
+    "helm.deploy_function_runtime",
+)
+
+# Full Helm-based stack prelude (provision + deploy).
+STACK_PRELUDE: tuple[str, ...] = BASE_PROVISION + HELM_DEPLOY
+
+# Shared tail for the loadgen-based loadtest scenarios: build the CLI, register
+# functions, then run the k6 load test from the loadgen VM and tear down.
+LOADTEST_TAIL: tuple[str, ...] = (
+    "cli.build_install_dist",
+    "cli.fn_apply_selected",
+    "loadgen.ensure_running",
+    "loadgen.provision_base",
+    "loadgen.install_k6",
+    "loadgen.run_k6",
+    "metrics.prometheus_snapshot",
+    "loadtest.write_report",
+    "loadgen.down",
+    "vm.down",
+)
+
+# The three loadtest scenarios share one recipe shape (they differ only by
+# lifecycle/connectivity at execution time, not by component list).
+_LOADTEST_COMPONENT_IDS: tuple[str, ...] = STACK_PRELUDE + LOADTEST_TAIL
+
+
+def _loadtest_recipe(name: str) -> ScenarioRecipe:
+    return ScenarioRecipe(
+        name=name,
+        component_ids=_LOADTEST_COMPONENT_IDS,
+        requires_managed_vm=True,
+    )
+
 
 _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
     "k3s-junit-curl": ScenarioRecipe(
         name="k3s-junit-curl",
-        component_ids=(
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "namespace.install",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
+        component_ids=STACK_PRELUDE
+        + (
             "tests.run_k3s_curl_checks",
             "tests.run_k8s_junit",
             "cleanup.uninstall_function_runtime",
@@ -29,117 +71,21 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
     ),
     "helm-stack": ScenarioRecipe(
         name="helm-stack",
-        component_ids=(
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "namespace.install",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
+        component_ids=STACK_PRELUDE
+        + (
             "loadtest.install_k6",
             "loadtest.run",
             "experiments.autoscaling",
         ),
         requires_managed_vm=True,
     ),
-    "two-vm-loadtest": ScenarioRecipe(
-        name="two-vm-loadtest",
-        component_ids=(
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "namespace.install",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
-            "cli.build_install_dist",
-            "cli.fn_apply_selected",
-            "loadgen.ensure_running",
-            "loadgen.provision_base",
-            "loadgen.install_k6",
-            "loadgen.run_k6",
-            "metrics.prometheus_snapshot",
-            "loadtest.write_report",
-            "loadgen.down",
-            "vm.down",
-        ),
-        requires_managed_vm=True,
-    ),
-    "azure-vm-loadtest": ScenarioRecipe(
-        name="azure-vm-loadtest",
-        component_ids=(
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "namespace.install",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
-            "cli.build_install_dist",
-            "cli.fn_apply_selected",
-            "loadgen.ensure_running",
-            "loadgen.provision_base",
-            "loadgen.install_k6",
-            "loadgen.run_k6",
-            "metrics.prometheus_snapshot",
-            "loadtest.write_report",
-            "loadgen.down",
-            "vm.down",
-        ),
-        requires_managed_vm=True,
-    ),
-    "proxmox-vm-loadtest": ScenarioRecipe(
-        name="proxmox-vm-loadtest",
-        component_ids=(
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "namespace.install",
-            "helm.deploy_control_plane",
-            "helm.deploy_function_runtime",
-            "cli.build_install_dist",
-            "cli.fn_apply_selected",
-            "loadgen.ensure_running",
-            "loadgen.provision_base",
-            "loadgen.install_k6",
-            "loadgen.run_k6",
-            "metrics.prometheus_snapshot",
-            "loadtest.write_report",
-            "loadgen.down",
-            "vm.down",
-        ),
-        requires_managed_vm=True,
-    ),
+    "two-vm-loadtest": _loadtest_recipe("two-vm-loadtest"),
+    "azure-vm-loadtest": _loadtest_recipe("azure-vm-loadtest"),
+    "proxmox-vm-loadtest": _loadtest_recipe("proxmox-vm-loadtest"),
     "cli-stack": ScenarioRecipe(
         name="cli-stack",
-        component_ids=(
-            "vm.ensure_running",
-            "vm.provision_base",
-            "repo.sync_to_vm",
-            "registry.ensure_container",
-            "images.build_core",
-            "images.build_selected_functions",
-            "k3s.install",
-            "k3s.configure_registry",
-            "namespace.install",
+        component_ids=BASE_PROVISION
+        + (
             "cli.build_install_dist",
             "cli.platform_install",
             "cli.platform_status",

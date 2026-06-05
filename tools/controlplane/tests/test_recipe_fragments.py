@@ -74,3 +74,11 @@ def test_all_recipes_have_golden_entry() -> None:
     from controlplane_tool.scenario.components.recipes import _SCENARIO_RECIPES
 
     assert set(_SCENARIO_RECIPES) == set(GOLDEN)
+
+
+def test_loadtest_recipes_are_identical() -> None:
+    # The fragment refactor collapses the three loadtest recipes to one shared definition.
+    two_vm = build_scenario_recipe("two-vm-loadtest").component_ids
+    azure = build_scenario_recipe("azure-vm-loadtest").component_ids
+    proxmox = build_scenario_recipe("proxmox-vm-loadtest").component_ids
+    assert two_vm == azure == proxmox
