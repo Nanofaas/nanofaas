@@ -49,3 +49,13 @@ def test_two_vm_loadgen_install_uses_runplaybook_not_bash() -> None:
     source = inspect.getsource(two_vm_loadtest.TwoVmLoadtestPlan.run)
     assert "install_k6_task(" in source
     assert "InstallK6(" not in source
+
+
+def test_two_vm_run_uploads_k6_script_to_loadgen() -> None:
+    """run() must upload the k6 script before RunK6, else k6 finds no script."""
+    import inspect
+
+    from controlplane_tool.scenario.scenarios import two_vm_loadtest
+
+    source = inspect.getsource(two_vm_loadtest.TwoVmLoadtestPlan.run)
+    assert "prepare_loadgen" in source

@@ -15,6 +15,7 @@ from controlplane_tool.loadtest.prometheus_snapshots import capture_prometheus_s
 from controlplane_tool.loadtest.report import render_report
 from workflow_tasks.loadtest.remote_k6 import RemoteK6RunConfig, build_k6_command
 from controlplane_tool.scenario.two_vm_loadtest_config import (
+    TwoVmRemotePaths,
     two_vm_control_plane_url,
     two_vm_load_stages,
     two_vm_prometheus_url,
@@ -116,18 +117,14 @@ class TwoVmLoadtestRunner:
         self.host_resolver = host_resolver
         self.runs_root = Path(runs_root) if runs_root is not None else self.paths.runs_dir
 
-    def run_k6(self, request: E2eRequest, *, target_override: str | None = None) -> TwoVmK6Result:
-        if request.vm is None:
-            raise ValueError("two-vm-loadtest requires a stack VM request")
+    def prepare_loadgen(self, request: E2eRequest, remote_paths: TwoVmRemotePaths) -> None:
+        """Create the loadgen run dirs and upload the k6 script (and payload).
+
+        Required before running k6 on the loadgen VM — without it `k6 run` fails
+        immediately because the script file does not exist.
+        """
         if request.loadgen_vm is None:
             raise ValueError("two-vm-loadtest requires a loadgen VM request")
-
-        run_dir = self._create_run_dir()
-        remote_paths = two_vm_remote_paths(
-            self.vm.remote_home(request.loadgen_vm),
-            payload_name=request.k6_payload.name if request.k6_payload is not None else None,
-        )
-
         self._check(
             self.vm.exec_argv(
                 request.loadgen_vm,
@@ -141,7 +138,6 @@ class TwoVmLoadtestRunner:
                 destination=remote_paths.script_path,
             )
         )
-
         if request.k6_payload is not None and remote_paths.payload_path is not None:
             self._check(
                 self.vm.transfer_to(
@@ -150,6 +146,20 @@ class TwoVmLoadtestRunner:
                     destination=remote_paths.payload_path,
                 )
             )
+
+    def run_k6(self, request: E2eRequest, *, target_override: str | None = None) -> TwoVmK6Result:
+        if request.vm is None:
+            raise ValueError("two-vm-loadtest requires a stack VM request")
+        if request.loadgen_vm is None:
+            raise ValueError("two-vm-loadtest requires a loadgen VM request")
+
+        run_dir = self._create_run_dir()
+        remote_paths = two_vm_remote_paths(
+            self.vm.remote_home(request.loadgen_vm),
+            payload_name=request.k6_payload.name if request.k6_payload is not None else None,
+        )
+
+        self.prepare_loadgen(request, remote_paths)
 
         target_function = target_override if target_override is not None else two_vm_target_function(request)
         command = build_k6_command(
