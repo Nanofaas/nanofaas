@@ -177,6 +177,9 @@ class TwoVmLoadtestPlan:
             remote_home,
             payload_name=request.k6_payload.name if request.k6_payload is not None else None,
         )
+        # Create the loadgen run dirs and upload the k6 script before RunK6 — without
+        # this `k6 run` exits immediately ("script.js: No such file") and writes no summary.
+        vm_runner_impl.prepare_loadgen(request, remote_paths)
         run_dir = vm_runner_impl._create_run_dir()  # noqa: SLF001
         control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
 

@@ -137,3 +137,27 @@ def test_two_vm_loadtest_runner_captures_prometheus_snapshots(
     assert captured["output_dir"] == tmp_path
     assert captured["start"] == started_at
     assert captured["end"] == ended_at
+
+
+def test_prepare_loadgen_creates_dirs_and_uploads_script(tmp_path: Path) -> None:
+    from controlplane_tool.scenario.two_vm_loadtest_config import two_vm_remote_paths
+
+    _write_default_k6_asset(tmp_path)
+    shell = RecordingShell()
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
+    )
+    runner = TwoVmLoadtestRunner(
+        repo_root=tmp_path, shell=shell, runs_root=tmp_path / "runs",
+        host_resolver=lambda vm: "10.0.0.2",
+    )
+    remote_paths = two_vm_remote_paths(runner.vm.remote_home(request.loadgen_vm))
+
+    runner.prepare_loadgen(request, remote_paths)
+
+    rendered = [" ".join(command) for command in shell.commands]
+    assert any("mkdir" in c and "-p" in c and "nanofaas-e2e-loadgen" in c for c in rendered)
+    assert any("transfer" in c and "script.js" in c for c in rendered)
