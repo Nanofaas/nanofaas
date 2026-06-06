@@ -69,7 +69,11 @@ from workflow_tasks.loadtest import (
     WriteK6Report,
     query_prometheus_range_series,
 )
-from workflow_tasks.loadtest.loadgen_sequence import make_loadtest_k6_config
+from workflow_tasks.loadtest.loadgen_sequence import (
+    LoadgenBodyInputs,
+    build_loadgen_body_tasks,
+    make_loadtest_k6_config,
+)
 from workflow_tasks.infra.ansible import RunPlaybook, install_k6_task
 
 __all__ = [
@@ -105,4 +109,6 @@ __all__ = [
     "InstallK6", "RunK6", "FetchVmResults", "CapturePrometheusSnapshot", "WriteK6Report",
     "query_prometheus_range_series", "HttpPrometheusClient",
     "make_loadtest_k6_config",
+    "LoadgenBodyInputs",
+    "build_loadgen_body_tasks",
 ]

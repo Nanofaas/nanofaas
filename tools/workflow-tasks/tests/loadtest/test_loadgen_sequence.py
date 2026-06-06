@@ -46,3 +46,78 @@ def test_make_k6_config_includes_payload_when_present() -> None:
     assert cfg.payload_path == Path("/home/ubuntu/run/payload.json")
     assert cfg.vus == 4
     assert cfg.duration == "2m"
+
+
+from workflow_tasks.loadtest.loadgen_sequence import (
+    LoadgenBodyInputs,
+    build_loadgen_body_tasks,
+)
+from workflow_tasks.loadtest.models import PrometheusQuery
+
+
+class _FakeRunner:
+    pass
+
+
+class _FakeFetcher:
+    pass
+
+
+class _FakeClient:
+    pass
+
+
+def _inputs(tmp_path) -> LoadgenBodyInputs:
+    cfg = make_loadtest_k6_config(
+        remote_paths=_remote_paths(),
+        control_plane_url="http://h:8080",
+        target_function="echo",
+        stages=[("30s", 5)],
+        vus=None,
+        duration=None,
+    )
+    return LoadgenBodyInputs(
+        task_ids=("loadgen.install_k6", "loadgen.run_k6", "loadgen.fetch_results",
+                  "metrics.prometheus_snapshot", "loadtest.write_report"),
+        titles=("Install k6 on loadgen VM", "Run k6 loadtest", "Fetch k6 results from loadgen VM",
+                "Capture Prometheus snapshots", "Write loadtest report"),
+        install_k6_kwargs={"repo_root": tmp_path, "shell": object(), "host": "1.2.3.4",
+                           "user": "ubuntu", "private_key": None, "port": None},
+        runner=_FakeRunner(),
+        fetcher=_FakeFetcher(),
+        prometheus_client=_FakeClient(),
+        prometheus_queries=(PrometheusQuery(name="q", expr="up", required=True),),
+        k6_config=cfg,
+        remote_dir="/home/ubuntu",
+        remote_summary_path="/home/ubuntu/run/k6-summary.json",
+        run_dir=tmp_path / "run",
+    )
+
+
+def test_build_loadgen_body_tasks_ids_and_titles(tmp_path) -> None:
+    tasks = build_loadgen_body_tasks(_inputs(tmp_path))
+    assert [t.task_id for t in tasks] == [
+        "loadgen.install_k6", "loadgen.run_k6", "loadgen.fetch_results",
+        "metrics.prometheus_snapshot", "loadtest.write_report",
+    ]
+    assert [t.title for t in tasks] == [
+        "Install k6 on loadgen VM", "Run k6 loadtest", "Fetch k6 results from loadgen VM",
+        "Capture Prometheus snapshots", "Write loadtest report",
+    ]
+
+
+def test_build_loadgen_body_window_reads_run_k6_result(tmp_path) -> None:
+    from datetime import datetime, timezone
+    from workflow_tasks.loadtest.models import K6RunResult
+
+    tasks = build_loadgen_body_tasks(_inputs(tmp_path))
+    run_k6 = tasks[1]
+    prom = tasks[3]
+    started = datetime(2026, 6, 6, 12, 0, 0, tzinfo=timezone.utc)
+    ended = datetime(2026, 6, 6, 12, 5, 0, tzinfo=timezone.utc)
+    run_k6._result = K6RunResult(  # noqa: SLF001
+        summary_path=Path("/x"), started_at=started, ended_at=ended, passed=True
+    )
+    window = prom.window()
+    assert window.start == started
+    assert window.end == ended
