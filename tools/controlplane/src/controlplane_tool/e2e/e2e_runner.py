@@ -25,6 +25,7 @@ from workflow_tasks.shell import (
     SubprocessShell,
 )
 from workflow_tasks.vm.orchestrator import VmOrchestrator
+from workflow_tasks.infra.host_sleep import prevent_host_sleep
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
@@ -349,10 +350,13 @@ class E2eRunner:
         initial_count = self._recorded_command_count()
         plan = self.plan(request)
         self._discard_planning_commands(initial_count)
-        if isinstance(plan, E2ePlan):
-            self.execute(plan, event_listener=event_listener)
-        else:
-            plan.run(event_listener=event_listener)
+        # Keep the host awake for the whole run: idle-sleep drifts the VM clock vs
+        # the host and breaks time-windowed Prometheus queries (macOS only; no-op elsewhere).
+        with prevent_host_sleep():
+            if isinstance(plan, E2ePlan):
+                self.execute(plan, event_listener=event_listener)
+            else:
+                plan.run(event_listener=event_listener)
         return plan
 
     def run_all(
@@ -388,17 +392,19 @@ class E2eRunner:
             ),
             None,
         )
-        succeeded = False
-        try:
-            for plan in plans:
-                plan.run(event_listener=event_listener)
-            succeeded = True
-            return plans
-        finally:
-            final_request = (
-                cast(E2ePlan, plans[-1]).request
-                if plans and isinstance(plans[-1], E2ePlan)
-                else None
-            )
-            if succeeded and shared_vm_request is not None and self._should_teardown(final_request):
-                self.vm.teardown(shared_vm_request)
+        # Keep the host awake for the whole multi-scenario run (macOS; no-op elsewhere).
+        with prevent_host_sleep():
+            succeeded = False
+            try:
+                for plan in plans:
+                    plan.run(event_listener=event_listener)
+                succeeded = True
+                return plans
+            finally:
+                final_request = (
+                    cast(E2ePlan, plans[-1]).request
+                    if plans and isinstance(plans[-1], E2ePlan)
+                    else None
+                )
+                if succeeded and shared_vm_request is not None and self._should_teardown(final_request):
+                    self.vm.teardown(shared_vm_request)
