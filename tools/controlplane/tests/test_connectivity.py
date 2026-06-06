@@ -58,3 +58,61 @@ def test_multipass_connectivity_remote_dir_matches_orchestrator() -> None:
     vm_request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
 
     assert conn.remote_dir(vm_request) == runner.vm.remote_project_dir(vm_request)
+
+
+def test_proxmox_connectivity_rewrites_ansible_to_nat_endpoint() -> None:
+    from controlplane_tool.scenario.connectivity import ProxmoxConnectivity
+
+    class _Orch:
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+    conn = ProxmoxConnectivity(
+        orchestrator=_Orch(),
+        request=VmRequest(lifecycle="proxmox", name="proxmox-stack", user="ubuntu"),
+        host="203.0.113.7",
+        port=2222,
+        key=Path("/keys/proxmox_ed25519"),
+        repo_root=Path("/repo"),
+        remote_dir_value="/home/ubuntu/nanofaas",
+    )
+    op = RemoteCommandOperation(
+        operation_id="vm.provision_base",
+        summary="Provision",
+        argv=("ansible-playbook", "-i", "<multipass-ip:proxmox-stack>,", "provision-base.yml"),
+    )
+
+    out = conn.resolve_host_operation(op)
+
+    assert "203.0.113.7," in out.argv
+    assert "ansible_port=2222" in out.argv
+    assert "/keys/proxmox_ed25519" in out.argv
+    assert "<multipass-ip:proxmox-stack>," not in out.argv
+
+
+def test_proxmox_connectivity_rewrites_repo_sync_to_rsync() -> None:
+    from controlplane_tool.scenario.connectivity import ProxmoxConnectivity
+
+    class _Orch:
+        def remote_project_dir(self, request):
+            return "/home/ubuntu/nanofaas"
+
+    conn = ProxmoxConnectivity(
+        orchestrator=_Orch(),
+        request=VmRequest(lifecycle="proxmox", name="proxmox-stack", user="ubuntu"),
+        host="203.0.113.7",
+        port=2222,
+        key=Path("/keys/proxmox_ed25519"),
+        repo_root=Path("/repo"),
+        remote_dir_value="/home/ubuntu/nanofaas",
+    )
+    op = RemoteCommandOperation(
+        operation_id="repo.sync_to_vm",
+        summary="Sync",
+        argv=("rsync", "placeholder"),
+    )
+
+    out = conn.resolve_host_operation(op)
+
+    assert out.argv[0] == "rsync"
+    assert any("203.0.113.7" in arg for arg in out.argv)
