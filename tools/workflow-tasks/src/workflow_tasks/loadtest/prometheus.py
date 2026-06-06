@@ -20,6 +20,25 @@ def _prometheus_api_get(
     return data.get("data")
 
 
+def query_prometheus_server_time(base_url: str, timeout_seconds: float = 4.0) -> float:
+    """Return Prometheus's current evaluation time (epoch seconds) via ``time()``.
+
+    Used to align query windows to Prometheus's clock: when the host (which builds
+    the window from wall-clock) and the metrics-source VM (which timestamps the
+    samples) have drifted — e.g. the host slept mid-run — a host-clock window
+    misses the VM-clock samples. ``time()`` reports Prometheus's own clock.
+    """
+    data = _prometheus_api_get(base_url, "/api/v1/query", {"query": "time()"}, timeout_seconds)
+    # Scalar query: data == {"resultType": "scalar", "result": [<eval_ts>, "<value>"]}
+    result = data.get("result") if isinstance(data, dict) else None
+    if isinstance(result, list) and len(result) == 2:
+        try:
+            return float(result[1])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"invalid prometheus time() value: {result!r}") from exc
+    raise RuntimeError(f"unexpected prometheus time() result: {result!r}")
+
+
 def query_prometheus_range_series(
     base_url: str,
     metric_name: str,

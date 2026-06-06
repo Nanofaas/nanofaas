@@ -427,3 +427,51 @@ def test_write_k6_report_works_without_prometheus_snapshot(tmp_path: Path) -> No
     )
     report_path = task.run()
     assert report_path.exists()
+
+
+class _ClockOffsetPrometheusClient:
+    """Prometheus client whose clock is offset from the host (simulates VM drift)."""
+
+    def __init__(self, offset_seconds: float) -> None:
+        self._offset = offset_seconds
+        self.calls: list[tuple[str, TimeWindow, int]] = []
+
+    def server_time(self) -> float:
+        return datetime.now(timezone.utc).timestamp() + self._offset
+
+    def query_range(self, expr: str, window: TimeWindow, step_seconds: int = 5) -> list[dict]:
+        self.calls.append((expr, window, step_seconds))
+        return [{"timestamp": "t", "value": 1.0}]
+
+
+def test_capture_prometheus_snapshot_shifts_window_to_prometheus_clock(tmp_path: Path) -> None:
+    offset = -1500.0  # Prometheus/VM clock 25 min behind the host (host slept mid-run)
+    client = _ClockOffsetPrometheusClient(offset)
+    window = _make_window()
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=client,
+        queries=(PrometheusQuery(name="dispatch", expr="function_dispatch_total", required=True),),
+        window=window,
+        output_dir=tmp_path,
+    )
+    task.run()  # must NOT raise: window is aligned so the required query finds data
+    queried = client.calls[0][1]
+    assert abs(queried.start.timestamp() - (window.start.timestamp() + offset)) <= 60
+    assert abs(queried.end.timestamp() - (window.end.timestamp() + offset)) <= 60
+
+
+def test_capture_prometheus_snapshot_keeps_window_without_server_time(tmp_path: Path) -> None:
+    client = _RecordingPrometheusClient()  # no server_time() -> unshifted (back-compat)
+    window = _make_window()
+    task = CapturePrometheusSnapshot(
+        task_id="metrics.snapshot",
+        title="Capture snapshots",
+        client=client,
+        queries=(PrometheusQuery(name="req", expr="http_requests_total"),),
+        window=window,
+        output_dir=tmp_path,
+    )
+    task.run()
+    assert client.calls[0][1] == window

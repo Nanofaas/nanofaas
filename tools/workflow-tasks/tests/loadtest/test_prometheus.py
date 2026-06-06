@@ -48,3 +48,14 @@ def test_query_range_series_returns_parsed_points() -> None:
     assert isinstance(result, list)
     assert len(result) == 2
     assert result[0]["value"] == 42.0
+
+
+def test_query_prometheus_server_time_parses_time_scalar(monkeypatch) -> None:
+    from workflow_tasks.loadtest import prometheus
+
+    monkeypatch.setattr(
+        prometheus,
+        "_prometheus_api_get",
+        lambda *a, **k: {"resultType": "scalar", "result": [1780728785.1, "1780728785.1"]},
+    )
+    assert prometheus.query_prometheus_server_time("http://prom") == 1780728785.1
