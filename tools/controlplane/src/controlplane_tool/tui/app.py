@@ -55,6 +55,22 @@ from controlplane_tool.tui.workflow_controller import TuiWorkflowController
 
 _STYLE = to_questionary_style(DEFAULT_THEME)
 
+
+def _ask_cleanup_vm() -> bool:
+    """Ask whether to destroy the VM(s) at the end of the run (default: yes).
+
+    Used uniformly by every VM-backed scenario so cleanup is opt-out, not
+    hardcoded per scenario.
+    """
+    return _ask(
+        lambda: questionary.confirm(
+            "Cleanup VM at end?",
+            default=True,
+            style=_STYLE,
+        ).ask()
+    )
+
+
 # ── Main application ─────────────────────────────────────────────────────────
 
 
@@ -981,6 +997,7 @@ class NanofaasTUI:
             from controlplane_tool.cli.e2e_commands import _resolve_run_request
             from controlplane_tool.e2e.e2e_runner import E2eRunner
 
+            cleanup_vm = _ask_cleanup_vm()
             request = _resolve_run_request(
                 scenario=scenario,
                 runtime="java",
@@ -992,7 +1009,7 @@ class NanofaasTUI:
                 cpus=4,
                 memory="8G" if scenario == "two-vm-loadtest" else "12G",
                 disk="30G",
-                cleanup_vm=False,
+                cleanup_vm=cleanup_vm,
                 namespace=None,
                 local_registry=None,
                 function_preset=None,
@@ -1071,6 +1088,7 @@ class NanofaasTUI:
             if not confirmed:
                 return
 
+            cleanup_vm = _ask_cleanup_vm()
             request = _resolve_run_request(
                 scenario="azure-vm-loadtest",
                 runtime="java",
@@ -1082,7 +1100,7 @@ class NanofaasTUI:
                 cpus=4,
                 memory="12G",
                 disk="30G",
-                cleanup_vm=False,
+                cleanup_vm=cleanup_vm,
                 namespace=None,
                 local_registry=None,
                 function_preset=None,
@@ -1176,6 +1194,7 @@ class NanofaasTUI:
             if not confirmed:
                 return
 
+            cleanup_vm = _ask_cleanup_vm()
             request = _resolve_run_request(
                 scenario="proxmox-vm-loadtest",
                 runtime="java",
@@ -1187,7 +1206,7 @@ class NanofaasTUI:
                 cpus=cfg.cpus,
                 memory=cfg.memory,
                 disk=cfg.disk,
-                cleanup_vm=True,
+                cleanup_vm=cleanup_vm,
                 namespace=None,
                 local_registry=None,
                 function_preset=None,
@@ -1256,13 +1275,7 @@ class NanofaasTUI:
                     style=_STYLE,
                 ).ask()
             )
-            cleanup_vm = _ask(
-                lambda: questionary.confirm(
-                    "Cleanup VM at end?",
-                    default=True,
-                    style=_STYLE,
-                ).ask()
-            )
+            cleanup_vm = _ask_cleanup_vm()
             selection = _prompt_function_selection(K3S_SELECTION_TARGET)
 
             dry_run = _ask(
