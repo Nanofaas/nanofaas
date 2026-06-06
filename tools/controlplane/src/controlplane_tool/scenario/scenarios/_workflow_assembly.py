@@ -255,11 +255,11 @@ def build_command_tasks(
     """
     context = setup.context
     vm_request = setup.vm_request
-    vm_orch = runner.vm
-    remote_dir = vm_orch.remote_project_dir(vm_request)
 
     if connectivity is None:
         connectivity = MultipassConnectivity(runner=runner, request=request)
+
+    remote_dir = connectivity.remote_dir(vm_request)
 
     host_executor = HostCommandTaskExecutor(runner.shell)
     vm_executor = VmCommandTaskExecutor(connectivity.vm_runner(vm_request))

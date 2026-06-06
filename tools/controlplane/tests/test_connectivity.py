@@ -50,3 +50,11 @@ def test_multipass_connectivity_vm_runner_wraps_orchestrator() -> None:
 
     # OrchestratorVmRunner exposes run_vm_command (the VmCommandRunner protocol).
     assert hasattr(vm_runner, "run_vm_command")
+
+
+def test_multipass_connectivity_remote_dir_matches_orchestrator() -> None:
+    runner = _runner()
+    conn = MultipassConnectivity(runner=runner, request=_request())
+    vm_request = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
+
+    assert conn.remote_dir(vm_request) == runner.vm.remote_project_dir(vm_request)

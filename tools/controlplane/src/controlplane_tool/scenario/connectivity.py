@@ -46,6 +46,7 @@ def resolve_host_operation(
 class ConnectivityStrategy(Protocol):
     def resolve_host_operation(self, operation: RemoteCommandOperation) -> RemoteCommandOperation: ...
     def vm_runner(self, request: object) -> OrchestratorVmRunner: ...
+    def remote_dir(self, request: object) -> str: ...
 
 
 @dataclass
@@ -68,3 +69,6 @@ class MultipassConnectivity:
 
     def vm_runner(self, request: object) -> OrchestratorVmRunner:
         return OrchestratorVmRunner(self.runner.vm, request)
+
+    def remote_dir(self, request: object) -> str:
+        return self.runner.vm.remote_project_dir(request)
