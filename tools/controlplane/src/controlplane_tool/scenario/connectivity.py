@@ -130,7 +130,9 @@ class ProxmoxConnectivity:
         )
 
     def vm_runner(self, request: object) -> OrchestratorVmRunner:
-        return OrchestratorVmRunner(self.orchestrator, request)
+        # vm-ops target the proxmox stack VM (self.request), regardless of the
+        # setup-derived request build_command_tasks passes in.
+        return OrchestratorVmRunner(self.orchestrator, self.request)
 
     def remote_dir(self, request: object) -> str:
         return self.remote_dir_value

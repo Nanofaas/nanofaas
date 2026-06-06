@@ -6,26 +6,19 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from workflow_tasks import (
     CapturePrometheusSnapshot,
-    CommandTask,
-    CommandTaskSpec,
     DestroyVm,
     EnsureVmRunning,
     FetchVmResults,
-    HostCommandTaskExecutor,
     InstallK6,
     RunK6,
     TimeWindow,
-    VmCommandTaskExecutor,
     Workflow,
     WriteK6Report,
-    command_task_from_operation,
     install_k6_task,
     workflow_step,
 )
-from workflow_tasks.components.operations import RemoteCommandOperation
 from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
-from workflow_tasks.vm.multipass import repo_rsync_command, repo_sync_ssh_rsh
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.vm_models import VmRequest
@@ -37,14 +30,16 @@ from controlplane_tool.loadtest.loadtest_adapters import (
 )
 from controlplane_tool.scenario.catalog import ScenarioDefinition
 from controlplane_tool.scenario.components.cli import CliComponentContext
-from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.environment import resolve_scenario_environment
 from controlplane_tool.scenario.components.executor import ScenarioPlanStep
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
+from controlplane_tool.scenario.connectivity import ProxmoxConnectivity
 from controlplane_tool.scenario.scenarios._workflow_assembly import (
+    HANDLED,
     CallableTask,
-    _SUMMARY_OVERRIDES,
+    build_command_tasks,
+    build_setup,
 )
 from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
 from controlplane_tool.scenario.two_vm_loadtest_config import (
@@ -60,16 +55,6 @@ from controlplane_tool.scenario.two_vm_loadtest_config import (
 
 if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
-
-
-_PROXMOX_ANSIBLE_COMPONENTS = frozenset(
-    {
-        "vm.provision_base",
-        "registry.ensure_container",
-        "k3s.install",
-        "k3s.configure_registry",
-    }
-)
 
 
 _PROXMOX_LOADTEST_PRELUDE_COMPONENTS = (
@@ -248,13 +233,6 @@ class ProxmoxVmLoadtestPlan:
             host, port = "<proxmox-host>", 0
             key = None
 
-        recipe = build_scenario_recipe("proxmox-vm-loadtest")
-        recipe = recipe.__class__(
-            name=recipe.name,
-            component_ids=_PROXMOX_LOADTEST_PRELUDE_COMPONENTS,
-            requires_managed_vm=recipe.requires_managed_vm,
-        )
-
         cli_context = CliComponentContext(
             repo_root=Path(remote_dir),
             release=cast(str, context.release),
@@ -264,82 +242,58 @@ class ProxmoxVmLoadtestPlan:
             control_plane_endpoint=None,
         )
 
-        host_executor = HostCommandTaskExecutor(self.runner.shell)
-        vm_executor = VmCommandTaskExecutor(OrchestratorVmRunner(proxmox_orch, stack_request))
+        # Recipe = the proxmox prelude minus vm.ensure_running (run() does that separately).
+        prelude_components = tuple(
+            cid for cid in _PROXMOX_LOADTEST_PRELUDE_COMPONENTS if cid != "vm.ensure_running"
+        )
+        recipe = build_scenario_recipe("proxmox-vm-loadtest")
+        recipe = recipe.__class__(
+            name=recipe.name,
+            component_ids=prelude_components,
+            requires_managed_vm=recipe.requires_managed_vm,
+        )
 
-        def _rewrite_ansible(argv: tuple[str, ...]) -> list[str]:
-            rewritten = list(argv)
-            if "-i" in rewritten:
-                rewritten[rewritten.index("-i") + 1] = f"{host},"
-            rewritten.extend(["-e", f"ansible_port={port}"])
-            if key is not None:
-                if "--private-key" in rewritten:
-                    rewritten[rewritten.index("--private-key") + 1] = str(key)
-                else:
-                    rewritten.extend(["--private-key", str(key)])
-            return rewritten
+        connectivity = ProxmoxConnectivity(
+            orchestrator=proxmox_orch,
+            request=stack_request,
+            host=host,
+            port=port,
+            key=key,
+            repo_root=repo_root,
+            remote_dir_value=remote_dir,
+        )
 
-        def _repo_sync_command() -> list[str]:
-            return repo_rsync_command(
-                source=repo_root,
-                user=stack_request.user,
-                host=host,
-                destination=remote_dir,
-                ssh_rsh=repo_sync_ssh_rsh(key, port=port),
-            )
+        # _Setup carries only context + vm_request for build_command_tasks; its lifecycle
+        # field is unused by build_command_tasks, so the default (multipass) setup is fine.
+        setup = build_setup(self.runner, request)
 
-        def _host_task(operation: RemoteCommandOperation, argv: list[str]) -> CommandTask:
-            title = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
-            spec = CommandTaskSpec(
-                task_id=operation.operation_id,
-                summary=operation.summary,
-                argv=tuple(argv),
-                target="host",
-                env=dict(operation.env),
-            )
-            return CommandTask(
-                task_id=operation.operation_id,
-                title=title,
-                spec=spec,
-                executor=host_executor,
-            )
+        registered = {"done": False}
 
-        def _register_functions_task() -> CallableTask:
-            return CallableTask(
-                task_id="functions.register",
-                title="Register selected functions via REST API",
-                action=self._register_functions_action(proxmox_orch, stack_request, context),
-            )
-
-        registered = False
-        tasks: list = []
-        for component in compose_recipe(recipe):
-            ctx = cli_context if component.component_id.startswith("cli.") else context
-            for operation in component.planner(ctx):
-                cid = component.component_id
-                if cid == "vm.ensure_running":
-                    continue  # run separately by run() as EnsureVmRunning
-                if cid in _PROXMOX_ANSIBLE_COMPONENTS:
-                    tasks.append(_host_task(operation, _rewrite_ansible(operation.argv)))
-                    continue
-                if cid == "repo.sync_to_vm":
-                    tasks.append(_host_task(operation, _repo_sync_command()))
-                    continue
-                if cid == "cli.fn_apply_selected" and request.scenario in LOADTEST_SCENARIOS:
-                    if not registered:
-                        tasks.append(_register_functions_task())
-                        registered = True
-                    continue
-                title = _SUMMARY_OVERRIDES.get(operation.operation_id, operation.summary)
-                if operation.execution_target == "vm":
-                    tasks.append(
-                        command_task_from_operation(
-                            operation, vm_executor, title=title, remote_dir=remote_dir
-                        )
+        def special_handler(operation):
+            if operation.operation_id.startswith("cli.fn_apply_selected") and request.scenario in LOADTEST_SCENARIOS:
+                if not registered["done"]:
+                    registered["done"] = True
+                    return CallableTask(
+                        task_id="functions.register",
+                        title="Register selected functions via REST API",
+                        action=self._register_functions_action(proxmox_orch, stack_request, context),
                     )
-                else:
-                    tasks.append(command_task_from_operation(operation, host_executor, title=title))
-        return tasks
+                return HANDLED
+            return None
+
+        def context_selector(component):
+            return cli_context if component.component_id.startswith("cli.") else context
+
+        return build_command_tasks(
+            self.runner,
+            request,
+            setup,
+            recipe,
+            special_handler=special_handler,
+            context_selector=context_selector,
+            connectivity=connectivity,
+            resolve_host=True,
+        )
 
     def _register_functions_action(self, proxmox_orch, stack_request, context):
         request = self.request
