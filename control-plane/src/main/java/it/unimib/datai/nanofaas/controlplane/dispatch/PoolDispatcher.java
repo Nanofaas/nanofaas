@@ -28,7 +28,8 @@ public class PoolDispatcher implements Dispatcher {
 
         WebClient.RequestBodySpec request = webClient.post()
                 .uri(endpoint)
-                .header("X-Execution-Id", task.executionId());
+                .header("X-Execution-Id", task.executionId())
+                .header("X-Dispatch-Attempt", String.valueOf(task.attempt()));
 
         if (task.traceId() != null) {
             request.header("X-Trace-Id", task.traceId());

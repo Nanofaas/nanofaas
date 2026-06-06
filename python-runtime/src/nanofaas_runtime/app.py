@@ -95,6 +95,7 @@ def invoke():
     # Get execution ID from header (warm mode) or ENV (one-shot)
     execution_id = request.headers.get('X-Execution-Id') or DEFAULT_EXECUTION_ID
     trace_id = request.headers.get('X-Trace-Id')
+    dispatch_attempt = request.headers.get('X-Dispatch-Attempt')
     callback_url = request.headers.get('X-Callback-Url') or CALLBACK_URL
 
     if not execution_id:
@@ -114,7 +115,7 @@ def invoke():
                 "success": True,
                 "output": result,
                 "error": None
-            })
+            }, dispatch_attempt)
 
         return jsonify(result)
 
@@ -127,7 +128,7 @@ def invoke():
                 "success": False,
                 "output": None,
                 "error": {"code": "HANDLER_ERROR", "message": str(e)}
-            })
+            }, dispatch_attempt)
 
         return jsonify({"error": str(e)}), 500
     finally:
@@ -136,11 +137,13 @@ def invoke():
         RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
 
 
-def _send_callback(callback_url: str, execution_id: str, trace_id: str, result: dict):
+def _send_callback(callback_url: str, execution_id: str, trace_id: str, result: dict, dispatch_attempt: str = None):
     url = f"{callback_url}/{execution_id}:complete"
     headers = {"Content-Type": "application/json"}
     if trace_id:
         headers["X-Trace-Id"] = trace_id
+    if dispatch_attempt:
+        headers["X-Dispatch-Attempt"] = dispatch_attempt
 
     delays = [0.1, 0.5, 2.0]
     for attempt in range(3):

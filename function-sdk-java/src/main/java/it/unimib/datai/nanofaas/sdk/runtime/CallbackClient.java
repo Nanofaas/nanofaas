@@ -56,6 +56,10 @@ public class CallbackClient {
     }
 
     public boolean sendResult(String executionId, CallbackPayload payload, String traceId) {
+        return sendResult(executionId, payload, traceId, null);
+    }
+
+    public boolean sendResult(String executionId, CallbackPayload payload, String traceId, String dispatchAttempt) {
         String baseUrl = runtimeSettings.callbackUrl();
         if (baseUrl == null || baseUrl.isBlank()) {
             log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);
@@ -68,7 +72,7 @@ public class CallbackClient {
 
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
-                doSendPayload(executionId, payload, traceId);
+                doSendPayload(executionId, payload, traceId, dispatchAttempt);
                 log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
                 return true;
             } catch (RestClientException ex) {
@@ -95,7 +99,7 @@ public class CallbackClient {
         return false;
     }
 
-    private void doSendPayload(String executionId, CallbackPayload payload, String traceId) {
+    private void doSendPayload(String executionId, CallbackPayload payload, String traceId, String dispatchAttempt) {
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
                 : runtimeSettings.traceId();
@@ -107,6 +111,9 @@ public class CallbackClient {
 
         if (effectiveTraceId != null && !effectiveTraceId.isBlank()) {
             request.header("X-Trace-Id", effectiveTraceId);
+        }
+        if (dispatchAttempt != null && !dispatchAttempt.isBlank()) {
+            request.header("X-Dispatch-Attempt", dispatchAttempt);
         }
 
         request.body(serializePayload(payload))

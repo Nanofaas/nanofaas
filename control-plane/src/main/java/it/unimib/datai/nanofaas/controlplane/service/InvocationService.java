@@ -139,8 +139,16 @@ public class InvocationService {
         completionHandler.completeExecution(executionId, dispatchResult);
     }
 
+    public void completeExecution(String executionId, DispatchResult dispatchResult, Integer completedAttempt) {
+        completionHandler.completeExecution(executionId, dispatchResult, completedAttempt);
+    }
+
     public void completeExecution(String executionId, InvocationResult result) {
         completionHandler.completeExecution(executionId, result);
+    }
+
+    public void completeExecution(String executionId, InvocationResult result, Integer completedAttempt) {
+        completionHandler.completeExecution(executionId, result, completedAttempt);
     }
 
     private void enforceRateLimit() {

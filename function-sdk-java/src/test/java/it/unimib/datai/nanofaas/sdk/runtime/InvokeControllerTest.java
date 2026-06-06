@@ -3,13 +3,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestClient;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -33,6 +41,7 @@ class InvokeControllerTest {
         handler = mock(FunctionHandler.class);
         when(handlerRegistry.resolve()).thenReturn(handler);
         when(callbackDispatcher.submit(anyString(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackDispatcher.submit(anyString(), any(CallbackPayload.class), any(), any())).thenReturn(true);
         when(runtimeContextResolver.resolve(any(), any()))
                 .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
         when(coldStartTracker.firstInvocation()).thenReturn(false);
@@ -52,7 +61,59 @@ class InvokeControllerTest {
         assertEquals(200, response.getStatusCode().value());
         assertTrue(response.getBody() instanceof JsonNode);
         assertEquals("hello", ((JsonNode) response.getBody()).get("result").asText());
-        verify(callbackDispatcher).submit(eq("env-exec-id"), any(CallbackPayload.class), eq("trace-1"));
+        verify(callbackDispatcher).submit(eq("env-exec-id"), any(CallbackPayload.class), eq("trace-1"), isNull());
+    }
+
+    @Test
+    void invoke_withDispatchAttemptHeader_sendsAttemptOnCallback() throws Exception {
+        MockWebServer callbackServer = new MockWebServer();
+        callbackServer.enqueue(new MockResponse().setResponseCode(204));
+        callbackServer.start();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        try {
+            CallbackClient callbackClient = new CallbackClient(
+                    RestClient.builder().baseUrl(callbackServer.url("/").toString()).build(),
+                    new RuntimeSettings(
+                            "env-exec-id",
+                            null,
+                            callbackServer.url("/v1/internal/executions").toString(),
+                            "handler"),
+                    new ObjectMapper());
+            InvokeController callbackController = new InvokeController(
+                    new CallbackDispatcher(callbackClient, executor),
+                    handlerRegistry,
+                    runtimeContextResolver,
+                    coldStartTracker,
+                    new HandlerExecutor(5000),
+                    new JsonOutputNormalizer(new ObjectMapper()));
+            when(handler.handle(any())).thenReturn(Map.of("result", "hello"));
+            when(runtimeContextResolver.resolve(any(), any()))
+                    .thenReturn(new InvocationRuntimeContext("exec-dispatch-attempt", "trace-1"));
+
+            Method invoke = InvokeController.class.getMethod(
+                    "invoke",
+                    InvocationRequest.class,
+                    String.class,
+                    String.class,
+                    String.class
+            );
+            ResponseEntity<?> response = (ResponseEntity<?>) invoke.invoke(
+                    callbackController,
+                    new InvocationRequest("input", null),
+                    "exec-dispatch-attempt",
+                    "trace-1",
+                    "3"
+            );
+
+            assertEquals(200, response.getStatusCode().value());
+            RecordedRequest callback = callbackServer.takeRequest(2, TimeUnit.SECONDS);
+            assertNotNull(callback);
+            assertEquals("3", callback.getHeader("X-Dispatch-Attempt"));
+        } finally {
+            executor.shutdownNow();
+            callbackServer.shutdown();
+        }
     }
 
     @Test
@@ -66,7 +127,7 @@ class InvokeControllerTest {
 
         assertEquals(200, response.getStatusCode().value());
         verify(runtimeContextResolver).resolve("header-exec-id", "trace-9");
-        verify(callbackDispatcher).submit(eq("resolved-exec-id"), any(CallbackPayload.class), eq("resolved-trace"));
+        verify(callbackDispatcher).submit(eq("resolved-exec-id"), any(CallbackPayload.class), eq("resolved-trace"), isNull());
     }
 
     @Test
@@ -85,7 +146,8 @@ class InvokeControllerTest {
         verify(callbackDispatcher).submit(
                 eq("env-exec-id"),
                 argThat((CallbackPayload p) -> !p.success()),
-                eq("t-1"));
+                eq("t-1"),
+                isNull());
     }
 
     @Test
@@ -106,13 +168,15 @@ class InvokeControllerTest {
                 argThat((CallbackPayload p) -> !p.success() && p.error() != null
                         && "HANDLER_ERROR".equals(p.error().code())
                         && "Handler execution failed".equals(p.error().message())),
-                eq("t-2"));
+                eq("t-2"),
+                isNull());
     }
 
     @Test
     void invoke_callbackFails_stillReturnsOk() {
         when(handler.handle(any())).thenReturn("data");
         when(callbackDispatcher.submit(anyString(), any(CallbackPayload.class), any())).thenReturn(false);
+        when(callbackDispatcher.submit(anyString(), any(CallbackPayload.class), any(), any())).thenReturn(false);
         when(runtimeContextResolver.resolve(any(), any()))
                 .thenReturn(new InvocationRuntimeContext("env-exec-id", null));
 
@@ -159,7 +223,8 @@ class InvokeControllerTest {
         verify(callbackDispatcher).submit(
             eq("env-exec-id"),
             argThat((CallbackPayload p) -> !p.success() && "HANDLER_TIMEOUT".equals(p.error().code())),
-            any());
+            any(),
+            isNull());
     }
 
     @Test
@@ -179,7 +244,7 @@ class InvokeControllerTest {
         assertEquals(4, body.get("wordCount").asInt());
 
         ArgumentCaptor<CallbackPayload> payloadCaptor = ArgumentCaptor.forClass(CallbackPayload.class);
-        verify(callbackDispatcher).submit(eq("exec-normalized"), payloadCaptor.capture(), eq("trace-normalized"));
+        verify(callbackDispatcher).submit(eq("exec-normalized"), payloadCaptor.capture(), eq("trace-normalized"), isNull());
         assertTrue(payloadCaptor.getValue().success());
         assertEquals(4, payloadCaptor.getValue().output().get("wordCount").asInt());
     }

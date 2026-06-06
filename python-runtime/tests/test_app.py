@@ -69,6 +69,34 @@ def test_invoke_with_trace_id(client):
     assert response.json['echo'] == 'TRACED'
 
 
+def test_invoke_callback_includes_dispatch_attempt_header(client, monkeypatch):
+    """Callback includes X-Dispatch-Attempt when invoke request provides it"""
+    captured = {}
+
+    class Response:
+        ok = True
+
+    def fake_post(url, json, headers, timeout):
+        captured['url'] = url
+        captured['json'] = json
+        captured['headers'] = headers
+        captured['timeout'] = timeout
+        return Response()
+
+    monkeypatch.setattr(app_module.http_requests, 'post', fake_post)
+
+    response = client.post('/invoke',
+        json={"input": "callback"},
+        headers={
+            "X-Execution-Id": "exec-callback",
+            "X-Callback-Url": "http://control/v1/internal/executions",
+            "X-Dispatch-Attempt": "3"
+        })
+
+    assert response.status_code == 200
+    assert captured['headers']['X-Dispatch-Attempt'] == '3'
+
+
 def test_invoke_empty_payload(client):
     """Invoke handles empty/null input"""
     response = client.post('/invoke',

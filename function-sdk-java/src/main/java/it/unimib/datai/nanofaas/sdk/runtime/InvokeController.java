@@ -50,7 +50,8 @@ public class InvokeController {
     public ResponseEntity<Object> invoke(
             @RequestBody InvocationRequest request,
             @RequestHeader(value = "X-Execution-Id", required = false) String headerExecutionId,
-            @RequestHeader(value = "X-Trace-Id", required = false) String traceId) {
+            @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
+            @RequestHeader(value = "X-Dispatch-Attempt", required = false) String dispatchAttempt) {
 
         InvocationRuntimeContext runtimeContext = runtimeContextResolver.resolve(headerExecutionId, traceId);
         String effectiveExecutionId = runtimeContext.executionId();
@@ -72,7 +73,8 @@ public class InvokeController {
             callbackDispatcher.submit(
                     effectiveExecutionId,
                     CallbackPayload.success(output),
-                    runtimeContext.traceId());
+                    runtimeContext.traceId(),
+                    dispatchAttempt);
 
             ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
             if (isColdStart) {
@@ -86,7 +88,8 @@ public class InvokeController {
             callbackDispatcher.submit(
                     effectiveExecutionId,
                     CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR", errorMessage),
-                    runtimeContext.traceId());
+                    runtimeContext.traceId(),
+                    dispatchAttempt);
             return ResponseEntity.status(500)
                     .body(Map.of("error", errorMessage));
         } catch (TimeoutException ex) {
@@ -94,7 +97,8 @@ public class InvokeController {
             callbackDispatcher.submit(
                     effectiveExecutionId,
                     CallbackPayload.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
-                    runtimeContext.traceId());
+                    runtimeContext.traceId(),
+                    dispatchAttempt);
             return ResponseEntity.status(504).body(Map.of("error", "Handler timed out"));
         } catch (Exception ex) {
             String errorMessage = handlerErrorMessage(ex);
@@ -103,11 +107,19 @@ public class InvokeController {
             callbackDispatcher.submit(
                     effectiveExecutionId,
                     CallbackPayload.error("HANDLER_ERROR", errorMessage),
-                    runtimeContext.traceId());
+                    runtimeContext.traceId(),
+                    dispatchAttempt);
 
             return ResponseEntity.status(500)
                     .body(Map.of("error", errorMessage));
         }
+    }
+
+    public ResponseEntity<Object> invoke(
+            InvocationRequest request,
+            String headerExecutionId,
+            String traceId) {
+        return invoke(request, headerExecutionId, traceId, null);
     }
 
     private static String handlerErrorMessage(Exception ex) {

@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -63,6 +64,50 @@ class PoolDispatcherTest {
         assertNotNull(dr.result().output());
         assertFalse(dr.coldStart());
         assertEquals(1, server.getRequestCount());
+        server.shutdown();
+    }
+
+    @Test
+    void poolDispatchSendsDispatchAttemptHeader() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse()
+                .setBody("{\"message\":\"ok\"}")
+                .addHeader("Content-Type", "application/json"));
+        server.start();
+
+        String endpoint = server.url("/invoke").toString();
+        FunctionSpec spec = new FunctionSpec(
+                "pool-fn",
+                "image",
+                null,
+                Map.of(),
+                null,
+                1000,
+                1,
+                10,
+                3,
+                endpoint,
+                ExecutionMode.POOL,
+                null,
+                null,
+                null
+        );
+        InvocationTask task = new InvocationTask(
+                "exec-pool",
+                "pool-fn",
+                spec,
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                Instant.now(),
+                4
+        );
+
+        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        dispatcher.dispatch(task).get();
+
+        RecordedRequest request = server.takeRequest();
+        assertEquals("4", request.getHeader("X-Dispatch-Attempt"));
         server.shutdown();
     }
 

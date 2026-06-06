@@ -236,6 +236,51 @@ class InvocationControllerTest {
     }
 
     @Test
+    void completeExecution_withDispatchAttemptHeader_passesAttemptToService() {
+        InvocationResult result = InvocationResult.success("ok");
+
+        webClient.post()
+                .uri("/v1/internal/executions/exec-attempt:complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Dispatch-Attempt", "7")
+                .bodyValue(result)
+                .exchange()
+                .expectStatus().isNoContent();
+
+        verify(invocationService).completeExecution("exec-attempt", result, 7);
+    }
+
+    @Test
+    void completeExecution_withMalformedDispatchAttemptHeader_usesLegacyCompletionPath() {
+        InvocationResult result = InvocationResult.success("ok");
+
+        webClient.post()
+                .uri("/v1/internal/executions/exec-malformed-attempt:complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Dispatch-Attempt", "not-an-int")
+                .bodyValue(result)
+                .exchange()
+                .expectStatus().isNoContent();
+
+        verify(invocationService).completeExecution("exec-malformed-attempt", result);
+    }
+
+    @Test
+    void completeExecution_withNonPositiveDispatchAttemptHeader_usesLegacyCompletionPath() {
+        InvocationResult result = InvocationResult.success("ok");
+
+        webClient.post()
+                .uri("/v1/internal/executions/exec-zero-attempt:complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Dispatch-Attempt", "0")
+                .bodyValue(result)
+                .exchange()
+                .expectStatus().isNoContent();
+
+        verify(invocationService).completeExecution("exec-zero-attempt", result);
+    }
+
+    @Test
     void completeExecution_acceptsStructuredJsonObjectOutput() {
         webClient.post()
                 .uri("/v1/internal/executions/exec-structured:complete")
