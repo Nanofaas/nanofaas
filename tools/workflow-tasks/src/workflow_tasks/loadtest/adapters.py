@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from workflow_tasks.loadtest.models import TimeWindow
-from workflow_tasks.loadtest.prometheus import query_prometheus_range_series
+from workflow_tasks.loadtest.prometheus import (
+    query_prometheus_range_series,
+    query_prometheus_server_time,
+)
 
 
 class HttpPrometheusClient:
@@ -20,3 +23,7 @@ class HttpPrometheusClient:
         return query_prometheus_range_series(
             self._url, expr, window.start, window.end, step_seconds
         )
+
+    def server_time(self) -> float:
+        """Prometheus's current clock (epoch seconds), for window alignment."""
+        return query_prometheus_server_time(self._url)

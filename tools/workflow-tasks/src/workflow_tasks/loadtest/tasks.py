@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -138,8 +138,36 @@ class CapturePrometheusSnapshot:
             return self.window()
         return self.window
 
+    # Skew below this (seconds) is treated as no drift; margin widens the shifted
+    # window to absorb the Prometheus scrape interval.
+    _CLOCK_SKEW_THRESHOLD_S = 5.0
+    _WINDOW_MARGIN_S = 30.0
+
+    def _align_window(self, window: TimeWindow) -> TimeWindow:
+        """Shift the host-clock window into Prometheus's clock domain.
+
+        The window start/end come from the k6 run on the host clock, but Prometheus
+        timestamps samples with the metrics-source VM clock. When those clocks drift
+        (e.g. the host slept mid-run), a host-clock window misses the VM-clock
+        samples. Anchor the window to Prometheus's own clock so the snapshot is
+        robust to that skew. Clients without ``server_time`` (e.g. test fakes) are
+        left unshifted.
+        """
+        server_time = getattr(self.client, "server_time", None)
+        if server_time is None:
+            return window
+        try:
+            offset = float(server_time()) - datetime.now(timezone.utc).timestamp()
+        except (RuntimeError, OSError, ValueError, TypeError):
+            return window
+        if abs(offset) < self._CLOCK_SKEW_THRESHOLD_S:
+            return window
+        shift = timedelta(seconds=offset)
+        margin = timedelta(seconds=self._WINDOW_MARGIN_S)
+        return TimeWindow(start=window.start + shift - margin, end=window.end + shift + margin)
+
     def run(self) -> Path:
-        window = self._resolve_window()
+        window = self._align_window(self._resolve_window())
         metrics_dir = self.output_dir / "metrics"
         metrics_dir.mkdir(parents=True, exist_ok=True)
 
