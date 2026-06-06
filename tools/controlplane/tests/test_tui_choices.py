@@ -2230,6 +2230,7 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
     import controlplane_tool.tui.app as tui_app
     import controlplane_tool.e2e.e2e_runner as e2e_runner
 
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
     called: dict[str, object] = {}
 
     class _FakePlan:
@@ -2310,6 +2311,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
     import controlplane_tool.tui.app as tui_app
     import controlplane_tool.e2e.e2e_runner as e2e_runner
 
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
     captured: dict[str, object] = {}
 
     class _FakePlan:
@@ -2571,17 +2573,7 @@ def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> Non
 
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(
-        tui_app,
-        "_ask",
-        lambda prompt_fn: {
-            "Scenario:": "helm-stack",
-            "VM Name:": "nanofaas-e2e",
-            "Control-plane runtime:": "java",
-            "Cleanup VM at end?": False,
-            "Dry-run? (show plan without executing)": True,
-        }[str(prompt_fn().message)],
-    )
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
 
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
@@ -2602,6 +2594,7 @@ def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
     import controlplane_tool.e2e.e2e_runner as e2e_runner
 
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: True)
     called: dict[str, object] = {}
 
     class _FakePlan:
@@ -2641,6 +2634,8 @@ def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
     assert request.vm.memory == "8G"
     assert request.loadgen_vm is not None
     assert request.loadgen_vm.name == "nanofaas-e2e-loadgen"
+    # The "Cleanup VM at end?" prompt (mocked yes here) drives cleanup_vm — not a hardcode.
+    assert request.cleanup_vm is True
 
 
 def test_tui_proxmox_vm_loadtest_keeps_cleanup_phases_enabled(monkeypatch) -> None:
