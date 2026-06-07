@@ -454,6 +454,138 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     assert ("proxmox-loadgen", "proxmox-loadgen") in ensure_lifecycles
 
 
+def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
+    """Characterization test: pins the EXACT ScenarioStepEvent sequence emitted by
+    ProxmoxVmLoadtestPlan.run(event_listener=...) BEFORE any refactor.
+
+    The expected sequence was captured from the unchanged production code and must
+    NOT be adjusted to match a refactored version — it IS the contract.
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from workflow_tasks.shell import RecordingShell
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+    from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
+    import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
+
+    class FakeProxmoxVmOrchestrator:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def publish_port(self, request, *, service, guest_port):
+            return "127.0.0.1", 30090
+
+        def ssh_endpoint(self, request):
+            return "127.0.0.1", 2222
+
+        def ssh_private_key_path(self, request):
+            return None
+
+        def teardown(self, request):
+            return None
+
+    class FakeTwoVmLoadtestRunner:
+        def __init__(self, repo_root, vm):
+            self.repo_root = repo_root
+            self.vm = vm
+
+        def _create_run_dir(self):
+            return Path("/tmp/proxmox-run")
+
+    class FakeEnsureVmRunning:
+        def __init__(self, *, task_id, title, lifecycle, config):
+            self.task_id = task_id
+            self.title = title
+
+        def run(self):
+            return SimpleNamespace(host="10.0.0.10", home="/home/ubuntu")
+
+    class FakeTask:
+        def __init__(self, *, task_id, title, **kwargs):
+            self.task_id = task_id
+            self.title = title
+            self.result = SimpleNamespace(started_at=1.0, ended_at=2.0)
+
+        def run(self):
+            return Path("/tmp/proxmox-result")
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmoxVmOrchestrator,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.e2e.two_vm_loadtest_runner.TwoVmLoadtestRunner",
+        FakeTwoVmLoadtestRunner,
+    )
+    monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
+    monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeTask)
+
+    def fake_build_loadgen_body_tasks(inputs):
+        return [FakeTask(task_id=tid, title=title) for tid, title in zip(inputs.task_ids, inputs.titles)]
+
+    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
+
+    def fake_build_prelude_tasks(self, proxmox_orch, stack_request, *, resolve_host=True):
+        return [
+            CallableTask(
+                task_id="prelude.noop",
+                title="Prelude no-op",
+                action=lambda: None,
+            )
+        ]
+
+    monkeypatch.setattr(
+        proxmox_plan.ProxmoxVmLoadtestPlan,
+        "_build_prelude_tasks",
+        fake_build_prelude_tasks,
+    )
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
+        cleanup_vm=False,
+    )
+    plan = proxmox_plan.ProxmoxVmLoadtestPlan(
+        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        request=request,
+        steps=[],
+        runner=runner,
+    )
+    events = []
+
+    plan.run(event_listener=events.append)
+
+    seq = [(e.step_index, e.step.step_id, e.status) for e in events]
+    assert {e.total_steps for e in events} == {len(plan.task_ids)}
+    assert seq == [
+        (1, "prelude.noop", "running"),
+        (1, "prelude.noop", "success"),
+        (2, "vm.stack.ensure_running", "running"),
+        (2, "vm.stack.ensure_running", "success"),
+        (3, "vm.loadgen.ensure_running", "running"),
+        (3, "vm.loadgen.ensure_running", "success"),
+        (4, "vm.stack.publish_ports", "running"),
+        (4, "vm.stack.publish_ports", "success"),
+        (5, "loadgen.install_k6", "running"),
+        (5, "loadgen.install_k6", "success"),
+        (6, "loadgen.run_k6", "running"),
+        (6, "loadgen.run_k6", "success"),
+        (7, "loadgen.fetch_results", "running"),
+        (7, "loadgen.fetch_results", "success"),
+        (8, "metrics.prometheus_snapshot", "running"),
+        (8, "metrics.prometheus_snapshot", "success"),
+        (9, "loadtest.write_report", "running"),
+        (9, "loadtest.write_report", "success"),
+    ]
+
+
 def test_proxmox_loadgen_install_uses_runplaybook_not_bash() -> None:
     """Verify the loadgen body is built via the shared builder (which uses install_k6_task /
     ansible-based install internally), not by constructing InstallK6 directly."""
