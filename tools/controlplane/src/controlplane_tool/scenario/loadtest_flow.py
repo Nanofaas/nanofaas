@@ -88,25 +88,6 @@ def _two_vm_remote_paths_for(request, ctx: RunContext):
     )
 
 
-def _register_functions(runner, request, setup, ctx: RunContext) -> None:
-    from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
-    from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
-
-    runtime_image_default = f"{setup.context.local_registry}/nanofaas/function-runtime:e2e"
-    RegisterFunctions(
-        task_id="functions.register",
-        title="Register functions",
-        control_plane_url=ctx.control_plane_url,
-        specs=[
-            FunctionSpec(
-                name=fn_key,
-                image=function_image(fn_key, request.resolved_scenario, runtime_image_default),
-            )
-            for fn_key in selected_functions(request.resolved_scenario)
-        ],
-    ).run()
-
-
 _LOADGEN_BODY_IDS = (
     "loadgen.install_k6",
     "loadgen.run_k6",
