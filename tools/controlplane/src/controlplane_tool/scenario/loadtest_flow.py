@@ -70,6 +70,16 @@ def _run_workflow(tasks: list, cleanup_tasks: list | None = None) -> None:
     Workflow(tasks=tasks, cleanup_tasks=cleanup_tasks or []).run()
 
 
+def _adapter_connectivity(adapter, ctx, *, resolve_host: bool):
+    """adapter.connectivity_for is the generalized resolver (added in Task 5); fall
+    back to the static adapter.connectivity attribute for adapters/fakes that
+    predate it."""
+    fn = getattr(adapter, "connectivity_for", None)
+    if fn is not None:
+        return fn(ctx, resolve_host=resolve_host)
+    return adapter.connectivity
+
+
 def _two_vm_remote_paths_for(request, ctx: RunContext):
     from controlplane_tool.scenario.two_vm_loadtest_config import two_vm_remote_paths
     return two_vm_remote_paths(
@@ -282,7 +292,9 @@ def _run_loadtest_flow_native(*, runner, request, setup, recipe, adapter) -> Non
     ctx.stack_host = getattr(ctx.stack_info, "host", None)
 
     # ── 2. Stack provisioning prelude + adapter extra steps ─────────────────
-    prelude = _build_prelude_tasks(runner, request, setup, recipe, adapter.connectivity)
+    prelude = _build_prelude_tasks(
+        runner, request, setup, recipe, _adapter_connectivity(adapter, ctx, resolve_host=True)
+    )
     prelude += adapter.extra_steps(FlowPhase.AFTER_STACK_READY, ctx)
     _run_workflow(prelude)
 
@@ -351,7 +363,8 @@ def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, even
     # adapter.cleanup_on_failure() and re-raise a scenario-formatted error.
     try:
         prelude = _build_prelude_tasks(
-            runner, request, setup, recipe, adapter.connectivity,
+            runner, request, setup, recipe,
+            _adapter_connectivity(adapter, ctx, resolve_host=True),
             special_handler=adapter.prelude_special_handler(ctx),
             context_selector=adapter.prelude_context_selector(ctx),
         )
@@ -433,7 +446,9 @@ def _prelude_static_ids(runner, request, setup, recipe, connectivity) -> list:
 def loadtest_flow_task_ids(*, runner, request, setup, recipe, adapter) -> list:
     """Return the ordered list of task_id strings for the static (dry-run) plan."""
     ids = ["vm.stack.ensure_running"]
-    ids += _prelude_static_ids(runner, request, setup, recipe, adapter.connectivity)
+    ids += _prelude_static_ids(
+        runner, request, setup, recipe, _adapter_connectivity(adapter, None, resolve_host=False)
+    )
     ids += list(adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY))
     ids += ["vm.loadgen.ensure_running"]
     ids += list(adapter.extra_step_ids(FlowPhase.BEFORE_LOADGEN))
@@ -446,7 +461,13 @@ def loadtest_flow_phase_titles(*, runner, request, setup, recipe, adapter) -> li
     """Return the ordered list of phase title strings for the static (dry-run) plan."""
     s = adapter.title_suffix
     titles = [f"Ensure stack VM running{s}"]
-    titles += [t.title for t in _prelude_static_tasks(runner, request, setup, recipe, adapter.connectivity)]
+    titles += [
+        t.title
+        for t in _prelude_static_tasks(
+            runner, request, setup, recipe,
+            _adapter_connectivity(adapter, None, resolve_host=False),
+        )
+    ]
     titles += list(_adapter_extra_titles(adapter, FlowPhase.AFTER_STACK_READY))
     titles += [f"Ensure loadgen VM running{s}"]
     titles += list(_adapter_extra_titles(adapter, FlowPhase.BEFORE_LOADGEN))
