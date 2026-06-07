@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from workflow_tasks import (
@@ -10,14 +9,14 @@ from workflow_tasks import (
     EnsureVmRunning,
     FetchVmResults,
     InstallK6,
+    LoadgenBodyInputs,
     RunK6,
-    TimeWindow,
     Workflow,
     WriteK6Report,
-    install_k6_task,
+    build_loadgen_body_tasks,
+    make_loadtest_k6_config,
     workflow_step,
 )
-from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -116,26 +115,13 @@ class AzureVmLoadtestPlan:
         run_dir = run_dir_creator._create_run_dir()  # noqa: SLF001
         control_plane_url = two_vm_control_plane_url(request.vm, host=stack_info.host)
 
-        k6_config = K6Config(
-            script_path=Path(remote_paths.script_path),
-            target_url=control_plane_url,
-            summary_output_path=Path(remote_paths.summary_path),
-            stages=tuple(
-                K6Stage(duration=d, target=t)
-                for d, t in two_vm_load_stages(request)
-            ),
-            env={
-                "NANOFAAS_URL": control_plane_url,
-                "NANOFAAS_FUNCTION": two_vm_target_function(request),
-                **(
-                    {"NANOFAAS_PAYLOAD": str(remote_paths.payload_path)}
-                    if remote_paths.payload_path
-                    else {}
-                ),
-            },
+        k6_config = make_loadtest_k6_config(
+            remote_paths=remote_paths,
+            control_plane_url=control_plane_url,
+            target_function=two_vm_target_function(request),
+            stages=two_vm_load_stages(request),
             vus=request.k6_vus,
             duration=request.k6_duration,
-            payload_path=Path(remote_paths.payload_path) if remote_paths.payload_path else None,
         )
 
         loadgen_runner = OrchestratorVmRunner(azure_orch, request.loadgen_vm)
@@ -144,30 +130,29 @@ class AzureVmLoadtestPlan:
             url=two_vm_prometheus_url(request.vm, host=stack_info.host)
         )
 
-        k6_task = RunK6(task_id=s_run_k6.task_id, title=s_run_k6.title, runner=loadgen_runner, config=k6_config, remote_dir=remote_home)
-
+        body = build_loadgen_body_tasks(
+            LoadgenBodyInputs(
+                task_ids=(s_install_k6.task_id, s_run_k6.task_id, s_fetch.task_id,
+                          s_prom.task_id, s_report.task_id),
+                titles=(s_install_k6.title, s_run_k6.title, s_fetch.title,
+                        s_prom.title, s_report.title),
+                runner=loadgen_runner,
+                fetcher=fetcher,
+                prometheus_client=prom_client,
+                prometheus_queries=LOADTEST_PROMETHEUS_QUERIES,
+                k6_config=k6_config,
+                remote_dir=remote_home,
+                remote_summary_path=remote_paths.summary_path,
+                run_dir=run_dir,
+                repo_root=self.runner.paths.workspace_root,
+                shell=self.runner.shell,
+                install_host=azure_orch.connection_host(request.loadgen_vm),
+                install_user=request.loadgen_vm.user,
+                install_private_key=azure_orch.ssh_private_key_path(request.loadgen_vm),
+            )
+        )
         workflow = Workflow(
-            tasks=[
-                install_k6_task(
-                    task_id=s_install_k6.task_id,
-                    title=s_install_k6.title,
-                    repo_root=self.runner.paths.workspace_root,
-                    shell=self.runner.shell,
-                    host=azure_orch.connection_host(request.loadgen_vm),
-                    user=request.loadgen_vm.user,
-                    private_key=azure_orch.ssh_private_key_path(request.loadgen_vm),
-                ),
-                k6_task,
-                FetchVmResults(task_id=s_fetch.task_id, title=s_fetch.title, fetcher=fetcher, remote_source=remote_paths.summary_path, local_dest=run_dir),
-                CapturePrometheusSnapshot(
-                    task_id=s_prom.task_id, title=s_prom.title,
-                    client=prom_client,
-                    queries=LOADTEST_PROMETHEUS_QUERIES,
-                    window=lambda: TimeWindow(start=k6_task.result.started_at, end=k6_task.result.ended_at),
-                    output_dir=run_dir,
-                ),
-                WriteK6Report(task_id=s_report.task_id, title=s_report.title, data_dir=run_dir, output_dir=run_dir),
-            ],
+            tasks=body,
             cleanup_tasks=[
                 DestroyVm(task_id=s_destroy.task_id, title=s_destroy.title, lifecycle=lifecycle, info=loadgen_info),
             ],

@@ -112,10 +112,14 @@ def test_runner_executes_k6_with_control_plane_url(tmp_path):
 
 
 def test_azure_loadgen_install_uses_runplaybook_not_bash() -> None:
+    """The loadgen install step must be the ansible RunPlaybook, not bash InstallK6.
+    After the B2 refactor, the body is built by build_loadgen_body_tasks (which
+    internally calls install_k6_task); the run() method must not use InstallK6 directly.
+    """
     import inspect
 
     from controlplane_tool.scenario.scenarios import azure_vm_loadtest
 
     source = inspect.getsource(azure_vm_loadtest.AzureVmLoadtestPlan.run)
-    assert "install_k6_task(" in source
+    assert "build_loadgen_body_tasks(" in source
     assert "InstallK6(" not in source
