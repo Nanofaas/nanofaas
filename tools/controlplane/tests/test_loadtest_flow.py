@@ -71,3 +71,62 @@ def test_run_loadtest_flow_orders_phases_and_populates_context(monkeypatch) -> N
     assert events.index("prepare") < events.index("register")
     # loadgen body is built after register
     assert events.index("register") < events.index("body")
+
+
+_EXPECTED_TWO_VM_TASK_IDS = [
+    "vm.stack.ensure_running",
+    "vm.provision_base", "repo.sync_to_vm", "registry.ensure_container",
+    "images.build_core", "images.build_selected_functions", "k3s.install",
+    "k3s.configure_registry", "namespace.install", "helm.deploy_control_plane",
+    "helm.deploy_function_runtime",
+    "vm.loadgen.ensure_running",
+    "loadgen.install_k6", "loadgen.run_k6", "loadgen.fetch_results",
+    "metrics.prometheus_snapshot", "loadtest.write_report",
+    "vm.loadgen.destroy", "vm.stack.destroy",
+]
+
+
+def test_static_task_ids_match_two_vm(monkeypatch) -> None:
+    from controlplane_tool.scenario import loadtest_flow as mod
+
+    prelude_ids = _EXPECTED_TWO_VM_TASK_IDS[1:11]
+    monkeypatch.setattr(mod, "_prelude_static_ids",
+                        lambda runner, request, setup, recipe, connectivity: prelude_ids)
+
+    class FakeAdapter:
+        title_suffix = ""
+        connectivity = object()
+        def extra_step_ids(self, phase): return []
+
+    ids = mod.loadtest_flow_task_ids(runner=object(), request=object(), setup=object(),
+                                     recipe=object(), adapter=FakeAdapter())
+    assert ids == _EXPECTED_TWO_VM_TASK_IDS
+
+
+def test_static_phase_titles_match_two_vm(monkeypatch) -> None:
+    from controlplane_tool.scenario import loadtest_flow as mod
+
+    class FakeTask:
+        def __init__(self, title): self.title = title
+
+    prelude_titles = ["Provision base", "Sync project to VM", "Ensure registry",
+                      "Build core", "Build functions", "Install k3s",
+                      "Configure registry", "Install namespace", "Deploy control plane",
+                      "Deploy function runtime"]
+    monkeypatch.setattr(mod, "_prelude_static_tasks",
+                        lambda runner, request, setup, recipe, connectivity: [FakeTask(t) for t in prelude_titles])
+
+    class FakeAdapter:
+        title_suffix = ""
+        connectivity = object()
+        def extra_step_ids(self, phase): return []
+
+    titles = mod.loadtest_flow_phase_titles(runner=object(), request=object(), setup=object(),
+                                            recipe=object(), adapter=FakeAdapter())
+    assert titles == (
+        ["Ensure stack VM running"] + prelude_titles + [
+            "Ensure loadgen VM running", "Install k6 on loadgen VM", "Run k6 loadtest",
+            "Fetch k6 results from loadgen VM", "Capture Prometheus snapshots",
+            "Write loadtest report", "Destroy loadgen VM", "Destroy stack VM",
+        ]
+    )

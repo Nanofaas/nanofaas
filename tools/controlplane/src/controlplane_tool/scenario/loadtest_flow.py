@@ -218,3 +218,40 @@ def run_loadtest_flow(*, runner, request, setup, recipe, adapter, event_listener
             ),
         ]
     _run_workflow(body, cleanup_tasks=cleanup)
+
+
+# ---------------------------------------------------------------------------
+# Static-plan helpers — derive the dry-run plan from recipe + adapter.
+# Kept as module-level functions so tests can monkeypatch them.
+# ---------------------------------------------------------------------------
+
+def _prelude_static_tasks(runner, request, setup, recipe, connectivity) -> list:
+    from controlplane_tool.scenario.scenarios._workflow_assembly import build_command_tasks
+    return build_command_tasks(runner, request, setup, recipe, connectivity=connectivity, resolve_host=False)
+
+
+def _prelude_static_ids(runner, request, setup, recipe, connectivity) -> list:
+    return [t.task_id for t in _prelude_static_tasks(runner, request, setup, recipe, connectivity)]
+
+
+def loadtest_flow_task_ids(*, runner, request, setup, recipe, adapter) -> list:
+    """Return the ordered list of task_id strings for the static (dry-run) plan."""
+    ids = ["vm.stack.ensure_running"]
+    ids += _prelude_static_ids(runner, request, setup, recipe, adapter.connectivity)
+    ids += list(adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY))
+    ids += ["vm.loadgen.ensure_running"]
+    ids += list(adapter.extra_step_ids(FlowPhase.BEFORE_LOADGEN))
+    ids += list(_LOADGEN_BODY_IDS)
+    ids += ["vm.loadgen.destroy", "vm.stack.destroy"]
+    return ids
+
+
+def loadtest_flow_phase_titles(*, runner, request, setup, recipe, adapter) -> list:
+    """Return the ordered list of phase title strings for the static (dry-run) plan."""
+    s = adapter.title_suffix
+    titles = [f"Ensure stack VM running{s}"]
+    titles += [t.title for t in _prelude_static_tasks(runner, request, setup, recipe, adapter.connectivity)]
+    titles += [f"Ensure loadgen VM running{s}"]
+    titles += [f"{base}{s}" for base in _LOADGEN_BODY_BASE_TITLES]
+    titles += [f"Destroy loadgen VM{s}", f"Destroy stack VM{s}"]
+    return titles
