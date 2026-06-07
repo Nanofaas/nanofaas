@@ -18,8 +18,6 @@ public class ExecutionStore {
     private final ScheduledExecutorService janitor = Executors.newSingleThreadScheduledExecutor();
     private final Duration cleanupTtl = Duration.ofMinutes(2);
     private final Duration ttl = Duration.ofMinutes(5);
-    /** Force-evict even RUNNING/QUEUED executions after this deadline to prevent unbounded growth. */
-    private final Duration staleTtl = Duration.ofMinutes(10);
 
     public ExecutionStore() {
         janitor.scheduleAtFixedRate(this::evictExpired, 1, 1, TimeUnit.MINUTES);
@@ -53,15 +51,13 @@ public class ExecutionStore {
         Instant now = Instant.now();
         Instant cutoff = now.minus(ttl);
         Instant cleanupCutoff = now.minus(cleanupTtl);
-        Instant staleCutoff = now.minus(staleTtl);
 
         executions.entrySet().removeIf(entry -> {
             StoredExecution stored = entry.getValue();
             ExecutionRecord record = stored.record();
             Instant created = stored.createdAt();
             if (!record.isTerminal()) {
-                // Force-evict active executions that have been stuck too long.
-                return created.isBefore(staleCutoff);
+                return false;
             }
 
             Instant completedAt = record.finishedAt();

@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
@@ -651,6 +652,130 @@ class InvocationServiceDispatchTest {
             executor.shutdownNow();
             staleStore.shutdown();
             blockedStore.shutdown();
+        }
+    }
+
+    @Test
+    void invokeAsync_whenEnqueueRejects_removesCreatedExecutionRecord() {
+        FunctionSpec spec = functionSpec("queue-reject-fn", ExecutionMode.LOCAL);
+        when(functionService.get("queue-reject-fn")).thenReturn(Optional.of(spec));
+        when(enqueuer.enabled()).thenReturn(true);
+        AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            rejectedExecutionId.set(task.executionId());
+            return false;
+        }).when(enqueuer).enqueue(any());
+
+        assertThatThrownBy(() -> invocationService.invokeAsync(
+                "queue-reject-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null
+        )).isInstanceOf(QueueFullException.class);
+
+        assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
+                assertThat(executionStore.get(executionId)).isEmpty());
+    }
+
+    @Test
+    void invokeSync_whenEnqueuerRejects_removesCreatedExecutionRecord() {
+        FunctionSpec spec = functionSpec("sync-reject-local-fn", ExecutionMode.LOCAL);
+        when(functionService.get("sync-reject-local-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(true);
+        AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            rejectedExecutionId.set(task.executionId());
+            return false;
+        }).when(enqueuer).enqueue(any());
+
+        assertThatThrownBy(() -> invocationService.invokeSync(
+                "sync-reject-local-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        )).isInstanceOf(QueueFullException.class);
+
+        assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
+                assertThat(executionStore.get(executionId)).isEmpty());
+    }
+
+    @Test
+    void invokeSyncReactive_whenSyncQueueRejects_removesCreatedExecutionRecord() {
+        FunctionSpec spec = functionSpec("reactive-sync-reject-fn", ExecutionMode.LOCAL);
+        when(functionService.get("reactive-sync-reject-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            rejectedExecutionId.set(task.executionId());
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 1);
+        }).when(syncQueueGateway).enqueueOrThrow(any());
+
+        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
+                "reactive-sync-reject-fn",
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                1_000
+        ).block()).isInstanceOf(SyncQueueRejectedException.class);
+
+        assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
+                assertThat(executionStore.get(executionId)).isEmpty());
+    }
+
+    @Test
+    void invokeAsync_sameIdempotencyKeyWaitsForRejectedAdmissionBeforeCreatingReplacement() throws Exception {
+        FunctionSpec spec = functionSpec("idem-admission-race-fn", ExecutionMode.LOCAL);
+        when(functionService.get("idem-admission-race-fn")).thenReturn(Optional.of(spec));
+        when(enqueuer.enabled()).thenReturn(true);
+        CountDownLatch firstEnqueueStarted = new CountDownLatch(1);
+        CountDownLatch allowFirstRejection = new CountDownLatch(1);
+        AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            if (rejectedExecutionId.compareAndSet(null, task.executionId())) {
+                firstEnqueueStarted.countDown();
+                assertThat(allowFirstRejection.await(5, TimeUnit.SECONDS)).isTrue();
+                return false;
+            }
+            return true;
+        }).when(enqueuer).enqueue(any());
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<InvocationResponse> first = executor.submit(() -> invocationService.invokeAsync(
+                    "idem-admission-race-fn",
+                    new InvocationRequest("payload", Map.of()),
+                    "same-admission-key",
+                    null
+            ));
+            assertThat(firstEnqueueStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<InvocationResponse> second = executor.submit(() -> invocationService.invokeAsync(
+                    "idem-admission-race-fn",
+                    new InvocationRequest("payload", Map.of()),
+                    "same-admission-key",
+                    null
+            ));
+
+            Thread.sleep(50);
+            assertThat(second).isNotDone();
+
+            allowFirstRejection.countDown();
+
+            assertThatThrownBy(() -> first.get(1, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(QueueFullException.class);
+            InvocationResponse replacement = second.get(1, TimeUnit.SECONDS);
+            assertThat(replacement.executionId()).isNotEqualTo(rejectedExecutionId.get());
+            assertThat(executionStore.get(rejectedExecutionId.get())).isEmpty();
+            assertThat(executionStore.get(replacement.executionId())).isPresent();
+        } finally {
+            allowFirstRejection.countDown();
+            executor.shutdownNow();
         }
     }
 

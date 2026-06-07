@@ -127,7 +127,7 @@ class ExecutionStoreEvictionTest {
     }
 
     @Test
-    void eviction_removesStaleRunningExecutionAfterStaleTtl() throws Exception {
+    void eviction_keepsStaleRunningExecutionBecauseCompletionStillOwnsLifecycle() throws Exception {
         ExecutionRecord record = createRecord("exec-stale-running");
         record.markRunning();
         store.put(record);
@@ -136,7 +136,20 @@ class ExecutionStoreEvictionTest {
 
         invokeEvictExpired();
 
-        assertThat(store.get("exec-stale-running")).isEmpty();
+        assertThat(store.get("exec-stale-running")).isPresent();
+    }
+
+    @Test
+    void eviction_keepsStaleQueuedExecutionBecauseSchedulerStillOwnsLifecycle() throws Exception {
+        ExecutionRecord record = createRecord("exec-stale-queued");
+        store.put(record);
+        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+
+        backdateEntry("exec-stale-queued", Instant.now().minus(Duration.ofMinutes(11)));
+
+        invokeEvictExpired();
+
+        assertThat(store.get("exec-stale-queued")).isPresent();
     }
 
     @Test

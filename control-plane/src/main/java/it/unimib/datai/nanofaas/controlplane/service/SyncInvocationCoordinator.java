@@ -44,12 +44,18 @@ public final class SyncInvocationCoordinator {
         }
 
         if (lookup.isNew()) {
-            if (syncQueueGateway.enabled()) {
-                syncQueueGateway.enqueueOrThrow(record.task());
-            } else if (enqueuer.enabled()) {
-                enqueueOrThrow(record);
-            } else {
-                completionHandler.dispatch(record.task());
+            try {
+                if (syncQueueGateway.enabled()) {
+                    syncQueueGateway.enqueueOrThrow(record.task());
+                } else if (enqueuer.enabled()) {
+                    enqueueOrThrow(record);
+                } else {
+                    completionHandler.dispatch(record.task());
+                }
+                lookup.publishAdmission();
+            } catch (RuntimeException ex) {
+                lookup.abandonAdmission();
+                throw ex;
             }
         }
 

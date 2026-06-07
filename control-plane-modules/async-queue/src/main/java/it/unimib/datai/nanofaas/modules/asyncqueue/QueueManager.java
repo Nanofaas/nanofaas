@@ -69,13 +69,14 @@ public class QueueManager {
         return queues.get(functionName);
     }
 
-    public void remove(String name) {
-        queues.remove(name);
+    public List<InvocationTask> remove(String name) {
+        FunctionQueueState removed = queues.remove(name);
         concurrencyMetrics.remove(name);
         List<Meter.Id> ids = meterIds.remove(name);
         if (ids != null) {
             ids.forEach(meterRegistry::remove);
         }
+        return removed == null ? List.of() : removed.closeAndDrainQueued();
     }
 
     public void forEachQueue(java.util.function.Consumer<FunctionQueueState> action) {

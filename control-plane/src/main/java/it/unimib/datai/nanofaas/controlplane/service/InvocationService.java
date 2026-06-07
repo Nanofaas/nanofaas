@@ -122,7 +122,13 @@ public class InvocationService {
         ExecutionRecord record = lookup.record();
 
         if (lookup.isNew()) {
-            enqueueOrThrow(record);
+            try {
+                enqueueOrThrow(record);
+                lookup.publishAdmission();
+            } catch (RuntimeException ex) {
+                lookup.abandonAdmission();
+                throw ex;
+            }
         }
         return new InvocationResponse(record.executionId(), "queued", null, null);
     }

@@ -53,7 +53,9 @@ public final class ReactiveInvocationCoordinator {
                 } else {
                     completionHandler.dispatch(record.task());
                 }
+                lookup.publishAdmission();
             } catch (RuntimeException ex) {
+                lookup.abandonAdmission();
                 return Mono.error(ex);
             }
         }

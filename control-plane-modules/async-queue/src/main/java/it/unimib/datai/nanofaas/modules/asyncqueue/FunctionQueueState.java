@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -11,6 +13,7 @@ public class FunctionQueueState {
     private final AtomicInteger inFlight;
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
+    private boolean closed;
 
     public FunctionQueueState(String functionName, int queueSize, int concurrency) {
         this.functionName = functionName;
@@ -32,12 +35,22 @@ public class FunctionQueueState {
         return queue.size();
     }
 
-    public boolean offer(InvocationTask task) {
+    public synchronized boolean offer(InvocationTask task) {
+        if (closed) {
+            return false;
+        }
         return queue.offer(task);
     }
 
-    public InvocationTask poll() {
+    public synchronized InvocationTask poll() {
         return queue.poll();
+    }
+
+    public synchronized List<InvocationTask> closeAndDrainQueued() {
+        closed = true;
+        List<InvocationTask> drained = new ArrayList<>();
+        queue.drainTo(drained);
+        return drained;
     }
 
     public int inFlight() {
