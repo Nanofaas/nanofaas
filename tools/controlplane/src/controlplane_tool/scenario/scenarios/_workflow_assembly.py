@@ -40,7 +40,6 @@ from controlplane_tool.scenario.command_resolver import CommandResolver
 from controlplane_tool.scenario.connectivity import (
     ConnectivityStrategy,
     MultipassConnectivity,
-    resolve_host_operation,
 )
 from controlplane_tool.scenario.components.composer import compose_recipe
 from controlplane_tool.scenario.components.environment import resolve_scenario_environment
