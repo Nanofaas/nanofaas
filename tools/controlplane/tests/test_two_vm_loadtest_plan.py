@@ -1,65 +1,54 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-from controlplane_tool.scenario.catalog import resolve_scenario
-from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
+from workflow_tasks.shell import RecordingShell
+
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.e2e.e2e_runner import E2eRunner
+from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
+
+
+def _plan():
+    runner = E2eRunner(
+        repo_root=Path("/repo"),
+        shell=RecordingShell(),
+        host_resolver=lambda _request: "10.0.0.9",
+    )
+    request = E2eRequest(
+        scenario="two-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
+    )
+    return build_two_vm_loadtest_plan(runner, request)
 
 
 def test_two_vm_loadtest_plan_has_expected_task_ids() -> None:
     """task_ids must include all phases: stack provisioning + loadgen + cleanup.
 
-    After B3a, task_ids delegates to loadtest_flow_task_ids which calls _build_setup
-    (needs a real environment). We patch _build_setup and _adapter so the static-plan
-    path exercises only the task-ID assembly logic, not environment I/O.
+    The prelude IDs are produced by the REAL _prelude_static_tasks (which runs
+    build_command_tasks with resolve_host=False over the real
+    _TWO_VM_STACK_PRELUDE_COMPONENTS recipe). No patching of any id-deriving
+    function — a dropped/renamed recipe component will cause this test to fail.
     """
-    runner = MagicMock()
-    runner.paths.workspace_root = Path("/repo")
-    request = MagicMock()
-
-    scenario = resolve_scenario("two-vm-loadtest")
-    plan = TwoVmLoadtestPlan(scenario=scenario, request=request, steps=[], runner=runner)
-
-    mock_setup = MagicMock()
-    mock_adapter = MagicMock()
-    mock_adapter.connectivity = MagicMock()
-    mock_adapter.extra_step_ids.return_value = []
-
-    # Patch build_command_tasks so _prelude_static_ids returns expected prelude task IDs
-    # (build_command_tasks is called with resolve_host=False; the tasks carry .task_id attrs)
-    prelude_task_ids = [
-        "vm.provision_base",
-        "repo.sync_to_vm",
-        "registry.ensure_container",
-        "images.build_core",
-        "images.build_selected_functions",
-        "k3s.install",
-        "k3s.configure_registry",
-        "namespace.install",
-        "helm.deploy_control_plane",
-        "helm.deploy_function_runtime",
-    ]
-    mock_tasks = [MagicMock(task_id=tid) for tid in prelude_task_ids]
-
-    with (
-        patch.object(plan, "_build_setup", return_value=mock_setup),
-        patch.object(plan, "_adapter", return_value=mock_adapter),
-        patch(
-            "controlplane_tool.scenario.loadtest_flow._prelude_static_tasks",
-            return_value=mock_tasks,
-        ),
-    ):
-        ids = plan.task_ids
+    ids = _plan().task_ids
     # Stack VM lifecycle
     assert "vm.stack.ensure_running" in ids
-    # Stack provisioning phases
+    # Stack provisioning phases — derived from real _TWO_VM_STACK_PRELUDE_COMPONENTS.
+    # images.build_core expands into sub-task IDs (one per docker build/push operation).
     assert "vm.provision_base" in ids
     assert "repo.sync_to_vm" in ids
     assert "registry.ensure_container" in ids
-    assert "images.build_core" in ids
-    assert "images.build_selected_functions" in ids
+    assert "images.build_core.boot_jars" in ids
+    assert "images.build_core.control_image" in ids
+    assert "images.build_core.runtime_image" in ids
+    assert "images.build_core.push_control_image" in ids
+    assert "images.build_core.push_runtime_image" in ids
     assert "k3s.install" in ids
+    assert "k3s.configure_registry" in ids
+    assert "namespace.install" in ids
     assert "helm.deploy_control_plane" in ids
     assert "helm.deploy_function_runtime" in ids
     # Loadgen phases
