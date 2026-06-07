@@ -68,7 +68,9 @@ class LoadtestConnectivityAdapter(Protocol):
     def emits_step_events(self) -> bool: ...
     def cleanup_on_failure(self, error: Exception) -> list[str]: ...
     def prelude_special_handler(self, ctx: RunContext) -> Optional[SpecialHandler]: ...
-    def prelude_context_selector(self, ctx: RunContext) -> Optional[object]: ...
+    def prelude_context_selector(
+        self, ctx: RunContext, *, resolve_host: bool = True
+    ) -> Optional[object]: ...
     def register_functions(self, ctx: RunContext) -> None: ...
     def extra_step_titles(self, phase: FlowPhase) -> list[str]: ...
 
@@ -151,7 +153,9 @@ class MultipassLoadtestAdapter:
     def prelude_special_handler(self, ctx: RunContext) -> Optional[SpecialHandler]:
         return None
 
-    def prelude_context_selector(self, ctx: RunContext) -> Optional[object]:
+    def prelude_context_selector(
+        self, ctx: RunContext, *, resolve_host: bool = True
+    ) -> Optional[object]:
         return None
 
     def extra_step_titles(self, phase: FlowPhase) -> list[str]:
@@ -333,14 +337,16 @@ class ProxmoxLoadtestAdapter:
 
         return action
 
-    def prelude_context_selector(self, ctx: RunContext) -> Optional[object]:
+    def prelude_context_selector(
+        self, ctx: RunContext, *, resolve_host: bool = True
+    ) -> Optional[object]:
         from pathlib import Path as _Path
         from typing import cast
 
         from controlplane_tool.scenario.components.cli import CliComponentContext
 
         context = self._resolve_context()
-        conn = self.connectivity_for(ctx, resolve_host=True)
+        conn = self.connectivity_for(ctx, resolve_host=resolve_host)
         cli_context = CliComponentContext(
             repo_root=_Path(conn.remote_dir_value),
             release=cast(str, context.release),

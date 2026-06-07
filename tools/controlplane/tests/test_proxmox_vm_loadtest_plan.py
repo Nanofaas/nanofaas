@@ -55,7 +55,11 @@ def test_proxmox_vm_loadtest_plan_task_ids_include_platform_prefix() -> None:
     ids = plan.task_ids
 
     required = [
-        "vm.ensure_running",
+        # B3b: canonical execution-order emission via run_loadtest_flow names the
+        # stack-ensure step "vm.stack.ensure_running" (matching two-vm), not the
+        # legacy bespoke "vm.ensure_running". The load-bearing invariant —
+        # functions.register < vm.stack.publish_ports < loadgen.install_k6 — holds.
+        "vm.stack.ensure_running",
         "vm.provision_base",
         "repo.sync_to_vm",
         "registry.ensure_container",
@@ -107,6 +111,7 @@ def test_proxmox_vm_loadtest_plan_skips_destroy_when_no_cleanup(tmp_path) -> Non
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
+    from controlplane_tool.scenario.loadtest_flow import RunContext, _destroy_tasks
     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
@@ -118,8 +123,9 @@ def test_proxmox_vm_loadtest_plan_skips_destroy_when_no_cleanup(tmp_path) -> Non
         cleanup_vm=False,
     )
     plan = build_proxmox_vm_loadtest_plan(runner=runner, request=request)
-    _, wf = plan._skeleton()
-    assert wf.cleanup_tasks == []
+    # B3b: cleanup is driven by the unified driver's _destroy_tasks, which returns
+    # no DestroyVm tasks when cleanup_vm is False.
+    assert _destroy_tasks(plan._adapter(), RunContext(), request) == []
 
 
 def test_e2e_runner_plan_returns_proxmox_vm_loadtest_plan(tmp_path) -> None:
@@ -152,6 +158,7 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario import loadtest_flow
     from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import ProxmoxVmLoadtestPlan
 
@@ -169,6 +176,17 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
         def connection_host(self, request):
             return "10.0.0.10"
 
+        # B3b: the driver resolves proxmox connectivity (resolve_host=True) before
+        # building the prelude, so the orch must answer the SSH-endpoint queries.
+        def remote_project_dir(self, request):
+            return f"/home/{request.user or 'ubuntu'}/nanofaas"
+
+        def ssh_endpoint(self, request):
+            return "10.0.0.10", 2222
+
+        def ssh_private_key_path(self, request):
+            return None
+
         def teardown(self, request):
             torn_down.append(request.name)
 
@@ -177,10 +195,12 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
         FakeProxmoxVmOrchestrator,
     )
 
-    # Make the honest prelude FAIL via a synthetic honest Task (bypasses real
-    # _build_prelude_tasks / SSH resolution): run() must run the honest prelude
-    # tasks, so the failure here proves it does — and trigger NAT/VM cleanup.
-    def fake_build_prelude_tasks(self, proxmox_orch, stack_request, *, resolve_host=True):
+    # B3b: run() routes through run_loadtest_flow, which builds the prelude via the
+    # shared driver (loadtest_flow._build_prelude_tasks). Make the prelude FAIL via
+    # a synthetic honest Task; the unified driver's emitting failure-cleanup path
+    # must trigger adapter.cleanup_on_failure -> proxmox teardown of both VMs.
+    def fake_build_prelude_tasks(runner, request, setup, recipe, connectivity,
+                                 special_handler=None, context_selector=None):
         return [
             CallableTask(
                 task_id="prelude.fail",
@@ -189,9 +209,7 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
             )
         ]
 
-    monkeypatch.setattr(
-        ProxmoxVmLoadtestPlan, "_build_prelude_tasks", fake_build_prelude_tasks
-    )
+    monkeypatch.setattr(loadtest_flow, "_build_prelude_tasks", fake_build_prelude_tasks)
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
@@ -223,6 +241,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario import loadtest_flow
     from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
     import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
 
@@ -232,6 +251,9 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
 
         def publish_port(self, request, *, service, guest_port):
             return "127.0.0.1", 30090
+
+        def remote_project_dir(self, request):
+            return f"/home/{request.user or 'ubuntu'}/nanofaas"
 
         def ssh_endpoint(self, request):
             return "127.0.0.1", 2222
@@ -275,18 +297,19 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
         "controlplane_tool.e2e.two_vm_loadtest_runner.TwoVmLoadtestRunner",
         FakeTwoVmLoadtestRunner,
     )
-    monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeTask)
+    # B3b: run() routes through run_loadtest_flow; patch the driver-owned symbols.
+    monkeypatch.setattr(loadtest_flow, "EnsureVmRunning", FakeEnsureVmRunning)
+    monkeypatch.setattr(loadtest_flow, "DestroyVm", FakeTask)
 
     def fake_build_loadgen_body_tasks(inputs):
         return [FakeTask(task_id=tid, title=title) for tid, title in zip(inputs.task_ids, inputs.titles)]
 
-    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
+    monkeypatch.setattr("workflow_tasks.build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
 
-    # The honest prelude is a single synthetic no-op Task (bypasses real
-    # _build_prelude_tasks / SSH resolution). run() must execute it, so the tail
-    # events start AFTER it.
-    def fake_build_prelude_tasks(self, proxmox_orch, stack_request, *, resolve_host=True):
+    # The prelude is a single synthetic no-op Task (bypasses real prelude / SSH
+    # resolution). run() must execute it, so the tail events start AFTER it.
+    def fake_build_prelude_tasks(runner, request, setup, recipe, connectivity,
+                                 special_handler=None, context_selector=None):
         return [
             CallableTask(
                 task_id="prelude.noop",
@@ -295,11 +318,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
             )
         ]
 
-    monkeypatch.setattr(
-        proxmox_plan.ProxmoxVmLoadtestPlan,
-        "_build_prelude_tasks",
-        fake_build_prelude_tasks,
-    )
+    monkeypatch.setattr(loadtest_flow, "_build_prelude_tasks", fake_build_prelude_tasks)
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
@@ -343,6 +362,8 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario import loadtest_flow
+    import controlplane_tool.infra.vm_lifecycle_adapters as vm_lifecycle_adapters
     import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
 
     adapter_credentials: list[str] = []
@@ -354,6 +375,9 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
 
         def publish_port(self, request, *, service, guest_port):
             return "127.0.0.1", 30090
+
+        def remote_project_dir(self, request):
+            return f"/home/{request.user or 'ubuntu'}/nanofaas"
 
         def ssh_endpoint(self, request):
             return "127.0.0.1", 2222
@@ -409,19 +433,23 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
         "controlplane_tool.e2e.two_vm_loadtest_runner.TwoVmLoadtestRunner",
         FakeTwoVmLoadtestRunner,
     )
-    monkeypatch.setattr(proxmox_plan, "ProxmoxVmAdapter", fake_proxmox_adapter)
-    monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
+    # B3b: lifecycles + ensure tasks are now built inside the shared driver
+    # (loadtest_flow) and the proxmox adapter (which imports ProxmoxVmAdapter from
+    # controlplane_tool.infra.vm_lifecycle_adapters). Patch them where the driver
+    # and adapter resolve them.
+    monkeypatch.setattr(vm_lifecycle_adapters, "ProxmoxVmAdapter", fake_proxmox_adapter)
+    monkeypatch.setattr(loadtest_flow, "EnsureVmRunning", FakeEnsureVmRunning)
 
     def fake_build_loadgen_body_tasks(inputs):
         return [FakeTask(task_id=tid, title=title) for tid, title in zip(inputs.task_ids, inputs.titles)]
 
-    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
-    # This test exercises the tail lifecycle credentials, not the prelude; use an
-    # empty honest prelude so run() skips real SSH-resolving prelude building.
+    monkeypatch.setattr("workflow_tasks.build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
+    # This test exercises the lifecycle credentials, not the prelude; use an empty
+    # prelude so run() skips real SSH-resolving prelude building.
     monkeypatch.setattr(
-        proxmox_plan.ProxmoxVmLoadtestPlan,
+        loadtest_flow,
         "_build_prelude_tasks",
-        lambda self, proxmox_orch, stack_request, *, resolve_host=True: [],
+        lambda runner, request, setup, recipe, connectivity, special_handler=None, context_selector=None: [],
     )
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
@@ -469,6 +497,7 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario import loadtest_flow
     from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
     import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
 
@@ -478,6 +507,9 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
 
         def publish_port(self, request, *, service, guest_port):
             return "127.0.0.1", 30090
+
+        def remote_project_dir(self, request):
+            return f"/home/{request.user or 'ubuntu'}/nanofaas"
 
         def ssh_endpoint(self, request):
             return "127.0.0.1", 2222
@@ -521,15 +553,17 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
         "controlplane_tool.e2e.two_vm_loadtest_runner.TwoVmLoadtestRunner",
         FakeTwoVmLoadtestRunner,
     )
-    monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeTask)
+    # B3b: run() routes through run_loadtest_flow; patch the driver-owned symbols.
+    monkeypatch.setattr(loadtest_flow, "EnsureVmRunning", FakeEnsureVmRunning)
+    monkeypatch.setattr(loadtest_flow, "DestroyVm", FakeTask)
 
     def fake_build_loadgen_body_tasks(inputs):
         return [FakeTask(task_id=tid, title=title) for tid, title in zip(inputs.task_ids, inputs.titles)]
 
-    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
+    monkeypatch.setattr("workflow_tasks.build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
 
-    def fake_build_prelude_tasks(self, proxmox_orch, stack_request, *, resolve_host=True):
+    def fake_build_prelude_tasks(runner, request, setup, recipe, connectivity,
+                                 special_handler=None, context_selector=None):
         return [
             CallableTask(
                 task_id="prelude.noop",
@@ -538,11 +572,7 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
             )
         ]
 
-    monkeypatch.setattr(
-        proxmox_plan.ProxmoxVmLoadtestPlan,
-        "_build_prelude_tasks",
-        fake_build_prelude_tasks,
-    )
+    monkeypatch.setattr(loadtest_flow, "_build_prelude_tasks", fake_build_prelude_tasks)
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
@@ -564,6 +594,11 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
 
     seq = [(e.step_index, e.step.step_id, e.status) for e in events]
     assert {e.total_steps for e in events} == {len(plan.task_ids)}
+    # B3b: canonical execution-order emission produced by run_loadtest_flow's
+    # emitting path (prelude -> ensure-stack -> ensure-loadgen -> publish-ports ->
+    # loadgen body), with a single ScenarioStepEvent pair per task in execution
+    # order (no separate prelude-then-tail re-emission). See the B3b plan:
+    # docs/superpowers/plans/*loadtest-scenario-unification* (Task 6).
     assert seq == [
         (1, "prelude.noop", "running"),
         (1, "prelude.noop", "success"),
@@ -603,6 +638,7 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
     from controlplane_tool.e2e.e2e_runner import E2eRunner
     from controlplane_tool.infra.vm.vm_models import VmRequest
     from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario import loadtest_flow
     from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
     import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
 
@@ -614,6 +650,9 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
 
         def publish_port(self, request, *, service, guest_port):
             return "127.0.0.1", 30090
+
+        def remote_project_dir(self, request):
+            return f"/home/{request.user or 'ubuntu'}/nanofaas"
 
         def ssh_endpoint(self, request):
             return "127.0.0.1", 2222
@@ -681,8 +720,9 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
         "controlplane_tool.e2e.two_vm_loadtest_runner.TwoVmLoadtestRunner",
         FakeTwoVmLoadtestRunner,
     )
-    monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeDestroyVm)
+    # B3b: run() routes through run_loadtest_flow; patch the driver-owned symbols.
+    monkeypatch.setattr(loadtest_flow, "EnsureVmRunning", FakeEnsureVmRunning)
+    monkeypatch.setattr(loadtest_flow, "DestroyVm", FakeDestroyVm)
 
     # Make the loadgen.run_k6 task raise; all others are silent no-ops.
     def fake_build_loadgen_body_tasks(inputs):
@@ -694,13 +734,13 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
                 tasks.append(FakeTask(task_id=tid, title=title))
         return tasks
 
-    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
+    monkeypatch.setattr("workflow_tasks.build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
 
-    # Silent no-op honest prelude (bypass real SSH resolution).
+    # Silent no-op prelude (bypass real SSH resolution).
     monkeypatch.setattr(
-        proxmox_plan.ProxmoxVmLoadtestPlan,
+        loadtest_flow,
         "_build_prelude_tasks",
-        lambda self, proxmox_orch, stack_request, *, resolve_host=True: [
+        lambda runner, request, setup, recipe, connectivity, special_handler=None, context_selector=None: [
             CallableTask(task_id="prelude.noop", title="Prelude no-op", action=lambda: None)
         ],
     )
@@ -733,11 +773,16 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
 
 def test_proxmox_loadgen_install_uses_runplaybook_not_bash() -> None:
     """Verify the loadgen body is built via the shared builder (which uses install_k6_task /
-    ansible-based install internally), not by constructing InstallK6 directly."""
+    ansible-based install internally), not by constructing InstallK6 directly.
+
+    B3b: proxmox now routes run() through run_loadtest_flow, so the loadgen body is
+    built by the shared driver (loadtest_flow._build_loadgen_body). Asserting against
+    the driver source preserves the invariant (build_loadgen_body_tasks present,
+    InstallK6 construction absent)."""
     import inspect
 
-    from controlplane_tool.scenario.scenarios import proxmox_vm_loadtest
+    from controlplane_tool.scenario import loadtest_flow
 
-    source = inspect.getsource(proxmox_vm_loadtest.ProxmoxVmLoadtestPlan._tail_tasks)
+    source = inspect.getsource(loadtest_flow._build_loadgen_body)
     assert "build_loadgen_body_tasks(" in source
     assert "InstallK6(" not in source

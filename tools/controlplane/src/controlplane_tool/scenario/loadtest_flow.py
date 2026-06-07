@@ -434,20 +434,57 @@ def _emitting_failure_cleanup(adapter, request, exc: Exception):
 # Kept as module-level functions so tests can monkeypatch them.
 # ---------------------------------------------------------------------------
 
-def _prelude_static_tasks(runner, request, setup, recipe, connectivity) -> list:
+def _static_prelude_hooks(adapter):
+    """Resolve the adapter's prelude special_handler/context_selector for the static
+    (resolve_host=False) plan. Adapters without these capabilities (multipass) yield
+    (None, None) so the static path is byte-identical to before."""
+    sh_fn = getattr(adapter, "prelude_special_handler", None)
+    cs_fn = getattr(adapter, "prelude_context_selector", None)
+    special_handler = sh_fn(None) if sh_fn is not None else None
+    context_selector = cs_fn(None, resolve_host=False) if cs_fn is not None else None
+    return special_handler, context_selector
+
+
+def _prelude_static_tasks(runner, request, setup, recipe, connectivity,
+                          special_handler=None, context_selector=None) -> list:
     from controlplane_tool.scenario.scenarios._workflow_assembly import build_command_tasks
-    return build_command_tasks(runner, request, setup, recipe, connectivity=connectivity, resolve_host=False)
+    return build_command_tasks(
+        runner, request, setup, recipe,
+        connectivity=connectivity, resolve_host=False,
+        special_handler=special_handler, context_selector=context_selector,
+    )
 
 
-def _prelude_static_ids(runner, request, setup, recipe, connectivity) -> list:
-    return [t.task_id for t in _prelude_static_tasks(runner, request, setup, recipe, connectivity)]
+def _prelude_static_ids(runner, request, setup, recipe, connectivity,
+                        special_handler=None, context_selector=None) -> list:
+    return [
+        t.task_id
+        for t in _prelude_static_tasks(
+            runner, request, setup, recipe, connectivity,
+            special_handler=special_handler, context_selector=context_selector,
+        )
+    ]
+
+
+def _static_hook_kwargs(adapter) -> dict:
+    """Only-non-None hooks, so the no-hook (multipass) call site stays byte-identical
+    (no extra kwargs passed) and the monkeypatched 5-arg test doubles keep working."""
+    special_handler, context_selector = _static_prelude_hooks(adapter)
+    kwargs = {}
+    if special_handler is not None:
+        kwargs["special_handler"] = special_handler
+    if context_selector is not None:
+        kwargs["context_selector"] = context_selector
+    return kwargs
 
 
 def loadtest_flow_task_ids(*, runner, request, setup, recipe, adapter) -> list:
     """Return the ordered list of task_id strings for the static (dry-run) plan."""
     ids = ["vm.stack.ensure_running"]
     ids += _prelude_static_ids(
-        runner, request, setup, recipe, _adapter_connectivity(adapter, None, resolve_host=False)
+        runner, request, setup, recipe,
+        _adapter_connectivity(adapter, None, resolve_host=False),
+        **_static_hook_kwargs(adapter),
     )
     ids += list(adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY))
     ids += ["vm.loadgen.ensure_running"]
@@ -466,6 +503,7 @@ def loadtest_flow_phase_titles(*, runner, request, setup, recipe, adapter) -> li
         for t in _prelude_static_tasks(
             runner, request, setup, recipe,
             _adapter_connectivity(adapter, None, resolve_host=False),
+            **_static_hook_kwargs(adapter),
         )
     ]
     titles += list(_adapter_extra_titles(adapter, FlowPhase.AFTER_STACK_READY))
