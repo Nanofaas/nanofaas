@@ -276,12 +276,12 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
         FakeTwoVmLoadtestRunner,
     )
     monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "install_k6_task", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "RunK6", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "FetchVmResults", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "CapturePrometheusSnapshot", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "WriteK6Report", FakeTask)
     monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeTask)
+
+    def fake_build_loadgen_body_tasks(inputs):
+        return [FakeTask(task_id=tid, title=title) for tid, title in zip(inputs.task_ids, inputs.titles)]
+
+    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
 
     # The honest prelude is a single synthetic no-op Task (bypasses real
     # _build_prelude_tasks / SSH resolution). run() must execute it, so the tail
@@ -411,11 +411,11 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
     )
     monkeypatch.setattr(proxmox_plan, "ProxmoxVmAdapter", fake_proxmox_adapter)
     monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
-    monkeypatch.setattr(proxmox_plan, "install_k6_task", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "RunK6", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "FetchVmResults", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "CapturePrometheusSnapshot", FakeTask)
-    monkeypatch.setattr(proxmox_plan, "WriteK6Report", FakeTask)
+
+    def fake_build_loadgen_body_tasks(inputs):
+        return [FakeTask(task_id=tid, title=title) for tid, title in zip(inputs.task_ids, inputs.titles)]
+
+    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
     # This test exercises the tail lifecycle credentials, not the prelude; use an
     # empty honest prelude so run() skips real SSH-resolving prelude building.
     monkeypatch.setattr(
@@ -455,10 +455,12 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
 
 
 def test_proxmox_loadgen_install_uses_runplaybook_not_bash() -> None:
+    """Verify the loadgen body is built via the shared builder (which uses install_k6_task /
+    ansible-based install internally), not by constructing InstallK6 directly."""
     import inspect
 
     from controlplane_tool.scenario.scenarios import proxmox_vm_loadtest
 
     source = inspect.getsource(proxmox_vm_loadtest.ProxmoxVmLoadtestPlan._tail_tasks)
-    assert "install_k6_task(" in source
+    assert "build_loadgen_body_tasks(" in source
     assert "InstallK6(" not in source

@@ -10,14 +10,15 @@ from workflow_tasks import (
     EnsureVmRunning,
     FetchVmResults,
     InstallK6,
+    LoadgenBodyInputs,
     RunK6,
-    TimeWindow,
     Workflow,
     WriteK6Report,
-    install_k6_task,
+    build_loadgen_body_tasks,
+    make_loadtest_k6_config,
     workflow_step,
 )
-from workflow_tasks.loadtest.models import K6Config, K6Stage
+from workflow_tasks.loadtest.models import K6Config
 from workflow_tasks.vm.models import VmConfig
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
@@ -658,83 +659,58 @@ class ProxmoxVmLoadtestPlan:
             return state["loadgen_runner"]
 
         def _k6_config() -> K6Config:
-            remote_paths = _remote_paths()
-            control_plane_url = _control_plane_url()
-            return K6Config(
-                script_path=Path(remote_paths.script_path),
-                target_url=control_plane_url,
-                summary_output_path=Path(remote_paths.summary_path),
-                stages=tuple(
-                    K6Stage(duration=d, target=t)
-                    for d, t in two_vm_load_stages(request)
-                ),
-                env={
-                    "NANOFAAS_URL": control_plane_url,
-                    "NANOFAAS_FUNCTION": two_vm_target_function(request),
-                    **(
-                        {"NANOFAAS_PAYLOAD": str(remote_paths.payload_path)}
-                        if remote_paths.payload_path
-                        else {}
-                    ),
-                },
+            return make_loadtest_k6_config(
+                remote_paths=_remote_paths(),
+                control_plane_url=_control_plane_url(),
+                target_function=two_vm_target_function(request),
+                stages=two_vm_load_stages(request),
                 vus=request.k6_vus,
                 duration=request.k6_duration,
-                payload_path=Path(remote_paths.payload_path) if remote_paths.payload_path else None,
             )
+
+        def _body() -> list:
+            if "body" not in state:
+                host, port = proxmox_orch.ssh_endpoint(loadgen_request)
+                state["body"] = build_loadgen_body_tasks(
+                    LoadgenBodyInputs(
+                        task_ids=(s_install_k6.task_id, s_run_k6.task_id, s_fetch.task_id,
+                                  s_prom.task_id, s_report.task_id),
+                        titles=(s_install_k6.title, s_run_k6.title, s_fetch.title,
+                                s_prom.title, s_report.title),
+                        runner=cast(Any, _loadgen_runner()),
+                        fetcher=VmFileFetcher(vm=proxmox_orch, request=loadgen_request),
+                        prometheus_client=HttpPrometheusClient(
+                            url=f"http://{state['prometheus_host']}:{state['prometheus_port']}"
+                        ),
+                        prometheus_queries=LOADTEST_PROMETHEUS_QUERIES,
+                        k6_config=_k6_config(),
+                        remote_dir=state["loadgen_info"].home,
+                        remote_summary_path=_remote_paths().summary_path,
+                        run_dir=_run_dir(),
+                        repo_root=self.runner.paths.workspace_root,
+                        shell=self.runner.shell,
+                        install_host=host,
+                        install_user=loadgen_request.user,
+                        install_private_key=proxmox_orch.ssh_private_key_path(loadgen_request),
+                        install_port=port,
+                    )
+                )
+            return state["body"]
 
         def _install_k6() -> None:
-            host, port = proxmox_orch.ssh_endpoint(loadgen_request)
-            install_k6_task(
-                task_id=s_install_k6.task_id,
-                title=s_install_k6.title,
-                repo_root=self.runner.paths.workspace_root,
-                shell=self.runner.shell,
-                host=host,
-                user=loadgen_request.user,
-                private_key=proxmox_orch.ssh_private_key_path(loadgen_request),
-                port=port,
-            ).run()
+            _body()[0].run()
 
         def _run_k6() -> None:
-            k6_task = RunK6(
-                task_id=s_run_k6.task_id,
-                title=s_run_k6.title,
-                runner=cast(Any, _loadgen_runner()),
-                config=_k6_config(),
-                remote_dir=state["loadgen_info"].home,
-            )
-            state["k6_task"] = k6_task
-            k6_task.run()
+            _body()[1].run()
 
         def _fetch_results() -> None:
-            FetchVmResults(
-                task_id=s_fetch.task_id,
-                title=s_fetch.title,
-                fetcher=VmFileFetcher(vm=proxmox_orch, request=loadgen_request),
-                remote_source=_remote_paths().summary_path,
-                local_dest=_run_dir(),
-            ).run()
+            _body()[2].run()
 
         def _capture_prometheus() -> None:
-            k6_task = state["k6_task"]
-            CapturePrometheusSnapshot(
-                task_id=s_prom.task_id,
-                title=s_prom.title,
-                client=HttpPrometheusClient(
-                    url=f"http://{state['prometheus_host']}:{state['prometheus_port']}"
-                ),
-                queries=LOADTEST_PROMETHEUS_QUERIES,
-                window=lambda: TimeWindow(start=k6_task.result.started_at, end=k6_task.result.ended_at),
-                output_dir=_run_dir(),
-            ).run()
+            _body()[3].run()
 
         def _write_report() -> None:
-            WriteK6Report(
-                task_id=s_report.task_id,
-                title=s_report.title,
-                data_dir=_run_dir(),
-                output_dir=_run_dir(),
-            ).run()
+            _body()[4].run()
 
         def _destroy_loadgen() -> None:
             if s_destroy_loadgen is not None and "loadgen_info" in state:
