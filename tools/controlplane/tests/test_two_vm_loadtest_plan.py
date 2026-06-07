@@ -41,13 +41,16 @@ def test_two_vm_loadtest_plan_has_expected_task_ids() -> None:
 
 
 def test_two_vm_loadgen_install_uses_runplaybook_not_bash() -> None:
-    """The loadgen install step must be the ansible RunPlaybook, not bash InstallK6."""
+    """The loadgen install step must be the ansible RunPlaybook, not bash InstallK6.
+    After the B2 refactor, the body is built by build_loadgen_body_tasks (which
+    internally calls install_k6_task); the run() method must not use InstallK6 directly.
+    """
     import inspect
 
     from controlplane_tool.scenario.scenarios import two_vm_loadtest
 
     source = inspect.getsource(two_vm_loadtest.TwoVmLoadtestPlan.run)
-    assert "install_k6_task(" in source
+    assert "build_loadgen_body_tasks(" in source
     assert "InstallK6(" not in source
 
 

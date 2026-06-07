@@ -1,31 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from workflow_tasks import (
-    CapturePrometheusSnapshot,
     DestroyVm,
     EnsureVmRunning,
-    FetchVmResults,
-    RunK6,
-    TimeWindow,
+    LoadgenBodyInputs,
     Workflow,
-    install_k6_task,
+    build_loadgen_body_tasks,
+    make_loadtest_k6_config,
     workflow_step,
-    WriteK6Report,
 )
 from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
 from workflow_tasks.components.models import ScenarioRecipe
-from workflow_tasks.loadtest.models import K6Config, K6Stage
 from workflow_tasks.vm.models import VmConfig
 from workflow_tasks.vm.multipass import _find_ssh_private_key_path
 
 from multipass import find_ssh_public_key
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
-from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
 from controlplane_tool.loadtest.loadtest_adapters import (
     HttpPrometheusClient,
     OrchestratorVmRunner,
@@ -203,31 +197,49 @@ class TwoVmLoadtestPlan:
             ],
         ).run()
 
-        k6_config = K6Config(
-            script_path=Path(remote_paths.script_path),
-            target_url=control_plane_url,
-            summary_output_path=Path(remote_paths.summary_path),
-            stages=tuple(K6Stage(duration=d, target=t) for d, t in two_vm_load_stages(request)),
-            env={
-                "NANOFAAS_URL": control_plane_url,
-                "NANOFAAS_FUNCTION": two_vm_target_function(request),
-                **({"NANOFAAS_PAYLOAD": str(remote_paths.payload_path)} if remote_paths.payload_path else {}),
-            },
+        k6_config = make_loadtest_k6_config(
+            remote_paths=remote_paths,
+            control_plane_url=control_plane_url,
+            target_function=two_vm_target_function(request),
+            stages=two_vm_load_stages(request),
             vus=request.k6_vus,
             duration=request.k6_duration,
-            payload_path=Path(remote_paths.payload_path) if remote_paths.payload_path else None,
         )
 
         loadgen_runner = OrchestratorVmRunner(vm_runner_impl.vm, request.loadgen_vm)
         fetcher = VmFileFetcher(vm=vm_runner_impl.vm, request=request.loadgen_vm)
         prom_client = HttpPrometheusClient(url=two_vm_prometheus_url(request.vm, host=stack_info.host))
 
-        k6_task = RunK6(
-            task_id="loadgen.run_k6",
-            title="Run k6 loadtest",
-            runner=loadgen_runner,
-            config=k6_config,
-            remote_dir=remote_home,
+        body = build_loadgen_body_tasks(
+            LoadgenBodyInputs(
+                task_ids=(
+                    "loadgen.install_k6",
+                    "loadgen.run_k6",
+                    "loadgen.fetch_results",
+                    "metrics.prometheus_snapshot",
+                    "loadtest.write_report",
+                ),
+                titles=(
+                    "Install k6 on loadgen VM",
+                    "Run k6 loadtest",
+                    "Fetch k6 results from loadgen VM",
+                    "Capture Prometheus snapshots",
+                    "Write loadtest report",
+                ),
+                runner=loadgen_runner,
+                fetcher=fetcher,
+                prometheus_client=prom_client,
+                prometheus_queries=LOADTEST_PROMETHEUS_QUERIES,
+                k6_config=k6_config,
+                remote_dir=remote_home,
+                remote_summary_path=remote_paths.summary_path,
+                run_dir=run_dir,
+                repo_root=self.runner.paths.workspace_root,
+                shell=self.runner.shell,
+                install_host=loadgen_info.host,
+                install_user=request.loadgen_vm.user,
+                install_private_key=_find_ssh_private_key_path(find_ssh_public_key()),
+            )
         )
 
         cleanup: list = []
@@ -247,44 +259,7 @@ class TwoVmLoadtestPlan:
                 ),
             ]
 
-        Workflow(
-            tasks=[
-                install_k6_task(
-                    task_id="loadgen.install_k6",
-                    title="Install k6 on loadgen VM",
-                    repo_root=self.runner.paths.workspace_root,
-                    shell=self.runner.shell,
-                    host=loadgen_info.host,
-                    user=request.loadgen_vm.user,
-                    private_key=_find_ssh_private_key_path(find_ssh_public_key()),
-                ),
-                k6_task,
-                FetchVmResults(
-                    task_id="loadgen.fetch_results",
-                    title="Fetch k6 results from loadgen VM",
-                    fetcher=fetcher,
-                    remote_source=remote_paths.summary_path,
-                    local_dest=run_dir,
-                ),
-                CapturePrometheusSnapshot(
-                    task_id="metrics.prometheus_snapshot",
-                    title="Capture Prometheus snapshots",
-                    client=prom_client,
-                    queries=LOADTEST_PROMETHEUS_QUERIES,
-                    window=lambda: TimeWindow(
-                        start=k6_task.result.started_at, end=k6_task.result.ended_at
-                    ),
-                    output_dir=run_dir,
-                ),
-                WriteK6Report(
-                    task_id="loadtest.write_report",
-                    title="Write loadtest report",
-                    data_dir=run_dir,
-                    output_dir=run_dir,
-                ),
-            ],
-            cleanup_tasks=cleanup,
-        ).run()
+        Workflow(tasks=body, cleanup_tasks=cleanup).run()
 
 
 def build_two_vm_loadtest_plan(
