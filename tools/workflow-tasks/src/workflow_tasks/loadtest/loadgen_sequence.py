@@ -13,9 +13,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
 from workflow_tasks.loadtest.models import K6Config, K6Stage, PrometheusQuery, TimeWindow
+from workflow_tasks.loadtest.ports import PrometheusClient, RemoteFileFetcher
 from workflow_tasks.loadtest.tasks import (
     CapturePrometheusSnapshot,
     FetchVmResults,
@@ -23,11 +24,19 @@ from workflow_tasks.loadtest.tasks import (
     WriteK6Report,
 )
 from workflow_tasks.infra.ansible import install_k6_task
+from workflow_tasks.shell import ShellBackend
+from workflow_tasks.tasks.executors import VmCommandRunner
+
+
+class RemotePaths(Protocol):
+    script_path: str
+    summary_path: str
+    payload_path: str | None
 
 
 def make_loadtest_k6_config(
     *,
-    remote_paths: Any,
+    remote_paths: RemotePaths,
     control_plane_url: str,
     target_function: str,
     stages: Sequence[tuple[str, int]],
@@ -62,24 +71,33 @@ class LoadgenBodyInputs:
 
     ``task_ids``/``titles`` are 5-tuples in sequence order (install_k6, run_k6,
     fetch, prometheus, report) — passed in so per-lifecycle title suffixes are
-    reproduced exactly. ``install_k6_kwargs`` is forwarded verbatim to
-    ``install_k6_task`` (host/user/private_key/port/repo_root/shell).
+    reproduced exactly.
+
+    The ``install_*`` fields are forwarded to ``install_k6_task``:
+    ``repo_root`` and ``shell`` control the local build environment; ``install_host``,
+    ``install_user``, ``install_private_key``, and ``install_port`` identify the
+    remote loadgen VM where k6 will be installed.
     """
 
     task_ids: tuple[str, str, str, str, str]
     titles: tuple[str, str, str, str, str]
-    install_k6_kwargs: dict[str, Any]
-    runner: Any
-    fetcher: Any
-    prometheus_client: Any
+    runner: VmCommandRunner
+    fetcher: RemoteFileFetcher
+    prometheus_client: PrometheusClient
     prometheus_queries: tuple[PrometheusQuery, ...]
     k6_config: K6Config
     remote_dir: str
     remote_summary_path: str
     run_dir: Path
+    repo_root: Path
+    shell: ShellBackend
+    install_host: str
+    install_user: str
+    install_private_key: Path | None
+    install_port: int | None = None
 
 
-def build_loadgen_body_tasks(inputs: LoadgenBodyInputs) -> list[Any]:
+def build_loadgen_body_tasks(inputs: LoadgenBodyInputs) -> list:
     """Build the canonical 5-task loadgen body from resolved inputs.
 
     Returns [install_k6, run_k6, fetch, prometheus, report]. The prometheus window
@@ -88,7 +106,12 @@ def build_loadgen_body_tasks(inputs: LoadgenBodyInputs) -> list[Any]:
     install = install_k6_task(
         task_id=inputs.task_ids[0],
         title=inputs.titles[0],
-        **inputs.install_k6_kwargs,
+        repo_root=inputs.repo_root,
+        shell=inputs.shell,
+        host=inputs.install_host,
+        user=inputs.install_user,
+        private_key=inputs.install_private_key,
+        port=inputs.install_port,
     )
     run_k6 = RunK6(
         task_id=inputs.task_ids[1],

@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from workflow_tasks.loadtest.loadgen_sequence import make_loadtest_k6_config
+from workflow_tasks.loadtest.loadgen_sequence import (
+    LoadgenBodyInputs,
+    build_loadgen_body_tasks,
+    make_loadtest_k6_config,
+)
+from workflow_tasks.loadtest.models import K6RunResult, PrometheusQuery
 
 
 def _remote_paths(payload: str | None = None) -> SimpleNamespace:
@@ -12,6 +18,22 @@ def _remote_paths(payload: str | None = None) -> SimpleNamespace:
         summary_path="/home/ubuntu/run/k6-summary.json",
         payload_path=payload,
     )
+
+
+class _FakeRunner:
+    pass
+
+
+class _FakeFetcher:
+    pass
+
+
+class _FakeClient:
+    pass
+
+
+class _FakeShell:
+    pass
 
 
 def test_make_k6_config_maps_fields_and_env() -> None:
@@ -48,25 +70,6 @@ def test_make_k6_config_includes_payload_when_present() -> None:
     assert cfg.duration == "2m"
 
 
-from workflow_tasks.loadtest.loadgen_sequence import (
-    LoadgenBodyInputs,
-    build_loadgen_body_tasks,
-)
-from workflow_tasks.loadtest.models import PrometheusQuery
-
-
-class _FakeRunner:
-    pass
-
-
-class _FakeFetcher:
-    pass
-
-
-class _FakeClient:
-    pass
-
-
 def _inputs(tmp_path) -> LoadgenBodyInputs:
     cfg = make_loadtest_k6_config(
         remote_paths=_remote_paths(),
@@ -81,8 +84,6 @@ def _inputs(tmp_path) -> LoadgenBodyInputs:
                   "metrics.prometheus_snapshot", "loadtest.write_report"),
         titles=("Install k6 on loadgen VM", "Run k6 loadtest", "Fetch k6 results from loadgen VM",
                 "Capture Prometheus snapshots", "Write loadtest report"),
-        install_k6_kwargs={"repo_root": tmp_path, "shell": object(), "host": "1.2.3.4",
-                           "user": "ubuntu", "private_key": None, "port": None},
         runner=_FakeRunner(),
         fetcher=_FakeFetcher(),
         prometheus_client=_FakeClient(),
@@ -91,6 +92,12 @@ def _inputs(tmp_path) -> LoadgenBodyInputs:
         remote_dir="/home/ubuntu",
         remote_summary_path="/home/ubuntu/run/k6-summary.json",
         run_dir=tmp_path / "run",
+        repo_root=tmp_path,
+        shell=_FakeShell(),
+        install_host="1.2.3.4",
+        install_user="ubuntu",
+        install_private_key=None,
+        install_port=None,
     )
 
 
@@ -107,9 +114,6 @@ def test_build_loadgen_body_tasks_ids_and_titles(tmp_path) -> None:
 
 
 def test_build_loadgen_body_window_reads_run_k6_result(tmp_path) -> None:
-    from datetime import datetime, timezone
-    from workflow_tasks.loadtest.models import K6RunResult
-
     tasks = build_loadgen_body_tasks(_inputs(tmp_path))
     run_k6 = tasks[1]
     prom = tasks[3]
