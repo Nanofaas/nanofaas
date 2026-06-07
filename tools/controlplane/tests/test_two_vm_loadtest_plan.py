@@ -97,12 +97,13 @@ def test_two_vm_run_uploads_k6_script_to_loadgen() -> None:
 def test_two_vm_run_registers_functions_on_control_plane() -> None:
     """run() must register the selected functions, else k6 invokes a non-existent
     function (400) and the required Prometheus dispatch metrics have no data.
-    After the B3a refactor, _register_functions (which uses RegisterFunctions) lives
-    in the shared run_loadtest_flow driver.
+    After the B3b reroute, multipass registration lives in the adapter's
+    MultipassLoadtestAdapter.register_functions (which uses RegisterFunctions),
+    invoked by the shared run_loadtest_flow driver via adapter.register_functions(ctx).
     """
     import inspect
 
-    from controlplane_tool.scenario import loadtest_flow
+    from controlplane_tool.scenario import loadtest_adapter
 
-    flow_source = inspect.getsource(loadtest_flow)
-    assert "RegisterFunctions" in flow_source
+    adapter_source = inspect.getsource(loadtest_adapter)
+    assert "RegisterFunctions" in adapter_source

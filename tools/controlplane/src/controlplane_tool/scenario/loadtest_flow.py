@@ -43,19 +43,41 @@ class RunContext:
 # without touching heavy collaborators.
 # ---------------------------------------------------------------------------
 
+def _ensure_vm_task(task_id: str, title: str, lifecycle, config):
+    """Build (do NOT run) the EnsureVmRunning task — kept separate so the driver
+    can run it via either the native workflow_step path or the event-emitting path."""
+    return EnsureVmRunning(task_id=task_id, title=title, lifecycle=lifecycle, config=config)
+
+
 def _ensure_vm(task_id: str, title: str, lifecycle, config):
-    task = EnsureVmRunning(task_id=task_id, title=title, lifecycle=lifecycle, config=config)
+    task = _ensure_vm_task(task_id, title, lifecycle, config)
     with workflow_step(task_id=task.task_id, title=task.title):
         return task.run()
 
 
-def _build_prelude_tasks(runner, request, setup, recipe, connectivity) -> list:
+def _build_prelude_tasks(runner, request, setup, recipe, connectivity,
+                         special_handler=None, context_selector=None) -> list:
     from controlplane_tool.scenario.scenarios._workflow_assembly import build_command_tasks
-    return build_command_tasks(runner, request, setup, recipe, connectivity=connectivity)
+    return build_command_tasks(
+        runner, request, setup, recipe,
+        connectivity=connectivity,
+        special_handler=special_handler,
+        context_selector=context_selector,
+    )
 
 
 def _run_workflow(tasks: list, cleanup_tasks: list | None = None) -> None:
     Workflow(tasks=tasks, cleanup_tasks=cleanup_tasks or []).run()
+
+
+def _adapter_connectivity(adapter, ctx, *, resolve_host: bool):
+    """adapter.connectivity_for is the generalized resolver (added in Task 5); fall
+    back to the static adapter.connectivity attribute for adapters/fakes that
+    predate it."""
+    fn = getattr(adapter, "connectivity_for", None)
+    if fn is not None:
+        return fn(ctx, resolve_host=resolve_host)
+    return adapter.connectivity
 
 
 def _two_vm_remote_paths_for(request, ctx: RunContext):
@@ -64,25 +86,6 @@ def _two_vm_remote_paths_for(request, ctx: RunContext):
         ctx.loadgen_info.home,
         payload_name=request.k6_payload.name if request.k6_payload is not None else None,
     )
-
-
-def _register_functions(runner, request, setup, ctx: RunContext) -> None:
-    from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
-    from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
-
-    runtime_image_default = f"{setup.context.local_registry}/nanofaas/function-runtime:e2e"
-    RegisterFunctions(
-        task_id="functions.register",
-        title="Register functions",
-        control_plane_url=ctx.control_plane_url,
-        specs=[
-            FunctionSpec(
-                name=fn_key,
-                image=function_image(fn_key, request.resolved_scenario, runtime_image_default),
-            )
-            for fn_key in selected_functions(request.resolved_scenario)
-        ],
-    ).run()
 
 
 _LOADGEN_BODY_IDS = (
@@ -148,6 +151,80 @@ def _loadgen_vm_config(request):
     return VmConfig(name=lg.name or "", cpus=lg.cpus, memory=lg.memory, disk=lg.disk)
 
 
+class _StepEmitter:
+    """Emits ScenarioStepEvent(running -> success/failed) per executed task.
+
+    Threads a sequential step_index across the whole flow; total_steps is the
+    length of the static plan. Used only when adapter.emits_step_events() is True;
+    the multipass path never constructs one (it uses the native workflow_step path).
+    """
+
+    def __init__(self, event_listener, total_steps: int) -> None:
+        self._listener = event_listener
+        self._total = total_steps
+        self._index = 0
+
+    def _step(self, task):
+        from controlplane_tool.scenario.components.executor import ScenarioPlanStep
+        return ScenarioPlanStep(
+            summary=task.title,
+            command=["python", "-c", f"# {task.task_id}"],
+            step_id=task.task_id,
+        )
+
+    def _emit(self, step_index, task, status, error=None) -> None:
+        if self._listener is None:
+            return
+        from controlplane_tool.e2e.e2e_runner import ScenarioStepEvent
+        self._listener(
+            ScenarioStepEvent(
+                step_index=step_index,
+                total_steps=self._total,
+                step=self._step(task),
+                status=status,
+                error=error,
+            )
+        )
+
+    def run_task(self, task):
+        """Run a single task wrapped in running/success/failed emission."""
+        self._index += 1
+        idx = self._index
+        self._emit(idx, task, "running")
+        try:
+            result = task.run()
+        except Exception as exc:
+            self._emit(idx, task, "failed", error=str(exc))
+            # Tag the failing step's title so the path-(a) cleanup wrapper can
+            # format the scenario error exactly like proxmox's _run_prelude_workflow.
+            try:
+                exc.loadtest_step_title = task.title  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        self._emit(idx, task, "success")
+        return result
+
+    def run_tasks(self, tasks: list, cleanup_tasks: list | None = None):
+        """Run a list of body tasks, then cleanup tasks. On a body failure the
+        cleanup tasks still run (native Workflow semantics), and the original
+        error is re-raised unwrapped — matching the proxmox tail path."""
+        main_error: BaseException | None = None
+        for task in tasks:
+            try:
+                self.run_task(task)
+            except BaseException as exc:  # noqa: BLE001
+                main_error = exc
+                break
+        for task in cleanup_tasks or []:
+            try:
+                self.run_task(task)
+            except Exception:  # noqa: BLE001
+                pass
+        if main_error is not None:
+            raise main_error
+
+
 def run_loadtest_flow(*, runner, request, setup, recipe, adapter, event_listener=None) -> None:
     """7-phase lifecycle-generic loadtest driver.
 
@@ -159,7 +236,30 @@ def run_loadtest_flow(*, runner, request, setup, recipe, adapter, event_listener
     5. register functions on control plane
     6. loadgen body workflow (install-k6, run-k6, fetch, prometheus, report)
     7. cleanup (destroy VMs if cleanup_vm)
+
+    Two emission modes (selected by ``adapter.emits_step_events()``):
+    - False (multipass): the historical native ``workflow_step`` / ``Workflow``
+      path, byte-for-byte unchanged; ``event_listener`` is ignored and no
+      failure-cleanup wrapping is applied.
+    - True (proxmox et al.): each executed task is wrapped to emit
+      ``ScenarioStepEvent`` running/success/failed with a sequential ``step_index``
+      and constant ``total_steps``, and the ensure/prelude/register region is
+      wrapped so a failure triggers ``adapter.cleanup_on_failure`` + a scenario-
+      formatted error.
     """
+    if adapter.emits_step_events():
+        _run_loadtest_flow_emitting(
+            runner=runner, request=request, setup=setup, recipe=recipe,
+            adapter=adapter, event_listener=event_listener,
+        )
+    else:
+        _run_loadtest_flow_native(
+            runner=runner, request=request, setup=setup, recipe=recipe, adapter=adapter,
+        )
+
+
+def _run_loadtest_flow_native(*, runner, request, setup, recipe, adapter) -> None:
+    """Historical two-vm/multipass path — MUST stay byte-identical to B3a."""
     s = adapter.title_suffix
     ctx = RunContext()
 
@@ -173,7 +273,9 @@ def run_loadtest_flow(*, runner, request, setup, recipe, adapter, event_listener
     ctx.stack_host = getattr(ctx.stack_info, "host", None)
 
     # ── 2. Stack provisioning prelude + adapter extra steps ─────────────────
-    prelude = _build_prelude_tasks(runner, request, setup, recipe, adapter.connectivity)
+    prelude = _build_prelude_tasks(
+        runner, request, setup, recipe, _adapter_connectivity(adapter, ctx, resolve_host=True)
+    )
     prelude += adapter.extra_steps(FlowPhase.AFTER_STACK_READY, ctx)
     _run_workflow(prelude)
 
@@ -197,27 +299,115 @@ def run_loadtest_flow(*, runner, request, setup, recipe, adapter, event_listener
     adapter.prepare_loadgen(ctx)
 
     # ── 5. Register functions on control plane ──────────────────────────────
-    _register_functions(runner, request, setup, ctx)
+    adapter.register_functions(ctx)
 
     # ── 6. Loadgen body workflow ────────────────────────────────────────────
     body = _build_loadgen_body(runner, request, adapter, ctx)
-    cleanup: list = []
-    if getattr(request, "cleanup_vm", True):
-        cleanup = [
-            DestroyVm(
-                task_id="vm.loadgen.destroy",
-                title=f"Destroy loadgen VM{s}",
-                lifecycle=adapter.loadgen_lifecycle(),
-                info=ctx.loadgen_info,
-            ),
-            DestroyVm(
-                task_id="vm.stack.destroy",
-                title=f"Destroy stack VM{s}",
-                lifecycle=adapter.stack_lifecycle(),
-                info=ctx.stack_info,
-            ),
-        ]
+    cleanup = _destroy_tasks(adapter, ctx, request)
     _run_workflow(body, cleanup_tasks=cleanup)
+
+
+def _destroy_tasks(adapter, ctx: RunContext, request) -> list:
+    s = adapter.title_suffix
+    if not getattr(request, "cleanup_vm", True):
+        return []
+    return [
+        DestroyVm(
+            task_id="vm.loadgen.destroy",
+            title=f"Destroy loadgen VM{s}",
+            lifecycle=adapter.loadgen_lifecycle(),
+            info=ctx.loadgen_info,
+        ),
+        DestroyVm(
+            task_id="vm.stack.destroy",
+            title=f"Destroy stack VM{s}",
+            lifecycle=adapter.stack_lifecycle(),
+            info=ctx.stack_info,
+        ),
+    ]
+
+
+def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, event_listener) -> None:
+    """Event-emitting path (proxmox et al.): emits ScenarioStepEvents per task and
+    applies failure-cleanup (path a) around the ensure/prelude/register region."""
+    s = adapter.title_suffix
+    ctx = RunContext()
+    emitter = _StepEmitter(
+        event_listener,
+        total_steps=len(loadtest_flow_task_ids(
+            runner=runner, request=request, setup=setup, recipe=recipe, adapter=adapter,
+        )),
+    )
+
+    # ── ensure-stack -> prelude -> ensure-loadgen -> prepare -> register ─────
+    # Wrapped in failure-cleanup (path a): on any exception, run
+    # adapter.cleanup_on_failure() and re-raise a scenario-formatted error.
+    try:
+        prelude = _build_prelude_tasks(
+            runner, request, setup, recipe,
+            _adapter_connectivity(adapter, ctx, resolve_host=True),
+            special_handler=adapter.prelude_special_handler(ctx),
+            context_selector=adapter.prelude_context_selector(ctx),
+        )
+        for task in prelude:
+            emitter.run_task(task)
+
+        stack_task = _ensure_vm_task(
+            "vm.stack.ensure_running",
+            f"Ensure stack VM running{s}",
+            adapter.stack_lifecycle(),
+            setup.vm_config,
+        )
+        ctx.stack_info = emitter.run_task(stack_task)
+        ctx.stack_host = getattr(ctx.stack_info, "host", None)
+
+        for task in adapter.extra_steps(FlowPhase.AFTER_STACK_READY, ctx):
+            emitter.run_task(task)
+
+        loadgen_task = _ensure_vm_task(
+            "vm.loadgen.ensure_running",
+            f"Ensure loadgen VM running{s}",
+            adapter.loadgen_lifecycle(),
+            _loadgen_vm_config(request),
+        )
+        ctx.loadgen_info = emitter.run_task(loadgen_task)
+
+        ctx.remote_paths = _two_vm_remote_paths_for(request, ctx)
+        ctx.run_dir = adapter.create_run_dir()
+        ctx.control_plane_url = adapter.control_plane_url(ctx)
+        ctx.prometheus_url = adapter.prometheus_url(ctx)
+
+        for task in adapter.extra_steps(FlowPhase.BEFORE_LOADGEN, ctx):
+            emitter.run_task(task)
+        adapter.prepare_loadgen(ctx)
+
+        adapter.register_functions(ctx)
+    except Exception as exc:
+        _emitting_failure_cleanup(adapter, request, exc)
+        raise  # unreachable: _emitting_failure_cleanup always raises
+
+    # ── body + cleanup: native Workflow cleanup semantics (path b) ──────────
+    body = _build_loadgen_body(runner, request, adapter, ctx)
+    cleanup = _destroy_tasks(adapter, ctx, request)
+    emitter.run_tasks(body, cleanup_tasks=cleanup)
+
+
+def _emitting_failure_cleanup(adapter, request, exc: Exception):
+    """Path (a) failure handling: run adapter.cleanup_on_failure() and raise a
+    scenario-formatted error joined with any cleanup errors. Always raises."""
+    title = getattr(exc, "loadtest_step_title", None)
+    wrapped = (
+        f"Scenario '{getattr(request, 'scenario', '?')}' failed at step "
+        f"'{title}': {exc}"
+        if title is not None
+        else f"Scenario '{getattr(request, 'scenario', '?')}' failed: {exc}"
+    )
+    cleanup_errors = adapter.cleanup_on_failure(exc)
+    if cleanup_errors:
+        raise RuntimeError(
+            f"{wrapped}\n\nCleanup failed:\n" + "\n".join(cleanup_errors)
+        ) from exc
+    raise RuntimeError(wrapped) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -225,19 +415,58 @@ def run_loadtest_flow(*, runner, request, setup, recipe, adapter, event_listener
 # Kept as module-level functions so tests can monkeypatch them.
 # ---------------------------------------------------------------------------
 
-def _prelude_static_tasks(runner, request, setup, recipe, connectivity) -> list:
+def _static_prelude_hooks(adapter):
+    """Resolve the adapter's prelude special_handler/context_selector for the static
+    (resolve_host=False) plan. Adapters without these capabilities (multipass) yield
+    (None, None) so the static path is byte-identical to before."""
+    sh_fn = getattr(adapter, "prelude_special_handler", None)
+    cs_fn = getattr(adapter, "prelude_context_selector", None)
+    special_handler = sh_fn(None) if sh_fn is not None else None
+    context_selector = cs_fn(None, resolve_host=False) if cs_fn is not None else None
+    return special_handler, context_selector
+
+
+def _prelude_static_tasks(runner, request, setup, recipe, connectivity,
+                          special_handler=None, context_selector=None) -> list:
     from controlplane_tool.scenario.scenarios._workflow_assembly import build_command_tasks
-    return build_command_tasks(runner, request, setup, recipe, connectivity=connectivity, resolve_host=False)
+    return build_command_tasks(
+        runner, request, setup, recipe,
+        connectivity=connectivity, resolve_host=False,
+        special_handler=special_handler, context_selector=context_selector,
+    )
 
 
-def _prelude_static_ids(runner, request, setup, recipe, connectivity) -> list:
-    return [t.task_id for t in _prelude_static_tasks(runner, request, setup, recipe, connectivity)]
+def _prelude_static_ids(runner, request, setup, recipe, connectivity,
+                        special_handler=None, context_selector=None) -> list:
+    return [
+        t.task_id
+        for t in _prelude_static_tasks(
+            runner, request, setup, recipe, connectivity,
+            special_handler=special_handler, context_selector=context_selector,
+        )
+    ]
+
+
+def _static_hook_kwargs(adapter) -> dict:
+    """Only-non-None hooks, so the no-hook (multipass) call site stays byte-identical
+    (no extra kwargs passed) and the monkeypatched 5-arg test doubles keep working."""
+    special_handler, context_selector = _static_prelude_hooks(adapter)
+    kwargs = {}
+    if special_handler is not None:
+        kwargs["special_handler"] = special_handler
+    if context_selector is not None:
+        kwargs["context_selector"] = context_selector
+    return kwargs
 
 
 def loadtest_flow_task_ids(*, runner, request, setup, recipe, adapter) -> list:
     """Return the ordered list of task_id strings for the static (dry-run) plan."""
     ids = ["vm.stack.ensure_running"]
-    ids += _prelude_static_ids(runner, request, setup, recipe, adapter.connectivity)
+    ids += _prelude_static_ids(
+        runner, request, setup, recipe,
+        _adapter_connectivity(adapter, None, resolve_host=False),
+        **_static_hook_kwargs(adapter),
+    )
     ids += list(adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY))
     ids += ["vm.loadgen.ensure_running"]
     ids += list(adapter.extra_step_ids(FlowPhase.BEFORE_LOADGEN))
@@ -250,8 +479,24 @@ def loadtest_flow_phase_titles(*, runner, request, setup, recipe, adapter) -> li
     """Return the ordered list of phase title strings for the static (dry-run) plan."""
     s = adapter.title_suffix
     titles = [f"Ensure stack VM running{s}"]
-    titles += [t.title for t in _prelude_static_tasks(runner, request, setup, recipe, adapter.connectivity)]
+    titles += [
+        t.title
+        for t in _prelude_static_tasks(
+            runner, request, setup, recipe,
+            _adapter_connectivity(adapter, None, resolve_host=False),
+            **_static_hook_kwargs(adapter),
+        )
+    ]
+    titles += list(_adapter_extra_titles(adapter, FlowPhase.AFTER_STACK_READY))
     titles += [f"Ensure loadgen VM running{s}"]
+    titles += list(_adapter_extra_titles(adapter, FlowPhase.BEFORE_LOADGEN))
     titles += [f"{base}{s}" for base in _LOADGEN_BODY_BASE_TITLES]
     titles += [f"Destroy loadgen VM{s}", f"Destroy stack VM{s}"]
     return titles
+
+
+def _adapter_extra_titles(adapter, phase: FlowPhase) -> list:
+    """adapter.extra_step_titles is an optional capability (added in Task 3); fall
+    back to [] for adapters/fakes that predate it."""
+    fn = getattr(adapter, "extra_step_titles", None)
+    return list(fn(phase)) if fn is not None else []
