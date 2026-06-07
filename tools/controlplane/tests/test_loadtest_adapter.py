@@ -27,3 +27,20 @@ def test_multipass_adapter_extra_steps_are_empty() -> None:
     assert adapter.extra_steps(FlowPhase.BEFORE_LOADGEN, ctx) == []
     assert adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY) == []
     assert adapter.extra_step_ids(FlowPhase.BEFORE_LOADGEN) == []
+
+
+def test_multipass_adapter_noop_capabilities() -> None:
+    adapter = MultipassLoadtestAdapter(runner=SimpleNamespace(), request=SimpleNamespace())
+    ctx = RunContext()
+    assert adapter.emits_step_events() is False
+    assert adapter.cleanup_on_failure(RuntimeError("x")) == []
+    assert adapter.prelude_special_handler(ctx) is None
+    assert adapter.prelude_context_selector(ctx) is None
+    assert adapter.extra_step_titles(FlowPhase.AFTER_STACK_READY) == []
+    assert adapter.extra_step_titles(FlowPhase.BEFORE_LOADGEN) == []
+
+
+def test_multipass_adapter_register_functions_is_callable() -> None:
+    """register_functions must exist and be callable (behavior tested via driver in Task 4)."""
+    adapter = MultipassLoadtestAdapter(runner=SimpleNamespace(), request=SimpleNamespace())
+    assert callable(adapter.register_functions)

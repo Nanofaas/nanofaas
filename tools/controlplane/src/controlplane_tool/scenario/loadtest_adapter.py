@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Optional, Protocol
 
 from workflow_tasks.loadtest.ports import RemoteFileFetcher
 from workflow_tasks.tasks.executors import VmCommandRunner
@@ -25,6 +25,7 @@ from controlplane_tool.loadtest.loadtest_adapters import (
 )
 from controlplane_tool.scenario.connectivity import ConnectivityStrategy, MultipassConnectivity
 from controlplane_tool.scenario.loadtest_flow import FlowPhase, RunContext
+from controlplane_tool.scenario.scenarios._workflow_assembly import SpecialHandler
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
     two_vm_prometheus_url,
@@ -33,6 +34,7 @@ from controlplane_tool.scenario.two_vm_loadtest_config import (
 if TYPE_CHECKING:
     from controlplane_tool.e2e.e2e_models import E2eRequest
     from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.scenario.scenarios._workflow_assembly import _Setup
 
 
 @dataclass
@@ -60,6 +62,12 @@ class LoadtestConnectivityAdapter(Protocol):
     def create_run_dir(self) -> Path: ...
     def extra_steps(self, phase: FlowPhase, ctx: RunContext) -> list: ...
     def extra_step_ids(self, phase: FlowPhase) -> list: ...
+    def emits_step_events(self) -> bool: ...
+    def cleanup_on_failure(self, error: Exception) -> list[str]: ...
+    def prelude_special_handler(self, ctx: RunContext) -> Optional[SpecialHandler]: ...
+    def prelude_context_selector(self, ctx: RunContext) -> Optional[object]: ...
+    def register_functions(self, ctx: RunContext) -> None: ...
+    def extra_step_titles(self, phase: FlowPhase) -> list[str]: ...
 
 
 @dataclass
@@ -71,6 +79,7 @@ class MultipassLoadtestAdapter:
     title_suffix: str = ""
     connectivity: ConnectivityStrategy = field(init=False)
     _vm_runner_impl: object = field(default=None, init=False, repr=False)
+    _cached_setup: Optional["_Setup"] = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.connectivity = MultipassConnectivity(runner=self.runner, request=self.request)
@@ -119,3 +128,46 @@ class MultipassLoadtestAdapter:
 
     def extra_step_ids(self, phase: FlowPhase) -> list:
         return []
+
+    # ── New optional-capability methods ────────────────────────────────────
+
+    def emits_step_events(self) -> bool:
+        return False
+
+    def cleanup_on_failure(self, error: Exception) -> list[str]:
+        return []
+
+    def prelude_special_handler(self, ctx: RunContext) -> Optional[SpecialHandler]:
+        return None
+
+    def prelude_context_selector(self, ctx: RunContext) -> Optional[object]:
+        return None
+
+    def extra_step_titles(self, phase: FlowPhase) -> list[str]:
+        return []
+
+    def register_functions(self, ctx: RunContext) -> None:
+        from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
+        from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
+
+        setup = self._setup()
+        runtime_image_default = f"{setup.context.local_registry}/nanofaas/function-runtime:e2e"
+        RegisterFunctions(
+            task_id="functions.register",
+            title="Register functions",
+            control_plane_url=ctx.control_plane_url,
+            specs=[
+                FunctionSpec(
+                    name=fn_key,
+                    image=function_image(fn_key, self.request.resolved_scenario, runtime_image_default),
+                )
+                for fn_key in selected_functions(self.request.resolved_scenario)
+            ],
+        ).run()
+
+    def _setup(self) -> "_Setup":
+        """Lazily build-and-cache the shared _Setup (avoids double-build when driver provides it)."""
+        if self._cached_setup is None:
+            from controlplane_tool.scenario.scenarios._workflow_assembly import build_setup
+            self._cached_setup = build_setup(self.runner, self.request)
+        return self._cached_setup
