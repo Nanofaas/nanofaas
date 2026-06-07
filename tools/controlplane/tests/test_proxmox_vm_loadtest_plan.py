@@ -586,6 +586,151 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
     ]
 
 
+def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
+    """Characterization test: pins teardown order + raised error when a TAIL task fails.
+
+    When ``cleanup_vm=True`` and a tail task raises, ``_run_tail_tasks`` runs
+    the cleanup_tasks (DestroyVm action wrappers) which call
+    ``proxmox_orch.teardown`` in loadgen-first, stack-second order.  The
+    original exception is re-raised unwrapped (no message formatting added by
+    the tail path).
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from workflow_tasks.shell import RecordingShell
+    from controlplane_tool.e2e.e2e_models import E2eRequest
+    from controlplane_tool.e2e.e2e_runner import E2eRunner
+    from controlplane_tool.infra.vm.vm_models import VmRequest
+    from controlplane_tool.scenario.catalog import resolve_scenario
+    from controlplane_tool.scenario.scenarios._workflow_assembly import CallableTask
+    import controlplane_tool.scenario.scenarios.proxmox_vm_loadtest as proxmox_plan
+
+    destroy_calls: list[str] = []
+
+    class FakeProxmoxVmOrchestrator:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def publish_port(self, request, *, service, guest_port):
+            return "127.0.0.1", 30090
+
+        def ssh_endpoint(self, request):
+            return "127.0.0.1", 2222
+
+        def ssh_private_key_path(self, request):
+            return None
+
+        def teardown(self, request):
+            # Called only in the else-branch of _destroy_loadgen/_destroy_stack
+            # (when loadgen_info / stack_info is NOT yet in state).
+            destroy_calls.append(("teardown", request.name))
+
+    class FakeTwoVmLoadtestRunner:
+        def __init__(self, repo_root, vm):
+            self.repo_root = repo_root
+            self.vm = vm
+
+        def _create_run_dir(self):
+            return Path("/tmp/proxmox-run")
+
+    class FakeEnsureVmRunning:
+        def __init__(self, *, task_id, title, lifecycle, config):
+            self.task_id = task_id
+            self.title = title
+
+        def run(self):
+            return SimpleNamespace(host="10.0.0.10", home="/home/ubuntu")
+
+    class FakeTask:
+        def __init__(self, *, task_id, title, **kwargs):
+            self.task_id = task_id
+            self.title = title
+            self.result = SimpleNamespace(started_at=1.0, ended_at=2.0)
+
+        def run(self):
+            return Path("/tmp/proxmox-result")
+
+    class FakeDestroyVm:
+        """DestroyVm replacement that records which VM was destroyed."""
+
+        def __init__(self, *, task_id, title, lifecycle=None, info=None, **kwargs):
+            self.task_id = task_id
+            self.title = title
+
+        def run(self):
+            # task_id is e.g. "vm.loadgen.destroy" or "vm.stack.destroy"
+            destroy_calls.append(self.task_id)
+
+    class FailingFakeTask:
+        """A FakeTask whose .run() raises RuntimeError("boom")."""
+
+        def __init__(self, *, task_id, title, **kwargs):
+            self.task_id = task_id
+            self.title = title
+            self.result = SimpleNamespace(started_at=1.0, ended_at=2.0)
+
+        def run(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "controlplane_tool.infra.vm.proxmox_vm_adapter.ProxmoxVmOrchestrator",
+        FakeProxmoxVmOrchestrator,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.e2e.two_vm_loadtest_runner.TwoVmLoadtestRunner",
+        FakeTwoVmLoadtestRunner,
+    )
+    monkeypatch.setattr(proxmox_plan, "EnsureVmRunning", FakeEnsureVmRunning)
+    monkeypatch.setattr(proxmox_plan, "DestroyVm", FakeDestroyVm)
+
+    # Make the loadgen.run_k6 task raise; all others are silent no-ops.
+    def fake_build_loadgen_body_tasks(inputs):
+        tasks = []
+        for tid, title in zip(inputs.task_ids, inputs.titles):
+            if tid == "loadgen.run_k6":
+                tasks.append(FailingFakeTask(task_id=tid, title=title))
+            else:
+                tasks.append(FakeTask(task_id=tid, title=title))
+        return tasks
+
+    monkeypatch.setattr(proxmox_plan, "build_loadgen_body_tasks", fake_build_loadgen_body_tasks)
+
+    # Silent no-op honest prelude (bypass real SSH resolution).
+    monkeypatch.setattr(
+        proxmox_plan.ProxmoxVmLoadtestPlan,
+        "_build_prelude_tasks",
+        lambda self, proxmox_orch, stack_request, *, resolve_host=True: [
+            CallableTask(task_id="prelude.noop", title="Prelude no-op", action=lambda: None)
+        ],
+    )
+
+    runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
+    request = E2eRequest(
+        scenario="proxmox-vm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
+        loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
+        cleanup_vm=True,
+    )
+    plan = proxmox_plan.ProxmoxVmLoadtestPlan(
+        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        request=request,
+        steps=[],
+        runner=runner,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        plan.run(event_listener=lambda e: None)
+
+    # The tail path re-raises the original exception without any wrapping.
+    assert str(exc_info.value) == "boom"
+    # cleanup_tasks ran DestroyVm in loadgen-first, stack-second order (pinned).
+    # Both VMs have state entries (ensure tasks ran before run_k6 failed), so
+    # _destroy_loadgen/_destroy_stack take the DestroyVm branch, not teardown().
+    assert destroy_calls == ["vm.loadgen.destroy", "vm.stack.destroy"]
+
+
 def test_proxmox_loadgen_install_uses_runplaybook_not_bash() -> None:
     """Verify the loadgen body is built via the shared builder (which uses install_k6_task /
     ansible-based install internally), not by constructing InstallK6 directly."""
