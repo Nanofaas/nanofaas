@@ -140,7 +140,7 @@ public class ExecutionCompletionHandler {
                 // Reset record atomically for retry, preserving CompletableFuture
                 record.resetForRetry(retryTask);
                 try {
-                    enqueueOrThrow(record);
+                    InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
                 } catch (QueueFullException ex) {
                     log.warn("Retry queue full for execution {}, completing with error", record.executionId());
                     record.markError(result.error());
@@ -225,15 +225,6 @@ public class ExecutionCompletionHandler {
             Set<Integer> attempts = releasedDispatchAttempts.computeIfAbsent(record, ignored -> new HashSet<>());
             return attempts.add(attempt);
         }
-    }
-
-    private void enqueueOrThrow(ExecutionRecord record) {
-        boolean enqueued = enqueuer.enqueue(record.task());
-        if (!enqueued) {
-            metrics.queueRejected(record.task().functionName());
-            throw new QueueFullException();
-        }
-        metrics.enqueue(record.task().functionName());
     }
 
     private static boolean isTerminal(it.unimib.datai.nanofaas.controlplane.execution.ExecutionState state) {

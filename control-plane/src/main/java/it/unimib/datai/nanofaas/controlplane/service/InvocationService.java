@@ -9,7 +9,6 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
@@ -123,7 +122,7 @@ public class InvocationService {
 
         if (lookup.isNew()) {
             try {
-                enqueueOrThrow(record);
+                InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
                 lookup.publishAdmission();
             } catch (RuntimeException ex) {
                 lookup.abandonAdmission();
@@ -161,15 +160,6 @@ public class InvocationService {
         if (!rateLimiter.allow()) {
             throw new RateLimitException();
         }
-    }
-
-    private void enqueueOrThrow(ExecutionRecord record) {
-        boolean enqueued = enqueuer.enqueue(record.task());
-        if (!enqueued) {
-            metrics.queueRejected(record.task().functionName());
-            throw new QueueFullException();
-        }
-        metrics.enqueue(record.task().functionName());
     }
 
 }

@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -16,6 +17,20 @@ public final class InvocationResponseMapper {
 
     public InvocationResponse timeoutResponse(ExecutionRecord record) {
         return new InvocationResponse(record.executionId(), "timeout", null, null);
+    }
+
+    public InvocationResponse terminalResponse(ExecutionRecord record) {
+        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        if (snapshot.state() == ExecutionState.SUCCESS || snapshot.state() == ExecutionState.ERROR) {
+            InvocationResult result = snapshot.lastError() == null
+                    ? InvocationResult.success(snapshot.output())
+                    : new InvocationResult(false, null, snapshot.lastError());
+            return toResponse(record, result);
+        }
+        if (snapshot.state() == ExecutionState.TIMEOUT) {
+            return timeoutResponse(record);
+        }
+        return null;
     }
 
     public ExecutionStatus toStatus(ExecutionRecord record) {
