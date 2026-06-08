@@ -304,6 +304,38 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
+    void invokeSync_whenInterruptedWhileWaiting_restoresInterruptAndThrowsInterruptedException() {
+        FunctionSpec spec = functionSpec("interrupt-fn", ExecutionMode.LOCAL);
+        when(functionService.get("interrupt-fn")).thenReturn(Optional.of(spec));
+        when(syncQueueGateway.enabled()).thenReturn(false);
+        when(enqueuer.enabled()).thenReturn(false);
+        AtomicReference<String> interruptedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            InvocationTask task = invocation.getArgument(0);
+            interruptedExecutionId.set(task.executionId());
+            return new CompletableFuture<DispatchResult>();
+        }).when(dispatcherRouter).dispatchLocal(any());
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> invocationService.invokeSync(
+                    "interrupt-fn",
+                    new InvocationRequest("payload", Map.of()),
+                    null,
+                    null,
+                    1_000
+            )).isInstanceOf(InterruptedException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            assertThat(interruptedExecutionId).hasValueSatisfying(executionId ->
+                    assertThat(invocationService.getStatus(executionId)).get()
+                            .extracting(status -> status.status())
+                            .isEqualTo("timeout"));
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() throws InterruptedException {
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
         InvocationService invocationServiceWithoutSyncQueue = new InvocationService(

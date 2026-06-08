@@ -68,7 +68,16 @@ public final class SyncInvocationCoordinator {
             return responseMapper.toResponse(record, result);
         } catch (SyncQueueRejectedException ex) {
             throw ex;
-        } catch (Exception ex) {
+        } catch (java.util.concurrent.TimeoutException ex) {
+            record.markTimeout();
+            metrics.timeout(record.task().functionName());
+            return responseMapper.timeoutResponse(record);
+        } catch (InterruptedException ex) {
+            record.markTimeout();
+            metrics.timeout(record.task().functionName());
+            Thread.currentThread().interrupt();
+            throw ex;
+        } catch (java.util.concurrent.ExecutionException ex) {
             record.markTimeout();
             metrics.timeout(record.task().functionName());
             return responseMapper.timeoutResponse(record);
