@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.concurrent.CancellationException;
 import java.util.UUID;
 
 @Service
@@ -46,7 +47,7 @@ public final class InvocationExecutionFactory {
                 );
             }
             if (acquire.state() == AcquireResult.State.PENDING) {
-                Thread.onSpinWait();
+                parkPendingClaim();
                 continue;
             }
 
@@ -68,7 +69,7 @@ public final class InvocationExecutionFactory {
                 );
             }
             if (staleClaim.state() == AcquireResult.State.PENDING) {
-                Thread.onSpinWait();
+                parkPendingClaim();
             }
         }
     }
@@ -114,6 +115,14 @@ public final class InvocationExecutionFactory {
                 1
         );
         return new ExecutionRecord(executionId, task);
+    }
+
+    private static void parkPendingClaim() {
+        java.util.concurrent.locks.LockSupport.parkNanos(java.time.Duration.ofMillis(1).toNanos());
+        if (Thread.currentThread().isInterrupted()) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Interrupted while waiting for idempotency claim");
+        }
     }
 
     public static final class ExecutionLookup {
