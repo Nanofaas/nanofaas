@@ -138,4 +138,92 @@ class QueueManagerTest {
                 .gauge()
                 .value()).isEqualTo(0.0);
     }
+
+    @Test
+    void remove_drainsQueuedTasks() {
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        FunctionSpec spec = new FunctionSpec(
+                "echo",
+                "image",
+                null,
+                Map.of(),
+                null,
+                1000,
+                4,
+                10,
+                3,
+                null,
+                ExecutionMode.DEPLOYMENT,
+                null,
+                null,
+                null
+        );
+        manager.getOrCreate(spec);
+
+        InvocationTask first = new InvocationTask(
+                "exec-1",
+                "echo",
+                spec,
+                new InvocationRequest("one", Map.of()),
+                null,
+                null,
+                Instant.now(),
+                1
+        );
+        InvocationTask second = new InvocationTask(
+                "exec-2",
+                "echo",
+                spec,
+                new InvocationRequest("two", Map.of()),
+                null,
+                null,
+                Instant.now(),
+                1
+        );
+
+        assertThat(manager.enqueue(first)).isTrue();
+        assertThat(manager.enqueue(second)).isTrue();
+
+        List<InvocationTask> drained = manager.remove("echo");
+
+        assertThat(drained).containsExactly(first, second);
+        assertThat(manager.get("echo")).isNull();
+    }
+
+    @Test
+    void remove_closesDetachedQueueStateSoLateOffersAreRejected() {
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        FunctionSpec spec = new FunctionSpec(
+                "echo",
+                "image",
+                null,
+                Map.of(),
+                null,
+                1000,
+                4,
+                10,
+                3,
+                null,
+                ExecutionMode.DEPLOYMENT,
+                null,
+                null,
+                null
+        );
+        FunctionQueueState state = manager.getOrCreate(spec);
+        InvocationTask task = new InvocationTask(
+                "exec-late",
+                "echo",
+                spec,
+                new InvocationRequest("late", Map.of()),
+                null,
+                null,
+                Instant.now(),
+                1
+        );
+
+        manager.remove("echo");
+
+        assertThat(state.offer(task)).isFalse();
+        assertThat(state.queued()).isZero();
+    }
 }

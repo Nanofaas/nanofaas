@@ -18,6 +18,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,6 +46,10 @@ class InvokeHandlerTest {
 
     private void startServer(FunctionHandler handler) throws IOException {
         CallbackClient callbackClient = new CallbackClient(objectMapper, null);
+        startServer(handler, callbackClient);
+    }
+
+    private void startServer(FunctionHandler handler, CallbackClient callbackClient) throws IOException {
         RuntimeMetrics metrics = new RuntimeMetrics("test-fn");
         InvokeHandler invokeHandler = new InvokeHandler(handler, callbackClient, metrics, objectMapper, "test-fn");
 
@@ -71,6 +78,41 @@ class InvokeHandlerTest {
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("Hello World"));
+    }
+
+    @Test
+    void successfulInvocation_sendsDispatchAttemptOnCallback() throws Exception {
+        AtomicReference<String> dispatchAttempt = new AtomicReference<>();
+        ArrayBlockingQueue<Boolean> callbackReceived = new ArrayBlockingQueue<>(1);
+        HttpServer callbackServer = HttpServer.create(new InetSocketAddress(0), 0);
+        callbackServer.createContext("/", exchange -> {
+            dispatchAttempt.set(exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt"));
+            callbackReceived.offer(true);
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        callbackServer.start();
+        try {
+            String callbackUrl = "http://localhost:" + callbackServer.getAddress().getPort();
+            startServer(req -> Map.of("ok", true), new CallbackClient(objectMapper, callbackUrl));
+
+            String body = objectMapper.writeValueAsString(new InvocationRequest(Map.of(), null));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + port + "/invoke"))
+                    .header("Content-Type", "application/json")
+                    .header("X-Execution-Id", "exec-attempt")
+                    .header("X-Dispatch-Attempt", "3")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            assertEquals(200, response.statusCode());
+            assertTrue(callbackReceived.poll(2, TimeUnit.SECONDS));
+            assertEquals("3", dispatchAttempt.get());
+        } finally {
+            callbackServer.stop(0);
+        }
     }
 
     @Test

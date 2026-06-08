@@ -55,8 +55,12 @@ public class CallbackDispatcher {
     }
 
     public boolean submit(String executionId, CallbackPayload payload, String traceId) {
+        return submit(executionId, payload, traceId, null);
+    }
+
+    public boolean submit(String executionId, CallbackPayload payload, String traceId, String dispatchAttempt) {
         try {
-            executor.execute(() -> callbackClient.sendResult(executionId, payload, traceId));
+            executor.execute(() -> callbackClient.sendResult(executionId, payload, traceId, dispatchAttempt));
             return true;
         } catch (RejectedExecutionException ex) {
             log.warn("Dropping callback for execution {} because dispatcher queue is full", executionId);

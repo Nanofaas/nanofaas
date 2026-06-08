@@ -9,7 +9,6 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
@@ -122,7 +121,13 @@ public class InvocationService {
         ExecutionRecord record = lookup.record();
 
         if (lookup.isNew()) {
-            enqueueOrThrow(record);
+            try {
+                InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
+                lookup.publishAdmission();
+            } catch (RuntimeException ex) {
+                lookup.abandonAdmission();
+                throw ex;
+            }
         }
         return new InvocationResponse(record.executionId(), "queued", null, null);
     }
@@ -139,23 +144,22 @@ public class InvocationService {
         completionHandler.completeExecution(executionId, dispatchResult);
     }
 
+    public void completeExecution(String executionId, DispatchResult dispatchResult, Integer completedAttempt) {
+        completionHandler.completeExecution(executionId, dispatchResult, completedAttempt);
+    }
+
     public void completeExecution(String executionId, InvocationResult result) {
         completionHandler.completeExecution(executionId, result);
+    }
+
+    public void completeExecution(String executionId, InvocationResult result, Integer completedAttempt) {
+        completionHandler.completeExecution(executionId, result, completedAttempt);
     }
 
     private void enforceRateLimit() {
         if (!rateLimiter.allow()) {
             throw new RateLimitException();
         }
-    }
-
-    private void enqueueOrThrow(ExecutionRecord record) {
-        boolean enqueued = enqueuer.enqueue(record.task());
-        if (!enqueued) {
-            metrics.queueRejected(record.task().functionName());
-            throw new QueueFullException();
-        }
-        metrics.enqueue(record.task().functionName());
     }
 
 }

@@ -4,8 +4,6 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
-import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
@@ -38,18 +36,24 @@ public final class SyncInvocationCoordinator {
                                      FunctionSpec spec,
                                      Integer timeoutOverrideMs) throws InterruptedException {
         ExecutionRecord record = lookup.record();
-        InvocationResponse replay = terminalResponse(record);
+        InvocationResponse replay = responseMapper.terminalResponse(record);
         if (replay != null) {
             return replay;
         }
 
         if (lookup.isNew()) {
-            if (syncQueueGateway.enabled()) {
-                syncQueueGateway.enqueueOrThrow(record.task());
-            } else if (enqueuer.enabled()) {
-                enqueueOrThrow(record);
-            } else {
-                completionHandler.dispatch(record.task());
+            try {
+                if (syncQueueGateway.enabled()) {
+                    syncQueueGateway.enqueueOrThrow(record.task());
+                } else if (enqueuer.enabled()) {
+                    InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
+                } else {
+                    completionHandler.dispatch(record.task());
+                }
+                lookup.publishAdmission();
+            } catch (RuntimeException ex) {
+                lookup.abandonAdmission();
+                throw ex;
             }
         }
 
@@ -62,32 +66,19 @@ public final class SyncInvocationCoordinator {
             return responseMapper.toResponse(record, result);
         } catch (SyncQueueRejectedException ex) {
             throw ex;
-        } catch (Exception ex) {
+        } catch (java.util.concurrent.TimeoutException ex) {
+            record.markTimeout();
+            metrics.timeout(record.task().functionName());
+            return responseMapper.timeoutResponse(record);
+        } catch (InterruptedException ex) {
+            record.markTimeout();
+            metrics.timeout(record.task().functionName());
+            Thread.currentThread().interrupt();
+            throw ex;
+        } catch (java.util.concurrent.ExecutionException ex) {
             record.markTimeout();
             metrics.timeout(record.task().functionName());
             return responseMapper.timeoutResponse(record);
         }
-    }
-
-    private void enqueueOrThrow(ExecutionRecord record) {
-        boolean enqueued = enqueuer.enqueue(record.task());
-        if (!enqueued) {
-            metrics.queueRejected(record.task().functionName());
-            throw new QueueFullException();
-        }
-        metrics.enqueue(record.task().functionName());
-    }
-
-    private InvocationResponse terminalResponse(ExecutionRecord record) {
-        if (record.state() == ExecutionState.SUCCESS || record.state() == ExecutionState.ERROR) {
-            InvocationResult result = record.lastError() == null
-                    ? InvocationResult.success(record.output())
-                    : new InvocationResult(false, null, record.lastError());
-            return responseMapper.toResponse(record, result);
-        }
-        if (record.state() == ExecutionState.TIMEOUT) {
-            return responseMapper.timeoutResponse(record);
-        }
-        return null;
     }
 }

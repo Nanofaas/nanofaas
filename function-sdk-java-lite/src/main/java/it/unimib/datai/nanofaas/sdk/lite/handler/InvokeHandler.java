@@ -53,6 +53,7 @@ public final class InvokeHandler implements HttpHandler {
 
         String headerExecutionId = exchange.getRequestHeaders().getFirst("X-Execution-Id");
         String traceId = exchange.getRequestHeaders().getFirst("X-Trace-Id");
+        String dispatchAttempt = exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt");
 
         String effectiveExecutionId = (headerExecutionId != null && !headerExecutionId.isBlank())
                 ? headerExecutionId
@@ -84,8 +85,9 @@ public final class InvokeHandler implements HttpHandler {
             // Fire-and-forget: callback must not block the response to the control plane
             final String cbExecId = effectiveExecutionId;
             final String cbTraceId = traceId;
+            final String cbDispatchAttempt = dispatchAttempt;
             final InvocationResult cbResult = InvocationResult.success(output);
-            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
+            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId, cbDispatchAttempt));
 
             if (isColdStart) {
                 long initDurationMs = Instant.now().toEpochMilli() - CONTAINER_START.toEpochMilli();
@@ -103,8 +105,9 @@ public final class InvokeHandler implements HttpHandler {
 
             final String cbExecId = effectiveExecutionId;
             final String cbTraceId = traceId;
+            final String cbDispatchAttempt = dispatchAttempt;
             final InvocationResult cbResult = InvocationResult.error("HANDLER_ERROR", ex.getMessage());
-            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId));
+            CALLBACK_EXECUTOR.submit(() -> callbackClient.sendResult(cbExecId, cbResult, cbTraceId, cbDispatchAttempt));
 
             sendJson(exchange, 500, Map.of("error", ex.getMessage() != null ? ex.getMessage() : "Internal error"));
         } finally {

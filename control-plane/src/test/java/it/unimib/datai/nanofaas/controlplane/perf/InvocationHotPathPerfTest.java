@@ -35,6 +35,7 @@ class InvocationHotPathPerfTest {
 
         InvocationExecutionFactory.ExecutionLookup first = factory.createOrReuseExecution(
                 spec.name(), spec, request, "idem-1", "trace-1");
+        first.publishAdmission();
         InvocationExecutionFactory.ExecutionLookup replayOne = factory.createOrReuseExecution(
                 spec.name(), spec, request, "idem-1", "trace-1");
         InvocationExecutionFactory.ExecutionLookup replayTwo = factory.createOrReuseExecution(

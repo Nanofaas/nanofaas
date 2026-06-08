@@ -39,6 +39,10 @@ public final class CallbackClient {
     }
 
     public boolean sendResult(String executionId, InvocationResult result, String traceId) {
+        return sendResult(executionId, result, traceId, null);
+    }
+
+    public boolean sendResult(String executionId, InvocationResult result, String traceId, String dispatchAttempt) {
         if (baseUrl == null || baseUrl.isBlank()) {
             log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);
             return false;
@@ -50,7 +54,7 @@ public final class CallbackClient {
 
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
-                doSend(executionId, result, traceId);
+                doSend(executionId, result, traceId, dispatchAttempt);
                 log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
                 return true;
             } catch (Exception ex) {
@@ -72,7 +76,7 @@ public final class CallbackClient {
         return false;
     }
 
-    private void doSend(String executionId, InvocationResult result, String traceId) throws Exception {
+    private void doSend(String executionId, InvocationResult result, String traceId, String dispatchAttempt) throws Exception {
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
                 : System.getenv("TRACE_ID");
@@ -90,6 +94,9 @@ public final class CallbackClient {
 
         if (effectiveTraceId != null && !effectiveTraceId.isBlank()) {
             reqBuilder.header("X-Trace-Id", effectiveTraceId);
+        }
+        if (dispatchAttempt != null && !dispatchAttempt.isBlank()) {
+            reqBuilder.header("X-Dispatch-Attempt", dispatchAttempt);
         }
 
         HttpResponse<Void> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.discarding());

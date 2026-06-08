@@ -236,6 +236,20 @@ class FunctionControllerTest {
     }
 
     @Test
+    void register_invalidScalingBounds_returns400WithMessage() {
+        when(functionService.register(any())).thenThrow(new IllegalArgumentException("maxReplicas must be >= 1"));
+
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(spec("echo"))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(String.class)
+                .isEqualTo("maxReplicas must be >= 1");
+    }
+
+    @Test
     void get_existingFunction_returnsFunctionResponse() {
         RegisteredFunction registered = registered(
                 "echo",

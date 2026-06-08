@@ -91,6 +91,39 @@ class FunctionSpecResolverTest {
     }
 
     @Test
+    void resolve_deploymentScalingRejectsMinReplicasGreaterThanMaxReplicas() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 6, 5, List.of());
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, scaling);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> resolver.resolve(spec));
+
+        assertEquals("minReplicas must be <= maxReplicas", thrown.getMessage());
+    }
+
+    @Test
+    void resolve_deploymentScalingRejectsNegativeReplicaBounds() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, -1, 5, List.of());
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, scaling);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> resolver.resolve(spec));
+
+        assertEquals("minReplicas must be >= 0", thrown.getMessage());
+    }
+
+    @Test
+    void resolve_deploymentScalingRejectsMaxReplicasBelowOne() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 0, List.of());
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, scaling);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> resolver.resolve(spec));
+
+        assertEquals("maxReplicas must be >= 1", thrown.getMessage());
+    }
+
+    @Test
     void resolve_staticPerPod_defaultsMissingTargetTo2() {
         ConcurrencyControlConfig cc = new ConcurrencyControlConfig(
                 ConcurrencyControlMode.STATIC_PER_POD,

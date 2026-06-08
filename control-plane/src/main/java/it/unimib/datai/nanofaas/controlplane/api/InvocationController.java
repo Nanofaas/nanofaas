@@ -84,9 +84,27 @@ public class InvocationController {
     @PostMapping("/internal/executions/{executionId}:complete")
     public ResponseEntity<Void> completeExecution(
             @PathVariable @NotBlank(message = "Execution ID is required") String executionId,
+            @RequestHeader(value = "X-Dispatch-Attempt", required = false) String dispatchAttemptHeader,
             @RequestBody @Valid InvocationResult result) {
-        invocationService.completeExecution(executionId, result);
+        Integer dispatchAttempt = parseDispatchAttempt(dispatchAttemptHeader);
+        if (dispatchAttempt != null) {
+            invocationService.completeExecution(executionId, result, dispatchAttempt);
+        } else {
+            invocationService.completeExecution(executionId, result);
+        }
         return ResponseEntity.noContent().build();
+    }
+
+    private static Integer parseDispatchAttempt(String dispatchAttemptHeader) {
+        if (dispatchAttemptHeader == null || dispatchAttemptHeader.isBlank()) {
+            return null;
+        }
+        try {
+            int dispatchAttempt = Integer.parseInt(dispatchAttemptHeader);
+            return dispatchAttempt > 0 ? dispatchAttempt : null;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private static ResponseEntity<InvocationResponse> tooManyRequests() {
