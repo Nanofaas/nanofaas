@@ -220,10 +220,93 @@ def test_emitting_adapter_emits_running_then_success_per_task(monkeypatch) -> No
     assert all(a == b for a, b in pairs)  # running/success share index
     distinct_indices = [a for a, _ in pairs]
     assert distinct_indices == list(range(1, len(distinct_indices) + 1))
-    # prelude task comes first, then ensure-stack at index 2.
+    # ensure-stack comes first (matches the static plan order), then prelude.
     running = [(idx, sid) for idx, sid, st in seq if st == "running"]
-    assert running[0] == (1, "prelude.a")
-    assert ("vm.stack.ensure_running" in [sid for _, sid in running])
+    assert running[0] == (1, "vm.stack.ensure_running")
+    assert running[1] == (2, "prelude.a")
+
+
+def test_emitting_path_ensures_stack_before_resolving_connectivity(monkeypatch) -> None:
+    """Regression: the emitting path (proxmox/azure) must ensure the stack VM BEFORE
+    building the prelude.
+
+    Building the prelude resolves the host via ``adapter.connectivity_for(resolve_host=True)``,
+    which for proxmox calls ``get_vm()`` and raises ``VmNotFoundError`` when the VM does
+    not exist yet. Previously the prelude was built first, so a fresh proxmox run failed
+    at flow-construction time with ``VM not found: '<name>'`` before any phase started.
+    """
+    from pathlib import Path
+    from controlplane_tool.scenario import loadtest_flow as mod
+
+    setup, request, _ = _emitting_setup_request()
+    ensured = {"stack": False}
+    order: list[str] = []
+
+    class FakeInfo:
+        host = "10.0.0.9"
+        home = "/home/ubuntu"
+
+    class FakeTask:
+        def __init__(self, task_id, title):
+            self.task_id = task_id
+            self.title = title
+
+        def run(self):
+            order.append(self.task_id)
+            if self.task_id == "vm.stack.ensure_running":
+                ensured["stack"] = True
+            return FakeInfo()
+
+    class FakeAdapter:
+        title_suffix = " (Fake)"
+        connectivity = object()
+
+        def connectivity_for(self, ctx, *, resolve_host):
+            # Mirror proxmox: resolving the host requires the stack VM to exist.
+            if resolve_host and not ensured["stack"]:
+                raise RuntimeError("VM not found: 'nanofaas-proxmox'")
+            return object()
+
+        def stack_lifecycle(self): return "stack-lc"
+        def loadgen_lifecycle(self): return "loadgen-lc"
+        def loadgen_install_endpoint(self, ctx):
+            from controlplane_tool.scenario.loadtest_adapter import InstallEndpoint
+            return InstallEndpoint(host="1.1.1.1", user="ubuntu", private_key=None, port=None)
+        def loadgen_runner(self, ctx): return object()
+        def fetcher(self, ctx): return object()
+        def control_plane_url(self, ctx): return "http://cp:8080"
+        def prometheus_url(self, ctx): return "http://prom:9090"
+        def prepare_loadgen(self, ctx): pass
+        def create_run_dir(self): return Path("/tmp/run")
+        def extra_steps(self, phase, ctx): return []
+        def extra_step_ids(self, phase): return []
+        def extra_step_titles(self, phase): return []
+        def emits_step_events(self): return True
+        def cleanup_on_failure(self, error): return []
+        def prelude_special_handler(self, ctx): return None
+        def prelude_context_selector(self, ctx): return None
+        def register_functions(self, ctx): pass
+
+    monkeypatch.setattr(mod, "loadtest_flow_task_ids",
+                        lambda **kw: ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9"])
+    monkeypatch.setattr(mod, "_ensure_vm_task",
+                        lambda task_id, title, lifecycle, config: FakeTask(task_id, title))
+    monkeypatch.setattr(mod, "_build_prelude_tasks",
+                        lambda runner, request, setup, recipe, connectivity, special_handler=None, context_selector=None:
+                        [FakeTask("prelude.a", "Prelude A")])
+    monkeypatch.setattr(mod, "_build_loadgen_body",
+                        lambda runner, request, adapter, ctx:
+                        [FakeTask(tid, tid) for tid in ("loadgen.install_k6", "loadgen.run_k6",
+                                                        "loadgen.fetch_results",
+                                                        "metrics.prometheus_snapshot",
+                                                        "loadtest.write_report")])
+    monkeypatch.setattr(mod, "_two_vm_remote_paths_for", lambda request, ctx: object())
+
+    # Must NOT raise: the stack VM is ensured before connectivity is resolved.
+    mod.run_loadtest_flow(runner=object(), request=request, setup=setup, recipe=object(),
+                          adapter=FakeAdapter(), event_listener=lambda e: None)
+
+    assert order.index("vm.stack.ensure_running") < order.index("prelude.a")
 
 
 def test_emitting_adapter_wraps_prelude_failure_with_cleanup(monkeypatch) -> None:
