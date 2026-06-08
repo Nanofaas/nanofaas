@@ -25,17 +25,6 @@ LOADTEST_PROMETHEUS_QUERIES: tuple[PrometheusQuery, ...] = (
     PrometheusQuery("jvm_memory_used_bytes", "jvm_memory_used_bytes"),
 )
 
-LOADTEST_STATIC_TASK_IDS: tuple[str, ...] = (
-    "vm.stack.ensure_running",
-    "vm.loadgen.ensure_running",
-    "loadgen.install_k6",
-    "loadgen.run_k6",
-    "loadgen.fetch_results",
-    "metrics.prometheus_snapshot",
-    "loadtest.write_report",
-    "vm.loadgen.destroy",
-)
-
 def remap_loadtest_component_id(scenario_name: str, component_id: str) -> str:
     if scenario_name in LOADTEST_SCENARIOS and component_id == "cli.fn_apply_selected":
         return "functions.register"
