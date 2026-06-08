@@ -474,3 +474,253 @@ class ProxmoxLoadtestAdapter:
             except Exception as exc:  # noqa: BLE001
                 errors.append(str(exc))
         return errors
+
+
+@dataclass
+class AzureLoadtestAdapter:
+    """Azure: rewrites host-ops onto the PUBLIC SSH endpoint (no NAT, no
+    publish-port). Registers functions in the prelude special_handler against
+    the public control-plane URL (public host + nodeport).
+
+    Mirrors ``ProxmoxLoadtestAdapter`` but for a direct public host. Constructed
+    lazily over an ``AzureVmOrchestrator(repo_root=runner.paths.workspace_root)``.
+    """
+
+    runner: "E2eRunner"
+    request: "E2eRequest"
+    title_suffix: str = " (Azure)"
+    connectivity: ConnectivityStrategy = field(default=None, init=False)  # type: ignore[assignment]
+    _azure_orch: object = field(default=None, init=False, repr=False)
+
+    def _orch(self):
+        if self._azure_orch is None:
+            from controlplane_tool.infra.vm.azure_vm_adapter import AzureVmOrchestrator
+
+            self._azure_orch = AzureVmOrchestrator(
+                repo_root=self.runner.paths.workspace_root
+            )
+        return self._azure_orch
+
+    @property
+    def _stack_request(self):
+        if self.request.vm is None:
+            raise ValueError("azure loadtest requires a stack VM request")
+        return self.request.vm
+
+    @property
+    def _loadgen_request(self):
+        if self.request.loadgen_vm is None:
+            raise ValueError("azure loadtest requires a loadgen VM request")
+        return self.request.loadgen_vm
+
+    # ── connectivity ────────────────────────────────────────────────────────
+
+    def connectivity_for(
+        self, ctx: Optional[RunContext], *, resolve_host: bool
+    ) -> ConnectivityStrategy:
+        from controlplane_tool.scenario.connectivity import AzureConnectivity
+
+        orch = self._orch()
+        stack_request = self._stack_request
+        if resolve_host:
+            remote_dir = orch.remote_project_dir(stack_request)
+            host = orch.connection_host(stack_request)
+            key = orch.ssh_private_key_path(stack_request)
+        else:
+            remote_dir = f"/home/{stack_request.user or 'azureuser'}/nanofaas"
+            host = "<azure-host>"
+            key = None
+        return AzureConnectivity(
+            orchestrator=orch,
+            request=stack_request,
+            host=host,
+            key=key,
+            repo_root=self.runner.paths.workspace_root,
+            remote_dir_value=remote_dir,
+        )
+
+    # ── prelude special handler + context selector ──────────────────────────
+
+    def _resolve_context(self):
+        from controlplane_tool.scenario.components.environment import (
+            resolve_scenario_environment,
+        )
+
+        return resolve_scenario_environment(
+            self.runner.paths.workspace_root,
+            self.request,
+            manifest_root=self.runner.manifest_root,
+        )
+
+    def prelude_special_handler(self, ctx: RunContext) -> Optional[SpecialHandler]:
+        from controlplane_tool.scenario.scenarios._workflow_assembly import (
+            HANDLED,
+            CallableTask,
+        )
+        from controlplane_tool.scenario.two_vm_loadtest_config import LOADTEST_SCENARIOS
+
+        context = self._resolve_context()
+        registered = {"done": False}
+
+        def special_handler(operation):
+            if (
+                operation.operation_id.startswith("cli.fn_apply_selected")
+                and self.request.scenario in LOADTEST_SCENARIOS
+            ):
+                if not registered["done"]:
+                    registered["done"] = True
+                    return CallableTask(
+                        task_id="functions.register",
+                        title="Register selected functions via REST API",
+                        action=self._register_functions_action(context),
+                    )
+                return HANDLED
+            return None
+
+        return special_handler
+
+    def _register_functions_action(self, context):
+        from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
+        from controlplane_tool.scenario.scenario_helpers import (
+            function_image,
+            selected_functions,
+        )
+
+        request = self.request
+        orch = self._orch()
+        stack_request = self._stack_request
+
+        def action() -> None:
+            runtime_image_default = (
+                f"{context.local_registry}/nanofaas/function-runtime:e2e"
+            )
+            specs = [
+                FunctionSpec(
+                    name=fn_key,
+                    image=function_image(
+                        fn_key, request.resolved_scenario, runtime_image_default
+                    ),
+                )
+                for fn_key in selected_functions(request.resolved_scenario)
+            ]
+            # Azure is a direct public host: no NAT publish-port. The control
+            # plane is reachable on the public host + nodeport.
+            cp_url = two_vm_control_plane_url(
+                stack_request, host=orch.connection_host(stack_request)
+            )
+            RegisterFunctions(
+                task_id="functions.register",
+                title="Register functions",
+                control_plane_url=cp_url,
+                specs=specs,
+            ).run()
+
+        return action
+
+    def prelude_context_selector(
+        self, ctx: RunContext, *, resolve_host: bool = True
+    ) -> Optional[object]:
+        from pathlib import Path as _Path
+        from typing import cast
+
+        from controlplane_tool.scenario.components.cli import CliComponentContext
+
+        context = self._resolve_context()
+        conn = self.connectivity_for(ctx, resolve_host=resolve_host)
+        cli_context = CliComponentContext(
+            repo_root=_Path(conn.remote_dir_value),
+            release=cast(str, context.release),
+            namespace=cast(str, context.namespace),
+            local_registry=context.local_registry,
+            resolved_scenario=context.resolved_scenario,
+            control_plane_endpoint=None,
+        )
+
+        def context_selector(component):
+            return cli_context if component.component_id.startswith("cli.") else context
+
+        return context_selector
+
+    def register_functions(self, ctx: RunContext) -> None:
+        # No-op: registration is performed in the prelude via the special_handler.
+        return None
+
+    # ── lifecycles ───────────────────────────────────────────────────────────
+
+    def stack_lifecycle(self):
+        from controlplane_tool.infra.vm_lifecycle_adapters import AzureVmAdapter
+
+        return AzureVmAdapter(self._orch())
+
+    def loadgen_lifecycle(self):
+        from controlplane_tool.infra.vm_lifecycle_adapters import AzureVmAdapter
+
+        return AzureVmAdapter(self._orch())
+
+    # ── loadgen body collaborators ─────────────────────────────────────────────
+
+    def loadgen_install_endpoint(self, ctx: RunContext) -> InstallEndpoint:
+        orch = self._orch()
+        loadgen_request = self._loadgen_request
+        return InstallEndpoint(
+            host=orch.connection_host(loadgen_request),
+            user=loadgen_request.user,
+            private_key=orch.ssh_private_key_path(loadgen_request),
+            port=None,
+        )
+
+    def loadgen_runner(self, ctx: RunContext) -> VmCommandRunner:
+        return OrchestratorVmRunner(self._orch(), self._loadgen_request)
+
+    def fetcher(self, ctx: RunContext) -> RemoteFileFetcher:
+        return VmFileFetcher(vm=self._orch(), request=self._loadgen_request)
+
+    def control_plane_url(self, ctx: RunContext) -> str:
+        return two_vm_control_plane_url(self._stack_request, host=ctx.stack_host)
+
+    def prometheus_url(self, ctx: RunContext) -> str:
+        return two_vm_prometheus_url(self._stack_request, host=ctx.stack_host)
+
+    def prepare_loadgen(self, ctx: RunContext) -> None:
+        # Azure builds the loadgen body directly — no separate prepare step.
+        return None
+
+    def create_run_dir(self) -> Path:
+        from typing import Any, cast
+
+        from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
+
+        run_dir_creator = TwoVmLoadtestRunner(
+            repo_root=self.runner.paths.workspace_root, vm=cast("Any", self._orch())
+        )
+        return run_dir_creator._create_run_dir()  # noqa: SLF001
+
+    # ── lifecycle-specific extra steps (none for azure: direct public host) ────
+
+    def extra_steps(self, phase: FlowPhase, ctx: RunContext) -> list:
+        return []
+
+    def extra_step_ids(self, phase: FlowPhase) -> list:
+        return []
+
+    def extra_step_titles(self, phase: FlowPhase) -> list[str]:
+        return []
+
+    # ── event/cleanup capabilities ─────────────────────────────────────────────
+
+    def emits_step_events(self) -> bool:
+        return True
+
+    def cleanup_on_failure(self, error: Exception) -> list[str]:
+        if not self.request.cleanup_vm:
+            return []
+        orch = self._orch()
+        errors: list[str] = []
+        for vm_request in (self.request.loadgen_vm, self.request.vm):
+            if vm_request is None:
+                continue
+            try:
+                orch.teardown(vm_request)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(str(exc))
+        return errors

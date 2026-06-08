@@ -188,3 +188,116 @@ def test_proxmox_cleanup_on_failure_respects_cleanup_vm_false() -> None:
     adapter = _proxmox_adapter(orch, cleanup_vm=False)
     assert adapter.cleanup_on_failure(RuntimeError("boom")) == []
     assert orch.torn_down == []
+
+
+# ── AzureLoadtestAdapter ─────────────────────────────────────────────────────
+
+
+class _FakeAzureVmOrchestrator:
+    """Minimal azure orchestrator double (public host, no NAT port)."""
+
+    def __init__(self, repo_root=None) -> None:
+        self.repo_root = repo_root
+        self.torn_down: list[str] = []
+
+    def connection_host(self, request):
+        return "20.0.0.5"
+
+    def remote_project_dir(self, request):
+        return "/home/azureuser/nanofaas"
+
+    def ssh_private_key_path(self, request):
+        return Path("/tmp/azure_key")
+
+    def teardown(self, request):
+        self.torn_down.append(request.name)
+
+
+def _azure_adapter(orch, *, cleanup_vm=True):
+    from controlplane_tool.scenario.loadtest_adapter import AzureLoadtestAdapter
+
+    request = SimpleNamespace(
+        scenario="azure-vm-loadtest",
+        cleanup_vm=cleanup_vm,
+        vm=SimpleNamespace(name="azure-stack", user="azureuser"),
+        loadgen_vm=SimpleNamespace(name="azure-loadgen", user="azureuser"),
+    )
+    runner = SimpleNamespace(
+        paths=SimpleNamespace(workspace_root=Path("/repo")),
+        manifest_root=None,
+    )
+    adapter = AzureLoadtestAdapter(runner=runner, request=request)
+    adapter._azure_orch = orch  # inject the fake (no live azure)
+    return adapter
+
+
+def test_azure_adapter_title_suffix() -> None:
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    assert adapter.title_suffix == " (Azure)"
+
+
+def test_azure_adapter_emits_step_events() -> None:
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    assert adapter.emits_step_events() is True
+
+
+def test_azure_adapter_register_functions_is_noop() -> None:
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    assert adapter.register_functions(RunContext()) is None
+
+
+def test_azure_adapter_extra_step_ids_and_titles_are_empty() -> None:
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    assert adapter.extra_step_ids(FlowPhase.BEFORE_LOADGEN) == []
+    assert adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY) == []
+    assert adapter.extra_step_titles(FlowPhase.BEFORE_LOADGEN) == []
+    assert adapter.extra_step_titles(FlowPhase.AFTER_STACK_READY) == []
+    assert adapter.extra_steps(FlowPhase.BEFORE_LOADGEN, RunContext()) == []
+    assert adapter.extra_steps(FlowPhase.AFTER_STACK_READY, RunContext()) == []
+
+
+def test_azure_connectivity_for_placeholder_when_not_resolving() -> None:
+    from controlplane_tool.scenario.connectivity import AzureConnectivity
+
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    conn = adapter.connectivity_for(None, resolve_host=False)
+    assert isinstance(conn, AzureConnectivity)
+    assert conn.host == "<azure-host>"
+    assert conn.key is None
+    assert conn.remote_dir_value == "/home/azureuser/nanofaas"
+    assert not hasattr(conn, "port")
+
+
+def test_azure_connectivity_for_resolves_endpoint() -> None:
+    from controlplane_tool.scenario.connectivity import AzureConnectivity
+
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    conn = adapter.connectivity_for(RunContext(), resolve_host=True)
+    assert isinstance(conn, AzureConnectivity)
+    assert conn.host == "20.0.0.5"
+    assert conn.key == Path("/tmp/azure_key")
+    assert conn.remote_dir_value == "/home/azureuser/nanofaas"
+
+
+def test_azure_loadgen_install_endpoint_has_no_port() -> None:
+    adapter = _azure_adapter(_FakeAzureVmOrchestrator())
+    ep = adapter.loadgen_install_endpoint(RunContext())
+    assert ep.host == "20.0.0.5"
+    assert ep.port is None
+    assert ep.user == "azureuser"
+    assert ep.private_key == Path("/tmp/azure_key")
+
+
+def test_azure_cleanup_on_failure_tears_down_loadgen_then_stack() -> None:
+    orch = _FakeAzureVmOrchestrator()
+    adapter = _azure_adapter(orch, cleanup_vm=True)
+    errors = adapter.cleanup_on_failure(RuntimeError("boom"))
+    assert errors == []
+    assert orch.torn_down == ["azure-loadgen", "azure-stack"]
+
+
+def test_azure_cleanup_on_failure_respects_cleanup_vm_false() -> None:
+    orch = _FakeAzureVmOrchestrator()
+    adapter = _azure_adapter(orch, cleanup_vm=False)
+    assert adapter.cleanup_on_failure(RuntimeError("boom")) == []
+    assert orch.torn_down == []
