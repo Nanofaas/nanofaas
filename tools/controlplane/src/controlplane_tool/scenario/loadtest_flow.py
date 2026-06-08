@@ -343,15 +343,10 @@ def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, even
     # Wrapped in failure-cleanup (path a): on any exception, run
     # adapter.cleanup_on_failure() and re-raise a scenario-formatted error.
     try:
-        prelude = _build_prelude_tasks(
-            runner, request, setup, recipe,
-            _adapter_connectivity(adapter, ctx, resolve_host=True),
-            special_handler=adapter.prelude_special_handler(ctx),
-            context_selector=adapter.prelude_context_selector(ctx),
-        )
-        for task in prelude:
-            emitter.run_task(task)
-
+        # Ensure the stack VM FIRST (matches the native path and the static
+        # task_ids/phase_titles order). Building the prelude resolves the host via
+        # connectivity_for(resolve_host=True), which for proxmox calls get_vm() and
+        # raises VmNotFoundError unless the VM already exists — so it must run after.
         stack_task = _ensure_vm_task(
             "vm.stack.ensure_running",
             f"Ensure stack VM running{s}",
@@ -360,6 +355,15 @@ def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, even
         )
         ctx.stack_info = emitter.run_task(stack_task)
         ctx.stack_host = getattr(ctx.stack_info, "host", None)
+
+        prelude = _build_prelude_tasks(
+            runner, request, setup, recipe,
+            _adapter_connectivity(adapter, ctx, resolve_host=True),
+            special_handler=adapter.prelude_special_handler(ctx),
+            context_selector=adapter.prelude_context_selector(ctx),
+        )
+        for task in prelude:
+            emitter.run_task(task)
 
         for task in adapter.extra_steps(FlowPhase.AFTER_STACK_READY, ctx):
             emitter.run_task(task)

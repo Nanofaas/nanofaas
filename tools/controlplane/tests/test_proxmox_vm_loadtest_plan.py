@@ -347,7 +347,7 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
     assert {event.total_steps for event in events} == {len(plan.task_ids)}
     assert tail_running_events
     assert tail_running_events[0].step.step_id == "vm.stack.ensure_running"
-    assert tail_running_events[0].step_index == 2
+    assert tail_running_events[0].step_index == 1
 
 
 def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
@@ -595,15 +595,17 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
     seq = [(e.step_index, e.step.step_id, e.status) for e in events]
     assert {e.total_steps for e in events} == {len(plan.task_ids)}
     # B3b: canonical execution-order emission produced by run_loadtest_flow's
-    # emitting path (prelude -> ensure-stack -> ensure-loadgen -> publish-ports ->
+    # emitting path (ensure-stack -> prelude -> ensure-loadgen -> publish-ports ->
     # loadgen body), with a single ScenarioStepEvent pair per task in execution
-    # order (no separate prelude-then-tail re-emission). See the B3b plan:
+    # order (no separate prelude-then-tail re-emission). The stack VM is ensured
+    # before the prelude because building the prelude resolves the proxmox SSH
+    # endpoint (get_vm), which requires the VM to exist. See the B3b plan:
     # docs/superpowers/plans/*loadtest-scenario-unification* (Task 6).
     assert seq == [
-        (1, "prelude.noop", "running"),
-        (1, "prelude.noop", "success"),
-        (2, "vm.stack.ensure_running", "running"),
-        (2, "vm.stack.ensure_running", "success"),
+        (1, "vm.stack.ensure_running", "running"),
+        (1, "vm.stack.ensure_running", "success"),
+        (2, "prelude.noop", "running"),
+        (2, "prelude.noop", "success"),
         (3, "vm.loadgen.ensure_running", "running"),
         (3, "vm.loadgen.ensure_running", "success"),
         (4, "vm.stack.publish_ports", "running"),
