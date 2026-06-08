@@ -71,10 +71,21 @@ public class FunctionSpecResolver {
         if (strategy == ScalingStrategy.INTERNAL) {
             validateInternalScalingMetrics(metrics);
         }
+        int minReplicas = Optional.ofNullable(config.minReplicas()).orElse(1);
+        int maxReplicas = Optional.ofNullable(config.maxReplicas()).orElse(10);
+        if (minReplicas < 0) {
+            throw new IllegalArgumentException("minReplicas must be >= 0");
+        }
+        if (maxReplicas < 1) {
+            throw new IllegalArgumentException("maxReplicas must be >= 1");
+        }
+        if (minReplicas > maxReplicas) {
+            throw new IllegalArgumentException("minReplicas must be <= maxReplicas");
+        }
         return new ScalingConfig(
                 strategy,
-                Optional.ofNullable(config.minReplicas()).orElse(1),
-                Optional.ofNullable(config.maxReplicas()).orElse(10),
+                minReplicas,
+                maxReplicas,
                 metrics,
                 normalizeConcurrencyControl(config.concurrencyControl())
         );

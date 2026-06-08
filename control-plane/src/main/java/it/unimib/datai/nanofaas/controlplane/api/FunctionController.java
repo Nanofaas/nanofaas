@@ -34,6 +34,8 @@ public class FunctionController {
             return functionService.register(spec)
                     .map(registered -> ResponseEntity.status(HttpStatus.CREATED).body(FunctionResponse.from(registered)))
                     .orElse(ResponseEntity.status(HttpStatus.CONFLICT).build());
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
         }
