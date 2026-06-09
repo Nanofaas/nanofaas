@@ -67,6 +67,16 @@ class _FakeProxmoxVmOrchestrator:
         self.repo_root = repo_root
         self.torn_down: list[str] = []
         self.published: list[tuple[str, int]] = []
+        self.execs: list[tuple[object, tuple[str, ...]]] = []
+        self.transfers: list[tuple[object, object, str]] = []
+
+    def exec_argv(self, request, argv, *, env=None, cwd=None, dry_run=False):
+        self.execs.append((request, tuple(argv)))
+        return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+    def transfer_to(self, request, *, source, destination):
+        self.transfers.append((request, source, destination))
+        return SimpleNamespace(return_code=0, stdout="", stderr="")
 
     def remote_project_dir(self, request):
         return "/home/ubuntu/nanofaas"
@@ -163,6 +173,52 @@ def test_proxmox_loadgen_install_endpoint_includes_port() -> None:
     assert ep.private_key == Path("/tmp/proxmox_key")
 
 
+def test_proxmox_adapter_prepare_loadgen_creates_dirs_and_uploads_script() -> None:
+    # Regression: proxmox prepare_loadgen must NOT be a no-op — without uploading the
+    # k6 script and creating the remote results dir on the loadgen VM, `k6 run` fails
+    # and no summary is written (surfacing as a confusing scp "summary not found").
+    from controlplane_tool.scenario.two_vm_loadtest_config import two_vm_remote_paths
+
+    orch = _FakeProxmoxVmOrchestrator()
+    adapter = _proxmox_adapter(orch)
+    adapter.request.k6_script = None
+    adapter.request.k6_payload = None
+    ctx = RunContext()
+    remote_paths = two_vm_remote_paths("/home/ubuntu")
+    ctx.remote_paths = remote_paths
+
+    adapter.prepare_loadgen(ctx)
+
+    # mkdir -p of scripts/payloads/results dirs on the loadgen VM.
+    mkdirs = [argv for _req, argv in orch.execs if argv[:2] == ("mkdir", "-p")]
+    assert mkdirs, "expected a mkdir -p for the loadgen run dirs"
+    assert remote_paths.results_dir in mkdirs[0]
+    assert remote_paths.scripts_dir in mkdirs[0]
+    # k6 script uploaded to the remote script_path.
+    destinations = [dest for _req, _src, dest in orch.transfers]
+    assert remote_paths.script_path in destinations
+
+
+def test_azure_adapter_prepare_loadgen_creates_dirs_and_uploads_script() -> None:
+    from controlplane_tool.scenario.two_vm_loadtest_config import two_vm_remote_paths
+
+    orch = _FakeAzureVmOrchestrator()
+    adapter = _azure_adapter(orch)
+    adapter.request.k6_script = None
+    adapter.request.k6_payload = None
+    ctx = RunContext()
+    remote_paths = two_vm_remote_paths("/home/azureuser")
+    ctx.remote_paths = remote_paths
+
+    adapter.prepare_loadgen(ctx)
+
+    mkdirs = [argv for _req, argv in orch.execs if argv[:2] == ("mkdir", "-p")]
+    assert mkdirs, "expected a mkdir -p for the loadgen run dirs"
+    assert remote_paths.results_dir in mkdirs[0]
+    destinations = [dest for _req, _src, dest in orch.transfers]
+    assert remote_paths.script_path in destinations
+
+
 def test_proxmox_before_loadgen_publishes_prometheus_and_sets_url() -> None:
     orch = _FakeProxmoxVmOrchestrator()
     adapter = _proxmox_adapter(orch)
@@ -199,6 +255,16 @@ class _FakeAzureVmOrchestrator:
     def __init__(self, repo_root=None) -> None:
         self.repo_root = repo_root
         self.torn_down: list[str] = []
+        self.execs: list[tuple[object, tuple[str, ...]]] = []
+        self.transfers: list[tuple[object, object, str]] = []
+
+    def exec_argv(self, request, argv, *, env=None, cwd=None, dry_run=False):
+        self.execs.append((request, tuple(argv)))
+        return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+    def transfer_to(self, request, *, source, destination):
+        self.transfers.append((request, source, destination))
+        return SimpleNamespace(return_code=0, stdout="", stderr="")
 
     def connection_host(self, request):
         return "20.0.0.5"

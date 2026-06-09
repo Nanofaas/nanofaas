@@ -403,9 +403,20 @@ class ProxmoxLoadtestAdapter:
         return ctx.prometheus_url
 
     def prepare_loadgen(self, ctx: RunContext) -> None:
-        # Proxmox builds the loadgen body directly (no separate script-upload /
-        # prepare step in its tail) — no-op.
-        return None
+        # Create the loadgen run dirs (scripts/payloads/results) and upload the k6
+        # script (+ payload) to the loadgen VM. Without this, `k6 run` fails on the
+        # VM because the script file does not exist and the results dir is missing —
+        # which previously surfaced one phase later as a confusing scp
+        # "k6-summary.json: No such file or directory". Delegates to the proven
+        # TwoVmLoadtestRunner.prepare_loadgen over the proxmox orchestrator.
+        from typing import Any, cast
+
+        from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
+
+        runner = TwoVmLoadtestRunner(
+            repo_root=self.runner.paths.workspace_root, vm=cast("Any", self._orch())
+        )
+        runner.prepare_loadgen(self.request, ctx.remote_paths)
 
     def create_run_dir(self) -> Path:
         from typing import Any, cast
@@ -682,8 +693,18 @@ class AzureLoadtestAdapter:
         return two_vm_prometheus_url(self._stack_request, host=ctx.stack_host)
 
     def prepare_loadgen(self, ctx: RunContext) -> None:
-        # Azure builds the loadgen body directly — no separate prepare step.
-        return None
+        # Create the loadgen run dirs and upload the k6 script (+ payload) to the
+        # loadgen VM — same requirement as proxmox/multipass (without it `k6 run`
+        # fails because the script file does not exist). Delegates to the proven
+        # TwoVmLoadtestRunner.prepare_loadgen over the azure orchestrator.
+        from typing import Any, cast
+
+        from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
+
+        runner = TwoVmLoadtestRunner(
+            repo_root=self.runner.paths.workspace_root, vm=cast("Any", self._orch())
+        )
+        runner.prepare_loadgen(self.request, ctx.remote_paths)
 
     def create_run_dir(self) -> Path:
         from typing import Any, cast

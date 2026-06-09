@@ -272,6 +272,11 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
         def _create_run_dir(self):
             return Path("/tmp/proxmox-run")
 
+        def prepare_loadgen(self, request, remote_paths):
+            # Adapter.prepare_loadgen delegates here to upload the k6 script /
+            # create the loadgen run dirs; no-op for the plan-level fakes.
+            return None
+
     class FakeEnsureVmRunning:
         def __init__(self, *, task_id, title, lifecycle, config):
             self.task_id = task_id
@@ -405,6 +410,11 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
         def _create_run_dir(self):
             return Path("/tmp/proxmox-run")
 
+        def prepare_loadgen(self, request, remote_paths):
+            # Adapter.prepare_loadgen delegates here to upload the k6 script /
+            # create the loadgen run dirs; no-op for the plan-level fakes.
+            return None
+
     class FakeEnsureVmRunning:
         def __init__(self, *, task_id, title, lifecycle, config):
             self.task_id = task_id
@@ -527,6 +537,11 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
 
         def _create_run_dir(self):
             return Path("/tmp/proxmox-run")
+
+        def prepare_loadgen(self, request, remote_paths):
+            # Adapter.prepare_loadgen delegates here to upload the k6 script /
+            # create the loadgen run dirs; no-op for the plan-level fakes.
+            return None
 
     class FakeEnsureVmRunning:
         def __init__(self, *, task_id, title, lifecycle, config):
@@ -674,6 +689,11 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
 
         def _create_run_dir(self):
             return Path("/tmp/proxmox-run")
+
+        def prepare_loadgen(self, request, remote_paths):
+            # Adapter.prepare_loadgen delegates here to upload the k6 script /
+            # create the loadgen run dirs; no-op for the plan-level fakes.
+            return None
 
     class FakeEnsureVmRunning:
         def __init__(self, *, task_id, title, lifecycle, config):
