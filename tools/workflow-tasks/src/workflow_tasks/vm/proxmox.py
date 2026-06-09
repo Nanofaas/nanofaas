@@ -18,6 +18,19 @@ from workflow_tasks.vm.multipass import _find_ssh_private_key_path, _ok
 
 _PROXMOX_GUEST_READY_TIMEOUT_SECONDS = 300.0
 
+# Proxmox maps ephemeral VMs behind a STABLE NAT host:port. Across runs the VM is
+# recreated with a fresh SSH host key while the host:port is reused, so the user's
+# ~/.ssh/known_hosts accumulates stale keys that collide on the next run ("REMOTE HOST
+# IDENTIFICATION HAS CHANGED" — which StrictHostKeyChecking=no alone does NOT bypass).
+# Pin every ssh/scp invocation to a throwaway known_hosts and disable strict checking
+# so recreated VMs never collide; LogLevel=ERROR keeps the host-key banner out of
+# stderr (and out of the surfaced NAT diagnostic).
+_SSH_HOST_KEY_OPTS: tuple[str, ...] = (
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
+)
+
 
 def _parse_memory_mb(memory: str) -> int:
     s = memory.strip().upper()
@@ -208,7 +221,7 @@ class ProxmoxVmProvider:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             cmd = [
-                "ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+                "ssh", *_SSH_HOST_KEY_OPTS, "-o", "BatchMode=yes",
                 "-o", "ConnectTimeout=5", "-p", str(port),
             ]
             if ssh_key:
@@ -357,7 +370,7 @@ class ProxmoxVmProvider:
         ssh_key = self._ssh_key(request)
         user = request.user or "ubuntu"
 
-        ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "-p", str(port)]
+        ssh_cmd = ["ssh", *_SSH_HOST_KEY_OPTS, "-o", "BatchMode=yes", "-p", str(port)]
         if ssh_key:
             ssh_cmd += ["-i", str(ssh_key)]
 
@@ -391,7 +404,7 @@ class ProxmoxVmProvider:
         host, port = self._ssh_endpoint(request)
         ssh_key = self._ssh_key(request)
         user = request.user or "ubuntu"
-        scp_cmd = ["scp", "-P", str(port)]
+        scp_cmd = ["scp", *_SSH_HOST_KEY_OPTS, "-P", str(port)]
         if ssh_key:
             scp_cmd += ["-i", str(ssh_key)]
         scp_cmd += [str(source), f"{user}@{host}:{destination}"]
@@ -416,7 +429,7 @@ class ProxmoxVmProvider:
         host, port = self._ssh_endpoint(request)
         ssh_key = self._ssh_key(request)
         user = request.user or "ubuntu"
-        scp_cmd = ["scp", "-P", str(port)]
+        scp_cmd = ["scp", *_SSH_HOST_KEY_OPTS, "-P", str(port)]
         if ssh_key:
             scp_cmd += ["-i", str(ssh_key)]
         scp_cmd += [f"{user}@{host}:{source}", str(destination)]

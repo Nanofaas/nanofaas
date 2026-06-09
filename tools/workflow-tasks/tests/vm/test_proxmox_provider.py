@@ -564,7 +564,13 @@ def test_exec_argv(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
     assert result.return_code == 0
     assert result.stdout == "output"
     called_cmd = mock_subproc.call_args[0][0]
-    assert called_cmd[:7] == ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "-p", "20022"]
+    assert called_cmd[0] == "ssh"
+    assert "StrictHostKeyChecking=no" in called_cmd
+    # Ephemeral VMs reuse the NAT host:port with fresh host keys; pin a throwaway
+    # known_hosts so recreated VMs never collide with stale cached keys.
+    assert "UserKnownHostsFile=/dev/null" in called_cmd
+    assert "BatchMode=yes" in called_cmd
+    assert called_cmd[-3:-1] == ["-p", "20022"] or ("-p" in called_cmd and "20022" in called_cmd)
     assert "ubuntu@pve.example.com" in called_cmd
     assert "echo hello" in called_cmd[-1]
 
@@ -642,7 +648,10 @@ def test_transfer_to(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
 
     assert result.return_code == 0
     cmd = result.command
-    assert cmd[:3] == ["scp", "-P", "20022"]
+    assert cmd[0] == "scp"
+    assert "StrictHostKeyChecking=no" in cmd
+    assert "UserKnownHostsFile=/dev/null" in cmd
+    assert "-P" in cmd and "20022" in cmd
     assert "/local/file" in cmd
     assert "ubuntu@pve.example.com:/remote/file" in cmd
 
@@ -666,7 +675,10 @@ def test_transfer_from(mock_client_cls, mock_subproc, mock_routing_cls) -> None:
 
     assert result.return_code == 0
     cmd = result.command
-    assert cmd[:3] == ["scp", "-P", "20022"]
+    assert cmd[0] == "scp"
+    assert "StrictHostKeyChecking=no" in cmd
+    assert "UserKnownHostsFile=/dev/null" in cmd
+    assert "-P" in cmd and "20022" in cmd
     assert "ubuntu@pve.example.com:/remote/file" in cmd
     assert "/local/file" in cmd
 
