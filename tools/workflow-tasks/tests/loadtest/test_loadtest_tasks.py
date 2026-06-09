@@ -25,8 +25,9 @@ class _VmResult:
 
 
 class _RecordingVmRunner:
-    def __init__(self, return_code: int = 0) -> None:
+    def __init__(self, return_code: int = 0, stderr: str = "") -> None:
         self.return_code = return_code
+        self.stderr = stderr
         self.commands: list[tuple[tuple[str, ...], dict, str | None, bool]] = []
 
     def run_vm_command(
@@ -38,7 +39,7 @@ class _RecordingVmRunner:
         dry_run: bool,
     ) -> _VmResult:
         self.commands.append((argv, env, remote_dir, dry_run))
-        return _VmResult(return_code=self.return_code)
+        return _VmResult(return_code=self.return_code, stderr=self.stderr)
 
 
 def _make_k6_config(tmp_path: Path) -> K6Config:
@@ -125,12 +126,27 @@ def test_run_k6_returns_k6_run_result_with_timing(tmp_path: Path) -> None:
     assert result.passed is True
 
 
-def test_run_k6_marks_failed_on_nonzero_exit(tmp_path: Path) -> None:
-    runner = _RecordingVmRunner(return_code=1)
+def test_run_k6_tolerates_threshold_failure_exit_99(tmp_path: Path) -> None:
+    # k6 exits 99 when thresholds are breached: the test ran to completion and wrote
+    # the summary, so we must NOT raise (the report is still fetched) — just record
+    # passed=False.
+    runner = _RecordingVmRunner(return_code=99)
     config = _make_k6_config(tmp_path)
     task = RunK6(task_id="loadgen.run_k6", title="Run k6", runner=runner, config=config, remote_dir="/home/ubuntu")
     result = task.run()
     assert result.passed is False
+
+
+def test_run_k6_raises_on_run_error_exit(tmp_path: Path) -> None:
+    # Any non-zero exit other than 99 means k6 failed to run (e.g. missing script or
+    # unwritable summary path) and produced no summary. Raise here so the failure is
+    # legible at this step instead of surfacing later as a confusing "summary not
+    # found" fetch error.
+    runner = _RecordingVmRunner(return_code=1, stderr="level=error msg=\"open ...script.js: no such file\"")
+    config = _make_k6_config(tmp_path)
+    task = RunK6(task_id="loadgen.run_k6", title="Run k6", runner=runner, config=config, remote_dir="/home/ubuntu")
+    with pytest.raises(RuntimeError, match="no such file"):
+        task.run()
 
 
 def test_run_k6_result_property_raises_before_run(tmp_path: Path) -> None:

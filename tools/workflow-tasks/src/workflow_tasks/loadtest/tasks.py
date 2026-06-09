@@ -95,6 +95,18 @@ class RunK6:
             dry_run=False,
         )
         ended_at = datetime.now(timezone.utc)
+        # k6 exit 99 = thresholds breached, but the test ran to completion and wrote
+        # the summary, so tolerate it (recorded as passed=False) and let the pipeline
+        # fetch the report. Any other non-zero exit means k6 failed to run (e.g. the
+        # script is missing or the summary path is unwritable) and produced no summary
+        # — raise so the failure is legible at this step instead of surfacing later as
+        # a confusing "summary not found" fetch error.
+        if result.return_code not in (0, 99):
+            raise RuntimeError(
+                result.stderr
+                or result.stdout
+                or f"k6 run failed (exit {result.return_code})"
+            )
         self._result = K6RunResult(
             summary_path=self.config.summary_output_path,
             started_at=started_at,
