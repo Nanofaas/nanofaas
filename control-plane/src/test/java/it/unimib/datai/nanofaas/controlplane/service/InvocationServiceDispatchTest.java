@@ -126,13 +126,13 @@ class InvocationServiceDispatchTest {
         executionStore.put(record);
         idempotencyStore.put("replay-success-fn", "idem-1", record.executionId());
 
-        InvocationResponse response = invocationService.invokeSync(
+        InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-success-fn",
                 new InvocationRequest("payload", Map.of()),
                 "idem-1",
                 "trace-1",
                 1_000
-        );
+        ).block();
 
         assertThat(response.executionId()).isEqualTo("exec-replay-success");
         assertThat(response.status()).isEqualTo("success");
@@ -181,13 +181,13 @@ class InvocationServiceDispatchTest {
         executionStore.put(record);
         idempotencyStore.put("replay-sync-timeout-fn", "idem-sync-timeout", record.executionId());
 
-        InvocationResponse response = invocationService.invokeSync(
+        InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-sync-timeout-fn",
                 new InvocationRequest("payload", Map.of()),
                 "idem-sync-timeout",
                 "trace-1",
                 1_000
-        );
+        ).block();
 
         assertThat(response.executionId()).isEqualTo("exec-sync-replay-timeout");
         assertThat(response.status()).isEqualTo("timeout");
@@ -287,13 +287,13 @@ class InvocationServiceDispatchTest {
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("inline-ok"))));
 
-        InvocationResponse response = invocationService.invokeSync(
+        InvocationResponse response = invocationService.invokeSyncReactive(
                 "inline-fn",
                 new InvocationRequest("payload", Map.of()),
                 null,
                 null,
                 1_000
-        );
+        ).block();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("inline-ok");
@@ -301,38 +301,6 @@ class InvocationServiceDispatchTest {
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
         verify(enqueuer).releaseDispatchSlot("inline-fn");
-    }
-
-    @Test
-    void invokeSync_whenInterruptedWhileWaiting_restoresInterruptAndThrowsInterruptedException() {
-        FunctionSpec spec = functionSpec("interrupt-fn", ExecutionMode.LOCAL);
-        when(functionService.get("interrupt-fn")).thenReturn(Optional.of(spec));
-        when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(false);
-        AtomicReference<String> interruptedExecutionId = new AtomicReference<>();
-        doAnswer(invocation -> {
-            InvocationTask task = invocation.getArgument(0);
-            interruptedExecutionId.set(task.executionId());
-            return new CompletableFuture<DispatchResult>();
-        }).when(dispatcherRouter).dispatchLocal(any());
-
-        Thread.currentThread().interrupt();
-        try {
-            assertThatThrownBy(() -> invocationService.invokeSync(
-                    "interrupt-fn",
-                    new InvocationRequest("payload", Map.of()),
-                    null,
-                    null,
-                    1_000
-            )).isInstanceOf(InterruptedException.class);
-            assertThat(Thread.currentThread().isInterrupted()).isTrue();
-            assertThat(interruptedExecutionId).hasValueSatisfying(executionId ->
-                    assertThat(invocationService.getStatus(executionId)).get()
-                            .extracting(status -> status.status())
-                            .isEqualTo("timeout"));
-        } finally {
-            Thread.interrupted();
-        }
     }
 
     @Test
@@ -355,13 +323,13 @@ class InvocationServiceDispatchTest {
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("inline-ok"))));
 
-        InvocationResponse response = invocationServiceWithoutSyncQueue.invokeSync(
+        InvocationResponse response = invocationServiceWithoutSyncQueue.invokeSyncReactive(
                 "inline-no-sync-queue-fn",
                 new InvocationRequest("payload", Map.of()),
                 null,
                 null,
                 1_000
-        );
+        ).block();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("inline-ok");
@@ -385,13 +353,13 @@ class InvocationServiceDispatchTest {
             return true;
         }).when(enqueuer).enqueue(any());
 
-        InvocationResponse response = invocationService.invokeSync(
+        InvocationResponse response = invocationService.invokeSyncReactive(
                 "queued-sync-fn",
                 new InvocationRequest("payload", Map.of()),
                 null,
                 null,
                 1_000
-        );
+        ).block();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("queued-ok");
@@ -434,13 +402,13 @@ class InvocationServiceDispatchTest {
             return null;
         }).when(syncQueueGateway).enqueueOrThrow(any());
 
-        InvocationResponse response = invocationService.invokeSync(
+        InvocationResponse response = invocationService.invokeSyncReactive(
                 "sync-queued-sync-fn",
                 new InvocationRequest("payload", Map.of()),
                 null,
                 null,
                 1_000
-        );
+        ).block();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("ok");
@@ -486,13 +454,13 @@ class InvocationServiceDispatchTest {
             return null;
         }).when(syncQueueGateway).enqueueOrThrow(any());
 
-        assertThatThrownBy(() -> invocationService.invokeSync(
+        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
                 "queue-timeout-fn",
                 new InvocationRequest("payload", Map.of()),
                 "idem-sync-timeout",
                 null,
                 1_000
-        )).isInstanceOfSatisfying(SyncQueueRejectedException.class, ex -> {
+        ).block()).isInstanceOfSatisfying(SyncQueueRejectedException.class, ex -> {
             assertThat(ex.reason()).isEqualTo(SyncQueueRejectReason.TIMEOUT);
             assertThat(ex.retryAfterSeconds()).isEqualTo(9);
         });
@@ -518,25 +486,25 @@ class InvocationServiceDispatchTest {
         when(enqueuer.enabled()).thenReturn(false);
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(dispatchFuture);
 
-        InvocationResponse first = invocationService.invokeSync(
+        InvocationResponse first = invocationService.invokeSyncReactive(
                 "timeout-fn",
                 new InvocationRequest("payload", Map.of()),
                 "idem-timeout",
                 null,
                 10
-        );
+        ).block();
 
         assertThat(first.status()).isEqualTo("timeout");
 
         dispatchFuture.complete(DispatchResult.warm(InvocationResult.success("late-ok")));
 
-        InvocationResponse second = invocationService.invokeSync(
+        InvocationResponse second = invocationService.invokeSyncReactive(
                 "timeout-fn",
                 new InvocationRequest("payload", Map.of()),
                 "idem-timeout",
                 null,
                 10
-        );
+        ).block();
 
         assertThat(second.status()).isEqualTo("timeout");
         assertThat(invocationService.getStatus(first.executionId())).get()
@@ -723,13 +691,13 @@ class InvocationServiceDispatchTest {
             return false;
         }).when(enqueuer).enqueue(any());
 
-        assertThatThrownBy(() -> invocationService.invokeSync(
+        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
                 "sync-reject-local-fn",
                 new InvocationRequest("payload", Map.of()),
                 null,
                 null,
                 1_000
-        )).isInstanceOf(QueueFullException.class);
+        ).block()).isInstanceOf(QueueFullException.class);
 
         assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
                 assertThat(executionStore.get(executionId)).isEmpty());

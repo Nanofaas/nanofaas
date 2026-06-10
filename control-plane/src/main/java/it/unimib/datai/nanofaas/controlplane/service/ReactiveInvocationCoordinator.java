@@ -42,8 +42,8 @@ public final class ReactiveInvocationCoordinator {
             return Mono.just(replay);
         }
 
-        if (lookup.isNew()) {
-            try {
+        try {
+            InvocationEnqueueSupport.admitIfNew(lookup, () -> {
                 if (syncQueueGateway.enabled()) {
                     syncQueueGateway.enqueueOrThrow(record.task());
                 } else if (enqueuer.enabled()) {
@@ -51,11 +51,9 @@ public final class ReactiveInvocationCoordinator {
                 } else {
                     completionHandler.dispatch(record.task());
                 }
-                lookup.publishAdmission();
-            } catch (RuntimeException ex) {
-                lookup.abandonAdmission();
-                return Mono.error(ex);
-            }
+            });
+        } catch (RuntimeException ex) {
+            return Mono.error(ex);
         }
 
         int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
@@ -73,6 +71,12 @@ public final class ReactiveInvocationCoordinator {
                     record.markTimeout();
                     metrics.timeout(record.task().functionName());
                     return Mono.just(responseMapper.timeoutResponse(record));
+                })
+                .onErrorResume(ex -> !(ex instanceof SyncQueueRejectedException), ex -> {
+                    InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", ex.getMessage());
+                    record.markError(failure.error());
+                    metrics.error(record.task().functionName());
+                    return Mono.just(responseMapper.toResponse(record, failure));
                 });
     }
 }

@@ -332,15 +332,15 @@ class InvocationServiceRetryTest {
         // Create execution in a separate thread
         Thread invokerThread = new Thread(() -> {
             try {
-                InvocationResponse response = invocationService.invokeSync(
+                InvocationResponse response = invocationService.invokeSyncReactive(
                         "testFunc",
                         new InvocationRequest("payload", null),
                         null,
                         null,
                         5000  // 5 second timeout
-                );
+                ).block();
                 // Should get here after successful retry
-            } catch (InterruptedException e) {
+            } catch (RuntimeException e) {
                 Thread.currentThread().interrupt();
             }
         });

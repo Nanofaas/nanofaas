@@ -42,6 +42,20 @@ class ReactiveInvocationCoordinatorTest {
         assertThat(lookup.record().completion().isCancelled()).isFalse();
     }
 
+    @Test
+    void exceptionalCompletionYieldsErrorResponseNotTimeout() {
+        FunctionSpec spec = spec("fn-boom");
+        InvocationExecutionFactory.ExecutionLookup lookup =
+                factory.createOrReuseExecution("fn-boom", spec, new InvocationRequest("p", Map.of()), null, null);
+        lookup.record().completion().completeExceptionally(new RuntimeException("boom"));
+
+        InvocationResponse response = coordinator.invoke(lookup, spec, 1000).block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo("error");
+        assertThat(response.error().code()).isEqualTo("EXECUTION_FAILED");
+    }
+
     private static FunctionSpec spec(String name) {
         return new FunctionSpec(name, "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);

@@ -16,4 +16,23 @@ final class InvocationEnqueueSupport {
         }
         metrics.enqueue(record.task().functionName());
     }
+
+    /**
+     * Runs the admission flow for a freshly created execution: enqueue/dispatch, then
+     * publish the idempotency claim; on failure abandon the claim and rethrow.
+     * No-op when the lookup is a replay of an existing execution.
+     */
+    static void admitIfNew(InvocationExecutionFactory.ExecutionLookup lookup,
+                           Runnable admissionAction) {
+        if (!lookup.isNew()) {
+            return;
+        }
+        try {
+            admissionAction.run();
+            lookup.publishAdmission();
+        } catch (RuntimeException ex) {
+            lookup.abandonAdmission();
+            throw ex;
+        }
+    }
 }
