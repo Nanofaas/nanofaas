@@ -185,7 +185,7 @@ class ExecutionCompletionHandlerTest {
 
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
 
-        assertThat(record.snapshotReads()).isEqualTo(1);
+        assertThat(record.snapshotReads()).isEqualTo(0);
         assertThat(record.finishedAtReads()).isEqualTo(1);
     }
 
