@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from workflow_tasks.infra.ansible import bundled_ansible_root
 
 _ANSIBLE_ROOT = bundled_ansible_root()
