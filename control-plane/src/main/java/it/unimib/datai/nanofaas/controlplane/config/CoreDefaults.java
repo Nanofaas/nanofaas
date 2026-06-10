@@ -6,11 +6,13 @@ import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Fallback;
 
 @Configuration
+@EnableConfigurationProperties(ExecutionStoreProperties.class)
 public class CoreDefaults {
 
     @Bean

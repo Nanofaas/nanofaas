@@ -79,13 +79,8 @@ public class FunctionService {
                 return Optional.empty();
             }
 
-            RegisteredFunction registered;
-            try {
-                imageValidator.validate(initialResolved);
-                registered = resolveRegistration(initialResolved);
-            } catch (RuntimeException e) {
-                throw e;
-            }
+            imageValidator.validate(initialResolved);
+            RegisteredFunction registered = resolveRegistration(initialResolved);
 
             try {
                 notifyRegisterListeners(registered.spec());

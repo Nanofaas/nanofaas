@@ -168,8 +168,13 @@ public class SyncQueueService implements SyncQueueGateway {
     private void timeout(SyncQueueItem item) {
         ExecutionRecord record = executionStore.getOrNull(item.task().executionId());
         if (record != null) {
-            record.markTimeout();
-            record.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
+            // Guard: completeExecution publishes the future outside the record monitor; only complete if not already finalized.
+            synchronized (record) {
+                if (!record.isTerminal()) {
+                    record.markTimeout();
+                    record.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
+                }
+            }
         }
         metrics.dequeued(item.task().functionName());
         metrics.timedOut(item.task().functionName());

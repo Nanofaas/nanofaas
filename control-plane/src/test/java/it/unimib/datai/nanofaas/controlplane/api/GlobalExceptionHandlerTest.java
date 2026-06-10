@@ -33,7 +33,7 @@ class GlobalExceptionHandlerTest {
         ));
         MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null, bindingResult);
 
-        ResponseEntity<Map<String, Object>> response = handler.handleValidationErrors(ex);
+        ResponseEntity<Map<String, Object>> response = handler.handleBindingErrors(ex);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("VALIDATION_ERROR", response.getBody().get("error"));
@@ -51,7 +51,7 @@ class GlobalExceptionHandlerTest {
         WebExchangeBindException ex = mock(WebExchangeBindException.class);
         when(ex.getBindingResult()).thenReturn(bindingResult);
 
-        ResponseEntity<Map<String, Object>> response = handler.handleWebExchangeBindException(ex);
+        ResponseEntity<Map<String, Object>> response = handler.handleBindingErrors(ex);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("VALIDATION_ERROR", response.getBody().get("error"));

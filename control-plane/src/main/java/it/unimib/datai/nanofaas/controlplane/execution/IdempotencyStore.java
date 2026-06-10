@@ -33,13 +33,15 @@ public class IdempotencyStore {
     }
 
     public Optional<String> getExecutionId(String functionName, String key) {
-        StoredKey stored = keys.get(compose(functionName, key));
+        String composed = compose(functionName, key);
+        StoredKey stored = keys.get(composed);
         if (stored == null) {
             return Optional.empty();
         }
-        // Also check TTL during lookup for immediate expiration
-        if (stored.storedAt().plus(ttl).isBefore(Instant.now())) {
-            keys.remove(compose(functionName, key));
+        // Also check TTL during lookup for immediate expiration. Two-arg remove: a
+        // concurrent writer may have re-published this key with a fresh value.
+        if (isExpired(stored, Instant.now())) {
+            keys.remove(composed, stored);
             return Optional.empty();
         }
         if (stored.pending()) {
@@ -50,41 +52,6 @@ public class IdempotencyStore {
 
     public void put(String functionName, String key, String executionId) {
         keys.put(compose(functionName, key), StoredKey.published(executionId, Instant.now()));
-    }
-
-    /**
-     * Atomically stores the execution ID only if no valid (non-expired) mapping exists.
-     * @return the existing execution ID if present and not expired, or null if the new value was stored
-     */
-    public String putIfAbsent(String functionName, String key, String executionId) {
-        String composed = compose(functionName, key);
-        while (true) {
-            StoredKey newKey = StoredKey.published(executionId, Instant.now());
-            StoredKey existing = keys.putIfAbsent(composed, newKey);
-            if (existing == null) {
-                return null; // Successfully stored
-            }
-            if (!isExpired(existing, Instant.now())) {
-                return existing.executionId();
-            }
-            if (keys.replace(composed, existing, newKey)) {
-                return null;
-            }
-        }
-    }
-
-    public boolean replaceExecutionId(String functionName, String key, String expectedExecutionId, String newExecutionId) {
-        String composed = compose(functionName, key);
-        while (true) {
-            StoredKey existing = keys.get(composed);
-            if (existing == null || !existing.executionId().equals(expectedExecutionId)) {
-                return false;
-            }
-            StoredKey newKey = StoredKey.published(newExecutionId, Instant.now());
-            if (keys.replace(composed, existing, newKey)) {
-                return true;
-            }
-        }
     }
 
     public AcquireResult acquireOrGet(String functionName, String key) {

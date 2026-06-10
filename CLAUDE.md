@@ -136,7 +136,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 
 `control-plane/src/main/resources/application.yml`:
 - `nanofaas.defaults.timeoutMs` (30000), `concurrency` (4), `queueSize` (100), `maxRetries` (3)
-- `nanofaas.rate.maxPerSecond` (1000)
+- `nanofaas.rate.maxPerSecond` (1000000)
 - `nanofaas.deployment.default-backend`
 - `nanofaas.k8s.namespace`, `callbackUrl`
 - `nanofaas.container-local.runtime-adapter`, `bind-host`, `readiness-timeout`, `readiness-poll-interval`

@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
+import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -15,11 +17,27 @@ import jakarta.annotation.PreDestroy;
 @Component
 public class ExecutionStore {
     private final Map<String, StoredExecution> executions = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService janitor = Executors.newSingleThreadScheduledExecutor();
-    private final Duration cleanupTtl = Duration.ofMinutes(2);
-    private final Duration ttl = Duration.ofMinutes(5);
+    private final ScheduledExecutorService janitor;
+    private final Duration cleanupTtl;
+    private final Duration ttl;
+    private final Duration maxLifetime;
 
     public ExecutionStore() {
+        this(new ExecutionStoreProperties(null, null, null));
+    }
+
+    // @Autowired is required: with two constructors Spring would otherwise pick the
+    // no-arg one and silently ignore the configured properties.
+    @Autowired
+    public ExecutionStore(ExecutionStoreProperties properties) {
+        this.ttl = properties.ttl();
+        this.cleanupTtl = properties.cleanupTtl();
+        this.maxLifetime = properties.maxLifetime();
+        this.janitor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "execution-store-janitor");
+            t.setDaemon(true);
+            return t;
+        });
         janitor.scheduleAtFixedRate(this::evictExpired, 1, 1, TimeUnit.MINUTES);
     }
 
@@ -47,17 +65,20 @@ public class ExecutionStore {
         executions.remove(executionId);
     }
 
-    private void evictExpired() {
+    // Package-private for deterministic testing.
+    void evictExpired() {
         Instant now = Instant.now();
         Instant cutoff = now.minus(ttl);
         Instant cleanupCutoff = now.minus(cleanupTtl);
+        Instant lifetimeCutoff = now.minus(maxLifetime);
 
         executions.entrySet().removeIf(entry -> {
             StoredExecution stored = entry.getValue();
             ExecutionRecord record = stored.record();
             Instant created = stored.createdAt();
             if (!record.isTerminal()) {
-                return false;
+                // Stuck executions (lost dispatch, missing callback) must not leak forever.
+                return created.isBefore(lifetimeCutoff);
             }
 
             Instant completedAt = record.finishedAt();

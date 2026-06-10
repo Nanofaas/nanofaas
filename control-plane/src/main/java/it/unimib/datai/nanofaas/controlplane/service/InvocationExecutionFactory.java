@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.UUID;
 
 @Service
@@ -103,7 +104,7 @@ public final class InvocationExecutionFactory {
                                                       InvocationRequest request,
                                                       String idempotencyKey,
                                                       String traceId) {
-        String executionId = UUID.randomUUID().toString();
+        String executionId = newExecutionId();
         InvocationTask task = new InvocationTask(
                 executionId,
                 functionName,
@@ -115,6 +116,18 @@ public final class InvocationExecutionFactory {
                 1
         );
         return new ExecutionRecord(executionId, task);
+    }
+
+    /**
+     * UUIDv4-shaped id from ThreadLocalRandom. Execution ids need uniqueness, not
+     * unpredictability; this avoids the SecureRandom contention of UUID.randomUUID()
+     * on the invocation hot path.
+     */
+    static String newExecutionId() {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        long msb = (random.nextLong() & 0xFFFF_FFFF_FFFF_0FFFL) | 0x0000_0000_0000_4000L; // version 4
+        long lsb = (random.nextLong() & 0x3FFF_FFFF_FFFF_FFFFL) | 0x8000_0000_0000_0000L; // IETF variant
+        return new UUID(msb, lsb).toString();
     }
 
     private static void parkPendingClaim() {
