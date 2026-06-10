@@ -361,3 +361,19 @@ def test_scale_up_failure_message_includes_watcher_probe_errors(monkeypatch) -> 
         assert "Unable to connect" in str(exc)
         return
     raise AssertionError("expected RuntimeError")
+
+
+def test_autoscaling_k6_asset_has_no_embedded_stages() -> None:
+    from pathlib import Path
+
+    asset = (
+        Path(__file__).resolve().parents[1]
+        / "assets"
+        / "k6"
+        / "autoscaling.js"
+    )
+    content = asset.read_text(encoding="utf-8")
+    # Stages live in K6Config (passed as --stage CLI flags, which override script
+    # options); an embedded copy would silently drift.
+    assert "stages" not in content
+    assert "http_req_failed" in content  # threshold stays in the script
