@@ -21,6 +21,12 @@ GOLDEN: dict[str, tuple[str, ...]] = {
         "helm.deploy_control_plane", "helm.deploy_function_runtime",
         "loadtest.install_k6", "loadtest.run", "experiments.autoscaling",
     ),
+    "one-vm-helm-loadtest": (
+        "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
+        "registry.ensure_container", "images.build_core", "images.build_selected_functions",
+        "k3s.install", "k3s.configure_registry", "namespace.install",
+        "helm.deploy_control_plane", "helm.deploy_function_runtime",
+    ),
     "two-vm-loadtest": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",

@@ -13,6 +13,7 @@ def test_catalog_lists_expected_suite_names() -> None:
         "cli-host",
         "deploy-host",
         "helm-stack",
+        "one-vm-helm-loadtest",
         "two-vm-loadtest",
         "azure-vm-loadtest",
         "proxmox-vm-loadtest",
