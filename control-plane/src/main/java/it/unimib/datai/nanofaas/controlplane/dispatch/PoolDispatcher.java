@@ -26,6 +26,8 @@ public class PoolDispatcher implements Dispatcher {
                     DispatchResult.warm(InvocationResult.error("POOL_ENDPOINT_MISSING", "endpointUrl is required for POOL mode")));
         }
 
+        long timeoutMs = task.functionSpec().timeoutMs();
+
         WebClient.RequestBodySpec request = webClient.post()
                 .uri(endpoint)
                 .header("X-Execution-Id", task.executionId())
@@ -38,7 +40,11 @@ public class PoolDispatcher implements Dispatcher {
             request.header("Idempotency-Key", task.idempotencyKey());
         }
 
-        long timeoutMs = task.functionSpec().timeoutMs();
+        request.httpRequest(clientHttpRequest -> {
+            reactor.netty.http.client.HttpClientRequest reactorRequest = clientHttpRequest.getNativeRequest();
+            reactorRequest.responseTimeout(Duration.ofMillis(timeoutMs));
+        });
+
         return request.bodyValue(task.request())
                 .exchangeToMono(response -> {
                     boolean isCold = "true".equalsIgnoreCase(
