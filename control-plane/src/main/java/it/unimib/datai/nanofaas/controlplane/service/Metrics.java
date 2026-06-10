@@ -11,55 +11,46 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class Metrics {
     private final MeterRegistry registry;
-    private final Map<String, Counter> enqueueCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> dispatchCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> successCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> errorCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> retryCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> timeoutCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> rejectedCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> coldStartCounters = new ConcurrentHashMap<>();
-    private final Map<String, Counter> warmStartCounters = new ConcurrentHashMap<>();
-    private final Map<String, FunctionTimers> functionTimers = new ConcurrentHashMap<>();
+    private final Map<String, FunctionMeters> meters = new ConcurrentHashMap<>();
 
     public Metrics(MeterRegistry registry) {
         this.registry = registry;
     }
 
     public void enqueue(String function) {
-        counter(enqueueCounters, "function_enqueue_total", function).increment();
+        meters(function).enqueue().increment();
     }
 
     public void dispatch(String function) {
-        counter(dispatchCounters, "function_dispatch_total", function).increment();
+        meters(function).dispatch().increment();
     }
 
     public void success(String function) {
-        counter(successCounters, "function_success_total", function).increment();
+        meters(function).success().increment();
     }
 
     public void error(String function) {
-        counter(errorCounters, "function_error_total", function).increment();
+        meters(function).error().increment();
     }
 
     public void retry(String function) {
-        counter(retryCounters, "function_retry_total", function).increment();
+        meters(function).retry().increment();
     }
 
     public void timeout(String function) {
-        counter(timeoutCounters, "function_timeout_total", function).increment();
+        meters(function).timeout().increment();
     }
 
     public void queueRejected(String function) {
-        counter(rejectedCounters, "function_queue_rejected_total", function).increment();
+        meters(function).queueRejected().increment();
     }
 
     public void coldStart(String function) {
-        counter(coldStartCounters, "function_cold_start_total", function).increment();
+        meters(function).coldStart().increment();
     }
 
     public void warmStart(String function) {
-        counter(warmStartCounters, "function_warm_start_total", function).increment();
+        meters(function).warmStart().increment();
     }
 
     public Timer latency(String function) {
@@ -78,35 +69,48 @@ public class Metrics {
         return timers(function).e2eLatency();
     }
 
-    private Counter counter(Map<String, Counter> map, String name, String function) {
-        return map.computeIfAbsent(function, key -> Counter.builder(name)
-                .tag("function", function)
-                .register(registry));
-    }
-
     FunctionTimers timers(String function) {
-        return functionTimers.computeIfAbsent(function, this::registerTimers);
+        return meters(function).timers();
     }
 
-    private FunctionTimers registerTimers(String function) {
-        return new FunctionTimers(
-                Timer.builder("function_latency_ms")
-                        .tag("function", function)
-                        .publishPercentiles(0.5, 0.95, 0.99)
-                        .register(registry),
-                Timer.builder("function_init_duration_ms")
-                        .tag("function", function)
-                        .publishPercentiles(0.5, 0.95, 0.99)
-                        .register(registry),
-                Timer.builder("function_queue_wait_ms")
-                        .tag("function", function)
-                        .publishPercentiles(0.5, 0.95, 0.99)
-                        .register(registry),
-                Timer.builder("function_e2e_latency_ms")
-                        .tag("function", function)
-                        .publishPercentiles(0.5, 0.95, 0.99)
-                        .register(registry)
+    private FunctionMeters meters(String function) {
+        return meters.computeIfAbsent(function, this::registerMeters);
+    }
+
+    private FunctionMeters registerMeters(String function) {
+        return new FunctionMeters(
+                counter("function_enqueue_total", function),
+                counter("function_dispatch_total", function),
+                counter("function_success_total", function),
+                counter("function_error_total", function),
+                counter("function_retry_total", function),
+                counter("function_timeout_total", function),
+                counter("function_queue_rejected_total", function),
+                counter("function_cold_start_total", function),
+                counter("function_warm_start_total", function),
+                new FunctionTimers(
+                        timer("function_latency_ms", function),
+                        timer("function_init_duration_ms", function),
+                        timer("function_queue_wait_ms", function),
+                        timer("function_e2e_latency_ms", function)
+                )
         );
+    }
+
+    private Counter counter(String name, String function) {
+        return Counter.builder(name).tag("function", function).register(registry);
+    }
+
+    private Timer timer(String name, String function) {
+        return Timer.builder(name)
+                .tag("function", function)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+    }
+
+    record FunctionMeters(Counter enqueue, Counter dispatch, Counter success, Counter error,
+                          Counter retry, Counter timeout, Counter queueRejected,
+                          Counter coldStart, Counter warmStart, FunctionTimers timers) {
     }
 
     record FunctionTimers(Timer latency, Timer initDuration, Timer queueWait, Timer e2eLatency) {
