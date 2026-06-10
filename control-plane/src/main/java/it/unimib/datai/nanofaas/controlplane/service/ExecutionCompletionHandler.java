@@ -106,9 +106,10 @@ public class ExecutionCompletionHandler {
     }
 
     /**
-     * State transitions only; meter recording and future completion happen outside the
-     * record monitor (see publishFinalCompletion) so synchronous whenComplete callbacks
-     * never run while the lock is held.
+     * State transitions only; final-completion meter recording and future completion
+     * happen outside the record monitor (see publishFinalCompletion) so synchronous
+     * whenComplete callbacks never run while the lock is held. (Retry-path counters
+     * still increment under the lock.)
      */
     private FinalCompletion completeUnderLock(ExecutionRecord record,
                                               DispatchResult dispatchResult,

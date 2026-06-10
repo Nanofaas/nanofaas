@@ -180,7 +180,7 @@ class ExecutionCompletionHandlerTest {
     }
 
     @Test
-    void completeExecution_withSuccess_readsSinglePreCompletionSnapshot() {
+    void completeExecution_withSuccess_readsFieldsUnderLockWithoutSnapshot() {
         CountingExecutionRecord record = countingRecordInStore("exec-count", testSpec);
 
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
