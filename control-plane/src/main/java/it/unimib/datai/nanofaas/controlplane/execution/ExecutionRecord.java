@@ -7,9 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.EnumMap;
-import java.util.EnumSet;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -20,16 +17,6 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ExecutionRecord {
     private static final Logger log = LoggerFactory.getLogger(ExecutionRecord.class);
-    private static final Map<ExecutionState, EnumSet<ExecutionState>> ALLOWED_TRANSITIONS;
-
-    static {
-        ALLOWED_TRANSITIONS = new EnumMap<>(ExecutionState.class);
-        ALLOWED_TRANSITIONS.put(ExecutionState.QUEUED, EnumSet.of(ExecutionState.RUNNING, ExecutionState.TIMEOUT, ExecutionState.ERROR));
-        ALLOWED_TRANSITIONS.put(ExecutionState.RUNNING, EnumSet.of(ExecutionState.SUCCESS, ExecutionState.ERROR, ExecutionState.TIMEOUT, ExecutionState.QUEUED));
-        ALLOWED_TRANSITIONS.put(ExecutionState.SUCCESS, EnumSet.noneOf(ExecutionState.class));
-        ALLOWED_TRANSITIONS.put(ExecutionState.ERROR, EnumSet.noneOf(ExecutionState.class));
-        ALLOWED_TRANSITIONS.put(ExecutionState.TIMEOUT, EnumSet.noneOf(ExecutionState.class));
-    }
 
     private final String executionId;
     private final CompletableFuture<InvocationResult> completion;
@@ -79,16 +66,22 @@ public class ExecutionRecord {
         );
     }
 
+    /**
+     * Terminal states (SUCCESS, ERROR, TIMEOUT) are final; every transition between
+     * non-terminal states (including RUNNING -> QUEUED for retries) is allowed.
+     */
     private boolean canTransition(ExecutionState target) {
-        if (state != ExecutionState.SUCCESS && state != ExecutionState.ERROR && state != ExecutionState.TIMEOUT) {
-            return true;
-        }
-        EnumSet<ExecutionState> allowed = ALLOWED_TRANSITIONS.getOrDefault(state, EnumSet.noneOf(ExecutionState.class));
-        if (!allowed.contains(target)) {
+        if (isTerminalState(state)) {
             log.warn("Invalid state transition {} -> {} for execution {}", state, target, executionId);
             return false;
         }
         return true;
+    }
+
+    private static boolean isTerminalState(ExecutionState state) {
+        return state == ExecutionState.SUCCESS
+                || state == ExecutionState.ERROR
+                || state == ExecutionState.TIMEOUT;
     }
 
     /**
@@ -212,9 +205,7 @@ public class ExecutionRecord {
     }
 
     public synchronized boolean isTerminal() {
-        return state == ExecutionState.SUCCESS
-                || state == ExecutionState.ERROR
-                || state == ExecutionState.TIMEOUT;
+        return isTerminalState(state);
     }
 
     public synchronized ErrorInfo lastError() {
