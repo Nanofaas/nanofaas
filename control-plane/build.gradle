@@ -53,6 +53,7 @@ def selectedOptionalControlPlaneModuleProjects = availableOptionalControlPlaneMo
 
 dependencies {
     implementation project(':common')
+    implementation 'com.github.ben-manes.caffeine:caffeine'
     selectedOptionalControlPlaneModuleProjects.each { moduleProject ->
         runtimeOnly project(moduleProject.path)
     }
