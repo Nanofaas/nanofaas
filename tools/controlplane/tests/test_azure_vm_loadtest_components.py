@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
