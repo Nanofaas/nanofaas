@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.Optional;
 
@@ -89,7 +90,7 @@ public class InvocationService {
                     return new Prepared(spec,
                             executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId));
                 })
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(prepared -> reactiveCoordinator.invoke(prepared.lookup(), prepared.spec(), timeoutOverrideMs));
     }
 

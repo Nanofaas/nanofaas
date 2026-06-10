@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @RestController
 @RequestMapping("/v1")
@@ -57,7 +58,7 @@ public class InvocationController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId) {
         return Mono.fromCallable(() -> invocationService.invokeAsync(name, request, idempotencyKey, traceId))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(Schedulers.boundedElastic())
                 .map(response -> ResponseEntity.status(HttpStatus.ACCEPTED).body(response))
                 .onErrorResume(FunctionNotFoundException.class, ex ->
                         Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
