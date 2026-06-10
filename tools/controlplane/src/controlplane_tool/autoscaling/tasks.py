@@ -14,6 +14,56 @@ class AutoscalingSummary:
     final_desired_replicas: int
 
 
+@dataclass(frozen=True)
+class ReplicaProbe:
+    """Reads deployment replica counts over the VM command runner.
+
+    Errors are surfaced, not masked: a missing deployment and an unreachable
+    cluster must be distinguishable from "0 replicas" when diagnosing a run.
+    """
+
+    runner: VmCommandRunner
+    namespace: str
+    deployment_name: str
+    remote_dir: str
+
+    def ready_replicas(self) -> int:
+        return self._replica_count("{.status.readyReplicas}")
+
+    def desired_replicas(self) -> int:
+        return self._replica_count("{.spec.replicas}")
+
+    def _replica_count(self, jsonpath: str) -> int:
+        deployment = shlex.quote(self.deployment_name)
+        namespace = shlex.quote(self.namespace)
+        output = shlex.quote(f"jsonpath={jsonpath}")
+        result = self.runner.run_vm_command(
+            (
+                "bash",
+                "-lc",
+                f"kubectl get deployment {deployment} -n {namespace} -o {output}",
+            ),
+            env={},
+            remote_dir=self.remote_dir,
+            dry_run=False,
+        )
+        if result.return_code != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            if "NotFound" in detail:
+                raise RuntimeError(
+                    f"deployment {self.deployment_name!r} not found in namespace {self.namespace!r}: {detail}"
+                )
+            raise RuntimeError(detail or f"kubectl replica query failed (exit {result.return_code})")
+        raw = (result.stdout or "").strip()
+        if not raw:
+            # jsonpath yields empty output when the field is absent (e.g. readyReplicas at 0).
+            return 0
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise RuntimeError(f"invalid replica count: {result.stdout!r}") from exc
+
+
 @dataclass
 class VerifyAutoscalingReplicas:
     task_id: str
@@ -27,34 +77,19 @@ class VerifyAutoscalingReplicas:
     scale_down_polls: int = 24
     poll_interval_seconds: int = 5
 
-    def _replica_count(self, jsonpath: str) -> int:
-        deployment = shlex.quote(self.deployment_name)
-        namespace = shlex.quote(self.namespace)
-        output = shlex.quote(f"jsonpath={jsonpath}")
-        result = self.runner.run_vm_command(
-            (
-                "bash",
-                "-lc",
-                "kubectl get deployment "
-                f"{deployment} -n {namespace} "
-                f"-o {output} 2>/dev/null || echo 0",
-            ),
-            env={},
+    def _probe(self) -> ReplicaProbe:
+        return ReplicaProbe(
+            runner=self.runner,
+            namespace=self.namespace,
+            deployment_name=self.deployment_name,
             remote_dir=self.remote_dir,
-            dry_run=False,
         )
-        if result.return_code != 0:
-            raise RuntimeError(result.stderr or result.stdout or "kubectl replica query failed")
-        try:
-            return int((result.stdout or "0").strip() or "0")
-        except ValueError as exc:
-            raise RuntimeError(f"invalid replica count: {result.stdout!r}") from exc
 
     def _ready_replicas(self) -> int:
-        return self._replica_count("{.status.readyReplicas}")
+        return self._probe().ready_replicas()
 
     def _desired_replicas(self) -> int:
-        return self._replica_count("{.spec.replicas}")
+        return self._probe().desired_replicas()
 
     def run(self) -> AutoscalingSummary:
         max_replicas = 0

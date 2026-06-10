@@ -1,3 +1,7 @@
-from controlplane_tool.autoscaling.tasks import AutoscalingSummary, VerifyAutoscalingReplicas
+from controlplane_tool.autoscaling.tasks import (
+    AutoscalingSummary,
+    ReplicaProbe,
+    VerifyAutoscalingReplicas,
+)
 
-__all__ = ["AutoscalingSummary", "VerifyAutoscalingReplicas"]
+__all__ = ["AutoscalingSummary", "ReplicaProbe", "VerifyAutoscalingReplicas"]

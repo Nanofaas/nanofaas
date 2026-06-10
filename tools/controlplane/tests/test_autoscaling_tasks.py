@@ -145,3 +145,59 @@ def test_verify_autoscaling_replicas_fails_when_scale_down_never_reaches_zero(mo
         assert "Scale-down to 0 not observed" in str(exc)
         return
     raise AssertionError("expected RuntimeError")
+
+
+class _FailingRunner:
+    def __init__(self, stderr: str, return_code: int = 1) -> None:
+        self.stderr = stderr
+        self.return_code = return_code
+
+    def run_vm_command(self, argv, *, env, remote_dir, dry_run):
+        return _Result(return_code=self.return_code, stdout="", stderr=self.stderr)
+
+
+def test_replica_probe_reports_missing_deployment_clearly() -> None:
+    from controlplane_tool.autoscaling.tasks import ReplicaProbe
+
+    probe = ReplicaProbe(
+        runner=_FailingRunner('Error from server (NotFound): deployments.apps "fn-x" not found'),
+        namespace="nanofaas",
+        deployment_name="fn-x",
+        remote_dir="/home/ubuntu/mcFaas",
+    )
+    try:
+        probe.desired_replicas()
+    except RuntimeError as exc:
+        assert "not found" in str(exc)
+        assert "fn-x" in str(exc)
+        return
+    raise AssertionError("expected RuntimeError")
+
+
+def test_replica_probe_propagates_kubectl_errors() -> None:
+    from controlplane_tool.autoscaling.tasks import ReplicaProbe
+
+    probe = ReplicaProbe(
+        runner=_FailingRunner("Unable to connect to the server: dial tcp: lookup ..."),
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir="/home/ubuntu/mcFaas",
+    )
+    try:
+        probe.ready_replicas()
+    except RuntimeError as exc:
+        assert "Unable to connect" in str(exc)
+        return
+    raise AssertionError("expected RuntimeError")
+
+
+def test_replica_probe_treats_empty_jsonpath_output_as_zero() -> None:
+    from controlplane_tool.autoscaling.tasks import ReplicaProbe
+
+    probe = ReplicaProbe(
+        runner=_Runner([""]),  # readyReplicas is absent from status when 0
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir="/home/ubuntu/mcFaas",
+    )
+    assert probe.ready_replicas() == 0
