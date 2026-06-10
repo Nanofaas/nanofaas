@@ -330,3 +330,34 @@ def test_verify_uses_watcher_max_and_skips_scale_up_polling(monkeypatch) -> None
     assert summary.final_desired_replicas == 0
     # One kubectl call total (the final desired check), no scale-up polling.
     assert len(runner.commands) == 1
+
+
+def test_scale_up_failure_message_includes_watcher_probe_errors(monkeypatch) -> None:
+    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+
+    class _WatcherStub:
+        max_observed = 0
+        errors = ["Unable to connect to the server: dial tcp"]
+
+    runner = _Runner(["0", "0"])
+    task = VerifyAutoscalingReplicas(
+        task_id="autoscaling.verify_replicas",
+        title="Verify autoscaling replicas",
+        runner=runner,
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir="/home/ubuntu/mcFaas",
+        scale_up_polls=1,
+        scale_down_initial_delay_seconds=0,
+        scale_down_polls=1,
+        poll_interval_seconds=1,
+        watcher=_WatcherStub(),
+    )
+
+    try:
+        task.run()
+    except RuntimeError as exc:
+        assert "Scale-up not observed" in str(exc)
+        assert "Unable to connect" in str(exc)
+        return
+    raise AssertionError("expected RuntimeError")

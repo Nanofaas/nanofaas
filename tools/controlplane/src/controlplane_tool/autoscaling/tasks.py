@@ -169,7 +169,11 @@ class VerifyAutoscalingReplicas:
                     break
 
         if max_replicas <= 1:
-            raise RuntimeError(f"Scale-up not observed: max replicas stayed at {max_replicas}")
+            message = f"Scale-up not observed: max replicas stayed at {max_replicas}"
+            watcher_errors = list(getattr(self.watcher, "errors", []) or [])
+            if watcher_errors:
+                message += f" (watcher probe errors: {watcher_errors[-1]!r}, {len(watcher_errors)} total)"
+            raise RuntimeError(message)
 
         time.sleep(self.scale_down_initial_delay_seconds)
         final_desired = self._desired_replicas()
