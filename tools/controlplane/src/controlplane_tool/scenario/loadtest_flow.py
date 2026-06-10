@@ -88,6 +88,9 @@ def _two_vm_remote_paths_for(request, ctx: RunContext):
     )
 
 
+# Optional adapter hooks. Two-VM adapters don't implement them; the getattr
+# fallbacks below ARE the defaults (dedicated loadgen VM, stack_info reuse,
+# no post-loadgen tail). One-VM adapters override them.
 def _uses_dedicated_loadgen_vm(adapter) -> bool:
     fn = getattr(adapter, "uses_dedicated_loadgen_vm", None)
     return True if fn is None else bool(fn())
