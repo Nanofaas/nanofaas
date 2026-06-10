@@ -88,6 +88,31 @@ def _two_vm_remote_paths_for(request, ctx: RunContext):
     )
 
 
+def _uses_dedicated_loadgen_vm(adapter) -> bool:
+    fn = getattr(adapter, "uses_dedicated_loadgen_vm", None)
+    return True if fn is None else bool(fn())
+
+
+def _loadgen_info_for(adapter, ctx: RunContext):
+    fn = getattr(adapter, "loadgen_info", None)
+    return ctx.stack_info if fn is None else fn(ctx)
+
+
+def _post_loadgen_tasks(adapter, ctx: RunContext) -> list:
+    fn = getattr(adapter, "post_loadgen_tasks", None)
+    return [] if fn is None else list(fn(ctx))
+
+
+def _post_loadgen_task_ids(adapter) -> list[str]:
+    fn = getattr(adapter, "post_loadgen_task_ids", None)
+    return [] if fn is None else list(fn())
+
+
+def _post_loadgen_task_titles(adapter) -> list[str]:
+    fn = getattr(adapter, "post_loadgen_task_titles", None)
+    return [] if fn is None else list(fn())
+
+
 _LOADGEN_BODY_IDS = (
     "loadgen.install_k6",
     "loadgen.run_k6",
@@ -279,13 +304,16 @@ def _run_loadtest_flow_native(*, runner, request, setup, recipe, adapter) -> Non
     prelude += adapter.extra_steps(FlowPhase.AFTER_STACK_READY, ctx)
     _run_workflow(prelude)
 
-    # ── 3. Ensure loadgen VM running ────────────────────────────────────────
-    ctx.loadgen_info = _ensure_vm(
-        "vm.loadgen.ensure_running",
-        f"Ensure loadgen VM running{s}",
-        adapter.loadgen_lifecycle(),
-        _loadgen_vm_config(request),
-    )
+    # ── 3. Ensure loadgen VM running, or reuse stack VM for one-VM mode ─────
+    if _uses_dedicated_loadgen_vm(adapter):
+        ctx.loadgen_info = _ensure_vm(
+            "vm.loadgen.ensure_running",
+            f"Ensure loadgen VM running{s}",
+            adapter.loadgen_lifecycle(),
+            _loadgen_vm_config(request),
+        )
+    else:
+        ctx.loadgen_info = _loadgen_info_for(adapter, ctx)
 
     # ── 4. Prepare loadgen: remote paths, run dir, URLs ─────────────────────
     ctx.remote_paths = _two_vm_remote_paths_for(request, ctx)
@@ -303,6 +331,7 @@ def _run_loadtest_flow_native(*, runner, request, setup, recipe, adapter) -> Non
 
     # ── 6. Loadgen body workflow ────────────────────────────────────────────
     body = _build_loadgen_body(runner, request, adapter, ctx)
+    body += _post_loadgen_tasks(adapter, ctx)
     cleanup = _destroy_tasks(adapter, ctx, request)
     _run_workflow(body, cleanup_tasks=cleanup)
 
@@ -311,13 +340,17 @@ def _destroy_tasks(adapter, ctx: RunContext, request) -> list:
     s = adapter.title_suffix
     if not getattr(request, "cleanup_vm", True):
         return []
-    return [
-        DestroyVm(
-            task_id="vm.loadgen.destroy",
-            title=f"Destroy loadgen VM{s}",
-            lifecycle=adapter.loadgen_lifecycle(),
-            info=ctx.loadgen_info,
-        ),
+    tasks = []
+    if _uses_dedicated_loadgen_vm(adapter):
+        tasks.append(
+            DestroyVm(
+                task_id="vm.loadgen.destroy",
+                title=f"Destroy loadgen VM{s}",
+                lifecycle=adapter.loadgen_lifecycle(),
+                info=ctx.loadgen_info,
+            )
+        )
+    tasks += [
         DestroyVm(
             task_id="vm.stack.destroy",
             title=f"Destroy stack VM{s}",
@@ -325,6 +358,7 @@ def _destroy_tasks(adapter, ctx: RunContext, request) -> list:
             info=ctx.stack_info,
         ),
     ]
+    return tasks
 
 
 def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, event_listener) -> None:
@@ -368,13 +402,16 @@ def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, even
         for task in adapter.extra_steps(FlowPhase.AFTER_STACK_READY, ctx):
             emitter.run_task(task)
 
-        loadgen_task = _ensure_vm_task(
-            "vm.loadgen.ensure_running",
-            f"Ensure loadgen VM running{s}",
-            adapter.loadgen_lifecycle(),
-            _loadgen_vm_config(request),
-        )
-        ctx.loadgen_info = emitter.run_task(loadgen_task)
+        if _uses_dedicated_loadgen_vm(adapter):
+            loadgen_task = _ensure_vm_task(
+                "vm.loadgen.ensure_running",
+                f"Ensure loadgen VM running{s}",
+                adapter.loadgen_lifecycle(),
+                _loadgen_vm_config(request),
+            )
+            ctx.loadgen_info = emitter.run_task(loadgen_task)
+        else:
+            ctx.loadgen_info = _loadgen_info_for(adapter, ctx)
 
         ctx.remote_paths = _two_vm_remote_paths_for(request, ctx)
         ctx.run_dir = adapter.create_run_dir()
@@ -392,6 +429,7 @@ def _run_loadtest_flow_emitting(*, runner, request, setup, recipe, adapter, even
 
     # ── body + cleanup: native Workflow cleanup semantics (path b) ──────────
     body = _build_loadgen_body(runner, request, adapter, ctx)
+    body += _post_loadgen_tasks(adapter, ctx)
     cleanup = _destroy_tasks(adapter, ctx, request)
     emitter.run_tasks(body, cleanup_tasks=cleanup)
 
@@ -472,10 +510,14 @@ def loadtest_flow_task_ids(*, runner, request, setup, recipe, adapter) -> list:
         **_static_hook_kwargs(adapter),
     )
     ids += list(adapter.extra_step_ids(FlowPhase.AFTER_STACK_READY))
-    ids += ["vm.loadgen.ensure_running"]
+    if _uses_dedicated_loadgen_vm(adapter):
+        ids += ["vm.loadgen.ensure_running"]
     ids += list(adapter.extra_step_ids(FlowPhase.BEFORE_LOADGEN))
     ids += list(_LOADGEN_BODY_IDS)
-    ids += ["vm.loadgen.destroy", "vm.stack.destroy"]
+    ids += _post_loadgen_task_ids(adapter)
+    if _uses_dedicated_loadgen_vm(adapter):
+        ids += ["vm.loadgen.destroy"]
+    ids += ["vm.stack.destroy"]
     return ids
 
 
@@ -492,10 +534,14 @@ def loadtest_flow_phase_titles(*, runner, request, setup, recipe, adapter) -> li
         )
     ]
     titles += list(_adapter_extra_titles(adapter, FlowPhase.AFTER_STACK_READY))
-    titles += [f"Ensure loadgen VM running{s}"]
+    if _uses_dedicated_loadgen_vm(adapter):
+        titles += [f"Ensure loadgen VM running{s}"]
     titles += list(_adapter_extra_titles(adapter, FlowPhase.BEFORE_LOADGEN))
     titles += [f"{base}{s}" for base in _LOADGEN_BODY_BASE_TITLES]
-    titles += [f"Destroy loadgen VM{s}", f"Destroy stack VM{s}"]
+    titles += _post_loadgen_task_titles(adapter)
+    if _uses_dedicated_loadgen_vm(adapter):
+        titles += [f"Destroy loadgen VM{s}"]
+    titles += [f"Destroy stack VM{s}"]
     return titles
 
 
