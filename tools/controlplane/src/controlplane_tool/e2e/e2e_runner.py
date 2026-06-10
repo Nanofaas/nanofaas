@@ -154,6 +154,11 @@ class E2eRunner:
         if request.scenario == "helm-stack":
             from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
             return build_helm_stack_plan(self, self._prepare_recipe_request(request))
+        if request.scenario == "one-vm-helm-loadtest":
+            from controlplane_tool.scenario.scenarios.one_vm_helm_loadtest import (
+                build_one_vm_helm_loadtest_plan,
+            )
+            return build_one_vm_helm_loadtest_plan(self, self._prepare_recipe_request(request))
         if request.scenario == "cli-stack":
             from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
             return build_cli_stack_plan(self, self._prepare_recipe_request(request))
@@ -274,6 +279,13 @@ class E2eRunner:
                 if scenario.name == "helm-stack":
                     from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
                     plans.append(build_helm_stack_plan(self, request))
+                    vm_bootstrap_planned = True
+                    continue
+                if scenario.name == "one-vm-helm-loadtest":
+                    from controlplane_tool.scenario.scenarios.one_vm_helm_loadtest import (
+                        build_one_vm_helm_loadtest_plan,
+                    )
+                    plans.append(build_one_vm_helm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
                 if scenario.name == "cli-stack":

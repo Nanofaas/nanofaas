@@ -73,6 +73,11 @@ class LoadtestConnectivityAdapter(Protocol):
     ) -> Optional[object]: ...
     def register_functions(self, ctx: RunContext) -> None: ...
     def extra_step_titles(self, phase: FlowPhase) -> list[str]: ...
+    def uses_dedicated_loadgen_vm(self) -> bool: ...
+    def loadgen_info(self, ctx: RunContext): ...
+    def post_loadgen_tasks(self, ctx: RunContext) -> list: ...
+    def post_loadgen_task_ids(self) -> list[str]: ...
+    def post_loadgen_task_titles(self) -> list[str]: ...
 
 
 @dataclass
@@ -159,6 +164,21 @@ class MultipassLoadtestAdapter:
         return None
 
     def extra_step_titles(self, phase: FlowPhase) -> list[str]:
+        return []
+
+    def uses_dedicated_loadgen_vm(self) -> bool:
+        return True
+
+    def loadgen_info(self, ctx: RunContext):
+        return ctx.stack_info
+
+    def post_loadgen_tasks(self, ctx: RunContext) -> list:
+        return []
+
+    def post_loadgen_task_ids(self) -> list[str]:
+        return []
+
+    def post_loadgen_task_titles(self) -> list[str]:
         return []
 
     def register_functions(self, ctx: RunContext) -> None:
@@ -467,6 +487,21 @@ class ProxmoxLoadtestAdapter:
             return ["Publish Proxmox NAT ports"]
         return []
 
+    def uses_dedicated_loadgen_vm(self) -> bool:
+        return True
+
+    def loadgen_info(self, ctx: RunContext):
+        return ctx.stack_info
+
+    def post_loadgen_tasks(self, ctx: RunContext) -> list:
+        return []
+
+    def post_loadgen_task_ids(self) -> list[str]:
+        return []
+
+    def post_loadgen_task_titles(self) -> list[str]:
+        return []
+
     # ── event/cleanup capabilities ─────────────────────────────────────────────
 
     def emits_step_events(self) -> bool:
@@ -725,6 +760,21 @@ class AzureLoadtestAdapter:
         return []
 
     def extra_step_titles(self, phase: FlowPhase) -> list[str]:
+        return []
+
+    def uses_dedicated_loadgen_vm(self) -> bool:
+        return True
+
+    def loadgen_info(self, ctx: RunContext):
+        return ctx.stack_info
+
+    def post_loadgen_tasks(self, ctx: RunContext) -> list:
+        return []
+
+    def post_loadgen_task_ids(self) -> list[str]:
+        return []
+
+    def post_loadgen_task_titles(self) -> list[str]:
         return []
 
     # ── event/cleanup capabilities ─────────────────────────────────────────────

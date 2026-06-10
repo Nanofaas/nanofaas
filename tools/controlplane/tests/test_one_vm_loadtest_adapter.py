@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from types import SimpleNamespace
+
+from controlplane_tool.e2e.e2e_models import E2eRequest
+from controlplane_tool.e2e.e2e_runner import E2eRunner
+from controlplane_tool.infra.vm.vm_models import VmRequest
+from controlplane_tool.scenario.loadtest_flow import RunContext
+from controlplane_tool.scenario.one_vm_loadtest_adapter import OneVmLoadtestAdapter
+from workflow_tasks.components.function_tasks import RegisterFunctions
+from workflow_tasks.loadtest.tasks import RunK6
+
+
+@dataclass
+class _Info:
+    name: str = "nanofaas-e2e"
+    host: str = "10.0.0.1"
+    user: str = "ubuntu"
+    home: str = "/home/ubuntu"
+
+
+def _request(tmp_path: Path) -> E2eRequest:
+    return E2eRequest(
+        scenario="one-vm-helm-loadtest",
+        runtime="java",
+        vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        cleanup_vm=True,
+    )
+
+
+def _ctx() -> RunContext:
+    return RunContext(
+        stack_info=_Info(),
+        stack_host="10.0.0.1",
+        loadgen_info=_Info(),
+        control_plane_url="http://10.0.0.1:30080",
+        prometheus_url="http://10.0.0.1:30090",
+        run_dir=Path("/tmp/run"),
+        remote_paths=SimpleNamespace(
+            root_dir="/home/ubuntu/two-vm-loadtest",
+            scripts_dir="/home/ubuntu/two-vm-loadtest/scripts",
+            payloads_dir="/home/ubuntu/two-vm-loadtest/payloads",
+            results_dir="/home/ubuntu/two-vm-loadtest/results",
+            script_path="/home/ubuntu/two-vm-loadtest/scripts/script.js",
+            summary_path="/home/ubuntu/two-vm-loadtest/results/k6-summary.json",
+            payload_path=None,
+        ),
+    )
+
+
+def test_one_vm_adapter_reuses_stack_vm_for_loadgen(tmp_path: Path) -> None:
+    adapter = OneVmLoadtestAdapter(
+        runner=E2eRunner(repo_root=tmp_path),
+        request=_request(tmp_path),
+    )
+
+    assert adapter.uses_dedicated_loadgen_vm() is False
+    assert adapter.control_plane_url(_ctx()) == "http://10.0.0.1:30080"
+    assert adapter.prometheus_url(_ctx()) == "http://10.0.0.1:30090"
+
+
+def test_one_vm_adapter_builds_autoscaling_tail_tasks(tmp_path: Path) -> None:
+    asset = tmp_path / "tools" / "controlplane" / "assets" / "k6" / "autoscaling.js"
+    asset.parent.mkdir(parents=True)
+    asset.write_text("export default function () {}\n", encoding="utf-8")
+    adapter = OneVmLoadtestAdapter(
+        runner=E2eRunner(repo_root=tmp_path),
+        request=_request(tmp_path),
+    )
+
+    tasks = adapter.post_loadgen_tasks(_ctx())
+
+    assert [task.task_id for task in tasks] == [
+        "autoscaling.register_function",
+        "autoscaling.run_k6",
+        "autoscaling.verify_replicas",
+    ]
+    assert isinstance(tasks[0], RegisterFunctions)
+    assert isinstance(tasks[1], RunK6)
+    assert tasks[1].config.script_path == Path("/home/ubuntu/two-vm-loadtest/scripts/autoscaling.js")
+    assert tasks[1].config.env["NANOFAAS_FUNCTION"] == "word-stats-java"

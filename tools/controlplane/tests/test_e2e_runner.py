@@ -907,3 +907,21 @@ def test_e2e_plan_run_stops_on_first_failed_command(tmp_path: Path) -> None:
 
     with pytest.raises(Exception):
         plan.run()
+
+
+def test_one_vm_helm_loadtest_plan_uses_one_vm_adapter_task_shape() -> None:
+    plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
+        E2eRequest(
+            scenario="one-vm-helm-loadtest",
+            runtime="java",
+            vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
+        )
+    )
+
+    assert plan.scenario.name == "one-vm-helm-loadtest"
+    assert "vm.stack.ensure_running" in plan.task_ids
+    assert "vm.loadgen.ensure_running" not in plan.task_ids
+    assert "autoscaling.register_function" in plan.task_ids
+    assert "autoscaling.run_k6" in plan.task_ids
+    assert "autoscaling.verify_replicas" in plan.task_ids
+

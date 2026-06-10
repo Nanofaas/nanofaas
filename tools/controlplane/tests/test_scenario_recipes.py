@@ -114,3 +114,28 @@ def test_helm_stack_recipe_and_cli_stack_recipe_share_components_without_sharing
             "experiments.autoscaling",
         ],
     )
+
+
+def test_one_vm_helm_loadtest_recipe_uses_stack_prelude_without_legacy_autoscaling() -> None:
+    recipe = build_scenario_recipe("one-vm-helm-loadtest")
+
+    assert recipe.requires_managed_vm is True
+    _assert_order(
+        list(recipe.component_ids),
+        [
+            "vm.ensure_running",
+            "vm.provision_base",
+            "repo.sync_to_vm",
+            "registry.ensure_container",
+            "images.build_core",
+            "images.build_selected_functions",
+            "k3s.install",
+            "k3s.configure_registry",
+            "namespace.install",
+            "helm.deploy_control_plane",
+            "helm.deploy_function_runtime",
+        ],
+    )
+    assert "experiments.autoscaling" not in recipe.component_ids
+    assert "loadtest.run" not in recipe.component_ids
+

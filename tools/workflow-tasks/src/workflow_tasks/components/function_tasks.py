@@ -15,9 +15,10 @@ class FunctionSpec:
     concurrency: int = 2
     queue_size: int = 20
     max_retries: int = 3
+    scaling_config: dict[str, object] | None = None
 
     def to_body(self) -> dict[str, object]:
-        return {
+        body: dict[str, object] = {
             "name": self.name,
             "image": self.image,
             "executionMode": self.execution_mode,
@@ -26,6 +27,9 @@ class FunctionSpec:
             "queueSize": self.queue_size,
             "maxRetries": self.max_retries,
         }
+        if self.scaling_config is not None:
+            body["scalingConfig"] = self.scaling_config
+        return body
 
 
 @dataclass

@@ -173,4 +173,20 @@ def build_scenario_flow(
             run=lambda: E2eRunner(repo_root).run(e2e_request, event_listener=event_listener),
         )
 
+    if scenario == "one-vm-helm-loadtest":
+        e2e_request = E2eRequest(
+            scenario="one-vm-helm-loadtest",
+            runtime=runtime,
+            vm=default_managed_vm_request(),
+            namespace=effective_namespace,
+            local_registry=local_registry or default_registry_url(),
+            cleanup_vm=False,
+        )
+
+        return LocalFlowDefinition(
+            flow_id=flow_id,
+            task_ids=scenario_task_ids(scenario),
+            run=lambda: E2eRunner(repo_root).run(e2e_request, event_listener=event_listener),
+        )
+
     raise ValueError(f"Unsupported scenario flow: {scenario}")
