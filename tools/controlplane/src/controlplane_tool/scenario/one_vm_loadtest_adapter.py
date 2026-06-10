@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from controlplane_tool.autoscaling.tasks import VerifyAutoscalingReplicas
+from controlplane_tool.autoscaling.tasks import (
+    ReplicaProbe,
+    ReplicaWatcher,
+    RunK6WithReplicaWatch,
+    VerifyAutoscalingReplicas,
+)
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
 from controlplane_tool.scenario.loadtest_adapter import MultipassConnectivity
 from controlplane_tool.scenario.loadtest_flow import FlowPhase, RunContext
@@ -147,6 +152,14 @@ class OneVmLoadtestAdapter:
         )
         autoscaling_script = Path(f"{ctx.remote_paths.scripts_dir}/autoscaling.js")
         autoscaling_summary = Path(f"{ctx.remote_paths.results_dir}/autoscaling-k6-summary.json")
+        loadgen_runner = self.loadgen_runner(ctx)
+        probe = ReplicaProbe(
+            runner=loadgen_runner,
+            namespace=setup.context.namespace,
+            deployment_name=f"fn-{function_name}",
+            remote_dir=ctx.loadgen_info.home,
+        )
+        watcher = ReplicaWatcher(probe)
         return [
             RegisterFunctions(
                 task_id="autoscaling.register_function",
@@ -169,34 +182,40 @@ class OneVmLoadtestAdapter:
                     )
                 ],
             ),
-            RunK6(
+            RunK6WithReplicaWatch(
                 task_id="autoscaling.run_k6",
                 title="Run autoscaling k6",
-                runner=self.loadgen_runner(ctx),
-                config=K6Config(
-                    script_path=autoscaling_script,
-                    target_url=ctx.control_plane_url,
-                    summary_output_path=autoscaling_summary,
-                    stages=(
-                        K6Stage(duration="10s", target=10),
-                        K6Stage(duration="20s", target=20),
-                        K6Stage(duration="90s", target=20),
-                        K6Stage(duration="10s", target=0),
+                run_k6=RunK6(
+                    task_id="autoscaling.run_k6.inner",
+                    title="Run autoscaling k6 (inner)",
+                    runner=loadgen_runner,
+                    config=K6Config(
+                        script_path=autoscaling_script,
+                        target_url=ctx.control_plane_url,
+                        summary_output_path=autoscaling_summary,
+                        stages=(
+                            K6Stage(duration="10s", target=10),
+                            K6Stage(duration="20s", target=20),
+                            K6Stage(duration="90s", target=20),
+                            K6Stage(duration="10s", target=0),
+                        ),
+                        env={
+                            "NANOFAAS_URL": ctx.control_plane_url,
+                            "NANOFAAS_FUNCTION": function_name,
+                        },
                     ),
-                    env={
-                        "NANOFAAS_URL": ctx.control_plane_url,
-                        "NANOFAAS_FUNCTION": function_name,
-                    },
+                    remote_dir=ctx.loadgen_info.home,
                 ),
-                remote_dir=ctx.loadgen_info.home,
+                watcher=watcher,
             ),
             VerifyAutoscalingReplicas(
                 task_id="autoscaling.verify_replicas",
                 title="Verify autoscaling replicas",
-                runner=self.loadgen_runner(ctx),
+                runner=loadgen_runner,
                 namespace=setup.context.namespace,
                 deployment_name=f"fn-{function_name}",
                 remote_dir=ctx.loadgen_info.home,
+                watcher=watcher,
             ),
         ]
 

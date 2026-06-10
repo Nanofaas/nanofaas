@@ -201,3 +201,132 @@ def test_replica_probe_treats_empty_jsonpath_output_as_zero() -> None:
         remote_dir="/home/ubuntu/mcFaas",
     )
     assert probe.ready_replicas() == 0
+
+
+def test_replica_watcher_records_max_while_running() -> None:
+    from controlplane_tool.autoscaling.tasks import ReplicaProbe, ReplicaWatcher
+
+    runner = _Runner(["1", "1", "2", "3", "2", "1"])
+    probe = ReplicaProbe(
+        runner=runner,
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir="/home/ubuntu/mcFaas",
+    )
+    watcher = ReplicaWatcher(probe, poll_interval_seconds=0.01)
+
+    watcher.start()
+    import time as _time
+    deadline = _time.time() + 2.0
+    while watcher.max_observed < 3 and _time.time() < deadline:
+        _time.sleep(0.01)
+    watcher.stop()
+
+    assert watcher.max_observed >= 3
+
+
+def test_replica_watcher_survives_probe_errors() -> None:
+    from controlplane_tool.autoscaling.tasks import ReplicaProbe, ReplicaWatcher
+
+    probe = ReplicaProbe(
+        runner=_FailingRunner("Unable to connect to the server"),
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir="/home/ubuntu/mcFaas",
+    )
+    watcher = ReplicaWatcher(probe, poll_interval_seconds=0.01)
+    watcher.start()
+    import time as _time
+    _time.sleep(0.05)
+    watcher.stop()  # must not raise; errors recorded, watcher keeps sampling
+
+    assert watcher.max_observed == 0
+
+
+def test_run_k6_with_replica_watch_starts_and_stops_watcher_around_run() -> None:
+    from controlplane_tool.autoscaling.tasks import RunK6WithReplicaWatch
+
+    events: list[str] = []
+
+    class _FakeWatcher:
+        max_observed = 2
+
+        def start(self) -> None:
+            events.append("watch.start")
+
+        def stop(self) -> None:
+            events.append("watch.stop")
+
+    class _FakeRunK6:
+        def run(self):
+            events.append("k6.run")
+            return "k6-result"
+
+    task = RunK6WithReplicaWatch(
+        task_id="autoscaling.run_k6",
+        title="Run autoscaling k6",
+        run_k6=_FakeRunK6(),
+        watcher=_FakeWatcher(),
+    )
+
+    assert task.run() == "k6-result"
+    assert events == ["watch.start", "k6.run", "watch.stop"]
+
+
+def test_run_k6_with_replica_watch_stops_watcher_on_k6_failure() -> None:
+    from controlplane_tool.autoscaling.tasks import RunK6WithReplicaWatch
+
+    events: list[str] = []
+
+    class _FakeWatcher:
+        def start(self) -> None:
+            events.append("watch.start")
+
+        def stop(self) -> None:
+            events.append("watch.stop")
+
+    class _BoomRunK6:
+        def run(self):
+            raise RuntimeError("k6 exploded")
+
+    task = RunK6WithReplicaWatch(
+        task_id="autoscaling.run_k6",
+        title="Run autoscaling k6",
+        run_k6=_BoomRunK6(),
+        watcher=_FakeWatcher(),
+    )
+    try:
+        task.run()
+    except RuntimeError:
+        pass
+    assert events == ["watch.start", "watch.stop"]
+
+
+def test_verify_uses_watcher_max_and_skips_scale_up_polling(monkeypatch) -> None:
+    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+
+    class _WatcherStub:
+        max_observed = 3
+
+    # Only the scale-down phase should hit kubectl: desired goes straight to 0.
+    runner = _Runner(["0"])
+    task = VerifyAutoscalingReplicas(
+        task_id="autoscaling.verify_replicas",
+        title="Verify autoscaling replicas",
+        runner=runner,
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir="/home/ubuntu/mcFaas",
+        scale_up_polls=2,
+        scale_down_initial_delay_seconds=0,
+        scale_down_polls=1,
+        poll_interval_seconds=1,
+        watcher=_WatcherStub(),
+    )
+
+    summary = task.run()
+
+    assert summary.max_replicas_observed == 3
+    assert summary.final_desired_replicas == 0
+    # One kubectl call total (the final desired check), no scale-up polling.
+    assert len(runner.commands) == 1

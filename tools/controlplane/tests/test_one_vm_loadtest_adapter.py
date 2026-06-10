@@ -72,12 +72,17 @@ def test_one_vm_adapter_builds_autoscaling_tail_tasks(tmp_path: Path) -> None:
 
     tasks = adapter.post_loadgen_tasks(_ctx())
 
+    from controlplane_tool.autoscaling.tasks import RunK6WithReplicaWatch, VerifyAutoscalingReplicas
+
     assert [task.task_id for task in tasks] == [
         "autoscaling.register_function",
         "autoscaling.run_k6",
         "autoscaling.verify_replicas",
     ]
     assert isinstance(tasks[0], RegisterFunctions)
-    assert isinstance(tasks[1], RunK6)
-    assert tasks[1].config.script_path == Path("/home/ubuntu/two-vm-loadtest/scripts/autoscaling.js")
-    assert tasks[1].config.env["NANOFAAS_FUNCTION"] == "word-stats-java"
+    assert isinstance(tasks[1], RunK6WithReplicaWatch)
+    assert isinstance(tasks[1].run_k6, RunK6)
+    assert tasks[1].run_k6.config.script_path == Path("/home/ubuntu/two-vm-loadtest/scripts/autoscaling.js")
+    assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] == "word-stats-java"
+    assert isinstance(tasks[2], VerifyAutoscalingReplicas)
+    assert tasks[2].watcher is tasks[1].watcher
