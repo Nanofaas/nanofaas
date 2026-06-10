@@ -33,13 +33,15 @@ public class IdempotencyStore {
     }
 
     public Optional<String> getExecutionId(String functionName, String key) {
-        StoredKey stored = keys.get(compose(functionName, key));
+        String composed = compose(functionName, key);
+        StoredKey stored = keys.get(composed);
         if (stored == null) {
             return Optional.empty();
         }
-        // Also check TTL during lookup for immediate expiration
-        if (stored.storedAt().plus(ttl).isBefore(Instant.now())) {
-            keys.remove(compose(functionName, key));
+        // Also check TTL during lookup for immediate expiration. Two-arg remove: a
+        // concurrent writer may have re-published this key with a fresh value.
+        if (isExpired(stored, Instant.now())) {
+            keys.remove(composed, stored);
             return Optional.empty();
         }
         if (stored.pending()) {
