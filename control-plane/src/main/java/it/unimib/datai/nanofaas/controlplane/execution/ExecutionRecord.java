@@ -222,56 +222,6 @@ public class ExecutionRecord {
         return output;
     }
 
-    // Legacy setters - prefer the mark* methods for state transitions
-
-    /**
-     * @deprecated Use {@link #resetForRetry(InvocationTask)} instead
-     */
-    @Deprecated
-    public synchronized void updateTask(InvocationTask newTask) {
-        this.task = newTask;
-    }
-
-    /**
-     * @deprecated Use {@link #markRunning()}, {@link #markSuccess(Object)}, etc.
-     */
-    @Deprecated
-    public synchronized void state(ExecutionState state) {
-        this.state = state;
-    }
-
-    /**
-     * @deprecated Use {@link #markRunning()}
-     */
-    @Deprecated
-    public synchronized void startedAt(Instant startedAt) {
-        this.startedAt = startedAt;
-    }
-
-    /**
-     * @deprecated Use mark* methods instead
-     */
-    @Deprecated
-    public synchronized void finishedAt(Instant finishedAt) {
-        this.finishedAt = finishedAt;
-    }
-
-    /**
-     * @deprecated Use {@link #markError(ErrorInfo)}
-     */
-    @Deprecated
-    public synchronized void lastError(ErrorInfo lastError) {
-        this.lastError = lastError;
-    }
-
-    /**
-     * @deprecated Use {@link #markSuccess(Object)}
-     */
-    @Deprecated
-    public synchronized void output(Object output) {
-        this.output = output;
-    }
-
     /**
      * Immutable snapshot of execution state for consistent reads.
      */
