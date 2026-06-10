@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -32,6 +34,7 @@ public class ExecutionRecord {
     private boolean coldStart;
     private Long initDurationMs;
     private boolean cleaned;
+    private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
 
     public ExecutionRecord(String executionId, InvocationTask task) {
         this.executionId = executionId;
@@ -190,6 +193,14 @@ public class ExecutionRecord {
         this.coldStart = false;
         this.initDurationMs = null;
         this.cleaned = false;
+    }
+
+    /**
+     * Records that the dispatch slot for the given attempt has been released.
+     * @return true the first time this attempt is released, false on duplicates
+     */
+    public synchronized boolean markDispatchSlotReleased(int attempt) {
+        return releasedDispatchAttempts.add(attempt);
     }
 
     // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads

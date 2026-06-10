@@ -14,11 +14,6 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -36,8 +31,6 @@ public class ExecutionCompletionHandler {
     private final InvocationEnqueuer enqueuer;
     private final DispatcherRouter dispatcherRouter;
     private final Metrics metrics;
-    private final Map<ExecutionRecord, Set<Integer>> releasedDispatchAttempts =
-            Collections.synchronizedMap(new WeakHashMap<>());
 
     public ExecutionCompletionHandler(ExecutionStore executionStore,
                                       @Nullable InvocationEnqueuer enqueuer,
@@ -215,15 +208,8 @@ public class ExecutionCompletionHandler {
     }
 
     private void releaseDispatchSlotOnce(ExecutionRecord record, int attempt, String functionName) {
-        if (markDispatchSlotReleased(record, attempt)) {
+        if (record.markDispatchSlotReleased(attempt)) {
             releaseDispatchSlot(functionName);
-        }
-    }
-
-    private boolean markDispatchSlotReleased(ExecutionRecord record, int attempt) {
-        synchronized (releasedDispatchAttempts) {
-            Set<Integer> attempts = releasedDispatchAttempts.computeIfAbsent(record, ignored -> new HashSet<>());
-            return attempts.add(attempt);
         }
     }
 
