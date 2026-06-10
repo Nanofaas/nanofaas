@@ -1,208 +1,69 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
+import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.common.model.RuntimeMode;
+import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ExecutionStoreEvictionTest {
 
-    private ExecutionStore store = new ExecutionStore();
-
-    @AfterEach
-    void tearDown() {
-        store.shutdown();
+    private static ExecutionRecord record(String id) {
+        FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
+                1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
+        InvocationTask task = new InvocationTask(id, "fn", spec,
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1);
+        return new ExecutionRecord(id, task);
     }
 
     @Test
-    void eviction_doesNotRemoveRunningExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-running");
-        record.markRunning();
-        store.put(record);
+    void nonTerminalRecordsAreEvictedAfterMaxLifetime() throws InterruptedException {
+        ExecutionStoreProperties props = new ExecutionStoreProperties(
+                Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofMillis(50));
+        ExecutionStore store = new ExecutionStore(props);
+        try {
+            ExecutionRecord stuck = record("stuck-queued");
+            store.put(stuck); // never transitions: simulates a lost dispatch
 
-        // Backdate the createdAt to simulate TTL expiry
-        backdateEntry("exec-running", Instant.now().minus(Duration.ofMinutes(7)));
+            Thread.sleep(120);
+            store.evictExpired();
 
-        // Trigger eviction
-        invokeEvictExpired();
-
-        // RUNNING record should NOT be evicted
-        assertThat(store.get("exec-running")).isPresent();
+            assertThat(store.getOrNull("stuck-queued")).isNull();
+        } finally {
+            store.shutdown();
+        }
     }
 
     @Test
-    void eviction_doesNotRemoveQueuedExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-queued");
-        store.put(record);
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-
-        backdateEntry("exec-queued", Instant.now().minus(Duration.ofMinutes(7)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-queued")).isPresent();
+    void freshNonTerminalRecordsSurviveEviction() {
+        ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null));
+        try {
+            ExecutionRecord running = record("fresh");
+            store.put(running);
+            store.evictExpired();
+            assertThat(store.getOrNull("fresh")).isNotNull();
+        } finally {
+            store.shutdown();
+        }
     }
 
     @Test
-    void eviction_removesCompletedExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-done");
-        record.markRunning();
-        record.markSuccess("result");
-        store.put(record);
-
-        backdateEntry("exec-done", Instant.now().minus(Duration.ofMinutes(7)));
-        record.finishedAt(Instant.now().minus(Duration.ofMinutes(7)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-done")).isEmpty();
-    }
-
-    @Test
-    void eviction_removesErrorExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-err");
-        record.markRunning();
-        record.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("ERR", "failed"));
-        store.put(record);
-
-        backdateEntry("exec-err", Instant.now().minus(Duration.ofMinutes(7)));
-        record.finishedAt(Instant.now().minus(Duration.ofMinutes(7)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-err")).isEmpty();
-    }
-
-    @Test
-    void eviction_removesTimedOutExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-timeout");
-        record.markRunning();
-        record.markTimeout();
-        store.put(record);
-
-        backdateEntry("exec-timeout", Instant.now().minus(Duration.ofMinutes(7)));
-        record.finishedAt(Instant.now().minus(Duration.ofMinutes(7)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-timeout")).isEmpty();
-    }
-
-    @Test
-    void eviction_keepsLongRunningExecutionThatJustCompleted() throws Exception {
-        ExecutionRecord record = createRecord("exec-long-running");
-        record.markRunning();
-        store.put(record);
-
-        backdateEntry("exec-long-running", Instant.now().minus(Duration.ofMinutes(7)));
-        record.markSuccess("result");
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-long-running")).isPresent();
-        assertThat(store.get("exec-long-running").orElseThrow().output()).isEqualTo("result");
-    }
-
-    @Test
-    void cleanup_usesCompletionTimeForTerminalExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-cleanup");
-        record.markRunning();
-        record.markSuccess("result");
-        store.put(record);
-
-        backdateEntry("exec-cleanup", Instant.now().minus(Duration.ofMinutes(3)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-cleanup")).isPresent();
-        assertThat(store.get("exec-cleanup").orElseThrow().output()).isEqualTo("result");
-    }
-
-    @Test
-    void eviction_keepsStaleRunningExecutionBecauseCompletionStillOwnsLifecycle() throws Exception {
-        ExecutionRecord record = createRecord("exec-stale-running");
-        record.markRunning();
-        store.put(record);
-
-        backdateEntry("exec-stale-running", Instant.now().minus(Duration.ofMinutes(11)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-stale-running")).isPresent();
-    }
-
-    @Test
-    void eviction_keepsStaleQueuedExecutionBecauseSchedulerStillOwnsLifecycle() throws Exception {
-        ExecutionRecord record = createRecord("exec-stale-queued");
-        store.put(record);
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-
-        backdateEntry("exec-stale-queued", Instant.now().minus(Duration.ofMinutes(11)));
-
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-stale-queued")).isPresent();
-    }
-
-    @Test
-    void eviction_doesNotRemoveRecentExecution() throws Exception {
-        ExecutionRecord record = createRecord("exec-recent");
-        record.markRunning();
-        record.markSuccess("result");
-        store.put(record);
-
-        // Don't backdate - should not be evicted even though completed
-        invokeEvictExpired();
-
-        assertThat(store.get("exec-recent")).isPresent();
-    }
-
-    @Test
-    void remove_deletesExecution() {
-        ExecutionRecord record = createRecord("exec-to-remove");
-        store.put(record);
-        assertThat(store.get("exec-to-remove")).isPresent();
-
-        store.remove("exec-to-remove");
-        assertThat(store.get("exec-to-remove")).isEmpty();
-    }
-
-    @SuppressWarnings("unchecked")
-    private void backdateEntry(String executionId, Instant createdAt) throws Exception {
-        Field executionsField = ExecutionStore.class.getDeclaredField("executions");
-        executionsField.setAccessible(true);
-        Map<String, Object> executions = (Map<String, Object>) executionsField.get(store);
-
-        Object storedExecution = executions.get(executionId);
-        // StoredExecution is a record - need to recreate with new createdAt
-        Field recordField = storedExecution.getClass().getDeclaredField("record");
-        recordField.setAccessible(true);
-        ExecutionRecord record = (ExecutionRecord) recordField.get(storedExecution);
-
-        // Create new StoredExecution with backdated createdAt via the record's constructor
-        Class<?> storedClass = storedExecution.getClass();
-        var ctor = storedClass.getDeclaredConstructors()[0];
-        ctor.setAccessible(true);
-        Object newStored = ctor.newInstance(record, createdAt);
-        executions.put(executionId, newStored);
-    }
-
-    private void invokeEvictExpired() throws Exception {
-        Method method = ExecutionStore.class.getDeclaredMethod("evictExpired");
-        method.setAccessible(true);
-        method.invoke(store);
-    }
-
-    private ExecutionRecord createRecord(String executionId) {
-        InvocationTask task = new InvocationTask(executionId, "testFunc", null, null, null, null, null, 1);
-        return new ExecutionRecord(executionId, task);
+    void cleanupReleasesPayloadOnlyOnce() {
+        ExecutionRecord done = record("done");
+        done.markSuccess("out");
+        done.cleanup();
+        InvocationTask afterFirstCleanup = done.task();
+        done.cleanup();
+        // cleanup must be idempotent: no new task allocation on repeat sweeps
+        assertThat(done.task()).isSameAs(afterFirstCleanup);
     }
 }

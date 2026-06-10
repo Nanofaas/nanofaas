@@ -31,6 +31,7 @@ public class ExecutionRecord {
     private Object output;
     private boolean coldStart;
     private Long initDurationMs;
+    private boolean cleaned;
 
     public ExecutionRecord(String executionId, InvocationTask task) {
         this.executionId = executionId;
@@ -152,6 +153,10 @@ public class ExecutionRecord {
      * Should be called after the result has been consumed or is no longer needed.
      */
     public synchronized void cleanup() {
+        if (this.cleaned) {
+            return;
+        }
+        this.cleaned = true;
         this.output = null;
         if (this.task != null) {
             // Replace task with one that has no request payload
@@ -184,6 +189,7 @@ public class ExecutionRecord {
         this.output = null;
         this.coldStart = false;
         this.initDurationMs = null;
+        this.cleaned = false;
     }
 
     // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads
