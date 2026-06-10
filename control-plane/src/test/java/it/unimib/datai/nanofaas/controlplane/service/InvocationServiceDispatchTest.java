@@ -116,7 +116,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_existingSuccessfulExecution_returnsMappedResponseWithoutDispatch() throws InterruptedException {
+    void invokeSync_existingSuccessfulExecution_returnsMappedResponseWithoutDispatch() {
         FunctionSpec spec = functionSpec("replay-success-fn", ExecutionMode.LOCAL);
         when(functionService.get("replay-success-fn")).thenReturn(Optional.of(spec));
 
@@ -171,7 +171,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_existingTimeoutExecution_returnsTimeoutWithoutRedispatch() throws InterruptedException {
+    void invokeSync_existingTimeoutExecution_returnsTimeoutWithoutRedispatch() {
         FunctionSpec spec = functionSpec("replay-sync-timeout-fn", ExecutionMode.LOCAL);
         when(functionService.get("replay-sync-timeout-fn")).thenReturn(Optional.of(spec));
 
@@ -279,7 +279,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_whenSyncQueueAndEnqueuerDisabled_dispatchesInline() throws InterruptedException {
+    void invokeSync_whenSyncQueueAndEnqueuerDisabled_dispatchesInline() {
         FunctionSpec spec = functionSpec("inline-fn", ExecutionMode.LOCAL);
         when(functionService.get("inline-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
@@ -304,7 +304,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() throws InterruptedException {
+    void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() {
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
         InvocationService invocationServiceWithoutSyncQueue = new InvocationService(
                 functionService,
@@ -389,7 +389,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_whenSyncQueueEnabled_usesSyncQueueOnlyAndReturnsSuccess() throws InterruptedException {
+    void invokeSync_whenSyncQueueEnabled_usesSyncQueueOnlyAndReturnsSuccess() {
         FunctionSpec spec = functionSpec("sync-queued-sync-fn", ExecutionMode.LOCAL);
         when(functionService.get("sync-queued-sync-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(true);

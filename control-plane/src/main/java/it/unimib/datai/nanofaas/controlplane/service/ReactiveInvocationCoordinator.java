@@ -7,6 +7,8 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -15,6 +17,8 @@ import java.time.Duration;
 
 @Service
 public final class ReactiveInvocationCoordinator {
+    private static final Logger log = LoggerFactory.getLogger(ReactiveInvocationCoordinator.class);
+
     private final InvocationEnqueuer enqueuer;
     private final Metrics metrics;
     private final SyncQueueGateway syncQueueGateway;
@@ -73,7 +77,9 @@ public final class ReactiveInvocationCoordinator {
                     return Mono.just(responseMapper.timeoutResponse(record));
                 })
                 .onErrorResume(ex -> !(ex instanceof SyncQueueRejectedException), ex -> {
-                    InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", ex.getMessage());
+                    log.warn("Execution {} completed exceptionally", record.executionId(), ex);
+                    String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+                    InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", message);
                     record.markError(failure.error());
                     metrics.error(record.task().functionName());
                     return Mono.just(responseMapper.toResponse(record, failure));

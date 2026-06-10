@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  * Handles dispatch to execution runtimes and post-dispatch completion (retry, metrics, state transitions).
  *
  * <p>This is a collaborator of {@link InvocationService}: InvocationService owns the entry-point
- * API (invokeSync / invokeAsync / getStatus) while this class owns the dispatch and completion
+ * API (invokeSyncReactive / invokeAsync / getStatus) while this class owns the dispatch and completion
  * lifecycle.</p>
  */
 @Service
