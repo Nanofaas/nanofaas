@@ -375,15 +375,17 @@ class InvocationServiceDispatchTest {
         when(functionService.get("sync-queued-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(true);
 
+        // Admission is lazy and runs on boundedElastic: it happens on subscription,
+        // so subscribe and verify with a timeout instead of expecting eager side effects.
         invocationService.invokeSyncReactive(
                 "sync-queued-fn",
                 new InvocationRequest("payload", Map.of()),
                 null,
                 null,
                 1_000
-        );
+        ).subscribe();
 
-        verify(syncQueueGateway).enqueueOrThrow(any());
+        verify(syncQueueGateway, org.mockito.Mockito.timeout(2_000)).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
         verifyNoInteractions(dispatcherRouter);
     }

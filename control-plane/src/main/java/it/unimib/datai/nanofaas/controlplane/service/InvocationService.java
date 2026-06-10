@@ -80,12 +80,17 @@ public class InvocationService {
                                                         String idempotencyKey,
                                                         String traceId,
                                                         Integer timeoutOverrideMs) {
-        enforceRateLimit();
-
-        FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-        InvocationExecutionFactory.ExecutionLookup lookup =
-                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
-        return reactiveCoordinator.invoke(lookup, spec, timeoutOverrideMs);
+        record Prepared(FunctionSpec spec, InvocationExecutionFactory.ExecutionLookup lookup) {}
+        return Mono.fromCallable(() -> {
+                    enforceRateLimit();
+                    FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
+                    // createOrReuseExecution may spin briefly on contended idempotency
+                    // claims; it must never run on the Netty event loop.
+                    return new Prepared(spec,
+                            executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId));
+                })
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .flatMap(prepared -> reactiveCoordinator.invoke(prepared.lookup(), prepared.spec(), timeoutOverrideMs));
     }
 
     public InvocationResponse invokeAsync(String functionName,

@@ -35,42 +35,38 @@ public class InvocationController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
             @RequestHeader(value = "X-Timeout-Ms", required = false) Integer timeoutMs) {
-        try {
-            return invocationService.invokeSyncReactive(name, request, idempotencyKey, traceId, timeoutMs)
-                    .map(response -> ResponseEntity.ok()
-                            .header("X-Execution-Id", response.executionId())
-                            .body(response))
-                    .onErrorResume(SyncQueueRejectedException.class, ex ->
-                            Mono.just(tooManyRequests(ex)))
-                    .onErrorResume(RateLimitException.class, ex ->
-                            Mono.just(tooManyRequests()))
-                    .onErrorResume(QueueFullException.class, ex ->
-                            Mono.just(tooManyRequests()));
-        } catch (FunctionNotFoundException ex) {
-            return Mono.just(ResponseEntity.notFound().build());
-        } catch (SyncQueueRejectedException ex) {
-            return Mono.just(tooManyRequests(ex));
-        } catch (RateLimitException | QueueFullException ex) {
-            return Mono.just(tooManyRequests());
-        }
+        // defer: a synchronously thrown service exception must flow through onErrorResume
+        return Mono.defer(() -> invocationService.invokeSyncReactive(name, request, idempotencyKey, traceId, timeoutMs))
+                .map(response -> ResponseEntity.ok()
+                        .header("X-Execution-Id", response.executionId())
+                        .body(response))
+                .onErrorResume(FunctionNotFoundException.class, ex ->
+                        Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
+                .onErrorResume(SyncQueueRejectedException.class, ex ->
+                        Mono.just(tooManyRequests(ex)))
+                .onErrorResume(RateLimitException.class, ex ->
+                        Mono.just(tooManyRequests()))
+                .onErrorResume(QueueFullException.class, ex ->
+                        Mono.just(tooManyRequests()));
     }
 
     @PostMapping("/functions/{name}:enqueue")
-    public ResponseEntity<InvocationResponse> invokeAsync(
+    public Mono<ResponseEntity<InvocationResponse>> invokeAsync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @RequestBody @Valid InvocationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId) {
-        try {
-            InvocationResponse response = invocationService.invokeAsync(name, request, idempotencyKey, traceId);
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
-        } catch (FunctionNotFoundException ex) {
-            return ResponseEntity.notFound().build();
-        } catch (AsyncQueueUnavailableException ex) {
-            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-        } catch (RateLimitException | QueueFullException ex) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
-        }
+        return Mono.fromCallable(() -> invocationService.invokeAsync(name, request, idempotencyKey, traceId))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .map(response -> ResponseEntity.status(HttpStatus.ACCEPTED).body(response))
+                .onErrorResume(FunctionNotFoundException.class, ex ->
+                        Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
+                .onErrorResume(AsyncQueueUnavailableException.class, ex ->
+                        Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).<InvocationResponse>build()))
+                .onErrorResume(RateLimitException.class, ex ->
+                        Mono.just(tooManyRequests()))
+                .onErrorResume(QueueFullException.class, ex ->
+                        Mono.just(tooManyRequests()));
     }
 
     @GetMapping("/executions/{executionId}")
