@@ -1,23 +1,16 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class IdempotencyStoreTest {
 
     private IdempotencyStore store;
-
-    @AfterEach
-    void tearDown() {
-        if (store != null) {
-            store.shutdown();
-        }
-    }
 
     @Test
     void put_andGet_returnsStoredExecutionId() {
@@ -49,19 +42,34 @@ class IdempotencyStoreTest {
     }
 
     @Test
-    void get_afterTtlExpired_returnsEmpty() throws InterruptedException {
-        // Use very short TTL for testing
-        store = new IdempotencyStore(Duration.ofMillis(100));
+    void get_afterTtlExpired_returnsEmpty() {
+        AtomicLong nanos = new AtomicLong();
+        store = new IdempotencyStore(Duration.ofMinutes(5), nanos::get);
         store.put("myFunction", "key123", "exec-456");
 
         // Verify it exists
         assertThat(store.getExecutionId("myFunction", "key123")).hasValue("exec-456");
 
-        // Wait for TTL to expire
-        Thread.sleep(150);
+        // Advance the ticker past the TTL
+        nanos.addAndGet(Duration.ofMinutes(6).toNanos());
 
         // Verify it's expired
         assertThat(store.getExecutionId("myFunction", "key123")).isEmpty();
+    }
+
+    @Test
+    void afterTtlExpired_acquireOrGet_returnsFreshClaim() {
+        AtomicLong nanos = new AtomicLong();
+        store = new IdempotencyStore(Duration.ofMinutes(5), nanos::get);
+        store.put("myFunction", "key123", "exec-456");
+
+        // Advance the ticker past the TTL
+        nanos.addAndGet(Duration.ofMinutes(6).toNanos());
+
+        assertThat(store.getExecutionId("myFunction", "key123")).isEmpty();
+
+        IdempotencyStore.AcquireResult result = store.acquireOrGet("myFunction", "key123");
+        assertThat(result.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
     }
 
     @Test
@@ -81,24 +89,21 @@ class IdempotencyStoreTest {
     }
 
     @Test
-    void eviction_removesExpiredEntries() throws InterruptedException {
-        store = new IdempotencyStore(Duration.ofMillis(50));
+    void eviction_removesExpiredEntries() {
+        AtomicLong nanos = new AtomicLong();
+        store = new IdempotencyStore(Duration.ofMinutes(5), nanos::get);
 
         // Insert entries
         store.put("fn1", "key1", "exec1");
         store.put("fn2", "key2", "exec2");
         assertThat(store.size()).isEqualTo(2);
 
-        // Wait for TTL + eviction cycle (janitor runs every minute, so we trigger via get)
-        Thread.sleep(100);
+        // Advance the ticker past the TTL
+        nanos.addAndGet(Duration.ofMinutes(6).toNanos());
 
-        // Trigger eviction via get (which checks TTL)
-        store.getExecutionId("fn1", "key1");
-        store.getExecutionId("fn2", "key2");
-
-        // Size might still show 2 until janitor runs, but get returns empty
         assertThat(store.getExecutionId("fn1", "key1")).isEmpty();
         assertThat(store.getExecutionId("fn2", "key2")).isEmpty();
+        assertThat(store.size()).isEqualTo(0);
     }
 
     @Test

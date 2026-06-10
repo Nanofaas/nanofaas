@@ -599,7 +599,6 @@ class InvocationServiceDispatchTest {
             assertThat(new HashSet<>(executionIds)).hasSize(1);
         } finally {
             executor.shutdownNow();
-            staleStore.shutdown();
         }
     }
 
@@ -652,7 +651,6 @@ class InvocationServiceDispatchTest {
             ))).hasSize(1);
         } finally {
             executor.shutdownNow();
-            staleStore.shutdown();
             blockedStore.shutdown();
         }
     }
