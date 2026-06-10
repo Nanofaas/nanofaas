@@ -14,6 +14,35 @@ def test_function_spec_to_body_maps_camelcase_fields() -> None:
     assert body["maxRetries"] == 3
 
 
+def test_function_spec_to_body_includes_scaling_config_when_present() -> None:
+    body = FunctionSpec(
+        name="word-stats-java",
+        image="localhost:5000/nanofaas/java-word-stats:e2e",
+        timeout_ms=30000,
+        concurrency=4,
+        queue_size=100,
+        scaling_config={
+            "strategy": "INTERNAL",
+            "minReplicas": 0,
+            "maxReplicas": 5,
+            "metrics": [{"type": "in_flight", "target": "2"}],
+        },
+    ).to_body()
+
+    assert body["scalingConfig"] == {
+        "strategy": "INTERNAL",
+        "minReplicas": 0,
+        "maxReplicas": 5,
+        "metrics": [{"type": "in_flight", "target": "2"}],
+    }
+
+
+def test_function_spec_to_body_omits_scaling_config_by_default() -> None:
+    body = FunctionSpec(name="echo", image="reg/echo:e2e").to_body()
+
+    assert "scalingConfig" not in body
+
+
 def test_register_functions_posts_each_spec() -> None:
     task = RegisterFunctions(
         task_id="fn.register",
