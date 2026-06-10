@@ -59,7 +59,9 @@ public final class ReactiveInvocationCoordinator {
         }
 
         int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
-        return Mono.fromFuture(record.completion())
+        // suppressCancel=true: a single subscriber's timeout/disconnect must not cancel
+        // the shared completion future other idempotent waiters depend on.
+        return Mono.fromFuture(record.completion(), true)
                 .timeout(Duration.ofMillis(timeoutMs))
                 .map(result -> {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
