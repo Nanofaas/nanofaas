@@ -77,6 +77,8 @@ For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH ope
 
 `two-vm-loadtest` reuses the Helm stack bootstrap on one VM and provisions a second loadgen VM for k6. It invokes the selected function through the control-plane NodePort, captures Prometheus snapshots, and writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. The sample manifest is `tools/controlplane/scenarios/two-vm-loadtest-java.toml`.
 
+`scripts/controlplane.sh e2e run one-vm-helm-loadtest` runs the Helm stack and load generator on the same managed VM. It reuses the modern loadtest workflow, writes artifacts under `tools/controlplane/runs/`, and includes autoscaling verification without invoking the legacy `experiments/autoscaling.py` script.
+
 ## Proxmox VM load test
 
 `proxmox-vm-loadtest` mirrors the two-VM load test but provisions both VMs on a Proxmox VE cluster instead of Multipass. It clones a VM template for the stack node and the k6 loadgen node, runs the same Helm/k6 workflow, and tears the VMs down on completion.
