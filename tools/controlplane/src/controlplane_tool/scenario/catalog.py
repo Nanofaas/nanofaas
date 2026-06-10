@@ -80,6 +80,13 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         grouped_phases=True,
     ),
     ScenarioDefinition(
+        name="one-vm-helm-loadtest",
+        description="One-VM Helm stack load test with autoscaling verification.",
+        requires_vm=True,
+        supported_runtimes=("java", "rust"),
+        grouped_phases=True,
+    ),
+    ScenarioDefinition(
         name="two-vm-loadtest",
         description="Two-VM Helm stack load test with a dedicated k6 generator.",
         requires_vm=True,

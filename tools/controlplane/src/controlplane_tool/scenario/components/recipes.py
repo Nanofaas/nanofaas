@@ -79,6 +79,11 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
         ),
         requires_managed_vm=True,
     ),
+    "one-vm-helm-loadtest": ScenarioRecipe(
+        name="one-vm-helm-loadtest",
+        component_ids=STACK_PRELUDE,
+        requires_managed_vm=True,
+    ),
     "two-vm-loadtest": _loadtest_recipe("two-vm-loadtest"),
     "azure-vm-loadtest": _loadtest_recipe("azure-vm-loadtest"),
     "proxmox-vm-loadtest": _loadtest_recipe("proxmox-vm-loadtest"),
