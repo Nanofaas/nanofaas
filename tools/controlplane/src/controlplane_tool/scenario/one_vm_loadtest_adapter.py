@@ -12,7 +12,6 @@ from controlplane_tool.scenario.scenario_helpers import function_image, selected
 from controlplane_tool.scenario.two_vm_loadtest_config import (
     two_vm_control_plane_url,
     two_vm_prometheus_url,
-    two_vm_remote_paths,
     two_vm_target_function,
 )
 from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
@@ -85,11 +84,12 @@ class OneVmLoadtestAdapter:
     def create_run_dir(self) -> Path:
         from controlplane_tool.e2e.two_vm_loadtest_runner import TwoVmLoadtestRunner
 
-        return TwoVmLoadtestRunner(
+        loadtest_runner = TwoVmLoadtestRunner(
             repo_root=self.runner.paths.workspace_root,
             shell=self.runner.shell,
             runs_root=self.runner.paths.runs_dir,
-        )._create_run_dir()  # noqa: SLF001
+        )
+        return loadtest_runner._create_run_dir()  # noqa: SLF001
 
     def extra_steps(self, phase: FlowPhase, ctx: RunContext) -> list:
         return []
