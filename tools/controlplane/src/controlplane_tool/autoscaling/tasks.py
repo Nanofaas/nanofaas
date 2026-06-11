@@ -42,7 +42,8 @@ class ReplicaProbe:
             (
                 "bash",
                 "-lc",
-                f"kubectl get deployment {deployment} -n {namespace} -o {output}",
+                # sudo: on k3s VMs /etc/rancher/k3s/k3s.yaml is root-readable only.
+                f"sudo kubectl get deployment {deployment} -n {namespace} -o {output}",
             ),
             env={},
             remote_dir=self.remote_dir,
