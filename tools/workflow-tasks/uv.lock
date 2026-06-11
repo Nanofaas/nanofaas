@@ -27,7 +27,7 @@ wheels = [
 [[package]]
 name = "azure-vm-sdk"
 version = "0.1.0"
-source = { git = "https://github.com/miciav/azure-vm-sdk.git?rev=b61d189#b61d189f87f59114e8b04b8b59f26263a3b5d2f5" }
+source = { git = "https://github.com/miciav/azure-vm-sdk.git?rev=e898544#e898544eacdf9b6b3e47f5738ab8f5172f0b7f65" }
 dependencies = [
     { name = "paramiko" },
     { name = "pyyaml" },
@@ -1214,7 +1214,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "azure-vm-sdk", git = "https://github.com/miciav/azure-vm-sdk.git?rev=b61d189" },
+    { name = "azure-vm-sdk", git = "https://github.com/miciav/azure-vm-sdk.git?rev=e898544" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=402c406" },
     { name = "proxmox-sdk", git = "https://github.com/miciav/proxmox-sdk.git?rev=9e20703" },
