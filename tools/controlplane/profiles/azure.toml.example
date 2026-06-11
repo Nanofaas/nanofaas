@@ -1,4 +1,6 @@
 # Azure defaults for azure-vm-loadtest TUI scenario.
+# Copy this file to azure.toml and fill in your values.
+# azure.toml is gitignored — do not commit it.
 # Required fields: resource_group, location.
 # Optional fields: uncomment and set as needed.
 
