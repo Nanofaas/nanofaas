@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 
-# Golden snapshot of every scenario's exact component_ids as of 2026-06-05.
+# Golden snapshot of every scenario's exact component_ids as of 2026-06-11.
 # This pins current behavior so the fragment refactor (Task 2) stays byte-for-byte identical.
 GOLDEN: dict[str, tuple[str, ...]] = {
     "k3s-junit-curl": (
@@ -20,6 +20,12 @@ GOLDEN: dict[str, tuple[str, ...]] = {
         "k3s.install", "k3s.configure_registry", "namespace.install",
         "helm.deploy_control_plane", "helm.deploy_function_runtime",
         "loadtest.install_k6", "loadtest.run", "experiments.autoscaling",
+    ),
+    "one-vm-helm-loadtest": (
+        "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
+        "registry.ensure_container", "images.build_core", "images.build_selected_functions",
+        "k3s.install", "k3s.configure_registry", "namespace.install",
+        "helm.deploy_control_plane", "helm.deploy_function_runtime",
     ),
     "two-vm-loadtest": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
