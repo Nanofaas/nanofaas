@@ -661,12 +661,12 @@ class AzureLoadtestAdapter:
     def stack_lifecycle(self):
         from controlplane_tool.infra.vm_lifecycle_adapters import AzureVmAdapter
 
-        return AzureVmAdapter(self._orch())
+        return AzureVmAdapter(self._orch(), credentials=self._stack_request)
 
     def loadgen_lifecycle(self):
         from controlplane_tool.infra.vm_lifecycle_adapters import AzureVmAdapter
 
-        return AzureVmAdapter(self._orch())
+        return AzureVmAdapter(self._orch(), credentials=self._loadgen_request)
 
     # ── loadgen body collaborators ─────────────────────────────────────────────
 
