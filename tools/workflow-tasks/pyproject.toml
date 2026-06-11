@@ -9,7 +9,7 @@ dependencies = [
     "pydantic-settings>=2.5",
     "httpx>=0.27",
     "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@402c406",
-    "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@e898544",
+    "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@2689f9a",
     "proxmox-sdk @ git+https://github.com/miciav/proxmox-sdk.git@9e20703",
     "shellcraft @ git+https://github.com/miciav/shellcraft.git",
 ]

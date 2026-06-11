@@ -116,14 +116,14 @@ def test_ensure_running_passes_azure_fields(tmp_path, monkeypatch):
     orch.ensure_running(_azure_request(
         name="custom-vm",
         azure_vm_size="Standard_D2s_v3",
-        azure_image_urn="Canonical:0001-com-ubuntu-server-noble:24_04-lts:latest",
+        azure_image_urn="Canonical:ubuntu-24_04-lts:server-gen1:latest",
         azure_ssh_key_path="/home/user/.ssh/id_rsa",
     ))
 
     mock_client.ensure_running.assert_called_once_with(
         "custom-vm",
         vm_size="Standard_D2s_v3",
-        image_urn="Canonical:0001-com-ubuntu-server-noble:24_04-lts:latest",
+        image_urn="Canonical:ubuntu-24_04-lts:server-gen1:latest",
         ssh_key_path="/home/user/.ssh/id_rsa",
     )
 
