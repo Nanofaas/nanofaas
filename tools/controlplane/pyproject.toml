@@ -16,7 +16,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "flask>=3.0",
     "rich>=13.8",
-    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
+    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@402c406",
     "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@2311b1c",
     "proxmox-sdk @ git+https://github.com/miciav/proxmox-sdk.git@9e20703",
     "prefect>=3,<4",

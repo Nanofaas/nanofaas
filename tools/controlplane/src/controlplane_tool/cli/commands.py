@@ -9,6 +9,7 @@ from shellcraft.runners import CommandRunner
 from controlplane_tool.building import image_matrix
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.core.models import BuildAction, ProfileName
+from controlplane_tool.cli.flow_exit import exit_on_failed_flow
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition
 from workflow_tasks.orchestration import run_local_flow
 from workflow_tasks.shell import SubprocessShell
@@ -51,8 +52,9 @@ def _run_gradle_action(
         typer.echo(f"Invalid building request: {first_error}", err=True)
         raise typer.Exit(code=2)
 
+    exit_on_failed_flow(flow_result)
     result = flow_result.result
-    if flow_result.status != "completed" or result is None:
+    if result is None:
         raise typer.Exit(code=1)
     if result.dry_run:
         typer.echo(" ".join(result.command))

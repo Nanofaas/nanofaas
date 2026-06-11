@@ -6,6 +6,7 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
+from controlplane_tool.cli.flow_exit import exit_on_failed_flow
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
 from controlplane_tool.loadtest.loadtest_catalog import list_load_profiles, resolve_load_profile
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate, effective_required_metrics
@@ -292,7 +293,8 @@ def run_loadtest_request(
             request=request,
         )
         flow_result = run_local_flow(flow.flow_id, flow.run)
-        if flow_result.status != "completed" or flow_result.result is None:
+        exit_on_failed_flow(flow_result)
+        if flow_result.result is None:
             raise typer.Exit(code=1)
         result = flow_result.result
     typer.echo(f"Run status: {result.final_status}")

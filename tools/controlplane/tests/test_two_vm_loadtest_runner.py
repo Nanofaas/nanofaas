@@ -36,10 +36,10 @@ def test_two_vm_loadtest_runner_executes_k6_on_loadgen_vm(tmp_path: Path) -> Non
     assert any(command.startswith("multipass transfer ") and "script.js" in command for command in rendered)
     assert any(command.startswith("multipass exec nanofaas-e2e-loadgen ") for command in rendered)
     assert any("NANOFAAS_URL=http://10.0.0.1:30080" in command for command in rendered)
-    assert any("NANOFAAS_FUNCTION=word-stats-java" in command for command in rendered)
+    assert any("NANOFAAS_FUNCTION=echo-test" in command for command in rendered)
     assert any(command.endswith(f" {result.k6_summary_path}") for command in rendered)
     assert result.k6_summary_path.name == "k6-summary.json"
-    assert result.target_function == "word-stats-java"
+    assert result.target_function == "echo-test"
 
 
 def test_two_vm_loadtest_runner_transfers_custom_payload(tmp_path: Path) -> None:

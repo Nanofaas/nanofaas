@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
+from controlplane_tool.cli.flow_exit import exit_on_failed_flow
 from controlplane_tool.scenario.catalog import list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan
@@ -625,8 +626,7 @@ def e2e_run(
             request=request,
         )
         flow_result = run_local_flow(flow.flow_id, flow.run)
-        if flow_result.status != "completed":
-            raise typer.Exit(code=1)
+        exit_on_failed_flow(flow_result)
         typer.echo(f"Completed scenario: {request.scenario}")
 
     _handle_validation(_action)
@@ -700,8 +700,7 @@ def e2e_all(
             scenarios=[plan.scenario.name for plan in plans],
         )
         flow_result = run_local_flow(flow.flow_id, flow.run)
-        if flow_result.status != "completed":
-            raise typer.Exit(code=1)
+        exit_on_failed_flow(flow_result)
         typer.echo(f"Completed scenarios: {', '.join(plan.scenario.name for plan in plans)}")
 
     _handle_validation(_action)

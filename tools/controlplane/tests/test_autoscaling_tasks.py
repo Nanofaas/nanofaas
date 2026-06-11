@@ -377,3 +377,25 @@ def test_autoscaling_k6_asset_has_no_embedded_stages() -> None:
     # options); an embedded copy would silently drift.
     assert "stages" not in content
     assert "http_req_failed" in content  # threshold stays in the script
+
+
+def test_fetch_autoscaling_summary_creates_parent_and_fetches(tmp_path) -> None:
+    from controlplane_tool.autoscaling.tasks import FetchAutoscalingSummary
+
+    fetched: list[tuple[str, object]] = []
+
+    class _Fetcher:
+        def fetch_from(self, remote, local):
+            fetched.append((remote, local))
+
+    local = tmp_path / "metrics" / "autoscaling-k6-summary.json"
+    FetchAutoscalingSummary(
+        task_id="autoscaling.fetch_summary",
+        title="Fetch autoscaling k6 summary",
+        fetcher=_Fetcher(),
+        remote_path="/home/ubuntu/two-vm-loadtest/results/autoscaling-k6-summary.json",
+        local_path=local,
+    ).run()
+
+    assert local.parent.is_dir()
+    assert fetched == [("/home/ubuntu/two-vm-loadtest/results/autoscaling-k6-summary.json", local)]
