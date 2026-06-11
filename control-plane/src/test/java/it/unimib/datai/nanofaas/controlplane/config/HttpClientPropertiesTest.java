@@ -12,7 +12,7 @@ class HttpClientPropertiesTest {
 
         assertThat(properties.connectTimeoutMs()).isEqualTo(5000);
         assertThat(properties.readTimeoutMs()).isEqualTo(30000);
-        assertThat(properties.maxInMemorySizeMb()).isEqualTo(1);
+        assertThat(properties.maxInMemorySizeMb()).isEqualTo(16);
     }
 
     @Test
@@ -21,7 +21,7 @@ class HttpClientPropertiesTest {
 
         assertThat(properties.connectTimeoutMs()).isEqualTo(5000);
         assertThat(properties.readTimeoutMs()).isEqualTo(30000);
-        assertThat(properties.maxInMemorySizeMb()).isEqualTo(1);
+        assertThat(properties.maxInMemorySizeMb()).isEqualTo(16);
     }
 
     @Test

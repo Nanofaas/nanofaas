@@ -50,9 +50,12 @@ class OneVmHelmLoadtestPlan:
         return build_setup(self.runner, self.request)
 
     def _recipe(self) -> ScenarioRecipe:
+        # vm.ensure_running is handled separately (EnsureVmRunning task outside the
+        # Workflow, via the lifecycle adapter). The raw recipe component is a bare
+        # `multipass launch` and would fail with "already exists" on every run.
         return ScenarioRecipe(
             name="one-vm-helm-loadtest-stack",
-            component_ids=STACK_PRELUDE,
+            component_ids=tuple(c for c in STACK_PRELUDE if c != "vm.ensure_running"),
             requires_managed_vm=True,
         )
 

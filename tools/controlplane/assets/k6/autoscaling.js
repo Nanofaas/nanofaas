@@ -5,13 +5,12 @@ const BASE_URL = __ENV.NANOFAAS_URL || 'http://localhost:30080';
 const FN = __ENV.NANOFAAS_FUNCTION || __ENV.FUNCTION_NAME || 'word-stats-java';
 
 export const options = {
-    stages: [
-        { duration: '10s', target: 10 },
-        { duration: '20s', target: 20 },
-        { duration: '90s', target: 20 },
-        { duration: '10s', target: 0 },
-    ],
+    // Load profile is injected by the workflow via `k6 run --stage ...` (see
+    // K6Config in one_vm_loadtest_adapter.py); CLI flags override script
+    // options, so it is deliberately NOT duplicated here.
     thresholds: {
+        // Generous on purpose: scale-from-zero means the first wave of requests
+        // hits cold starts and may time out before replicas come up.
         http_req_failed: ['rate<0.30'],
     },
 };

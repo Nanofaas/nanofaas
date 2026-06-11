@@ -26,6 +26,8 @@ public class PoolDispatcher implements Dispatcher {
                     DispatchResult.warm(InvocationResult.error("POOL_ENDPOINT_MISSING", "endpointUrl is required for POOL mode")));
         }
 
+        long timeoutMs = task.functionSpec().timeoutMs();
+
         WebClient.RequestBodySpec request = webClient.post()
                 .uri(endpoint)
                 .header("X-Execution-Id", task.executionId())
@@ -38,22 +40,17 @@ public class PoolDispatcher implements Dispatcher {
             request.header("Idempotency-Key", task.idempotencyKey());
         }
 
-        long timeoutMs = task.functionSpec().timeoutMs();
+        request.httpRequest(clientHttpRequest -> {
+            reactor.netty.http.client.HttpClientRequest reactorRequest = clientHttpRequest.getNativeRequest();
+            reactorRequest.responseTimeout(Duration.ofMillis(timeoutMs));
+        });
+
         return request.bodyValue(task.request())
                 .exchangeToMono(response -> {
-                    boolean coldStart = "true".equalsIgnoreCase(
+                    boolean isCold = "true".equalsIgnoreCase(
                             response.headers().asHttpHeaders().getFirst("X-Cold-Start"));
-                    Long initDurationMs = null;
-                    String initHeader = response.headers().asHttpHeaders().getFirst("X-Init-Duration-Ms");
-                    if (initHeader != null) {
-                        try {
-                            initDurationMs = Long.parseLong(initHeader);
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-
-                    boolean isCold = coldStart;
-                    Long initMs = initDurationMs;
+                    Long initMs = parseInitDuration(
+                            response.headers().asHttpHeaders().getFirst("X-Init-Duration-Ms"));
 
                     if (response.statusCode().is2xxSuccessful()) {
                         MediaType contentType = response.headers().contentType()
@@ -75,5 +72,16 @@ public class PoolDispatcher implements Dispatcher {
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
                         DispatchResult.warm(InvocationResult.error("POOL_ERROR", ex.getMessage()))))
                 .toFuture();
+    }
+
+    private static Long parseInitDuration(String header) {
+        if (header == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(header);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

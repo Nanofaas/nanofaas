@@ -56,7 +56,6 @@ class InvocationExecutionFactoryTest {
         } finally {
             executionStore.allowFirstPutToComplete();
             executor.shutdownNow();
-            idempotencyStore.shutdown();
             executionStore.shutdown();
         }
     }
@@ -96,7 +95,6 @@ class InvocationExecutionFactoryTest {
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
         } finally {
             Thread.interrupted();
-            idempotencyStore.shutdown();
             executionStore.shutdown();
         }
     }

@@ -7,9 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.EnumMap;
-import java.util.EnumSet;
-import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -20,16 +19,6 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ExecutionRecord {
     private static final Logger log = LoggerFactory.getLogger(ExecutionRecord.class);
-    private static final Map<ExecutionState, EnumSet<ExecutionState>> ALLOWED_TRANSITIONS;
-
-    static {
-        ALLOWED_TRANSITIONS = new EnumMap<>(ExecutionState.class);
-        ALLOWED_TRANSITIONS.put(ExecutionState.QUEUED, EnumSet.of(ExecutionState.RUNNING, ExecutionState.TIMEOUT, ExecutionState.ERROR));
-        ALLOWED_TRANSITIONS.put(ExecutionState.RUNNING, EnumSet.of(ExecutionState.SUCCESS, ExecutionState.ERROR, ExecutionState.TIMEOUT, ExecutionState.QUEUED));
-        ALLOWED_TRANSITIONS.put(ExecutionState.SUCCESS, EnumSet.noneOf(ExecutionState.class));
-        ALLOWED_TRANSITIONS.put(ExecutionState.ERROR, EnumSet.noneOf(ExecutionState.class));
-        ALLOWED_TRANSITIONS.put(ExecutionState.TIMEOUT, EnumSet.noneOf(ExecutionState.class));
-    }
 
     private final String executionId;
     private final CompletableFuture<InvocationResult> completion;
@@ -44,6 +33,8 @@ public class ExecutionRecord {
     private Object output;
     private boolean coldStart;
     private Long initDurationMs;
+    private boolean cleaned;
+    private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
 
     public ExecutionRecord(String executionId, InvocationTask task) {
         this.executionId = executionId;
@@ -79,16 +70,22 @@ public class ExecutionRecord {
         );
     }
 
+    /**
+     * Terminal states (SUCCESS, ERROR, TIMEOUT) are final; every transition between
+     * non-terminal states (including RUNNING -> QUEUED for retries) is allowed.
+     */
     private boolean canTransition(ExecutionState target) {
-        if (state != ExecutionState.SUCCESS && state != ExecutionState.ERROR && state != ExecutionState.TIMEOUT) {
-            return true;
-        }
-        EnumSet<ExecutionState> allowed = ALLOWED_TRANSITIONS.getOrDefault(state, EnumSet.noneOf(ExecutionState.class));
-        if (!allowed.contains(target)) {
+        if (isTerminalState(state)) {
             log.warn("Invalid state transition {} -> {} for execution {}", state, target, executionId);
             return false;
         }
         return true;
+    }
+
+    private static boolean isTerminalState(ExecutionState state) {
+        return state == ExecutionState.SUCCESS
+                || state == ExecutionState.ERROR
+                || state == ExecutionState.TIMEOUT;
     }
 
     /**
@@ -159,6 +156,10 @@ public class ExecutionRecord {
      * Should be called after the result has been consumed or is no longer needed.
      */
     public synchronized void cleanup() {
+        if (this.cleaned) {
+            return;
+        }
+        this.cleaned = true;
         this.output = null;
         if (this.task != null) {
             // Replace task with one that has no request payload
@@ -191,6 +192,15 @@ public class ExecutionRecord {
         this.output = null;
         this.coldStart = false;
         this.initDurationMs = null;
+        this.cleaned = false;
+    }
+
+    /**
+     * Records that the dispatch slot for the given attempt has been released.
+     * @return true the first time this attempt is released, false on duplicates
+     */
+    public synchronized boolean markDispatchSlotReleased(int attempt) {
+        return releasedDispatchAttempts.add(attempt);
     }
 
     // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads
@@ -212,9 +222,7 @@ public class ExecutionRecord {
     }
 
     public synchronized boolean isTerminal() {
-        return state == ExecutionState.SUCCESS
-                || state == ExecutionState.ERROR
-                || state == ExecutionState.TIMEOUT;
+        return isTerminalState(state);
     }
 
     public synchronized ErrorInfo lastError() {
@@ -223,56 +231,6 @@ public class ExecutionRecord {
 
     public synchronized Object output() {
         return output;
-    }
-
-    // Legacy setters - prefer the mark* methods for state transitions
-
-    /**
-     * @deprecated Use {@link #resetForRetry(InvocationTask)} instead
-     */
-    @Deprecated
-    public synchronized void updateTask(InvocationTask newTask) {
-        this.task = newTask;
-    }
-
-    /**
-     * @deprecated Use {@link #markRunning()}, {@link #markSuccess(Object)}, etc.
-     */
-    @Deprecated
-    public synchronized void state(ExecutionState state) {
-        this.state = state;
-    }
-
-    /**
-     * @deprecated Use {@link #markRunning()}
-     */
-    @Deprecated
-    public synchronized void startedAt(Instant startedAt) {
-        this.startedAt = startedAt;
-    }
-
-    /**
-     * @deprecated Use mark* methods instead
-     */
-    @Deprecated
-    public synchronized void finishedAt(Instant finishedAt) {
-        this.finishedAt = finishedAt;
-    }
-
-    /**
-     * @deprecated Use {@link #markError(ErrorInfo)}
-     */
-    @Deprecated
-    public synchronized void lastError(ErrorInfo lastError) {
-        this.lastError = lastError;
-    }
-
-    /**
-     * @deprecated Use {@link #markSuccess(Object)}
-     */
-    @Deprecated
-    public synchronized void output(Object output) {
-        this.output = output;
     }
 
     /**

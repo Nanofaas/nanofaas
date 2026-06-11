@@ -72,12 +72,51 @@ def test_one_vm_adapter_builds_autoscaling_tail_tasks(tmp_path: Path) -> None:
 
     tasks = adapter.post_loadgen_tasks(_ctx())
 
+    from controlplane_tool.autoscaling.tasks import (
+        FetchAutoscalingSummary,
+        RunK6WithReplicaWatch,
+        VerifyAutoscalingReplicas,
+    )
+
     assert [task.task_id for task in tasks] == [
         "autoscaling.register_function",
         "autoscaling.run_k6",
         "autoscaling.verify_replicas",
+        "autoscaling.fetch_summary",
     ]
     assert isinstance(tasks[0], RegisterFunctions)
-    assert isinstance(tasks[1], RunK6)
-    assert tasks[1].config.script_path == Path("/home/ubuntu/two-vm-loadtest/scripts/autoscaling.js")
-    assert tasks[1].config.env["NANOFAAS_FUNCTION"] == "word-stats-java"
+    assert isinstance(tasks[1], RunK6WithReplicaWatch)
+    assert isinstance(tasks[1].run_k6, RunK6)
+    assert tasks[1].run_k6.config.script_path == Path("/home/ubuntu/two-vm-loadtest/scripts/autoscaling.js")
+    from controlplane_tool.scenario.scenario_helpers import selected_functions
+
+    assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] == "echo-test"
+    assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] in selected_functions(None)
+    assert isinstance(tasks[2], VerifyAutoscalingReplicas)
+    assert tasks[2].watcher is tasks[1].watcher
+    # Must match where helm actually deploys (its None-namespace fallback);
+    # a bare request used to leave this None and the kubectl probe failed.
+    assert tasks[2].namespace == "nanofaas-e2e"
+    assert isinstance(tasks[3], FetchAutoscalingSummary)
+    assert tasks[3].local_path.name == "autoscaling-k6-summary.json"
+
+
+def test_one_vm_adapter_endpoint_and_fetcher_are_constructible(tmp_path: Path) -> None:
+    # Regression: these used lazy imports of non-existent names (_Endpoint,
+    # _MultipassFetcher) that only blew up at runtime on a real VM.
+    from controlplane_tool.scenario.loadtest_adapter import InstallEndpoint
+    from workflow_tasks.vm.runners import VmFileFetcher
+
+    adapter = OneVmLoadtestAdapter(
+        runner=E2eRunner(repo_root=tmp_path),
+        request=_request(tmp_path),
+    )
+    ctx = _ctx()
+
+    endpoint = adapter.loadgen_install_endpoint(ctx)
+    assert isinstance(endpoint, InstallEndpoint)
+    assert endpoint.host == "10.0.0.1"
+    assert endpoint.user == "ubuntu"
+
+    fetcher = adapter.fetcher(ctx)
+    assert isinstance(fetcher, VmFileFetcher)

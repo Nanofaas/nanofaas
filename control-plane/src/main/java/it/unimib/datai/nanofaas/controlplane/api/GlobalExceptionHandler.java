@@ -24,28 +24,14 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
-     * Handles validation errors from @Valid annotations on request bodies.
+     * Handles validation errors from @Valid request bodies (servlet and reactive binding).
      */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidationErrors(
-            MethodArgumentNotValidException ex) {
-        List<String> errors = ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .toList();
-
-        log.debug("Validation failed: {}", errors);
-        return ResponseEntity.badRequest().body(validationErrorBody(errors));
-    }
-
-    /**
-     * Handles validation errors from WebFlux binding (reactive stack).
-     */
-    @ExceptionHandler(WebExchangeBindException.class)
-    public ResponseEntity<Map<String, Object>> handleWebExchangeBindException(
-            WebExchangeBindException ex) {
-        List<String> errors = ex.getBindingResult()
+    @ExceptionHandler({MethodArgumentNotValidException.class, WebExchangeBindException.class})
+    public ResponseEntity<Map<String, Object>> handleBindingErrors(Exception ex) {
+        var bindingResult = ex instanceof MethodArgumentNotValidException manve
+                ? manve.getBindingResult()
+                : ((WebExchangeBindException) ex).getBindingResult();
+        List<String> errors = bindingResult
                 .getFieldErrors()
                 .stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())

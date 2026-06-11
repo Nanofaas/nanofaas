@@ -6,7 +6,6 @@ pushes to the local registry and what Helm chart values expect.
 """
 from __future__ import annotations
 
-from pathlib import Path
 import os
 from unittest.mock import patch
 

@@ -7,6 +7,8 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -15,6 +17,8 @@ import java.time.Duration;
 
 @Service
 public final class ReactiveInvocationCoordinator {
+    private static final Logger log = LoggerFactory.getLogger(ReactiveInvocationCoordinator.class);
+
     private final InvocationEnqueuer enqueuer;
     private final Metrics metrics;
     private final SyncQueueGateway syncQueueGateway;
@@ -42,8 +46,8 @@ public final class ReactiveInvocationCoordinator {
             return Mono.just(replay);
         }
 
-        if (lookup.isNew()) {
-            try {
+        try {
+            InvocationEnqueueSupport.admitIfNew(lookup, () -> {
                 if (syncQueueGateway.enabled()) {
                     syncQueueGateway.enqueueOrThrow(record.task());
                 } else if (enqueuer.enabled()) {
@@ -51,15 +55,15 @@ public final class ReactiveInvocationCoordinator {
                 } else {
                     completionHandler.dispatch(record.task());
                 }
-                lookup.publishAdmission();
-            } catch (RuntimeException ex) {
-                lookup.abandonAdmission();
-                return Mono.error(ex);
-            }
+            });
+        } catch (RuntimeException ex) {
+            return Mono.error(ex);
         }
 
         int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
-        return Mono.fromFuture(record.completion())
+        // suppressCancel=true: a single subscriber's timeout/disconnect must not cancel
+        // the shared completion future other idempotent waiters depend on.
+        return Mono.fromFuture(record.completion(), true)
                 .timeout(Duration.ofMillis(timeoutMs))
                 .map(result -> {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
@@ -71,6 +75,14 @@ public final class ReactiveInvocationCoordinator {
                     record.markTimeout();
                     metrics.timeout(record.task().functionName());
                     return Mono.just(responseMapper.timeoutResponse(record));
+                })
+                .onErrorResume(ex -> !(ex instanceof SyncQueueRejectedException), ex -> {
+                    log.warn("Execution {} completed exceptionally", record.executionId(), ex);
+                    String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+                    InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", message);
+                    record.markError(failure.error());
+                    metrics.error(record.task().functionName());
+                    return Mono.just(responseMapper.toResponse(record, failure));
                 });
     }
 }

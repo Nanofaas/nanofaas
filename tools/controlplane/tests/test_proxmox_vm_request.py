@@ -1,8 +1,6 @@
 """Tests for VmRequest proxmox lifecycle in controlplane context."""
 from __future__ import annotations
 
-import pytest
-
 
 def test_proxmox_lifecycle_accepted_in_controlplane() -> None:
     from workflow_tasks.vm.models import VmRequest

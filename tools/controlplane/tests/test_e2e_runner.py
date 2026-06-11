@@ -920,8 +920,12 @@ def test_one_vm_helm_loadtest_plan_uses_one_vm_adapter_task_shape() -> None:
 
     assert plan.scenario.name == "one-vm-helm-loadtest"
     assert "vm.stack.ensure_running" in plan.task_ids
+    # The lifecycle adapter owns VM bootstrap; the raw `multipass launch` recipe
+    # component must NOT also run (it fails with "already exists" on every run).
+    assert "vm.ensure_running" not in plan.task_ids
     assert "vm.loadgen.ensure_running" not in plan.task_ids
     assert "autoscaling.register_function" in plan.task_ids
     assert "autoscaling.run_k6" in plan.task_ids
+    assert "autoscaling.fetch_summary" in plan.task_ids
     assert "autoscaling.verify_replicas" in plan.task_ids
 

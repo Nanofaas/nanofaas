@@ -206,7 +206,7 @@ def main() -> None:
     scenario = resolve_scenario("proxmox-vm-loadtest")
     plan = E2ePlan(scenario=scenario, request=request, steps=steps)
 
-    print(f"\nProxmox diagnostic run")
+    print("\nProxmox diagnostic run")
     print(f"  Host     : {cfg.host}")
     print(f"  Node     : {cfg.node}")
     print(f"  VM       : {cfg.vm_name}")

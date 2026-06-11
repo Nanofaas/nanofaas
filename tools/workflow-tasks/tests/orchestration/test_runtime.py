@@ -33,11 +33,22 @@ def test_run_local_flow_failure_suppresses_prefect_console_noise(capsys) -> None
 
     captured = capsys.readouterr()
     assert result.status == "failed"
-    assert result.error == "boom"
+    assert (result.error or "").startswith("boom")
     assert "Beginning flow run" not in captured.out
     assert "Beginning flow run" not in captured.err
     assert "EventsWorker" not in captured.out
     assert "EventsWorker" not in captured.err
+
+
+def test_run_local_flow_failure_error_includes_traceback() -> None:
+    def _boom() -> None:
+        raise RuntimeError("boom-marker")
+
+    result = run_local_flow("flow.test", _boom)
+
+    assert result.status == "failed"
+    assert "boom-marker" in (result.error or "")
+    assert "Traceback" in (result.error or "")
 
 
 def test_flow_run_result_constructors() -> None:

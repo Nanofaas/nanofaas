@@ -180,12 +180,12 @@ class ExecutionCompletionHandlerTest {
     }
 
     @Test
-    void completeExecution_withSuccess_readsSinglePreCompletionSnapshot() {
+    void completeExecution_withSuccess_readsFieldsUnderLockWithoutSnapshot() {
         CountingExecutionRecord record = countingRecordInStore("exec-count", testSpec);
 
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
 
-        assertThat(record.snapshotReads()).isEqualTo(1);
+        assertThat(record.snapshotReads()).isEqualTo(0);
         assertThat(record.finishedAtReads()).isEqualTo(1);
     }
 

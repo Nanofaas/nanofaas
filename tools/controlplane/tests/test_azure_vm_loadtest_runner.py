@@ -62,7 +62,7 @@ def test_runner_accepts_azure_vm_orchestrator(tmp_path):
 
     assert mock_orch.transfer_to.called
     assert mock_orch.exec_argv.called
-    assert result.target_function == "word-stats-java"
+    assert result.target_function == "echo-test"
 
 
 def test_runner_transfers_script_to_loadgen_vm(tmp_path):

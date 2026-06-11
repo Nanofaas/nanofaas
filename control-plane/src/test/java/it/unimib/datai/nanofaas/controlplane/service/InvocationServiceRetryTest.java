@@ -21,7 +21,6 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -322,38 +321,4 @@ class InvocationServiceRetryTest {
         verify(enqueuer, times(1)).enqueue(any());
     }
 
-    @Test
-    void invokeSync_waitsForRetryToComplete() throws Exception {
-        AtomicInteger attemptCounter = new AtomicInteger(0);
-
-        // We need to simulate the scheduler dispatching and completing
-        // For this test, we'll manually trigger completions
-
-        // Create execution in a separate thread
-        Thread invokerThread = new Thread(() -> {
-            try {
-                InvocationResponse response = invocationService.invokeSync(
-                        "testFunc",
-                        new InvocationRequest("payload", null),
-                        null,
-                        null,
-                        5000  // 5 second timeout
-                );
-                // Should get here after successful retry
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        invokerThread.start();
-
-        // Wait for the execution to be created
-        Thread.sleep(100);
-
-        // Find the execution
-        // We don't know the exact ID, so we need to find it
-        // For simplicity, let's test with invokeAsync instead
-
-        invokerThread.interrupt();
-        invokerThread.join(1000);
-    }
 }

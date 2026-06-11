@@ -377,6 +377,59 @@ def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify
     } == {"container-local.verify"}
 
 
+def test_container_local_runner_reports_actual_delete_http_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(container_local_runner_mod, "_resolve_scenario_file", lambda scenario_file: None)
+    monkeypatch.setattr(container_local_runner_mod, "select_container_runtime", lambda runtime_adapter: "docker")
+
+    runner = ContainerLocalE2eRunner(tmp_path)
+    monkeypatch.setattr(
+        runner,
+        "_resolve_function",
+        lambda resolved: ("container-local-e2e", "nanofaas/function-runtime:test", None, None, None),
+    )
+    monkeypatch.setattr(runner, "_build_artifacts", lambda: None)
+    monkeypatch.setattr(runner, "_build_function_image", lambda image, runtime_kind, family: None)
+    monkeypatch.setattr(container_local_runner_mod, "spawn_logged_process", lambda *args, **kwargs: _FakeProcess())
+    monkeypatch.setattr(container_local_runner_mod, "wait_for_http_ok", lambda *args, **kwargs: True)
+    monkeypatch.setattr(runner, "_wait_for_containers", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "_cleanup", lambda *args, **kwargs: None)
+
+    def _fake_subprocess_run(args: list[str], check: bool = False, **kwargs) -> subprocess.CompletedProcess[str]:
+        _ = check, kwargs
+        if "-o" in args:
+            output_path = Path(args[args.index("-o") + 1])
+            payload = {}
+            if output_path.name == "register.json":
+                payload = {
+                    "name": "container-local-e2e",
+                    "effectiveExecutionMode": "DEPLOYMENT",
+                    "deploymentBackend": "container-local",
+                    "endpointUrl": "http://127.0.0.1:19090/invoke",
+                }
+            elif output_path.name == "scale.json":
+                payload = {"replicas": 2}
+            elif output_path.name in {"invoke.json", "invoke-scaled.json"}:
+                payload = {"status": "success"}
+            output_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(container_local_runner_mod.subprocess, "run", _fake_subprocess_run)
+
+    import httpx
+
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda url, timeout=5: type("_Resp", (), {"status_code": 500})(),
+    )
+
+    with pytest.raises(RuntimeError, match="Expected 404 after function delete, got 500"):
+        runner.run()
+
+
 def test_container_local_runner_builds_javascript_function_images(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

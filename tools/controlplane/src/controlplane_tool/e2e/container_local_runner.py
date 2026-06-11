@@ -369,7 +369,7 @@ class ContainerLocalE2eRunner:
                     http_status = _httpx.get(self._api.function_url(function_name), timeout=5).status_code
                     if http_status != 404:
                         raise RuntimeError(
-                            f"Expected 404 after function delete, got {status}"
+                            f"Expected 404 after function delete, got {http_status}"
                         )
 
             success("container-local managed DEPLOYMENT flow")

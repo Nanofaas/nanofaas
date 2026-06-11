@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.Optional;
 
@@ -31,7 +32,6 @@ public class InvocationService {
     private final ExecutionCompletionHandler completionHandler;
     private final InvocationExecutionFactory executionFactory;
     private final InvocationResponseMapper responseMapper;
-    private final SyncInvocationCoordinator syncCoordinator;
     private final ReactiveInvocationCoordinator reactiveCoordinator;
 
     public InvocationService(FunctionService functionService,
@@ -51,7 +51,6 @@ public class InvocationService {
                 completionHandler,
                 new InvocationExecutionFactory(executionStore, idempotencyStore),
                 new InvocationResponseMapper(),
-                new SyncInvocationCoordinator(enqueuer, metrics, syncQueueGateway, completionHandler, new InvocationResponseMapper()),
                 new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, completionHandler, new InvocationResponseMapper())
         );
     }
@@ -65,7 +64,6 @@ public class InvocationService {
                              ExecutionCompletionHandler completionHandler,
                              InvocationExecutionFactory executionFactory,
                              InvocationResponseMapper responseMapper,
-                             SyncInvocationCoordinator syncCoordinator,
                              ReactiveInvocationCoordinator reactiveCoordinator) {
         this.functionService = functionService;
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
@@ -75,21 +73,7 @@ public class InvocationService {
         this.completionHandler = completionHandler;
         this.executionFactory = executionFactory;
         this.responseMapper = responseMapper;
-        this.syncCoordinator = syncCoordinator;
         this.reactiveCoordinator = reactiveCoordinator;
-    }
-
-    public InvocationResponse invokeSync(String functionName,
-                                         InvocationRequest request,
-                                         String idempotencyKey,
-                                         String traceId,
-                                         Integer timeoutOverrideMs) throws InterruptedException {
-        enforceRateLimit();
-
-        FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-        InvocationExecutionFactory.ExecutionLookup lookup =
-                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
-        return syncCoordinator.invoke(lookup, spec, timeoutOverrideMs);
     }
 
     public Mono<InvocationResponse> invokeSyncReactive(String functionName,
@@ -97,12 +81,17 @@ public class InvocationService {
                                                         String idempotencyKey,
                                                         String traceId,
                                                         Integer timeoutOverrideMs) {
-        enforceRateLimit();
-
-        FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-        InvocationExecutionFactory.ExecutionLookup lookup =
-                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
-        return reactiveCoordinator.invoke(lookup, spec, timeoutOverrideMs);
+        record Prepared(FunctionSpec spec, InvocationExecutionFactory.ExecutionLookup lookup) {}
+        return Mono.fromCallable(() -> {
+                    enforceRateLimit();
+                    FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
+                    // createOrReuseExecution may spin briefly on contended idempotency
+                    // claims; it must never run on the Netty event loop.
+                    return new Prepared(spec,
+                            executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId));
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(prepared -> reactiveCoordinator.invoke(prepared.lookup(), prepared.spec(), timeoutOverrideMs));
     }
 
     public InvocationResponse invokeAsync(String functionName,
@@ -119,16 +108,8 @@ public class InvocationService {
         InvocationExecutionFactory.ExecutionLookup lookup =
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
         ExecutionRecord record = lookup.record();
-
-        if (lookup.isNew()) {
-            try {
-                InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
-                lookup.publishAdmission();
-            } catch (RuntimeException ex) {
-                lookup.abandonAdmission();
-                throw ex;
-            }
-        }
+        InvocationEnqueueSupport.admitIfNew(lookup,
+                () -> InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record));
         return new InvocationResponse(record.executionId(), "queued", null, null);
     }
 

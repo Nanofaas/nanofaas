@@ -20,7 +20,7 @@ public class RateLimiter {
     public boolean allow() {
         long now = Instant.now().getEpochSecond();
         long currentWindow = windowStartSecond.get();
-        if (now != currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
+        if (now > currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
             windowCount.set(0);
         }
         return windowCount.incrementAndGet() <= maxPerSecond;

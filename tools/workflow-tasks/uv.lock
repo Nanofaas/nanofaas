@@ -671,8 +671,8 @@ wheels = [
 
 [[package]]
 name = "multipass-sdk"
-version = "0.5.0"
-source = { git = "https://github.com/miciav/multipass-sdk.git?rev=83b3704#83b3704b2c37e50c09773cd97073f691cd4d3faa" }
+version = "0.6.0"
+source = { git = "https://github.com/miciav/multipass-sdk.git?rev=402c406#402c4061e6b32cc6dda5e7a9876fa7cefd6f9ae1" }
 dependencies = [
     { name = "haikunator" },
     { name = "pyyaml" },
@@ -1216,7 +1216,7 @@ dev = [
 requires-dist = [
     { name = "azure-vm-sdk", git = "https://github.com/miciav/azure-vm-sdk.git?rev=2311b1c" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=83b3704" },
+    { name = "multipass-sdk", git = "https://github.com/miciav/multipass-sdk.git?rev=402c406" },
     { name = "proxmox-sdk", git = "https://github.com/miciav/proxmox-sdk.git?rev=9e20703" },
     { name = "pydantic", specifier = ">=2.9.2" },
     { name = "pydantic-settings", specifier = ">=2.5" },

@@ -16,7 +16,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "flask>=3.0",
     "rich>=13.8",
-    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@83b3704",
+    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@402c406",
     "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@2311b1c",
     "proxmox-sdk @ git+https://github.com/miciav/proxmox-sdk.git@9e20703",
     "prefect>=3,<4",
@@ -62,6 +62,7 @@ line-length = 100
 select = ["F", "SLF"]
 
 [tool.ruff.lint.per-file-ignores]
+"diagnose_proxmox_ssh.py" = ["SLF001"]
 "src/controlplane_tool/cli_validation/cli_host_runner.py" = ["SLF001"]
 "src/controlplane_tool/cli_validation/cli_test_runner.py" = ["SLF001"]
 "src/controlplane_tool/e2e/e2e_runner.py" = ["SLF001"]
@@ -83,7 +84,7 @@ include = [
     "src/controlplane_tool/devtools/quality.py",
     "src/controlplane_tool/orchestation/flow_catalog.py",
     "src/controlplane_tool/orchestation/infra_flows.py",
-    "src/controlplane_tool/tasks",
+    "src/controlplane_tool/scenario/tasks",
     "src/controlplane_tool/tui/workflow.py",
     "src/controlplane_tool/tui/workflow_controller.py",
 ]

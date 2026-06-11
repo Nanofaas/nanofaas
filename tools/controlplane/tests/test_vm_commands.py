@@ -36,8 +36,9 @@ def test_vm_provision_base_dry_run_prints_planned_ansible_command() -> None:
         ],
     )
     assert result.exit_code == 0
+    unwrapped_stdout = result.stdout.replace("\n", "")
     assert "ansible-playbook" in result.stdout
-    assert "provision-base.yml" in result.stdout
+    assert "provision-base.yml" in unwrapped_stdout
     assert "vm.example.test" in result.stdout
 
 

@@ -77,3 +77,76 @@ def test_register_functions_raises_on_http_error() -> None:
             assert "bad" in str(exc) and "409" in str(exc)
             return
     raise AssertionError("expected RuntimeError")
+
+
+def _http_error(code: int) -> "urllib.error.HTTPError":
+    import urllib.error
+
+    return urllib.error.HTTPError("http://cp:8080/v1/functions", code, "conflict", None, None)
+
+
+def test_register_functions_on_conflict_skip_tolerates_409() -> None:
+    task = RegisterFunctions(
+        task_id="fn.register",
+        title="Register",
+        control_plane_url="http://cp:8080",
+        specs=[FunctionSpec(name="a", image="i:1"), FunctionSpec(name="b", image="i:2")],
+        on_conflict="skip",
+    )
+    with patch("urllib.request.urlopen") as mock_open:
+        mock_open.side_effect = [_http_error(409), MagicMock()]
+        task.run()
+    assert mock_open.call_count == 2
+
+
+def test_register_functions_on_conflict_replace_deletes_then_reregisters() -> None:
+    task = RegisterFunctions(
+        task_id="fn.register",
+        title="Register",
+        control_plane_url="http://cp:8080",
+        specs=[FunctionSpec(name="word-stats-java", image="i:1")],
+        on_conflict="replace",
+    )
+    with patch("urllib.request.urlopen") as mock_open:
+        mock_open.side_effect = [_http_error(409), MagicMock(), MagicMock()]
+        task.run()
+    assert mock_open.call_count == 3
+    methods = [call.args[0].method for call in mock_open.call_args_list]
+    assert methods == ["POST", "DELETE", "POST"]
+    delete_req = mock_open.call_args_list[1].args[0]
+    assert delete_req.full_url == "http://cp:8080/v1/functions/word-stats-java"
+
+
+def test_register_functions_default_still_fails_on_409() -> None:
+    task = RegisterFunctions(
+        task_id="fn.register",
+        title="Register",
+        control_plane_url="http://cp:8080",
+        specs=[FunctionSpec(name="a", image="i:1")],
+    )
+    with patch("urllib.request.urlopen") as mock_open:
+        mock_open.side_effect = [_http_error(409)]
+        try:
+            task.run()
+        except RuntimeError as exc:
+            assert "HTTP 409" in str(exc)
+            return
+    raise AssertionError("expected RuntimeError")
+
+
+def test_register_functions_non_409_error_always_fails_even_with_skip() -> None:
+    task = RegisterFunctions(
+        task_id="fn.register",
+        title="Register",
+        control_plane_url="http://cp:8080",
+        specs=[FunctionSpec(name="a", image="i:1")],
+        on_conflict="skip",
+    )
+    with patch("urllib.request.urlopen") as mock_open:
+        mock_open.side_effect = [_http_error(500)]
+        try:
+            task.run()
+        except RuntimeError as exc:
+            assert "HTTP 500" in str(exc)
+            return
+    raise AssertionError("expected RuntimeError")

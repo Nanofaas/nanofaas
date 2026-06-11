@@ -13,6 +13,8 @@ from workflow_tasks.loadtest.two_vm import (  # noqa: F401
 )
 
 from controlplane_tool.infra.vm.vm_models import VmRequest
+# Keeps the k6 target consistent with what selected_functions() actually registers (PR #118 FU2).
+from controlplane_tool.scenario.scenario_helpers import selected_functions
 from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
 
 LOADTEST_PROMETHEUS_QUERIES: tuple[PrometheusQuery, ...] = (
@@ -82,12 +84,15 @@ def two_vm_target_function(request: Any) -> str:
     resolved = getattr(request, "resolved_scenario", None)
     if resolved is None:
         functions = getattr(request, "functions", [])
-        return functions[0] if functions else "word-stats-java"
+        if functions:
+            return functions[0]
+
+        return selected_functions(None)[0]
     if resolved.load.targets:
         return resolved.load.targets[0]
     if resolved.function_keys:
         return resolved.function_keys[0]
-    return "word-stats-java"
+    return selected_functions(resolved)[0]
 
 
 def two_vm_load_stages(request: Any) -> tuple[tuple[str, int], ...]:
