@@ -86,6 +86,9 @@ def test_one_vm_adapter_builds_autoscaling_tail_tasks(tmp_path: Path) -> None:
     assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] == "word-stats-java"
     assert isinstance(tasks[2], VerifyAutoscalingReplicas)
     assert tasks[2].watcher is tasks[1].watcher
+    # Must match where helm actually deploys (its None-namespace fallback);
+    # a bare request used to leave this None and the kubectl probe failed.
+    assert tasks[2].namespace == "nanofaas-e2e"
 
 
 def test_one_vm_adapter_endpoint_and_fetcher_are_constructible(tmp_path: Path) -> None:
