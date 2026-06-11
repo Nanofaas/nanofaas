@@ -29,6 +29,7 @@ experiments/.image-cache/
 tooling/runs/
 tools/controlplane/runs/
 tools/controlplane/profiles/proxmox.toml
+tools/controlplane/profiles/azure.toml
 recovery/
 .gitnexus
 
