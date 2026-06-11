@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from collections.abc import Callable
 from datetime import UTC, datetime
 import os
+import traceback
 from typing import Generator
 from typing import TypeVar
 from uuid import uuid4
@@ -19,6 +20,10 @@ def _now_utc() -> datetime:
 
 def _generated_flow_run_id() -> str:
     return str(uuid4())
+
+
+def _format_flow_error(exc: Exception) -> str:
+    return f"{exc}\n{traceback.format_exc()}"
 
 
 def _prefect_backend_name() -> str:  # pragma: no cover - prefect-only path
@@ -78,7 +83,7 @@ def _run_without_prefect(
             orchestrator_backend=orchestrator_backend,
             started_at=started_at,
             finished_at=_now_utc(),
-            error=str(exc),
+            error=_format_flow_error(exc),
         )
     return FlowRunResult.completed(
         flow_id=flow_id,
@@ -132,7 +137,7 @@ def run_local_flow(
             orchestrator_backend=_prefect_backend_name(),
             started_at=started_at,
             finished_at=_now_utc(),
-            error=str(exc),
+            error=_format_flow_error(exc),
         )
 
     return FlowRunResult.completed(

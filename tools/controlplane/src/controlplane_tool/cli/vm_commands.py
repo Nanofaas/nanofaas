@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from workflow_tasks import fail
 from tui_toolkit.console import console
+from controlplane_tool.cli.flow_exit import exit_on_failed_flow
 from controlplane_tool.core.models import VmLifecycle
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
 from controlplane_tool.workspace.paths import default_tool_paths
@@ -86,7 +87,8 @@ def _execute(action) -> None:
 
 def _run_flow_result(flow) -> object:  # noqa: ANN001
     flow_result = run_local_flow(flow.flow_id, flow.run)
-    if flow_result.status != "completed" or flow_result.result is None:
+    exit_on_failed_flow(flow_result)
+    if flow_result.result is None:
         raise typer.Exit(code=1)
     return flow_result.result
 
