@@ -533,6 +533,12 @@ _PLATFORM_VALIDATION_CHOICES = [
         "Bootstrap the full VM-backed Helm stack and validate the deployment path that load testing and demos rely on.",
     ),
     _DescribedChoice(
+        "one-vm-helm-loadtest — Helm stack + k6 + autoscaling check on one VM",
+        "one-vm-helm-loadtest",
+        "Bootstrap the Helm stack on one managed VM, run the k6 load test from the same VM, "
+        "and verify autoscaling scale-up/scale-down without a second load generator VM.",
+    ),
+    _DescribedChoice(
         "two-vm-loadtest — Helm stack with dedicated k6 load generator VM",
         "two-vm-loadtest",
         "Bootstrap the Helm stack on one VM and run k6 from a second managed load generator VM.",
@@ -980,7 +986,7 @@ class NanofaasTUI:
             if scenario_choice == _BACK_VALUE:
                 return
 
-            if scenario_choice in ("k3s-junit-curl", "helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"):
+            if scenario_choice in ("k3s-junit-curl", "helm-stack", "one-vm-helm-loadtest", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"):
                 self._run_vm_e2e_scenario(scenario_choice)
             elif scenario_choice == "container-local":
                 self._run_container_local()
@@ -993,7 +999,7 @@ class NanofaasTUI:
     def _run_vm_e2e_scenario(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
 
-        if scenario in {"helm-stack", "two-vm-loadtest"}:
+        if scenario in {"helm-stack", "one-vm-helm-loadtest", "two-vm-loadtest"}:
             from controlplane_tool.cli.e2e_commands import _resolve_run_request
             from controlplane_tool.e2e.e2e_runner import E2eRunner
 

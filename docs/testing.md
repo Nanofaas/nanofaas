@@ -376,7 +376,7 @@ scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --d
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run helm-stack --dry-run
-scripts/controlplane.sh e2e run one-vm-helm-loadtest
+scripts/controlplane.sh e2e run one-vm-helm-loadtest --dry-run
 scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
 scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run

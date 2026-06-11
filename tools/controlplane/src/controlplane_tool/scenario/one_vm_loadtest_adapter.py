@@ -3,9 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from controlplane_tool.autoscaling.tasks import VerifyAutoscalingReplicas
+from controlplane_tool.autoscaling.tasks import (
+    ReplicaProbe,
+    ReplicaWatcher,
+    RunK6WithReplicaWatch,
+    VerifyAutoscalingReplicas,
+)
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
-from controlplane_tool.scenario.loadtest_adapter import MultipassConnectivity
+from controlplane_tool.scenario.loadtest_adapter import InstallEndpoint, MultipassConnectivity
 from controlplane_tool.scenario.loadtest_flow import FlowPhase, RunContext
 from controlplane_tool.scenario.scenarios._workflow_assembly import _Setup, build_setup
 from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
@@ -39,18 +44,25 @@ class OneVmLoadtestAdapter:
     def loadgen_lifecycle(self):
         return self.stack_lifecycle()
 
-    def loadgen_install_endpoint(self, ctx: RunContext):
-        from controlplane_tool.scenario.loadtest_adapter import _Endpoint
+    def loadgen_install_endpoint(self, ctx: RunContext) -> InstallEndpoint:
+        from multipass import find_ssh_public_key
+        from workflow_tasks.vm.multipass import _find_ssh_private_key_path
 
-        return _Endpoint(host=ctx.stack_info.host, user=ctx.stack_info.user, private_key=None, port=None)
+        # Same VM as the stack; ansible k6 install needs the real ssh key.
+        return InstallEndpoint(
+            host=ctx.stack_info.host,
+            user=self.request.vm.user,
+            private_key=_find_ssh_private_key_path(find_ssh_public_key()),
+            port=None,
+        )
 
     def loadgen_runner(self, ctx: RunContext):
         return self.connectivity.vm_runner(self.request.vm)
 
     def fetcher(self, ctx: RunContext):
-        from controlplane_tool.scenario.loadtest_adapter import _MultipassFetcher
+        from workflow_tasks.vm.runners import VmFileFetcher
 
-        return _MultipassFetcher(self.runner.vm, self.request.vm)
+        return VmFileFetcher(vm=self.runner.vm, request=self.request.vm)
 
     def control_plane_url(self, ctx: RunContext) -> str:
         return two_vm_control_plane_url(self.request.vm, host=ctx.stack_info.host)
@@ -113,6 +125,7 @@ class OneVmLoadtestAdapter:
             task_id="functions.register",
             title="Register functions",
             control_plane_url=ctx.control_plane_url,
+            on_conflict="skip",
             specs=[
                 FunctionSpec(
                     name=fn_key,
@@ -147,11 +160,20 @@ class OneVmLoadtestAdapter:
         )
         autoscaling_script = Path(f"{ctx.remote_paths.scripts_dir}/autoscaling.js")
         autoscaling_summary = Path(f"{ctx.remote_paths.results_dir}/autoscaling-k6-summary.json")
+        loadgen_runner = self.loadgen_runner(ctx)
+        probe = ReplicaProbe(
+            runner=loadgen_runner,
+            namespace=setup.context.namespace,
+            deployment_name=f"fn-{function_name}",
+            remote_dir=ctx.loadgen_info.home,
+        )
+        watcher = ReplicaWatcher(probe)
         return [
             RegisterFunctions(
                 task_id="autoscaling.register_function",
                 title="Register autoscaling function",
                 control_plane_url=ctx.control_plane_url,
+                on_conflict="replace",
                 specs=[
                     FunctionSpec(
                         name=function_name,
@@ -169,34 +191,40 @@ class OneVmLoadtestAdapter:
                     )
                 ],
             ),
-            RunK6(
+            RunK6WithReplicaWatch(
                 task_id="autoscaling.run_k6",
                 title="Run autoscaling k6",
-                runner=self.loadgen_runner(ctx),
-                config=K6Config(
-                    script_path=autoscaling_script,
-                    target_url=ctx.control_plane_url,
-                    summary_output_path=autoscaling_summary,
-                    stages=(
-                        K6Stage(duration="10s", target=10),
-                        K6Stage(duration="20s", target=20),
-                        K6Stage(duration="90s", target=20),
-                        K6Stage(duration="10s", target=0),
+                run_k6=RunK6(
+                    task_id="autoscaling.run_k6.inner",
+                    title="Run autoscaling k6 (inner)",
+                    runner=loadgen_runner,
+                    config=K6Config(
+                        script_path=autoscaling_script,
+                        target_url=ctx.control_plane_url,
+                        summary_output_path=autoscaling_summary,
+                        stages=(
+                            K6Stage(duration="10s", target=10),
+                            K6Stage(duration="20s", target=20),
+                            K6Stage(duration="90s", target=20),
+                            K6Stage(duration="10s", target=0),
+                        ),
+                        env={
+                            "NANOFAAS_URL": ctx.control_plane_url,
+                            "NANOFAAS_FUNCTION": function_name,
+                        },
                     ),
-                    env={
-                        "NANOFAAS_URL": ctx.control_plane_url,
-                        "NANOFAAS_FUNCTION": function_name,
-                    },
+                    remote_dir=ctx.loadgen_info.home,
                 ),
-                remote_dir=ctx.loadgen_info.home,
+                watcher=watcher,
             ),
             VerifyAutoscalingReplicas(
                 task_id="autoscaling.verify_replicas",
                 title="Verify autoscaling replicas",
-                runner=self.loadgen_runner(ctx),
+                runner=loadgen_runner,
                 namespace=setup.context.namespace,
                 deployment_name=f"fn-{function_name}",
                 remote_dir=ctx.loadgen_info.home,
+                watcher=watcher,
             ),
         ]
 
