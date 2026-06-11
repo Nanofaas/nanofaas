@@ -83,7 +83,10 @@ def test_one_vm_adapter_builds_autoscaling_tail_tasks(tmp_path: Path) -> None:
     assert isinstance(tasks[1], RunK6WithReplicaWatch)
     assert isinstance(tasks[1].run_k6, RunK6)
     assert tasks[1].run_k6.config.script_path == Path("/home/ubuntu/two-vm-loadtest/scripts/autoscaling.js")
-    assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] == "word-stats-java"
+    from controlplane_tool.scenario.scenario_helpers import selected_functions
+
+    assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] == "echo-test"
+    assert tasks[1].run_k6.config.env["NANOFAAS_FUNCTION"] in selected_functions(None)
     assert isinstance(tasks[2], VerifyAutoscalingReplicas)
     assert tasks[2].watcher is tasks[1].watcher
     # Must match where helm actually deploys (its None-namespace fallback);
