@@ -33,7 +33,7 @@ class InvokeControllerTest {
 
     @Test
     void issue014_invokeContractReturnsInput() throws Exception {
-        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -44,7 +44,7 @@ class InvokeControllerTest {
 
     @Test
     void invokeUsesExecutionIdFromHeader() throws Exception {
-        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "header-exec-123")
@@ -53,12 +53,12 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("header-exec-123"), any(CallbackPayload.class), any());
+                .sendResult(eq("header-exec-123"), any(CallbackPayload.class), any(), any());
     }
 
     @Test
     void invokeUsesEnvExecutionIdWhenHeaderNotProvided() throws Exception {
-        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -66,12 +66,12 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("test-execution"), any(CallbackPayload.class), any());
+                .sendResult(eq("test-execution"), any(CallbackPayload.class), any(), any());
     }
 
     @Test
     void invokeHeaderTakesPrecedenceOverEnv() throws Exception {
-        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "header-takes-precedence")
@@ -80,12 +80,12 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("header-takes-precedence"), any(CallbackPayload.class), any());
+                .sendResult(eq("header-takes-precedence"), any(CallbackPayload.class), any(), any());
     }
 
     @Test
     void invokePropagatesTraceIdToCallback() throws Exception {
-        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "exec-123")
@@ -95,12 +95,12 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("exec-123"), any(CallbackPayload.class), eq("trace-456"));
+                .sendResult(eq("exec-123"), any(CallbackPayload.class), eq("trace-456"), any());
     }
 
     @Test
     void invokePropagatesNullTraceIdWhenHeaderNotProvided() throws Exception {
-        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any())).thenReturn(true);
+        when(callbackClient.sendResult(any(), any(CallbackPayload.class), any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/invoke")
                         .header("X-Execution-Id", "exec-789")
@@ -109,6 +109,6 @@ class InvokeControllerTest {
                 .andExpect(status().isOk());
 
         verify(callbackClient, timeout(CALLBACK_TIMEOUT_MS))
-                .sendResult(eq("exec-789"), any(CallbackPayload.class), (String) isNull());
+                .sendResult(eq("exec-789"), any(CallbackPayload.class), (String) isNull(), any());
     }
 }
