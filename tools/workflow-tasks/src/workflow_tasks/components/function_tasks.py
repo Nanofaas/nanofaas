@@ -34,27 +34,61 @@ class FunctionSpec:
 
 @dataclass
 class RegisterFunctions:
-    """Register functions via POST /v1/functions REST API. No CLI dependency."""
+    """Register functions via POST /v1/functions REST API. No CLI dependency.
+
+    ``on_conflict`` controls HTTP 409 (function already registered) handling:
+    ``"fail"`` (default) raises; ``"skip"`` keeps the existing registration;
+    ``"replace"`` deletes the existing function and registers the new spec
+    (needed when the spec differs, e.g. to apply a scalingConfig).
+    """
 
     task_id: str
     title: str
     control_plane_url: str
     specs: list[FunctionSpec] = field(default_factory=list)
+    on_conflict: str = "fail"
 
     def run(self) -> None:
-        url = f"{self.control_plane_url.rstrip('/')}/v1/functions"
+        base = self.control_plane_url.rstrip("/")
+        url = f"{base}/v1/functions"
         for spec in self.specs:
-            body = json.dumps(spec.to_body()).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=body,
-                method="POST",
-                headers={"Content-Type": "application/json"},
-            )
             try:
-                with urllib.request.urlopen(req, timeout=30):
-                    pass
+                self._post(url, spec)
             except urllib.error.HTTPError as exc:
+                if exc.code != 409 or self.on_conflict == "fail":
+                    raise RuntimeError(
+                        f"Failed to register function '{spec.name}': HTTP {exc.code}"
+                    ) from exc
+                if self.on_conflict == "skip":
+                    continue
+                self._delete(base, spec.name)
+                try:
+                    self._post(url, spec)
+                except urllib.error.HTTPError as exc2:
+                    raise RuntimeError(
+                        f"Failed to re-register function '{spec.name}': HTTP {exc2.code}"
+                    ) from exc2
+
+    @staticmethod
+    def _post(url: str, spec: FunctionSpec) -> None:
+        body = json.dumps(spec.to_body()).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+
+    @staticmethod
+    def _delete(base: str, name: str) -> None:
+        req = urllib.request.Request(f"{base}/v1/functions/{name}", method="DELETE")
+        try:
+            with urllib.request.urlopen(req, timeout=30):
+                pass
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
                 raise RuntimeError(
-                    f"Failed to register function '{spec.name}': HTTP {exc.code}"
+                    f"Failed to delete function '{name}': HTTP {exc.code}"
                 ) from exc

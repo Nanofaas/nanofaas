@@ -125,6 +125,7 @@ class OneVmLoadtestAdapter:
             task_id="functions.register",
             title="Register functions",
             control_plane_url=ctx.control_plane_url,
+            on_conflict="skip",
             specs=[
                 FunctionSpec(
                     name=fn_key,
@@ -172,6 +173,7 @@ class OneVmLoadtestAdapter:
                 task_id="autoscaling.register_function",
                 title="Register autoscaling function",
                 control_plane_url=ctx.control_plane_url,
+                on_conflict="replace",
                 specs=[
                     FunctionSpec(
                         name=function_name,
