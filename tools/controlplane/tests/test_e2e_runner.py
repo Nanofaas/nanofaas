@@ -926,5 +926,6 @@ def test_one_vm_helm_loadtest_plan_uses_one_vm_adapter_task_shape() -> None:
     assert "vm.loadgen.ensure_running" not in plan.task_ids
     assert "autoscaling.register_function" in plan.task_ids
     assert "autoscaling.run_k6" in plan.task_ids
+    assert "autoscaling.fetch_summary" in plan.task_ids
     assert "autoscaling.verify_replicas" in plan.task_ids
 

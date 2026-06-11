@@ -1,5 +1,6 @@
 from controlplane_tool.autoscaling.tasks import (
     AutoscalingSummary,
+    FetchAutoscalingSummary,
     ReplicaProbe,
     ReplicaWatcher,
     RunK6WithReplicaWatch,
@@ -8,6 +9,7 @@ from controlplane_tool.autoscaling.tasks import (
 
 __all__ = [
     "AutoscalingSummary",
+    "FetchAutoscalingSummary",
     "ReplicaProbe",
     "ReplicaWatcher",
     "RunK6WithReplicaWatch",

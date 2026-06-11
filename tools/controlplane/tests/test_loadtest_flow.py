@@ -446,6 +446,7 @@ def test_one_vm_static_task_ids_skip_loadgen_lifecycle_and_append_post_loadgen(
                 "autoscaling.register_function",
                 "autoscaling.run_k6",
                 "autoscaling.verify_replicas",
+                "autoscaling.fetch_summary",
             ]
 
     ids = mod.loadtest_flow_task_ids(runner=object(), request=object(), setup=object(),
@@ -461,6 +462,7 @@ def test_one_vm_static_task_ids_skip_loadgen_lifecycle_and_append_post_loadgen(
             "autoscaling.register_function",
             "autoscaling.run_k6",
             "autoscaling.verify_replicas",
+            "autoscaling.fetch_summary",
             "vm.stack.destroy",
         ]
     )
@@ -500,6 +502,7 @@ def test_one_vm_static_phase_titles_skip_loadgen_lifecycle_and_append_post_loadg
                 "Register autoscaling function",
                 "Run autoscaling k6 tail",
                 "Verify autoscaling replicas",
+                "Fetch autoscaling k6 summary",
             ]
 
     titles = mod.loadtest_flow_phase_titles(runner=object(), request=object(), setup=object(),
@@ -519,6 +522,7 @@ def test_one_vm_static_phase_titles_skip_loadgen_lifecycle_and_append_post_loadg
             "Register autoscaling function",
             "Run autoscaling k6 tail",
             "Verify autoscaling replicas",
+            "Fetch autoscaling k6 summary",
             "Destroy stack VM (One VM)",
         ]
     )
