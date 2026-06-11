@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import shlex
 import threading
 import time
@@ -195,3 +196,18 @@ class VerifyAutoscalingReplicas:
                 )
 
         raise RuntimeError(f"Scale-down to 0 not observed: desired replicas = {final_desired}")
+
+
+@dataclass
+class FetchAutoscalingSummary:
+    """Copies the autoscaling k6 summary from the VM into the local run dir."""
+
+    task_id: str
+    title: str
+    fetcher: object  # RemoteFileFetcher: fetch_from(remote: str, local: Path)
+    remote_path: str
+    local_path: Path
+
+    def run(self) -> None:
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
+        self.fetcher.fetch_from(self.remote_path, self.local_path)

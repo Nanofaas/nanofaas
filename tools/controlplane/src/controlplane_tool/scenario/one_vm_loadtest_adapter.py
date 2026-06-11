@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from controlplane_tool.autoscaling.tasks import (
+    FetchAutoscalingSummary,
     ReplicaProbe,
     ReplicaWatcher,
     RunK6WithReplicaWatch,
@@ -140,6 +141,7 @@ class OneVmLoadtestAdapter:
             "autoscaling.register_function",
             "autoscaling.run_k6",
             "autoscaling.verify_replicas",
+            "autoscaling.fetch_summary",
         ]
 
     def post_loadgen_task_titles(self) -> list[str]:
@@ -147,6 +149,7 @@ class OneVmLoadtestAdapter:
             "Register autoscaling function",
             "Run autoscaling k6",
             "Verify autoscaling replicas",
+            "Fetch autoscaling k6 summary",
         ]
 
     def post_loadgen_tasks(self, ctx: RunContext) -> list:
@@ -225,6 +228,13 @@ class OneVmLoadtestAdapter:
                 deployment_name=f"fn-{function_name}",
                 remote_dir=ctx.loadgen_info.home,
                 watcher=watcher,
+            ),
+            FetchAutoscalingSummary(
+                task_id="autoscaling.fetch_summary",
+                title="Fetch autoscaling k6 summary",
+                fetcher=self.fetcher(ctx),
+                remote_path=str(autoscaling_summary),
+                local_path=ctx.run_dir / "autoscaling-k6-summary.json",
             ),
         ]
 
