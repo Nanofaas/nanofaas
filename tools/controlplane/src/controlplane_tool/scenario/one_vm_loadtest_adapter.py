@@ -10,7 +10,7 @@ from controlplane_tool.autoscaling.tasks import (
     VerifyAutoscalingReplicas,
 )
 from controlplane_tool.infra.vm_lifecycle_adapters import MultipassVmAdapter
-from controlplane_tool.scenario.loadtest_adapter import MultipassConnectivity
+from controlplane_tool.scenario.loadtest_adapter import InstallEndpoint, MultipassConnectivity
 from controlplane_tool.scenario.loadtest_flow import FlowPhase, RunContext
 from controlplane_tool.scenario.scenarios._workflow_assembly import _Setup, build_setup
 from controlplane_tool.scenario.scenario_helpers import function_image, selected_functions
@@ -44,18 +44,25 @@ class OneVmLoadtestAdapter:
     def loadgen_lifecycle(self):
         return self.stack_lifecycle()
 
-    def loadgen_install_endpoint(self, ctx: RunContext):
-        from controlplane_tool.scenario.loadtest_adapter import _Endpoint
+    def loadgen_install_endpoint(self, ctx: RunContext) -> InstallEndpoint:
+        from multipass import find_ssh_public_key
+        from workflow_tasks.vm.multipass import _find_ssh_private_key_path
 
-        return _Endpoint(host=ctx.stack_info.host, user=ctx.stack_info.user, private_key=None, port=None)
+        # Same VM as the stack; ansible k6 install needs the real ssh key.
+        return InstallEndpoint(
+            host=ctx.stack_info.host,
+            user=self.request.vm.user,
+            private_key=_find_ssh_private_key_path(find_ssh_public_key()),
+            port=None,
+        )
 
     def loadgen_runner(self, ctx: RunContext):
         return self.connectivity.vm_runner(self.request.vm)
 
     def fetcher(self, ctx: RunContext):
-        from controlplane_tool.scenario.loadtest_adapter import _MultipassFetcher
+        from workflow_tasks.vm.runners import VmFileFetcher
 
-        return _MultipassFetcher(self.runner.vm, self.request.vm)
+        return VmFileFetcher(vm=self.runner.vm, request=self.request.vm)
 
     def control_plane_url(self, ctx: RunContext) -> str:
         return two_vm_control_plane_url(self.request.vm, host=ctx.stack_info.host)
