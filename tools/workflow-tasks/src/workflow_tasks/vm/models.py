@@ -36,7 +36,7 @@ class VmRequest(BaseModel):
     cpus: int = 4
     memory: str = "12G"
     disk: str = "30G"
-    azure_vm_size: str = "Standard_B2s"
+    azure_vm_size: str = "Standard_D4s_v5"
     azure_resource_group: str | None = None
     azure_location: str | None = None
     azure_image_urn: str | None = None

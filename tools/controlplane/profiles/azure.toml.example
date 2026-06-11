@@ -6,7 +6,7 @@
 
 resource_group = "my-rg"
 location = "westeurope"
-vm_size = "Standard_B2s"
+vm_size = "Standard_D4s_v5"
 loadgen_vm_size = "Standard_B1s"
 # image_urn = ""         # empty = Ubuntu 24.04 LTS default
 # ssh_key_path = ""      # empty = auto-discovery ~/.ssh/id_ed25519
