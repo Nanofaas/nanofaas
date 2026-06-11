@@ -45,8 +45,12 @@ def MultipassVmAdapter(orchestrator: object) -> VmLifecycleAdapter:
     return VmLifecycleAdapter(orchestrator, lifecycle="multipass")
 
 
-def AzureVmAdapter(orchestrator: object) -> VmLifecycleAdapter:
-    return VmLifecycleAdapter(orchestrator, lifecycle="azure")
+def AzureVmAdapter(
+    orchestrator: object,
+    *,
+    credentials: VmRequest | None = None,
+) -> VmLifecycleAdapter:
+    return VmLifecycleAdapter(orchestrator, lifecycle="azure", credentials=credentials)
 
 
 def ProxmoxVmAdapter(
