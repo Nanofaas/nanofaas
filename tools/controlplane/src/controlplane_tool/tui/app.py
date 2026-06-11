@@ -535,8 +535,7 @@ _PLATFORM_VALIDATION_CHOICES = [
     _DescribedChoice(
         "one-vm-helm-loadtest — Helm stack + k6 + autoscaling check on one VM",
         "one-vm-helm-loadtest",
-        "Bootstrap the Helm stack on one managed VM, run the k6 load test from the same VM, "
-        "and verify autoscaling scale-up/scale-down without a second load generator VM.",
+        "Bootstrap the Helm stack on a single VM, run k6 load generation, capture Prometheus snapshots, generate a report, and verify autoscaling.",
     ),
     _DescribedChoice(
         "two-vm-loadtest — Helm stack with dedicated k6 load generator VM",

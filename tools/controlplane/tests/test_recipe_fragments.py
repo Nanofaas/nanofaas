@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 
-# Golden snapshot of every scenario's exact component_ids as of 2026-06-05.
+# Golden snapshot of every scenario's exact component_ids as of 2026-06-11.
 # This pins current behavior so the fragment refactor (Task 2) stays byte-for-byte identical.
 GOLDEN: dict[str, tuple[str, ...]] = {
     "k3s-junit-curl": (
