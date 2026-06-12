@@ -1,4 +1,6 @@
 from pathlib import Path
+
+import pytest
 from datetime import UTC, datetime
 
 from typer.testing import CliRunner
@@ -105,7 +107,7 @@ def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
     )
 
     assert request.scenario == "two-vm-loadtest"
-    assert request.function_preset == "demo-loadtest"
+    assert request.function_preset == "demo-java"
     assert request.resolved_scenario is not None
     assert request.resolved_scenario.load.targets == []
 
@@ -687,3 +689,47 @@ def test_e2e_run_exposes_proxmox_options() -> None:
     assert "--proxmox-host" in result.stdout
     assert "--proxmox-node" in result.stdout
     assert "--proxmox-passwo" in result.stdout  # truncated in terminal help output
+
+
+@pytest.mark.parametrize(
+    ("scenario", "lifecycle"),
+    [
+        ("helm-stack", "multipass"),
+        ("two-vm-loadtest", "multipass"),
+        ("azure-vm-loadtest", "azure"),
+        ("proxmox-vm-loadtest", "proxmox"),
+    ],
+)
+def test_loadtest_scenarios_default_to_lean_function_selection(
+    scenario: str, lifecycle: str
+) -> None:
+    # Default selection drives image builds (function_image_specs builds exactly
+    # resolved_scenario.functions): the demo-loadtest preset meant 8 images
+    # (~25 min in the VM) for a k6 run that exercises one function.
+    request = _resolve_run_request(
+        scenario=scenario,
+        runtime="java",
+        lifecycle=lifecycle,
+        name=None,
+        host=None,
+        user="ubuntu",
+        home=None,
+        cpus=4,
+        memory="12G",
+        disk="30G",
+        cleanup_vm=True,
+        namespace=None,
+        local_registry=None,
+        function_preset=None,
+        functions_csv=None,
+        scenario_file=None,
+        saved_profile=None,
+        azure_resource_group="rg" if lifecycle == "azure" else None,
+        azure_location="westeurope" if lifecycle == "azure" else None,
+    )
+
+    assert request.function_preset == "demo-java"
+    assert [fn.key for fn in request.resolved_scenario.functions] == [
+        "word-stats-java",
+        "json-transform-java",
+    ]

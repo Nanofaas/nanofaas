@@ -2585,7 +2585,7 @@ def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> Non
     NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
 
     request = called["request"]
-    assert request.function_preset == "demo-loadtest"
+    assert request.function_preset == "demo-java"
     assert request.resolved_scenario is not None
     assert request.resolved_scenario.base_scenario == "helm-stack"
 
@@ -2628,7 +2628,7 @@ def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
     ]
     assert called["planned_steps"] == ["Run k6 from loadgen VM"]
     assert request.scenario == "two-vm-loadtest"
-    assert request.function_preset == "demo-loadtest"
+    assert request.function_preset == "demo-java"
     assert request.vm is not None
     assert request.vm.name == "nanofaas-e2e"
     assert request.vm.memory == "8G"
