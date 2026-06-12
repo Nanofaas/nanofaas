@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from workflow_tasks.vm.models import VmConfig, VmInfo, VmRequest
+from workflow_tasks.vm.models import vm_remote_home, VmConfig, VmInfo, VmRequest
 
 
 class VmLifecycleAdapter:
@@ -34,7 +34,14 @@ class VmLifecycleAdapter:
         )
         self._vm.ensure_running(request)  # type: ignore[attr-defined]
         host = self._vm.connection_host(request)  # type: ignore[attr-defined]
-        return VmInfo(name=config.name, host=host, user="ubuntu", home="/home/ubuntu")
+        # Derive user/home from the credentials request: Azure uses azureuser,
+        # and a hardcoded /home/ubuntu made every remote path unwritable there.
+        return VmInfo(
+            name=config.name,
+            host=host,
+            user=request.user,
+            home=vm_remote_home(request),
+        )
 
     def destroy(self, info: VmInfo) -> None:
         request = self._credentials.model_copy(update={"name": info.name})
