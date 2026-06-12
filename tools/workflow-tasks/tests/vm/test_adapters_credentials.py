@@ -67,3 +67,30 @@ def test_azure_provider_forwards_open_ports_to_sdk(monkeypatch) -> None:
     )
 
     assert captured["open_ports"] == (30080, 30081, 30090)
+
+
+def test_azure_adapter_vminfo_uses_credentials_user_and_home() -> None:
+    # Regression: VmInfo hardcoded user="ubuntu"/home="/home/ubuntu", so on
+    # Azure (azureuser) prepare_loadgen ran `mkdir /home/ubuntu/...` → denied.
+    orch = _RecordingOrchestrator()
+    creds = VmRequest(
+        lifecycle="azure",
+        user="azureuser",
+        azure_resource_group="rg",
+        azure_location="westeurope",
+    )
+    info = AzureVmAdapter(orch, credentials=creds).ensure_running(
+        VmConfig(name="loadgen", cpus=2, memory="2G", disk="10G")
+    )
+
+    assert info.user == "azureuser"
+    assert info.home == "/home/azureuser"
+
+
+def test_adapter_without_credentials_keeps_ubuntu_defaults() -> None:
+    orch = _RecordingOrchestrator()
+    info = AzureVmAdapter(orch).ensure_running(
+        VmConfig(name="x", cpus=1, memory="1G", disk="10G")
+    )
+    assert info.user == "ubuntu"
+    assert info.home == "/home/ubuntu"

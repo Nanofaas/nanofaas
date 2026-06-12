@@ -285,7 +285,10 @@ def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
     if scenario in {"container-local", "deploy-host"}:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
     if scenario in {"helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
-        return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-loadtest")
+        # Lean default: 2 images instead of demo-loadtest's 8 (~17 min of in-VM
+        # builds saved per run; k6 exercises word-stats-java either way). Pass
+        # --function-preset demo-loadtest (or a scenario file) for the full matrix.
+        return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
     if scenario == "cli-stack":
         return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")
     return ScenarioSelectionConfig(base_scenario=scenario, function_preset="demo-java")

@@ -224,7 +224,7 @@ That lets the same saved profile drive `scripts/controlplane.sh cli-test run --s
 Scenario defaults are scenario-aware:
 
 - `container-local` is intentionally single-function; multi-function presets such as `demo-java` are rejected before the backend starts.
-- `helm-stack` defaults to `demo-loadtest`, which excludes Go functions because the Helm/loadtest compatibility backend does not exercise Go.
+- `helm-stack` and the VM loadtest scenarios default to the lean `demo-java` preset (2 images; use `--function-preset demo-loadtest` for the full 8-function matrix, which still excludes Go because the Helm/loadtest compatibility backend does not exercise Go).
 - `k3s-junit-curl` consumes the full resolved function selection in manifest mode instead of silently collapsing to the first entry.
 - unsupported selections such as `scripts/controlplane.sh e2e run helm-stack --functions word-stats-go --dry-run` fail in CLI validation before the backend starts.
 
