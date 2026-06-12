@@ -6,7 +6,7 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.cli.flow_exit import exit_on_failed_flow
-from controlplane_tool.scenario.catalog import list_scenarios, resolve_scenario
+from controlplane_tool.scenario.catalog import canonical_scenario_name, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
@@ -594,6 +594,9 @@ def e2e_run(
     proxmox_ssh_key_path: str | None = typer.Option(None, "--proxmox-ssh-key", help="SSH private key for SCP transfers."),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
+    if scenario is not None:
+        scenario = canonical_scenario_name(scenario)
+
     def _action() -> None:
         # Azure cloud-init creates "azureuser" by default; override "ubuntu" default.
         effective_user = user if not (lifecycle == "azure" and user == "ubuntu") else "azureuser"
@@ -674,8 +677,8 @@ def e2e_all(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
-        selected_names = parse_function_csv(only)
-        skipped_names = parse_function_csv(skip)
+        selected_names = [canonical_scenario_name(n) for n in parse_function_csv(only)]
+        skipped_names = [canonical_scenario_name(n) for n in parse_function_csv(skip)]
         candidate_names = selected_names or [scenario.name for scenario in list_scenarios()]
         active_names = [scenario_name for scenario_name in candidate_names if scenario_name not in skipped_names]
         needs_vm = any(resolve_scenario(scenario_name).requires_vm for scenario_name in active_names)

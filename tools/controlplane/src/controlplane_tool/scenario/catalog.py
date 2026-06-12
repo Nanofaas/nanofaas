@@ -17,6 +17,8 @@ class ScenarioDefinition:
     selection_mode: SelectionMode = "multi"
     uses_host_cli: bool = False
     grouped_phases: bool = False
+    aliases: tuple[str, ...] = ()
+    details: str = ""
 
 
 SCENARIOS: tuple[ScenarioDefinition, ...] = (
@@ -110,6 +112,27 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
 )
 
 SCENARIO_INDEX = {scenario.name: scenario for scenario in SCENARIOS}
+
+_ALIAS_INDEX: dict[str, str] = {
+    alias: scenario.name for scenario in SCENARIOS for alias in scenario.aliases
+}
+
+
+def canonical_scenario_name(name: str) -> str:
+    """Map a deprecated scenario alias to its canonical name.
+
+    Canonical and unknown names pass through unchanged (unknown names must keep
+    failing in resolve_scenario with the existing error message). Callers at the
+    user-facing boundaries (CLI args, scenario files, TUI dispatch) are expected
+    to call this; internal code only ever sees canonical names.
+    """
+    canonical = _ALIAS_INDEX.get(name)
+    if canonical is not None:
+        import sys
+
+        print(f"note: scenario '{name}' is deprecated, use '{canonical}'", file=sys.stderr)
+        return canonical
+    return name
 
 
 def list_scenarios() -> list[ScenarioDefinition]:

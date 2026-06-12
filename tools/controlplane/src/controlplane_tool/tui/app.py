@@ -39,6 +39,7 @@ from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes.registry_runtime import default_registry_url, ensure_local_registry
 from controlplane_tool.workspace.profiles import list_profiles, load_profile
+from controlplane_tool.scenario.catalog import canonical_scenario_name
 from controlplane_tool.scenario.scenario_flows import build_scenario_flow
 from controlplane_tool.tui.event_applier import TuiEventApplier
 from controlplane_tool.tui.selection import (
@@ -984,6 +985,8 @@ class NanofaasTUI:
             )
             if scenario_choice == _BACK_VALUE:
                 return
+
+            scenario_choice = canonical_scenario_name(scenario_choice)
 
             if scenario_choice in ("k3s-junit-curl", "helm-stack", "one-vm-helm-loadtest", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"):
                 self._run_vm_e2e_scenario(scenario_choice)
