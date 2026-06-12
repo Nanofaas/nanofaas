@@ -17,14 +17,14 @@ def test_vm_request_accepts_azure_lifecycle():
     assert request.lifecycle == "azure"
     assert request.azure_resource_group == "my-rg"
     assert request.azure_location == "westeurope"
-    assert request.azure_vm_size == "Standard_B2s"
+    assert request.azure_vm_size == "Standard_D4s_v5"
     assert request.azure_image_urn is None
     assert request.azure_ssh_key_path is None
 
 
 def test_vm_request_azure_fields_have_defaults():
     request = VmRequest(lifecycle="azure", azure_resource_group="rg", azure_location="west")
-    assert request.azure_vm_size == "Standard_B2s"
+    assert request.azure_vm_size == "Standard_D4s_v5"
     assert request.azure_image_urn is None
     assert request.azure_ssh_key_path is None
 
