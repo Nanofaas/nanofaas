@@ -61,6 +61,7 @@ class AzureVmProvider:
             vm_size=request.azure_vm_size,
             image_urn=request.azure_image_urn,
             ssh_key_path=request.azure_ssh_key_path,
+            open_ports=request.azure_open_ports,
         )
         return _ok(["azure", "ensure_running", name])
 

@@ -41,6 +41,7 @@ class VmRequest(BaseModel):
     azure_location: str | None = None
     azure_image_urn: str | None = None
     azure_ssh_key_path: str | None = None
+    azure_open_ports: tuple[int, ...] | None = None
     proxmox_host: str | None = None
     proxmox_node: str | None = None
     proxmox_user: str | None = None

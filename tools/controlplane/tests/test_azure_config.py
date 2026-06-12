@@ -33,7 +33,7 @@ def test_load_azure_config_applies_defaults(tmp_path):
 
     cfg = load_azure_config(tmp_path)
 
-    assert cfg.vm_size == "Standard_B2s"
+    assert cfg.vm_size == "Standard_D4s_v5"
     assert cfg.loadgen_vm_size == "Standard_B1s"
     assert cfg.image_urn is None
     assert cfg.ssh_key_path is None
