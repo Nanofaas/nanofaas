@@ -92,7 +92,7 @@ Function/scenario selection precedence for `scripts/controlplane.sh e2e run` is:
 2. `--scenario-file`
 3. `--saved-profile`
 
-When a CLI override is layered on top of a scenario file or saved profile, the tool preserves the inherited scenario metadata and shrinks payload/load selections to the chosen function subset. `helm-stack` defaults to the backend-safe `demo-loadtest` preset, and unsupported Go selections are rejected before the compatibility backend runs. For `k3s-junit-curl`, the resolved selection is forwarded into the VM via `-Dnanofaas.e2e.scenarioManifest=...`, so the executed `K8sE2eTest` consumes the same manifest shown by dry-run output.
+When a CLI override is layered on top of a scenario file or saved profile, the tool preserves the inherited scenario metadata and shrinks payload/load selections to the chosen function subset. `helm-stack` and the VM loadtest scenarios default to the lean `demo-java` preset (2 function images instead of 8 — pass `--function-preset demo-loadtest` or a scenario file for the full matrix), and unsupported Go selections are rejected before the compatibility backend runs. For `k3s-junit-curl`, the resolved selection is forwarded into the VM via `-Dnanofaas.e2e.scenarioManifest=...`, so the executed `K8sE2eTest` consumes the same manifest shown by dry-run output.
 
 The repository ships `tools/controlplane/profiles/demo-java.toml` as a ready-to-run example profile.
 Saved profiles can also persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario from the profile.

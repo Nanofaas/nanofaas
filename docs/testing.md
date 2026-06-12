@@ -390,7 +390,7 @@ Selection precedence is explicit CLI override first, then scenario file, then sa
 
 Additional selection semantics:
 
-- `helm-stack` built-in defaults resolve the `demo-loadtest` preset, so dry-run and live plans exclude unsupported Go functions.
+- `helm-stack` and loadtest built-in defaults resolve the lean `demo-java` preset (2 function images); pass `--function-preset demo-loadtest` for the full matrix — both presets exclude unsupported Go functions.
 - `two-vm-loadtest` uses the Helm stack prefix on one VM and a separate k6 load generator VM; the run captures `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html`.
 - explicit CLI selection on top of a scenario file or saved profile preserves inherited payloads, namespace, and `load.profile`, then narrows `load.targets` to the selected subset.
 - `k3s-junit-curl` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
