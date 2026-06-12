@@ -101,6 +101,7 @@ def test_ensure_running_calls_client_ensure_running(tmp_path, monkeypatch):
         vm_size="Standard_B4ms",
         image_urn=None,
         ssh_key_path=None,
+        open_ports=None,
     )
     assert result.return_code == 0
 
@@ -125,6 +126,7 @@ def test_ensure_running_passes_azure_fields(tmp_path, monkeypatch):
         vm_size="Standard_D2s_v3",
         image_urn="Canonical:ubuntu-24_04-lts:server-gen1:latest",
         ssh_key_path="/home/user/.ssh/id_rsa",
+        open_ports=None,
     )
 
 

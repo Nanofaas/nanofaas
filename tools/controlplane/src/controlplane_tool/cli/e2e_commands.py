@@ -24,6 +24,18 @@ from controlplane_tool.scenario.selection_resolution import (
 )
 from controlplane_tool.scenario.scenario_models import ResolvedScenario
 from controlplane_tool.infra.vm.vm_models import VmRequest
+from workflow_tasks.loadtest.two_vm import (
+    TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+    TWO_VM_PROMETHEUS_NODE_PORT,
+)
+
+# NodePorts the azure stack VM must expose through its NSG (see _build_request).
+_AZURE_STACK_NODE_PORTS: tuple[int, ...] = (
+    TWO_VM_CONTROL_PLANE_HTTP_NODE_PORT,
+    TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
+    TWO_VM_PROMETHEUS_NODE_PORT,
+)
 
 E2E_CONTEXT_SETTINGS = {
     "allow_extra_args": True,
@@ -55,6 +67,7 @@ def _build_vm_request(
     azure_vm_size: str = "Standard_D4s_v5",
     azure_image_urn: str | None = None,
     azure_ssh_key_path: str | None = None,
+    azure_open_ports: tuple[int, ...] | None = None,
     proxmox_host: str | None = None,
     proxmox_node: str | None = None,
     proxmox_user: str | None = None,
@@ -76,6 +89,7 @@ def _build_vm_request(
         azure_vm_size=azure_vm_size,
         azure_image_urn=azure_image_urn,
         azure_ssh_key_path=azure_ssh_key_path,
+        azure_open_ports=azure_open_ports,
         proxmox_host=proxmox_host,
         proxmox_node=proxmox_node,
         proxmox_user=proxmox_user,
@@ -159,6 +173,12 @@ def _build_request(
             azure_vm_size=azure_vm_size,
             azure_image_urn=azure_image_urn,
             azure_ssh_key_path=azure_ssh_key_path,
+            # Operator machine: register (30080) + actuator (30081) + prometheus
+            # snapshot (30090); the loadgen VM reaches the stack via its public
+            # IP through the same NSG rules. Loadgen itself stays SSH-only.
+            azure_open_ports=(
+                _AZURE_STACK_NODE_PORTS if scenario == "azure-vm-loadtest" else None
+            ),
             proxmox_host=proxmox_host,
             proxmox_node=proxmox_node,
             proxmox_user=proxmox_user,

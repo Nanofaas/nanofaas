@@ -42,3 +42,28 @@ def test_azure_adapter_without_credentials_yields_bare_request() -> None:
     orch = _RecordingOrchestrator()
     AzureVmAdapter(orch).ensure_running(VmConfig(name="x", cpus=1, memory="1G", disk="10G"))
     assert orch.requests[0].azure_resource_group is None
+
+
+def test_azure_provider_forwards_open_ports_to_sdk(monkeypatch) -> None:
+    from workflow_tasks.vm.azure import AzureVmProvider
+
+    captured: dict = {}
+
+    class _FakeClient:
+        def ensure_running(self, name, **kwargs):
+            captured.update(kwargs, name=name)
+
+    provider = AzureVmProvider(repo_root=".")
+    monkeypatch.setattr(provider, "_client", lambda request: _FakeClient())
+
+    provider.ensure_running(
+        VmRequest(
+            lifecycle="azure",
+            name="stack",
+            azure_resource_group="rg",
+            azure_location="westeurope",
+            azure_open_ports=(30080, 30081, 30090),
+        )
+    )
+
+    assert captured["open_ports"] == (30080, 30081, 30090)
