@@ -20,7 +20,7 @@
   - command: from FunctionSpec (optional)
   - env: FunctionSpec env + execution metadata
   - resources: requests/limits from FunctionSpec
-- restartPolicy: Never
+  - restartPolicy: Never
 
 ## Managed Deployments
 
