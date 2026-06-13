@@ -98,7 +98,7 @@ class ProxmoxVmLoadtestPlan:
         prelude_components = tuple(
             cid for cid in _PROXMOX_LOADTEST_PRELUDE_COMPONENTS if cid != "vm.ensure_running"
         )
-        recipe = build_scenario_recipe("proxmox-vm-loadtest")
+        recipe = build_scenario_recipe("loadtest-proxmox")
         return recipe.__class__(
             name=recipe.name,
             component_ids=prelude_components,
@@ -126,9 +126,9 @@ class ProxmoxVmLoadtestPlan:
 
     def _requests(self) -> tuple[VmRequest, VmRequest]:
         if self.request.vm is None:
-            raise ValueError("proxmox-vm-loadtest requires a stack VM request")
+            raise ValueError("loadtest-proxmox requires a stack VM request")
         if self.request.loadgen_vm is None:
-            raise ValueError("proxmox-vm-loadtest requires a loadgen VM request")
+            raise ValueError("loadtest-proxmox requires a loadgen VM request")
         return self.request.vm, self.request.loadgen_vm
 
     @property
@@ -149,7 +149,7 @@ class ProxmoxVmLoadtestPlan:
         """Assemble the honest prelude Tasks against a (running) proxmox orch.
 
         Mirrors exactly what the unified driver builds for the prelude: the
-        ``proxmox-vm-loadtest`` recipe minus ``vm.ensure_running``, with the
+        ``loadtest-proxmox`` recipe minus ``vm.ensure_running``, with the
         proxmox rewrites (ansible inventory / repo rsync / functions.register)
         applied through ``ProxmoxConnectivity`` + special_handler/context_selector.
         """
@@ -259,7 +259,7 @@ def build_proxmox_vm_loadtest_plan(
 ) -> ProxmoxVmLoadtestPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
 
-    scenario = resolve_scenario("proxmox-vm-loadtest")
+    scenario = resolve_scenario("loadtest-proxmox")
     return ProxmoxVmLoadtestPlan(
         scenario=scenario,
         request=request,

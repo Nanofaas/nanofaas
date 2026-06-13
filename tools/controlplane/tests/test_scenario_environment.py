@@ -20,7 +20,7 @@ def test_e2e_request_allows_missing_vm_for_managed_vm_scenarios() -> None:
 def test_environment_resolver_creates_managed_vm_when_request_has_none(
     tmp_path: Path,
 ) -> None:
-    request = E2eRequest(scenario="helm-stack", runtime="java", vm=None)
+    request = E2eRequest(scenario="loadtest-helm-legacy", runtime="java", vm=None)
 
     context = resolve_scenario_environment(repo_root=tmp_path, request=request)
 

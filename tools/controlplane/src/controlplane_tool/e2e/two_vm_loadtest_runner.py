@@ -66,7 +66,7 @@ def _metrics_from_prometheus_snapshot(path: Path) -> dict[str, list[dict[str, fl
 
 def write_two_vm_report(report: TwoVmLoadtestReport, run_dir: Path) -> Path:
     summary = {
-        "profile_name": "two-vm-loadtest",
+        "profile_name": "loadtest-two-vm",
         "run_dir": str(run_dir),
         "final_status": report.final_status,
         "steps": [
@@ -124,7 +124,7 @@ class TwoVmLoadtestRunner:
         immediately because the script file does not exist.
         """
         if request.loadgen_vm is None:
-            raise ValueError("two-vm-loadtest requires a loadgen VM request")
+            raise ValueError("loadtest-two-vm requires a loadgen VM request")
         self._check(
             self.vm.exec_argv(
                 request.loadgen_vm,
@@ -149,9 +149,9 @@ class TwoVmLoadtestRunner:
 
     def run_k6(self, request: E2eRequest, *, target_override: str | None = None) -> TwoVmK6Result:
         if request.vm is None:
-            raise ValueError("two-vm-loadtest requires a stack VM request")
+            raise ValueError("loadtest-two-vm requires a stack VM request")
         if request.loadgen_vm is None:
-            raise ValueError("two-vm-loadtest requires a loadgen VM request")
+            raise ValueError("loadtest-two-vm requires a loadgen VM request")
 
         run_dir = self._create_run_dir()
         remote_paths = two_vm_remote_paths(
@@ -203,7 +203,7 @@ class TwoVmLoadtestRunner:
 
     def capture_prometheus_snapshots(self, request: E2eRequest, k6_result: TwoVmK6Result) -> Path:
         if request.vm is None:
-            raise ValueError("two-vm-loadtest requires a stack VM request")
+            raise ValueError("loadtest-two-vm requires a stack VM request")
         return capture_prometheus_snapshots(
             prometheus_url=two_vm_prometheus_url(request.vm, host=self._host(request.vm)),
             output_dir=k6_result.run_dir,
@@ -218,7 +218,7 @@ class TwoVmLoadtestRunner:
         prometheus_snapshot_path: Path,
     ) -> Path:
         if request.vm is None:
-            raise ValueError("two-vm-loadtest requires a stack VM request")
+            raise ValueError("loadtest-two-vm requires a stack VM request")
         return write_two_vm_report(
             TwoVmLoadtestReport(
                 final_status="passed",

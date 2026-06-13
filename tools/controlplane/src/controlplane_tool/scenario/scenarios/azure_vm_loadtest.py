@@ -98,7 +98,7 @@ class AzureVmLoadtestPlan:
         prelude_components = tuple(
             cid for cid in _AZURE_LOADTEST_PRELUDE_COMPONENTS if cid != "vm.ensure_running"
         )
-        recipe = build_scenario_recipe("azure-vm-loadtest")
+        recipe = build_scenario_recipe("loadtest-azure")
         return recipe.__class__(
             name=recipe.name,
             component_ids=prelude_components,
@@ -126,9 +126,9 @@ class AzureVmLoadtestPlan:
 
     def _requests(self) -> tuple[VmRequest, VmRequest]:
         if self.request.vm is None:
-            raise ValueError("azure-vm-loadtest requires a stack VM request")
+            raise ValueError("loadtest-azure requires a stack VM request")
         if self.request.loadgen_vm is None:
-            raise ValueError("azure-vm-loadtest requires a loadgen VM request")
+            raise ValueError("loadtest-azure requires a loadgen VM request")
         return self.request.vm, self.request.loadgen_vm
 
     @property
@@ -149,7 +149,7 @@ class AzureVmLoadtestPlan:
         """Assemble the honest prelude Tasks against a (running) azure orch.
 
         Mirrors exactly what the unified driver builds for the prelude: the
-        ``azure-vm-loadtest`` recipe minus ``vm.ensure_running``, with the azure
+        ``loadtest-azure`` recipe minus ``vm.ensure_running``, with the azure
         rewrites (ansible inventory / repo rsync / functions.register) applied
         through ``AzureConnectivity`` + special_handler/context_selector. Reuses
         the adapter's prelude hooks so the oracle and the driver build IDENTICAL
@@ -259,7 +259,7 @@ def build_azure_vm_loadtest_plan(
 ) -> AzureVmLoadtestPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
 
-    scenario = resolve_scenario("azure-vm-loadtest")
+    scenario = resolve_scenario("loadtest-azure")
     return AzureVmLoadtestPlan(
         scenario=scenario,
         request=request,

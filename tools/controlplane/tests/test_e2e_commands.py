@@ -69,7 +69,7 @@ def test_e2e_run_dry_run_shows_catalog_flow_tasks(monkeypatch) -> None:
 
 def test_helm_stack_default_selection_uses_supported_loadtest_functions() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["e2e", "run", "helm-stack", "--dry-run"])
+    result = runner.invoke(app, ["e2e", "run", "loadtest-helm-legacy", "--dry-run"])
 
     assert result.exit_code == 0
     assert "word-stats-go" not in result.stdout
@@ -78,7 +78,7 @@ def test_helm_stack_default_selection_uses_supported_loadtest_functions() -> Non
 
 def test_two_vm_loadtest_dry_run_prints_recipe_steps() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["e2e", "run", "two-vm-loadtest", "--dry-run"])
+    result = runner.invoke(app, ["e2e", "run", "loadtest-two-vm", "--dry-run"])
 
     assert result.exit_code == 0
     assert "loadgen.ensure_running" in result.stdout
@@ -87,7 +87,7 @@ def test_two_vm_loadtest_dry_run_prints_recipe_steps() -> None:
 
 def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
     request = _resolve_run_request(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime=None,
         lifecycle="multipass",
         name=None,
@@ -106,7 +106,7 @@ def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
         saved_profile=None,
     )
 
-    assert request.scenario == "two-vm-loadtest"
+    assert request.scenario == "loadtest-two-vm"
     assert request.function_preset == "demo-java"
     assert request.resolved_scenario is not None
     assert request.resolved_scenario.load.targets == []
@@ -114,7 +114,7 @@ def test_two_vm_loadtest_defaults_to_demo_loadtest_selection() -> None:
 
 def test_two_vm_loadtest_default_request_uses_separate_stack_and_loadgen_vms() -> None:
     request = _resolve_run_request(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime=None,
         lifecycle="multipass",
         name=None,
@@ -150,7 +150,7 @@ def test_two_vm_loadtest_default_request_uses_separate_stack_and_loadgen_vms() -
 
 def test_build_request_accepts_loadgen_and_k6_overrides() -> None:
     request = _build_request(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         lifecycle="multipass",
         name="stack-vm",
@@ -209,12 +209,12 @@ def test_helm_stack_rejects_unsupported_go_selection_before_backend() -> None:
     runner = CliRunner()
     result = runner.invoke(
         app,
-        ["e2e", "run", "helm-stack", "--functions", "word-stats-go", "--dry-run"],
+        ["e2e", "run", "loadtest-helm-legacy", "--functions", "word-stats-go", "--dry-run"],
     )
 
     assert result.exit_code == 2
     rendered = result.stdout + result.stderr
-    assert "helm-stack" in rendered
+    assert "loadtest-helm-legacy" in rendered
     assert "go" in rendered
 
 
@@ -225,7 +225,7 @@ def test_two_vm_loadtest_dry_run_accepts_loadgen_and_k6_overrides() -> None:
         [
             "e2e",
             "run",
-            "two-vm-loadtest",
+            "loadtest-two-vm",
             "--loadgen-name",
             "custom-loadgen",
             "--loadgen-cpus",
@@ -253,7 +253,7 @@ def test_helm_stack_rejects_javascript_selection_before_backend() -> None:
     runner = CliRunner()
     result = runner.invoke(
         app,
-        ["e2e", "run", "helm-stack", "--functions", "word-stats-javascript", "--dry-run"],
+        ["e2e", "run", "loadtest-helm-legacy", "--functions", "word-stats-javascript", "--dry-run"],
     )
 
     assert result.exit_code == 2
@@ -313,10 +313,10 @@ def test_e2e_all_dry_run_honors_only_filter() -> None:
 
 def test_e2e_all_two_vm_loadtest_dry_run_prints_recipe_steps() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["e2e", "all", "--only", "two-vm-loadtest", "--dry-run"])
+    result = runner.invoke(app, ["e2e", "all", "--only", "loadtest-two-vm", "--dry-run"])
 
     assert result.exit_code == 0
-    assert "two-vm-loadtest" in result.stdout
+    assert "loadtest-two-vm" in result.stdout
     assert "loadgen.run_k6" in result.stdout
 
 
@@ -540,7 +540,7 @@ def test_e2e_run_exposes_cleanup_vm_switches() -> None:
 
 def test_proxmox_vm_loadtest_default_vm_name_is_nanofaas_proxmox() -> None:
     request = _build_request(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         lifecycle="proxmox",
         name=None,
@@ -565,7 +565,7 @@ def test_proxmox_vm_loadtest_default_vm_name_is_nanofaas_proxmox() -> None:
 
 def test_proxmox_vm_loadtest_creates_loadgen_vm_with_default_name() -> None:
     request = _build_request(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         lifecycle="proxmox",
         name=None,
@@ -590,7 +590,7 @@ def test_proxmox_vm_loadtest_creates_loadgen_vm_with_default_name() -> None:
 
 def test_proxmox_vm_loadtest_propagates_credentials_to_stack_vm() -> None:
     request = _build_request(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         lifecycle="proxmox",
         name=None,
@@ -623,7 +623,7 @@ def test_proxmox_vm_loadtest_propagates_credentials_to_stack_vm() -> None:
 
 def test_proxmox_vm_loadtest_propagates_credentials_to_loadgen_vm() -> None:
     request = _build_request(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         lifecycle="proxmox",
         name=None,
@@ -656,7 +656,7 @@ def test_proxmox_vm_loadtest_propagates_credentials_to_loadgen_vm() -> None:
 
 def test_proxmox_vm_loadtest_accepts_custom_vm_names() -> None:
     request = _build_request(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         lifecycle="proxmox",
         name="my-stack",
@@ -694,10 +694,10 @@ def test_e2e_run_exposes_proxmox_options() -> None:
 @pytest.mark.parametrize(
     ("scenario", "lifecycle"),
     [
-        ("helm-stack", "multipass"),
-        ("two-vm-loadtest", "multipass"),
-        ("azure-vm-loadtest", "azure"),
-        ("proxmox-vm-loadtest", "proxmox"),
+        ("loadtest-helm-legacy", "multipass"),
+        ("loadtest-two-vm", "multipass"),
+        ("loadtest-azure", "azure"),
+        ("loadtest-proxmox", "proxmox"),
     ],
 )
 def test_loadtest_scenarios_default_to_lean_function_selection(

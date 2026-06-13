@@ -312,7 +312,7 @@ def _build(tmp_path):
         repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path
     )
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),

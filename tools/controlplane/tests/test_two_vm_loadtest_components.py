@@ -17,7 +17,7 @@ def _context(
     return resolve_scenario_environment(
         Path("/repo"),
         E2eRequest(
-            scenario="two-vm-loadtest",
+            scenario="loadtest-two-vm",
             vm=stack_vm or VmRequest(lifecycle="multipass", name="stack-vm"),
             loadgen_vm=loadgen_vm,
         ),
@@ -37,7 +37,7 @@ def test_resolved_two_vm_context_exposes_explicit_loadgen_vm_request() -> None:
     context = resolve_scenario_environment(
         Path("/repo"),
         E2eRequest(
-            scenario="two-vm-loadtest",
+            scenario="loadtest-two-vm",
             vm=stack_vm,
             loadgen_vm=loadgen_vm,
         ),
@@ -59,7 +59,7 @@ def test_loadgen_vm_request_defaults_from_stack_vm_when_context_has_no_explicit_
     )
     context = resolve_scenario_environment(
         Path("/repo"),
-        E2eRequest(scenario="two-vm-loadtest", vm=stack_vm),
+        E2eRequest(scenario="loadtest-two-vm", vm=stack_vm),
     )
 
     loadgen_vm = two_vm_loadtest.loadgen_vm_request(context)

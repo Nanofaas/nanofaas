@@ -22,7 +22,7 @@ def _runner() -> E2eRunner:
 
 def _request() -> E2eRequest:
     return E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )

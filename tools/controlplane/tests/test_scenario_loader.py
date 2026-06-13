@@ -45,7 +45,7 @@ def test_loader_resolves_javascript_scenario_manifest() -> None:
 def test_loader_resolves_two_vm_loadtest_manifest() -> None:
     scenario = load_scenario_file(Path("tools/controlplane/scenarios/two-vm-loadtest-java.toml"))
 
-    assert scenario.base_scenario == "two-vm-loadtest"
+    assert scenario.base_scenario == "loadtest-two-vm"
     assert scenario.function_preset == "demo-java"
     assert scenario.load.targets == ["word-stats-java"]
 
@@ -53,7 +53,7 @@ def test_loader_resolves_two_vm_loadtest_manifest() -> None:
 def test_loader_resolves_azure_vm_loadtest_manifest() -> None:
     scenario = load_scenario_file(Path("tools/controlplane/scenarios/azure-vm-loadtest-java.toml"))
 
-    assert scenario.base_scenario == "azure-vm-loadtest"
+    assert scenario.base_scenario == "loadtest-azure"
     assert scenario.function_preset == "demo-loadtest"
     assert scenario.load.targets == ["word-stats-java"]
 

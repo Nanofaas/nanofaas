@@ -147,17 +147,17 @@ def _build_request(
         "cli",
         "cli-stack",
         "cli-host",
-        "helm-stack",
-        "two-vm-loadtest",
-        "azure-vm-loadtest",
-        "proxmox-vm-loadtest",
+        "loadtest-helm-legacy",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
     }:
         stack_name = name
-        if scenario == "two-vm-loadtest" and stack_name is None:
+        if scenario == "loadtest-two-vm" and stack_name is None:
             stack_name = "nanofaas-e2e"
-        if scenario == "azure-vm-loadtest" and stack_name is None:
+        if scenario == "loadtest-azure" and stack_name is None:
             stack_name = "nanofaas-azure"
-        if scenario == "proxmox-vm-loadtest" and stack_name is None:
+        if scenario == "loadtest-proxmox" and stack_name is None:
             stack_name = "nanofaas-proxmox"
         vm = _build_vm_request(
             lifecycle=lifecycle,
@@ -177,7 +177,7 @@ def _build_request(
             # snapshot (30090); the loadgen VM reaches the stack via its public
             # IP through the same NSG rules. Loadgen itself stays SSH-only.
             azure_open_ports=(
-                _AZURE_STACK_NODE_PORTS if scenario == "azure-vm-loadtest" else None
+                _AZURE_STACK_NODE_PORTS if scenario == "loadtest-azure" else None
             ),
             proxmox_host=proxmox_host,
             proxmox_node=proxmox_node,
@@ -186,12 +186,12 @@ def _build_request(
             proxmox_template_id=proxmox_template_id,
             proxmox_ssh_key_path=proxmox_ssh_key_path,
         )
-    if scenario in {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
+    if scenario in {"loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"}:
         loadgen_name_default = (
             "nanofaas-e2e-loadgen"
-            if scenario == "two-vm-loadtest"
+            if scenario == "loadtest-two-vm"
             else "nanofaas-azure-loadgen"
-            if scenario == "azure-vm-loadtest"
+            if scenario == "loadtest-azure"
             else "nanofaas-proxmox-loadgen"
         )
         loadgen_vm = _build_vm_request(
@@ -284,7 +284,7 @@ def _handle_validation(action) -> None:
 def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
     if scenario in {"container-local", "deploy-host"}:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
-    if scenario in {"helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
+    if scenario in {"loadtest-helm-legacy", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"}:
         # Lean default: 2 images instead of demo-loadtest's 8 (~17 min of in-VM
         # builds saved per run; k6 exercises word-stats-java either way). Pass
         # --function-preset demo-loadtest (or a scenario file) for the full matrix.

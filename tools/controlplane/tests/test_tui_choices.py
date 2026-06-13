@@ -902,15 +902,15 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     NanofaasTUI()._e2e_menu()
 
     assert "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
-    assert "helm-stack — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
-    assert "two-vm-loadtest — Helm stack with dedicated k6 load generator VM" in captured["choices"]
-    assert "proxmox-vm-loadtest — Two-VM Proxmox VE load test with k6" in captured["choices"]
+    assert "loadtest-helm-legacy — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
+    assert "loadtest-two-vm — Helm stack with dedicated k6 load generator VM" in captured["choices"]
+    assert "loadtest-proxmox — Two-VM Proxmox VE load test with k6" in captured["choices"]
 
 
 def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
 
-    answers = iter(["two-vm-loadtest", "back"])
+    answers = iter(["loadtest-two-vm", "back"])
     called: dict[str, object] = {}
 
     def fake_select(*args, **kwargs):  # noqa: ANN001
@@ -926,13 +926,13 @@ def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
 
     NanofaasTUI()._e2e_menu()
 
-    assert called["scenario"] == "two-vm-loadtest"
+    assert called["scenario"] == "loadtest-two-vm"
 
 
 def test_tui_e2e_menu_routes_proxmox_vm_loadtest_to_vm_runner(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
 
-    answers = iter(["proxmox-vm-loadtest", "back"])
+    answers = iter(["loadtest-proxmox", "back"])
     called: dict[str, object] = {}
 
     def fake_select(*args, **kwargs):  # noqa: ANN001
@@ -948,7 +948,7 @@ def test_tui_e2e_menu_routes_proxmox_vm_loadtest_to_vm_runner(monkeypatch) -> No
 
     NanofaasTUI()._e2e_menu()
 
-    assert called["scenario"] == "proxmox-vm-loadtest"
+    assert called["scenario"] == "loadtest-proxmox"
 
 
 def test_tui_submenus_include_back_entries(monkeypatch) -> None:
@@ -1647,7 +1647,7 @@ def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch)
             )
         if path.name == "k8s-demo-all.toml":
             return SimpleNamespace(
-                base_scenario="helm-stack",
+                base_scenario="loadtest-helm-legacy",
                 name="k8s-demo-all",
                 function_keys=["word-stats-java"],
                 functions=[
@@ -2280,13 +2280,13 @@ def test_tui_helm_stack_scenario_shows_shared_execution_phases(monkeypatch) -> N
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
+    NanofaasTUI()._run_vm_e2e_scenario("loadtest-helm-legacy")
 
-    assert called["scenario"] == "helm-stack"
+    assert called["scenario"] == "loadtest-helm-legacy"
     assert called["flow_id"] == "e2e.helm_stack"
     assert callable(called["event_listener"])
     assert called["summary_lines"] == [
-        "Scenario: helm-stack",
+        "Scenario: loadtest-helm-legacy",
         "Mode: self-bootstrapping VM-backed scenario",
     ]
     assert called["planned_steps"] == [
@@ -2381,7 +2381,7 @@ def test_tui_helm_stack_scenario_does_not_add_wrapper_steps_to_dashboard(monkeyp
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
+    NanofaasTUI()._run_vm_e2e_scenario("loadtest-helm-legacy")
 
     assert captured["steps"] == [
         ("Ensure VM is running", "success"),
@@ -2549,7 +2549,7 @@ def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch
 def test_apply_e2e_step_event_failure_keeps_error_out_of_step_detail() -> None:
     dashboard = WorkflowDashboard(
         title="E2E Scenarios",
-        summary_lines=["Scenario: helm-stack"],
+        summary_lines=["Scenario: loadtest-helm-legacy"],
         planned_steps=["Run autoscaling experiment (Python)"],
     )
     event = ScenarioStepEvent(
@@ -2582,12 +2582,12 @@ def test_tui_helm_stack_scenario_uses_demo_loadtest_defaults(monkeypatch) -> Non
 
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
 
-    NanofaasTUI()._run_vm_e2e_scenario("helm-stack")
+    NanofaasTUI()._run_vm_e2e_scenario("loadtest-helm-legacy")
 
     request = called["request"]
     assert request.function_preset == "demo-java"
     assert request.resolved_scenario is not None
-    assert request.resolved_scenario.base_scenario == "helm-stack"
+    assert request.resolved_scenario.base_scenario == "loadtest-helm-legacy"
 
 
 def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
@@ -2618,16 +2618,16 @@ def test_tui_two_vm_loadtest_uses_two_vm_request_defaults(monkeypatch) -> None:
     monkeypatch.setattr(tui_app, "build_scenario_flow", fake_build_scenario_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("two-vm-loadtest")
+    NanofaasTUI()._run_vm_e2e_scenario("loadtest-two-vm")
 
     request = called["request"]
-    assert called["scenario"] == "two-vm-loadtest"
+    assert called["scenario"] == "loadtest-two-vm"
     assert called["summary_lines"] == [
-        "Scenario: two-vm-loadtest",
+        "Scenario: loadtest-two-vm",
         "Mode: self-bootstrapping VM-backed scenario",
     ]
     assert called["planned_steps"] == ["Run k6 from loadgen VM"]
-    assert request.scenario == "two-vm-loadtest"
+    assert request.scenario == "loadtest-two-vm"
     assert request.function_preset == "demo-java"
     assert request.vm is not None
     assert request.vm.name == "nanofaas-e2e"
@@ -2691,10 +2691,10 @@ def test_tui_proxmox_vm_loadtest_keeps_cleanup_phases_enabled(monkeypatch) -> No
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
     monkeypatch.setattr(TuiWorkflowController, "run_shared_flow", lambda self, flow: None)
 
-    NanofaasTUI()._run_vm_e2e_scenario("proxmox-vm-loadtest")
+    NanofaasTUI()._run_vm_e2e_scenario("loadtest-proxmox")
 
     request = called["request"]
-    assert called["scenario"] == "proxmox-vm-loadtest"
+    assert called["scenario"] == "loadtest-proxmox"
     assert request.cleanup_vm is True
     assert "Destroy loadgen VM (Proxmox)" in called["planned_steps"]
     assert "Destroy stack VM (Proxmox)" in called["planned_steps"]
@@ -2704,7 +2704,7 @@ def test_platform_validation_choices_includes_azure_vm_loadtest() -> None:
     from controlplane_tool.tui.app import _PLATFORM_VALIDATION_CHOICES
 
     values = [c.value for c in _PLATFORM_VALIDATION_CHOICES]
-    assert "azure-vm-loadtest" in values
+    assert "loadtest-azure" in values
 
 
 def test_vm_lifecycle_choices_includes_azure() -> None:

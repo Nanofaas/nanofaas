@@ -9,7 +9,13 @@ from controlplane_tool.scenario.catalog import (
 )
 
 # Grows in Tasks 2-4 as each category is renamed; final state = the spec table.
-RENAME_PAIRS: list[tuple[str, str]] = []
+RENAME_PAIRS: list[tuple[str, str]] = [
+    ("helm-stack", "loadtest-helm-legacy"),
+    ("one-vm-helm-loadtest", "loadtest-one-vm"),
+    ("two-vm-loadtest", "loadtest-two-vm"),
+    ("azure-vm-loadtest", "loadtest-azure"),
+    ("proxmox-vm-loadtest", "loadtest-proxmox"),
+]
 
 
 def test_canonical_name_passthrough_for_canonical_and_unknown() -> None:

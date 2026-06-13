@@ -54,7 +54,7 @@ class OneVmHelmLoadtestPlan:
         # Workflow, via the lifecycle adapter). The raw recipe component is a bare
         # `multipass launch` and would fail with "already exists" on every run.
         return ScenarioRecipe(
-            name="one-vm-helm-loadtest-stack",
+            name="loadtest-one-vm-stack",
             component_ids=tuple(c for c in STACK_PRELUDE if c != "vm.ensure_running"),
             requires_managed_vm=True,
         )
@@ -92,5 +92,5 @@ def build_one_vm_helm_loadtest_plan(
 ) -> OneVmHelmLoadtestPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
 
-    scenario = resolve_scenario("one-vm-helm-loadtest")
+    scenario = resolve_scenario("loadtest-one-vm")
     return OneVmHelmLoadtestPlan(scenario=scenario, request=request, steps=[], runner=runner)

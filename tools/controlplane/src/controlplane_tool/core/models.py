@@ -23,11 +23,11 @@ ScenarioName = Literal[
     "cli-stack",
     "cli-host",
     "deploy-host",
-    "helm-stack",
-    "one-vm-helm-loadtest",
-    "two-vm-loadtest",
-    "azure-vm-loadtest",
-    "proxmox-vm-loadtest",
+    "loadtest-helm-legacy",
+    "loadtest-one-vm",
+    "loadtest-two-vm",
+    "loadtest-azure",
+    "loadtest-proxmox",
 ]
 
 VM_BACKED_SCENARIOS = frozenset(
@@ -36,11 +36,11 @@ VM_BACKED_SCENARIOS = frozenset(
         "cli",
         "cli-stack",
         "cli-host",
-        "helm-stack",
-        "one-vm-helm-loadtest",
-        "two-vm-loadtest",
-        "azure-vm-loadtest",
-        "proxmox-vm-loadtest",
+        "loadtest-helm-legacy",
+        "loadtest-one-vm",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
     }
 )
 

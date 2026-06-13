@@ -3,10 +3,10 @@ from __future__ import annotations
 
 LOADTEST_SCENARIOS: frozenset[str] = frozenset(
     {
-        "one-vm-helm-loadtest",
-        "two-vm-loadtest",
-        "azure-vm-loadtest",
-        "proxmox-vm-loadtest",
+        "loadtest-one-vm",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
     }
 )
 

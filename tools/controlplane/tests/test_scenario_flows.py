@@ -300,15 +300,15 @@ def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> No
 
 
 def test_helm_stack_flow_shares_k3s_junit_curl_prefix() -> None:
-    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
-    recipe = build_scenario_recipe("helm-stack")
+    flow = build_scenario_flow("loadtest-helm-legacy", repo_root=Path("/repo"))
+    recipe = build_scenario_recipe("loadtest-helm-legacy")
 
     assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
 def test_two_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
-    helm_recipe = build_scenario_recipe("helm-stack")
-    recipe = build_scenario_recipe("two-vm-loadtest")
+    helm_recipe = build_scenario_recipe("loadtest-helm-legacy")
+    recipe = build_scenario_recipe("loadtest-two-vm")
     platform_prefix = (
         "vm.ensure_running",
         "vm.provision_base",
@@ -340,8 +340,8 @@ def test_two_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
 
 
 def test_azure_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
-    helm_recipe = build_scenario_recipe("helm-stack")
-    recipe = build_scenario_recipe("azure-vm-loadtest")
+    helm_recipe = build_scenario_recipe("loadtest-helm-legacy")
+    recipe = build_scenario_recipe("loadtest-azure")
     platform_prefix = (
         "vm.ensure_running",
         "vm.provision_base",
@@ -374,12 +374,12 @@ def test_azure_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
 
 def test_two_vm_loadtest_request_backed_flow_task_ids_derive_from_recipe() -> None:
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
-    flow = build_scenario_flow("two-vm-loadtest", repo_root=Path("/repo"), request=request)
-    recipe = build_scenario_recipe("two-vm-loadtest")
+    flow = build_scenario_flow("loadtest-two-vm", repo_root=Path("/repo"), request=request)
+    recipe = build_scenario_recipe("loadtest-two-vm")
     expected_ids = [component.component_id for component in compose_recipe(recipe)]
     expected_ids = [
         "functions.register" if i == "cli.fn_apply_selected" else i
@@ -406,7 +406,7 @@ def test_helm_stack_flow_task_ids_follow_recipe_composition(monkeypatch) -> None
         raising=False,
     )
 
-    assert scenario_flows_mod.scenario_task_ids("helm-stack") == [
+    assert scenario_flows_mod.scenario_task_ids("loadtest-helm-legacy") == [
         "first.component",
         "second.component",
     ]
@@ -423,10 +423,10 @@ def test_helm_stack_flow_routes_through_python_e2e_runner(monkeypatch) -> None:
         ) or "ok",
     )
 
-    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
+    flow = build_scenario_flow("loadtest-helm-legacy", repo_root=Path("/repo"))
 
     assert flow.run() == "ok"
-    assert called["request"].scenario == "helm-stack"
+    assert called["request"].scenario == "loadtest-helm-legacy"
 
 
 def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
@@ -440,7 +440,7 @@ def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
         ) or "ok",
     )
 
-    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"), noninteractive=False)
+    flow = build_scenario_flow("loadtest-helm-legacy", repo_root=Path("/repo"), noninteractive=False)
 
     assert flow.run() == "ok"
     assert called["request"].helm_noninteractive is False
@@ -448,10 +448,10 @@ def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
 
 def test_proxmox_vm_loadtest_flow_uses_loadtest_recipe_ids() -> None:
     flow = build_scenario_flow(
-        "proxmox-vm-loadtest",
+        "loadtest-proxmox",
         repo_root=Path("/repo"),
         request=E2eRequest(
-            scenario="proxmox-vm-loadtest",
+            scenario="loadtest-proxmox",
             runtime="java",
             vm=VmRequest(lifecycle="proxmox", name="nanofaas-proxmox"),
             loadgen_vm=VmRequest(lifecycle="proxmox", name="nanofaas-proxmox-loadgen"),

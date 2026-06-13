@@ -21,7 +21,7 @@ from controlplane_tool.infra.vm.vm_models import VmRequest
 
 def _managed_context(
     *,
-    scenario: str = "helm-stack",
+    scenario: str = "loadtest-helm-legacy",
     namespace: str | None = "nanofaas-e2e",
     runtime: str = "java",
     resolved_scenario: ResolvedScenario | None = None,
@@ -136,7 +136,7 @@ def test_loadtest_component_planner_installs_k6_with_ansible() -> None:
 def test_image_component_planners_return_typed_operations_for_selected_functions() -> None:
     resolved_scenario = ResolvedScenario(
         name="demo-java",
-        base_scenario="helm-stack",
+        base_scenario="loadtest-helm-legacy",
         runtime="java",
         functions=[
             ResolvedFunction(
@@ -173,7 +173,7 @@ def test_image_component_planners_return_typed_operations_for_selected_functions
 def test_image_component_planners_build_javascript_functions_from_examples_directory() -> None:
     resolved_scenario = ResolvedScenario(
         name="demo-javascript",
-        base_scenario="helm-stack",
+        base_scenario="loadtest-helm-legacy",
         runtime="java",
         functions=[
             ResolvedFunction(
@@ -266,7 +266,7 @@ def test_cleanup_uninstalls_function_runtime_with_wait() -> None:
 
 
 def test_compose_recipe_wires_concrete_component_planners() -> None:
-    recipe = build_scenario_recipe("helm-stack")
+    recipe = build_scenario_recipe("loadtest-helm-legacy")
     components = {component.component_id: component for component in compose_recipe(recipe)}
 
     assert components["k3s.install"].planner is bootstrap.plan_k3s_install

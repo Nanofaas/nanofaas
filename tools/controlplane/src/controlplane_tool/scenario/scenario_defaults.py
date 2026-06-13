@@ -19,8 +19,8 @@ _DEFAULTS: dict[str, ScenarioDeploymentDefaults] = {
         namespace="nanofaas-host-cli-e2e",
         release="nanofaas-host-cli-e2e",
     ),
-    "helm-stack": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
-    "one-vm-helm-loadtest": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
+    "loadtest-helm-legacy": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
+    "loadtest-one-vm": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
     "k3s-junit-curl": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
 }
 

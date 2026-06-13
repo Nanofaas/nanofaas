@@ -69,8 +69,8 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
         ),
         requires_managed_vm=True,
     ),
-    "helm-stack": ScenarioRecipe(
-        name="helm-stack",
+    "loadtest-helm-legacy": ScenarioRecipe(
+        name="loadtest-helm-legacy",
         component_ids=STACK_PRELUDE
         + (
             "loadtest.install_k6",
@@ -79,14 +79,14 @@ _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
         ),
         requires_managed_vm=True,
     ),
-    "one-vm-helm-loadtest": ScenarioRecipe(
-        name="one-vm-helm-loadtest",
+    "loadtest-one-vm": ScenarioRecipe(
+        name="loadtest-one-vm",
         component_ids=STACK_PRELUDE,
         requires_managed_vm=True,
     ),
-    "two-vm-loadtest": _loadtest_recipe("two-vm-loadtest"),
-    "azure-vm-loadtest": _loadtest_recipe("azure-vm-loadtest"),
-    "proxmox-vm-loadtest": _loadtest_recipe("proxmox-vm-loadtest"),
+    "loadtest-two-vm": _loadtest_recipe("loadtest-two-vm"),
+    "loadtest-azure": _loadtest_recipe("loadtest-azure"),
+    "loadtest-proxmox": _loadtest_recipe("loadtest-proxmox"),
     "cli-stack": ScenarioRecipe(
         name="cli-stack",
         component_ids=BASE_PROVISION

@@ -38,7 +38,7 @@ def test_azure_stack_request_opens_nodeports():
     from controlplane_tool.cli.e2e_commands import _resolve_run_request
 
     request = _resolve_run_request(
-        scenario="azure-vm-loadtest", runtime="java", lifecycle="azure",
+        scenario="loadtest-azure", runtime="java", lifecycle="azure",
         name=None, host=None, user="azureuser", home=None,
         cpus=4, memory="12G", disk="30G", cleanup_vm=True,
         namespace=None, local_registry=None, function_preset=None,

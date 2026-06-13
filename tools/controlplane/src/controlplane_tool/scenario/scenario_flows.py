@@ -156,9 +156,9 @@ def build_scenario_flow(
                 skip_cli_build=skip_cli_build,
             ).run(scenario_file=scenario_file),
         )
-    if scenario == "helm-stack":
+    if scenario == "loadtest-helm-legacy":
         e2e_request = E2eRequest(
-            scenario="helm-stack",
+            scenario="loadtest-helm-legacy",
             runtime=runtime,
             vm=default_managed_vm_request(),
             helm_noninteractive=noninteractive,
@@ -173,9 +173,9 @@ def build_scenario_flow(
             run=lambda: E2eRunner(repo_root).run(e2e_request, event_listener=event_listener),
         )
 
-    if scenario == "one-vm-helm-loadtest":
+    if scenario == "loadtest-one-vm":
         e2e_request = E2eRequest(
-            scenario="one-vm-helm-loadtest",
+            scenario="loadtest-one-vm",
             runtime=runtime,
             vm=default_managed_vm_request(),
             namespace=effective_namespace,

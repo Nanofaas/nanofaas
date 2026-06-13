@@ -165,5 +165,7 @@ def overlay_scenario_selection(
 def load_scenario_file(path: Path) -> ResolvedScenario:
     scenario_path = _resolve_input_path(path)
     data = tomllib.loads(scenario_path.read_text(encoding="utf-8"))
+    if "base_scenario" in data:
+        data["base_scenario"] = canonical_scenario_name(data["base_scenario"])
     spec = ScenarioSpec.model_validate(data)
     return resolve_scenario_spec(spec, source_path=scenario_path)

@@ -62,7 +62,7 @@ class TwoVmLoadtestPlan:
 
     def _recipe(self):
         return ScenarioRecipe(
-            name="two-vm-loadtest-stack",
+            name="loadtest-two-vm-stack",
             component_ids=_TWO_VM_STACK_PRELUDE_COMPONENTS,
             requires_managed_vm=True,
         )
@@ -95,5 +95,5 @@ def build_two_vm_loadtest_plan(
 ) -> TwoVmLoadtestPlan:
     from controlplane_tool.scenario.catalog import resolve_scenario
 
-    scenario = resolve_scenario("two-vm-loadtest")
+    scenario = resolve_scenario("loadtest-two-vm")
     return TwoVmLoadtestPlan(scenario=scenario, request=request, steps=[], runner=runner)

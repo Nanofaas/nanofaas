@@ -97,7 +97,7 @@ def test_k3s_junit_curl_plan_uses_unified_python_and_junit_steps() -> None:
 def test_helm_stack_plan_no_longer_routes_to_shell_backend() -> None:
     plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
         E2eRequest(
-            scenario="helm-stack",
+            scenario="loadtest-helm-legacy",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         )
@@ -121,14 +121,14 @@ def test_helm_stack_plan_shares_k3s_junit_curl_prelude() -> None:
     )
     helm_stack_plan = runner.plan(
         E2eRequest(
-            scenario="helm-stack",
+            scenario="loadtest-helm-legacy",
             runtime="java",
             vm=vm_request,
         )
     )
 
     k3s_recipe_ids = [component.component_id for component in compose_recipe(build_scenario_recipe("k3s-junit-curl"))]
-    helm_recipe_ids = [component.component_id for component in compose_recipe(build_scenario_recipe("helm-stack"))]
+    helm_recipe_ids = [component.component_id for component in compose_recipe(build_scenario_recipe("loadtest-helm-legacy"))]
     shared_prefix_length = 0
     for lhs, rhs in zip(k3s_recipe_ids, helm_recipe_ids):
         if lhs != rhs:
@@ -202,7 +202,7 @@ def test_helm_stack_plan_adds_structured_loadtest_tail() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     plan = runner.plan(
         E2eRequest(
-            scenario="helm-stack",
+            scenario="loadtest-helm-legacy",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         )
@@ -225,7 +225,7 @@ def test_two_vm_loadtest_plan_adds_default_loadgen_vm_for_action() -> None:
 
     plan = runner.plan(
         E2eRequest(
-            scenario="two-vm-loadtest",
+            scenario="loadtest-two-vm",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         )
@@ -238,7 +238,7 @@ def test_two_vm_loadtest_plan_adds_default_loadgen_vm_for_action() -> None:
 def test_e2e_all_two_vm_loadtest_plan_adds_default_loadgen_vm() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
 
-    plans = runner.plan_all(only=["two-vm-loadtest"])
+    plans = runner.plan_all(only=["loadtest-two-vm"])
 
     assert len(plans) == 1
     request = plans[0].request
@@ -257,7 +257,7 @@ def test_e2e_all_two_vm_loadtest_plan_derives_external_loadgen_vm() -> None:
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
 
     plans = runner.plan_all(
-        only=["two-vm-loadtest"],
+        only=["loadtest-two-vm"],
         vm_request=VmRequest(
             lifecycle="external",
             host="stack.example",
@@ -286,7 +286,7 @@ def test_e2e_all_two_vm_loadtest_plan_accepts_explicit_loadgen_vm() -> None:
     )
 
     plans = runner.plan_all(
-        only=["two-vm-loadtest"],
+        only=["loadtest-two-vm"],
         loadgen_vm_request=loadgen_vm,
     )
 
@@ -515,7 +515,7 @@ def test_plan_all_returns_typed_builder_for_two_vm_loadtest(tmp_path: Path) -> N
     from controlplane_tool.scenario.scenarios.two_vm_loadtest import TwoVmLoadtestPlan
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["two-vm-loadtest"])
+    plans = runner.plan_all(only=["loadtest-two-vm"])
 
     assert len(plans) == 1
     assert isinstance(plans[0], TwoVmLoadtestPlan), (
@@ -543,7 +543,7 @@ def test_plan_all_returns_typed_builder_for_helm_stack(tmp_path: Path) -> None:
     from controlplane_tool.scenario.scenarios.helm_stack import HelmStackPlan
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["helm-stack"])
+    plans = runner.plan_all(only=["loadtest-helm-legacy"])
 
     assert len(plans) == 1
     assert isinstance(plans[0], HelmStackPlan), (
@@ -575,7 +575,7 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
         azure_location="westeurope",
     )
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["azure-vm-loadtest"], vm_request=azure_request)
+    plans = runner.plan_all(only=["loadtest-azure"], vm_request=azure_request)
 
     assert len(plans) == 1
     assert isinstance(plans[0], AzureVmLoadtestPlan), (
@@ -588,7 +588,7 @@ def test_plan_all_returns_typed_builder_for_azure_vm_loadtest(tmp_path: Path) ->
 def test_plan_all_skips_azure_vm_loadtest_without_credentials(tmp_path: Path) -> None:
     """plan_all() must skip azure-vm-loadtest when no vm_request is provided."""
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["azure-vm-loadtest"])
+    plans = runner.plan_all(only=["loadtest-azure"])
 
     assert len(plans) == 0
 
@@ -605,7 +605,7 @@ def test_plan_all_returns_typed_builder_for_proxmox_vm_loadtest(tmp_path: Path) 
         proxmox_password="secret",
     )
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["proxmox-vm-loadtest"], vm_request=proxmox_request)
+    plans = runner.plan_all(only=["loadtest-proxmox"], vm_request=proxmox_request)
 
     assert len(plans) == 1
     assert isinstance(plans[0], ProxmoxVmLoadtestPlan)
@@ -615,7 +615,7 @@ def test_plan_all_returns_typed_builder_for_proxmox_vm_loadtest(tmp_path: Path) 
 def test_plan_all_skips_proxmox_vm_loadtest_without_credentials(tmp_path: Path) -> None:
     """plan_all() must skip proxmox-vm-loadtest when no vm_request is provided."""
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["proxmox-vm-loadtest"])
+    plans = runner.plan_all(only=["loadtest-proxmox"])
 
     assert len(plans) == 0
 
@@ -631,7 +631,7 @@ def test_plan_all_propagates_proxmox_credentials_to_loadgen_vm(tmp_path) -> None
         proxmox_template_id=101,
         proxmox_ssh_key_path="/home/user/.ssh/id_rsa",
     )
-    plans = runner.plan_all(only=["proxmox-vm-loadtest"], vm_request=vm_request)
+    plans = runner.plan_all(only=["loadtest-proxmox"], vm_request=vm_request)
 
     assert len(plans) == 1
     loadgen_vm = plans[0].request.loadgen_vm
@@ -650,7 +650,7 @@ def test_e2e_runner_run_forwards_event_listener_to_builder_plan(tmp_path: Path) 
     captured: dict = {}
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
@@ -912,13 +912,13 @@ def test_e2e_plan_run_stops_on_first_failed_command(tmp_path: Path) -> None:
 def test_one_vm_helm_loadtest_plan_uses_one_vm_adapter_task_shape() -> None:
     plan = E2eRunner(Path("/repo"), shell=RecordingShell()).plan(
         E2eRequest(
-            scenario="one-vm-helm-loadtest",
+            scenario="loadtest-one-vm",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         )
     )
 
-    assert plan.scenario.name == "one-vm-helm-loadtest"
+    assert plan.scenario.name == "loadtest-one-vm"
     assert "vm.stack.ensure_running" in plan.task_ids
     # The lifecycle adapter owns VM bootstrap; the raw `multipass launch` recipe
     # component must NOT also run (it fails with "already exists" on every run).

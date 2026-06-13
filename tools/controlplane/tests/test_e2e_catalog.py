@@ -12,11 +12,11 @@ def test_catalog_lists_expected_suite_names() -> None:
         "cli-stack",
         "cli-host",
         "deploy-host",
-        "helm-stack",
-        "one-vm-helm-loadtest",
-        "two-vm-loadtest",
-        "azure-vm-loadtest",
-        "proxmox-vm-loadtest",
+        "loadtest-helm-legacy",
+        "loadtest-one-vm",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
     ]
 
 
@@ -36,7 +36,7 @@ def test_k3s_junit_curl_selection_mode_is_multi() -> None:
 
 
 def test_two_vm_loadtest_scenario_is_vm_backed_and_grouped() -> None:
-    scenario = resolve_scenario("two-vm-loadtest")
+    scenario = resolve_scenario("loadtest-two-vm")
 
     assert scenario.requires_vm is True
     assert scenario.grouped_phases is True
@@ -46,7 +46,7 @@ def test_two_vm_loadtest_scenario_is_vm_backed_and_grouped() -> None:
 
 
 def test_azure_vm_loadtest_scenario_is_vm_backed_and_grouped() -> None:
-    scenario = resolve_scenario("azure-vm-loadtest")
+    scenario = resolve_scenario("loadtest-azure")
 
     assert scenario.requires_vm is True
     assert scenario.grouped_phases is True

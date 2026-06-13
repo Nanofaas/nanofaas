@@ -529,29 +529,29 @@ _PLATFORM_VALIDATION_CHOICES = [
         "Provision a managed VM, install k3s, deploy the stack, and verify the result with curl probes plus JUnit checks.",
     ),
     _DescribedChoice(
-        "helm-stack — self-bootstrapping VM stack for Helm compatibility",
-        "helm-stack",
+        "loadtest-helm-legacy — self-bootstrapping VM stack for Helm compatibility",
+        "loadtest-helm-legacy",
         "Bootstrap the full VM-backed Helm stack and validate the deployment path that load testing and demos rely on.",
     ),
     _DescribedChoice(
-        "one-vm-helm-loadtest — Helm stack + k6 + autoscaling check on one VM",
-        "one-vm-helm-loadtest",
+        "loadtest-one-vm — Helm stack + k6 + autoscaling check on one VM",
+        "loadtest-one-vm",
         "Bootstrap the Helm stack on a single VM, run k6 load generation, capture Prometheus snapshots, generate a report, and verify autoscaling.",
     ),
     _DescribedChoice(
-        "two-vm-loadtest — Helm stack with dedicated k6 load generator VM",
-        "two-vm-loadtest",
+        "loadtest-two-vm — Helm stack with dedicated k6 load generator VM",
+        "loadtest-two-vm",
         "Bootstrap the Helm stack on one VM and run k6 from a second managed load generator VM.",
     ),
     _DescribedChoice(
-        "azure-vm-loadtest — Two-VM Azure load test with k6",
-        "azure-vm-loadtest",
+        "loadtest-azure — Two-VM Azure load test with k6",
+        "loadtest-azure",
         "Provision two Azure VMs (stack + loadgen) via OpenTofu, run k6 load test, capture "
         "Prometheus snapshots. Reads defaults from profiles/azure.toml.",
     ),
     _DescribedChoice(
-        "proxmox-vm-loadtest — Two-VM Proxmox VE load test with k6",
-        "proxmox-vm-loadtest",
+        "loadtest-proxmox — Two-VM Proxmox VE load test with k6",
+        "loadtest-proxmox",
         "Clone two VMs on Proxmox VE (stack + loadgen), run k6 load test, capture "
         "Prometheus snapshots. Reads defaults from profiles/proxmox.toml.",
     ),
@@ -988,7 +988,7 @@ class NanofaasTUI:
 
             scenario_choice = canonical_scenario_name(scenario_choice)
 
-            if scenario_choice in ("k3s-junit-curl", "helm-stack", "one-vm-helm-loadtest", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"):
+            if scenario_choice in ("k3s-junit-curl", "loadtest-helm-legacy", "loadtest-one-vm", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"):
                 self._run_vm_e2e_scenario(scenario_choice)
             elif scenario_choice == "container-local":
                 self._run_container_local()
@@ -1001,7 +1001,7 @@ class NanofaasTUI:
     def _run_vm_e2e_scenario(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
 
-        if scenario in {"helm-stack", "one-vm-helm-loadtest", "two-vm-loadtest"}:
+        if scenario in {"loadtest-helm-legacy", "loadtest-one-vm", "loadtest-two-vm"}:
             from controlplane_tool.cli.e2e_commands import _resolve_run_request
             from controlplane_tool.e2e.e2e_runner import E2eRunner
 
@@ -1015,7 +1015,7 @@ class NanofaasTUI:
                 user="ubuntu",
                 home=None,
                 cpus=4,
-                memory="8G" if scenario == "two-vm-loadtest" else "12G",
+                memory="8G" if scenario == "loadtest-two-vm" else "12G",
                 disk="30G",
                 cleanup_vm=cleanup_vm,
                 namespace=None,
@@ -1054,7 +1054,7 @@ class NanofaasTUI:
                 action=_run_helm_stack_workflow,
             )
 
-        elif scenario == "azure-vm-loadtest":
+        elif scenario == "loadtest-azure":
             from pydantic import ValidationError
             from controlplane_tool.workspace.azure_config import (
                 azure_config_path,
@@ -1090,7 +1090,7 @@ class NanofaasTUI:
 
             confirmed = _ask(
                 lambda: questionary.confirm(
-                    "Proceed with azure-vm-loadtest?", default=True, style=_STYLE
+                    "Proceed with loadtest-azure?", default=True, style=_STYLE
                 ).ask()
             )
             if not confirmed:
@@ -1098,7 +1098,7 @@ class NanofaasTUI:
 
             cleanup_vm = _ask_cleanup_vm()
             request = _resolve_run_request(
-                scenario="azure-vm-loadtest",
+                scenario="loadtest-azure",
                 runtime="java",
                 lifecycle="azure",
                 name=cfg.vm_name,
@@ -1134,22 +1134,22 @@ class NanofaasTUI:
                     self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
-                dashboard.append_log("Starting azure-vm-loadtest workflow")
+                dashboard.append_log("Starting loadtest-azure workflow")
                 sink._update()
                 flow = build_scenario_flow(
-                    "azure-vm-loadtest",
+                    "loadtest-azure",
                     repo_root=repo_root,
                     request=request,
                     event_listener=_on_step_event,
                 )
                 self._controller.run_shared_flow(flow)
-                dashboard.append_log("azure-vm-loadtest E2E completed")
+                dashboard.append_log("loadtest-azure E2E completed")
                 sink._update()
 
             self._controller.run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=[
-                    "Scenario: azure-vm-loadtest",
+                    "Scenario: loadtest-azure",
                     f"Resource group: {cfg.resource_group}",
                     f"Location: {cfg.location}",
                     f"Stack VM: {cfg.vm_name} ({cfg.vm_size})",
@@ -1159,7 +1159,7 @@ class NanofaasTUI:
                 action=_run_azure_loadtest_workflow,
             )
 
-        elif scenario == "proxmox-vm-loadtest":
+        elif scenario == "loadtest-proxmox":
             from pydantic import ValidationError
             from controlplane_tool.workspace.proxmox_config import (
                 proxmox_config_path,
@@ -1196,7 +1196,7 @@ class NanofaasTUI:
 
             confirmed = _ask(
                 lambda: questionary.confirm(
-                    "Proceed with proxmox-vm-loadtest?", default=True, style=_STYLE
+                    "Proceed with loadtest-proxmox?", default=True, style=_STYLE
                 ).ask()
             )
             if not confirmed:
@@ -1204,7 +1204,7 @@ class NanofaasTUI:
 
             cleanup_vm = _ask_cleanup_vm()
             request = _resolve_run_request(
-                scenario="proxmox-vm-loadtest",
+                scenario="loadtest-proxmox",
                 runtime="java",
                 lifecycle="proxmox",
                 name=cfg.vm_name,
@@ -1241,22 +1241,22 @@ class NanofaasTUI:
                     self._applier.apply_e2e_step_event(dashboard, event)
                     sink._update()
 
-                dashboard.append_log("Starting proxmox-vm-loadtest workflow")
+                dashboard.append_log("Starting loadtest-proxmox workflow")
                 sink._update()
                 flow = build_scenario_flow(
-                    "proxmox-vm-loadtest",
+                    "loadtest-proxmox",
                     repo_root=repo_root,
                     request=request,
                     event_listener=_on_step_event,
                 )
                 self._controller.run_shared_flow(flow)
-                dashboard.append_log("proxmox-vm-loadtest E2E completed")
+                dashboard.append_log("loadtest-proxmox E2E completed")
                 sink._update()
 
             self._controller.run_live_workflow(
                 title="E2E Scenarios",
                 summary_lines=[
-                    "Scenario: proxmox-vm-loadtest",
+                    "Scenario: loadtest-proxmox",
                     f"Host: {cfg.host}",
                     f"Node: {cfg.node}",
                     f"Stack VM: {cfg.vm_name}",

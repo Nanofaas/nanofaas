@@ -30,13 +30,13 @@ class FakeAzureOrch:
 def _plan():
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     request = E2eRequest(
-        scenario="azure-vm-loadtest",
+        scenario="loadtest-azure",
         runtime="java",
         vm=VmRequest(lifecycle="azure", name="azure-stack", user="azureuser"),
         loadgen_vm=VmRequest(lifecycle="azure", name="azure-loadgen", user="azureuser"),
     )
     return azure_plan.AzureVmLoadtestPlan(
-        scenario=resolve_scenario("azure-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-azure"),
         request=request,
         steps=[],
         runner=runner,
