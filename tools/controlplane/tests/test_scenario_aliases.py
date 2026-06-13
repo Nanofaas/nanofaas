@@ -20,6 +20,7 @@ RENAME_PAIRS: list[tuple[str, str]] = [
     ("docker", "validate-docker-pool"),
     ("buildpack", "validate-buildpack-pool"),
     ("deploy-host", "validate-deploy-host"),
+    ("cli", "cli-suite"),
 ]
 
 

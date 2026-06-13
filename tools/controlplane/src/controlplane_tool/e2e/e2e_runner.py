@@ -162,7 +162,7 @@ class E2eRunner:
         if request.scenario == "cli-stack":
             from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
             return build_cli_stack_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "cli":
+        if request.scenario == "cli-suite":
             from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
             return build_cli_vm_plan(self, request)
         if request.scenario == "cli-host":
@@ -292,7 +292,7 @@ class E2eRunner:
                     steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                     from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
                     plans.append(CliStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
-                elif scenario.name == "cli":
+                elif scenario.name == "cli-suite":
                     from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
                     plans.append(build_cli_vm_plan(self, request, include_bootstrap=not vm_bootstrap_planned))
                 elif scenario.name == "cli-host":

@@ -722,7 +722,7 @@ def test_plan_returns_typed_cli_vm_plan(tmp_path: Path) -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     plan = runner.plan(E2eRequest(
-        scenario="cli",
+        scenario="cli-suite",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     ))
@@ -751,7 +751,7 @@ def test_plan_all_returns_typed_cli_vm_plan(tmp_path: Path) -> None:
     from controlplane_tool.scenario.scenarios.cli_vm import CliVmPlan
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
-    plans = runner.plan_all(only=["cli"])
+    plans = runner.plan_all(only=["cli-suite"])
 
     assert len(plans) == 1
     assert isinstance(plans[0], CliVmPlan), f"Expected CliVmPlan, got {type(plans[0])}"
@@ -772,10 +772,10 @@ def test_plan_and_plan_all_produce_consistent_step_ids_for_cli(tmp_path: Path) -
     """plan() and plan_all(only=['cli']) must produce the same step IDs."""
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     vm = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
-    request = E2eRequest(scenario="cli", runtime="java", vm=vm)
+    request = E2eRequest(scenario="cli-suite", runtime="java", vm=vm)
 
     single_plan = runner.plan(request)
-    [all_plan] = runner.plan_all(only=["cli"])
+    [all_plan] = runner.plan_all(only=["cli-suite"])
 
     assert single_plan.task_ids == all_plan.task_ids
 
@@ -826,7 +826,7 @@ def test_run_dispatches_new_builder_without_explicit_registration(tmp_path: Path
 
     fake_builder = MagicMock(spec_set=["task_ids", "run", "request", "steps", "scenario"])
     fake_builder.task_ids = ["step.one"]
-    fake_request = E2eRequest(scenario="cli", runtime="java", vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"))
+    fake_request = E2eRequest(scenario="cli-suite", runtime="java", vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"))
     fake_builder.request = fake_request
 
     assert not isinstance(fake_builder, E2ePlan), "Sanity check: fake builder is not E2ePlan"
@@ -857,8 +857,8 @@ def test_run_all_forwards_event_listener_to_builder_plans(tmp_path: Path) -> Non
     vm = VmRequest(lifecycle="multipass", name="nanofaas-e2e")
     fake_steps = [ScenarioPlanStep(summary="s", command=["echo", "hi"], step_id="s.one")]
     fake_plan = CliVmPlan(
-        scenario=runner.plan(E2eRequest(scenario="cli", runtime="java", vm=vm)).scenario,
-        request=E2eRequest(scenario="cli", runtime="java", vm=vm),
+        scenario=runner.plan(E2eRequest(scenario="cli-suite", runtime="java", vm=vm)).scenario,
+        request=E2eRequest(scenario="cli-suite", runtime="java", vm=vm),
         steps=fake_steps,
         runner=runner,
     )

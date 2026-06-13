@@ -52,10 +52,11 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         aliases=("k3s-junit-curl",),
     ),
     ScenarioDefinition(
-        name="cli",
-        description="Full CLI lifecycle suite inside the VM.",
+        name="cli-suite",
+        description="Full nanofaas-cli lifecycle test suite executed inside a managed VM against k3s.",
         requires_vm=True,
         supported_runtimes=("java", "rust"),
+        aliases=("cli",),
     ),
     ScenarioDefinition(
         name="cli-stack",

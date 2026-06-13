@@ -144,7 +144,7 @@ def _build_request(
     loadgen_vm = None
     if scenario in {
         "validate-k3s",
-        "cli",
+        "cli-suite",
         "cli-stack",
         "cli-host",
         "loadtest-helm-legacy",

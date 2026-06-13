@@ -10,7 +10,7 @@ class ScenarioDeploymentDefaults:
 
 
 _DEFAULTS: dict[str, ScenarioDeploymentDefaults] = {
-    "cli": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
+    "cli-suite": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
     "cli-stack": ScenarioDeploymentDefaults(
         namespace="nanofaas-cli-stack-e2e",
         release="nanofaas-cli-stack-e2e",

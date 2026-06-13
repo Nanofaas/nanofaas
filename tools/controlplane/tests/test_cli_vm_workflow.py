@@ -26,7 +26,7 @@ from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
 
 def _request() -> E2eRequest:
     return E2eRequest(
-        scenario="cli",
+        scenario="cli-suite",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )

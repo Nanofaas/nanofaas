@@ -256,7 +256,7 @@ class ScenarioPlanner:
         ]
 
     def vm_scenario_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
-        if request.scenario == "cli":
+        if request.scenario == "cli-suite":
             return [
                 self._step(
                     "Run CLI E2E workflow inside VM (Python)",

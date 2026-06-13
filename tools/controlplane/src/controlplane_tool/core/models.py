@@ -19,7 +19,7 @@ ScenarioName = Literal[
     "validate-buildpack-pool",
     "validate-container-local",
     "validate-k3s",
-    "cli",
+    "cli-suite",
     "cli-stack",
     "cli-host",
     "validate-deploy-host",
@@ -33,7 +33,7 @@ ScenarioName = Literal[
 VM_BACKED_SCENARIOS = frozenset(
     {
         "validate-k3s",
-        "cli",
+        "cli-suite",
         "cli-stack",
         "cli-host",
         "loadtest-helm-legacy",

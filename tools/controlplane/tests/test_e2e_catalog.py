@@ -8,7 +8,7 @@ def test_catalog_lists_expected_suite_names() -> None:
         "validate-buildpack-pool",
         "validate-container-local",
         "validate-k3s",
-        "cli",
+        "cli-suite",
         "cli-stack",
         "cli-host",
         "validate-deploy-host",

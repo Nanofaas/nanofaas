@@ -22,7 +22,7 @@ DeployHostE2eRunner = None
 
 
 def scenario_task_ids(scenario: str) -> list[str]:
-    if scenario in {"validate-container-local", "validate-deploy-host", "cli", "cli-host"}:
+    if scenario in {"validate-container-local", "validate-deploy-host", "cli-suite", "cli-host"}:
         return [f"tests.run_{scenario.replace('-', '_')}"]
     recipe = build_scenario_recipe(scenario)
     ids = [
