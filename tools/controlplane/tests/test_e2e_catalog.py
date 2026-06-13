@@ -53,3 +53,11 @@ def test_azure_vm_loadtest_scenario_is_vm_backed_and_grouped() -> None:
     assert scenario.selection_mode == "multi"
     assert "java" in scenario.supported_runtimes
     assert "rust" in scenario.supported_runtimes
+
+
+def test_every_scenario_has_substantial_details() -> None:
+    from controlplane_tool.scenario.catalog import list_scenarios
+
+    for scenario in list_scenarios():
+        assert len(scenario.details) > 120, scenario.name
+        assert scenario.details != scenario.description, scenario.name
