@@ -141,4 +141,58 @@ class KubernetesResourceManagerTest {
         var deps = client.apps().deployments().inNamespace("default").list().getItems();
         assertEquals(1, deps.size());
     }
+
+    @Test
+    void provision_updatesExistingResourcesWithoutDeletingFirst() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+
+        resourceManager.provision(spec(scaling));
+        String firstDeploymentUid = client.apps().deployments()
+                .inNamespace("default").withName("fn-echo").get().getMetadata().getUid();
+        String firstServiceUid = client.services().inNamespace("default").withName("fn-echo").get().getMetadata().getUid();
+
+        resourceManager.provision(spec(scaling));
+
+        assertNotNull(client.apps().deployments().inNamespace("default").withName("fn-echo").get());
+        assertEquals(firstDeploymentUid, client.apps().deployments()
+                .inNamespace("default").withName("fn-echo").get().getMetadata().getUid());
+        assertEquals(firstServiceUid, client.services().inNamespace("default").withName("fn-echo").get().getMetadata().getUid());
+        assertEquals(1, client.apps().deployments().inNamespace("default").list().getItems().size());
+        assertEquals(1, client.services().inNamespace("default").list().getItems().size());
+    }
+
+    @Test
+    void provision_updatesExistingHpaWithoutDeletingFirst() {
+        ScalingConfig hpa = new ScalingConfig(ScalingStrategy.HPA, 1, 5,
+                List.of(new ScalingMetric("cpu", "80", null)));
+
+        resourceManager.provision(spec(hpa));
+        String firstHpaUid = client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get().getMetadata().getUid();
+
+        resourceManager.provision(spec(hpa));
+
+        assertEquals(firstHpaUid, client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get().getMetadata().getUid());
+        assertEquals(1, client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").list().getItems().size());
+    }
+
+    @Test
+    void provision_deletesStaleHpaWhenStrategyChangesFromHpa() {
+        ScalingConfig hpa = new ScalingConfig(ScalingStrategy.HPA, 1, 5,
+                List.of(new ScalingMetric("cpu", "80", null)));
+        ScalingConfig internal = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+
+        resourceManager.provision(spec(hpa));
+        assertNotNull(client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get());
+
+        resourceManager.provision(spec(internal));
+
+        assertNull(client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get());
+    }
 }

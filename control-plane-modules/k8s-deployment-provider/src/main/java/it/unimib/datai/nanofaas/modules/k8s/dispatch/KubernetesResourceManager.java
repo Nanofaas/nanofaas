@@ -1,8 +1,12 @@
 package it.unimib.datai.nanofaas.modules.k8s.dispatch;
 
+import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.autoscaling.v2.HorizontalPodAutoscaler;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.dsl.base.PatchContext;
+import io.fabric8.kubernetes.client.dsl.base.PatchType;
+import io.fabric8.kubernetes.client.utils.Serialization;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
@@ -29,48 +33,62 @@ public class KubernetesResourceManager {
 
     /**
      * Creates Deployment + Service (+ HPA if strategy=HPA) for a function.
-     * Uses delete+create for idempotency to avoid Fabric8 createOrReplace clone path
-     * that is problematic in GraalVM native mode.
+     * Reconciles resources without deleting stable objects first, preserving
+     * service identity and deployment history across updates.
      * Returns the service URL for invocations.
      */
     public String provision(FunctionSpec spec) {
         Deployment deployment = builder.buildDeployment(spec);
-        io.fabric8.kubernetes.api.model.Service service = builder.buildService(spec);
+        Service service = builder.buildService(spec);
         KubernetesClient client = clientProvider.getObject();
 
-        client.apps().deployments()
+        var deploymentResource = client.apps().deployments()
                 .inNamespace(resolvedNamespace)
-                .withName(deployment.getMetadata().getName())
-                .delete();
-        client.apps().deployments()
-                .inNamespace(resolvedNamespace)
-                .resource(deployment)
-                .create();
+                .withName(deployment.getMetadata().getName());
+        if (deploymentResource.get() == null) {
+            client.apps().deployments()
+                    .inNamespace(resolvedNamespace)
+                    .resource(deployment)
+                    .create();
+        } else {
+            deploymentResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(deployment));
+        }
         log.info("Created/updated Deployment {} for function {}", deployment.getMetadata().getName(), spec.name());
 
-        client.services()
+        var serviceResource = client.services()
                 .inNamespace(resolvedNamespace)
-                .withName(service.getMetadata().getName())
-                .delete();
-        client.services()
-                .inNamespace(resolvedNamespace)
-                .resource(service)
-                .create();
+                .withName(service.getMetadata().getName());
+        if (serviceResource.get() == null) {
+            client.services()
+                    .inNamespace(resolvedNamespace)
+                    .resource(service)
+                    .create();
+        } else {
+            serviceResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(service));
+        }
         log.info("Created/updated Service {} for function {}", service.getMetadata().getName(), spec.name());
 
         if (spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA) {
             HorizontalPodAutoscaler hpa = builder.buildHpa(spec);
             if (hpa != null) {
-                client.autoscaling().v2().horizontalPodAutoscalers()
+                var hpaResource = client.autoscaling().v2().horizontalPodAutoscalers()
                         .inNamespace(resolvedNamespace)
-                        .withName(hpa.getMetadata().getName())
-                        .delete();
-                client.autoscaling().v2().horizontalPodAutoscalers()
-                        .inNamespace(resolvedNamespace)
-                        .resource(hpa)
-                        .create();
+                        .withName(hpa.getMetadata().getName());
+                if (hpaResource.get() == null) {
+                    client.autoscaling().v2().horizontalPodAutoscalers()
+                            .inNamespace(resolvedNamespace)
+                            .resource(hpa)
+                            .create();
+                } else {
+                    hpaResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(hpa));
+                }
                 log.info("Created/updated HPA {} for function {}", hpa.getMetadata().getName(), spec.name());
             }
+        } else {
+            client.autoscaling().v2().horizontalPodAutoscalers()
+                    .inNamespace(resolvedNamespace)
+                    .withName(KubernetesDeploymentBuilder.deploymentName(spec.name()))
+                    .delete();
         }
 
         String serviceUrl = String.format("http://%s.%s.svc.cluster.local:8080/invoke",
