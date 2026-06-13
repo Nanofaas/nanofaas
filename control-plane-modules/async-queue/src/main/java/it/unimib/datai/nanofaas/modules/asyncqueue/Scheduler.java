@@ -135,7 +135,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             );
         }
 
-        if (state.queued() > 0) {
+        if (state.queued() > 0 && dispatched > 0) {
             signalWork(functionName);
         }
     }
