@@ -120,9 +120,9 @@ scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-r
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --lifecycle multipass --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
-scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
+scripts/controlplane.sh e2e run validate-k3s --lifecycle multipass --dry-run
+scripts/controlplane.sh e2e run validate-k3s --function-preset demo-javascript --dry-run
+scripts/controlplane.sh e2e all --only validate-k3s --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
 scripts/e2e-loadtest.sh --profile demo-java --dry-run
@@ -133,9 +133,9 @@ Behavioral notes for the repaired milestone 3 contract:
 - VM provisioning targets the resolved VM host over SSH/Ansible; dry-run plans no longer fall back to `localhost` for VM-backed playbooks.
 - `scripts/controlplane.sh e2e all ...` reuses one shared VM session across VM-backed scenarios instead of looping over isolated per-scenario VM startups.
 - `--no-cleanup-vm` keeps Multipass VMs available for debugging after `run` or `all`; with `E2E_VM_LIFECYCLE=external`, teardown is always skipped.
-- `container-local`, `deploy-host`, `k3s-junit-curl`, `cli`, `cli-host`, and `helm-stack` route through concrete workflows instead of placeholder `echo` steps.
-- `container-local` is intentionally a single-function managed-deployment verification path; multi-function presets are rejected in CLI validation before the backend runs.
-- `k3s-junit-curl` consumes the full selected function set in manifest mode, so presets such as `demo-java` are exercised end-to-end instead of being reduced to the first function.
+- `validate-container-local`, `validate-deploy-host`, `validate-k3s`, `cli-suite`, `cli-host`, and `loadtest-helm-legacy` route through concrete workflows instead of placeholder `echo` steps.
+- `validate-container-local` is intentionally a single-function managed-deployment verification path; multi-function presets are rejected in CLI validation before the backend runs.
+- `validate-k3s` consumes the full selected function set in manifest mode, so presets such as `demo-java` are exercised end-to-end instead of being reduced to the first function.
 
 Loadtest is now a first-class workflow:
 
@@ -148,12 +148,12 @@ CLI validation is also first-class:
 
 - `scripts/controlplane.sh cli-test list|inspect|run` is the canonical interface for `nanofaas-cli` validation.
 - saved profiles can persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario directly from the profile.
-- Within `Validation -> platform -> k3s-junit-curl`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
-- The TUI only offers saved profiles and scenario manifests compatible with `k3s-junit-curl`; incompatible entries are filtered out instead of failing at execution time.
-- The same generalized TUI selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> container-local`.
-- `cli-stack` and `deploy-host` accept preset, scenario-file, and saved-profile sources, while `container-local` supports built-in defaults, single function selection, compatible single-function scenario files, and compatible single-function saved profiles.
-- `helm-stack` remains excluded from this selector path because the compatibility backend intentionally omits JavaScript from that runtime allowlist.
-- `k3s-junit-curl`, `helm-stack`, and `cli-stack` are self-bootstrapping VM-backed scenarios: when no VM request is provided, the tool creates and configures a managed VM and installs scenario-specific software there instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`.
+- Within `Validation -> platform -> validate-k3s`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
+- The TUI only offers saved profiles and scenario manifests compatible with `validate-k3s`; incompatible entries are filtered out instead of failing at execution time.
+- The same generalized TUI selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> validate-container-local`.
+- `cli-stack` and `deploy-host` accept preset, scenario-file, and saved-profile sources, while `validate-container-local` supports built-in defaults, single function selection, compatible single-function scenario files, and compatible single-function saved profiles.
+- `loadtest-helm-legacy` remains excluded from this selector path because the compatibility backend intentionally omits JavaScript from that runtime allowlist.
+- `validate-k3s`, `loadtest-helm-legacy`, and `cli-stack` are self-bootstrapping VM-backed scenarios: when no VM request is provided, the tool creates and configures a managed VM and installs scenario-specific software there instead of assuming host-installed Helm, kubectl, k3s, registry tooling, or `nanofaas-cli`.
 - `cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the registry there, then exercises function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`.
 - `cli-stack` and `deploy-host` execute the full resolved function set; `deploy-host` iterates it when it builds, pushes, and registers host-side deploy fixtures.
 - `host-platform` is a compatibility path and intentionally platform-only: saved-profile runtime and namespace defaults still apply, but function selections are ignored for that scenario.
@@ -186,14 +186,14 @@ E2E_KUBECONFIG_SERVER=<optional-https-server-url>
 Examples:
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run k3s-junit-curl
+E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run validate-k3s
 E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
 ```
 
 Ansible playbooks are bundled in the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`).
 
 JavaScript authoring remains first-class under `function-sdk-javascript/` and `examples/javascript/`.
-V2 also wires JavaScript into `tools/controlplane` presets, saved profiles, and VM-backed dry-run/E2E flows such as `k3s-junit-curl` and `cli-stack`.
+V2 also wires JavaScript into `tools/controlplane` presets, saved profiles, and VM-backed dry-run/E2E flows such as `validate-k3s` and `cli-stack`.
 Build and publish automation remains tracked separately in `docs/plans/2026-04-21-v2-packaging-and-release.md`.
 
 ### CLI Stack E2E
@@ -242,46 +242,46 @@ if [[ "${E2E_VM_LIFECYCLE:-multipass}" == "multipass" ]]; then
 fi
 ```
 
-### K3s JUnit Curl E2E (`scripts/controlplane.sh e2e run k3s-junit-curl`)
+### K3s JUnit Curl E2E (`scripts/controlplane.sh e2e run validate-k3s`)
 
 Deploys the shared Helm stack on k3s, runs the curl-based API checks, then runs `K8sE2eTest` against the same installation.
-The script is a wrapper over `scripts/controlplane.sh e2e run k3s-junit-curl`.
+The script is a wrapper over `scripts/controlplane.sh e2e run validate-k3s`.
 
 ```bash
-./scripts/controlplane.sh e2e run k3s-junit-curl
-./scripts/controlplane.sh e2e run k3s-junit-curl --no-cleanup-vm
+./scripts/controlplane.sh e2e run validate-k3s
+./scripts/controlplane.sh e2e run validate-k3s --no-cleanup-vm
 ```
 
-### Docker E2E (`scripts/controlplane.sh e2e run docker`)
+### Docker E2E (`scripts/controlplane.sh e2e run validate-docker-pool`)
 
 Runs control-plane + function-runtime in local Docker containers using
 Testcontainers and RestAssured. No Kubernetes needed.
-The script is a wrapper over `scripts/controlplane.sh e2e run docker`.
+The script is a wrapper over `scripts/controlplane.sh e2e run validate-docker-pool`.
 
 ```bash
-./scripts/controlplane.sh e2e run docker
+./scripts/controlplane.sh e2e run validate-docker-pool
 ```
 
 The SDK parity suite `SdkExamplesE2eTest` now covers Java Spring SDK, Java lite SDK,
 and Go SDK example containers against the same control-plane flows.
 
-### Buildpack E2E (`scripts/controlplane.sh e2e run buildpack`)
+### Buildpack E2E (`scripts/controlplane.sh e2e run validate-buildpack-pool`)
 
 Same as Docker E2E but builds images using Cloud Native Buildpacks instead
 of Dockerfiles.
-The script is a wrapper over `scripts/controlplane.sh e2e run buildpack`.
+The script is a wrapper over `scripts/controlplane.sh e2e run validate-buildpack-pool`.
 
 ```bash
-./scripts/controlplane.sh e2e run buildpack
+./scripts/controlplane.sh e2e run validate-buildpack-pool
 ```
 
 ### Kubernetes E2E (JUnit on k3s)
 
-JUnit-based E2E now runs as the second verifier inside `k3s-junit-curl`, against a stack that was already installed by the Python runner.
+JUnit-based E2E now runs as the second verifier inside `validate-k3s`, against a stack that was already installed by the Python runner.
 
 ```bash
-scripts/controlplane.sh e2e run k3s-junit-curl
-./scripts/controlplane.sh e2e run k3s-junit-curl
+scripts/controlplane.sh e2e run validate-k3s
+./scripts/controlplane.sh e2e run validate-k3s
 ./gradlew k8sE2e
 ```
 
@@ -310,14 +310,14 @@ Preset-backed and scenario-backed deploy runs iterate the full resolved function
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 ```
 
-### Load Testing (`scripts/controlplane.sh e2e run helm-stack` + `scripts/e2e-loadtest.sh`)
+### Load Testing (`scripts/controlplane.sh e2e run loadtest-helm-legacy` + `scripts/e2e-loadtest.sh`)
 
 Full Helm-based deployment with k6 load testing and Grafana dashboard.
 See [docs/e2e-tutorial.md](e2e-tutorial.md) for a detailed walkthrough.
 `scripts/e2e-loadtest.sh` is a compatibility wrapper over `experiments/e2e-loadtest.sh`, not over `scripts/controlplane.sh loadtest run`.
 
 ```bash
-./scripts/controlplane.sh e2e run helm-stack     # deploy nanofaas with Helm
+./scripts/controlplane.sh e2e run loadtest-helm-legacy     # deploy nanofaas with Helm
 ./scripts/e2e-loadtest.sh     # run k6 load tests + Grafana
 ./scripts/e2e-loadtest.sh --profile demo-java --dry-run
 ./scripts/e2e-loadtest.sh --help
@@ -374,14 +374,14 @@ scripts/controlplane.sh cli-test list
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run helm-stack --dry-run
-scripts/controlplane.sh e2e run one-vm-helm-loadtest --dry-run
-scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
-scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
+scripts/controlplane.sh e2e run validate-k3s --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run loadtest-helm-legacy --dry-run
+scripts/controlplane.sh e2e run loadtest-one-vm --dry-run
+scripts/controlplane.sh e2e run loadtest-two-vm --dry-run
+scripts/controlplane.sh e2e run loadtest-two-vm --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e run validate-k3s --saved-profile demo-java --dry-run
 ```
 
 Scenario specs live under `tools/controlplane/scenarios/`.
@@ -390,10 +390,10 @@ Selection precedence is explicit CLI override first, then scenario file, then sa
 
 Additional selection semantics:
 
-- `helm-stack` and loadtest built-in defaults resolve the lean `demo-java` preset (2 function images); pass `--function-preset demo-loadtest` for the full matrix — both presets exclude unsupported Go functions.
-- `two-vm-loadtest` uses the Helm stack prefix on one VM and a separate k6 load generator VM; the run captures `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html`.
+- `loadtest-helm-legacy` and loadtest built-in defaults resolve the lean `demo-java` preset (2 function images); pass `--function-preset demo-loadtest` for the full matrix — both presets exclude unsupported Go functions.
+- `loadtest-two-vm` uses the Helm stack prefix on one VM and a separate k6 load generator VM; the run captures `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html`.
 - explicit CLI selection on top of a scenario file or saved profile preserves inherited payloads, namespace, and `load.profile`, then narrows `load.targets` to the selected subset.
-- `k3s-junit-curl` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
+- `validate-k3s` now passes `-Dnanofaas.e2e.scenarioManifest=...` to the remote `K8sE2eTest`, so the executed VM workflow consumes the same manifest rendered by the dry-run plan.
 
 For metric time-series collection during a tooling run, the tool now auto-manages Prometheus:
 - no interactive URL prompt is shown in the wizard,
@@ -462,9 +462,9 @@ open nanofaas-cli/build/reports/jacoco/test/html/index.html
 | CLI Stack E2E | Canonical VM-backed CLI stack validation | SSH key; Multipass optional for managed VM lifecycle | `scripts/controlplane.sh cli-test run cli-stack` |
 | Host CLI Platform E2E | Host CLI + Helm lifecycle on k3s VM | SSH key + Helm on host; Multipass optional | `scripts/controlplane.sh cli-test run host-platform` |
 | Host CLI Deploy E2E | Host-only deploy build+push+register | Docker + Python 3 | `scripts/controlplane.sh cli-test run deploy-host` |
-| K3s JUnit Curl E2E | Shared Helm deploy + curl API checks + `K8sE2eTest` | SSH; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run k3s-junit-curl` |
-| Docker E2E | Core flow | Docker | `./scripts/controlplane.sh e2e run docker` |
-| Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/controlplane.sh e2e run buildpack` |
-| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run k3s-junit-curl` or `./gradlew k8sE2e` |
-| Load test | Performance | SSH + k6; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run helm-stack && ./scripts/e2e-loadtest.sh` |
+| K3s JUnit Curl E2E | Shared Helm deploy + curl API checks + `K8sE2eTest` | SSH; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run validate-k3s` |
+| Docker E2E | Core flow | Docker | `./scripts/controlplane.sh e2e run validate-docker-pool` |
+| Buildpack E2E | Core flow (buildpack) | Docker | `./scripts/controlplane.sh e2e run validate-buildpack-pool` |
+| K8s E2E (JUnit) | Control-plane on k3s | SSH; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run validate-k3s` or `./gradlew k8sE2e` |
+| Load test | Performance | SSH + k6; Multipass optional for managed VM lifecycle | `./scripts/controlplane.sh e2e run loadtest-helm-legacy && ./scripts/e2e-loadtest.sh` |
 | Control-plane module matrix | Compile-time module compatibility | JDK 21 | `./scripts/test-control-plane-module-combinations.sh` |
