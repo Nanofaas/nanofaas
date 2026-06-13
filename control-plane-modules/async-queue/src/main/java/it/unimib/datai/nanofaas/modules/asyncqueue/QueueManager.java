@@ -114,6 +114,11 @@ public class QueueManager {
         return state != null && state.tryAcquireSlot();
     }
 
+    public boolean hasAvailableSlot(String functionName) {
+        FunctionQueueState state = queues.get(functionName);
+        return state != null && state.inFlight() < state.effectiveConcurrency();
+    }
+
     public void setEffectiveConcurrency(String functionName, int effectiveConcurrency) {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {

@@ -43,7 +43,7 @@ class SyncSchedulerBranchTest {
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
-        when(queue.pollReadyMatching(any(Instant.class), any())).thenReturn(null);
+        when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(null);
         when(queue.peekReady(any(Instant.class))).thenReturn(mock(SyncQueueItem.class));
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
@@ -64,9 +64,11 @@ class SyncSchedulerBranchTest {
         SyncQueueItem item = mock(SyncQueueItem.class);
         InvocationTask task = mock(InvocationTask.class);
 
-        when(queue.pollReadyMatching(any(Instant.class), any())).thenReturn(null, item, null);
+        when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(null, item, null);
+        when(queue.removeReady(eq(item), any(Instant.class))).thenReturn(true);
         when(item.task()).thenReturn(task);
         when(task.functionName()).thenReturn("fn");
+        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
         when(queue.peekReady(any(Instant.class))).thenReturn(mock(SyncQueueItem.class), mock(SyncQueueItem.class));
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch, pauses::add);
@@ -87,7 +89,7 @@ class SyncSchedulerBranchTest {
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
         List<Long> pauses = new ArrayList<>();
 
-        when(queue.pollReadyMatching(any(Instant.class), any())).thenReturn(null);
+        when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(null);
         when(queue.peekReady(any(Instant.class))).thenReturn(mock(SyncQueueItem.class));
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch, pauses::add);

@@ -103,4 +103,56 @@ class SyncQueueServiceTest {
         assertTrue(done.await(300, TimeUnit.MILLISECONDS));
         waiter.join(500);
     }
+
+    @Test
+    void pollReadyMatchingDoesNotSelectMatchBeyondScanLimitOnFirstCall() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 100, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+
+        FunctionSpec blockedSpec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        for (int i = 0; i < SyncQueueService.POLL_READY_MATCHING_SCAN_LIMIT; i++) {
+            InvocationTask task = new InvocationTask("blocked-" + i, "blocked", blockedSpec, new InvocationRequest("blocked", Map.of()), null, null, Instant.now(), 1);
+            store.put(new ExecutionRecord(task.executionId(), task));
+            service.enqueueOrThrow(task);
+        }
+
+        FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask ready = new InvocationTask("ready", "ready", readySpec, new InvocationRequest("ready", Map.of()), null, null, Instant.now(), 1);
+        store.put(new ExecutionRecord(ready.executionId(), ready));
+        service.enqueueOrThrow(ready);
+
+        SyncQueueItem selected = service.pollReadyMatching(Instant.now(), task -> task.functionName().equals("ready"));
+
+        assertEquals(null, selected);
+        assertEquals(SyncQueueService.POLL_READY_MATCHING_SCAN_LIMIT + 1, service.queuedItems());
+    }
+
+    @Test
+    void findReadyMatchingDoesNotDequeueOrRecordWaitMetrics() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        store.put(new ExecutionRecord("e1", task));
+        service.enqueueOrThrow(task);
+
+        SyncQueueItem selected = service.findReadyMatching(Instant.now(), candidate -> candidate.functionName().equals("fn"));
+
+        assertEquals(task, selected.task());
+        assertEquals(1, service.queuedItems());
+        assertEquals(1.0, registry.get("sync_queue_depth").gauge().value());
+        assertEquals(0, registry.get("sync_queue_wait_seconds").timer().count());
+    }
 }

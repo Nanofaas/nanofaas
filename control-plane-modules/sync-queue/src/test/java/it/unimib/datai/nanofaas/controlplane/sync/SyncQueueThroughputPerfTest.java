@@ -39,7 +39,8 @@ class SyncQueueThroughputPerfTest {
     void syncQueue_readyWorkBehindBlockedHead_stillMakesProgress() {
         InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
         InvocationService invocationService = mock(InvocationService.class);
-        when(enqueuer.tryAcquireSlot("blocked-fn")).thenReturn(false);
+        when(enqueuer.hasAvailableSlot("blocked-fn")).thenReturn(false);
+        when(enqueuer.hasAvailableSlot("ready-fn")).thenReturn(true);
         when(enqueuer.tryAcquireSlot("ready-fn")).thenReturn(true);
 
         SyncQueueProperties props = new SyncQueueProperties(

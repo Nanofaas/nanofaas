@@ -29,6 +29,7 @@ class SyncSchedulerDispatchExceptionTest {
                 "fn", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
         );
+        when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
 
         SyncQueueProperties props = new SyncQueueProperties(
@@ -65,6 +66,7 @@ class SyncSchedulerDispatchExceptionTest {
                 "fn", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
         );
+        when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
 
         SyncQueueProperties props = new SyncQueueProperties(

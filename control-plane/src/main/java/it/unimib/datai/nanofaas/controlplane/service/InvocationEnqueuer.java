@@ -8,6 +8,10 @@ public interface InvocationEnqueuer {
 
     boolean enabled();
 
+    default boolean hasAvailableSlot(String functionName) {
+        return true;
+    }
+
     default boolean tryAcquireSlot(String functionName) {
         return true;
     }
