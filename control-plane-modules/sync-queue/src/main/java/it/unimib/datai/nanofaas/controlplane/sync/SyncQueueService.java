@@ -16,11 +16,14 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class SyncQueueService implements SyncQueueGateway {
     public static final int POLL_READY_MATCHING_SCAN_LIMIT = 64;
+    private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
 
     private final SyncQueueConfigSource configSource;
     private final ExecutionStore executionStore;
@@ -31,6 +34,7 @@ public class SyncQueueService implements SyncQueueGateway {
     private final int maxDepth;
     private final Object workSignal = new Object();
     private final SyncQueueAdmissionController admissionController;
+    private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public SyncQueueService(SyncQueueProperties props,
@@ -71,6 +75,10 @@ public class SyncQueueService implements SyncQueueGateway {
 
     @Override
     public void enqueueOrThrow(InvocationTask task) {
+        if (removedFunctions.contains(task.functionName())) {
+            markFunctionRemoved(task.functionName(), new SyncQueueItem(task, clock.instant()), false);
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+        }
         Instant now = clock.instant();
         SyncQueueAdmissionResult decision = admissionController.evaluate(task.functionName(), queuedItems(), now);
         if (!decision.accepted()) {
@@ -78,17 +86,21 @@ public class SyncQueueService implements SyncQueueGateway {
             throw new SyncQueueRejectedException(decision.reason(), configSource.syncQueueRetryAfterSeconds());
         }
         synchronized (queue) {
+            if (removedFunctions.contains(task.functionName())) {
+                markFunctionRemoved(task.functionName(), new SyncQueueItem(task, now), false);
+                throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            }
             if (queue.size() >= maxDepth) {
                 metrics.rejected(task.functionName());
                 throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
             }
             queue.addLast(new SyncQueueItem(task, now));
+            metrics.registerFunction(task.functionName());
+            metrics.admitted(task.functionName());
         }
         synchronized (workSignal) {
             workSignal.notify();
         }
-        metrics.registerFunction(task.functionName());
-        metrics.admitted(task.functionName());
     }
 
     /**
@@ -237,6 +249,56 @@ public class SyncQueueService implements SyncQueueGateway {
 
     public void recordDispatched(String functionName, Instant now) {
         estimator.recordDispatch(functionName, now);
+    }
+
+    public void removeFunctionState(String functionName) {
+        removedFunctions.add(functionName);
+        drainRemovedFunction(functionName);
+        estimator.removeFunctionState(functionName);
+        metrics.removeFunctionState(functionName);
+    }
+
+    public void registerFunction(String functionName) {
+        removedFunctions.remove(functionName);
+        metrics.registerFunction(functionName);
+    }
+
+    private void drainRemovedFunction(String functionName) {
+        List<SyncQueueItem> removed = new ArrayList<>();
+        synchronized (queue) {
+            Iterator<SyncQueueItem> iterator = queue.iterator();
+            while (iterator.hasNext()) {
+                SyncQueueItem item = iterator.next();
+                if (item.task().functionName().equals(functionName)) {
+                    iterator.remove();
+                    removed.add(item);
+                }
+            }
+        }
+        removed.forEach(item -> markFunctionRemoved(functionName, item, true));
+    }
+
+    private void markFunctionRemoved(String functionName, SyncQueueItem item, boolean wasQueued) {
+        ExecutionRecord record = executionStore.getOrNull(item.task().executionId());
+        if (record == null) {
+            if (wasQueued) {
+                metrics.dequeued(functionName);
+            }
+            return;
+        }
+        InvocationResult result = InvocationResult.error(
+                FUNCTION_REMOVED,
+                "Function '%s' was removed before queued execution could run".formatted(functionName)
+        );
+        synchronized (record) {
+            if (!record.isTerminal()) {
+                record.markError(result.error());
+                record.completion().complete(result);
+            }
+        }
+        if (wasQueued) {
+            metrics.dequeued(functionName);
+        }
     }
 
     private boolean isTimedOut(SyncQueueItem item, Instant now) {

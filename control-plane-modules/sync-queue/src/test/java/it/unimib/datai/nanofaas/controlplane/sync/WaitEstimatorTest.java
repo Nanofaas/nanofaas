@@ -72,6 +72,22 @@ class WaitEstimatorTest {
         assertTrue(functionEvents.pollFirstCount <= 1);
     }
 
+    @Test
+    void removeFunctionState_clearsPerFunctionEvents() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3);
+        Instant now = Instant.parse("2026-02-01T00:00:10Z");
+        estimator.recordDispatch("fn", now.minusSeconds(9));
+        estimator.recordDispatch("fn", now.minusSeconds(8));
+        estimator.recordDispatch("fn", now.minusSeconds(7));
+        estimator.recordDispatch("other", now.minusSeconds(6));
+
+        assertEquals(20.0, estimator.estimateWaitSeconds("fn", 6, now), 0.01);
+
+        estimator.removeFunctionState("fn");
+
+        assertEquals(20.0, estimator.estimateWaitSeconds("fn", 8, now), 0.01);
+    }
+
     private static final class TrackingDeque extends ArrayDeque<Instant> {
         private int peekFirstCount;
         private int pollFirstCount;

@@ -155,4 +155,82 @@ class SyncQueueServiceTest {
         assertEquals(1.0, registry.get("sync_queue_depth").gauge().value());
         assertEquals(0, registry.get("sync_queue_wait_seconds").timer().count());
     }
+
+    @Test
+    void removeFunctionState_drainsQueuedItemsAndRemovesMeters() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        ExecutionRecord record = new ExecutionRecord("e1", task);
+        store.put(record);
+        service.enqueueOrThrow(task);
+        assertEquals(1, service.queuedItems());
+        assertEquals(1.0, registry.get("sync_queue_depth").tag("function", "fn").gauge().value());
+
+        service.removeFunctionState("fn");
+
+        assertEquals(0, service.queuedItems());
+        assertTrue(record.completion().isDone());
+        assertEquals("FUNCTION_REMOVED", record.completion().join().error().code());
+        assertEquals(null, registry.find("sync_queue_depth").tag("function", "fn").gauge());
+        assertEquals(null, registry.find("sync_queue_admitted_total").tag("function", "fn").counter());
+    }
+
+    @Test
+    void enqueueAfterRemoveFunctionStateCompletesAsFunctionRemovedWithoutRecreatingMeters() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        ExecutionRecord record = new ExecutionRecord("e1", task);
+        store.put(record);
+
+        service.removeFunctionState("fn");
+
+        assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task));
+        assertEquals(0, service.queuedItems());
+        assertTrue(record.completion().isDone());
+        assertEquals("FUNCTION_REMOVED", record.completion().join().error().code());
+        assertEquals(null, registry.find("sync_queue_depth").tag("function", "fn").gauge());
+        assertEquals(null, registry.find("sync_queue_admitted_total").tag("function", "fn").counter());
+    }
+
+    @Test
+    void registerFunctionReenablesSyncQueueMetersBeforeRejectedAdmission() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 0, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        store.put(new ExecutionRecord("e1", task));
+
+        service.removeFunctionState("fn");
+        service.registerFunction("fn");
+
+        SyncQueueRejectedException ex = assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task));
+
+        assertEquals(SyncQueueRejectReason.DEPTH, ex.reason());
+        assertEquals(1.0, registry.get("sync_queue_rejected_total").tag("function", "fn").counter().count());
+    }
 }

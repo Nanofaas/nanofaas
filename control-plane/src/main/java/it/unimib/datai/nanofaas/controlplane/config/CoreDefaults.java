@@ -1,7 +1,9 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
@@ -50,5 +52,20 @@ public class CoreDefaults {
     @Fallback
     public SyncQueueConfigSource syncQueueConfigSource(SyncQueueRuntimeDefaults defaults) {
         return SyncQueueConfigSource.fixed(defaults);
+    }
+
+    @Bean
+    public FunctionRegistrationListener metricsLifecycleListener(Metrics metrics) {
+        return new FunctionRegistrationListener() {
+            @Override
+            public void onRegister(it.unimib.datai.nanofaas.common.model.FunctionSpec spec) {
+                metrics.registerFunction(spec.name());
+            }
+
+            @Override
+            public void onRemove(String functionName) {
+                metrics.removeFunction(functionName);
+            }
+        };
     }
 }
