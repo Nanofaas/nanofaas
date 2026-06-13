@@ -143,7 +143,7 @@ def _build_request(
     vm = None
     loadgen_vm = None
     if scenario in {
-        "k3s-junit-curl",
+        "validate-k3s",
         "cli",
         "cli-stack",
         "cli-host",
@@ -282,7 +282,7 @@ def _handle_validation(action) -> None:
 
 
 def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
-    if scenario in {"container-local", "deploy-host"}:
+    if scenario in {"validate-container-local", "validate-deploy-host"}:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
     if scenario in {"loadtest-helm-legacy", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"}:
         # Lean default: 2 images instead of demo-loadtest's 8 (~17 min of in-VM

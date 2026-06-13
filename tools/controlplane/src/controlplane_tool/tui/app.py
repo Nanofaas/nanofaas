@@ -120,16 +120,16 @@ def _saved_profile_choices(names: list[str]) -> list[questionary.Choice]:
 
 
 K3S_SELECTION_TARGET = TuiSelectionTarget(
-    key="k3s-junit-curl",
-    label="k3s-junit-curl",
-    resolver_scenario="k3s-junit-curl",
+    key="validate-k3s",
+    label="validate-k3s",
+    resolver_scenario="validate-k3s",
     selection_mode="multi",
     allow_default=True,
     allow_presets=True,
     allow_single_functions=False,
     allow_scenario_files=True,
     allow_saved_profiles=True,
-    strict_base_scenarios=frozenset({"k3s-junit-curl"}),
+    strict_base_scenarios=frozenset({"validate-k3s"}),
 )
 
 CLI_STACK_SELECTION_TARGET = TuiSelectionTarget(
@@ -146,9 +146,9 @@ CLI_STACK_SELECTION_TARGET = TuiSelectionTarget(
 )
 
 DEPLOY_HOST_SELECTION_TARGET = TuiSelectionTarget(
-    key="deploy-host",
-    label="deploy-host",
-    resolver_scenario="deploy-host",
+    key="validate-deploy-host",
+    label="validate-deploy-host",
+    resolver_scenario="validate-deploy-host",
     selection_mode="multi",
     allow_default=True,
     allow_presets=True,
@@ -159,9 +159,9 @@ DEPLOY_HOST_SELECTION_TARGET = TuiSelectionTarget(
 )
 
 CONTAINER_LOCAL_SELECTION_TARGET = TuiSelectionTarget(
-    key="container-local",
-    label="container-local",
-    resolver_scenario="container-local",
+    key="validate-container-local",
+    label="validate-container-local",
+    resolver_scenario="validate-container-local",
     selection_mode="single",
     allow_default=True,
     allow_presets=False,
@@ -524,8 +524,8 @@ _REGISTRY_ACTION_CHOICES = [
 
 _PLATFORM_VALIDATION_CHOICES = [
     _DescribedChoice(
-        "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification",
-        "k3s-junit-curl",
+        "validate-k3s — self-bootstrapping VM stack with curl + JUnit verification",
+        "validate-k3s",
         "Provision a managed VM, install k3s, deploy the stack, and verify the result with curl probes plus JUnit checks.",
     ),
     _DescribedChoice(
@@ -556,27 +556,27 @@ _PLATFORM_VALIDATION_CHOICES = [
         "Prometheus snapshots. Reads defaults from profiles/proxmox.toml.",
     ),
     _DescribedChoice(
-        "container-local — local managed DEPLOYMENT",
-        "container-local",
+        "validate-container-local — local managed DEPLOYMENT",
+        "validate-container-local",
         "Run the managed DEPLOYMENT workflow entirely on the local machine without provisioning a VM first.",
     ),
 ]
 
 _PLATFORM_HOST_COMPAT_CHOICE = _DescribedChoice(
-    "deploy-host — deploy-host with local registry",
-    "deploy-host",
+    "validate-deploy-host — deploy-host with local registry",
+    "validate-deploy-host",
     "Build on the host, push through a local registry, and validate the host compatibility deployment path.",
 )
 
 _PLATFORM_LOCAL_RUNTIME_CHOICES = [
     _DescribedChoice(
-        "docker — local POOL with Docker",
-        "docker",
+        "validate-docker-pool — local POOL with Docker",
+        "validate-docker-pool",
         "Exercise the local POOL runtime with Docker-backed execution on the host machine.",
     ),
     _DescribedChoice(
-        "buildpack — local POOL with buildpack",
-        "buildpack",
+        "validate-buildpack-pool — local POOL with buildpack",
+        "validate-buildpack-pool",
         "Exercise the local POOL runtime using buildpack-produced images on the host machine.",
     ),
 ]
@@ -988,11 +988,11 @@ class NanofaasTUI:
 
             scenario_choice = canonical_scenario_name(scenario_choice)
 
-            if scenario_choice in ("k3s-junit-curl", "loadtest-helm-legacy", "loadtest-one-vm", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"):
+            if scenario_choice in ("validate-k3s", "loadtest-helm-legacy", "loadtest-one-vm", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"):
                 self._run_vm_e2e_scenario(scenario_choice)
-            elif scenario_choice == "container-local":
+            elif scenario_choice == "validate-container-local":
                 self._run_container_local()
-            elif scenario_choice == "deploy-host":
+            elif scenario_choice == "validate-deploy-host":
                 self._run_deploy_host()
             else:
                 self._run_e2e_scenario(scenario_choice)
@@ -1293,7 +1293,7 @@ class NanofaasTUI:
             )
 
             request = _resolve_run_request(
-                scenario="k3s-junit-curl",
+                scenario="validate-k3s",
                 runtime=runtime,
                 lifecycle="multipass",
                 name=vm_name,
@@ -1311,14 +1311,14 @@ class NanofaasTUI:
             runner = E2eRunner(repo_root=repo_root)
             if dry_run:
                 plan = runner.plan(request)
-                step("k3s-junit-curl E2E plan (dry-run)")
+                step("validate-k3s E2E plan (dry-run)")
                 _show_plan_table(plan)
                 _acknowledge_static_view()
                 return
 
             plan = runner.plan(request)
             summary_lines = [
-                "Scenario: k3s-junit-curl",
+                "Scenario: validate-k3s",
                 "Mode: self-bootstrapping VM-backed scenario",
                 f"VM Name: {vm_name}",
                 f"Control-plane runtime: {runtime}",
@@ -1333,15 +1333,15 @@ class NanofaasTUI:
                     sink._update()
 
                 flow = build_scenario_flow(
-                    "k3s-junit-curl",
+                    "validate-k3s",
                     repo_root=repo_root,
                     request=request,
                     event_listener=_on_step_event,
                 )
-                dashboard.append_log("Starting k3s-junit-curl workflow")
+                dashboard.append_log("Starting validate-k3s workflow")
                 sink._update()
                 self._controller.run_shared_flow(flow)
-                success("k3s-junit-curl E2E completed")
+                success("validate-k3s E2E completed")
                 return plan
 
             self._controller.run_live_workflow(
@@ -1354,7 +1354,7 @@ class NanofaasTUI:
     def _run_container_local(self) -> None:
         selection = _prompt_function_selection(CONTAINER_LOCAL_SELECTION_TARGET)
         request = _resolve_tui_e2e_request(
-            scenario="container-local",
+            scenario="validate-container-local",
             selection=selection,
             runtime="java",
             lifecycle="multipass",
@@ -1371,19 +1371,19 @@ class NanofaasTUI:
         )
 
         def _run_container_local_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-            step("Running container-local E2E")
+            step("Running validate-container-local E2E")
             flow = build_scenario_flow(
-                "container-local",
+                "validate-container-local",
                 repo_root=default_tool_paths().workspace_root,
                 request=request,
             )
             self._controller.run_shared_flow(flow)
-            success("container-local E2E completed")
+            success("validate-container-local E2E completed")
 
         self._controller.run_live_workflow(
             title="E2E Scenarios",
             summary_lines=[
-                "Scenario: container-local",
+                "Scenario: validate-container-local",
                 "Mode: local managed DEPLOYMENT path",
                 *selection.summary_lines,
             ],
@@ -1394,7 +1394,7 @@ class NanofaasTUI:
     def _run_deploy_host(self) -> None:
         selection = _prompt_function_selection(DEPLOY_HOST_SELECTION_TARGET)
         request = _resolve_tui_e2e_request(
-            scenario="deploy-host",
+            scenario="validate-deploy-host",
             selection=selection,
             runtime="java",
             lifecycle="multipass",
@@ -1411,19 +1411,19 @@ class NanofaasTUI:
         )
 
         def _run_deploy_host_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
-            step("Running deploy-host E2E")
+            step("Running validate-deploy-host E2E")
             flow = build_scenario_flow(
-                "deploy-host",
+                "validate-deploy-host",
                 repo_root=default_tool_paths().workspace_root,
                 request=request,
             )
             self._controller.run_shared_flow(flow)
-            success("deploy-host E2E completed")
+            success("validate-deploy-host E2E completed")
 
         self._controller.run_live_workflow(
             title="E2E Scenarios",
             summary_lines=[
-                "Scenario: deploy-host",
+                "Scenario: validate-deploy-host",
                 "Mode: host-side building/push/register compatibility path",
                 *selection.summary_lines,
             ],

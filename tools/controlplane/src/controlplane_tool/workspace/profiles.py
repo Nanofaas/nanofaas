@@ -6,6 +6,7 @@ import tomllib
 import tomli_w
 
 from controlplane_tool.core.models import Profile
+from controlplane_tool.scenario.catalog import canonical_scenario_name
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.scenario.scenario_models import ScenarioPrefectConfig
 
@@ -39,6 +40,9 @@ def save_profile(
 def load_profile(name: str, root: Path | None = None) -> Profile:
     source = profile_path(name, root)
     data = tomllib.loads(source.read_text(encoding="utf-8"))
+    scenario = data.get("scenario")
+    if isinstance(scenario, dict) and scenario.get("base_scenario"):
+        scenario["base_scenario"] = canonical_scenario_name(scenario["base_scenario"])
     return Profile.model_validate(data)
 
 

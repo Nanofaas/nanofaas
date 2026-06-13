@@ -22,7 +22,7 @@ DeployHostE2eRunner = None
 
 
 def scenario_task_ids(scenario: str) -> list[str]:
-    if scenario in {"container-local", "deploy-host", "cli", "cli-host"}:
+    if scenario in {"validate-container-local", "validate-deploy-host", "cli", "cli-host"}:
         return [f"tests.run_{scenario.replace('-', '_')}"]
     recipe = build_scenario_recipe(scenario)
     ids = [
@@ -63,7 +63,7 @@ def build_scenario_flow(
         explicit_release=release,
     )
 
-    if scenario == "container-local":
+    if scenario == "validate-container-local":
         runner_cls = ContainerLocalE2eRunner
         if runner_cls is None:
             from controlplane_tool.e2e.container_local_runner import (
@@ -84,7 +84,7 @@ def build_scenario_flow(
                 resolved_scenario=getattr(request, "resolved_scenario", None),
             ),
         )
-    if scenario == "deploy-host":
+    if scenario == "validate-deploy-host":
         runner_cls = DeployHostE2eRunner
         if runner_cls is None:
             from controlplane_tool.e2e.deploy_host_runner import DeployHostE2eRunner as runner_cls
@@ -110,8 +110,8 @@ def build_scenario_flow(
             run=lambda: E2eRunner(repo_root).run(request, event_listener=event_listener),
         )
 
-    if scenario == "k3s-junit-curl":
-        raise ValueError("scenario 'k3s-junit-curl' requires an executable request")
+    if scenario == "validate-k3s":
+        raise ValueError("scenario 'validate-k3s' requires an executable request")
     if scenario == "cli-stack":
         resolved_scenario = _resolve_scenario(scenario_file)
         effective_scenario = (

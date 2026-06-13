@@ -56,8 +56,8 @@ def _loadtest_recipe(name: str) -> ScenarioRecipe:
 
 
 _SCENARIO_RECIPES: dict[str, ScenarioRecipe] = {
-    "k3s-junit-curl": ScenarioRecipe(
-        name="k3s-junit-curl",
+    "validate-k3s": ScenarioRecipe(
+        name="validate-k3s",
         component_ids=STACK_PRELUDE
         + (
             "tests.run_k3s_curl_checks",

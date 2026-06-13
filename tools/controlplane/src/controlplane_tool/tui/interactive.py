@@ -205,7 +205,7 @@ def _prompt_scenario_selection() -> ScenarioSelectionConfig:
         _required_select_value(
             "Base E2E scenario:",
             choices=_base_scenario_choices(),
-            default="k3s-junit-curl",
+            default="validate-k3s",
         ),
     )
 

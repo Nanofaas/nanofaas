@@ -133,7 +133,7 @@ class ScenarioPlanner:
     # ── public step builders ─────────────────────────────────────────────────
 
     def local_steps(self, request: E2eRequest) -> list[ScenarioPlanStep]:
-        if request.scenario == "docker":
+        if request.scenario == "validate-docker-pool":
             return [
                 self._step(
                     "Run Docker POOL regression test",
@@ -147,11 +147,11 @@ class ScenarioPlanner:
                         "--tests",
                         "it.unimib.datai.nanofaas.controlplane.e2e.E2eFlowTest",
                     ],
-                    step_id="docker.e2e_flow",
+                    step_id="validate-docker-pool.e2e_flow",
                 )
             ]
 
-        if request.scenario == "buildpack":
+        if request.scenario == "validate-buildpack-pool":
             return [
                 self._step(
                     "Build function-runtime buildpack image",
@@ -160,7 +160,7 @@ class ScenarioPlanner:
                         ":function-runtime:bootBuildImage",
                         "-PfunctionRuntimeImage=nanofaas/function-runtime:buildpack",
                     ],
-                    step_id="buildpack.boot_build_image",
+                    step_id="validate-buildpack-pool.boot_build_image",
                 ),
                 self._step(
                     "Run buildpack regression tests",
@@ -176,11 +176,11 @@ class ScenarioPlanner:
                         "--tests",
                         "it.unimib.datai.nanofaas.controlplane.e2e.ContainerLocalE2eTest",
                     ],
-                    step_id="buildpack.e2e_tests",
+                    step_id="validate-buildpack-pool.e2e_tests",
                 ),
             ]
 
-        if request.scenario == "container-local":
+        if request.scenario == "validate-container-local":
             return [
                 self._step(
                     "Run container-local managed DEPLOYMENT flow (Python)",
@@ -189,14 +189,14 @@ class ScenarioPlanner:
                         "--project", "tools/controlplane",
                         "--locked",
                         "controlplane-tool",
-                        "e2e", "run", "container-local",
+                        "e2e", "run", "validate-container-local",
                     ],
                     env=self._with_manifest_env(request, self._common_env(request)),
-                    step_id="container-local.run_flow",
+                    step_id="validate-container-local.run_flow",
                 )
             ]
 
-        if request.scenario == "deploy-host":
+        if request.scenario == "validate-deploy-host":
             return [
                 self._step(
                     "Run deploy-host E2E flow (Python)",
@@ -208,7 +208,7 @@ class ScenarioPlanner:
                         "cli-test", "run", "deploy-host",
                     ],
                     env=self._with_manifest_env(request, self._common_env(request)),
-                    step_id="deploy-host.run_flow",
+                    step_id="validate-deploy-host.run_flow",
                 )
             ]
 

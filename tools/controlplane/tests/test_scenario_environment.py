@@ -12,7 +12,7 @@ import pytest
 
 
 def test_e2e_request_allows_missing_vm_for_managed_vm_scenarios() -> None:
-    request = E2eRequest(scenario="k3s-junit-curl", runtime="java", vm=None)
+    request = E2eRequest(scenario="validate-k3s", runtime="java", vm=None)
 
     assert request.vm is None
 
@@ -34,7 +34,7 @@ def test_environment_resolver_creates_managed_vm_when_request_has_none(
 def test_environment_resolver_rejects_missing_vm_for_non_managed_scenario(
     tmp_path: Path,
 ) -> None:
-    request = E2eRequest(scenario="docker", vm=None)
+    request = E2eRequest(scenario="validate-docker-pool", vm=None)
 
     with pytest.raises(ValueError, match="requires an explicit vm request"):
         resolve_scenario_environment(repo_root=tmp_path, request=request)
@@ -42,7 +42,7 @@ def test_environment_resolver_rejects_missing_vm_for_non_managed_scenario(
 
 def test_environment_resolver_preserves_explicit_vm_request(tmp_path: Path) -> None:
     vm_request = VmRequest(lifecycle="external", host="10.0.0.10")
-    request = E2eRequest(scenario="docker", vm=vm_request)
+    request = E2eRequest(scenario="validate-docker-pool", vm=vm_request)
 
     context = resolve_scenario_environment(repo_root=tmp_path, request=request)
 

@@ -12,7 +12,7 @@ from controlplane_tool.scenario.scenario_models import ScenarioLoadConfig, Scena
 def test_loader_resolves_function_preset_and_payload_paths() -> None:
     scenario = load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-java.toml"))
 
-    assert scenario.base_scenario == "k3s-junit-curl"
+    assert scenario.base_scenario == "validate-k3s"
     assert scenario.function_preset == "demo-java"
     assert [function.key for function in scenario.functions] == [
         "word-stats-java",
@@ -34,7 +34,7 @@ def test_load_scenario_file_resolves_relative_path_from_workspace_root(
 def test_loader_resolves_javascript_scenario_manifest() -> None:
     scenario = load_scenario_file(Path("tools/controlplane/scenarios/k8s-demo-javascript.toml"))
 
-    assert scenario.base_scenario == "k3s-junit-curl"
+    assert scenario.base_scenario == "validate-k3s"
     assert scenario.function_preset == "demo-javascript"
     assert scenario.function_keys == [
         "word-stats-javascript",
@@ -62,7 +62,7 @@ def test_loader_rejects_both_functions_and_function_preset() -> None:
     with pytest.raises(ValueError, match="exactly one of"):
         ScenarioSpec(
             name="bad",
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             runtime="java",
             function_preset="demo-java",
             functions=["word-stats-java"],
@@ -73,7 +73,7 @@ def test_loader_rejects_load_targets_outside_selected_functions() -> None:
     with pytest.raises(ValueError, match="subset of the selected functions"):
         ScenarioSpec(
             name="bad-targets",
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             runtime="java",
             functions=["word-stats-java"],
             load=ScenarioLoadConfig(targets=["json-transform-java"]),
@@ -102,7 +102,7 @@ def test_overlay_selection_rejects_when_load_targets_become_empty() -> None:
 
     with pytest.raises(
         ValueError,
-        match="selected functions do not satisfy load targets for scenario 'k3s-junit-curl'",
+        match="selected functions do not satisfy load targets for scenario 'validate-k3s'",
     ):
         overlay_scenario_selection(
             base,

@@ -14,7 +14,7 @@ def test_e2e_list_prints_known_scenarios() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["e2e", "list"])
     assert result.exit_code == 0
-    assert "k3s-junit-curl" in result.stdout
+    assert "validate-k3s" in result.stdout
     assert "cli-stack" in result.stdout
 
 
@@ -186,7 +186,7 @@ def test_build_request_accepts_loadgen_and_k6_overrides() -> None:
 
 def test_non_two_vm_scenario_does_not_get_loadgen_vm() -> None:
     request = _build_request(
-        scenario="k3s-junit-curl",
+        scenario="validate-k3s",
         runtime="java",
         lifecycle="multipass",
         name=None,
@@ -273,7 +273,7 @@ def test_e2e_run_accepts_scenario_file_without_positional_scenario() -> None:
         ],
     )
     assert result.exit_code == 0
-    assert "k3s-junit-curl" in result.stdout
+    assert "validate-k3s" in result.stdout
     assert "scenario source" in result.stdout.lower()
 
 
@@ -307,7 +307,7 @@ def test_e2e_all_dry_run_honors_only_filter() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["e2e", "all", "--only", "k3s-junit-curl", "--dry-run"])
     assert result.exit_code == 0
-    assert "k3s-junit-curl" in result.stdout
+    assert "validate-k3s" in result.stdout
     assert "docker" not in result.stdout
 
 
@@ -375,7 +375,7 @@ def test_e2e_explicit_functions_override_saved_profile_defaults(monkeypatch) -> 
             name=name,
                 control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
                 scenario=ScenarioSelectionConfig(
-                base_scenario="k3s-junit-curl",
+                base_scenario="validate-k3s",
                 function_preset="demo-java",
             ),
         ),
@@ -415,7 +415,7 @@ def test_e2e_request_applies_cli_override_to_saved_profile_scenario_file(
     scenario_file.write_text(
         """
 name = "custom"
-base_scenario = "k3s-junit-curl"
+base_scenario = "validate-k3s"
 runtime = "java"
 function_preset = "demo-java"
 namespace = "from-file"
@@ -486,7 +486,7 @@ def test_e2e_run_executes_prefect_flow(monkeypatch) -> None:
     result = runner.invoke(app, ["e2e", "run", "k3s-junit-curl"])
 
     assert result.exit_code == 0
-    assert called["flow_id"] == "e2e.k3s_junit_curl"
+    assert called["flow_id"] == "e2e.validate_k3s"
 
 
 def test_e2e_all_executes_shared_catalog_flow(monkeypatch) -> None:

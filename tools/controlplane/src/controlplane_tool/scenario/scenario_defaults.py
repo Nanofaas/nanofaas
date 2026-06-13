@@ -21,7 +21,7 @@ _DEFAULTS: dict[str, ScenarioDeploymentDefaults] = {
     ),
     "loadtest-helm-legacy": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
     "loadtest-one-vm": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
-    "k3s-junit-curl": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
+    "validate-k3s": ScenarioDeploymentDefaults(namespace="nanofaas-e2e", release="control-plane"),
 }
 
 

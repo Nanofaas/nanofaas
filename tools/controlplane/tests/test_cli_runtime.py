@@ -88,7 +88,7 @@ def test_cli_selected_functions_reads_from_resolved() -> None:
 
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k3s-junit-curl",
+        base_scenario="validate-k3s",
         runtime="java",
         functions=[_rf("fn-a"), _rf("fn-b")],
     )
@@ -104,7 +104,7 @@ def test_cli_function_image_returns_custom_image_from_resolved() -> None:
 
     resolved = ResolvedScenario(
         name="test",
-        base_scenario="k3s-junit-curl",
+        base_scenario="validate-k3s",
         runtime="java",
         functions=[_rf("echo-test", image="custom/echo:v1")],
     )
@@ -468,7 +468,7 @@ def test_container_local_runner_run_uses_explicit_resolved_scenario(
 
     resolved = ResolvedScenario(
         name="selected-container-local",
-        base_scenario="container-local",
+        base_scenario="validate-container-local",
         runtime="java",
         functions=[_rf("word-stats-javascript", runtime="javascript")],
         function_keys=["word-stats-javascript"],
@@ -572,7 +572,7 @@ def test_deploy_host_runner_run_uses_explicit_resolved_scenario(
 
     resolved = ResolvedScenario(
         name="selected-deploy-host",
-        base_scenario="deploy-host",
+        base_scenario="validate-deploy-host",
         runtime="java",
         functions=[
             _rf("word-stats-javascript", runtime="javascript"),

@@ -148,7 +148,7 @@ class E2eRunner:
         if request.scenario == "loadtest-proxmox":
             from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
             return build_proxmox_vm_loadtest_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "k3s-junit-curl":
+        if request.scenario == "validate-k3s":
             from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
             return build_k3s_junit_curl_plan(self, self._prepare_recipe_request(request))
         if request.scenario == "loadtest-helm-legacy":
@@ -271,7 +271,7 @@ class E2eRunner:
                     plans.append(build_proxmox_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                if scenario.name == "k3s-junit-curl":
+                if scenario.name == "validate-k3s":
                     from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
                     plans.append(build_k3s_junit_curl_plan(self, request))
                     vm_bootstrap_planned = True

@@ -35,7 +35,7 @@ def test_module_catalog_has_descriptions() -> None:
 def test_profile_wizard_selectors_supply_descriptions_for_every_entry(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
-    select_answers = iter(["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "cli-stack"])
+    select_answers = iter(["java", "native", "quick", "preset", "validate-k3s", "demo-java", "cli-stack"])
     confirm_answers = iter([True, True, True, True, True, True])
     captured_selects: list[tuple[str, list[object]]] = []
     captured_checkboxes: list[tuple[str, list[object]]] = []
@@ -179,7 +179,7 @@ def test_tui_no_longer_prompts_for_prometheus_url(monkeypatch) -> None:
 def test_tui_can_save_default_function_preset(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
-    select_answers = iter(["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java"])
+    select_answers = iter(["java", "native", "quick", "preset", "validate-k3s", "demo-java"])
     confirm_answers = iter([True, True, True, True, True, False])
 
     monkeypatch.setattr(
@@ -206,14 +206,14 @@ def test_tui_can_save_default_function_preset(monkeypatch) -> None:
     profile = build_profile_interactive(profile_name="demo-java")
 
     assert profile.scenario.function_preset == "demo-java"
-    assert profile.scenario.base_scenario == "k3s-junit-curl"
+    assert profile.scenario.base_scenario == "validate-k3s"
 
 
 def test_tui_can_save_default_cli_test_scenario(monkeypatch) -> None:
     import controlplane_tool.tui as tui
 
     select_answers = iter(
-        ["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "cli-stack"]
+        ["java", "native", "quick", "preset", "validate-k3s", "demo-java", "cli-stack"]
     )
     confirm_answers = iter([True, True, True, True, True, True])
 
@@ -247,7 +247,7 @@ def test_tui_can_save_cli_stack_as_default_cli_test_scenario(monkeypatch) -> Non
     import controlplane_tool.tui as tui
 
     select_answers = iter(
-        ["java", "native", "quick", "preset", "k3s-junit-curl", "demo-java", "cli-stack"]
+        ["java", "native", "quick", "preset", "validate-k3s", "demo-java", "cli-stack"]
     )
     confirm_answers = iter([True, True, True, True, True, True])
 
@@ -296,7 +296,7 @@ def test_profile_view_shows_behavioral_defaults(monkeypatch) -> None:
             strict_required=True,
         ),
         scenario=ScenarioSelectionConfig(
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             function_preset="demo-java",
             namespace="nanofaas-e2e",
             local_registry="localhost:5000",
@@ -576,7 +576,7 @@ def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.building"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_deploy_host", task_ids=["validate-deploy-host.building"], run=lambda: "ok")
 
     def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow.flow_id
@@ -598,9 +598,9 @@ def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
     NanofaasTUI()._run_deploy_host()
 
     assert called["title"] == "E2E Scenarios"
-    assert called["scenario"] == "deploy-host"
-    assert called["flow_id"] == "e2e.deploy_host"
-    assert called["request"].scenario == "deploy-host"
+    assert called["scenario"] == "validate-deploy-host"
+    assert called["flow_id"] == "e2e.validate_deploy_host"
+    assert called["request"].scenario == "validate-deploy-host"
     assert called["request"].function_preset == "demo-javascript"
     assert called["request"].saved_profile is None
     assert called["request"].scenario_file is None
@@ -609,7 +609,7 @@ def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
         "json-transform-javascript",
     ]
     assert called["summary_lines"] == [
-        "Scenario: deploy-host",
+        "Scenario: validate-deploy-host",
         "Mode: host-side building/push/register compatibility path",
         "Function preset: demo-javascript",
     ]
@@ -627,7 +627,7 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.building"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_deploy_host", task_ids=["validate-deploy-host.building"], run=lambda: "ok")
 
     def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow.flow_id
@@ -646,9 +646,9 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
 
     NanofaasTUI()._run_deploy_host()
 
-    assert called["scenario"] == "deploy-host"
-    assert called["flow_id"] == "e2e.deploy_host"
-    assert called["request"].scenario == "deploy-host"
+    assert called["scenario"] == "validate-deploy-host"
+    assert called["flow_id"] == "e2e.validate_deploy_host"
+    assert called["request"].scenario == "validate-deploy-host"
     assert called["request"].function_preset == "demo-javascript"
     assert called["request"].saved_profile == "demo-javascript"
     assert called["request"].resolved_scenario.function_keys == [
@@ -656,7 +656,7 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
         "json-transform-javascript",
     ]
     assert called["summary_lines"] == [
-        "Scenario: deploy-host",
+        "Scenario: validate-deploy-host",
         "Mode: host-side building/push/register compatibility path",
         "Saved profile: demo-javascript",
     ]
@@ -679,7 +679,7 @@ def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.deploy_host", task_ids=["deploy-host.building"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_deploy_host", task_ids=["validate-deploy-host.building"], run=lambda: "ok")
 
     def fake_run_shared_flow(self, flow, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow.flow_id
@@ -697,9 +697,9 @@ def test_tui_deploy_host_can_use_scenario_file(monkeypatch) -> None:
 
     NanofaasTUI()._run_deploy_host()
 
-    assert called["scenario"] == "deploy-host"
-    assert called["flow_id"] == "e2e.deploy_host"
-    assert called["request"].scenario == "deploy-host"
+    assert called["scenario"] == "validate-deploy-host"
+    assert called["flow_id"] == "e2e.validate_deploy_host"
+    assert called["request"].scenario == "validate-deploy-host"
     assert called["request"].scenario_file == resolve_workspace_path(
         Path("tools/controlplane/scenarios/k8s-demo-javascript.toml")
     )
@@ -722,7 +722,7 @@ def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> 
         called["request"] = kwargs["request"]
         return LocalFlowDefinition(
             flow_id="e2e.container_local",
-            task_ids=["container-local.building"],
+            task_ids=["validate-container-local.building"],
             run=lambda: "ok",
         )
 
@@ -746,16 +746,16 @@ def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> 
     NanofaasTUI()._run_container_local()
 
     assert called["title"] == "E2E Scenarios"
-    assert called["scenario"] == "container-local"
+    assert called["scenario"] == "validate-container-local"
     assert called["flow_id"] == "e2e.container_local"
-    assert called["request"].scenario == "container-local"
+    assert called["request"].scenario == "validate-container-local"
     assert called["request"].function_preset is None
     assert called["request"].functions == ["word-stats-javascript"]
     assert called["request"].saved_profile is None
     assert called["request"].scenario_file is None
     assert called["request"].resolved_scenario.function_keys == ["word-stats-javascript"]
     assert called["summary_lines"] == [
-        "Scenario: container-local",
+        "Scenario: validate-container-local",
         "Mode: local managed DEPLOYMENT path",
         "Function: word-stats-javascript",
     ]
@@ -781,7 +781,7 @@ def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> No
         called["request"] = kwargs["request"]
         return LocalFlowDefinition(
             flow_id="e2e.container_local",
-            task_ids=["container-local.building"],
+            task_ids=["validate-container-local.building"],
             run=lambda: "ok",
         )
 
@@ -802,16 +802,16 @@ def test_tui_container_local_can_use_compatible_scenario_file(monkeypatch) -> No
 
     NanofaasTUI()._run_container_local()
 
-    assert called["scenario"] == "container-local"
+    assert called["scenario"] == "validate-container-local"
     assert called["flow_id"] == "e2e.container_local"
-    assert called["request"].scenario == "container-local"
+    assert called["request"].scenario == "validate-container-local"
     assert called["request"].scenario_file == resolve_workspace_path(
         Path("tools/controlplane/scenarios/container-local-smoke.toml")
     )
     assert called["request"].functions == ["word-stats-java"]
     assert called["request"].resolved_scenario.function_keys == ["word-stats-java"]
     assert called["summary_lines"] == [
-        "Scenario: container-local",
+        "Scenario: validate-container-local",
         "Mode: local managed DEPLOYMENT path",
         "Scenario file: tools/controlplane/scenarios/container-local-smoke.toml",
     ]
@@ -833,7 +833,7 @@ def test_tui_container_local_warns_when_no_compatible_saved_profiles(monkeypatch
         called["request"] = kwargs["request"]
         return LocalFlowDefinition(
             flow_id="e2e.container_local",
-            task_ids=["container-local.building"],
+            task_ids=["validate-container-local.building"],
             run=lambda: "ok",
         )
 
@@ -853,8 +853,8 @@ def test_tui_container_local_warns_when_no_compatible_saved_profiles(monkeypatch
 
     NanofaasTUI()._run_container_local()
 
-    assert warnings == ["No compatible saved profiles found for container-local."]
-    assert called["scenario"] == "container-local"
+    assert warnings == ["No compatible saved profiles found for validate-container-local."]
+    assert called["scenario"] == "validate-container-local"
     assert called["flow_id"] == "e2e.container_local"
     assert called["request"].functions == ["word-stats-javascript"]
     assert called["request"].resolved_scenario.function_keys == ["word-stats-javascript"]
@@ -889,7 +889,7 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
     import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
-    answers = iter(["container-local", "back"])
+    answers = iter(["validate-container-local", "back"])
 
     def fake_select(*args, **kwargs):  # noqa: ANN001
         captured["choices"] = [choice.title for choice in kwargs["choices"]]
@@ -901,7 +901,7 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
 
     NanofaasTUI()._e2e_menu()
 
-    assert "k3s-junit-curl — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
+    assert "validate-k3s — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
     assert "loadtest-helm-legacy — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
     assert "loadtest-two-vm — Helm stack with dedicated k6 load generator VM" in captured["choices"]
     assert "loadtest-proxmox — Two-VM Proxmox VE load test with k6" in captured["choices"]
@@ -1384,11 +1384,11 @@ def test_validation_menu_routes_host_path_to_deploy_host(monkeypatch) -> None:
     answers = iter(["host", "back"])
 
     monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
-    monkeypatch.setattr(NanofaasTUI, "_run_deploy_host", lambda self: calls.append("deploy-host"))
+    monkeypatch.setattr(NanofaasTUI, "_run_deploy_host", lambda self: calls.append("validate-deploy-host"))
 
     NanofaasTUI()._validation_menu()
 
-    assert calls == ["deploy-host"]
+    assert calls == ["validate-deploy-host"]
 
 
 def test_tui_main_menu_uses_shared_picker(monkeypatch) -> None:
@@ -1527,7 +1527,7 @@ def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path
         "build_loadtest_request",
         lambda profile: SimpleNamespace(
             load_profile="quick",
-            scenario="k3s-junit-curl",
+            scenario="validate-k3s",
             metrics_gate="warn",
             runs_root=Path("/tmp/loadtest"),
         ),
@@ -1627,7 +1627,7 @@ def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch)
     def fake_load(path: Path):  # noqa: ANN001
         if path.name == "k8s-demo-javascript.toml":
             return SimpleNamespace(
-                base_scenario="k3s-junit-curl",
+                base_scenario="validate-k3s",
                 name="k8s-demo-javascript",
                 function_keys=["word-stats-javascript", "json-transform-javascript"],
                 functions=[
@@ -1685,7 +1685,7 @@ def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) 
         if name == "demo-javascript":
             return SimpleNamespace(
                 scenario=SimpleNamespace(
-                    base_scenario="k3s-junit-curl",
+                    base_scenario="validate-k3s",
                     function_preset="demo-javascript",
                     functions=[],
                     scenario_file=None,
@@ -1694,7 +1694,7 @@ def test_k3s_saved_profile_choices_only_return_compatible_profiles(monkeypatch) 
         if name == "fixture-only":
             return SimpleNamespace(
                 scenario=SimpleNamespace(
-                    base_scenario="k3s-junit-curl",
+                    base_scenario="validate-k3s",
                     function_preset="metrics-smoke",
                     functions=[],
                     scenario_file=None,
@@ -1742,12 +1742,12 @@ def test_tui_k3s_junit_curl_dry_run_plan_waits_for_acknowledge(monkeypatch) -> N
     class _FakePlan:
         steps = [
             SimpleNamespace(name="Ensure VM is running", status="pending"),
-            SimpleNamespace(name="Run k3s-junit-curl verification", status="pending"),
+            SimpleNamespace(name="Run validate-k3s verification", status="pending"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
     assert acknowledgements == ["Press any key to return to the previous menu."]
 
@@ -1757,7 +1757,7 @@ def test_platform_validation_menu_returns_to_scenario_picker_after_dry_run(monke
     import controlplane_tool.e2e.e2e_runner as e2e_runner
     import controlplane_tool.tui.app as tui_app
 
-    scenario_answers = iter(["k3s-junit-curl", "back"])
+    scenario_answers = iter(["validate-k3s", "back"])
     selection_source_answers = iter(["default"])
     ask_answers = iter(["nanofaas-e2e", "java", True, True])
     prompts: list[str] = []
@@ -1850,7 +1850,7 @@ def test_tui_loadtest_menu_runs_shared_loadtest_flow_via_runtime(monkeypatch) ->
         lambda profile: SimpleNamespace(
             name="demo-loadtest",
             profile=SimpleNamespace(name="default"),
-            scenario=SimpleNamespace(name="k3s-junit-curl"),
+            scenario=SimpleNamespace(name="validate-k3s"),
             load_profile=SimpleNamespace(name="quick"),
         ),
     )
@@ -1902,7 +1902,7 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -1916,7 +1916,7 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
         called["event_listener"] = kwargs.get("event_listener")
-        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_k3s", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -1933,10 +1933,10 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
-    assert called["scenario"] == "k3s-junit-curl"
-    assert called["flow_id"] == "e2e.k3s_junit_curl"
+    assert called["scenario"] == "validate-k3s"
+    assert called["flow_id"] == "e2e.validate_k3s"
     assert callable(called["event_listener"])
     assert called["request"].cleanup_vm is True
     assert called["request"].function_preset == "demo-java"
@@ -1948,7 +1948,7 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
         "word-stats-java",
         "json-transform-java",
     ]
-    assert called["planned_steps"] == ["Ensure VM is running", "Run k3s-junit-curl verification"]
+    assert called["planned_steps"] == ["Ensure VM is running", "Run validate-k3s verification"]
 
 
 def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> None:
@@ -1963,7 +1963,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> N
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -1972,7 +1972,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> N
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
         called["event_listener"] = kwargs.get("event_listener")
-        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_k3s", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -1989,9 +1989,9 @@ def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> N
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
-    assert called["scenario"] == "k3s-junit-curl"
+    assert called["scenario"] == "validate-k3s"
     assert called["request"].function_preset == "demo-javascript"
     assert called["request"].scenario_file is None
     assert called["request"].saved_profile is None
@@ -2024,7 +2024,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -2033,7 +2033,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
         called["event_listener"] = kwargs.get("event_listener")
-        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_k3s", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -2050,9 +2050,9 @@ def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
-    assert called["scenario"] == "k3s-junit-curl"
+    assert called["scenario"] == "validate-k3s"
     assert called["request"].function_preset == "demo-javascript"
     assert called["request"].saved_profile is None
     assert called["request"].scenario_file == resolve_workspace_path(
@@ -2077,7 +2077,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_saved_profile(monkeypatch) -> None:
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -2086,7 +2086,7 @@ def test_tui_k3s_junit_curl_scenario_can_use_saved_profile(monkeypatch) -> None:
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
         called["event_listener"] = kwargs.get("event_listener")
-        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_k3s", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -2103,9 +2103,9 @@ def test_tui_k3s_junit_curl_scenario_can_use_saved_profile(monkeypatch) -> None:
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
-    assert called["scenario"] == "k3s-junit-curl"
+    assert called["scenario"] == "validate-k3s"
     assert called["request"].saved_profile == "demo-javascript"
     assert called["request"].scenario_file is None
     assert called["request"].function_preset == "demo-javascript"
@@ -2141,7 +2141,7 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_scenario_files(monkeypatch)
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -2149,7 +2149,7 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_scenario_files(monkeypatch)
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_k3s", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -2165,9 +2165,9 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_scenario_files(monkeypatch)
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
-    assert warnings == ["No compatible scenario files found for k3s-junit-curl."]
+    assert warnings == ["No compatible scenario files found for validate-k3s."]
     assert called["request"].function_preset == "demo-javascript"
 
 
@@ -2196,7 +2196,7 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_saved_profiles(monkeypatch)
     class _FakePlan:
         steps = [
             SimpleNamespace(summary="Ensure VM is running"),
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -2204,7 +2204,7 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_saved_profiles(monkeypatch)
     def fake_build_scenario_flow(scenario, **kwargs):  # noqa: ANN001
         called["scenario"] = scenario
         called["request"] = kwargs["request"]
-        return LocalFlowDefinition(flow_id="e2e.k3s_junit_curl", task_ids=["vm.ensure_running"], run=lambda: "ok")
+        return LocalFlowDefinition(flow_id="e2e.validate_k3s", task_ids=["vm.ensure_running"], run=lambda: "ok")
 
     def fake_run_local_flow(flow_id, flow, *args, **kwargs):  # noqa: ANN001
         called["flow_id"] = flow_id
@@ -2220,9 +2220,9 @@ def test_tui_k3s_junit_curl_warns_when_no_compatible_saved_profiles(monkeypatch)
     monkeypatch.setattr(tui_wfc, "run_local_flow", fake_run_local_flow)
     monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
-    assert warnings == ["No compatible saved profiles found for k3s-junit-curl."]
+    assert warnings == ["No compatible saved profiles found for validate-k3s."]
     assert called["request"].function_preset == "demo-javascript"
 
 
@@ -2415,7 +2415,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
 
     class _FakePlan:
         steps = [
-            SimpleNamespace(summary="Run k3s-junit-curl verification"),
+            SimpleNamespace(summary="Run validate-k3s verification"),
         ]
 
     monkeypatch.setattr(e2e_runner.E2eRunner, "plan", lambda self, request: _FakePlan())
@@ -2425,7 +2425,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
 
         def _run() -> str:
             step_meta = ScenarioPlanStep(
-                summary="Run k3s-junit-curl verification",
+                summary="Run validate-k3s verification",
                 command=["python", "-m", "controlplane_tool.e2e.k3s_curl_runner", "verify-existing-stack"],
             )
             event_listener(
@@ -2450,7 +2450,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
             return "ok"
 
         return LocalFlowDefinition(
-            flow_id="e2e.k3s_junit_curl",
+            flow_id="e2e.validate_k3s",
             task_ids=["tests.run_k3s_curl_checks"],
             run=_run,
         )
@@ -2487,7 +2487,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
     monkeypatch.setattr(tui_wfc, "Live", _FakeLive)
     monkeypatch.setattr(tui_wfc, "WorkflowKeyListener", _FakeKeyListener)
 
-    NanofaasTUI()._run_vm_e2e_scenario("k3s-junit-curl")
+    NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
     console = Console(record=True, width=140)
     console.print(captured["live"].renderable)
@@ -2499,7 +2499,7 @@ def test_tui_k3s_junit_curl_marks_nested_verify_steps_success_when_flow_complete
         if match is not None
     ]
 
-    assert phase_labels == ["Run k3s-junit-curl verification"]
+    assert phase_labels == ["Run validate-k3s verification"]
 
 
 def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch) -> None:
@@ -2527,7 +2527,7 @@ def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch
             return None
 
     def fake_action(dashboard, sink):  # noqa: ANN001
-        dashboard.upsert_step("Run k3s-junit-curl verification", activate=True)
+        dashboard.upsert_step("Run validate-k3s verification", activate=True)
         return "ok"
 
     def fail_complete_running_steps(self, *args, **kwargs):  # noqa: ANN001
@@ -2539,8 +2539,8 @@ def test_tui_run_live_workflow_does_not_force_complete_running_steps(monkeypatch
 
     result = NanofaasTUI()._controller.run_live_workflow(
         title="E2E Scenarios",
-        summary_lines=["Scenario: k3s-junit-curl"],
-        planned_steps=["Run k3s-junit-curl verification"],
+        summary_lines=["Scenario: validate-k3s"],
+        planned_steps=["Run validate-k3s verification"],
         action=fake_action,
     )
 

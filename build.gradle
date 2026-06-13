@@ -67,7 +67,7 @@ tasks.register('k8sE2e') {
 tasks.register('k8sE2eVm', Exec) {
     group = 'verification'
     description = 'Run K8sE2eTest in an ephemeral Multipass VM with k3s.'
-    commandLine 'bash', 'scripts/controlplane.sh', 'e2e', 'run', 'k3s-junit-curl'
+    commandLine 'bash', 'scripts/controlplane.sh', 'e2e', 'run', 'validate-k3s'
 }
 
 tasks.register('verifyHelmVersionSync') {

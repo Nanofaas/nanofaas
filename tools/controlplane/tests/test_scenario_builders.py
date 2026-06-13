@@ -197,7 +197,7 @@ def test_build_scenario_flow_uses_plan_task_ids_for_azure_vm(tmp_path: Path) -> 
 
 def _make_k3s_request() -> E2eRequest:
     return E2eRequest(
-        scenario="k3s-junit-curl",
+        scenario="validate-k3s",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )

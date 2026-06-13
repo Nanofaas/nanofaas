@@ -121,7 +121,7 @@ def plan_run_k3s_curl_checks(context: ScenarioExecutionContext) -> tuple[Scenari
     return (
         RemoteCommandOperation(
             operation_id="tests.run_k3s_curl_checks",
-            summary="Run k3s-junit-curl verification",
+            summary="Run validate-k3s verification",
             argv=_require_command(context.k3s_curl_verify_command, "k3s_curl_verify_command"),
             env=_frozen_env(),
         ),

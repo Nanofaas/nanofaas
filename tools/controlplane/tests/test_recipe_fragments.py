@@ -5,7 +5,7 @@ from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 # Golden snapshot of every scenario's exact component_ids as of 2026-06-11.
 # This pins current behavior so the fragment refactor (Task 2) stays byte-for-byte identical.
 GOLDEN: dict[str, tuple[str, ...]] = {
-    "k3s-junit-curl": (
+    "validate-k3s": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",
         "k3s.install", "k3s.configure_registry", "namespace.install",

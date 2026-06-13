@@ -44,7 +44,7 @@ def _make_resolved(functions: list[dict]):
     fns = [_make_fn(**fn) for fn in functions]
     return ResolvedScenario(
         name="test",
-        base_scenario="k3s-junit-curl",
+        base_scenario="validate-k3s",
         runtime="java",
         functions=fns,
     )

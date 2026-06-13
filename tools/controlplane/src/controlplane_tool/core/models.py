@@ -15,14 +15,14 @@ RuntimeKind = Literal["java", "rust"]
 FunctionRuntimeKind = Literal["java", "java-lite", "go", "python", "exec", "javascript", "fixture"]
 CliTestScenarioName = Literal["unit", "cli-stack", "host-platform", "deploy-host"]
 ScenarioName = Literal[
-    "docker",
-    "buildpack",
-    "container-local",
-    "k3s-junit-curl",
+    "validate-docker-pool",
+    "validate-buildpack-pool",
+    "validate-container-local",
+    "validate-k3s",
     "cli",
     "cli-stack",
     "cli-host",
-    "deploy-host",
+    "validate-deploy-host",
     "loadtest-helm-legacy",
     "loadtest-one-vm",
     "loadtest-two-vm",
@@ -32,7 +32,7 @@ ScenarioName = Literal[
 
 VM_BACKED_SCENARIOS = frozenset(
     {
-        "k3s-junit-curl",
+        "validate-k3s",
         "cli",
         "cli-stack",
         "cli-host",

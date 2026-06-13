@@ -104,7 +104,7 @@ def _resolve_scenario(profile: Profile, scenario_file: Path | None) -> ResolvedS
     return resolve_scenario_spec(
         ScenarioSpec(
             name=f"{profile.name}-loadtest",
-            base_scenario=profile.scenario.base_scenario or "k3s-junit-curl",
+            base_scenario=profile.scenario.base_scenario or "validate-k3s",
             runtime=profile.control_plane.implementation,
             function_preset=profile.loadtest.function_preset
             or profile.scenario.function_preset
@@ -143,7 +143,7 @@ def build_loadtest_request(
             resolve_scenario_spec(
                 ScenarioSpec(
                     name=run_name or "loadtest",
-                    base_scenario="k3s-junit-curl",
+                    base_scenario="validate-k3s",
                     runtime="java",
                     function_preset="metrics-smoke",
                 )

@@ -23,29 +23,33 @@ class ScenarioDefinition:
 
 SCENARIOS: tuple[ScenarioDefinition, ...] = (
     ScenarioDefinition(
-        name="docker",
-        description="Local Docker POOL regression path.",
+        name="validate-docker-pool",
+        description="Local POOL runtime regression with Docker-built images on the host.",
         requires_vm=False,
         supported_runtimes=("java",),
+        aliases=("docker",),
     ),
     ScenarioDefinition(
-        name="buildpack",
-        description="Buildpack regression and managed local DEPLOYMENT coverage.",
+        name="validate-buildpack-pool",
+        description="Local POOL runtime with buildpack-built images, plus managed local DEPLOYMENT coverage.",
         requires_vm=False,
         supported_runtimes=("java",),
+        aliases=("buildpack",),
     ),
     ScenarioDefinition(
-        name="container-local",
-        description="No-k8s managed DEPLOYMENT provider flow for a single selected function.",
+        name="validate-container-local",
+        description="No-Kubernetes managed DEPLOYMENT backend, fully local, one selected function.",
         requires_vm=False,
         supported_runtimes=("java",),
         selection_mode="single",
+        aliases=("container-local",),
     ),
     ScenarioDefinition(
-        name="k3s-junit-curl",
-        description="Shared k3s Helm deployment with curl and JUnit validation.",
+        name="validate-k3s",
+        description="Multipass VM + k3s + Helm stack, verified with curl probes and the JUnit K8sE2eTest suite.",
         requires_vm=True,
         supported_runtimes=("java", "rust"),
+        aliases=("k3s-junit-curl",),
     ),
     ScenarioDefinition(
         name="cli",
@@ -68,11 +72,12 @@ SCENARIOS: tuple[ScenarioDefinition, ...] = (
         uses_host_cli=True,
     ),
     ScenarioDefinition(
-        name="deploy-host",
-        description="Host-only deploy workflow against a fake control-plane.",
+        name="validate-deploy-host",
+        description="Host-only deploy workflow against a stub control-plane (host compatibility path).",
         requires_vm=False,
         supported_runtimes=("java",),
         uses_host_cli=True,
+        aliases=("deploy-host",),
     ),
     ScenarioDefinition(
         name="loadtest-helm-legacy",

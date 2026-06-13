@@ -61,7 +61,7 @@ def test_bootstrap_component_planners_return_typed_remote_operations(
 
 def test_bootstrap_component_planners_cover_external_vm_branch() -> None:
     request = E2eRequest(
-        scenario="docker",
+        scenario="validate-docker-pool",
         runtime="java",
         vm=VmRequest(lifecycle="external", host="10.0.0.10", user="ubuntu"),
     )
@@ -276,7 +276,7 @@ def test_compose_recipe_wires_concrete_component_planners() -> None:
 
 
 def test_compose_recipe_returns_ordered_component_definitions() -> None:
-    recipe = build_scenario_recipe("k3s-junit-curl")
+    recipe = build_scenario_recipe("validate-k3s")
 
     components = compose_recipe(recipe)
 

@@ -15,6 +15,11 @@ RENAME_PAIRS: list[tuple[str, str]] = [
     ("two-vm-loadtest", "loadtest-two-vm"),
     ("azure-vm-loadtest", "loadtest-azure"),
     ("proxmox-vm-loadtest", "loadtest-proxmox"),
+    ("k3s-junit-curl", "validate-k3s"),
+    ("container-local", "validate-container-local"),
+    ("docker", "validate-docker-pool"),
+    ("buildpack", "validate-buildpack-pool"),
+    ("deploy-host", "validate-deploy-host"),
 ]
 
 
