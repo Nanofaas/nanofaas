@@ -62,7 +62,7 @@ def test_cli_stack_recipe_is_independent_and_self_bootstrapping() -> None:
 
 
 def test_helm_stack_recipe_and_cli_stack_recipe_share_components_without_sharing_tail() -> None:
-    helm_recipe = build_scenario_recipe("helm-stack")
+    helm_recipe = build_scenario_recipe("loadtest-helm-legacy")
     cli_recipe = build_scenario_recipe("cli-stack")
 
     _assert_order(
@@ -117,7 +117,7 @@ def test_helm_stack_recipe_and_cli_stack_recipe_share_components_without_sharing
 
 
 def test_one_vm_helm_loadtest_recipe_uses_stack_prelude_without_legacy_autoscaling() -> None:
-    recipe = build_scenario_recipe("one-vm-helm-loadtest")
+    recipe = build_scenario_recipe("loadtest-one-vm")
 
     assert recipe.requires_managed_vm is True
     _assert_order(

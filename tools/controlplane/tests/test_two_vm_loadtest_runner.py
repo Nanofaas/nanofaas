@@ -18,7 +18,7 @@ def test_two_vm_loadtest_runner_executes_k6_on_loadgen_vm(tmp_path: Path) -> Non
     _write_default_k6_asset(tmp_path)
     shell = RecordingShell()
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
@@ -48,7 +48,7 @@ def test_two_vm_loadtest_runner_transfers_custom_payload(tmp_path: Path) -> None
     payload.write_text('{"message":"hello"}\n', encoding="utf-8")
     shell = RecordingShell()
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
@@ -74,7 +74,7 @@ def test_two_vm_loadtest_runner_isolates_payload_from_script_and_summary(tmp_pat
     payload.write_text('{"message":"collision"}\n', encoding="utf-8")
     shell = RecordingShell()
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
@@ -107,7 +107,7 @@ def test_two_vm_loadtest_runner_captures_prometheus_snapshots(
 
     monkeypatch.setattr("controlplane_tool.e2e.two_vm_loadtest_runner.capture_prometheus_snapshots", capture)
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
@@ -145,7 +145,7 @@ def test_prepare_loadgen_creates_dirs_and_uploads_script(tmp_path: Path) -> None
     _write_default_k6_asset(tmp_path)
     shell = RecordingShell()
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),

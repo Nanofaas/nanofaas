@@ -5,21 +5,21 @@ from controlplane_tool.scenario.scenario_flows import scenario_task_ids
 
 def test_two_vm_loadtest_task_ids_include_functions_register() -> None:
     """scenario_task_ids must return functions.register, not cli.fn_apply_selected."""
-    ids = scenario_task_ids("two-vm-loadtest")
+    ids = scenario_task_ids("loadtest-two-vm")
     assert "functions.register" in ids
     assert "cli.fn_apply_selected" not in ids
 
 
 def test_azure_vm_loadtest_task_ids_include_functions_register() -> None:
     """scenario_task_ids must return functions.register for azure-vm-loadtest."""
-    ids = scenario_task_ids("azure-vm-loadtest")
+    ids = scenario_task_ids("loadtest-azure")
     assert "functions.register" in ids
     assert "cli.fn_apply_selected" not in ids
 
 
 def test_two_vm_loadtest_task_ids_order() -> None:
     """functions.register must appear between cli.build_install_dist and loadgen.ensure_running."""
-    ids = scenario_task_ids("two-vm-loadtest")
+    ids = scenario_task_ids("loadtest-two-vm")
     build_dist_idx = ids.index("cli.build_install_dist")
     register_idx = ids.index("functions.register")
     loadgen_idx = ids.index("loadgen.ensure_running")
@@ -36,7 +36,7 @@ from controlplane_tool.scenario.scenarios import ScenarioPlan as ScenarioPlanPro
 
 def _make_request() -> E2eRequest:
     return E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),
@@ -84,7 +84,7 @@ def test_build_two_vm_loadtest_plan_returns_correct_type(tmp_path: Path) -> None
 
 def _make_azure_request() -> E2eRequest:
     return E2eRequest(
-        scenario="azure-vm-loadtest",
+        scenario="loadtest-azure",
         runtime="java",
         vm=VmRequest(
             lifecycle="azure",
@@ -172,7 +172,7 @@ def test_build_scenario_flow_uses_plan_task_ids_for_two_vm(tmp_path: Path) -> No
     from controlplane_tool.scenario.scenario_flows import build_scenario_flow
 
     flow = build_scenario_flow(
-        "two-vm-loadtest",
+        "loadtest-two-vm",
         repo_root=Path("/repo"),
         request=_make_request(),
     )
@@ -186,7 +186,7 @@ def test_build_scenario_flow_uses_plan_task_ids_for_azure_vm(tmp_path: Path) -> 
     from controlplane_tool.scenario.scenario_flows import build_scenario_flow
 
     flow = build_scenario_flow(
-        "azure-vm-loadtest",
+        "loadtest-azure",
         repo_root=Path("/repo"),
         request=_make_azure_request(),
     )
@@ -197,7 +197,7 @@ def test_build_scenario_flow_uses_plan_task_ids_for_azure_vm(tmp_path: Path) -> 
 
 def _make_k3s_request() -> E2eRequest:
     return E2eRequest(
-        scenario="k3s-junit-curl",
+        scenario="validate-k3s",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
@@ -239,7 +239,7 @@ def test_build_k3s_junit_curl_plan_returns_correct_type(tmp_path: Path) -> None:
 
 def _make_helm_stack_request() -> E2eRequest:
     return E2eRequest(
-        scenario="helm-stack",
+        scenario="loadtest-helm-legacy",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
@@ -392,13 +392,13 @@ def test_e2e_runner_plan_returns_cli_stack_builder(tmp_path: Path) -> None:
 
 def test_proxmox_vm_loadtest_task_ids_include_functions_register() -> None:
     """proxmox-vm-loadtest uses REST function registration like the loadtest scenarios."""
-    ids = scenario_task_ids("proxmox-vm-loadtest")
+    ids = scenario_task_ids("loadtest-proxmox")
     assert "functions.register" in ids
     assert "cli.fn_apply_selected" not in ids
 
 
 def test_proxmox_vm_loadtest_task_ids_order() -> None:
-    ids = scenario_task_ids("proxmox-vm-loadtest")
+    ids = scenario_task_ids("loadtest-proxmox")
     assert ids.index("cli.build_install_dist") < ids.index("functions.register")
     assert ids.index("functions.register") < ids.index("loadgen.ensure_running")
 

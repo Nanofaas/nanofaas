@@ -141,7 +141,7 @@ class K3sJunitCurlPlan:
                 )
             return None
 
-        recipe = build_scenario_recipe("k3s-junit-curl")
+        recipe = build_scenario_recipe("validate-k3s")
         tasks = build_command_tasks(
             runner,
             request,
@@ -184,7 +184,7 @@ def build_k3s_junit_curl_plan(
         workflow_display_steps,
     )
 
-    scenario = resolve_scenario("k3s-junit-curl")
+    scenario = resolve_scenario("validate-k3s")
     plan = K3sJunitCurlPlan(
         scenario=scenario,
         request=request,

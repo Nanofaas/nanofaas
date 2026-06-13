@@ -56,7 +56,7 @@ def test_profile_roundtrip_with_e2e_selection(tmp_path: Path) -> None:
         name="demo-java",
         control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
         scenario=ScenarioSelectionConfig(
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             function_preset="demo-java",
             namespace="nanofaas-e2e",
         ),
@@ -67,7 +67,7 @@ def test_profile_roundtrip_with_e2e_selection(tmp_path: Path) -> None:
     loaded = load_profile("demo-java", root=tmp_path)
 
     assert loaded.scenario.function_preset == "demo-java"
-    assert loaded.scenario.base_scenario == "k3s-junit-curl"
+    assert loaded.scenario.base_scenario == "validate-k3s"
     assert loaded.cli_test.default_scenario == "cli-stack"
 
 
@@ -76,7 +76,7 @@ def test_profile_roundtrip_with_javascript_e2e_selection(tmp_path: Path) -> None
         name="demo-javascript",
         control_plane=ControlPlaneConfig(implementation="java", build_mode="native"),
         scenario=ScenarioSelectionConfig(
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             function_preset="demo-javascript",
             namespace="nanofaas-e2e",
         ),
@@ -87,7 +87,7 @@ def test_profile_roundtrip_with_javascript_e2e_selection(tmp_path: Path) -> None
     loaded = load_profile("demo-javascript", root=tmp_path)
 
     assert loaded.scenario.function_preset == "demo-javascript"
-    assert loaded.scenario.base_scenario == "k3s-junit-curl"
+    assert loaded.scenario.base_scenario == "validate-k3s"
     assert loaded.cli_test.default_scenario == "cli-stack"
 
 

@@ -35,7 +35,7 @@ def _make_resolved_scenario(function_keys: list[str]):
     ]
     return ResolvedScenario(
         name="test-selection",
-        base_scenario="container-local" if len(function_keys) == 1 else "deploy-host",
+        base_scenario="validate-container-local" if len(function_keys) == 1 else "validate-deploy-host",
         runtime="java",
         functions=functions,
         function_keys=function_keys,
@@ -44,15 +44,15 @@ def _make_resolved_scenario(function_keys: list[str]):
 
 def test_k3s_junit_curl_flow_uses_reusable_vm_build_and_deploy_tasks() -> None:
     flow = build_scenario_flow(
-        "k3s-junit-curl",
+        "validate-k3s",
         repo_root=Path("/repo"),
         request=E2eRequest(
-            scenario="k3s-junit-curl",
+            scenario="validate-k3s",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         ),
     )
-    recipe = build_scenario_recipe("k3s-junit-curl")
+    recipe = build_scenario_recipe("validate-k3s")
 
     assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
@@ -153,15 +153,15 @@ def test_cli_stack_flow_requestless_execution_preserves_scenario_file_namespace(
 
 def test_k3s_junit_curl_flow_task_ids_are_derived_from_the_recipe() -> None:
     flow = build_scenario_flow(
-        "k3s-junit-curl",
+        "validate-k3s",
         repo_root=Path("/repo"),
         request=E2eRequest(
-            scenario="k3s-junit-curl",
+            scenario="validate-k3s",
             runtime="java",
             vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         ),
     )
-    recipe = build_scenario_recipe("k3s-junit-curl")
+    recipe = build_scenario_recipe("validate-k3s")
 
     assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
@@ -169,7 +169,7 @@ def test_k3s_junit_curl_flow_task_ids_are_derived_from_the_recipe() -> None:
 def test_k3s_junit_curl_request_without_vm_gets_managed_vm_context() -> None:
     plan = E2eRunner(repo_root=Path("/repo")).plan(
         E2eRequest(
-            scenario="k3s-junit-curl",
+            scenario="validate-k3s",
             runtime="java",
             vm=None,
         )
@@ -226,10 +226,10 @@ def test_container_local_flow_passes_resolved_scenario_to_runner(monkeypatch) ->
     monkeypatch.setattr(scenario_flows_mod, "ContainerLocalE2eRunner", FakeRunner, raising=False)
 
     request = E2eRequest(
-        scenario="container-local",
+        scenario="validate-container-local",
         resolved_scenario=_make_resolved_scenario(["word-stats-javascript"]),
     )
-    flow = build_scenario_flow("container-local", repo_root=Path("/repo"), request=request)
+    flow = build_scenario_flow("validate-container-local", repo_root=Path("/repo"), request=request)
 
     assert flow.run() == "ok"
     assert captured["scenario_file"] is None
@@ -252,12 +252,12 @@ def test_deploy_host_flow_passes_resolved_scenario_to_runner(monkeypatch) -> Non
     monkeypatch.setattr(scenario_flows_mod, "DeployHostE2eRunner", FakeRunner, raising=False)
 
     request = E2eRequest(
-        scenario="deploy-host",
+        scenario="validate-deploy-host",
         resolved_scenario=_make_resolved_scenario(
             ["word-stats-javascript", "json-transform-javascript"]
         ),
     )
-    flow = build_scenario_flow("deploy-host", repo_root=Path("/repo"), request=request)
+    flow = build_scenario_flow("validate-deploy-host", repo_root=Path("/repo"), request=request)
 
     assert flow.run() == "ok"
     assert captured["scenario_file"] is None
@@ -267,7 +267,7 @@ def test_deploy_host_flow_passes_resolved_scenario_to_runner(monkeypatch) -> Non
 
 def test_k3s_junit_curl_flow_requires_request_for_executable_definition() -> None:
     with pytest.raises(ValueError):
-        build_scenario_flow("k3s-junit-curl", repo_root=Path("/repo"))
+        build_scenario_flow("validate-k3s", repo_root=Path("/repo"))
 
 
 def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> None:
@@ -281,14 +281,14 @@ def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> No
         ) or "ok",
     )
     request = E2eRequest(
-        scenario="k3s-junit-curl",
+        scenario="validate-k3s",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
     listener = lambda event: None  # noqa: ARG005,E731
 
     flow = build_scenario_flow(
-        "k3s-junit-curl",
+        "validate-k3s",
         repo_root=Path("/repo"),
         request=request,
         event_listener=listener,
@@ -300,15 +300,15 @@ def test_request_backed_scenario_flow_forwards_event_listener(monkeypatch) -> No
 
 
 def test_helm_stack_flow_shares_k3s_junit_curl_prefix() -> None:
-    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
-    recipe = build_scenario_recipe("helm-stack")
+    flow = build_scenario_flow("loadtest-helm-legacy", repo_root=Path("/repo"))
+    recipe = build_scenario_recipe("loadtest-helm-legacy")
 
     assert flow.task_ids == [component.component_id for component in compose_recipe(recipe)]
 
 
 def test_two_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
-    helm_recipe = build_scenario_recipe("helm-stack")
-    recipe = build_scenario_recipe("two-vm-loadtest")
+    helm_recipe = build_scenario_recipe("loadtest-helm-legacy")
+    recipe = build_scenario_recipe("loadtest-two-vm")
     platform_prefix = (
         "vm.ensure_running",
         "vm.provision_base",
@@ -340,8 +340,8 @@ def test_two_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
 
 
 def test_azure_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
-    helm_recipe = build_scenario_recipe("helm-stack")
-    recipe = build_scenario_recipe("azure-vm-loadtest")
+    helm_recipe = build_scenario_recipe("loadtest-helm-legacy")
+    recipe = build_scenario_recipe("loadtest-azure")
     platform_prefix = (
         "vm.ensure_running",
         "vm.provision_base",
@@ -374,12 +374,12 @@ def test_azure_vm_loadtest_recipe_reuses_helm_stack_platform_prefix() -> None:
 
 def test_two_vm_loadtest_request_backed_flow_task_ids_derive_from_recipe() -> None:
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
-    flow = build_scenario_flow("two-vm-loadtest", repo_root=Path("/repo"), request=request)
-    recipe = build_scenario_recipe("two-vm-loadtest")
+    flow = build_scenario_flow("loadtest-two-vm", repo_root=Path("/repo"), request=request)
+    recipe = build_scenario_recipe("loadtest-two-vm")
     expected_ids = [component.component_id for component in compose_recipe(recipe)]
     expected_ids = [
         "functions.register" if i == "cli.fn_apply_selected" else i
@@ -406,7 +406,7 @@ def test_helm_stack_flow_task_ids_follow_recipe_composition(monkeypatch) -> None
         raising=False,
     )
 
-    assert scenario_flows_mod.scenario_task_ids("helm-stack") == [
+    assert scenario_flows_mod.scenario_task_ids("loadtest-helm-legacy") == [
         "first.component",
         "second.component",
     ]
@@ -423,10 +423,10 @@ def test_helm_stack_flow_routes_through_python_e2e_runner(monkeypatch) -> None:
         ) or "ok",
     )
 
-    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"))
+    flow = build_scenario_flow("loadtest-helm-legacy", repo_root=Path("/repo"))
 
     assert flow.run() == "ok"
-    assert called["request"].scenario == "helm-stack"
+    assert called["request"].scenario == "loadtest-helm-legacy"
 
 
 def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
@@ -440,7 +440,7 @@ def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
         ) or "ok",
     )
 
-    flow = build_scenario_flow("helm-stack", repo_root=Path("/repo"), noninteractive=False)
+    flow = build_scenario_flow("loadtest-helm-legacy", repo_root=Path("/repo"), noninteractive=False)
 
     assert flow.run() == "ok"
     assert called["request"].helm_noninteractive is False
@@ -448,10 +448,10 @@ def test_helm_stack_flow_preserves_noninteractive_flag(monkeypatch) -> None:
 
 def test_proxmox_vm_loadtest_flow_uses_loadtest_recipe_ids() -> None:
     flow = build_scenario_flow(
-        "proxmox-vm-loadtest",
+        "loadtest-proxmox",
         repo_root=Path("/repo"),
         request=E2eRequest(
-            scenario="proxmox-vm-loadtest",
+            scenario="loadtest-proxmox",
             runtime="java",
             vm=VmRequest(lifecycle="proxmox", name="nanofaas-proxmox"),
             loadgen_vm=VmRequest(lifecycle="proxmox", name="nanofaas-proxmox-loadgen"),

@@ -2,7 +2,7 @@
 
 This module factors out the pieces common to every scenario that has been
 converted from the legacy recipe engine to a ``workflow_tasks.Workflow`` of
-honest Tasks (k3s-junit-curl, helm-stack, ...):
+honest Tasks (k3s-junit-curl, loadtest-helm-legacy, ...):
 
 - ``CallableTask`` — wraps a host-side callable as an honest Task.
 - ``_Setup`` — environment/config built once per plan.

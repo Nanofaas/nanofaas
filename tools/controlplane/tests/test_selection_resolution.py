@@ -61,14 +61,14 @@ def test_resolved_scenario_from_config_uses_default_base_scenario() -> None:
     scenario = resolved_scenario_from_config(
         ScenarioSelectionConfig(function_preset="demo-java"),
         name="cli-test-selection",
-        base_scenario="k3s-junit-curl",
+        base_scenario="validate-k3s",
         runtime="java",
         namespace="demo",
         local_registry="localhost:5000",
     )
 
     assert scenario.name == "cli-test-selection"
-    assert scenario.base_scenario == "k3s-junit-curl"
+    assert scenario.base_scenario == "validate-k3s"
     assert scenario.runtime == "java"
     assert scenario.namespace == "demo"
     assert scenario.local_registry == "localhost:5000"
@@ -82,20 +82,20 @@ def test_resolved_scenario_from_config_prefers_argument_base_scenario() -> None:
             function_preset="demo-java",
         ),
         name="cli-test-selection",
-        base_scenario="k3s-junit-curl",
+        base_scenario="validate-k3s",
         runtime="java",
         namespace="demo",
         local_registry="localhost:5000",
     )
 
-    assert scenario.base_scenario == "k3s-junit-curl"
+    assert scenario.base_scenario == "validate-k3s"
 
 
 def test_overlay_selected_scenario_preserves_manifest_functions_with_overrides() -> None:
     original = resolve_scenario_spec(
         ScenarioSpec(
             name="manifest",
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             runtime="java",
             functions=["word-stats-java"],
             namespace="original",
@@ -122,7 +122,7 @@ def test_overlay_selected_scenario_accepts_explicit_function_override() -> None:
     original = resolve_scenario_spec(
         ScenarioSpec(
             name="manifest",
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             runtime="java",
             function_preset="demo-java",
             namespace="original",
@@ -132,7 +132,7 @@ def test_overlay_selected_scenario_accepts_explicit_function_override() -> None:
 
     updated = overlay_selected_scenario(
         original,
-        base_scenario="k3s-junit-curl",
+        base_scenario="validate-k3s",
         function_preset=None,
         functions=["word-stats-java"],
         runtime="java",
@@ -148,7 +148,7 @@ def test_overlay_selected_scenario_accepts_explicit_preset_override() -> None:
     original = resolve_scenario_spec(
         ScenarioSpec(
             name="manifest",
-            base_scenario="k3s-junit-curl",
+            base_scenario="validate-k3s",
             runtime="java",
             function_preset="demo-java",
             namespace="original",

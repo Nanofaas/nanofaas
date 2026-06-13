@@ -23,7 +23,7 @@ class _Info:
 
 def _request(tmp_path: Path) -> E2eRequest:
     return E2eRequest(
-        scenario="one-vm-helm-loadtest",
+        scenario="loadtest-one-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         cleanup_vm=True,

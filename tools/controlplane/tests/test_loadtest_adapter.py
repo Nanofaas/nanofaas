@@ -99,7 +99,7 @@ def _proxmox_adapter(orch, *, cleanup_vm=True):
     from controlplane_tool.scenario.loadtest_adapter import ProxmoxLoadtestAdapter
 
     request = SimpleNamespace(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         cleanup_vm=cleanup_vm,
         vm=SimpleNamespace(name="proxmox-stack", user="ubuntu"),
         loadgen_vm=SimpleNamespace(name="proxmox-loadgen", user="ubuntu"),
@@ -283,7 +283,7 @@ def _azure_adapter(orch, *, cleanup_vm=True):
     from controlplane_tool.scenario.loadtest_adapter import AzureLoadtestAdapter
 
     request = SimpleNamespace(
-        scenario="azure-vm-loadtest",
+        scenario="loadtest-azure",
         cleanup_vm=cleanup_vm,
         vm=SimpleNamespace(name="azure-stack", user="azureuser"),
         loadgen_vm=SimpleNamespace(name="azure-loadgen", user="azureuser"),

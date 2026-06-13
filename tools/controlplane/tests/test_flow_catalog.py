@@ -13,7 +13,7 @@ from controlplane_tool.infra.vm.vm_models import VmRequest
 
 def _sample_request() -> E2eRequest:
     return E2eRequest(
-        scenario="k3s-junit-curl",
+        scenario="validate-k3s",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
     )
@@ -21,18 +21,18 @@ def _sample_request() -> E2eRequest:
 
 def test_flow_catalog_resolves_k3s_junit_curl_to_executable_flow_definition() -> None:
     definition = resolve_flow_definition(
-        "e2e.k3s-junit-curl",
+        "e2e.validate-k3s",
         repo_root=Path("/repo"),
         request=_sample_request(),
     )
 
-    assert definition.flow_id == "e2e.k3s_junit_curl"
+    assert definition.flow_id == "e2e.validate_k3s"
     assert "vm.ensure_running" in definition.task_ids
 
 
 def test_flow_catalog_exposes_task_ids_without_executable_placeholder() -> None:
-    task_ids = resolve_flow_task_ids("e2e.k3s-junit-curl")
-    recipe = build_scenario_recipe("k3s-junit-curl")
+    task_ids = resolve_flow_task_ids("e2e.validate-k3s")
+    recipe = build_scenario_recipe("validate-k3s")
 
     assert task_ids == [component.component_id for component in compose_recipe(recipe)]
 
@@ -66,12 +66,12 @@ def test_flow_catalog_passes_none_for_namespace_and_release_defaults(monkeypatch
 
 
 def test_flow_catalog_resolves_container_local_task_ids_from_legacy_mapping() -> None:
-    assert resolve_flow_task_ids("e2e.container-local") == ["tests.run_container_local"]
+    assert resolve_flow_task_ids("e2e.validate-container-local") == ["tests.run_validate_container_local"]
 
 
 def test_flow_catalog_resolves_k3s_junit_curl_from_recipe() -> None:
-    recipe = build_scenario_recipe("k3s-junit-curl")
-    task_ids = resolve_flow_task_ids("e2e.k3s-junit-curl")
+    recipe = build_scenario_recipe("validate-k3s")
+    task_ids = resolve_flow_task_ids("e2e.validate-k3s")
 
     assert task_ids == [component.component_id for component in compose_recipe(recipe)]
 
@@ -92,7 +92,7 @@ def test_flow_catalog_helm_stack_task_ids_follow_recipe_composition(monkeypatch)
 
 def test_requestless_runtime_scenario_definition_is_not_silently_executable() -> None:
     with pytest.raises(ValueError):
-        resolve_flow_definition("e2e.k3s-junit-curl", repo_root=Path("/repo"))
+        resolve_flow_definition("e2e.validate-k3s", repo_root=Path("/repo"))
 
 
 def test_requestless_loadtest_definition_is_not_silently_executable() -> None:
@@ -114,7 +114,7 @@ def test_flow_catalog_e2e_all_allows_empty_selection_without_failure() -> None:
 
 
 def test_flow_catalog_e2e_all_task_ids_do_not_duplicate_shared_vm_bootstrap() -> None:
-    task_ids = resolve_flow_task_ids("e2e.all", scenarios=["k3s-junit-curl"])
+    task_ids = resolve_flow_task_ids("e2e.all", scenarios=["validate-k3s"])
 
     assert task_ids.count("vm.ensure_running") == 1
     assert task_ids.count("vm.down") == 1

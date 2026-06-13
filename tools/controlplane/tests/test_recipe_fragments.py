@@ -5,7 +5,7 @@ from controlplane_tool.scenario.components.recipes import build_scenario_recipe
 # Golden snapshot of every scenario's exact component_ids as of 2026-06-11.
 # This pins current behavior so the fragment refactor (Task 2) stays byte-for-byte identical.
 GOLDEN: dict[str, tuple[str, ...]] = {
-    "k3s-junit-curl": (
+    "validate-k3s": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",
         "k3s.install", "k3s.configure_registry", "namespace.install",
@@ -14,30 +14,20 @@ GOLDEN: dict[str, tuple[str, ...]] = {
         "cleanup.uninstall_function_runtime", "cleanup.uninstall_control_plane",
         "namespace.uninstall", "vm.down",
     ),
-    "helm-stack": (
+    "loadtest-helm-legacy": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",
         "k3s.install", "k3s.configure_registry", "namespace.install",
         "helm.deploy_control_plane", "helm.deploy_function_runtime",
         "loadtest.install_k6", "loadtest.run", "experiments.autoscaling",
     ),
-    "one-vm-helm-loadtest": (
+    "loadtest-one-vm": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",
         "k3s.install", "k3s.configure_registry", "namespace.install",
         "helm.deploy_control_plane", "helm.deploy_function_runtime",
     ),
-    "two-vm-loadtest": (
-        "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
-        "registry.ensure_container", "images.build_core", "images.build_selected_functions",
-        "k3s.install", "k3s.configure_registry", "namespace.install",
-        "helm.deploy_control_plane", "helm.deploy_function_runtime",
-        "cli.build_install_dist", "cli.fn_apply_selected",
-        "loadgen.ensure_running", "loadgen.provision_base", "loadgen.install_k6",
-        "loadgen.run_k6", "metrics.prometheus_snapshot", "loadtest.write_report",
-        "loadgen.down", "vm.down",
-    ),
-    "azure-vm-loadtest": (
+    "loadtest-two-vm": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",
         "k3s.install", "k3s.configure_registry", "namespace.install",
@@ -47,7 +37,17 @@ GOLDEN: dict[str, tuple[str, ...]] = {
         "loadgen.run_k6", "metrics.prometheus_snapshot", "loadtest.write_report",
         "loadgen.down", "vm.down",
     ),
-    "proxmox-vm-loadtest": (
+    "loadtest-azure": (
+        "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
+        "registry.ensure_container", "images.build_core", "images.build_selected_functions",
+        "k3s.install", "k3s.configure_registry", "namespace.install",
+        "helm.deploy_control_plane", "helm.deploy_function_runtime",
+        "cli.build_install_dist", "cli.fn_apply_selected",
+        "loadgen.ensure_running", "loadgen.provision_base", "loadgen.install_k6",
+        "loadgen.run_k6", "metrics.prometheus_snapshot", "loadtest.write_report",
+        "loadgen.down", "vm.down",
+    ),
+    "loadtest-proxmox": (
         "vm.ensure_running", "vm.provision_base", "repo.sync_to_vm",
         "registry.ensure_container", "images.build_core", "images.build_selected_functions",
         "k3s.install", "k3s.configure_registry", "namespace.install",
@@ -84,7 +84,7 @@ def test_all_recipes_have_golden_entry() -> None:
 
 def test_loadtest_recipes_are_identical() -> None:
     # The fragment refactor collapses the three loadtest recipes to one shared definition.
-    two_vm = build_scenario_recipe("two-vm-loadtest").component_ids
-    azure = build_scenario_recipe("azure-vm-loadtest").component_ids
-    proxmox = build_scenario_recipe("proxmox-vm-loadtest").component_ids
+    two_vm = build_scenario_recipe("loadtest-two-vm").component_ids
+    azure = build_scenario_recipe("loadtest-azure").component_ids
+    proxmox = build_scenario_recipe("loadtest-proxmox").component_ids
     assert two_vm == azure == proxmox

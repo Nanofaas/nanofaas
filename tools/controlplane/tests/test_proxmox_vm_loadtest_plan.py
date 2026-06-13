@@ -6,15 +6,15 @@ import pytest
 
 def test_proxmox_vm_loadtest_in_scenario_catalog() -> None:
     from controlplane_tool.scenario.catalog import resolve_scenario
-    scenario = resolve_scenario("proxmox-vm-loadtest")
-    assert scenario.name == "proxmox-vm-loadtest"
+    scenario = resolve_scenario("loadtest-proxmox")
+    assert scenario.name == "loadtest-proxmox"
     assert scenario.requires_vm is True
     assert scenario.grouped_phases is True
 
 
 def test_proxmox_vm_loadtest_in_vm_backed_scenarios() -> None:
     from controlplane_tool.core.models import VM_BACKED_SCENARIOS
-    assert "proxmox-vm-loadtest" in VM_BACKED_SCENARIOS
+    assert "loadtest-proxmox" in VM_BACKED_SCENARIOS
 
 
 def test_build_proxmox_vm_loadtest_plan_returns_correct_type(tmp_path) -> None:
@@ -27,7 +27,7 @@ def test_build_proxmox_vm_loadtest_plan_returns_correct_type(tmp_path) -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
@@ -45,7 +45,7 @@ def test_proxmox_vm_loadtest_plan_task_ids_include_platform_prefix() -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
@@ -96,7 +96,7 @@ def test_proxmox_vm_loadtest_plan_phase_titles_count(tmp_path) -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
@@ -116,7 +116,7 @@ def test_proxmox_vm_loadtest_plan_skips_destroy_when_no_cleanup(tmp_path) -> Non
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
@@ -138,7 +138,7 @@ def test_e2e_runner_plan_returns_proxmox_vm_loadtest_plan(tmp_path) -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
@@ -213,14 +213,14 @@ def test_proxmox_vm_loadtest_cleans_up_vms_and_nat_when_prelude_fails(monkeypatc
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
         cleanup_vm=True,
     )
     plan = ProxmoxVmLoadtestPlan(
-        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-proxmox"),
         request=request,
         steps=[],
         runner=runner,
@@ -327,14 +327,14 @@ def test_proxmox_vm_loadtest_tail_events_start_after_prelude(monkeypatch, tmp_pa
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
         cleanup_vm=False,
     )
     plan = proxmox_plan.ProxmoxVmLoadtestPlan(
-        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-proxmox"),
         request=request,
         steps=[],
         runner=runner,
@@ -464,7 +464,7 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(
             lifecycle="proxmox",
@@ -479,7 +479,7 @@ def test_proxmox_vm_loadtest_uses_separate_lifecycle_credentials_for_loadgen(
         cleanup_vm=False,
     )
     plan = proxmox_plan.ProxmoxVmLoadtestPlan(
-        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-proxmox"),
         request=request,
         steps=[],
         runner=runner,
@@ -591,14 +591,14 @@ def test_proxmox_event_sequence_is_pinned(monkeypatch, tmp_path) -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
         cleanup_vm=False,
     )
     plan = proxmox_plan.ProxmoxVmLoadtestPlan(
-        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-proxmox"),
         request=request,
         steps=[],
         runner=runner,
@@ -769,14 +769,14 @@ def test_proxmox_tail_failure_tears_down_vms(monkeypatch, tmp_path) -> None:
 
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell(), manifest_root=tmp_path)
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen"),
         cleanup_vm=True,
     )
     plan = proxmox_plan.ProxmoxVmLoadtestPlan(
-        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-proxmox"),
         request=request,
         steps=[],
         runner=runner,

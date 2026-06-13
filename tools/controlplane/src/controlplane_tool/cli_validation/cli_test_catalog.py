@@ -45,7 +45,7 @@ _SCENARIOS: tuple[CliTestScenarioDefinition, ...] = (
         requires_vm=False,
         accepts_function_selection=True,
         gradle_task=":nanofaas-cli:installDist",
-        legacy_e2e_scenario="deploy-host",
+        legacy_e2e_scenario="validate-deploy-host",
     ),
 )
 

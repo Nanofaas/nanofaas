@@ -61,7 +61,7 @@ def test_compatibility_notes_are_centralized_when_legacy_wrappers_are_mentioned(
     assert "scripts/controlplane.sh cli-test run cli-stack" in testing
     assert "scripts/controlplane.sh cli-test run host-platform" in testing
     assert "scripts/controlplane.sh cli-test run deploy-host" in testing
-    assert "scripts/controlplane.sh e2e run k3s-junit-curl" in testing
+    assert "scripts/controlplane.sh e2e run validate-k3s" in testing
     assert "self-bootstrapping VM-backed scenarios" in testing
     assert "host-platform` is a compatibility path" in testing
     assert "wrapper" in testing.lower()

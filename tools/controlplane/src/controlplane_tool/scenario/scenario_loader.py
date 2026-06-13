@@ -4,6 +4,7 @@ from pathlib import Path
 import tomllib
 
 from controlplane_tool.functions.catalog import resolve_function_definition, resolve_function_preset
+from controlplane_tool.scenario.catalog import canonical_scenario_name
 from controlplane_tool.workspace.paths import default_tool_paths, resolve_workspace_path
 from controlplane_tool.infra.runtimes.registry_runtime import default_registry_url
 from controlplane_tool.scenario.scenario_models import (
@@ -88,7 +89,7 @@ def resolve_scenario_spec(spec: ScenarioSpec, *, source_path: Path | None = None
     return ResolvedScenario(
         source_path=source_path,
         name=spec.name,
-        base_scenario=spec.base_scenario,
+        base_scenario=canonical_scenario_name(spec.base_scenario) if spec.base_scenario else spec.base_scenario,
         runtime=spec.runtime,
         function_preset=spec.function_preset,
         functions=resolved_functions,
@@ -164,5 +165,7 @@ def overlay_scenario_selection(
 def load_scenario_file(path: Path) -> ResolvedScenario:
     scenario_path = _resolve_input_path(path)
     data = tomllib.loads(scenario_path.read_text(encoding="utf-8"))
+    if "base_scenario" in data:
+        data["base_scenario"] = canonical_scenario_name(data["base_scenario"])
     spec = ScenarioSpec.model_validate(data)
     return resolve_scenario_spec(spec, source_path=scenario_path)

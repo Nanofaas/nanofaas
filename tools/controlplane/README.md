@@ -54,15 +54,15 @@ scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-r
 scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
 scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run
-scripts/controlplane.sh e2e run helm-stack --dry-run
-scripts/controlplane.sh e2e run two-vm-loadtest --dry-run
-scripts/controlplane.sh e2e run two-vm-loadtest --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
-scripts/controlplane.sh e2e run proxmox-vm-loadtest --dry-run
+scripts/controlplane.sh e2e run validate-k3s --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run validate-k3s --function-preset demo-javascript --dry-run
+scripts/controlplane.sh e2e run loadtest-helm-legacy --dry-run
+scripts/controlplane.sh e2e run loadtest-two-vm --dry-run
+scripts/controlplane.sh e2e run loadtest-two-vm --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
+scripts/controlplane.sh e2e run loadtest-proxmox --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
-scripts/controlplane.sh e2e all --only k3s-junit-curl --dry-run
+scripts/controlplane.sh e2e run validate-k3s --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e all --only validate-k3s --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest show-profile quick
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
@@ -75,13 +75,15 @@ scripts/e2e-loadtest.sh --profile demo-java --dry-run
 
 For VM-backed E2E runs, the tool resolves the actual VM host for Ansible/SSH operations and treats `e2e all` as one shared VM session with one final teardown point. Use `--no-cleanup-vm` to preserve a Multipass VM after the run; external VM lifecycle mode is always preserved.
 
-`two-vm-loadtest` reuses the Helm stack bootstrap on one VM and provisions a second loadgen VM for k6. It invokes the selected function through the control-plane NodePort, captures Prometheus snapshots, and writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. The sample manifest is `tools/controlplane/scenarios/two-vm-loadtest-java.toml`.
+Scenario names were reorganized into the `validate-*`/`loadtest-*`/`cli-*` taxonomy above; old scenario names (e.g. `k3s-junit-curl`, `two-vm-loadtest`, `docker`, `cli`) keep working via aliases and print a one-line deprecation note pointing at the canonical name.
 
-`scripts/controlplane.sh e2e run one-vm-helm-loadtest` runs the Helm stack and load generator on the same managed VM. It reuses the modern loadtest workflow, writes artifacts under `tools/controlplane/runs/`, and includes autoscaling verification without invoking the legacy `experiments/autoscaling.py` script.
+`loadtest-two-vm` reuses the Helm stack bootstrap on one VM and provisions a second loadgen VM for k6. It invokes the selected function through the control-plane NodePort, captures Prometheus snapshots, and writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. The sample manifest is `tools/controlplane/scenarios/two-vm-loadtest-java.toml`.
+
+`scripts/controlplane.sh e2e run loadtest-one-vm` runs the Helm stack and load generator on the same managed VM. It reuses the modern loadtest workflow, writes artifacts under `tools/controlplane/runs/`, and includes autoscaling verification without invoking the legacy `experiments/autoscaling.py` script.
 
 ## Proxmox VM load test
 
-`proxmox-vm-loadtest` mirrors the two-VM load test but provisions both VMs on a Proxmox VE cluster instead of Multipass. It clones a VM template for the stack node and the k6 loadgen node, runs the same Helm/k6 workflow, and tears the VMs down on completion.
+`loadtest-proxmox` mirrors the two-VM load test but provisions both VMs on a Proxmox VE cluster instead of Multipass. It clones a VM template for the stack node and the k6 loadgen node, runs the same Helm/k6 workflow, and tears the VMs down on completion.
 
 ### Setup
 
@@ -114,7 +116,7 @@ Optional fields (uncomment as needed):
 
 ```bash
 scripts/controlplane.sh tui
-# Navigate to: Load Testing → proxmox-vm-loadtest
+# Navigate to: Load Testing → loadtest-proxmox
 # The TUI reads proxmox.toml automatically and shows a confirmation panel.
 ```
 
@@ -122,10 +124,10 @@ scripts/controlplane.sh tui
 
 ```bash
 # Dry-run (reads proxmox.toml for display but does not touch the cluster)
-scripts/controlplane.sh e2e run proxmox-vm-loadtest --dry-run
+scripts/controlplane.sh e2e run loadtest-proxmox --dry-run
 
 # Live run — credentials can come from proxmox.toml (TUI path) or be passed directly
-scripts/controlplane.sh e2e run proxmox-vm-loadtest \
+scripts/controlplane.sh e2e run loadtest-proxmox \
   --lifecycle proxmox \
   --proxmox-host 192.168.1.100 \
   --proxmox-node pve \
@@ -133,7 +135,7 @@ scripts/controlplane.sh e2e run proxmox-vm-loadtest \
   --proxmox-template-id 100
 
 # Preserve the VMs after the run for inspection
-scripts/controlplane.sh e2e run proxmox-vm-loadtest \
+scripts/controlplane.sh e2e run loadtest-proxmox \
   --lifecycle proxmox \
   --proxmox-host 192.168.1.100 \
   --proxmox-node pve \
@@ -150,11 +152,11 @@ scripts/controlplane.sh tui
 ```
 
 The interactive TUI owns profile selection and profile creation. Use the `Profiles` section to inspect saved profiles and the `Load Testing` / `Validation` sections to consume them.
-Within `Validation -> platform -> k3s-junit-curl`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
-The TUI only offers saved profiles and scenario manifests compatible with `k3s-junit-curl`; incompatible entries are filtered out instead of failing at execution time.
-The same generalized selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> container-local`.
-`cli-stack` and `deploy-host` accept built-in defaults, compatible presets, scenario files, and saved profiles. `container-local` supports single function selection, compatible single-function scenario files, and compatible single-function saved profiles.
-`helm-stack` remains excluded from this selector path because its runtime allowlist intentionally omits JavaScript for the compatibility workflow.
+Within `Validation -> platform -> validate-k3s`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
+The TUI only offers saved profiles and scenario manifests compatible with `validate-k3s`; incompatible entries are filtered out instead of failing at execution time.
+The same generalized selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> validate-container-local`.
+`cli-stack` and `deploy-host` accept built-in defaults, compatible presets, scenario files, and saved profiles. `validate-container-local` supports single function selection, compatible single-function scenario files, and compatible single-function saved profiles.
+`loadtest-helm-legacy` remains excluded from this selector path because its runtime allowlist intentionally omits JavaScript for the compatibility workflow.
 
 In the live workflow view, the left pane is plan-ordered top-level phases only. nested work is separate detail, not peer phases, so verification substeps stay attached under the active phase instead of becoming new rows.
 
@@ -218,28 +220,28 @@ CLI validation saved profiles can also persist:
 - `cli_test.default_scenario`
 
 That lets the same saved profile drive `scripts/controlplane.sh cli-test run --saved-profile <name>` without repeating the scenario name on the command line.
-`k3s-junit-curl`, `helm-stack`, and `cli-stack` are the self-bootstrapping VM-backed scenarios. When no explicit VM request is provided, the controlplane tool creates and configures a managed VM and installs scenario-specific software inside that VM instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`.
+`validate-k3s`, `loadtest-helm-legacy`, and `cli-stack` are the self-bootstrapping VM-backed scenarios. When no explicit VM request is provided, the controlplane tool creates and configures a managed VM and installs scenario-specific software inside that VM instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`.
 `cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the local registry there, then validates function build/push/apply/invoke/enqueue/delete together with `platform install/status/uninstall`. `host-platform` is intentionally platform-only, so saved-profile runtime and namespace defaults still apply there but function selections do not. `vm` preserves the legacy in-VM CLI validation path, `deploy-host` builds, pushes, and registers every selected function on the host, and missing saved profiles or scenario files fail validation with exit code 2.
 
 Scenario defaults are scenario-aware:
 
 - `container-local` is intentionally single-function; multi-function presets such as `demo-java` are rejected before the backend starts.
-- `helm-stack` and the VM loadtest scenarios default to the lean `demo-java` preset (2 images; use `--function-preset demo-loadtest` for the full 8-function matrix, which still excludes Go because the Helm/loadtest compatibility backend does not exercise Go).
-- `k3s-junit-curl` consumes the full resolved function selection in manifest mode instead of silently collapsing to the first entry.
-- unsupported selections such as `scripts/controlplane.sh e2e run helm-stack --functions word-stats-go --dry-run` fail in CLI validation before the backend starts.
+- `loadtest-helm-legacy` and the VM loadtest scenarios default to the lean `demo-java` preset (2 images; use `--function-preset demo-loadtest` for the full 8-function matrix, which still excludes Go because the Helm/loadtest compatibility backend does not exercise Go).
+- `validate-k3s` consumes the full resolved function selection in manifest mode instead of silently collapsing to the first entry.
+- unsupported selections such as `scripts/controlplane.sh e2e run loadtest-helm-legacy --functions word-stats-go --dry-run` fail in CLI validation before the backend starts.
 
-For `k3s-junit-curl`, the resolved manifest is not only rendered in dry-run output. The real VM command now passes `-Dnanofaas.e2e.scenarioManifest=...` into `K8sE2eTest`, so the selected functions and payloads are consumed inside the VM execution path.
+For `validate-k3s`, the resolved manifest is not only rendered in dry-run output. The real VM command now passes `-Dnanofaas.e2e.scenarioManifest=...` into `K8sE2eTest`, so the selected functions and payloads are consumed inside the VM execution path.
 
 Examples:
 
 ```bash
-scripts/controlplane.sh e2e run container-local --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run helm-stack --dry-run
-scripts/controlplane.sh e2e run helm-stack --functions word-stats-java,json-transform-java --dry-run
+scripts/controlplane.sh e2e run validate-container-local --functions word-stats-java --dry-run
+scripts/controlplane.sh e2e run validate-k3s --function-preset demo-java --dry-run
+scripts/controlplane.sh e2e run loadtest-helm-legacy --dry-run
+scripts/controlplane.sh e2e run loadtest-helm-legacy --functions word-stats-java,json-transform-java --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run k3s-junit-curl --saved-profile demo-java --dry-run
+scripts/controlplane.sh e2e run validate-k3s --saved-profile demo-java --dry-run
 ```
 
 ## Artifacts

@@ -113,7 +113,7 @@ class E2eRunner:
         self._resolver = CommandResolver(host_resolver=host_resolver)
 
     def _prepare_recipe_request(self, request: E2eRequest) -> E2eRequest:
-        loadgen_scenarios = {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}
+        loadgen_scenarios = {"loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"}
         try:
             recipe = build_scenario_recipe(request.scenario)
             requires_managed_vm = recipe.requires_managed_vm
@@ -139,22 +139,22 @@ class E2eRunner:
             raise ValueError(
                 f"Scenario '{request.scenario}' does not support runtime '{request.runtime}'"
             )
-        if request.scenario == "two-vm-loadtest":
+        if request.scenario == "loadtest-two-vm":
             from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
             return build_two_vm_loadtest_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "azure-vm-loadtest":
+        if request.scenario == "loadtest-azure":
             from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
             return build_azure_vm_loadtest_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "proxmox-vm-loadtest":
+        if request.scenario == "loadtest-proxmox":
             from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
             return build_proxmox_vm_loadtest_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "k3s-junit-curl":
+        if request.scenario == "validate-k3s":
             from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
             return build_k3s_junit_curl_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "helm-stack":
+        if request.scenario == "loadtest-helm-legacy":
             from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
             return build_helm_stack_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "one-vm-helm-loadtest":
+        if request.scenario == "loadtest-one-vm":
             from controlplane_tool.scenario.scenarios.one_vm_helm_loadtest import (
                 build_one_vm_helm_loadtest_plan,
             )
@@ -162,7 +162,7 @@ class E2eRunner:
         if request.scenario == "cli-stack":
             from controlplane_tool.scenario.scenarios.cli_stack import build_cli_stack_plan
             return build_cli_stack_plan(self, self._prepare_recipe_request(request))
-        if request.scenario == "cli":
+        if request.scenario == "cli-suite":
             from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
             return build_cli_vm_plan(self, request)
         if request.scenario == "cli-host":
@@ -217,19 +217,19 @@ class E2eRunner:
                 continue
 
             if scenario.requires_vm and shared_vm_request is None:
-                if scenario.name in {"azure-vm-loadtest", "proxmox-vm-loadtest"}:
+                if scenario.name in {"loadtest-azure", "loadtest-proxmox"}:
                     continue  # cloud-provider scenarios require explicit credentials
                 shared_vm_request = VmRequest(lifecycle="multipass")
 
             loadgen_vm = None
-            if scenario.name in {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"} and shared_vm_request is not None:
+            if scenario.name in {"loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"} and shared_vm_request is not None:
                 loadgen_vm = loadgen_vm_request or VmRequest(
                     lifecycle=shared_vm_request.lifecycle,
                     name=(
                         "nanofaas-e2e-loadgen"
-                        if scenario.name == "two-vm-loadtest"
+                        if scenario.name == "loadtest-two-vm"
                         else "nanofaas-azure-loadgen"
-                        if scenario.name == "azure-vm-loadtest"
+                        if scenario.name == "loadtest-azure"
                         else "nanofaas-proxmox-loadgen"
                     ),
                     host=shared_vm_request.host,
@@ -256,32 +256,32 @@ class E2eRunner:
                 local_registry=local_registry,
             )
             if scenario.requires_vm:
-                if scenario.name == "two-vm-loadtest":
+                if scenario.name == "loadtest-two-vm":
                     from controlplane_tool.scenario.scenarios.two_vm_loadtest import build_two_vm_loadtest_plan
                     plans.append(build_two_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                if scenario.name == "azure-vm-loadtest":
+                if scenario.name == "loadtest-azure":
                     from controlplane_tool.scenario.scenarios.azure_vm_loadtest import build_azure_vm_loadtest_plan
                     plans.append(build_azure_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                if scenario.name == "proxmox-vm-loadtest":
+                if scenario.name == "loadtest-proxmox":
                     from controlplane_tool.scenario.scenarios.proxmox_vm_loadtest import build_proxmox_vm_loadtest_plan
                     plans.append(build_proxmox_vm_loadtest_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                if scenario.name == "k3s-junit-curl":
+                if scenario.name == "validate-k3s":
                     from controlplane_tool.scenario.scenarios.k3s_junit_curl import build_k3s_junit_curl_plan
                     plans.append(build_k3s_junit_curl_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                if scenario.name == "helm-stack":
+                if scenario.name == "loadtest-helm-legacy":
                     from controlplane_tool.scenario.scenarios.helm_stack import build_helm_stack_plan
                     plans.append(build_helm_stack_plan(self, request))
                     vm_bootstrap_planned = True
                     continue
-                if scenario.name == "one-vm-helm-loadtest":
+                if scenario.name == "loadtest-one-vm":
                     from controlplane_tool.scenario.scenarios.one_vm_helm_loadtest import (
                         build_one_vm_helm_loadtest_plan,
                     )
@@ -292,7 +292,7 @@ class E2eRunner:
                     steps = self._planner.vm_backed_steps(request, include_bootstrap=not vm_bootstrap_planned)
                     from controlplane_tool.scenario.scenarios.cli_stack import CliStackPlan
                     plans.append(CliStackPlan(scenario=scenario, request=request, steps=steps, runner=self))
-                elif scenario.name == "cli":
+                elif scenario.name == "cli-suite":
                     from controlplane_tool.scenario.scenarios.cli_vm import build_cli_vm_plan
                     plans.append(build_cli_vm_plan(self, request, include_bootstrap=not vm_bootstrap_planned))
                 elif scenario.name == "cli-host":

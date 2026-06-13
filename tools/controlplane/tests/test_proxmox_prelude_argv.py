@@ -30,13 +30,13 @@ class FakeProxmoxOrch:
 def _plan():
     runner = E2eRunner(repo_root=Path("/repo"), shell=RecordingShell())
     request = E2eRequest(
-        scenario="proxmox-vm-loadtest",
+        scenario="loadtest-proxmox",
         runtime="java",
         vm=VmRequest(lifecycle="proxmox", name="proxmox-stack", user="ubuntu"),
         loadgen_vm=VmRequest(lifecycle="proxmox", name="proxmox-loadgen", user="ubuntu"),
     )
     return proxmox_plan.ProxmoxVmLoadtestPlan(
-        scenario=resolve_scenario("proxmox-vm-loadtest"),
+        scenario=resolve_scenario("loadtest-proxmox"),
         request=request,
         steps=[],
         runner=runner,

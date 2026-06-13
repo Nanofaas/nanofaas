@@ -39,7 +39,7 @@ def test_resolve_namespace_prefers_explicit_then_resolved_then_default() -> None
 
 def test_resolve_release_prefers_explicit_then_default() -> None:
     assert resolve_scenario_release("cli-stack", explicit_release="custom") == "custom"
-    assert resolve_scenario_release("helm-stack", explicit_release=None) == "control-plane"
+    assert resolve_scenario_release("loadtest-helm-legacy", explicit_release=None) == "control-plane"
 
 
 def test_unknown_scenario_returns_empty_defaults() -> None:

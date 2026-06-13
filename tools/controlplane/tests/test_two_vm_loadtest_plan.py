@@ -17,7 +17,7 @@ def _plan():
         host_resolver=lambda _request: "10.0.0.9",
     )
     request = E2eRequest(
-        scenario="two-vm-loadtest",
+        scenario="loadtest-two-vm",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         loadgen_vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e-loadgen"),

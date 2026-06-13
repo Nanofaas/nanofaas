@@ -6,7 +6,7 @@ import typer
 from pydantic import ValidationError
 
 from controlplane_tool.cli.flow_exit import exit_on_failed_flow
-from controlplane_tool.scenario.catalog import list_scenarios, resolve_scenario
+from controlplane_tool.scenario.catalog import canonical_scenario_name, list_scenarios, resolve_scenario
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.e2e.e2e_runner import E2eRunner, ScenarioPlan
 from controlplane_tool.orchestation.flow_catalog import resolve_flow_definition, resolve_flow_task_ids
@@ -143,21 +143,21 @@ def _build_request(
     vm = None
     loadgen_vm = None
     if scenario in {
-        "k3s-junit-curl",
-        "cli",
+        "validate-k3s",
+        "cli-suite",
         "cli-stack",
         "cli-host",
-        "helm-stack",
-        "two-vm-loadtest",
-        "azure-vm-loadtest",
-        "proxmox-vm-loadtest",
+        "loadtest-helm-legacy",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
     }:
         stack_name = name
-        if scenario == "two-vm-loadtest" and stack_name is None:
+        if scenario == "loadtest-two-vm" and stack_name is None:
             stack_name = "nanofaas-e2e"
-        if scenario == "azure-vm-loadtest" and stack_name is None:
+        if scenario == "loadtest-azure" and stack_name is None:
             stack_name = "nanofaas-azure"
-        if scenario == "proxmox-vm-loadtest" and stack_name is None:
+        if scenario == "loadtest-proxmox" and stack_name is None:
             stack_name = "nanofaas-proxmox"
         vm = _build_vm_request(
             lifecycle=lifecycle,
@@ -177,7 +177,7 @@ def _build_request(
             # snapshot (30090); the loadgen VM reaches the stack via its public
             # IP through the same NSG rules. Loadgen itself stays SSH-only.
             azure_open_ports=(
-                _AZURE_STACK_NODE_PORTS if scenario == "azure-vm-loadtest" else None
+                _AZURE_STACK_NODE_PORTS if scenario == "loadtest-azure" else None
             ),
             proxmox_host=proxmox_host,
             proxmox_node=proxmox_node,
@@ -186,12 +186,12 @@ def _build_request(
             proxmox_template_id=proxmox_template_id,
             proxmox_ssh_key_path=proxmox_ssh_key_path,
         )
-    if scenario in {"two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
+    if scenario in {"loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"}:
         loadgen_name_default = (
             "nanofaas-e2e-loadgen"
-            if scenario == "two-vm-loadtest"
+            if scenario == "loadtest-two-vm"
             else "nanofaas-azure-loadgen"
-            if scenario == "azure-vm-loadtest"
+            if scenario == "loadtest-azure"
             else "nanofaas-proxmox-loadgen"
         )
         loadgen_vm = _build_vm_request(
@@ -282,9 +282,9 @@ def _handle_validation(action) -> None:
 
 
 def _default_selection_for(scenario: str) -> ScenarioSelectionConfig:
-    if scenario in {"container-local", "deploy-host"}:
+    if scenario in {"validate-container-local", "validate-deploy-host"}:
         return ScenarioSelectionConfig(base_scenario=scenario, functions=["word-stats-java"])
-    if scenario in {"helm-stack", "two-vm-loadtest", "azure-vm-loadtest", "proxmox-vm-loadtest"}:
+    if scenario in {"loadtest-helm-legacy", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"}:
         # Lean default: 2 images instead of demo-loadtest's 8 (~17 min of in-VM
         # builds saved per run; k6 exercises word-stats-java either way). Pass
         # --function-preset demo-loadtest (or a scenario file) for the full matrix.
@@ -594,6 +594,9 @@ def e2e_run(
     proxmox_ssh_key_path: str | None = typer.Option(None, "--proxmox-ssh-key", help="SSH private key for SCP transfers."),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
+    if scenario is not None:
+        scenario = canonical_scenario_name(scenario)
+
     def _action() -> None:
         # Azure cloud-init creates "azureuser" by default; override "ubuntu" default.
         effective_user = user if not (lifecycle == "azure" and user == "ubuntu") else "azureuser"
@@ -674,8 +677,8 @@ def e2e_all(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
-        selected_names = parse_function_csv(only)
-        skipped_names = parse_function_csv(skip)
+        selected_names = [canonical_scenario_name(n) for n in parse_function_csv(only)]
+        skipped_names = [canonical_scenario_name(n) for n in parse_function_csv(skip)]
         candidate_names = selected_names or [scenario.name for scenario in list_scenarios()]
         active_names = [scenario_name for scenario_name in candidate_names if scenario_name not in skipped_names]
         needs_vm = any(resolve_scenario(scenario_name).requires_vm for scenario_name in active_names)

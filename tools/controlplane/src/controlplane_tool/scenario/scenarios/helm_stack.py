@@ -27,10 +27,10 @@ if TYPE_CHECKING:
 
 @dataclass
 class HelmStackPlan:
-    """ScenarioPlan Protocol implementation for helm-stack.
+    """ScenarioPlan Protocol implementation for loadtest-helm-legacy.
 
     Builds and runs a Workflow of honest Tasks (no legacy recipe engine), while
-    preserving the exact recipe ordering, task_ids and commands. helm-stack leaves
+    preserving the exact recipe ordering, task_ids and commands. loadtest-helm-legacy leaves
     the VM running, so there is no vm.down cleanup task.
     """
 
@@ -63,7 +63,7 @@ class HelmStackPlan:
         """Ordered display titles of the workflow phases (for the TUI).
 
         Mirrors ``workflow_task_ids``: prepends the EnsureVmRunning title (run
-        separately by ``run()``) then the titles of the Workflow tasks (helm-stack
+        separately by ``run()``) then the titles of the Workflow tasks (loadtest-helm-legacy
         has no cleanup tasks).
         """
         setup = self._build_setup()
@@ -94,7 +94,7 @@ class HelmStackPlan:
         running).
 
         *vm_info* is accepted for signature parity with the other converted plans;
-        helm-stack has no cleanup task that needs it.
+        loadtest-helm-legacy has no cleanup task that needs it.
         """
         del vm_info
 
@@ -103,7 +103,7 @@ class HelmStackPlan:
                 return HANDLED  # run separately by run() as EnsureVmRunning
             return None
 
-        recipe = build_scenario_recipe("helm-stack")
+        recipe = build_scenario_recipe("loadtest-helm-legacy")
         tasks = build_command_tasks(
             self.runner,
             self.request,
@@ -144,7 +144,7 @@ def build_helm_stack_plan(
         workflow_display_steps,
     )
 
-    scenario = resolve_scenario("helm-stack")
+    scenario = resolve_scenario("loadtest-helm-legacy")
     plan = HelmStackPlan(
         scenario=scenario,
         request=request,

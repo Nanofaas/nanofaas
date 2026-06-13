@@ -10,7 +10,7 @@ def test_scenario_planner_local_steps_returns_list() -> None:
     paths = MagicMock()
     paths.workspace_root = Path("/repo")
     planner = ScenarioPlanner(paths=paths, vm=vm, shell=shell, manifest_root=Path("/repo/runs/manifests"))
-    request = E2eRequest(scenario="docker", runtime="java")
+    request = E2eRequest(scenario="validate-docker-pool", runtime="java")
 
     steps = planner.local_steps(request)
 

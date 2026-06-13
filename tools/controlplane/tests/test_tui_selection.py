@@ -198,7 +198,7 @@ def test_k3s_scenario_file_choices_keep_strict_base_scenario(monkeypatch, tmp_pa
             )
         if path.name == "k8s-demo-all.toml":
             return _scenario(
-                base_scenario="helm-stack",
+                base_scenario="loadtest-helm-legacy",
                 function_keys=["word-stats-java"],
                 functions=[_function("word-stats-java", runtime="java")],
             )

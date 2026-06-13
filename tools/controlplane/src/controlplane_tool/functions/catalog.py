@@ -319,8 +319,8 @@ PRESET_SPECS: tuple[FunctionPresetSpec, ...] = (
 
 PRESET_SPEC_INDEX = {spec.name: spec for spec in PRESET_SPECS}
 SCENARIO_FUNCTION_RUNTIME_ALLOWLIST: dict[str, frozenset[FunctionRuntimeKind]] = {
-    "helm-stack": frozenset({"java", "java-lite", "python", "exec"}),
-    "two-vm-loadtest": frozenset({"java", "java-lite", "python", "exec"}),
+    "loadtest-helm-legacy": frozenset({"java", "java-lite", "python", "exec"}),
+    "loadtest-two-vm": frozenset({"java", "java-lite", "python", "exec"}),
 }
 
 

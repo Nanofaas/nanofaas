@@ -11,7 +11,7 @@ from controlplane_tool.infra.vm.vm_models import VmRequest
 
 def _azure_request() -> E2eRequest:
     return E2eRequest(
-        scenario="azure-vm-loadtest",
+        scenario="loadtest-azure",
         runtime="java",
         vm=VmRequest(
             lifecycle="azure",

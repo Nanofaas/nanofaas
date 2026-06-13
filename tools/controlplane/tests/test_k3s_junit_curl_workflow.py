@@ -65,7 +65,7 @@ EXPECTED_SUMMARIES = [
     "Install namespace Helm release",
     "Deploy control-plane via Helm",
     "Deploy function-runtime via Helm",
-    "Run k3s-junit-curl verification",
+    "Run validate-k3s verification",
     "Run K8sE2eTest in VM",
     "Uninstall function-runtime Helm release",
     "Uninstall control-plane Helm release",
@@ -98,7 +98,7 @@ EXPECTED_COMMAND_TASK_IDS = {
 
 def _request(cleanup_vm: bool = True) -> E2eRequest:
     return E2eRequest(
-        scenario="k3s-junit-curl",
+        scenario="validate-k3s",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         cleanup_vm=cleanup_vm,

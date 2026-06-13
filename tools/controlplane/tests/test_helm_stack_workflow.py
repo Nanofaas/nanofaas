@@ -80,7 +80,7 @@ EXPECTED_COMMAND_TASK_IDS = {
 
 def _request() -> E2eRequest:
     return E2eRequest(
-        scenario="helm-stack",
+        scenario="loadtest-helm-legacy",
         runtime="java",
         vm=VmRequest(lifecycle="multipass", name="nanofaas-e2e"),
         cleanup_vm=True,
