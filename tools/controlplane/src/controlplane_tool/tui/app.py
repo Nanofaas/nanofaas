@@ -1268,7 +1268,7 @@ class NanofaasTUI:
                 action=_run_proxmox_loadtest_workflow,
             )
 
-        else:  # k3s-junit-curl
+        else:  # validate-k3s
             from controlplane_tool.e2e.e2e_runner import E2eRunner
             from controlplane_tool.cli.e2e_commands import _resolve_run_request
 
