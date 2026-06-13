@@ -16,6 +16,7 @@ from controlplane_tool.core.models import (
     TestsConfig,
 )
 from controlplane_tool.building.module_catalog import module_choices
+from controlplane_tool.scenario.catalog import resolve_scenario
 from workflow_tasks.orchestration import FlowRunResult, LocalFlowDefinition
 from controlplane_tool.tui import DEFAULT_REQUIRED_METRICS, build_profile_interactive
 import controlplane_tool.tui.workflow_controller as tui_wfc
@@ -885,7 +886,7 @@ def test_tui_cli_e2e_menu_describes_host_platform_as_compatibility_path(monkeypa
     ]
 
 
-def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> None:
+def test_tui_e2e_menu_lists_only_platform_validations(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
 
     captured: dict[str, object] = {}
@@ -901,13 +902,66 @@ def test_tui_e2e_menu_marks_vm_scenarios_as_self_bootstrapping(monkeypatch) -> N
 
     NanofaasTUI()._e2e_menu()
 
-    assert "validate-k3s — self-bootstrapping VM stack with curl + JUnit verification" in captured["choices"]
-    assert "loadtest-helm-legacy — self-bootstrapping VM stack for Helm compatibility" in captured["choices"]
-    assert "loadtest-two-vm — Helm stack with dedicated k6 load generator VM" in captured["choices"]
-    assert "loadtest-proxmox — Two-VM Proxmox VE load test with k6" in captured["choices"]
+    values = [c.value for c in tui_app._PLATFORM_VALIDATION_CHOICES]
+    assert values == [
+        "validate-k3s",
+        "validate-container-local",
+        "validate-docker-pool",
+        "validate-buildpack-pool",
+    ]
+    for value in values:
+        assert any(value in title for title in captured["choices"])
+    for loadtest in (
+        "loadtest-helm-legacy",
+        "loadtest-one-vm",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
+    ):
+        assert not any(loadtest in title for title in captured["choices"])
 
 
-def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
+def test_tui_loadtest_vm_menu_lists_loadtests_with_catalog_descriptions(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    captured: dict[str, object] = {}
+    answers = iter(["back"])
+
+    def fake_select(*args, **kwargs):  # noqa: ANN001
+        captured["choices"] = [choice.title for choice in kwargs["choices"]]
+        return _Prompt(next(answers))
+
+    monkeypatch.setattr(tui_app.questionary, "select", fake_select)
+    monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: prompt_fn())
+
+    NanofaasTUI()._loadtest_vm_menu()
+
+    for scenario in (
+        "loadtest-one-vm",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
+        "loadtest-helm-legacy",
+    ):
+        scenario_def = resolve_scenario(scenario)
+        assert f"{scenario} — {scenario_def.description}" in captured["choices"]
+
+
+def test_tui_loadtest_menu_vm_routes_to_loadtest_vm_menu(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    answers = iter(["vm", "back"])
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(answers))
+    monkeypatch.setattr(NanofaasTUI, "_loadtest_vm_menu", lambda self: called.update({"opened": True}))
+
+    NanofaasTUI()._loadtest_menu()
+
+    assert called["opened"] is True
+
+
+def test_tui_loadtest_vm_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
 
     answers = iter(["loadtest-two-vm", "back"])
@@ -924,12 +978,12 @@ def test_tui_e2e_menu_routes_two_vm_loadtest_to_vm_runner(monkeypatch) -> None:
         lambda self, scenario: called.update({"scenario": scenario}),
     )
 
-    NanofaasTUI()._e2e_menu()
+    NanofaasTUI()._loadtest_vm_menu()
 
     assert called["scenario"] == "loadtest-two-vm"
 
 
-def test_tui_e2e_menu_routes_proxmox_vm_loadtest_to_vm_runner(monkeypatch) -> None:
+def test_tui_loadtest_vm_menu_routes_proxmox_vm_loadtest_to_vm_runner(monkeypatch) -> None:
     import controlplane_tool.tui.app as tui_app
 
     answers = iter(["loadtest-proxmox", "back"])
@@ -946,7 +1000,7 @@ def test_tui_e2e_menu_routes_proxmox_vm_loadtest_to_vm_runner(monkeypatch) -> No
         lambda self, scenario: called.update({"scenario": scenario}),
     )
 
-    NanofaasTUI()._e2e_menu()
+    NanofaasTUI()._loadtest_vm_menu()
 
     assert called["scenario"] == "loadtest-proxmox"
 
@@ -1269,7 +1323,7 @@ def test_loadtest_tui_descriptions_explain_mock_fixture_execution(monkeypatch) -
     import controlplane_tool.tui.app as tui_app
 
     primary = {choice.value: choice.description for choice in tui_app._MAIN_MENU_CHOICES}
-    actions = {choice.value: choice.description for choice in tui_app._LOADTEST_ACTION_CHOICES}
+    actions = {choice.value: choice.description for choice in tui_app._LOADTEST_LOCAL_ACTION_CHOICES}
 
     assert "mock Kubernetes API" in primary["loadtest"]
     assert "LOCAL fixture functions" in actions["run"]
@@ -1516,7 +1570,7 @@ def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path
     )
     NanofaasTUI()._vm_menu()
 
-    loadtest_selects = iter(["plan", "demo-java", "back"])
+    loadtest_selects = iter(["local", "plan", "demo-java", "back"])
     loadtest_asks = iter([True])
     monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(loadtest_selects))
     monkeypatch.setattr(tui_app, "_ask", lambda prompt_fn: next(loadtest_asks))
@@ -2700,10 +2754,10 @@ def test_tui_proxmox_vm_loadtest_keeps_cleanup_phases_enabled(monkeypatch) -> No
     assert "Destroy stack VM (Proxmox)" in called["planned_steps"]
 
 
-def test_platform_validation_choices_includes_azure_vm_loadtest() -> None:
-    from controlplane_tool.tui.app import _PLATFORM_VALIDATION_CHOICES
+def test_loadtest_vm_choices_includes_azure_vm_loadtest() -> None:
+    from controlplane_tool.tui.app import _LOADTEST_VM_CHOICES
 
-    values = [c.value for c in _PLATFORM_VALIDATION_CHOICES]
+    values = [c.value for c in _LOADTEST_VM_CHOICES]
     assert "loadtest-azure" in values
 
 

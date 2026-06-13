@@ -39,7 +39,7 @@ from controlplane_tool.loadtest.loadtest_flows import build_loadtest_flow
 from controlplane_tool.workspace.paths import default_tool_paths
 from controlplane_tool.infra.runtimes.registry_runtime import default_registry_url, ensure_local_registry
 from controlplane_tool.workspace.profiles import list_profiles, load_profile
-from controlplane_tool.scenario.catalog import canonical_scenario_name
+from controlplane_tool.scenario.catalog import canonical_scenario_name, resolve_scenario
 from controlplane_tool.scenario.scenario_flows import build_scenario_flow
 from controlplane_tool.tui.event_applier import TuiEventApplier
 from controlplane_tool.tui.selection import (
@@ -522,63 +522,36 @@ _REGISTRY_ACTION_CHOICES = [
     ),
 ]
 
+def _scenario_choice(name: str) -> _DescribedChoice:
+    scenario = resolve_scenario(name)
+    return _DescribedChoice(
+        f"{name} — {scenario.description}",
+        name,
+        scenario.details or scenario.description,
+    )
+
+
 _PLATFORM_VALIDATION_CHOICES = [
-    _DescribedChoice(
-        "validate-k3s — self-bootstrapping VM stack with curl + JUnit verification",
+    _scenario_choice(name)
+    for name in (
         "validate-k3s",
-        "Provision a managed VM, install k3s, deploy the stack, and verify the result with curl probes plus JUnit checks.",
-    ),
-    _DescribedChoice(
-        "loadtest-helm-legacy — self-bootstrapping VM stack for Helm compatibility",
-        "loadtest-helm-legacy",
-        "Bootstrap the full VM-backed Helm stack and validate the deployment path that load testing and demos rely on.",
-    ),
-    _DescribedChoice(
-        "loadtest-one-vm — Helm stack + k6 + autoscaling check on one VM",
-        "loadtest-one-vm",
-        "Bootstrap the Helm stack on a single VM, run k6 load generation, capture Prometheus snapshots, generate a report, and verify autoscaling.",
-    ),
-    _DescribedChoice(
-        "loadtest-two-vm — Helm stack with dedicated k6 load generator VM",
-        "loadtest-two-vm",
-        "Bootstrap the Helm stack on one VM and run k6 from a second managed load generator VM.",
-    ),
-    _DescribedChoice(
-        "loadtest-azure — Two-VM Azure load test with k6",
-        "loadtest-azure",
-        "Provision two Azure VMs (stack + loadgen) via OpenTofu, run k6 load test, capture "
-        "Prometheus snapshots. Reads defaults from profiles/azure.toml.",
-    ),
-    _DescribedChoice(
-        "loadtest-proxmox — Two-VM Proxmox VE load test with k6",
-        "loadtest-proxmox",
-        "Clone two VMs on Proxmox VE (stack + loadgen), run k6 load test, capture "
-        "Prometheus snapshots. Reads defaults from profiles/proxmox.toml.",
-    ),
-    _DescribedChoice(
-        "validate-container-local — local managed DEPLOYMENT",
         "validate-container-local",
-        "Run the managed DEPLOYMENT workflow entirely on the local machine without provisioning a VM first.",
-    ),
+        "validate-docker-pool",
+        "validate-buildpack-pool",
+    )
 ]
 
-_PLATFORM_HOST_COMPAT_CHOICE = _DescribedChoice(
-    "validate-deploy-host — deploy-host with local registry",
-    "validate-deploy-host",
-    "Build on the host, push through a local registry, and validate the host compatibility deployment path.",
-)
+_PLATFORM_HOST_COMPAT_CHOICE = _scenario_choice("validate-deploy-host")
 
-_PLATFORM_LOCAL_RUNTIME_CHOICES = [
-    _DescribedChoice(
-        "validate-docker-pool — local POOL with Docker",
-        "validate-docker-pool",
-        "Exercise the local POOL runtime with Docker-backed execution on the host machine.",
-    ),
-    _DescribedChoice(
-        "validate-buildpack-pool — local POOL with buildpack",
-        "validate-buildpack-pool",
-        "Exercise the local POOL runtime using buildpack-produced images on the host machine.",
-    ),
+_LOADTEST_VM_CHOICES = [
+    _scenario_choice(name)
+    for name in (
+        "loadtest-one-vm",
+        "loadtest-two-vm",
+        "loadtest-azure",
+        "loadtest-proxmox",
+        "loadtest-helm-legacy",
+    )
 ]
 
 _CLI_E2E_RUNNER_CHOICES = [
@@ -587,6 +560,7 @@ _CLI_E2E_RUNNER_CHOICES = [
         "cli-stack",
         "Run the canonical VM-backed CLI stack that bootstraps the platform and validates the CLI end to end.",
     ),
+    _scenario_choice("cli-suite"),
     _DescribedChoice(
         "host-platform — compatibility path, CLI on host vs cluster",
         "host-platform",
@@ -594,7 +568,7 @@ _CLI_E2E_RUNNER_CHOICES = [
     ),
 ]
 
-_LOADTEST_ACTION_CHOICES = [
+_LOADTEST_LOCAL_ACTION_CHOICES = [
     _choice(
         "run — run load test with profile",
         "run",
@@ -609,6 +583,19 @@ _LOADTEST_ACTION_CHOICES = [
         "new profile — interactive wizard",
         "new_profile",
         "Create or revise a saved profile interactively before selecting it for load testing.",
+    ),
+]
+
+_LOADTEST_ACTION_CHOICES = [
+    _choice(
+        "local — k6 vs local mock control-plane",
+        "local",
+        "Run k6 against a local control-plane using a mock Kubernetes API and LOCAL fixture functions; this validates dispatch and metrics, not real target pods.",
+    ),
+    _choice(
+        "vm — full-stack load tests on real VMs",
+        "vm",
+        "Bootstrap the Helm stack on one or more managed VMs (Multipass, Azure, or Proxmox) and run k6 against the real cluster.",
     ),
 ]
 
@@ -974,7 +961,6 @@ class NanofaasTUI:
             choices = list(_PLATFORM_VALIDATION_CHOICES)
             if include_host_compat:
                 choices.append(_PLATFORM_HOST_COMPAT_CHOICE)
-            choices.extend(_PLATFORM_LOCAL_RUNTIME_CHOICES)
 
             scenario_choice = _ask(
                 lambda: _select_described_value(
@@ -986,17 +972,33 @@ class NanofaasTUI:
             if scenario_choice == _BACK_VALUE:
                 return
 
-            scenario_choice = canonical_scenario_name(scenario_choice)
-
-            if scenario_choice in ("validate-k3s", "loadtest-helm-legacy", "loadtest-one-vm", "loadtest-two-vm", "loadtest-azure", "loadtest-proxmox"):
-                self._run_vm_e2e_scenario(scenario_choice)
-            elif scenario_choice == "validate-container-local":
-                self._run_container_local()
-            elif scenario_choice == "validate-deploy-host":
-                self._run_deploy_host()
-            else:
-                self._run_e2e_scenario(scenario_choice)
+            self._dispatch_scenario_choice(scenario_choice)
             continue
+
+    def _dispatch_scenario_choice(self, scenario_choice: str) -> None:
+        """Run the workflow for a scenario chosen from any menu.
+
+        Shared by the Validation -> platform menu and the Loadtest -> vm menu
+        so every scenario reaches the same E2eRunner.plan()/build_scenario_flow()
+        path regardless of which menu it was selected from.
+        """
+        scenario_choice = canonical_scenario_name(scenario_choice)
+
+        if scenario_choice in (
+            "validate-k3s",
+            "loadtest-helm-legacy",
+            "loadtest-one-vm",
+            "loadtest-two-vm",
+            "loadtest-azure",
+            "loadtest-proxmox",
+        ):
+            self._run_vm_e2e_scenario(scenario_choice)
+        elif scenario_choice == "validate-container-local":
+            self._run_container_local()
+        elif scenario_choice == "validate-deploy-host":
+            self._run_deploy_host()
+        else:
+            self._run_e2e_scenario(scenario_choice)
 
     def _run_vm_e2e_scenario(self, scenario: str) -> None:
         repo_root = default_tool_paths().workspace_root
@@ -1537,6 +1539,10 @@ class NanofaasTUI:
             )
             return
 
+        if runner_choice == "cli-suite":
+            self._run_e2e_scenario("cli-suite")
+            return
+
         if runner_choice == "host-platform":
             def _run_cli_host_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
                 step("Running CLI Host Platform E2E")
@@ -1574,6 +1580,18 @@ class NanofaasTUI:
             )
             if action == _BACK_VALUE:
                 return
+
+            if action == "vm":
+                self._loadtest_vm_menu()
+                continue
+
+            action = _select_value(
+                "Action:",
+                choices=_LOADTEST_LOCAL_ACTION_CHOICES,
+                include_back=True,
+            )
+            if action == _BACK_VALUE:
+                continue
 
             if action == "new_profile":
                 self._profile_menu()
@@ -1639,6 +1657,22 @@ class NanofaasTUI:
                 action=_run_loadtest_workflow,
             )
             return
+
+    def _loadtest_vm_menu(self) -> None:
+        while True:
+            phase("Load Testing — VM")
+
+            scenario_choice = _ask(
+                lambda: _select_described_value(
+                    "Scenario:",
+                    choices=_LOADTEST_VM_CHOICES,
+                    include_back=True,
+                )
+            )
+            if scenario_choice == _BACK_VALUE:
+                return
+
+            self._dispatch_scenario_choice(scenario_choice)
 
     # ── FUNCTIONS ─────────────────────────────────────────────────────────────
 
