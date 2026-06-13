@@ -21,6 +21,11 @@ public class QueueBackedEnqueuer implements InvocationEnqueuer {
     }
 
     @Override
+    public boolean hasAvailableSlot(String functionName) {
+        return queueManager.hasAvailableSlot(functionName);
+    }
+
+    @Override
     public boolean tryAcquireSlot(String functionName) {
         return queueManager.tryAcquireSlot(functionName);
     }

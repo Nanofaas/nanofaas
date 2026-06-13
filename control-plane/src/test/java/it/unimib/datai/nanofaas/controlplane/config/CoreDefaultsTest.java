@@ -1,8 +1,11 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.Test;
@@ -13,9 +16,19 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 class CoreDefaultsTest {
 
+    // CoreDefaults.metricsLifecycleListener requires a Metrics bean, so the context
+    // must provide one before CoreDefaults can refresh.
+    private static Metrics metricsBean() {
+        return new Metrics(new SimpleMeterRegistry());
+    }
+
     @Test
     void registersNoOpBeansWhenMissing() {
-        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(CoreDefaults.class)) {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(Metrics.class, CoreDefaultsTest::metricsBean);
+            context.register(CoreDefaults.class);
+            context.refresh();
+
             InvocationEnqueuer invocationEnqueuer = context.getBean(InvocationEnqueuer.class);
             ScalingMetricsSource scalingMetricsSource = context.getBean(ScalingMetricsSource.class);
             SyncQueueGateway syncQueueGateway = context.getBean(SyncQueueGateway.class);
@@ -78,6 +91,7 @@ class CoreDefaultsTest {
         ImageValidator customImageValidator = spec -> {};
 
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(Metrics.class, CoreDefaultsTest::metricsBean);
             context.registerBean(InvocationEnqueuer.class, () -> customInvocationEnqueuer);
             context.registerBean(ScalingMetricsSource.class, () -> customScalingMetricsSource);
             context.registerBean(SyncQueueGateway.class, () -> customSyncQueueGateway);
@@ -90,5 +104,28 @@ class CoreDefaultsTest {
             assertThat(context.getBean(SyncQueueGateway.class)).isSameAs(customSyncQueueGateway);
             assertThat(context.getBean(ImageValidator.class)).isSameAs(customImageValidator);
         }
+    }
+
+    @Test
+    void metricsLifecycleListener_removesFunctionMetrics() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        Metrics metrics = new Metrics(registry);
+        CoreDefaults defaults = new CoreDefaults();
+        FunctionRegistrationListener listener = defaults.metricsLifecycleListener(metrics);
+
+        metrics.dispatch("echo");
+        assertThat(registry.find("function_dispatch_total").tag("function", "echo").counter()).isNotNull();
+
+        listener.onRemove("echo");
+
+        assertThat(registry.find("function_dispatch_total").tag("function", "echo").counter()).isNull();
+
+        listener.onRegister(new it.unimib.datai.nanofaas.common.model.FunctionSpec(
+                "echo", "image", null, java.util.Map.of(), null, 1000, 1, 1, 3, null,
+                it.unimib.datai.nanofaas.common.model.ExecutionMode.LOCAL, null, null, null
+        ));
+        metrics.dispatch("echo");
+
+        assertThat(registry.find("function_dispatch_total").tag("function", "echo").counter()).isNotNull();
     }
 }

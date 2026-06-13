@@ -21,6 +21,7 @@ The core provides no-op defaults for:
 - `autoscaler`: internal autoscaling components that consume scaling metrics and update concurrency/replica behavior.
 - `runtime-config`: hot runtime config service (rate limit + sync-queue knobs) and optional admin API at `/v1/admin/runtime-config` when `nanofaas.admin.runtime-config.enabled=true`.
 - `image-validator`: Kubernetes-backed image pull validation for function registration (overrides core no-op validator).
+- `k8s-deployment-provider`: managed Kubernetes Deployment/Service provisioning; reconciles resources in place, removes stale HPAs when scaling strategy changes away from `HPA`, and supports `nanofaas.k8s.image-pull-policy` (default `Always`; set `IfNotPresent` for immutable image references to reduce registry pulls).
 - `build-metadata`: diagnostic endpoint `GET /modules/build-metadata`.
 
 ## Build-time selection

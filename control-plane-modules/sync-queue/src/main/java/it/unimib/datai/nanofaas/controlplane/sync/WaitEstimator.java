@@ -38,6 +38,10 @@ public class WaitEstimator {
         prune(perFunctionEvents.get(functionName), now);
     }
 
+    public void removeFunctionState(String functionName) {
+        perFunctionEvents.remove(functionName);
+    }
+
     public double estimateWaitSeconds(String functionName, int queueDepth, Instant now) {
         if (queueDepth <= 0) {
             return 0.0;

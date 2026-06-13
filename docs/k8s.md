@@ -22,6 +22,17 @@
   - resources: requests/limits from FunctionSpec
   - restartPolicy: Never
 
+## Managed Deployments
+
+- Function Deployments and Services are reconciled in place instead of deleted
+  and recreated during provisioning updates.
+- HPA objects are reconciled only when the function scaling strategy is `HPA`;
+  stale HPAs are deleted when a function is updated to another strategy.
+- Function image pull policy is configurable through
+  `nanofaas.k8s.image-pull-policy`. The default is `Always` to preserve
+  mutable-tag behavior; use `IfNotPresent` with immutable image references to
+  reduce registry pulls.
+
 ## Labels & Annotations
 
 - Labels:

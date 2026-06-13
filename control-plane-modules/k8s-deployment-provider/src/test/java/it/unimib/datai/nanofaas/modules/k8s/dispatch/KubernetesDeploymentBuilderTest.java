@@ -106,11 +106,22 @@ class KubernetesDeploymentBuilderTest {
     }
 
     @Test
-    void buildDeployment_alwaysPullsFunctionImages() {
+    void buildDeployment_usesDefaultImagePullPolicy() {
         Deployment deployment = builder.buildDeployment(spec(null));
         Container container = deployment.getSpec().getTemplate().getSpec().getContainers().get(0);
 
         assertEquals("Always", container.getImagePullPolicy());
+    }
+
+    @Test
+    void buildDeployment_usesConfiguredImagePullPolicy() {
+        KubernetesDeploymentBuilder customBuilder = new KubernetesDeploymentBuilder(
+                new KubernetesProperties("default", null, "IfNotPresent")
+        );
+        Deployment deployment = customBuilder.buildDeployment(spec(null));
+        Container container = deployment.getSpec().getTemplate().getSpec().getContainers().get(0);
+
+        assertEquals("IfNotPresent", container.getImagePullPolicy());
     }
 
     @Test

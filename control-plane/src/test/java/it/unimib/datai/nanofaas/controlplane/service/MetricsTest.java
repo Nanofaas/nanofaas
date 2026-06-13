@@ -80,4 +80,37 @@ class MetricsTest {
         assertThat(first.queueWait()).isSameAs(metrics.queueWait("echo"));
         assertThat(first.e2eLatency()).isSameAs(metrics.e2eLatency("echo"));
     }
+
+    @Test
+    void removeFunction_removesRegisteredMeters() {
+        metrics.dispatch("echo");
+        metrics.latency("echo");
+
+        assertThat(registry.find("function_dispatch_total").tag("function", "echo").counter()).isNotNull();
+        assertThat(registry.find("function_latency_ms").tag("function", "echo").timer()).isNotNull();
+
+        metrics.removeFunction("echo");
+
+        assertThat(registry.find("function_dispatch_total").tag("function", "echo").counter()).isNull();
+        assertThat(registry.find("function_latency_ms").tag("function", "echo").timer()).isNull();
+    }
+
+    @Test
+    void removedFunction_doesNotRecreateMetersUntilRegisteredAgain() {
+        metrics.dispatch("echo");
+        metrics.removeFunction("echo");
+
+        metrics.success("echo");
+        metrics.error("echo");
+        metrics.timers("echo").latency().record(1, java.util.concurrent.TimeUnit.MILLISECONDS);
+
+        assertThat(registry.find("function_success_total").tag("function", "echo").counter()).isNull();
+        assertThat(registry.find("function_error_total").tag("function", "echo").counter()).isNull();
+        assertThat(registry.find("function_latency_ms").tag("function", "echo").timer()).isNull();
+
+        metrics.registerFunction("echo");
+        metrics.success("echo");
+
+        assertThat(registry.find("function_success_total").tag("function", "echo").counter()).isNotNull();
+    }
 }
