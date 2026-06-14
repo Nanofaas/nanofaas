@@ -66,7 +66,8 @@ class CliHostPlatformRunner:
         self._vm = VmOrchestrator(self.repo_root, shell=self._shell)
         self._cli_bin = (
             self.repo_root
-            / "nanofaas-cli"
+            / "clients"
+            / "cli"
             / "building"
             / "install"
             / "nanofaas-cli"

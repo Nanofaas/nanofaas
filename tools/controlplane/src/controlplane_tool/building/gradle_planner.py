@@ -55,7 +55,7 @@ def plan_module_matrix_commands(
         modules=modules,
     )
     if not resolved_modules:
-        raise ValueError("No optional modules found under control-plane-modules/.")
+        raise ValueError("No optional modules found under platform/modules/.")
 
     selectors = build_module_selectors(resolved_modules)
     limit = len(selectors)

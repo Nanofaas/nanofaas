@@ -88,8 +88,8 @@ def build_core_images_vm_script(
             control_context = Path("control-plane-rust")
             control_dockerfile = Path("control-plane-rust/Dockerfile")
         else:
-            control_context = Path("control-plane")
-            control_dockerfile = Path("control-plane/Dockerfile")
+            control_context = Path("platform/control-plane")
+            control_dockerfile = Path("platform/control-plane/Dockerfile")
 
         commands.append(
             _with_sudo(
@@ -105,7 +105,7 @@ def build_core_images_vm_script(
             _with_sudo(
                 image_ops.build(
                     image=runtime_image,
-                    context=Path("function-runtime"),
+                    context=Path("platform/function-runtime"),
                 ).command,
                 sudo=sudo,
             )

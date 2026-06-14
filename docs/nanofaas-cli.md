@@ -1,6 +1,6 @@
 # nanofaas CLI
 
-This repository includes a standalone CLI in the `nanofaas-cli/` subproject.
+This repository includes a standalone CLI in the `clients/cli/` subproject.
 
 The distribution provides:
 - `nanofaas-cli`: the executable (native, when built with GraalVM)
@@ -18,7 +18,7 @@ Build a GraalVM native executable:
 
 ```bash
 ./gradlew :nanofaas-cli:nativeCompile
-./nanofaas-cli/build/native/nativeCompile/nanofaas-cli --help
+./clients/cli/build/native/nativeCompile/nanofaas-cli --help
 ```
 
 Build archives (contains `bin/nanofaas` and `bin/nanofaas-cli` start script):

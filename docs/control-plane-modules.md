@@ -3,7 +3,7 @@
 The control-plane is split into:
 
 - a minimal core (always included)
-- optional modules under `control-plane-modules/`
+- optional modules under `platform/modules/`
 
 Optional modules are loaded through the `ControlPlaneModule` SPI (via `ServiceLoader`) and imported as Spring `@Configuration` classes at startup.
 
@@ -62,10 +62,10 @@ Default behavior when the selector is omitted:
 
 ## Module layout
 
-Create a module under `control-plane-modules/<module-name>/`:
+Create a module under `platform/modules/<module-name>/`:
 
 ```text
-control-plane-modules/
+platform/modules/
   my-module/
     build.gradle
     src/main/java/.../MyModule.java
@@ -86,5 +86,5 @@ The control-plane loads these module classes via `ServiceLoader` during startup.
 
 ## Example module
 
-`control-plane-modules/build-metadata` is a reference module.
+`platform/modules/build-metadata` is a reference module.
 When included, it adds endpoint `GET /modules/build-metadata`.

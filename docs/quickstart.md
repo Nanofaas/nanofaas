@@ -86,8 +86,8 @@
   - `kubectl apply -f deploy/k8s/control-plane-service.yaml`
 
 - Build and push images:
-  - `docker build -t nanofaas/control-plane:0.9.2 control-plane/`
-  - `docker build -t nanofaas/function-runtime:0.9.2 function-runtime/`
+  - `docker build -t nanofaas/control-plane:0.9.2 platform/control-plane/`
+  - `docker build -t nanofaas/function-runtime:0.9.2 platform/function-runtime/`
 
 ## Register and invoke
 

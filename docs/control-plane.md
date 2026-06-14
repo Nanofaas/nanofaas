@@ -39,7 +39,7 @@ The raw `./gradlew ... -PcontrolPlaneModules=...` workflow is still supported fo
 
 ## Architecture Summary
 
-- The control-plane is a minimal core plus optional modules from `control-plane-modules/`.
+- The control-plane is a minimal core plus optional modules from `platform/modules/`.
 - Optional module configs are loaded through the `ControlPlaneModule` SPI (`ServiceLoader`), then imported during bootstrap.
 - Core registers no-op defaults for `InvocationEnqueuer`, `ScalingMetricsSource`, `SyncQueueGateway`, and `ImageValidator`, so the app can run without optional modules.
 

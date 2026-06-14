@@ -66,8 +66,8 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
         control_context = _RUST_CP_DIR
         control_dockerfile = f"{_RUST_CP_DIR}/Dockerfile"
     else:
-        control_context = "control-plane"
-        control_dockerfile = "control-plane/Dockerfile"
+        control_context = "platform/control-plane"
+        control_dockerfile = "platform/control-plane/Dockerfile"
 
     operations: list[ScenarioOperation] = []
 
@@ -114,10 +114,10 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                     "docker",
                     "build",
                     "-f",
-                    "function-runtime/Dockerfile",
+                    "platform/function-runtime/Dockerfile",
                     "-t",
                     function_runtime_image,
-                    "function-runtime",
+                    "platform/function-runtime",
                 ),
                 env=_frozen_env(),
                 execution_target="vm",

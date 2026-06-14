@@ -467,7 +467,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(':function-sdk-java')
+    implementation project(':sdks:java')
 }
 ```
 

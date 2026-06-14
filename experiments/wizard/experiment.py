@@ -435,7 +435,7 @@ def ask_host_rebuild_images(
 
 
 def discover_control_plane_modules_with_dependencies() -> tuple[list[str], dict[str, list[str]]]:
-    modules_root = REPO_ROOT / "control-plane-modules"
+    modules_root = REPO_ROOT / "platform" / "modules"
     dependencies = discover_module_dependencies(modules_root)
     return sorted(dependencies.keys()), dependencies
 
@@ -459,7 +459,7 @@ def ask_text(message: str, default: str, validator) -> str:
 def ask_deploy_config() -> DeployConfig:
     available_modules, module_dependencies = discover_control_plane_modules_with_dependencies()
     if not available_modules:
-        raise SystemExit("Nessun modulo control-plane trovato in control-plane-modules/.")
+        raise SystemExit("Nessun modulo control-plane trovato in platform/modules/.")
 
     selected_raw = ask_checkbox(
         "Seleziona i moduli control-plane da includere (nessuno = core-only):",

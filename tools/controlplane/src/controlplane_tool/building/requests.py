@@ -40,7 +40,7 @@ def parse_modules_csv(modules_csv: str | None) -> list[str]:
 
 
 def detect_optional_modules(repo_root: Path) -> list[str]:
-    modules_root = repo_root / "control-plane-modules"
+    modules_root = repo_root / "platform" / "modules"
     if not modules_root.exists():
         return []
     modules: list[str] = []

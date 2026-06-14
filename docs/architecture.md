@@ -55,10 +55,10 @@
 
 ## Module Layout (Proposed)
 
-- `control-plane/` : Spring Boot app (gateway, scheduler, dispatcher)
-- `function-runtime/` : minimal Spring Boot runtime for Java user functions
+- `platform/control-plane/` : Spring Boot app (gateway, scheduler, dispatcher)
+- `platform/function-runtime/` : minimal Spring Boot runtime for Java user functions
 - `python-runtime/` : Python runtime with watchdog for WARM execution mode
-- `common/` : shared models (FunctionSpec, InvocationRequest, ErrorInfo)
+- `platform/common/` : shared models (FunctionSpec, InvocationRequest, ErrorInfo)
 - `k8s/` : manifests and templates
 - `docs/` : architecture, control-plane, runtime, observability
 

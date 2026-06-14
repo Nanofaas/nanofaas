@@ -174,7 +174,7 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
     for task_id, task in command_tasks.items():
         assert list(task.spec.argv), f"empty argv for {task_id}"
 
-    _CLI = "/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli"
+    _CLI = "/home/ubuntu/nanofaas/clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli"
 
     assert list(command_tasks["cli.platform_install"].spec.argv) == [
         _CLI, "platform", "install",

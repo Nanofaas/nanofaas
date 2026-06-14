@@ -183,15 +183,15 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
     },
     "images.build_core.control_image": {
         "argv": [
-            "docker", "build", "-f", "control-plane/Dockerfile", "-t",
-            "localhost:5000/nanofaas/control-plane:e2e", "control-plane",
+            "docker", "build", "-f", "platform/control-plane/Dockerfile", "-t",
+            "localhost:5000/nanofaas/control-plane:e2e", "platform/control-plane",
         ],
         "env": {},
     },
     "images.build_core.runtime_image": {
         "argv": [
-            "docker", "build", "-f", "function-runtime/Dockerfile", "-t",
-            "localhost:5000/nanofaas/function-runtime:e2e", "function-runtime",
+            "docker", "build", "-f", "platform/function-runtime/Dockerfile", "-t",
+            "localhost:5000/nanofaas/function-runtime:e2e", "platform/function-runtime",
         ],
         "env": {},
     },

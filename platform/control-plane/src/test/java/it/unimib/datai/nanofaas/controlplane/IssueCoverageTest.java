@@ -11,9 +11,9 @@ class IssueCoverageTest {
     @Test
     void issue001_structureExists() {
         Path root = repoRoot();
-        assertTrue(Files.isDirectory(root.resolve("control-plane")));
-        assertTrue(Files.isDirectory(root.resolve("function-runtime")));
-        assertTrue(Files.isDirectory(root.resolve("common")));
+        assertTrue(Files.isDirectory(root.resolve("platform/control-plane")));
+        assertTrue(Files.isDirectory(root.resolve("platform/function-runtime")));
+        assertTrue(Files.isDirectory(root.resolve("platform/common")));
     }
 
     @Test
@@ -26,8 +26,8 @@ class IssueCoverageTest {
     @Test
     void issue003_dockerfilesExist() {
         Path root = repoRoot();
-        assertTrue(Files.exists(root.resolve("control-plane/Dockerfile")));
-        assertTrue(Files.exists(root.resolve("function-runtime/Dockerfile")));
+        assertTrue(Files.exists(root.resolve("platform/control-plane/Dockerfile")));
+        assertTrue(Files.exists(root.resolve("platform/function-runtime/Dockerfile")));
     }
 
     @Test

@@ -100,7 +100,7 @@ def _managed_vm_env(context: ScenarioExecutionContext) -> Mapping[str, str]:
 
 
 def _cli_binary(context: ScenarioExecutionContext) -> str:
-    return f"{_remote_project_dir(context)}/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli"
+    return f"{_remote_project_dir(context)}/clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli"
 
 
 def plan_verify_cli_platform_status_fails(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:

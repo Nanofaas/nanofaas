@@ -19,11 +19,11 @@ plugins {
 
 rootProject.name = 'nanofaas'
 
-include('common')
+include('common');            project(':common').projectDir = file('platform/common')
 include(':sdks:java');        project(':sdks:java').projectDir = file('sdks/java')
-include('control-plane')
-include('function-runtime')
-include('nanofaas-cli')
+include('control-plane');     project(':control-plane').projectDir = file('platform/control-plane')
+include('function-runtime');  project(':function-runtime').projectDir = file('platform/function-runtime')
+include('nanofaas-cli');      project(':nanofaas-cli').projectDir = file('clients/cli')
 include(':sdks:java-lite');   project(':sdks:java-lite').projectDir = file('sdks/java-lite')
 include('examples:java:word-stats')
 include('examples:java:json-transform')
@@ -39,7 +39,7 @@ def parseCsvModules = { String raw ->
             .findAll { !it.isEmpty() }
 }
 
-def modulesRootDir = new File(settingsDir, 'control-plane-modules')
+def modulesRootDir = new File(settingsDir, 'platform/modules')
 def availableModules = [] as List<String>
 
 if (modulesRootDir.isDirectory()) {
@@ -50,6 +50,11 @@ if (modulesRootDir.isDirectory()) {
             include(projectPath)
             project(projectPath).projectDir = dir
         }
+    }
+    // The intermediate container coordinate ':control-plane-modules' is kept for
+    // backward compatibility, but the folder now lives at platform/modules.
+    if (!availableModules.isEmpty()) {
+        project(':control-plane-modules').projectDir = modulesRootDir
     }
 }
 

@@ -151,7 +151,7 @@ class K8sE2eDeploymentSpecTest {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
             if (Files.isDirectory(current.resolve("deploy/helm"))
-                    && Files.isDirectory(current.resolve("control-plane-modules"))) {
+                    && Files.isDirectory(current.resolve("platform/modules"))) {
                 return current;
             }
             current = current.getParent();

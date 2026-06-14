@@ -53,8 +53,8 @@ set -u
 
 RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then
-  CONTROL_BIN="control-plane/build/native/nativeCompile/control-plane"
-  RUNTIME_BIN="function-runtime/build/native/nativeCompile/function-runtime"
+  CONTROL_BIN="platform/control-plane/build/native/nativeCompile/control-plane"
+  RUNTIME_BIN="platform/function-runtime/build/native/nativeCompile/function-runtime"
   CONTROL_PID=""
   RUNTIME_PID=""
 
