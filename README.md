@@ -11,7 +11,7 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 - `platform/function-runtime/` HTTP runtime for Java function handlers
 - `python-runtime/` HTTP runtime for Python function handlers
 - `platform/common/` shared DTOs and runtime contracts
-- `k8s/` Kubernetes manifests and templates
+- `deploy/k8s/` Kubernetes manifests and templates
 - `docs/` architecture and operational docs
 - `openapi.yaml` public API specification
 

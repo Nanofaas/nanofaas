@@ -74,7 +74,7 @@ VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` librar
 
 nanofaas is a minimal FaaS platform for Kubernetes.
 
-### control-plane/
+### platform/control-plane/
 Minimal core API + dispatch orchestration in a single pod. Core components:
 - **FunctionRegistry** - In-memory function storage
 - **InvocationService** - Sync/async invocation orchestration, retries, idempotency integration
@@ -87,7 +87,7 @@ Core provides no-op defaults for:
 - **SyncQueueGateway**
 - **ImageValidator**
 
-Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `control-plane-modules/`):
+Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platform/modules/`):
 - **async-queue** - Per-function queues + scheduler for async enqueue path
 - **sync-queue** - Sync admission/backpressure queue
 - **autoscaler** - Internal scaler and scaling metrics integration
@@ -104,7 +104,7 @@ Execution Modes:
 
 Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
 
-### function-runtime/
+### platform/function-runtime/
 Minimal HTTP server for Java function handlers:
 - **InvokeController** - POST `/invoke` endpoint
 - **HandlerRegistry** - SPI-based handler loading
@@ -115,12 +115,12 @@ Supports WARM mode via `X-Execution-Id` header for OpenWhisk-style execution.
 Spring Web (servlet). Port: 8080.
 
 ### python-runtime/ (deprecated)
-Legacy Python runtime. New Python functions should use `function-sdk-python/` instead.
+Legacy Python runtime. New Python functions should use `sdks/python/` instead.
 
-### function-sdk-python/
+### sdks/python/
 Python function SDK providing the FastAPI-based runtime for Python handlers.
 
-### common/
+### platform/common/
 Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `ExecutionStatus`, `FunctionHandler` interface.
 
 ## Request Flow
@@ -134,7 +134,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 
 ## Key Configuration
 
-`control-plane/src/main/resources/application.yml`:
+`platform/control-plane/src/main/resources/application.yml`:
 - `nanofaas.defaults.timeoutMs` (30000), `concurrency` (4), `queueSize` (100), `maxRetries` (3)
 - `nanofaas.rate.maxPerSecond` (1000000)
 - `nanofaas.deployment.default-backend`
@@ -159,7 +159,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **mcFaas** (15748 symbols, 42716 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mcFaas** (16849 symbols, 45702 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
