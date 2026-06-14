@@ -108,20 +108,20 @@ def test_resolve_sdk_dependency_path_inside_monorepo_uses_relative_path(tmp_path
     monorepo_root = tmp_path / "repo"
     output_dir = monorepo_root / "examples" / "javascript" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == "../../../function-sdk-javascript"
+    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == "../../../sdks/javascript"
 
 
 def test_resolve_sdk_dependency_path_outside_monorepo_uses_absolute_path(tmp_path):
     monorepo_root = tmp_path / "repo"
     output_dir = tmp_path / "generated" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == str(monorepo_root / "function-sdk-javascript")
+    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == str(monorepo_root / "sdks" / "javascript")
 
 
 def test_resolve_sdk_dependency_path_without_monorepo_uses_default_relative_path(tmp_path):
     output_dir = tmp_path / "generated" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(None, output_dir) == "../../../function-sdk-javascript"
+    assert resolve_sdk_dependency_path(None, output_dir) == "../../../sdks/javascript"
 
 
 # --- generate_function (Java) ---
@@ -245,7 +245,7 @@ JAVASCRIPT_PLACEHOLDERS = {
     "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "javascript",
-    "SDK_PATH": "../../../function-sdk-javascript",
+    "SDK_PATH": "../../../sdks/javascript",
 }
 
 def test_generate_go_creates_main(tmp_path):
@@ -292,9 +292,9 @@ def test_generate_javascript_package_uses_local_sdk(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
     content = (out / "package.json").read_text()
-    assert '"nanofaas-function-sdk": "file:../../../function-sdk-javascript"' in content
-    assert '"prebuild": "npm --prefix ../../../function-sdk-javascript install && npm --prefix ../../../function-sdk-javascript run build"' in content
-    assert '"pretest": "npm --prefix ../../../function-sdk-javascript install && npm --prefix ../../../function-sdk-javascript run build"' in content
+    assert '"nanofaas-function-sdk": "file:../../../sdks/javascript"' in content
+    assert '"prebuild": "npm --prefix ../../../sdks/javascript install && npm --prefix ../../../sdks/javascript run build"' in content
+    assert '"pretest": "npm --prefix ../../../sdks/javascript install && npm --prefix ../../../sdks/javascript run build"' in content
     assert '"test": "npm run build && node --test dist/test/**/*.test.js"' in content
 
 def test_generate_javascript_function_yaml_uses_javascript_dockerfile(tmp_path):

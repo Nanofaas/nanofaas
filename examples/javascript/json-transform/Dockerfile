@@ -1,7 +1,7 @@
 FROM node:20-alpine AS building
 WORKDIR /src
 
-COPY function-sdk-javascript ./function-sdk-javascript
+COPY sdks/javascript ./function-sdk-javascript
 WORKDIR /src/function-sdk-javascript
 RUN npm ci
 RUN npm run build

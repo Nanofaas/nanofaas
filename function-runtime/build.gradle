@@ -5,7 +5,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(':function-sdk-java')
+    implementation project(':sdks:java')
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

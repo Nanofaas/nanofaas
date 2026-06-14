@@ -18,7 +18,7 @@ COPY examples/java/word-stats-lite/settings.gradle.docker settings.gradle
 
 # Copy only required modules
 COPY common/ common/
-COPY function-sdk-java-lite/ function-sdk-java-lite/
+COPY sdks/java-lite/ sdks/java-lite/
 COPY examples/java/word-stats-lite/ examples/java/word-stats-lite/
 
 # Build the native binary

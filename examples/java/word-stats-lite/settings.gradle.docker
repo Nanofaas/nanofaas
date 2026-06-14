@@ -12,5 +12,5 @@ plugins {
 rootProject.name = 'nanofaas'
 
 include('common')
-include('function-sdk-java-lite')
+include(':sdks:java-lite');   project(':sdks:java-lite').projectDir = file('sdks/java-lite')
 include('examples:java:word-stats-lite')

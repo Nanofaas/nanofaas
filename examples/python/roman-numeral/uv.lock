@@ -198,7 +198,7 @@ wheels = [
 [[package]]
 name = "nanofaas-sdk"
 version = "0.16.1"
-source = { directory = "../../../function-sdk-python" }
+source = { directory = "../../../sdks/python" }
 dependencies = [
     { name = "fastapi" },
     { name = "prometheus-client" },
@@ -426,7 +426,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "nanofaas-sdk", directory = "../../../function-sdk-python" }]
+requires-dist = [{ name = "nanofaas-sdk", directory = "../../../sdks/python" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=7.4.0" }]

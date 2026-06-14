@@ -1,7 +1,7 @@
 # Stage 1: install SDK
 FROM python:3.11-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv/bin/
-COPY function-sdk-python/ /tmp/sdk/
+COPY sdks/python/ /tmp/sdk/
 RUN /uv/bin/uv pip install --system --target /deps /tmp/sdk/
 
 # Stage 2: minimal runtime

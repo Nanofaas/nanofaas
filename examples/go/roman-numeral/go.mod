@@ -16,4 +16,4 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 )
 
-replace github.com/miciav/nanofaas/function-sdk-go => ../../../function-sdk-go
+replace github.com/miciav/nanofaas/function-sdk-go => ../../../sdks/go

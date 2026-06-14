@@ -20,11 +20,11 @@ plugins {
 rootProject.name = 'nanofaas'
 
 include('common')
-include('function-sdk-java')
+include(':sdks:java');        project(':sdks:java').projectDir = file('sdks/java')
 include('control-plane')
 include('function-runtime')
 include('nanofaas-cli')
-include('function-sdk-java-lite')
+include(':sdks:java-lite');   project(':sdks:java-lite').projectDir = file('sdks/java-lite')
 include('examples:java:word-stats')
 include('examples:java:json-transform')
 include('examples:java:word-stats-lite')

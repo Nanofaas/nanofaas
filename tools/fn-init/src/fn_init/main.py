@@ -59,7 +59,7 @@ def main(
         "LANG": lang,
         "SDK_PATH": generator.resolve_sdk_dependency_path(monorepo_root, output_dir)
         if lang == "javascript"
-        else "../../../function-sdk-javascript",
+        else "../../../sdks/javascript",
     }
 
     if output_dir.exists():
