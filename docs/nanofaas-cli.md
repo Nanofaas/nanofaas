@@ -174,7 +174,7 @@ Installs/upgrades the Helm chart and configures a NodePort endpoint suitable for
 
 Defaults:
 - release: `nanofaas`
-- chart: `helm/nanofaas`
+- chart: `deploy/helm/nanofaas`
 - namespace: `nanofaas` (or resolved global `--namespace`/config/env)
 - API NodePort: `30080`
 - actuator NodePort: `30081`

@@ -46,7 +46,7 @@ class PlatformCommandTest {
 
         assertThat(helmCalls).hasSize(1);
         assertThat(helmCalls.get(0)).containsSequence(
-                "helm", "upgrade", "--install", "nanofaas", "helm/nanofaas",
+                "helm", "upgrade", "--install", "nanofaas", "deploy/helm/nanofaas",
                 "--namespace", "nanofaas", "--create-namespace", "--wait",
                 "--set", "namespace.create=false",
                 "--set", "controlPlane.service.type=NodePort",

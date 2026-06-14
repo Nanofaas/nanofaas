@@ -46,7 +46,7 @@ def plan_install_namespace(context: ScenarioExecutionContext) -> tuple[ScenarioO
                 "upgrade",
                 "--install",
                 namespace_release_name(namespace),
-                "helm/nanofaas-namespace",
+                "deploy/helm/nanofaas-namespace",
                 "-n",
                 NAMESPACE_RELEASE_NAMESPACE,
                 "--wait",

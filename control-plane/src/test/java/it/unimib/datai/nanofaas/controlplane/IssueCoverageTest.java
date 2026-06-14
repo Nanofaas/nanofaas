@@ -33,11 +33,11 @@ class IssueCoverageTest {
     @Test
     void issue004_k8sManifestsExist() {
         Path root = repoRoot();
-        assertTrue(Files.exists(root.resolve("k8s/namespace.yaml")));
-        assertTrue(Files.exists(root.resolve("k8s/serviceaccount.yaml")));
-        assertTrue(Files.exists(root.resolve("k8s/rbac.yaml")));
-        assertTrue(Files.exists(root.resolve("k8s/control-plane-deployment.yaml")));
-        assertTrue(Files.exists(root.resolve("k8s/control-plane-service.yaml")));
+        assertTrue(Files.exists(root.resolve("deploy/k8s/namespace.yaml")));
+        assertTrue(Files.exists(root.resolve("deploy/k8s/serviceaccount.yaml")));
+        assertTrue(Files.exists(root.resolve("deploy/k8s/rbac.yaml")));
+        assertTrue(Files.exists(root.resolve("deploy/k8s/control-plane-deployment.yaml")));
+        assertTrue(Files.exists(root.resolve("deploy/k8s/control-plane-service.yaml")));
     }
 
     @Test

@@ -28,7 +28,7 @@ class K8sE2eDeploymentSpecTest {
 
     @Test
     void controlPlaneHelmChart_rendersManagementHealthProbes() throws Exception {
-        Container container = renderedDeployment("nanofaas", "helm/nanofaas", "nanofaas-control-plane")
+        Container container = renderedDeployment("nanofaas", "deploy/helm/nanofaas", "nanofaas-control-plane")
                 .getSpec().getTemplate().getSpec().getContainers().getFirst();
 
         assertAll(
@@ -47,7 +47,7 @@ class K8sE2eDeploymentSpecTest {
 
     @Test
     void functionRuntimeHelmChart_rendersHttpHealthProbes() throws Exception {
-        Container container = renderedDeployment("runtime", "helm/nanofaas-runtime", "runtime")
+        Container container = renderedDeployment("runtime", "deploy/helm/nanofaas-runtime", "runtime")
                 .getSpec().getTemplate().getSpec().getContainers().getFirst();
 
         assertAll(
@@ -150,7 +150,7 @@ class K8sE2eDeploymentSpecTest {
     private static Path repoRoot() {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
-            if (Files.isDirectory(current.resolve("helm"))
+            if (Files.isDirectory(current.resolve("deploy/helm"))
                     && Files.isDirectory(current.resolve("control-plane-modules"))) {
                 return current;
             }

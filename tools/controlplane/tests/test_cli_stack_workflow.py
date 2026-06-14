@@ -180,7 +180,7 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
         _CLI, "platform", "install",
         "--release", "nanofaas-cli-stack-e2e",
         "-n", "nanofaas-cli-stack-e2e",
-        "--chart", "/home/ubuntu/nanofaas/helm/nanofaas",
+        "--chart", "/home/ubuntu/nanofaas/deploy/helm/nanofaas",
         "--control-plane-repository", "localhost:5000/nanofaas/control-plane",
         "--control-plane-tag", "e2e",
         "--control-plane-pull-policy", "Always",

@@ -229,14 +229,14 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
     "namespace.install": {
         "argv": [
             "helm", "upgrade", "--install", "nanofaas-e2e-namespace",
-            "helm/nanofaas-namespace", "-n", "default", "--wait", "--timeout",
+            "deploy/helm/nanofaas-namespace", "-n", "default", "--wait", "--timeout",
             "2m", "--set", "namespace.name=nanofaas-e2e",
         ],
         "env": {"KUBECONFIG": "/home/ubuntu/.kube/config"},
     },
     "helm.deploy_control_plane": {
         "argv": [
-            "helm", "upgrade", "--install", "control-plane", "helm/nanofaas",
+            "helm", "upgrade", "--install", "control-plane", "deploy/helm/nanofaas",
             "-n", "nanofaas-e2e", "--wait", "--timeout", "5m",
             "--set", "namespace.create=false",
             "--set", "namespace.name=nanofaas-e2e",
@@ -280,7 +280,7 @@ EXPECTED_PRELUDE_COMMANDS: dict[str, dict] = {
     "helm.deploy_function_runtime": {
         "argv": [
             "helm", "upgrade", "--install", "function-runtime",
-            "helm/nanofaas-runtime", "-n", "nanofaas-e2e", "--wait", "--timeout",
+            "deploy/helm/nanofaas-runtime", "-n", "nanofaas-e2e", "--wait", "--timeout",
             "3m",
             "--set", "functionRuntime.image.repository=localhost:5000/nanofaas/function-runtime",
             "--set", "functionRuntime.image.tag=e2e",

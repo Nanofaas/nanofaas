@@ -160,7 +160,7 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
     # helm deploy carries the k8s backend / sync-queue env contract.
     deploy_argv = list(command_tasks["helm.deploy_control_plane"].spec.argv)
     assert deploy_argv[:6] == [
-        "helm", "upgrade", "--install", "control-plane", "helm/nanofaas", "-n",
+        "helm", "upgrade", "--install", "control-plane", "deploy/helm/nanofaas", "-n",
     ]
     assert "controlPlane.image.repository=localhost:5000/nanofaas/control-plane" in deploy_argv
     assert dict(command_tasks["helm.deploy_control_plane"].spec.env) == {

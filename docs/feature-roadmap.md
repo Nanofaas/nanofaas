@@ -153,7 +153,7 @@ ricevono un timeout.
 
 ### Stato attuale
 Il control-plane e un Deployment Kubernetes con **1 sola replica** (`replicas: 1`
-in `k8s/control-plane-deployment.yaml`). Contiene un singolo `Scheduler` thread
+in `deploy/k8s/control-plane-deployment.yaml`). Contiene un singolo `Scheduler` thread
 che consuma da tutte le code, e un `SyncScheduler` per la sync queue.
 
 Se il pod crasha, Kubernetes lo riavvia, ma:
@@ -194,7 +194,7 @@ L'HA serve per resilienza, non per scalabilita orizzontale.
 - `LeaderElectionConfig.java` - Bean Spring per Kubernetes Lease.
 - `Scheduler.java` - Avvio condizionale: solo se leader.
 - `SyncScheduler.java` - Avvio condizionale: solo se leader.
-- `k8s/control-plane-deployment.yaml` - `replicas: 2`, aggiunta RBAC per Lease objects.
+- `deploy/k8s/control-plane-deployment.yaml` - `replicas: 2`, aggiunta RBAC per Lease objects.
 
 ### Complessita stimata
 - Approccio A: **Alta** (2-3 settimane)
@@ -542,7 +542,7 @@ Manca: circuit breaker, exponential backoff, bulkhead isolation, fallback.
 ### Soluzione proposta
 
 **Fase 1 - Ingress controller:**
-- Aggiungere manifest `k8s/ingress.yaml` per NGINX Ingress o Traefik.
+- Aggiungere manifest `deploy/k8s/ingress.yaml` per NGINX Ingress o Traefik.
 - Path-based routing: `/v1/*` -> control-plane:8080.
 - TLS termination all'ingress con cert-manager per certificati automatici (Let's Encrypt).
 
@@ -558,8 +558,8 @@ Manca: circuit breaker, exponential backoff, bulkhead isolation, fallback.
 - Vantaggio: zero-trust networking senza modifiche al codice.
 
 ### Componenti da creare
-- `k8s/ingress.yaml` - Manifest Ingress
-- `k8s/network-policies.yaml` - Network Policies
+- `deploy/k8s/ingress.yaml` - Manifest Ingress
+- `deploy/k8s/network-policies.yaml` - Network Policies
 - `k8s/cert-manager/` - Configurazione cert-manager (opzionale)
 
 ### Impatto performance

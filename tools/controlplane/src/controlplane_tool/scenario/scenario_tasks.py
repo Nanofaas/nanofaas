@@ -265,7 +265,7 @@ def helm_namespace_install_vm_script(
         "upgrade",
         "--install",
         _namespace_release_name(namespace),
-        "helm/nanofaas-namespace",
+        "deploy/helm/nanofaas-namespace",
         "-n",
         "default",
         "--wait",

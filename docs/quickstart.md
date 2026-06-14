@@ -79,11 +79,11 @@
 ## Deploy to Kubernetes
 
 - Apply base manifests:
-  - `kubectl apply -f k8s/namespace.yaml`
-  - `kubectl apply -f k8s/serviceaccount.yaml`
-  - `kubectl apply -f k8s/rbac.yaml`
-  - `kubectl apply -f k8s/control-plane-deployment.yaml`
-  - `kubectl apply -f k8s/control-plane-service.yaml`
+  - `kubectl apply -f deploy/k8s/namespace.yaml`
+  - `kubectl apply -f deploy/k8s/serviceaccount.yaml`
+  - `kubectl apply -f deploy/k8s/rbac.yaml`
+  - `kubectl apply -f deploy/k8s/control-plane-deployment.yaml`
+  - `kubectl apply -f deploy/k8s/control-plane-service.yaml`
 
 - Build and push images:
   - `docker build -t nanofaas/control-plane:0.9.2 control-plane/`

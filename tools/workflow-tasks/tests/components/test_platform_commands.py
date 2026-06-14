@@ -31,7 +31,7 @@ def test_install_command_splits_image_repo_and_tag() -> None:
     assert cmd[i + 1] == "reg:5000/nanofaas/control-plane"
     j = cmd.index("--control-plane-tag")
     assert cmd[j + 1] == "e2e"
-    assert any("/repo/helm/nanofaas" in str(part) for part in cmd)
+    assert any("/repo/deploy/helm/nanofaas" in str(part) for part in cmd)
 
 
 def test_install_command_defaults_tag_to_latest_when_no_colon() -> None:

@@ -350,7 +350,7 @@ def test_namespace_component_installs_namespace_release_in_default_namespace() -
         "upgrade",
         "--install",
         "nanofaas-stack-namespace",
-        "helm/nanofaas-namespace",
+        "deploy/helm/nanofaas-namespace",
         "-n",
         "default",
         "--wait",

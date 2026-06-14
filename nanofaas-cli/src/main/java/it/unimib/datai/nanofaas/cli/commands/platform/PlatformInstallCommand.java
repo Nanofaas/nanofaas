@@ -18,7 +18,7 @@ public class PlatformInstallCommand implements Runnable {
     @Option(names = {"--release"}, defaultValue = "nanofaas", description = "Helm release name.")
     String release;
 
-    @Option(names = {"--chart"}, defaultValue = "helm/nanofaas", description = "Chart reference/path.")
+    @Option(names = {"--chart"}, defaultValue = "deploy/helm/nanofaas", description = "Chart reference/path.")
     String chart;
 
     @Option(names = {"-n", "--namespace"}, description = "Target namespace.")
