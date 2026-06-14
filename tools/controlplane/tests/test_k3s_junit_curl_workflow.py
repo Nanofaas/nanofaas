@@ -165,7 +165,7 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
 
     # --- Load-bearing literal spot-checks (portable; no machine paths) ---
     assert list(command_tasks["helm.deploy_control_plane"].spec.argv) == [
-        "helm", "upgrade", "--install", "control-plane", "helm/nanofaas",
+        "helm", "upgrade", "--install", "control-plane", "deploy/helm/nanofaas",
         "-n", "nanofaas-e2e", "--wait", "--timeout", "5m",
         "--set", "namespace.create=false",
         "--set", "namespace.name=nanofaas-e2e",
@@ -204,7 +204,7 @@ def test_workflow_command_tasks_are_resolved_and_pinned() -> None:
     }
 
     assert list(command_tasks["helm.deploy_function_runtime"].spec.argv) == [
-        "helm", "upgrade", "--install", "function-runtime", "helm/nanofaas-runtime",
+        "helm", "upgrade", "--install", "function-runtime", "deploy/helm/nanofaas-runtime",
         "-n", "nanofaas-e2e", "--wait", "--timeout", "3m",
         "--set", "functionRuntime.image.repository=localhost:5000/nanofaas/function-runtime",
         "--set", "functionRuntime.image.tag=e2e",

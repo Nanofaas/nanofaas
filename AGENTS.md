@@ -2,13 +2,13 @@
 
 ## Project Structure & Module Organization
 
-- `common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
-- `control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic (supports JOB and WARM execution modes).
-- `function-runtime/` hosts the Java function invocation HTTP server and handler registry.
+- `platform/common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
+- `platform/control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic (supports JOB and WARM execution modes).
+- `platform/function-runtime/` hosts the Java function invocation HTTP server and handler registry.
 - `python-runtime/` provides Python function runtime with watchdog for WARM execution mode (OpenWhisk-style).
 - `docs/` holds architecture and operational documentation; `openapi.yaml` is the API spec.
-- `k8s/` contains Kubernetes manifests; `scripts/` provides helper workflows.
-- Tests live in `*/src/test/java` with E2E tests under `control-plane/src/test/java/.../e2e`.
+- `deploy/k8s/` contains Kubernetes manifests; `scripts/` provides helper workflows.
+- Tests live in `*/src/test/java` with E2E tests under `platform/control-plane/src/test/java/.../e2e`.
 
 ## Build, Test, and Development Commands
 
@@ -26,7 +26,7 @@
 
 - Java 21 toolchain; 4-space indentation; `com.nanofaas` package root.
 - Class names `PascalCase`, methods/fields `camelCase`, constants `SCREAMING_SNAKE_CASE`.
-- Configuration lives in `control-plane/src/main/resources/application.yml` and `function-runtime/src/main/resources/application.yml`.
+- Configuration lives in `platform/control-plane/src/main/resources/application.yml` and `platform/function-runtime/src/main/resources/application.yml`.
 
 ## Testing Guidelines
 
@@ -47,12 +47,12 @@
 ## Commit & Pull Request Guidelines
 
 - No git history is present; use short, imperative commits (e.g., `Add queue backpressure`).
-- PRs should include a summary, tests run, and updates to `docs/`, `openapi.yaml`, and `k8s/` when behavior changes.
+- PRs should include a summary, tests run, and updates to `docs/`, `openapi.yaml`, and `deploy/k8s/` when behavior changes.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **mcFaas** (15748 symbols, 42716 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mcFaas** (16849 symbols, 45702 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

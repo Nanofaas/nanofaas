@@ -287,8 +287,8 @@ def test_cli_stack_components_use_gradle_install_dist_binary(tmp_path) -> None:
     operation = cli_components.plan_platform_install(context)[0]
     command = " ".join(operation.argv)
 
-    assert "/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli" in command
-    assert "/nanofaas-cli/building/install/" not in command
+    assert "/clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli" in command
+    assert "/clients/cli/building/install/" not in command
 
 
 def test_container_local_runner_emits_balanced_top_level_phase_events_and_verify_children(
@@ -452,7 +452,7 @@ def test_container_local_runner_builds_javascript_function_images(
         "-t",
         "example/image:tag",
         "-f",
-        "examples/javascript/word-stats/Dockerfile",
+        "functions/javascript/word-stats/Dockerfile",
         ".",
     ]
 

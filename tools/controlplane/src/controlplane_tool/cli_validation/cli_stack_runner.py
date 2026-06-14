@@ -97,7 +97,7 @@ class CliStackRunner:
 
     @property
     def _cli_bin_dir(self) -> str:
-        return f"{self._remote_dir}/nanofaas-cli/build/install/nanofaas-cli/bin"
+        return f"{self._remote_dir}/clients/cli/build/install/nanofaas-cli/bin"
 
     def _resolve_public_host(self) -> str:
         host = os.getenv("E2E_PUBLIC_HOST", "") or os.getenv("E2E_VM_HOST", "")

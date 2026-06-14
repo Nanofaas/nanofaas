@@ -40,7 +40,7 @@ jobs:
         run: uv python install
       - name: Run SDK and Example Tests
         run: |
-          cd function-sdk-python
+          cd sdks/python
           uv run --extra test --with-editable . python -m pytest tests/
 
   publish:
@@ -110,14 +110,14 @@ jobs:
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :examples:java:word-stats:bootBuildImage -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
+          ./gradlew :functions:java:word-stats:bootBuildImage -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-word-stats:latest
 
       - name: Build Java JSON Transform Image
         env:
           BP_OCI_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          ./gradlew :examples:java:json-transform:bootBuildImage -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
+          ./gradlew :functions:java:json-transform:bootBuildImage -PfunctionImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }}
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:${{ github.ref_name }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-json-transform:latest
 
       - name: Push Java functions images
@@ -129,7 +129,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: examples/java/word-stats-lite/Dockerfile
+          file: functions/java/word-stats-lite/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-word-stats:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -138,7 +138,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: examples/java/json-transform-lite/Dockerfile
+          file: functions/java/json-transform-lite/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-lite-json-transform:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -147,7 +147,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: examples/python/word-stats/Dockerfile
+          file: functions/python/word-stats/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-word-stats:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -156,7 +156,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: examples/python/json-transform/Dockerfile
+          file: functions/python/json-transform/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python-json-transform:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -165,7 +165,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: examples/bash/word-stats/Dockerfile
+          file: functions/bash/word-stats/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bash-word-stats:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bash-word-stats:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -174,7 +174,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: examples/bash/json-transform/Dockerfile
+          file: functions/bash/json-transform/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bash-json-transform:${{ github.ref_name }}, ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bash-json-transform:latest
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}

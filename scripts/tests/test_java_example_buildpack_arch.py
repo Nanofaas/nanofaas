@@ -5,8 +5,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_BUILD_FILES = [
-    REPO_ROOT / "examples" / "java" / "word-stats" / "build.gradle",
-    REPO_ROOT / "examples" / "java" / "json-transform" / "build.gradle",
+    REPO_ROOT / "functions" / "java" / "word-stats" / "build.gradle",
+    REPO_ROOT / "functions" / "java" / "json-transform" / "build.gradle",
 ]
 
 

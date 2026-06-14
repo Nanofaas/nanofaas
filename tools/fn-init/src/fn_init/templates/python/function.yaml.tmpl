@@ -7,6 +7,6 @@ executionMode: DEPLOYMENT
 x-cli:
   build:
     context: ../../../..
-    dockerfile: examples/python/{{FUNCTION_NAME}}/Dockerfile
+    dockerfile: functions/python/{{FUNCTION_NAME}}/Dockerfile
     platform: linux/amd64
     push: true

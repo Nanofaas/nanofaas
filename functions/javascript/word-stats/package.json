@@ -1,0 +1,23 @@
+{
+  "name": "word-stats",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prebuild": "npm --prefix ../../../sdks/javascript install && npm --prefix ../../../sdks/javascript run build",
+    "pretest": "npm --prefix ../../../sdks/javascript install && npm --prefix ../../../sdks/javascript run build",
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "start": "node dist/src/index.js"
+  },
+  "dependencies": {
+    "nanofaas-function-sdk": "file:../../../sdks/javascript"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

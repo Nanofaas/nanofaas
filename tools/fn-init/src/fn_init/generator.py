@@ -96,19 +96,19 @@ def resolve_output_dir(
     if out is not None:
         return (out if out.name == name else out / name), monorepo_root
     if monorepo_root is not None:
-        return monorepo_root / "examples" / lang / name, monorepo_root
+        return monorepo_root / "functions" / lang / name, monorepo_root
     raise ValueError("Not inside the nanofaas monorepo. Use --out to specify an output directory.")
 
 
 def resolve_sdk_dependency_path(monorepo_root: Path | None, output_dir: Path) -> str:
-    default_relative_path = "../../../function-sdk-javascript"
+    default_relative_path = "../../../sdks/javascript"
     if monorepo_root is None:
         return default_relative_path
     try:
         output_dir.resolve().relative_to(monorepo_root.resolve())
     except ValueError:
-        return str((monorepo_root / "function-sdk-javascript").resolve())
-    return os.path.relpath(monorepo_root / "function-sdk-javascript", output_dir)
+        return str((monorepo_root / "sdks" / "javascript").resolve())
+    return os.path.relpath(monorepo_root / "sdks" / "javascript", output_dir)
 
 
 def generate_function(
@@ -165,7 +165,7 @@ def update_settings_gradle(monorepo_root: Path, name: str, lang: str) -> bool:
     if lang != "java":
         return False
     settings = monorepo_root / "settings.gradle"
-    include_line = f"include 'examples:java:{name}'"
+    include_line = f"include 'functions:java:{name}'"
     content = settings.read_text()
     if include_line in content:
         return False

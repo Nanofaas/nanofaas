@@ -136,7 +136,7 @@ Edit `payloads/happy-path.json` to match your handler's actual input/output:
 ### Java
 
 ```bash
-./gradlew :examples:java:greet:test
+./gradlew :functions:java:greet:test
 ```
 
 ### Python

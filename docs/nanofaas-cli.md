@@ -1,6 +1,6 @@
 # nanofaas CLI
 
-This repository includes a standalone CLI in the `nanofaas-cli/` subproject.
+This repository includes a standalone CLI in the `clients/cli/` subproject.
 
 The distribution provides:
 - `nanofaas-cli`: the executable (native, when built with GraalVM)
@@ -18,7 +18,7 @@ Build a GraalVM native executable:
 
 ```bash
 ./gradlew :nanofaas-cli:nativeCompile
-./nanofaas-cli/build/native/nativeCompile/nanofaas-cli --help
+./clients/cli/build/native/nativeCompile/nanofaas-cli --help
 ```
 
 Build archives (contains `bin/nanofaas` and `bin/nanofaas-cli` start script):
@@ -174,7 +174,7 @@ Installs/upgrades the Helm chart and configures a NodePort endpoint suitable for
 
 Defaults:
 - release: `nanofaas`
-- chart: `helm/nanofaas`
+- chart: `deploy/helm/nanofaas`
 - namespace: `nanofaas` (or resolved global `--namespace`/config/env)
 - API NodePort: `30080`
 - actuator NodePort: `30081`

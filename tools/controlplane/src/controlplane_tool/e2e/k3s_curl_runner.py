@@ -174,7 +174,7 @@ class K3sCurlRunner:
             helm_upgrade_install_vm_script(
                 remote_dir=self._remote_dir,
                 release="control-plane",
-                chart="helm/nanofaas",
+                chart="deploy/helm/nanofaas",
                 namespace=self.namespace,
                 values={
                     **self._control_plane_helm_values(),
@@ -189,7 +189,7 @@ class K3sCurlRunner:
             helm_upgrade_install_vm_script(
                 remote_dir=self._remote_dir,
                 release="function-runtime",
-                chart="helm/nanofaas-runtime",
+                chart="deploy/helm/nanofaas-runtime",
                 namespace=self.namespace,
                 values={
                     **self._function_runtime_helm_values(),

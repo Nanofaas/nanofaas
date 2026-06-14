@@ -36,7 +36,7 @@ class FunctionPresetSpec:
 
 
 _PATHS = default_tool_paths()
-_EXAMPLES_ROOT = _PATHS.workspace_root / "examples"
+_EXAMPLES_ROOT = _PATHS.workspace_root / "functions"
 
 
 _RUNTIME_DIR_TO_CATALOG_RUNTIME: dict[str, FunctionRuntimeKind] = {

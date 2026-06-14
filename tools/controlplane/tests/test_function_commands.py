@@ -33,7 +33,7 @@ def test_functions_show_prints_dynamic_function_details() -> None:
     assert "roman-numeral-go" in result.stdout
     assert "Go roman numeral conversion demo." in result.stdout
     assert "localhost:5000/nanofaas/go-roman-numeral:e2e" in result.stdout
-    assert "examples/go/roman-numeral" in result.stdout
+    assert "functions/go/roman-numeral" in result.stdout
 
 
 def test_functions_show_preset_renders_function_list() -> None:

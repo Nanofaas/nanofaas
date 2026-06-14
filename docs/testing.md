@@ -23,7 +23,7 @@ scripts/controlplane.sh test --profile k8s -- --tests it.unimib.datai.nanofaas.c
 
 # Run with coverage report (JaCoCo)
 ./gradlew :nanofaas-cli:test :nanofaas-cli:jacocoTestReport
-# Report: nanofaas-cli/build/reports/jacoco/test/html/index.html
+# Report: clients/cli/build/reports/jacoco/test/html/index.html
 ```
 
 ### Control-plane module matrix
@@ -48,20 +48,20 @@ scripts/controlplane.sh matrix --task :control-plane:test --modules async-queue,
 
 ### Go SDK tests
 
-The Go function SDK lives under `function-sdk-go/` and is tested with the Go toolchain.
+The Go function SDK lives under `sdks/go/` and is tested with the Go toolchain.
 
 ```bash
-cd function-sdk-go
+cd sdks/go
 go mod tidy
 go test ./...
 ```
 
 ### JavaScript SDK tests
 
-The JavaScript function SDK lives under `function-sdk-javascript/` and is tested with the Node 20 toolchain.
+The JavaScript function SDK lives under `sdks/javascript/` and is tested with the Node 20 toolchain.
 
 ```bash
-cd function-sdk-javascript
+cd sdks/javascript
 npm test
 ```
 
@@ -70,15 +70,15 @@ npm test
 The packaging/release gate used by `scripts/release-manager/release.py` validates the npm artifact before release:
 
 ```bash
-cd function-sdk-javascript
+cd sdks/javascript
 env npm_config_cache=/tmp/codex-npm-cache npm test
 env npm_config_cache=/tmp/codex-npm-cache npm pack --dry-run
 ```
 
-JavaScript demo functions live under `examples/javascript/`:
+JavaScript demo functions live under `functions/javascript/`:
 
 ```bash
-cd examples/javascript/word-stats
+cd functions/javascript/word-stats
 npm install && npm test
 
 cd ../json-transform
@@ -192,7 +192,7 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 
 Ansible playbooks are bundled in the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`).
 
-JavaScript authoring remains first-class under `function-sdk-javascript/` and `examples/javascript/`.
+JavaScript authoring remains first-class under `sdks/javascript/` and `functions/javascript/`.
 V2 also wires JavaScript into `tools/controlplane` presets, saved profiles, and VM-backed dry-run/E2E flows such as `validate-k3s` and `cli-stack`.
 Build and publish automation remains tracked separately in `docs/plans/2026-04-21-v2-packaging-and-release.md`.
 
@@ -230,7 +230,7 @@ kubectl logs -l app=control-plane -n nanofaas-e2e --tail=50
 
 # Run a CLI command manually
 export KUBECONFIG=<remote-kubeconfig-path>
-export PATH=$PATH:<remote-project-dir>/nanofaas-cli/build/install/nanofaas-cli/bin
+export PATH=$PATH:<remote-project-dir>/clients/cli/build/install/nanofaas-cli/bin
 export NANOFAAS_ENDPOINT=http://$(kubectl get svc control-plane -n nanofaas-e2e -o jsonpath='{.spec.clusterIP}'):8080
 export NANOFAAS_NAMESPACE=nanofaas-e2e
 nanofaas fn list
@@ -449,7 +449,7 @@ Generate the report:
 
 ```bash
 ./gradlew :nanofaas-cli:test :nanofaas-cli:jacocoTestReport
-open nanofaas-cli/build/reports/jacoco/test/html/index.html
+open clients/cli/build/reports/jacoco/test/html/index.html
 ```
 
 ---

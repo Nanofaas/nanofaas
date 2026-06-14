@@ -91,11 +91,11 @@ cd python-runtime && ./build.sh
 
 ```text
 /
-├── common/             # Shared DTOs and interfaces
-├── control-plane/      # Main service (Gateway, Scheduler, K8s Dispatch)
+├── platform/common/            # Shared DTOs and interfaces
+├── platform/control-plane/     # Main service (Gateway, Scheduler, K8s Dispatch)
 │   ├── src/main/resources/application.yml  # Main config
 │   └── src/test/java/  # Unit & E2E tests
-├── function-runtime/   # Java function HTTP wrapper
+├── platform/function-runtime/  # Java function HTTP wrapper
 ├── python-runtime/     # Python function runtime with watchdog (WARM mode)
 ├── docs/               # Architecture and operational docs
 ├── k8s/                # Kubernetes manifests & templates

@@ -76,11 +76,11 @@ tasks.register('verifyHelmVersionSync') {
     doLast {
         def expectedVersion = version.toString()
         def expectedTag = "v${expectedVersion}"
-        def chartFile = file('helm/nanofaas/Chart.yaml')
-        def valuesFile = file('helm/nanofaas/values.yaml')
+        def chartFile = file('deploy/helm/nanofaas/Chart.yaml')
+        def valuesFile = file('deploy/helm/nanofaas/values.yaml')
 
         if (!chartFile.exists() || !valuesFile.exists()) {
-            throw new GradleException("Helm chart files not found under helm/nanofaas")
+            throw new GradleException("Helm chart files not found under deploy/helm/nanofaas")
         }
 
         def chart = chartFile.text
@@ -88,19 +88,19 @@ tasks.register('verifyHelmVersionSync') {
         def errors = []
 
         if (!(chart =~ /(?m)^version:\s*${java.util.regex.Pattern.quote(expectedVersion)}\s*$/)) {
-            errors << "helm/nanofaas/Chart.yaml version is not ${expectedVersion}"
+            errors << "deploy/helm/nanofaas/Chart.yaml version is not ${expectedVersion}"
         }
         if (!(chart =~ /(?m)^appVersion:\s*\"${java.util.regex.Pattern.quote(expectedVersion)}\"\s*$/)) {
-            errors << "helm/nanofaas/Chart.yaml appVersion is not ${expectedVersion}"
+            errors << "deploy/helm/nanofaas/Chart.yaml appVersion is not ${expectedVersion}"
         }
         if (!(values =~ /(?m)^\s*tag:\s*${java.util.regex.Pattern.quote(expectedTag)}\s*$/)) {
-            errors << "helm/nanofaas/values.yaml controlPlane.image.tag is not ${expectedTag}"
+            errors << "deploy/helm/nanofaas/values.yaml controlPlane.image.tag is not ${expectedTag}"
         }
 
         def imageTagMatcher = (values =~ /ghcr\.io\/miciav\/nanofaas\/[a-z0-9-]+:(v[0-9]+\.[0-9]+\.[0-9]+)/)
         imageTagMatcher.each { match ->
             if (match[1] != expectedTag) {
-                errors << "helm/nanofaas/values.yaml image tag mismatch: found ${match[1]}, expected ${expectedTag}"
+                errors << "deploy/helm/nanofaas/values.yaml image tag mismatch: found ${match[1]}, expected ${expectedTag}"
             }
         }
 

@@ -88,8 +88,8 @@ def build_core_images_vm_script(
             control_context = Path("control-plane-rust")
             control_dockerfile = Path("control-plane-rust/Dockerfile")
         else:
-            control_context = Path("control-plane")
-            control_dockerfile = Path("control-plane/Dockerfile")
+            control_context = Path("platform/control-plane")
+            control_dockerfile = Path("platform/control-plane/Dockerfile")
 
         commands.append(
             _with_sudo(
@@ -105,7 +105,7 @@ def build_core_images_vm_script(
             _with_sudo(
                 image_ops.build(
                     image=runtime_image,
-                    context=Path("function-runtime"),
+                    context=Path("platform/function-runtime"),
                 ).command,
                 sudo=sudo,
             )
@@ -131,7 +131,7 @@ def build_function_image_vm_script(
             commands=[
                 [
                     "./gradlew",
-                    f":examples:java:{family}:bootBuildImage",
+                    f":functions:java:{family}:bootBuildImage",
                     f"-PfunctionImage={image}",
                     "--no-daemon",
                     "-q",
@@ -140,11 +140,11 @@ def build_function_image_vm_script(
         )
 
     dockerfile_map = {
-        "exec": Path(f"examples/bash/{family}/Dockerfile"),
-        "go": Path(f"examples/go/{family}/Dockerfile"),
-        "java-lite": Path(f"examples/java/{family}-lite/Dockerfile"),
-        "javascript": Path(f"examples/javascript/{family}/Dockerfile"),
-        "python": Path(f"examples/python/{family}/Dockerfile"),
+        "exec": Path(f"functions/bash/{family}/Dockerfile"),
+        "go": Path(f"functions/go/{family}/Dockerfile"),
+        "java-lite": Path(f"functions/java/{family}-lite/Dockerfile"),
+        "javascript": Path(f"functions/javascript/{family}/Dockerfile"),
+        "python": Path(f"functions/python/{family}/Dockerfile"),
     }
     if runtime_kind not in dockerfile_map:
         raise RuntimeError(f"Unsupported function runtime: {runtime_kind!r}")
@@ -265,7 +265,7 @@ def helm_namespace_install_vm_script(
         "upgrade",
         "--install",
         _namespace_release_name(namespace),
-        "helm/nanofaas-namespace",
+        "deploy/helm/nanofaas-namespace",
         "-n",
         "default",
         "--wait",

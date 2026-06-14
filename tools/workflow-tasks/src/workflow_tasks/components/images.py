@@ -41,11 +41,11 @@ def _frozen_env() -> Mapping[str, str]:
 
 def _dockerfile_for_runtime_kind(runtime_kind: str, family: str) -> Path:
     dockerfile_map = {
-        "exec": Path(f"examples/bash/{family}/Dockerfile"),
-        "go": Path(f"examples/go/{family}/Dockerfile"),
-        "java-lite": Path(f"examples/java/{family}-lite/Dockerfile"),
-        "javascript": Path(f"examples/javascript/{family}/Dockerfile"),
-        "python": Path(f"examples/python/{family}/Dockerfile"),
+        "exec": Path(f"functions/bash/{family}/Dockerfile"),
+        "go": Path(f"functions/go/{family}/Dockerfile"),
+        "java-lite": Path(f"functions/java/{family}-lite/Dockerfile"),
+        "javascript": Path(f"functions/javascript/{family}/Dockerfile"),
+        "python": Path(f"functions/python/{family}/Dockerfile"),
     }
     try:
         return dockerfile_map[runtime_kind]
@@ -66,8 +66,8 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
         control_context = _RUST_CP_DIR
         control_dockerfile = f"{_RUST_CP_DIR}/Dockerfile"
     else:
-        control_context = "control-plane"
-        control_dockerfile = "control-plane/Dockerfile"
+        control_context = "platform/control-plane"
+        control_dockerfile = "platform/control-plane/Dockerfile"
 
     operations: list[ScenarioOperation] = []
 
@@ -114,10 +114,10 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                     "docker",
                     "build",
                     "-f",
-                    "function-runtime/Dockerfile",
+                    "platform/function-runtime/Dockerfile",
                     "-t",
                     function_runtime_image,
-                    "function-runtime",
+                    "platform/function-runtime",
                 ),
                 env=_frozen_env(),
                 execution_target="vm",
@@ -170,7 +170,7 @@ def plan_build_selected_functions(
                     summary=f"Build {fn_key} function image",
                     argv=(
                         "./gradlew",
-                        f":examples:java:{family}:bootBuildImage",
+                        f":functions:java:{family}:bootBuildImage",
                         f"-PfunctionImage={image}",
                         "--no-daemon",
                         "-q",

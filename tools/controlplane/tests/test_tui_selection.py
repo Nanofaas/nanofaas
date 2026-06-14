@@ -83,7 +83,7 @@ def _function(
     *,
     runtime: str = "javascript",
     image: str | None = "localhost:5000/nanofaas/function:e2e",
-    example_dir: Path | None = Path("examples/javascript/function"),
+    example_dir: Path | None = Path("functions/javascript/function"),
 ) -> SimpleNamespace:
     return SimpleNamespace(
         key=key,

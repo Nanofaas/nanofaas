@@ -40,13 +40,13 @@ def test_helm_upgrade_install_vm_script_uses_helm_ops_planner() -> None:
     script = helm_upgrade_install_vm_script(
         remote_dir="/srv/nanofaas",
         release="control-plane",
-        chart="helm/nanofaas",
+        chart="deploy/helm/nanofaas",
         namespace="nanofaas-e2e",
         values={"controlPlane.image.tag": "e2e"},
     )
 
     assert "cd /srv/nanofaas" in script
-    assert "helm upgrade --install control-plane helm/nanofaas -n nanofaas-e2e" in script
+    assert "helm upgrade --install control-plane deploy/helm/nanofaas -n nanofaas-e2e" in script
     assert "--set controlPlane.image.tag=e2e" in script
 
 
@@ -59,7 +59,7 @@ def test_helm_namespace_install_vm_script_installs_release_in_default_namespace(
 
     assert "cd /srv/nanofaas" in script
     assert "KUBECONFIG=/home/ubuntu/.kube/config" in script
-    assert "helm upgrade --install nanofaas-e2e-namespace helm/nanofaas-namespace -n default" in script
+    assert "helm upgrade --install nanofaas-e2e-namespace deploy/helm/nanofaas-namespace -n default" in script
     assert "--set namespace.name=nanofaas-e2e" in script
     assert "--wait" in script
 
@@ -84,4 +84,4 @@ def test_build_function_images_vm_script_supports_javascript_dockerfiles() -> No
         functions=[("localhost:5000/nanofaas/javascript-word-stats:e2e", "javascript", "word-stats")],
     )
 
-    assert "examples/javascript/word-stats/Dockerfile" in script
+    assert "functions/javascript/word-stats/Dockerfile" in script

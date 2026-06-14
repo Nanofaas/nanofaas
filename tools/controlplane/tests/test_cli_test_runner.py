@@ -128,7 +128,7 @@ def test_cli_stack_runner_plan_steps_compose_recipe_directly_matches_snapshot() 
 
     by_id = {s.step_id: s for s in actual}
     cli_bin = (
-        "/home/ubuntu/nanofaas/nanofaas-cli/build/install/nanofaas-cli/bin/nanofaas-cli"
+        "/home/ubuntu/nanofaas/clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli"
     )
     assert list(by_id["cli.fn_invoke_selected.echo-test"].command) == [
         cli_bin, "invoke", "echo-test", "-d",

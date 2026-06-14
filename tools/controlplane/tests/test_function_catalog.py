@@ -58,7 +58,7 @@ def test_resolve_function_definition_uses_dynamic_index() -> None:
     assert function.family == "roman-numeral"
     assert function.runtime == "go"
     assert function.example_dir is not None
-    assert function.example_dir.as_posix().endswith("examples/go/roman-numeral")
+    assert function.example_dir.as_posix().endswith("functions/go/roman-numeral")
 
 
 def test_dynamic_catalog_preserves_existing_metadata() -> None:
@@ -114,7 +114,7 @@ def test_demo_loadtest_preset_excludes_go_functions() -> None:
 
 
 def test_discovers_function_from_manifest_catalog_metadata(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(payloads / "roman-numeral-sample.json", "{}")
     _write(
@@ -144,7 +144,7 @@ catalog:
 
 
 def test_discovers_function_with_convention_fallback(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(examples / "bash" / "word-stats" / "Dockerfile", "FROM scratch")
     _write(payloads / "word-stats-sample.json", "{}")
@@ -160,7 +160,7 @@ def test_discovers_function_with_convention_fallback(tmp_path: Path) -> None:
 
 
 def test_discovery_ignores_generated_build_directories(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(examples / "build" / "tmp.txt", "")
     _write(examples / "java" / "word-stats" / "Dockerfile", "FROM scratch")
@@ -173,7 +173,7 @@ def test_discovery_ignores_generated_build_directories(tmp_path: Path) -> None:
 
 
 def test_discovers_java_lite_function_with_convention_fallback(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(examples / "java" / "word-stats-lite" / "Dockerfile", "FROM scratch")
     _write(payloads / "word-stats-sample.json", "{}")
@@ -189,7 +189,7 @@ def test_discovers_java_lite_function_with_convention_fallback(tmp_path: Path) -
 
 
 def test_discovery_rejects_duplicate_keys(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(examples / "go" / "same" / "Dockerfile", "FROM scratch")
     _write(
@@ -207,7 +207,7 @@ catalog:
 
 
 def test_discovery_rejects_non_mapping_catalog_metadata(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(
         examples / "go" / "bad" / "function.yaml",
@@ -221,7 +221,7 @@ catalog: invalid
 
 
 def test_discovery_rejects_invalid_catalog_runtime(tmp_path: Path) -> None:
-    examples = tmp_path / "examples"
+    examples = tmp_path / "functions"
     payloads = tmp_path / "payloads"
     _write(
         examples / "go" / "bad" / "function.yaml",

@@ -26,7 +26,7 @@ def platform_install_command(
         "-n",
         namespace,
         "--chart",
-        str(repo_root / "helm" / "nanofaas"),
+        str(repo_root / "deploy" / "helm" / "nanofaas"),
         "--control-plane-repository",
         repository,
         "--control-plane-tag",

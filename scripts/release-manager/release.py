@@ -230,16 +230,16 @@ def update_files(new_v, dry_run=False):
     
     files_to_update = [
         ("build.gradle", r"(version\s*=\s*')[^']+'", rf"\g<1>{new_v}'"),
-        ("function-sdk-javascript/package.json", r'("version"\s*:\s*")[^"]+"', rf'\g<1>{new_v}"'),
-        ("function-sdk-python/pyproject.toml", r'(version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
+        ("sdks/javascript/package.json", r'("version"\s*:\s*")[^"]+"', rf'\g<1>{new_v}"'),
+        ("sdks/python/pyproject.toml", r'(version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         ("watchdog/Cargo.toml", r'(^version\s*=\s*")[^"]+"', rf'\g<1>{new_v}"'),
         # Helm chart + default image tags
-        ("helm/nanofaas/Chart.yaml", r'(^version:\s*)[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{new_v}'),
-        ("helm/nanofaas/Chart.yaml", r'(^appVersion:\s*")[^"]+"', rf'\g<1>{new_v}"'),
-        ("helm/nanofaas/values.yaml", r'(^\s*tag:\s*)v[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>v{new_v}'),
-        ("helm/nanofaas/values.yaml", r'(ghcr\.io/miciav/nanofaas/[a-z0-9-]+:)v[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>v{new_v}'),
+        ("deploy/helm/nanofaas/Chart.yaml", r'(^version:\s*)[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{new_v}'),
+        ("deploy/helm/nanofaas/Chart.yaml", r'(^appVersion:\s*")[^"]+"', rf'\g<1>{new_v}"'),
+        ("deploy/helm/nanofaas/values.yaml", r'(^\s*tag:\s*)v[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>v{new_v}'),
+        ("deploy/helm/nanofaas/values.yaml", r'(ghcr\.io/miciav/nanofaas/[a-z0-9-]+:)v[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>v{new_v}'),
         # K8s Manifests
-        ("k8s/control-plane-deployment.yaml", r'image:\s*.*control-plane:.*', f'image: {base_image}/control-plane:{tag}'),
+        ("deploy/k8s/control-plane-deployment.yaml", r'image:\s*.*control-plane:.*', f'image: {base_image}/control-plane:{tag}'),
         # function-job-template.yaml removed (JOB mode no longer supported)
     ]
     
@@ -267,16 +267,16 @@ def update_files(new_v, dry_run=False):
 
 
 def refresh_javascript_sdk_lockfile(dry_run=False):
-    cmd = "cd function-sdk-javascript && npm install --package-lock-only"
+    cmd = "cd sdks/javascript && npm install --package-lock-only"
     if dry_run:
         console.print(f"[dim](Dry-run) Would run: {cmd}[/dim]")
-        return "function-sdk-javascript/package-lock.json"
+        return "sdks/javascript/package-lock.json"
     run_command(cmd)
-    return "function-sdk-javascript/package-lock.json"
+    return "sdks/javascript/package-lock.json"
 
 
 def pack_javascript_sdk(dry_run=False):
-    cmd = "cd function-sdk-javascript && npm pack --dry-run"
+    cmd = "cd sdks/javascript && npm pack --dry-run"
     if dry_run:
         console.print(f"[dim](Dry-run) Would run: {cmd}[/dim]")
         return
@@ -366,7 +366,7 @@ def main():
 
         # 5. Apply Changes (Files + K8s)
         updated_files = update_files(new_v, args.dry_run)
-        if "function-sdk-javascript/package.json" in updated_files or args.dry_run:
+        if "sdks/javascript/package.json" in updated_files or args.dry_run:
             lockfile_path = refresh_javascript_sdk_lockfile(dry_run=args.dry_run)
             if lockfile_path not in updated_files:
                 updated_files.append(lockfile_path)

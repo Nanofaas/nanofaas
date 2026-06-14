@@ -1525,7 +1525,7 @@ def test_tui_function_details_show_dynamic_metadata(monkeypatch, capsys) -> None
     assert "roman-numeral-go" in output
     assert "Go roman numeral conversion demo." in output
     assert "localhost:5000/nanofaas/go-roman-numeral:e2e" in output
-    assert "examples/go/roman-numeral" in output
+    assert "functions/go/roman-numeral" in output
 
 
 def test_tui_other_static_views_wait_for_acknowledge(monkeypatch, tmp_path: Path) -> None:
@@ -1689,13 +1689,13 @@ def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch)
                         key="word-stats-javascript",
                         runtime="javascript",
                         image="localhost:5000/nanofaas/javascript-word-stats:e2e",
-                        example_dir=Path("examples/javascript/word-stats"),
+                        example_dir=Path("functions/javascript/word-stats"),
                     ),
                     SimpleNamespace(
                         key="json-transform-javascript",
                         runtime="javascript",
                         image="localhost:5000/nanofaas/javascript-json-transform:e2e",
-                        example_dir=Path("examples/javascript/json-transform"),
+                        example_dir=Path("functions/javascript/json-transform"),
                     ),
                 ],
             )
@@ -1709,7 +1709,7 @@ def test_k3s_scenario_file_choices_only_return_compatible_manifests(monkeypatch)
                         key="word-stats-java",
                         runtime="java",
                         image="localhost:5000/nanofaas/java-word-stats:e2e",
-                        example_dir=Path("examples/java/word-stats"),
+                        example_dir=Path("functions/java/word-stats"),
                     ),
                 ],
             )

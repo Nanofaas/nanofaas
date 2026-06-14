@@ -35,3 +35,6 @@ recovery/
 
 # coverage artifacts
 .coverage
+
+# stray test artifact (mistaken MagicMock filesystem writes)
+MagicMock/

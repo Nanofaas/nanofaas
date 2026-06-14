@@ -190,13 +190,13 @@ def test_image_component_planners_build_javascript_functions_from_examples_direc
     selected_operations = images.plan_build_selected_functions(context)
 
     assert any(
-        "examples/javascript/word-stats/Dockerfile" in " ".join(operation.argv)
+        "functions/javascript/word-stats/Dockerfile" in " ".join(operation.argv)
         for operation in selected_operations
     )
     build_operations = [
         operation
         for operation in selected_operations
-        if "examples/javascript/word-stats/Dockerfile" in operation.argv
+        if "functions/javascript/word-stats/Dockerfile" in operation.argv
     ]
     assert build_operations[0].argv[:2] == ("docker", "build")
 
@@ -350,7 +350,7 @@ def test_namespace_component_installs_namespace_release_in_default_namespace() -
         "upgrade",
         "--install",
         "nanofaas-stack-namespace",
-        "helm/nanofaas-namespace",
+        "deploy/helm/nanofaas-namespace",
         "-n",
         "default",
         "--wait",

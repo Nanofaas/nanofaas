@@ -4,14 +4,14 @@ Minimal, high-performance FaaS control plane and Java function runtime with plug
 
 ## Modules
 
-- `control-plane/` API gateway, in-memory queueing, scheduler thread, and backend-neutral dispatch core
-- `control-plane-modules/` optional modules, including managed deployment providers such as `k8s-deployment-provider` and `container-deployment-provider`
-- `function-sdk-go/` Go SDK for authoring NanoFaaS functions with an embedded HTTP runtime
-- `function-sdk-javascript/` TypeScript/JavaScript SDK for authoring NanoFaaS functions on Node.js
-- `function-runtime/` HTTP runtime for Java function handlers
+- `platform/control-plane/` API gateway, in-memory queueing, scheduler thread, and backend-neutral dispatch core
+- `platform/modules/` optional modules, including managed deployment providers such as `k8s-deployment-provider` and `container-deployment-provider`
+- `sdks/go/` Go SDK for authoring NanoFaaS functions with an embedded HTTP runtime
+- `sdks/javascript/` TypeScript/JavaScript SDK for authoring NanoFaaS functions on Node.js
+- `platform/function-runtime/` HTTP runtime for Java function handlers
 - `python-runtime/` HTTP runtime for Python function handlers
-- `common/` shared DTOs and runtime contracts
-- `k8s/` Kubernetes manifests and templates
+- `platform/common/` shared DTOs and runtime contracts
+- `deploy/k8s/` Kubernetes manifests and templates
 - `docs/` architecture and operational docs
 - `openapi.yaml` public API specification
 
@@ -132,7 +132,7 @@ Raw Gradle remains available for low-level/advanced workflows.
   -PcontrolPlaneModules=container-deployment-provider \
   --args='--nanofaas.deployment.default-backend=container-local'
 
-# include all modules found under control-plane-modules/
+# include all modules found under platform/modules/
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
 
 # include no optional modules (core only)
@@ -155,9 +155,9 @@ Module authoring details are in `docs/control-plane-modules.md`.
 
 ```bash
 ./gradlew test
-cd function-sdk-go && go test ./...
-cd function-sdk-javascript && npm test
-cd examples/javascript/word-stats && npm install && npm test
+cd sdks/go && go test ./...
+cd sdks/javascript && npm test
+cd functions/javascript/word-stats && npm install && npm test
 ```
 
 E2E (local):
@@ -210,16 +210,16 @@ scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 
 - `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
 - `docs/no-k8s-profile.md` documents the `container-local` managed-deployment profile.
 - `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
-- `function-sdk-go/README.md` documents the planned Go function authoring/runtime SDK.
-- `function-sdk-javascript/README.md` documents the JavaScript function authoring/runtime SDK.
+- `sdks/go/README.md` documents the planned Go function authoring/runtime SDK.
+- `sdks/javascript/README.md` documents the JavaScript function authoring/runtime SDK.
 
 ## JavaScript Scope
 
-The JavaScript authoring workflow remains first-class under `function-sdk-javascript/`,
-`examples/javascript/`, and `tools/fn-init/`.
+The JavaScript authoring workflow remains first-class under `sdks/javascript/`,
+`functions/javascript/`, and `tools/fn-init/`.
 V2 also wires JavaScript into `tools/controlplane` catalogs, saved profiles, and VM-backed
 dry-run/E2E flows such as `validate-k3s` and `cli-stack`.
-The JavaScript SDK is packaged from `function-sdk-javascript/` and validated with
+The JavaScript SDK is packaged from `sdks/javascript/` and validated with
 `npm pack --dry-run` as part of the release flow driven by
 `scripts/release-manager/release.py`.
 Build and publish automation remains tracked separately in
@@ -227,13 +227,13 @@ Build and publish automation remains tracked separately in
 
 ## nanofaas-cli (CLI)
 
-Standalone CLI (GraalVM native) under the `nanofaas-cli/` subproject.
+Standalone CLI (GraalVM native) under the `clients/cli/` subproject.
 
 Build a native executable (requires GraalVM):
 
 ```bash
 ./gradlew :nanofaas-cli:nativeCompile
-./nanofaas-cli/build/native/nativeCompile/nanofaas-cli --help
+./clients/cli/build/native/nativeCompile/nanofaas-cli --help
 ```
 
 Run on the JVM:
