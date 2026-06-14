@@ -4,14 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "npm --prefix {{SDK_PATH}} install && npm --prefix {{SDK_PATH}} run build",
-    "pretest": "npm --prefix {{SDK_PATH}} install && npm --prefix {{SDK_PATH}} run build",
-    "build": "tsc -p tsconfig.json",
+{{SDK_BUILD_HOOKS}}    "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/**/*.test.js",
     "start": "node dist/src/index.js"
   },
   "dependencies": {
-    "nanofaas-function-sdk": "file:{{SDK_PATH}}"
+    "nanofaas-function-sdk": "{{SDK_DEPENDENCY}}"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",

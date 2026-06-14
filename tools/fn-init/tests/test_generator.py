@@ -8,7 +8,7 @@ from fn_init.generator import (
     render,
     detect_monorepo_root,
     resolve_output_dir,
-    resolve_sdk_dependency_path,
+    resolve_sdk_dependency_spec,
     generate_function,
     update_settings_gradle,
 )
@@ -104,24 +104,24 @@ def test_resolve_outside_monorepo_no_out_raises(tmp_path):
         resolve_output_dir("greet", "java", None, tmp_path)
 
 
-def test_resolve_sdk_dependency_path_inside_monorepo_uses_relative_path(tmp_path):
+def test_resolve_sdk_dependency_spec_inside_monorepo_uses_relative_path(tmp_path):
     monorepo_root = tmp_path / "repo"
     output_dir = monorepo_root / "functions" / "javascript" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == "../../../sdks/javascript"
+    assert resolve_sdk_dependency_spec(monorepo_root, output_dir, "0.16.1") == "file:../../../sdks/javascript"
 
 
-def test_resolve_sdk_dependency_path_outside_monorepo_uses_absolute_path(tmp_path):
+def test_resolve_sdk_dependency_spec_outside_monorepo_uses_published_version(tmp_path):
     monorepo_root = tmp_path / "repo"
     output_dir = tmp_path / "generated" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(monorepo_root, output_dir) == str(monorepo_root / "sdks" / "javascript")
+    assert resolve_sdk_dependency_spec(monorepo_root, output_dir, "0.16.1") == "0.16.1"
 
 
-def test_resolve_sdk_dependency_path_without_monorepo_uses_default_relative_path(tmp_path):
+def test_resolve_sdk_dependency_spec_without_monorepo_uses_published_version(tmp_path):
     output_dir = tmp_path / "generated" / "greet"
     output_dir.mkdir(parents=True)
-    assert resolve_sdk_dependency_path(None, output_dir) == "../../../sdks/javascript"
+    assert resolve_sdk_dependency_spec(None, output_dir, "0.16.1") == "0.16.1"
 
 
 # --- generate_function (Java) ---
@@ -245,7 +245,18 @@ JAVASCRIPT_PLACEHOLDERS = {
     "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "javascript",
-    "SDK_PATH": "../../../sdks/javascript",
+    "SDK_DEPENDENCY": "file:../../../sdks/javascript",
+    "SDK_BUILD_HOOKS": (
+        '    "prebuild": "npm --prefix ../../../sdks/javascript install && npm --prefix ../../../sdks/javascript run build",\n'
+        '    "pretest": "npm --prefix ../../../sdks/javascript install && npm --prefix ../../../sdks/javascript run build",\n'
+    ),
+    "BUILD_CONTEXT": "../../..",
+    "DOCKERFILE_PATH": "functions/javascript/greet/Dockerfile",
+    "DOCKER_APP_COPY": "COPY functions/javascript/greet /src/functions/javascript/greet",
+    "DOCKER_APP_DIR": "/src/functions/javascript/greet",
+    "DOCKER_SDK_COPY": "COPY sdks/javascript ./function-sdk-javascript",
+    "DOCKER_SDK_BUILD_BLOCK": "WORKDIR /src/function-sdk-javascript\nRUN npm ci\nRUN npm run build\n\n",
+    "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
 }
 
 def test_generate_go_creates_main(tmp_path):

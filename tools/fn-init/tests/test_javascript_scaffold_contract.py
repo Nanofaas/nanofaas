@@ -13,16 +13,16 @@ def test_build_javascript_scaffold_contract_inside_monorepo(tmp_path: Path) -> N
 
     contract = build_javascript_scaffold_contract(repo, output_dir, "0.16.1")
 
-    assert contract["SDK_DEPENDENCY"] == "file:../../../function-sdk-javascript"
+    assert contract["SDK_DEPENDENCY"] == "file:../../../sdks/javascript"
     assert contract["BUILD_CONTEXT"] == "../../.."
     assert contract["DOCKERFILE_PATH"] == "functions/javascript/greet/Dockerfile"
     assert contract["DOCKER_APP_COPY"] == "COPY functions/javascript/greet /src/functions/javascript/greet"
     assert contract["DOCKER_APP_DIR"] == "/src/functions/javascript/greet"
-    assert contract["DOCKER_SDK_COPY"] == "COPY function-sdk-javascript ./function-sdk-javascript"
+    assert contract["DOCKER_SDK_COPY"] == "COPY sdks/javascript ./function-sdk-javascript"
     assert "WORKDIR /src/function-sdk-javascript" in contract["DOCKER_SDK_BUILD_BLOCK"]
     assert "RUN npm ci" in contract["DOCKER_SDK_BUILD_BLOCK"]
     assert contract["DOCKER_FINAL_SDK_COPY"] == "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript"
-    assert "npm --prefix ../../../function-sdk-javascript install" in contract["SDK_BUILD_HOOKS"]
+    assert "npm --prefix ../../../sdks/javascript install" in contract["SDK_BUILD_HOOKS"]
 
 
 def test_build_javascript_scaffold_contract_outside_monorepo(tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ def test_build_javascript_scaffold_contract_in_custom_monorepo_output_uses_dynam
 
     contract = build_javascript_scaffold_contract(repo, output_dir, "0.16.1")
 
-    assert contract["SDK_DEPENDENCY"] == "file:../../function-sdk-javascript"
+    assert contract["SDK_DEPENDENCY"] == "file:../../sdks/javascript"
     assert contract["BUILD_CONTEXT"] == "../.."
     assert contract["DOCKERFILE_PATH"] == "custom/greet/Dockerfile"
     assert contract["DOCKER_APP_COPY"] == "COPY custom/greet /src/custom/greet"
@@ -87,8 +87,8 @@ def test_scaffold_main_renders_custom_monorepo_build_paths(tmp_path: Path, monke
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "settings.gradle").write_text("", encoding="utf-8")
-    sdk_dir = repo / "function-sdk-javascript"
-    sdk_dir.mkdir()
+    sdk_dir = repo / "sdks" / "javascript"
+    sdk_dir.mkdir(parents=True)
     (sdk_dir / "package.json").write_text('{"version": "0.16.1"}', encoding="utf-8")
     monkeypatch.chdir(repo)
 
@@ -97,7 +97,7 @@ def test_scaffold_main_renders_custom_monorepo_build_paths(tmp_path: Path, monke
     dockerfile = (repo / "custom" / "greet" / "Dockerfile").read_text(encoding="utf-8")
     function_yaml = (repo / "custom" / "greet" / "function.yaml").read_text(encoding="utf-8")
 
-    assert "COPY function-sdk-javascript ./function-sdk-javascript" in dockerfile
+    assert "COPY sdks/javascript ./function-sdk-javascript" in dockerfile
     assert "COPY custom/greet /src/custom/greet" in dockerfile
     assert "WORKDIR /src/function-sdk-javascript" in dockerfile
     assert "WORKDIR /src/custom/greet" in dockerfile
@@ -110,7 +110,7 @@ def test_scaffold_main_vendors_sdk_for_repo_aware_external_output(tmp_path: Path
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "settings.gradle").write_text("", encoding="utf-8")
-    sdk_dir = repo / "function-sdk-javascript"
+    sdk_dir = repo / "sdks" / "javascript"
     (sdk_dir / "src").mkdir(parents=True)
     (sdk_dir / "package.json").write_text('{"name":"nanofaas-function-sdk","version":"0.16.1"}', encoding="utf-8")
     (sdk_dir / "package-lock.json").write_text('{"name":"nanofaas-function-sdk","lockfileVersion":3}', encoding="utf-8")
