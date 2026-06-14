@@ -15,7 +15,7 @@ def word_stats_client():
     # Manually reset registry
     decorator._registered_handler = None
     
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../functions/python/word-stats/handler.py'))
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../functions/python/word-stats/handler.py'))
     print(f"DEBUG: loading handler from {path}")
     
     spec = importlib.util.spec_from_file_location("handler_word_stats", path)
