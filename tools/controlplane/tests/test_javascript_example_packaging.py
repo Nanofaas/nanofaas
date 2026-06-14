@@ -6,8 +6,8 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def test_javascript_example_images_copy_local_sdk_dependency_target() -> None:
     dockerfiles = (
-        ROOT / "examples" / "javascript" / "word-stats" / "Dockerfile",
-        ROOT / "examples" / "javascript" / "json-transform" / "Dockerfile",
+        ROOT / "functions" / "javascript" / "word-stats" / "Dockerfile",
+        ROOT / "functions" / "javascript" / "json-transform" / "Dockerfile",
     )
 
     for dockerfile in dockerfiles:

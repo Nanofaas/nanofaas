@@ -32,17 +32,17 @@ class SdkExamplesE2eTest {
 
     private static final Network network = Network.newNetwork();
     private static final java.nio.file.Path WORD_STATS_JAR = E2eTestSupport.resolveBootJar(
-            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats/build/libs"),
+            E2eTestSupport.PROJECT_ROOT.resolve("functions/java/word-stats/build/libs"),
             "word-stats");
     private static final java.nio.file.Path JSON_TRANSFORM_JAR = E2eTestSupport.resolveBootJar(
-            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform/build/libs"),
+            E2eTestSupport.PROJECT_ROOT.resolve("functions/java/json-transform/build/libs"),
             "json-transform");
 
     // word-stats function container (Spring SDK)
     private static final GenericContainer<?> wordStats = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
-                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/word-stats/Dockerfile"))
+                            E2eTestSupport.PROJECT_ROOT.resolve("functions/java/word-stats/Dockerfile"))
                     .withFileFromPath("build/libs/" + WORD_STATS_JAR.getFileName(), WORD_STATS_JAR)
     )
             .withExposedPorts(8080)
@@ -54,7 +54,7 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> jsonTransform = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath("Dockerfile",
-                            E2eTestSupport.PROJECT_ROOT.resolve("examples/java/json-transform/Dockerfile"))
+                            E2eTestSupport.PROJECT_ROOT.resolve("functions/java/json-transform/Dockerfile"))
                     .withFileFromPath("build/libs/" + JSON_TRANSFORM_JAR.getFileName(), JSON_TRANSFORM_JAR)
     )
             .withExposedPorts(8080)
@@ -66,7 +66,7 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> wordStatsLite = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
-                    .withDockerfilePath("examples/java/word-stats-lite/Dockerfile")
+                    .withDockerfilePath("functions/java/word-stats-lite/Dockerfile")
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -77,7 +77,7 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> jsonTransformLite = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
-                    .withDockerfilePath("examples/java/json-transform-lite/Dockerfile")
+                    .withDockerfilePath("functions/java/json-transform-lite/Dockerfile")
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -88,7 +88,7 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> wordStatsGo = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
-                    .withDockerfilePath("examples/go/word-stats/Dockerfile")
+                    .withDockerfilePath("functions/go/word-stats/Dockerfile")
     )
             .withExposedPorts(8080)
             .withNetwork(network)
@@ -99,7 +99,7 @@ class SdkExamplesE2eTest {
     private static final GenericContainer<?> jsonTransformGo = new GenericContainer<>(
             new ImageFromDockerfile()
                     .withFileFromPath(".", E2eTestSupport.PROJECT_ROOT)
-                    .withDockerfilePath("examples/go/json-transform/Dockerfile")
+                    .withDockerfilePath("functions/go/json-transform/Dockerfile")
     )
             .withExposedPorts(8080)
             .withNetwork(network)

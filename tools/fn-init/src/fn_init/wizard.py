@@ -103,7 +103,7 @@ def confirm_proceed() -> bool:
 
 def show_next_steps(name: str, lang: str, output_dir: Path) -> None:
     unit_cmd = {
-        "java": f"./gradlew :examples:java:{name}:test",
+        "java": f"./gradlew :functions:java:{name}:test",
         "python": "uv run pytest",
         "go": "go mod tidy && go test ./...",
         "javascript": "npm install\nnpm test\nnpm run build",

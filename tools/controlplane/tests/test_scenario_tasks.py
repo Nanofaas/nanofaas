@@ -84,4 +84,4 @@ def test_build_function_images_vm_script_supports_javascript_dockerfiles() -> No
         functions=[("localhost:5000/nanofaas/javascript-word-stats:e2e", "javascript", "word-stats")],
     )
 
-    assert "examples/javascript/word-stats/Dockerfile" in script
+    assert "functions/javascript/word-stats/Dockerfile" in script

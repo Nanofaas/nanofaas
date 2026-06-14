@@ -15,7 +15,7 @@ def json_transform_client():
     # Manually reset registry
     decorator._registered_handler = None
     
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../examples/python/json-transform/handler.py'))
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../functions/python/json-transform/handler.py'))
     print(f"DEBUG: loading handler from {path}")
     
     spec = importlib.util.spec_from_file_location("handler_json_transform", path)

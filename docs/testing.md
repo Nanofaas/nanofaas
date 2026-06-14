@@ -75,10 +75,10 @@ env npm_config_cache=/tmp/codex-npm-cache npm test
 env npm_config_cache=/tmp/codex-npm-cache npm pack --dry-run
 ```
 
-JavaScript demo functions live under `examples/javascript/`:
+JavaScript demo functions live under `functions/javascript/`:
 
 ```bash
-cd examples/javascript/word-stats
+cd functions/javascript/word-stats
 npm install && npm test
 
 cd ../json-transform
@@ -192,7 +192,7 @@ E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_
 
 Ansible playbooks are bundled in the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`).
 
-JavaScript authoring remains first-class under `sdks/javascript/` and `examples/javascript/`.
+JavaScript authoring remains first-class under `sdks/javascript/` and `functions/javascript/`.
 V2 also wires JavaScript into `tools/controlplane` presets, saved profiles, and VM-backed dry-run/E2E flows such as `validate-k3s` and `cli-stack`.
 Build and publish automation remains tracked separately in `docs/plans/2026-04-21-v2-packaging-and-release.md`.
 

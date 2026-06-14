@@ -452,7 +452,7 @@ def test_container_local_runner_builds_javascript_function_images(
         "-t",
         "example/image:tag",
         "-f",
-        "examples/javascript/word-stats/Dockerfile",
+        "functions/javascript/word-stats/Dockerfile",
         ".",
     ]
 

@@ -123,21 +123,21 @@ class ContainerLocalE2eRunner:
             self._run(
                 [
                     "./gradlew",
-                    f":examples:java:{family}:bootBuildImage",
+                    f":functions:java:{family}:bootBuildImage",
                     f"-PfunctionImage={image}",
                     "--quiet",
                 ]
             )
         elif runtime_kind == "java-lite":
-            self._run([adapter, "build", "-t", image, "-f", f"examples/java/{family}-lite/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"functions/java/{family}-lite/Dockerfile", "."])
         elif runtime_kind == "go":
-            self._run([adapter, "build", "-t", image, "-f", f"examples/go/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"functions/go/{family}/Dockerfile", "."])
         elif runtime_kind == "javascript":
-            self._run([adapter, "build", "-t", image, "-f", f"examples/javascript/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"functions/javascript/{family}/Dockerfile", "."])
         elif runtime_kind == "python":
-            self._run([adapter, "build", "-t", image, "-f", f"examples/python/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"functions/python/{family}/Dockerfile", "."])
         elif runtime_kind == "exec":
-            self._run([adapter, "build", "-t", image, "-f", f"examples/bash/{family}/Dockerfile", "."])
+            self._run([adapter, "build", "-t", image, "-f", f"functions/bash/{family}/Dockerfile", "."])
         else:
             raise RuntimeError(f"Unsupported function runtime: {runtime_kind}")
 

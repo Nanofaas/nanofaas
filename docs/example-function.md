@@ -26,13 +26,13 @@ curl -X POST http://localhost:8080/v1/functions/echo:invoke \
 
 The Go SDK examples live under:
 
-- `examples/go/word-stats`
-- `examples/go/json-transform`
+- `functions/go/word-stats`
+- `functions/go/json-transform`
 
 Run one locally:
 
 ```bash
-cd examples/go/word-stats
+cd functions/go/word-stats
 go run .
 ```
 
@@ -40,13 +40,13 @@ go run .
 
 The JavaScript SDK examples live under:
 
-- `examples/javascript/word-stats`
-- `examples/javascript/json-transform`
+- `functions/javascript/word-stats`
+- `functions/javascript/json-transform`
 
 Run one locally:
 
 ```bash
-cd examples/javascript/word-stats
+cd functions/javascript/word-stats
 npm install
 npm start
 ```

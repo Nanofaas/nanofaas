@@ -8,16 +8,16 @@ def test_build_javascript_scaffold_contract_inside_monorepo(tmp_path: Path) -> N
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "settings.gradle").write_text("", encoding="utf-8")
-    output_dir = repo / "examples" / "javascript" / "greet"
+    output_dir = repo / "functions" / "javascript" / "greet"
     output_dir.mkdir(parents=True)
 
     contract = build_javascript_scaffold_contract(repo, output_dir, "0.16.1")
 
     assert contract["SDK_DEPENDENCY"] == "file:../../../function-sdk-javascript"
     assert contract["BUILD_CONTEXT"] == "../../.."
-    assert contract["DOCKERFILE_PATH"] == "examples/javascript/greet/Dockerfile"
-    assert contract["DOCKER_APP_COPY"] == "COPY examples/javascript/greet /src/examples/javascript/greet"
-    assert contract["DOCKER_APP_DIR"] == "/src/examples/javascript/greet"
+    assert contract["DOCKERFILE_PATH"] == "functions/javascript/greet/Dockerfile"
+    assert contract["DOCKER_APP_COPY"] == "COPY functions/javascript/greet /src/functions/javascript/greet"
+    assert contract["DOCKER_APP_DIR"] == "/src/functions/javascript/greet"
     assert contract["DOCKER_SDK_COPY"] == "COPY function-sdk-javascript ./function-sdk-javascript"
     assert "WORKDIR /src/function-sdk-javascript" in contract["DOCKER_SDK_BUILD_BLOCK"]
     assert "RUN npm ci" in contract["DOCKER_SDK_BUILD_BLOCK"]

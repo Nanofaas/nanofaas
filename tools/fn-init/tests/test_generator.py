@@ -59,7 +59,7 @@ def test_render_no_match_unchanged():
 
 def test_detect_monorepo_root_finds_settings(tmp_path):
     (tmp_path / "settings.gradle").write_text("// settings")
-    subdir = tmp_path / "examples" / "java" / "greet"
+    subdir = tmp_path / "functions" / "java" / "greet"
     subdir.mkdir(parents=True)
     assert detect_monorepo_root(subdir) == tmp_path
 
@@ -76,7 +76,7 @@ def test_detect_monorepo_root_returns_none(tmp_path):
 def test_resolve_in_monorepo_no_out(tmp_path):
     (tmp_path / "settings.gradle").write_text("")
     out, root = resolve_output_dir("greet", "java", None, tmp_path)
-    assert out == tmp_path / "examples" / "java" / "greet"
+    assert out == tmp_path / "functions" / "java" / "greet"
     assert root == tmp_path
 
 def test_resolve_in_monorepo_with_out(tmp_path):
@@ -88,7 +88,7 @@ def test_resolve_in_monorepo_with_out(tmp_path):
 
 def test_resolve_in_monorepo_with_out_already_pointing_to_target_dir(tmp_path):
     (tmp_path / "settings.gradle").write_text("")
-    target = tmp_path / "examples" / "python" / "greet"
+    target = tmp_path / "functions" / "python" / "greet"
     out, root = resolve_output_dir("greet", "python", target, tmp_path)
     assert out == target
     assert root == tmp_path
@@ -106,7 +106,7 @@ def test_resolve_outside_monorepo_no_out_raises(tmp_path):
 
 def test_resolve_sdk_dependency_path_inside_monorepo_uses_relative_path(tmp_path):
     monorepo_root = tmp_path / "repo"
-    output_dir = monorepo_root / "examples" / "javascript" / "greet"
+    output_dir = monorepo_root / "functions" / "javascript" / "greet"
     output_dir.mkdir(parents=True)
     assert resolve_sdk_dependency_path(monorepo_root, output_dir) == "../../../sdks/javascript"
 
@@ -130,7 +130,7 @@ JAVA_PLACEHOLDERS = {
     "FUNCTION_NAME": "greet",
     "CLASS_NAME": "Greet",
     "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
-    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "java",
 }
@@ -138,20 +138,20 @@ JAVA_PLACEHOLDERS = {
 def test_generate_java_creates_handler(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "java", out, vscode=False, placeholders=JAVA_PLACEHOLDERS)
-    handler = out / "src/main/java/it/unimib/datai/nanofaas/examples/greet/GreetHandler.java"
+    handler = out / "src/main/java/it/unimib/datai/nanofaas/functions/greet/GreetHandler.java"
     assert handler.exists()
     assert "GreetHandler" in handler.read_text()
 
 def test_generate_java_creates_application(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "java", out, vscode=False, placeholders=JAVA_PLACEHOLDERS)
-    app = out / "src/main/java/it/unimib/datai/nanofaas/examples/greet/GreetApplication.java"
+    app = out / "src/main/java/it/unimib/datai/nanofaas/functions/greet/GreetApplication.java"
     assert app.exists()
 
 def test_generate_java_creates_test(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "java", out, vscode=False, placeholders=JAVA_PLACEHOLDERS)
-    test = out / "src/test/java/it/unimib/datai/nanofaas/examples/greet/GreetHandlerTest.java"
+    test = out / "src/test/java/it/unimib/datai/nanofaas/functions/greet/GreetHandlerTest.java"
     assert test.exists()
 
 def test_generate_java_creates_build_files(tmp_path):
@@ -196,7 +196,7 @@ PYTHON_PLACEHOLDERS = {
     "FUNCTION_NAME": "greet",
     "CLASS_NAME": "Greet",
     "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
-    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "python",
 }
@@ -233,7 +233,7 @@ GO_PLACEHOLDERS = {
     "FUNCTION_NAME": "greet",
     "CLASS_NAME": "Greet",
     "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
-    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "go",
 }
@@ -242,7 +242,7 @@ JAVASCRIPT_PLACEHOLDERS = {
     "FUNCTION_NAME": "greet",
     "CLASS_NAME": "Greet",
     "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
-    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "javascript",
     "SDK_PATH": "../../../sdks/javascript",
@@ -273,7 +273,7 @@ def test_generate_go_gomod_has_module(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
     content = (out / "go.mod").read_text()
-    assert "github.com/miciav/nanofaas/examples/go/greet" in content
+    assert "github.com/miciav/nanofaas/functions/go/greet" in content
     assert "function-sdk-go" in content
 
 
@@ -301,7 +301,7 @@ def test_generate_javascript_function_yaml_uses_javascript_dockerfile(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
     content = (out / "function.yaml").read_text()
-    assert "dockerfile: examples/javascript/greet/Dockerfile" in content
+    assert "dockerfile: functions/javascript/greet/Dockerfile" in content
 
 def test_generate_javascript_vscode(tmp_path):
     out = tmp_path / "greet"
@@ -317,7 +317,7 @@ BASH_PLACEHOLDERS = {
     "FUNCTION_NAME": "greet",
     "CLASS_NAME": "Greet",
     "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
-    "PACKAGE_PATH": "it/unimib/datai/nanofaas/examples/greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
     "IMAGE_TAG": "nanofaas/greet:latest",
     "LANG": "bash",
 }
@@ -354,10 +354,10 @@ def test_update_settings_gradle_appends(tmp_path):
     (tmp_path / "settings.gradle").write_text("include 'common'\n")
     modified = update_settings_gradle(tmp_path, "greet", "java")
     assert modified is True
-    assert "include 'examples:java:greet'" in (tmp_path / "settings.gradle").read_text()
+    assert "include 'functions:java:greet'" in (tmp_path / "settings.gradle").read_text()
 
 def test_update_settings_gradle_idempotent(tmp_path):
-    (tmp_path / "settings.gradle").write_text("include 'examples:java:greet'\n")
+    (tmp_path / "settings.gradle").write_text("include 'functions:java:greet'\n")
     assert update_settings_gradle(tmp_path, "greet", "java") is False
 
 def test_update_settings_gradle_python_noop(tmp_path):

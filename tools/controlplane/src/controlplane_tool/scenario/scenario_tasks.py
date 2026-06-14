@@ -131,7 +131,7 @@ def build_function_image_vm_script(
             commands=[
                 [
                     "./gradlew",
-                    f":examples:java:{family}:bootBuildImage",
+                    f":functions:java:{family}:bootBuildImage",
                     f"-PfunctionImage={image}",
                     "--no-daemon",
                     "-q",
@@ -140,11 +140,11 @@ def build_function_image_vm_script(
         )
 
     dockerfile_map = {
-        "exec": Path(f"examples/bash/{family}/Dockerfile"),
-        "go": Path(f"examples/go/{family}/Dockerfile"),
-        "java-lite": Path(f"examples/java/{family}-lite/Dockerfile"),
-        "javascript": Path(f"examples/javascript/{family}/Dockerfile"),
-        "python": Path(f"examples/python/{family}/Dockerfile"),
+        "exec": Path(f"functions/bash/{family}/Dockerfile"),
+        "go": Path(f"functions/go/{family}/Dockerfile"),
+        "java-lite": Path(f"functions/java/{family}-lite/Dockerfile"),
+        "javascript": Path(f"functions/javascript/{family}/Dockerfile"),
+        "python": Path(f"functions/python/{family}/Dockerfile"),
     }
     if runtime_kind not in dockerfile_map:
         raise RuntimeError(f"Unsupported function runtime: {runtime_kind!r}")

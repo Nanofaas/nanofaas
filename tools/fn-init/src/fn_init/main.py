@@ -29,7 +29,7 @@ def main(
         monorepo_root = generator.detect_monorepo_root(cwd)
         name = wizard.ask_name()
         lang = wizard.ask_lang()
-        default_out = str(monorepo_root / "examples" / lang / name) if monorepo_root else None
+        default_out = str(monorepo_root / "functions" / lang / name) if monorepo_root else None
         out = wizard.ask_out(default_out)
         vscode = wizard.ask_vscode()
 
@@ -76,7 +76,7 @@ def main(
         generator.generate_function(name, lang, output_dir, vscode, placeholders)
         if monorepo_root and lang == "java":  # only Java has centralised Gradle registry
             if generator.update_settings_gradle(monorepo_root, name, lang):
-                console.print(f"[dim]Updated settings.gradle → added include 'examples:java:{name}'[/]")
+                console.print(f"[dim]Updated settings.gradle → added include 'functions:java:{name}'[/]")
 
     wizard.show_next_steps(name, lang, output_dir)
 

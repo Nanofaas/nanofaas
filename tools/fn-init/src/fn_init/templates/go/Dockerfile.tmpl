@@ -1,8 +1,8 @@
 FROM golang:1.24-alpine AS build
 WORKDIR /src
 COPY sdks/go /src/function-sdk-go
-COPY examples/go/{{FUNCTION_NAME}} /src/examples/go/{{FUNCTION_NAME}}
-WORKDIR /src/examples/go/{{FUNCTION_NAME}}
+COPY functions/go/{{FUNCTION_NAME}} /src/functions/go/{{FUNCTION_NAME}}
+WORKDIR /src/functions/go/{{FUNCTION_NAME}}
 RUN go build -o /out/{{FUNCTION_NAME}} .
 
 FROM alpine:3.22

@@ -25,10 +25,10 @@ include('control-plane');     project(':control-plane').projectDir = file('platf
 include('function-runtime');  project(':function-runtime').projectDir = file('platform/function-runtime')
 include('nanofaas-cli');      project(':nanofaas-cli').projectDir = file('clients/cli')
 include(':sdks:java-lite');   project(':sdks:java-lite').projectDir = file('sdks/java-lite')
-include('examples:java:word-stats')
-include('examples:java:json-transform')
-include('examples:java:word-stats-lite')
-include('examples:java:json-transform-lite')
+include('functions:java:word-stats')
+include('functions:java:json-transform')
+include('functions:java:word-stats-lite')
+include('functions:java:json-transform-lite')
 
 def parseCsvModules = { String raw ->
     if (raw == null || raw.trim().isEmpty()) {
@@ -76,4 +76,4 @@ def unknownModules = requestedModules.findAll { !availableModules.contains(it) }
 if (!unknownModules.isEmpty()) {
     throw new GradleException("Unknown control-plane modules: ${unknownModules}. Available: ${availableModules}")
 }
-include 'examples:java:roman-numeral'
+include 'functions:java:roman-numeral'

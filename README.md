@@ -157,7 +157,7 @@ Module authoring details are in `docs/control-plane-modules.md`.
 ./gradlew test
 cd sdks/go && go test ./...
 cd sdks/javascript && npm test
-cd examples/javascript/word-stats && npm install && npm test
+cd functions/javascript/word-stats && npm install && npm test
 ```
 
 E2E (local):
@@ -216,7 +216,7 @@ scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 
 ## JavaScript Scope
 
 The JavaScript authoring workflow remains first-class under `sdks/javascript/`,
-`examples/javascript/`, and `tools/fn-init/`.
+`functions/javascript/`, and `tools/fn-init/`.
 V2 also wires JavaScript into `tools/controlplane` catalogs, saved profiles, and VM-backed
 dry-run/E2E flows such as `validate-k3s` and `cli-stack`.
 The JavaScript SDK is packaged from `sdks/javascript/` and validated with

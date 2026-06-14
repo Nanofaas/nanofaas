@@ -474,7 +474,7 @@ dependencies {
 2. Compilare:
 
 ```bash
-./gradlew :examples:java:json-transform:nativeCompile
+./gradlew :functions:java:json-transform:nativeCompile
 ```
 
 3. Il binary nativo risultante include:

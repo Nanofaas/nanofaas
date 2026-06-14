@@ -96,7 +96,7 @@ def resolve_output_dir(
     if out is not None:
         return (out if out.name == name else out / name), monorepo_root
     if monorepo_root is not None:
-        return monorepo_root / "examples" / lang / name, monorepo_root
+        return monorepo_root / "functions" / lang / name, monorepo_root
     raise ValueError("Not inside the nanofaas monorepo. Use --out to specify an output directory.")
 
 
@@ -165,7 +165,7 @@ def update_settings_gradle(monorepo_root: Path, name: str, lang: str) -> bool:
     if lang != "java":
         return False
     settings = monorepo_root / "settings.gradle"
-    include_line = f"include 'examples:java:{name}'"
+    include_line = f"include 'functions:java:{name}'"
     content = settings.read_text()
     if include_line in content:
         return False

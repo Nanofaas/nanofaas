@@ -95,8 +95,8 @@ tasks.named('test') {
     systemProperty 'nanofaas.selectedControlPlaneModules', selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort().join(',')
     dependsOn 'bootJar'
     dependsOn ':function-runtime:bootJar'
-    dependsOn ':examples:java:word-stats:bootJar'
-    dependsOn ':examples:java:json-transform:bootJar'
+    dependsOn ':functions:java:word-stats:bootJar'
+    dependsOn ':functions:java:json-transform:bootJar'
 }
 
 tasks.named('bootJar') {
