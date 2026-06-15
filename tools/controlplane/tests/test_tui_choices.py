@@ -1079,6 +1079,47 @@ def test_tui_back_selection_returns_before_followup_prompts(monkeypatch) -> None
     assert confirm_prompts == []
 
 
+def test_build_menu_contains_publish_images_matrix_entry() -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    publish_choice = next(
+        choice
+        for choice in tui_app._BUILD_ACTION_CHOICES
+        if getattr(choice, "value", None) == "publish-images"
+    )
+
+    assert publish_choice.title == "publish-images — build & publish image matrix"
+    assert publish_choice.value == "publish-images"
+    assert (
+        publish_choice.description
+        == "Build and push all selected images across architectures and JVM/native flavors."
+    )
+
+
+def test_build_menu_routes_publish_images_to_image_matrix_workflow(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    called: list[str] = []
+    prompts: list[str] = []
+
+    def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
+        prompts.append(message)
+        return "publish-images"
+
+    monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
+    monkeypatch.setattr(
+        NanofaasTUI,
+        "_run_publish_images_workflow",
+        lambda self: called.append("publish-images"),
+        raising=False,
+    )
+
+    NanofaasTUI()._build_menu()
+
+    assert called == ["publish-images"]
+    assert prompts == ["Action:"]
+
+
 def test_tui_build_menu_logs_gradle_output_before_raising_on_nonzero_result(monkeypatch) -> None:
     import pytest
     import controlplane_tool.cli.commands as cli_commands

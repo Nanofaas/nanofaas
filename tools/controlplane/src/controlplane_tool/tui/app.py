@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import traceback
-from typing import Any
+from typing import Any, Literal
 
 import questionary
 from rich.markup import escape
@@ -388,6 +388,11 @@ _BUILD_ACTION_CHOICES = [
         "inspect",
         "Show the resolved building configuration and module selection before running an expensive building step.",
     ),
+    _choice(
+        "publish-images — build & publish image matrix",
+        "publish-images",
+        "Build and push all selected images across architectures and JVM/native flavors.",
+    ),
 ]
 
 _BUILD_PROFILE_CHOICES = [
@@ -409,7 +414,10 @@ _BUILD_PROFILE_CHOICES = [
     ),
 ]
 
-def _select_build_action() -> BuildAction | None:
+ImageMatrixPublishAction = Literal["publish-images"]
+
+
+def _select_build_action() -> BuildAction | ImageMatrixPublishAction | None:
     value = _select_value(
         "Action:",
         choices=_BUILD_ACTION_CHOICES,
@@ -417,6 +425,8 @@ def _select_build_action() -> BuildAction | None:
     )
     if value == _BACK_VALUE:
         return None
+    if value == "publish-images":
+        return value
     if is_build_action(value):
         return value
     raise ValueError(f"Unsupported build action selected: {value}")
@@ -689,6 +699,9 @@ class NanofaasTUI:
             action = _select_build_action()
             if action is None:
                 return
+            if action == "publish-images":
+                self._run_publish_images_workflow()
+                return
 
             profile = _select_build_profile()
             if profile is None:
@@ -744,6 +757,9 @@ class NanofaasTUI:
                 action=_run_build_workflow,
             )
             return
+
+    def _run_publish_images_workflow(self) -> None:
+        raise RuntimeError("Image matrix publishing workflow is not implemented yet.")
 
     # ── ENVIRONMENT ──────────────────────────────────────────────────────────
 

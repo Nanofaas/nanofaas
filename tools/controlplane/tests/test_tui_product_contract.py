@@ -24,6 +24,19 @@ def test_tui_main_menu_uses_canonical_product_sections() -> None:
     ]
 
 
+def test_tui_has_required_publish_image_matrix_entry() -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    publish_choice = next(
+        choice
+        for choice in tui_app._BUILD_ACTION_CHOICES
+        if getattr(choice, "value", None) == "publish-images"
+    )
+
+    assert publish_choice.title == "publish-images — build & publish image matrix"
+    assert publish_choice.value == "publish-images"
+
+
 def test_main_menu_entries_have_precise_english_descriptions() -> None:
     for choice in NanofaasTUI._MAIN_MENU:
         assert getattr(choice, "description", None)
