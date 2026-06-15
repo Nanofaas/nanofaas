@@ -15,7 +15,7 @@ from controlplane_tool.building.image_plan import (
     resolve_current_version,
     select_image_targets,
 )
-from controlplane_tool.building.image_workflow import ImageMatrixRunError, run_image_matrix_plan
+from controlplane_tool.building.image_workflow import ImageCellResult, ImageMatrixRunError, run_image_matrix_plan
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.core.models import BuildAction, ProfileName
 from controlplane_tool.cli.flow_exit import exit_on_failed_flow
@@ -41,6 +41,27 @@ def _combined_extra_gradle_args(
     combined: list[str] = list(extra_gradle_arg or [])
     combined.extend(ctx.args)
     return combined
+
+
+def _image_result_label(result: ImageCellResult) -> str:
+    flavor = "" if result.flavor == "default" else f"-{result.flavor}"
+    return f"{result.target} {result.arch}{flavor} {result.phase}"
+
+
+def _exit_if_image_failures(results: list[ImageCellResult]) -> None:
+    failures = [result for result in results if not result.ok]
+    if not failures:
+        return
+
+    suffix = "result" if len(failures) == 1 else "results"
+    typer.echo(f"Image matrix failed: {len(failures)} failed {suffix}", err=True)
+    for failure in failures:
+        detail = f": {failure.detail}" if failure.detail else ""
+        typer.echo(
+            f"- {_image_result_label(failure)} failed (exit {failure.return_code}){detail}",
+            err=True,
+        )
+    raise typer.Exit(code=1)
 
 
 def _run_gradle_action(
@@ -253,10 +274,11 @@ def install_cli_commands(app: typer.Typer) -> None:
             return
         runner = CommandRunner(shell=SubprocessShell(), repo_root=repo_root)
         try:
-            run_image_matrix_plan(runner, plan, dry_run=False, fail_fast=fail_fast)
+            results = run_image_matrix_plan(runner, plan, dry_run=False, fail_fast=fail_fast)
         except ImageMatrixRunError as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
+        _exit_if_image_failures(results)
 
     @app.command("native", context_settings=CLI_CONTEXT_SETTINGS)
     def native_command(
