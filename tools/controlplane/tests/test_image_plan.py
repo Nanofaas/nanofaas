@@ -4,11 +4,13 @@ from pathlib import Path
 
 import pytest
 
+from controlplane_tool.building import image_plan
 from controlplane_tool.building.image_plan import (
     DEFAULT_ARCHES,
     ImageArch,
     ImageFlavor,
     ImageMatrixCell,
+    ImageTargetSpec,
     image_reference,
     plan_image_matrix,
     select_image_targets,
@@ -187,6 +189,39 @@ def test_java_jvm_function_cell_plans_function_jar_then_dockerfile_build() -> No
     ]
 
 
+def test_jvm_docker_build_quotes_shell_metacharacters_in_image_argument() -> None:
+    plan = plan_image_matrix(
+        repo_root=Path("/repo"),
+        targets=["java-word-stats"],
+        tag="v1;echo hacked",
+        arches=("amd64",),
+        flavors=("jvm",),
+        push=False,
+        runtime="docker",
+    )
+
+    bash_command = plan.cells[0].build_command.command[2]
+
+    assert (
+        " -t 'ghcr.io/miciav/nanofaas/java-word-stats:v1;echo hacked-amd64-jvm' "
+        in bash_command
+    )
+    assert " -t ghcr.io/miciav/nanofaas/java-word-stats:v1;echo hacked-amd64-jvm " not in bash_command
+
+
+def test_jvm_docker_build_rejects_targets_without_artifact_tasks() -> None:
+    target = ImageTargetSpec(
+        name="broken-jvm",
+        group="Test",
+        kind="gradle",
+        flavors=("jvm",),
+        dockerfile="Dockerfile",
+    )
+
+    with pytest.raises(ValueError, match="Target broken-jvm does not define JVM artifact tasks"):
+        image_plan._plan_jvm_docker_build(Path("/repo"), target, "example:test", "amd64")
+
+
 def test_java_lite_native_cell_plans_dockerfile_build() -> None:
     cell = _single_cell("java-lite-word-stats", arch="amd64", flavor="native")
 
@@ -221,5 +256,5 @@ def test_default_watchdog_cell_plans_dockerfile_build_with_default_tag() -> None
         "ghcr.io/miciav/nanofaas/watchdog:v1.2.3-amd64",
         "-f",
         "watchdog/Dockerfile",
-        ".",
+        "watchdog",
     ]

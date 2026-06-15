@@ -161,7 +161,7 @@ IMAGE_TARGETS: dict[str, ImageTargetSpec] = {
             ("default",),
             dockerfile="functions/javascript/json-transform/Dockerfile",
         ),
-        _target("watchdog", "Runtime", "docker", ("default",), dockerfile="watchdog/Dockerfile"),
+        _target("watchdog", "Runtime", "docker", ("default",), dockerfile="watchdog/Dockerfile", context="watchdog"),
         _target("bash-word-stats", "Bash Functions", "docker", ("default",), dockerfile="functions/bash/word-stats/Dockerfile"),
         _target("bash-json-transform", "Bash Functions", "docker", ("default",), dockerfile="functions/bash/json-transform/Dockerfile"),
     )
@@ -288,6 +288,8 @@ def _plan_jvm_docker_build(
     image: str,
     arch: ImageArch,
 ) -> PlannedCommand:
+    if not target.jvm_artifact_tasks:
+        raise ValueError(f"Target {target.name} does not define JVM artifact tasks")
     gradle_command = ["./gradlew", *target.jvm_artifact_tasks]
     if target.profile_aware:
         gradle_command.append("-PcontrolPlaneModules=all")
