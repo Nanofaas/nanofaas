@@ -9,23 +9,25 @@ from controlplane_tool.building.image_plan import (
 
 
 def test_select_targets_all_returns_current_catalog() -> None:
-    assert set(select_image_targets("all")) == {
-        "control-plane",
-        "function-runtime",
-        "java-word-stats",
-        "java-json-transform",
-        "java-lite-word-stats",
-        "java-lite-json-transform",
-        "go-word-stats",
-        "go-json-transform",
-        "python-word-stats",
-        "python-json-transform",
-        "javascript-word-stats",
-        "javascript-json-transform",
-        "bash-word-stats",
-        "bash-json-transform",
-        "watchdog",
-    }
+    assert select_image_targets("all") == sorted(
+        [
+            "control-plane",
+            "function-runtime",
+            "java-word-stats",
+            "java-json-transform",
+            "java-lite-word-stats",
+            "java-lite-json-transform",
+            "go-word-stats",
+            "go-json-transform",
+            "python-word-stats",
+            "python-json-transform",
+            "javascript-word-stats",
+            "javascript-json-transform",
+            "bash-word-stats",
+            "bash-json-transform",
+            "watchdog",
+        ]
+    )
 
 
 def test_select_targets_csv_preserves_order() -> None:
