@@ -97,8 +97,9 @@ def test_verify_existing_stack_emits_balanced_child_events_for_nested_verificati
     monkeypatch.setattr(
         runner,
         "_run_function_workflow",
-        lambda fn_key, resolved: calls.append(("function", fn_key)),
+        lambda fn_key, resolved, cleanup=True: calls.append(("function", fn_key)),
     )
+    monkeypatch.setattr(runner, "_delete_function", lambda fn_key: None)
     monkeypatch.setattr(
         runner,
         "_verify_prometheus_metrics",
@@ -165,7 +166,7 @@ def test_verify_existing_stack_marks_failed_nested_verification_child(
         lambda resolved: ["billing.fn"],
     )
     monkeypatch.setattr(runner, "_verify_health", lambda: None)
-    monkeypatch.setattr(runner, "_run_function_workflow", lambda fn_key, resolved: None)
+    monkeypatch.setattr(runner, "_run_function_workflow", lambda fn_key, resolved, cleanup=True: None)
 
     def _fail_prometheus() -> None:
         raise RuntimeError("boom")

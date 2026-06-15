@@ -284,14 +284,22 @@ class K3sCurlRunner:
         with reporter.child("verify.phase", "Verify"):
             with reporter.child("verify.health", "Verifying control-plane health"):
                 self._verify_health()
-            for fn_key in _selected_functions(resolved):
+            selected = list(_selected_functions(resolved))
+            for index, fn_key in enumerate(selected):
                 with reporter.child(
                     f"verify.function.{fn_key}",
                     f"Running function workflow for '{fn_key}'",
                 ):
-                    self._run_function_workflow(fn_key, resolved)
+                    # Deleting a function removes its per-function Prometheus
+                    # meters (e.g. function_enqueue_total) from the exported
+                    # registry, so keep the last function registered until the
+                    # metric verification below has run.
+                    is_last = index == len(selected) - 1
+                    self._run_function_workflow(fn_key, resolved, cleanup=not is_last)
             with reporter.child("verify.prometheus", "Verifying Prometheus metrics"):
                 self._verify_prometheus_metrics()
+            if selected:
+                self._delete_function(selected[-1])
 
     def cleanup_platform(self) -> None:
         step("Cleaning up shared k3s platform")
@@ -453,6 +461,7 @@ class K3sCurlRunner:
         self,
         fn_key: str,
         resolved: "ResolvedScenario | None",
+        cleanup: bool = True,
     ) -> None:
         fn_image = _function_image(fn_key, resolved, self._runtime_image)
         self._delete_function(fn_key)
@@ -464,7 +473,8 @@ class K3sCurlRunner:
             exec_id = self._enqueue_function(fn_key, payload)
             self._poll_execution(exec_id)
         finally:
-            self._delete_function(fn_key)
+            if cleanup:
+                self._delete_function(fn_key)
 
     def run(self, scenario_file: Path | None = None) -> None:
         resolved = _resolve_scenario(scenario_file)
