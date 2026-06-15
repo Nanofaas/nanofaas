@@ -323,6 +323,40 @@ def test_k3s_curl_runner_verify_prometheus_metrics_accepts_legacy_names(tmp_path
     runner._verify_prometheus_metrics()
 
 
+def test_k3s_curl_runner_keeps_last_function_registered_until_metrics_verified(tmp_path) -> None:
+    # Deleting a function removes its per-function Prometheus meters from the
+    # exported registry, so verify_existing_stack must keep the last function
+    # registered until after _verify_prometheus_metrics has run.
+    runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
+    resolved = _make_resolved([
+        {"key": "word-stats-java", "family": "word-stats", "image": "localhost:5000/nanofaas/java-word-stats:e2e"},
+        {"key": "json-transform-java", "family": "json-transform", "image": "localhost:5000/nanofaas/java-json-transform:e2e"},
+    ])
+
+    calls: list[tuple[str, str]] = []
+    runner._verify_health = lambda: calls.append(("health", ""))  # type: ignore[method-assign]
+    runner._delete_function = lambda fn_key: calls.append(("delete", fn_key))  # type: ignore[attr-defined]
+    runner._register_function = lambda fn_key, fn_image: calls.append(("register", fn_key))  # type: ignore[method-assign]
+    runner._invoke_function = lambda fn_key, payload: calls.append(("invoke", fn_key))  # type: ignore[method-assign]
+    runner._enqueue_function = lambda fn_key, payload: (calls.append(("enqueue", fn_key)) or "exec-1")  # type: ignore[method-assign]
+    runner._poll_execution = lambda exec_id: calls.append(("poll", exec_id))  # type: ignore[method-assign]
+    runner._await_managed_function_ready = lambda fn_key: calls.append(("wait", fn_key))  # type: ignore[method-assign]
+    runner._verify_prometheus_metrics = lambda: calls.append(("verify-metrics", ""))  # type: ignore[method-assign]
+
+    runner.verify_existing_stack(resolved)
+
+    verify_idx = calls.index(("verify-metrics", ""))
+    enqueue_last_idx = calls.index(("enqueue", "json-transform-java"))
+
+    # The last function is enqueued, then stays registered through verification.
+    assert enqueue_last_idx < verify_idx
+    assert ("delete", "json-transform-java") not in calls[enqueue_last_idx:verify_idx]
+    # ...and is only cleaned up afterwards.
+    assert ("delete", "json-transform-java") in calls[verify_idx:]
+    # The earlier function is fully torn down during its own workflow, before verification.
+    assert ("delete", "word-stats-java") in calls[:verify_idx]
+
+
 def test_k3s_curl_runner_verify_prometheus_metrics_accepts_sync_queue_names(tmp_path) -> None:
     runner = K3sCurlRunner(tmp_path, vm_request=_make_vm_request())
     runner._control_plane_service_ip = lambda: "10.96.0.1"  # type: ignore[method-assign]
