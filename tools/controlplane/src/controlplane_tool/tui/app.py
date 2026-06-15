@@ -7,6 +7,7 @@ All CLI commands remain available for scripted / CI use.
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 import traceback
 from typing import Any, Literal
 
@@ -14,6 +15,8 @@ import questionary
 from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
+from shellcraft.runners import CommandRunner, PlannedCommand
+from workflow_tasks.shell import SubprocessShell
 
 from tui_toolkit import header
 from workflow_tasks import fail, phase, step, success, warning
@@ -27,6 +30,15 @@ from tui_toolkit.pickers import (
 )
 from tui_toolkit.theme import DEFAULT_THEME, to_questionary_style
 
+from controlplane_tool.building.image_plan import (
+    DEFAULT_ARCHES,
+    DEFAULT_FLAVORS,
+    ImageArch,
+    plan_image_matrix,
+    resolve_current_version,
+    select_image_targets,
+)
+from controlplane_tool.building.image_workflow import ImageCellResult, run_image_matrix_plan
 from controlplane_tool.orchestation.infra_flows import build_vm_flow
 from controlplane_tool.cli.loadtest_commands import build_loadtest_request
 from controlplane_tool.core.models import (
@@ -303,6 +315,30 @@ def _workspace_relative_path(path: Path | None) -> str:
         return path.resolve().relative_to(workspace_root).as_posix()
     except ValueError:
         return str(path)
+
+
+def _shell_join(parts: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def _format_planned_command(command: PlannedCommand) -> str:
+    env = getattr(command, "env", {}) or {}
+    env_parts = [f"{key}={value}" for key, value in sorted(env.items())]
+    return _shell_join([*env_parts, *command.command])
+
+
+def _raise_for_failed_image_results(results: list[ImageCellResult]) -> None:
+    failed = [result for result in results if not result.ok]
+    if not failed:
+        return
+    details = "; ".join(
+        (
+            f"{result.target} {result.arch} {result.flavor} {result.phase} "
+            f"exit {result.return_code}: {result.detail or 'no detail'}"
+        )
+        for result in failed
+    )
+    raise RuntimeError(f"Image matrix failed: {details}")
 
 
 def _acknowledge_static_view(message: str = "Press any key to return to the previous menu.") -> None:
@@ -759,7 +795,121 @@ class NanofaasTUI:
             return
 
     def _run_publish_images_workflow(self) -> None:
-        raise RuntimeError("Image matrix publishing workflow is not implemented yet.")
+        repo_root = Path.cwd()
+        default_tag = resolve_current_version(repo_root)
+        tag = str(
+            _ask(
+                lambda: questionary.text(
+                    "Image tag:",
+                    default=default_tag,
+                    style=_STYLE,
+                ).ask()
+            )
+        ).strip() or default_tag
+        arch_selection = _select_value(
+            "Architecture:",
+            choices=[
+                _value_choice("all", "Build every supported architecture."),
+                _value_choice("amd64", "Build linux/amd64 image variants only."),
+                _value_choice("arm64", "Build linux/arm64 image variants only."),
+            ],
+            default="all",
+        )
+        flavor_selection = _select_value(
+            "Flavor:",
+            choices=[
+                _value_choice("all", "Build every supported JVM/native flavor for each target."),
+                _value_choice("jvm", "Build JVM image variants only."),
+                _value_choice("native", "Build native image variants only."),
+            ],
+            default="all",
+        )
+        targets_text = str(
+            _ask(
+                lambda: questionary.text(
+                    "Targets:",
+                    default="all",
+                    style=_STYLE,
+                ).ask()
+            )
+        ).strip() or "all"
+        push = bool(
+            _ask(
+                lambda: questionary.confirm(
+                    "Push images?",
+                    default=True,
+                    style=_STYLE,
+                ).ask()
+            )
+        )
+        dry_run = bool(
+            _ask(
+                lambda: questionary.confirm(
+                    "Dry-run?",
+                    default=False,
+                    style=_STYLE,
+                ).ask()
+            )
+        )
+        fail_fast = bool(
+            _ask(
+                lambda: questionary.confirm(
+                    "Fail fast?",
+                    default=True,
+                    style=_STYLE,
+                ).ask()
+            )
+        )
+
+        arches: tuple[ImageArch, ...] = (
+            DEFAULT_ARCHES if arch_selection == "all" else (arch_selection,)
+        )
+        flavors = DEFAULT_FLAVORS if flavor_selection == "all" else (flavor_selection,)
+        targets = select_image_targets(targets_text)
+        plan = plan_image_matrix(
+            repo_root=repo_root,
+            targets=targets,
+            tag=tag,
+            arches=arches,
+            flavors=flavors,
+            push=push,
+            runtime="docker",
+        )
+
+        def _run_image_workflow(dashboard: WorkflowDashboard, sink: TuiWorkflowSink):
+            if dry_run:
+                for cell in plan.cells:
+                    dashboard.append_log(f"Build: {_format_planned_command(cell.build_command)}")
+                    if cell.push_command is not None:
+                        dashboard.append_log(f"Push: {_format_planned_command(cell.push_command)}")
+                return []
+
+            runner = CommandRunner(shell=SubprocessShell(), repo_root=repo_root)
+            results = run_image_matrix_plan(
+                runner,
+                plan,
+                dry_run=False,
+                fail_fast=fail_fast,
+            )
+            if not fail_fast:
+                _raise_for_failed_image_results(results)
+            return results
+
+        self._controller.run_live_workflow(
+            title="Publish Image Matrix",
+            summary_lines=[
+                f"Tag: {tag}",
+                f"Architecture: {arch_selection}",
+                f"Flavor: {flavor_selection}",
+                f"Targets: {targets_text}",
+                f"Push: {'yes' if push else 'no'}",
+                f"Dry-run: {'yes' if dry_run else 'no'}",
+                f"Fail fast: {'yes' if fail_fast else 'no'}",
+                f"Planned cells: {len(plan.cells)}",
+            ],
+            planned_steps=[cell.image for cell in plan.cells],
+            action=_run_image_workflow,
+        )
 
     # ── ENVIRONMENT ──────────────────────────────────────────────────────────
 

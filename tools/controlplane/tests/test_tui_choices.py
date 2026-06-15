@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from rich.console import Console
 
 from workflow_tasks import bind_workflow_sink
@@ -1118,6 +1119,169 @@ def test_build_menu_routes_publish_images_to_image_matrix_workflow(monkeypatch) 
 
     assert called == ["publish-images"]
     assert prompts == ["Action:"]
+
+
+def test_publish_images_workflow_dry_run_logs_planned_commands(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    text_answers = iter(["v-test", "java-word-stats"])
+    select_answers = iter(["amd64", "jvm"])
+    confirm_answers = iter([True, True, False])
+    captured: dict[str, object] = {}
+    logs: list[str] = []
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt(next(text_answers)),
+    )
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(select_answers))
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+    monkeypatch.setattr(
+        tui_app,
+        "run_image_matrix_plan",
+        lambda *args, **kwargs: pytest.fail("dry-run must not execute image matrix plan"),
+    )
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        captured["title"] = title
+        captured["summary_lines"] = summary_lines
+        captured["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=logs.append)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_publish_images_workflow()
+
+    assert captured["title"] == "Publish Image Matrix"
+    assert captured["summary_lines"] == [
+        "Tag: v-test",
+        "Architecture: amd64",
+        "Flavor: jvm",
+        "Targets: java-word-stats",
+        "Push: yes",
+        "Dry-run: yes",
+        "Fail fast: no",
+        "Planned cells: 1",
+    ]
+    assert captured["planned_steps"] == [
+        "ghcr.io/miciav/nanofaas/java-word-stats:v-test-amd64-jvm"
+    ]
+    assert logs == [
+        "Build: bash -lc './gradlew :functions:java:word-stats:bootJar && docker build --platform linux/amd64 --label org.opencontainers.image.source=https://github.com/miciav/nanofaas -t ghcr.io/miciav/nanofaas/java-word-stats:v-test-amd64-jvm -f functions/java/word-stats/Dockerfile functions/java/word-stats'",
+        "Push: docker push ghcr.io/miciav/nanofaas/java-word-stats:v-test-amd64-jvm",
+    ]
+
+
+def test_publish_images_workflow_runs_executor_with_prompted_fail_fast(monkeypatch) -> None:
+    import controlplane_tool.tui.app as tui_app
+
+    text_answers = iter(["v-run", "control-plane"])
+    select_answers = iter(["arm64", "native"])
+    confirm_answers = iter([False, False, False])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt(next(text_answers)),
+    )
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(select_answers))
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+
+    def fake_run_image_matrix_plan(runner, plan, dry_run, fail_fast):  # noqa: ANN001
+        captured["runner_repo_root"] = runner.repo_root
+        captured["plan"] = plan
+        captured["dry_run"] = dry_run
+        captured["fail_fast"] = fail_fast
+        return []
+
+    monkeypatch.setattr(tui_app, "run_image_matrix_plan", fake_run_image_matrix_plan)
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        captured["title"] = title
+        captured["summary_lines"] = summary_lines
+        captured["planned_steps"] = planned_steps
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    NanofaasTUI()._run_publish_images_workflow()
+
+    assert captured["title"] == "Publish Image Matrix"
+    assert captured["planned_steps"] == ["ghcr.io/miciav/nanofaas/control-plane:v-run-arm64-native"]
+    assert captured["summary_lines"] == [
+        "Tag: v-run",
+        "Architecture: arm64",
+        "Flavor: native",
+        "Targets: control-plane",
+        "Push: no",
+        "Dry-run: no",
+        "Fail fast: no",
+        "Planned cells: 1",
+    ]
+    assert captured["dry_run"] is False
+    assert captured["fail_fast"] is False
+    assert Path(captured["runner_repo_root"]) == Path.cwd()
+
+
+def test_publish_images_workflow_keep_going_failures_raise(monkeypatch) -> None:
+    from controlplane_tool.building.image_workflow import ImageCellResult
+    import controlplane_tool.tui.app as tui_app
+
+    text_answers = iter(["v-run", "control-plane"])
+    select_answers = iter(["amd64", "native"])
+    confirm_answers = iter([False, False, False])
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt(next(text_answers)),
+    )
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(select_answers))
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+
+    def fake_run_image_matrix_plan(*args, **kwargs):  # noqa: ANN002, ANN003
+        return [
+            ImageCellResult(
+                target="control-plane",
+                arch="amd64",
+                flavor="native",
+                image="ghcr.io/miciav/nanofaas/control-plane:v-run-amd64-native",
+                phase="build",
+                ok=False,
+                return_code=17,
+                detail="gradle failed",
+            )
+        ]
+
+    monkeypatch.setattr(tui_app, "run_image_matrix_plan", fake_run_image_matrix_plan)
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    with pytest.raises(RuntimeError, match="Image matrix failed.*control-plane.*build.*17.*gradle failed"):
+        NanofaasTUI()._run_publish_images_workflow()
 
 
 def test_tui_build_menu_logs_gradle_output_before_raising_on_nonzero_result(monkeypatch) -> None:
