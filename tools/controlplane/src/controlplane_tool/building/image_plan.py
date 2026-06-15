@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -225,8 +226,100 @@ def _selected_flavors(
     return tuple(flavor for flavor in target.flavors if flavor in requested_set)
 
 
-def _plan_noop_build(repo_root: Path, image: str) -> PlannedCommand:
-    return PlannedCommand(command=["true"], cwd=Path(repo_root), env={"IMAGE": image})
+def _label_arg() -> str:
+    return f"org.opencontainers.image.source={OCI_SOURCE}"
+
+
+def _shell_join(parts: Sequence[str]) -> str:
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def _docker_build_command(target: ImageTargetSpec, image: str, arch: ImageArch) -> list[str]:
+    if target.dockerfile is None:
+        raise ValueError(f"Image target {target.name} does not define a Dockerfile")
+    return [
+        "docker",
+        "build",
+        "--platform",
+        _platform(arch),
+        "--label",
+        _label_arg(),
+        "-t",
+        image,
+        "-f",
+        target.dockerfile,
+        target.context,
+    ]
+
+
+def _plan_native_gradle_build(
+    repo_root: Path,
+    target: ImageTargetSpec,
+    image: str,
+    arch: ImageArch,
+) -> PlannedCommand:
+    if target.gradle_task is None or target.image_param is None:
+        raise ValueError(f"Image target {target.name} does not define a Gradle image task")
+    command = [
+        "./gradlew",
+        target.gradle_task,
+        f"-P{target.image_param}={image}",
+        f"-PimagePlatform={_platform(arch)}",
+    ]
+    if target.profile_aware:
+        command.append("-PcontrolPlaneModules=all")
+    if arch == "arm64":
+        command.extend(
+            [
+                "-PimageBuilder=dashaun/builder:tiny",
+                "-PimageRunImage=paketobuildpacks/run-jammy-tiny:latest",
+            ]
+        )
+    return PlannedCommand(
+        command=command,
+        cwd=Path(repo_root),
+        env={"NATIVE_IMAGE_BUILD_ARGS": resolve_native_image_build_args(), "BP_OCI_SOURCE": OCI_SOURCE},
+    )
+
+
+def _plan_jvm_docker_build(
+    repo_root: Path,
+    target: ImageTargetSpec,
+    image: str,
+    arch: ImageArch,
+) -> PlannedCommand:
+    gradle_command = ["./gradlew", *target.jvm_artifact_tasks]
+    if target.profile_aware:
+        gradle_command.append("-PcontrolPlaneModules=all")
+    docker_command = _docker_build_command(target, image, arch)
+    return PlannedCommand(
+        command=["bash", "-lc", f"{_shell_join(gradle_command)} && {_shell_join(docker_command)}"],
+        cwd=Path(repo_root),
+        env={},
+    )
+
+
+def _plan_docker_build(
+    repo_root: Path,
+    target: ImageTargetSpec,
+    image: str,
+    arch: ImageArch,
+) -> PlannedCommand:
+    return PlannedCommand(command=_docker_build_command(target, image, arch), cwd=Path(repo_root), env={})
+
+
+def _plan_build(
+    repo_root: Path,
+    target: ImageTargetSpec,
+    image: str,
+    arch: ImageArch,
+    flavor: ImageFlavor,
+) -> PlannedCommand:
+    if flavor == "jvm":
+        return _plan_jvm_docker_build(repo_root, target, image, arch)
+    if flavor == "native" and target.kind == "gradle":
+        return _plan_native_gradle_build(repo_root, target, image, arch)
+    return _plan_docker_build(repo_root, target, image, arch)
 
 
 def _plan_push(repo_root: Path, image: str, *, runtime: str) -> PlannedCommand:
@@ -255,7 +348,7 @@ def plan_image_matrix(
                         arch=arch,
                         flavor=flavor,
                         image=image,
-                        build_command=_plan_noop_build(repo_root, image),
+                        build_command=_plan_build(repo_root, target, image, arch, flavor),
                         push_command=_plan_push(repo_root, image, runtime=runtime) if push else None,
                     )
                 )
