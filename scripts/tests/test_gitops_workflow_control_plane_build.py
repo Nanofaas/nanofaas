@@ -14,7 +14,12 @@ def test_gitops_workflow_uses_control_plane_build_wrapper() -> None:
     assert "--push" in workflow
     assert "--fail-fast" in workflow
     assert "--arch-suffix" not in workflow
+    assert "bootBuildImage" not in workflow
     assert ":control-plane:bootBuildImage" not in workflow
     assert ":function-runtime:bootBuildImage" not in workflow
     assert "docker/build-push-action" not in workflow
+    assert ":latest" not in workflow
+    assert "docker tag" not in workflow
+    assert "docker push latest" not in workflow
+    assert "docker push" not in workflow
     assert "--all-tags" not in workflow
