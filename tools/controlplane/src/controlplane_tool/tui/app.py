@@ -34,6 +34,8 @@ from controlplane_tool.building.image_plan import (
     DEFAULT_ARCHES,
     DEFAULT_FLAVORS,
     ImageArch,
+    ImageFlavor,
+    ImageMatrixCell,
     plan_image_matrix,
     resolve_current_version,
     select_image_targets,
@@ -323,8 +325,24 @@ def _shell_join(parts: list[str]) -> str:
 
 def _format_planned_command(command: PlannedCommand) -> str:
     env = getattr(command, "env", {}) or {}
-    env_parts = [f"{key}={value}" for key, value in sorted(env.items())]
-    return _shell_join([*env_parts, *command.command])
+    env_parts = [f"{key}={shlex.quote(str(value))}" for key, value in sorted(env.items())]
+    return " ".join([*env_parts, _shell_join(command.command)])
+
+
+def _image_event_label(cell: ImageMatrixCell, phase: Literal["build", "push"]) -> str:
+    flavor: ImageFlavor = cell.flavor
+    if flavor == "default":
+        return f"{cell.target} {cell.arch} {phase}"
+    return f"{cell.target} {cell.arch}-{flavor} {phase}"
+
+
+def _planned_image_steps(cells: tuple[ImageMatrixCell, ...]) -> list[str]:
+    labels: list[str] = []
+    for cell in cells:
+        labels.append(_image_event_label(cell, "build"))
+        if cell.push_command is not None:
+            labels.append(_image_event_label(cell, "push"))
+    return labels
 
 
 def _raise_for_failed_image_results(results: list[ImageCellResult]) -> None:
@@ -907,7 +925,7 @@ class NanofaasTUI:
                 f"Fail fast: {'yes' if fail_fast else 'no'}",
                 f"Planned cells: {len(plan.cells)}",
             ],
-            planned_steps=[cell.image for cell in plan.cells],
+            planned_steps=_planned_image_steps(plan.cells),
             action=_run_image_workflow,
         )
 
