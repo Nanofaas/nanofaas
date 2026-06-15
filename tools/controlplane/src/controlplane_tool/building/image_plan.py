@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from shellcraft.runners import PlannedCommand
@@ -176,3 +180,83 @@ def select_image_targets(only: str) -> list[str]:
     if unknown:
         raise ValueError(f"Unknown image target(s): {', '.join(unknown)}")
     return names
+
+
+def resolve_current_version(repo_root: Path) -> str:
+    content = (Path(repo_root) / "build.gradle").read_text(encoding="utf-8")
+    match = re.search(r"version\s*=\s*'([^']+)'", content)
+    if not match:
+        raise ValueError("Could not find version in build.gradle")
+    return match.group(1)
+
+
+def resolve_native_active_processors() -> str:
+    raw = os.getenv("NATIVE_ACTIVE_PROCESSORS", "").strip()
+    if raw:
+        try:
+            parsed = int(raw)
+            if parsed >= 1:
+                return str(parsed)
+        except ValueError:
+            pass
+    detected = os.cpu_count() or 4
+    return str(detected if detected >= 1 else 4)
+
+
+def resolve_native_image_build_args() -> str:
+    explicit = os.getenv("NATIVE_IMAGE_BUILD_ARGS", "").strip()
+    if explicit:
+        return explicit
+    xmx = os.getenv("NATIVE_IMAGE_XMX", "8g").strip() or "8g"
+    return f"-H:+AddAllCharsets -J-Xmx{xmx} -J-XX:ActiveProcessorCount={resolve_native_active_processors()}"
+
+
+def _platform(arch: ImageArch) -> str:
+    return f"linux/{arch}"
+
+
+def _selected_flavors(
+    target: ImageTargetSpec,
+    requested: Sequence[Literal["jvm", "native"]],
+) -> tuple[ImageFlavor, ...]:
+    if target.flavors == ("default",):
+        return ("default",)
+    requested_set = set(requested)
+    return tuple(flavor for flavor in target.flavors if flavor in requested_set)
+
+
+def _plan_noop_build(repo_root: Path, image: str) -> PlannedCommand:
+    return PlannedCommand(command=["true"], cwd=Path(repo_root), env={"IMAGE": image})
+
+
+def _plan_push(repo_root: Path, image: str, *, runtime: str) -> PlannedCommand:
+    return PlannedCommand(command=[runtime, "push", image], cwd=Path(repo_root), env={})
+
+
+def plan_image_matrix(
+    *,
+    repo_root: Path,
+    targets: Sequence[str],
+    tag: str,
+    arches: Sequence[ImageArch],
+    flavors: Sequence[Literal["jvm", "native"]],
+    push: bool,
+    runtime: str,
+) -> ImageMatrixPlan:
+    cells: list[ImageMatrixCell] = []
+    for name in targets:
+        target = IMAGE_TARGETS[name]
+        for arch in arches:
+            for flavor in _selected_flavors(target, flavors):
+                image = image_reference(name, tag, arch, flavor)
+                cells.append(
+                    ImageMatrixCell(
+                        target=name,
+                        arch=arch,
+                        flavor=flavor,
+                        image=image,
+                        build_command=_plan_noop_build(repo_root, image),
+                        push_command=_plan_push(repo_root, image, runtime=runtime) if push else None,
+                    )
+                )
+    return ImageMatrixPlan(tag=tag, cells=tuple(cells))

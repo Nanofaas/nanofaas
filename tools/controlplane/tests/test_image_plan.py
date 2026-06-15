@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from controlplane_tool.building.image_plan import (
     DEFAULT_ARCHES,
     image_reference,
+    plan_image_matrix,
     select_image_targets,
 )
 
@@ -63,3 +66,48 @@ def test_image_reference_for_default_cell_omits_flavor() -> None:
         image_reference("python-word-stats", "v1.2.3", "arm64", "default")
         == "ghcr.io/miciav/nanofaas/python-word-stats:v1.2.3-arm64"
     )
+
+
+def test_plan_all_expands_to_38_cells() -> None:
+    plan = plan_image_matrix(
+        repo_root=Path("/repo"),
+        targets=select_image_targets("all"),
+        tag="v1.2.3",
+        arches=("amd64", "arm64"),
+        flavors=("jvm", "native"),
+        push=True,
+        runtime="docker",
+    )
+    assert len(plan.cells) == 38
+
+
+def test_java_lite_only_expands_native_cells() -> None:
+    plan = plan_image_matrix(
+        repo_root=Path("/repo"),
+        targets=["java-lite-word-stats"],
+        tag="v1.2.3",
+        arches=("amd64", "arm64"),
+        flavors=("jvm", "native"),
+        push=True,
+        runtime="docker",
+    )
+    assert [(cell.arch, cell.flavor, cell.image) for cell in plan.cells] == [
+        ("amd64", "native", "ghcr.io/miciav/nanofaas/java-lite-word-stats:v1.2.3-amd64-native"),
+        ("arm64", "native", "ghcr.io/miciav/nanofaas/java-lite-word-stats:v1.2.3-arm64-native"),
+    ]
+
+
+def test_default_targets_ignore_jvm_native_selector_and_use_default_flavor() -> None:
+    plan = plan_image_matrix(
+        repo_root=Path("/repo"),
+        targets=["watchdog"],
+        tag="v1.2.3",
+        arches=("amd64", "arm64"),
+        flavors=("jvm", "native"),
+        push=True,
+        runtime="docker",
+    )
+    assert [(cell.arch, cell.flavor, cell.image) for cell in plan.cells] == [
+        ("amd64", "default", "ghcr.io/miciav/nanofaas/watchdog:v1.2.3-amd64"),
+        ("arm64", "default", "ghcr.io/miciav/nanofaas/watchdog:v1.2.3-arm64"),
+    ]
