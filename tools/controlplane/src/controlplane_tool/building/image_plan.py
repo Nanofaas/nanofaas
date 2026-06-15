@@ -163,6 +163,11 @@ IMAGE_TARGETS: dict[str, ImageTargetSpec] = {
 }
 
 
+def image_reference(name: str, tag: str, arch: ImageArch, flavor: ImageFlavor) -> str:
+    suffix = f"{tag}-{arch}" if flavor == "default" else f"{tag}-{arch}-{flavor}"
+    return f"{BASE}/{name}:{suffix}"
+
+
 def select_image_targets(only: str) -> list[str]:
     if only.strip().lower() == "all":
         return sorted(IMAGE_TARGETS)
