@@ -28,6 +28,11 @@ CLI_CONTEXT_SETTINGS = {
     "ignore_unknown_options": True,
 }
 
+STRICT_CLI_CONTEXT_SETTINGS = {
+    "allow_extra_args": False,
+    "ignore_unknown_options": False,
+}
+
 
 def _combined_extra_gradle_args(
     ctx: typer.Context,
@@ -212,7 +217,7 @@ def install_cli_commands(app: typer.Typer) -> None:
             extra_gradle_arg=extra_gradle_arg,
         )
 
-    @app.command("images", context_settings=CLI_CONTEXT_SETTINGS)
+    @app.command("images", context_settings=STRICT_CLI_CONTEXT_SETTINGS)
     def images_command(
         tag: str | None = typer.Option(None, "--tag", help="Image tag (default: version from build.gradle)."),
         only: str = typer.Option("all", "--only", help="Comma-separated target names or 'all'."),

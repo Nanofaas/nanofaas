@@ -51,6 +51,29 @@ def test_images_rejects_multi_arch(monkeypatch, tmp_path) -> None:
     assert result.exit_code != 0
 
 
+def test_images_rejects_removed_arch_suffix_flag(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "build.gradle").write_text("version = 'vtest'\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "images",
+            "--dry-run",
+            "--arch-suffix",
+            "--no-push",
+            "--only",
+            "control-plane",
+            "--arch",
+            "amd64",
+            "--flavor",
+            "native",
+        ],
+    )
+
+    assert result.exit_code != 0
+
+
 def test_images_unknown_target_errors(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "build.gradle").write_text("version = 'vtest'\n", encoding="utf-8")
