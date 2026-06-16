@@ -1,6 +1,6 @@
 FROM golang:1.24-alpine AS build
 WORKDIR /src
-COPY sdks/go /src/function-sdk-go
+COPY sdks/go /src/sdks/go
 COPY functions/go/word-stats /src/functions/go/word-stats
 WORKDIR /src/functions/go/word-stats
 RUN go build -o /out/word-stats .

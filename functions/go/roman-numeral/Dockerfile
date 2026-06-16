@@ -1,6 +1,6 @@
 FROM golang:1.24-alpine AS build
 WORKDIR /src
-COPY sdks/go /src/function-sdk-go
+COPY sdks/go /src/sdks/go
 COPY functions/go/roman-numeral /src/functions/go/roman-numeral
 WORKDIR /src/functions/go/roman-numeral
 RUN go build -o /out/roman-numeral .
