@@ -1102,10 +1102,11 @@ def test_build_menu_routes_publish_images_to_image_matrix_workflow(monkeypatch) 
 
     called: list[str] = []
     prompts: list[str] = []
+    answers = iter(["publish-images", "back"])
 
     def fake_select_value(message, *, choices, default=None, include_back=False):  # noqa: ANN001
         prompts.append(message)
-        return "publish-images"
+        return next(answers)
 
     monkeypatch.setattr(tui_app, "_select_value", fake_select_value)
     monkeypatch.setattr(
@@ -1118,7 +1119,7 @@ def test_build_menu_routes_publish_images_to_image_matrix_workflow(monkeypatch) 
     NanofaasTUI()._build_menu()
 
     assert called == ["publish-images"]
-    assert prompts == ["Action:"]
+    assert prompts == ["Action:", "Action:"]
 
 
 def test_publish_images_workflow_dry_run_logs_planned_commands(monkeypatch) -> None:
