@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path as _Path
+import shlex
+from typing import Literal
 
 import typer
 from pydantic import ValidationError
 from shellcraft.runners import CommandRunner
 
-from controlplane_tool.building import image_matrix
+from controlplane_tool.building.image_plan import (
+    DEFAULT_ARCHES,
+    DEFAULT_FLAVORS,
+    plan_image_matrix,
+    resolve_current_version,
+    select_image_targets,
+)
+from controlplane_tool.building.image_workflow import ImageCellResult, ImageMatrixRunError, run_image_matrix_plan
 from controlplane_tool.building.gradle_executor import GradleCommandExecutor
 from controlplane_tool.core.models import BuildAction, ProfileName
 from controlplane_tool.cli.flow_exit import exit_on_failed_flow
@@ -19,6 +28,11 @@ CLI_CONTEXT_SETTINGS = {
     "ignore_unknown_options": True,
 }
 
+STRICT_CLI_CONTEXT_SETTINGS = {
+    "allow_extra_args": False,
+    "ignore_unknown_options": False,
+}
+
 
 def _combined_extra_gradle_args(
     ctx: typer.Context,
@@ -27,6 +41,27 @@ def _combined_extra_gradle_args(
     combined: list[str] = list(extra_gradle_arg or [])
     combined.extend(ctx.args)
     return combined
+
+
+def _image_result_label(result: ImageCellResult) -> str:
+    flavor = "" if result.flavor == "default" else f"-{result.flavor}"
+    return f"{result.target} {result.arch}{flavor} {result.phase}"
+
+
+def _exit_if_image_failures(results: list[ImageCellResult]) -> None:
+    failures = [result for result in results if not result.ok]
+    if not failures:
+        return
+
+    suffix = "result" if len(failures) == 1 else "results"
+    typer.echo(f"Image matrix failed: {len(failures)} failed {suffix}", err=True)
+    for failure in failures:
+        detail = f": {failure.detail}" if failure.detail else ""
+        typer.echo(
+            f"- {_image_result_label(failure)} failed (exit {failure.return_code}){detail}",
+            err=True,
+        )
+    raise typer.Exit(code=1)
 
 
 def _run_gradle_action(
@@ -203,27 +238,47 @@ def install_cli_commands(app: typer.Typer) -> None:
             extra_gradle_arg=extra_gradle_arg,
         )
 
-    @app.command("images", context_settings=CLI_CONTEXT_SETTINGS)
+    @app.command("images", context_settings=STRICT_CLI_CONTEXT_SETTINGS)
     def images_command(
         tag: str | None = typer.Option(None, "--tag", help="Image tag (default: version from build.gradle)."),
         only: str = typer.Option("all", "--only", help="Comma-separated target names or 'all'."),
-        arch: str = typer.Option("amd64", "--arch", help="amd64 | arm64 | multi."),
-        arch_suffix: bool = typer.Option(False, "--arch-suffix/--no-arch-suffix", help="Append -<arch> to the tag."),
+        arch: Literal["amd64", "arm64", "all"] = typer.Option("all", "--arch", help="amd64 | arm64 | all."),
+        flavor: Literal["jvm", "native", "all"] = typer.Option("all", "--flavor", help="jvm | native | all."),
         push: bool = typer.Option(True, "--push/--no-push", help="Push images after building."),
         runtime: str = typer.Option("docker", "--runtime", help="Container runtime CLI."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Print planned build/push commands only."),
+        fail_fast: bool = typer.Option(True, "--fail-fast/--keep-going", help="Stop at first failed build or push."),
     ) -> None:
         repo_root = _Path.cwd()
-        resolved_tag = tag or image_matrix.resolve_current_version(repo_root)
         try:
-            targets = image_matrix.select_targets(only)
+            resolved_tag = tag or resolve_current_version(repo_root)
+            targets = select_image_targets(only)
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
-        runner = CommandRunner(shell=SubprocessShell(), repo_root=repo_root)
-        image_matrix.run_image_matrix(
-            runner=runner, repo_root=repo_root, targets=targets, tag=resolved_tag,
-            arch=arch, use_arch_suffix=arch_suffix, push=push, runtime=runtime, dry_run=dry_run,
+        arches = DEFAULT_ARCHES if arch == "all" else (arch,)
+        flavors = DEFAULT_FLAVORS if flavor == "all" else (flavor,)
+        plan = plan_image_matrix(
+            repo_root=repo_root,
+            targets=targets,
+            tag=resolved_tag,
+            arches=arches,
+            flavors=flavors,
+            push=push,
+            runtime=runtime,
         )
+        if dry_run:
+            for cell in plan.cells:
+                typer.echo(shlex.join(cell.build_command.command))
+                if cell.push_command is not None:
+                    typer.echo(shlex.join(cell.push_command.command))
+            return
+        runner = CommandRunner(shell=SubprocessShell(), repo_root=repo_root)
+        try:
+            results = run_image_matrix_plan(runner, plan, dry_run=False, fail_fast=fail_fast)
+        except ImageMatrixRunError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        _exit_if_image_failures(results)
 
     @app.command("native", context_settings=CLI_CONTEXT_SETTINGS)
     def native_command(

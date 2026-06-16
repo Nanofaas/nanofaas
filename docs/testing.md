@@ -67,7 +67,7 @@ npm test
 
 ### JavaScript SDK packaging checks
 
-The packaging/release gate used by `scripts/release-manager/release.py` validates the npm artifact before release:
+Validate the JavaScript SDK npm artifact directly before release:
 
 ```bash
 cd sdks/javascript

@@ -37,6 +37,39 @@ VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` librar
 
 The raw `./gradlew ... -PcontrolPlaneModules=...` workflow is still supported for low-level/advanced scenarios.
 
+## Publishing the Image Matrix
+
+Publish the complete image matrix with explicit per-cell tags:
+
+```bash
+./scripts/controlplane.sh images --tag v1.2.3 --arch all --flavor all --push
+```
+
+The publisher creates explicit tags instead of ambiguous shared tags. Core and Java Spring targets publish both JVM and GraalVM-native images:
+
+```text
+v1.2.3-amd64-jvm
+v1.2.3-arm64-jvm
+v1.2.3-amd64-native
+v1.2.3-arm64-native
+```
+
+Java-lite targets are native-only:
+
+```text
+v1.2.3-amd64-native
+v1.2.3-arm64-native
+```
+
+Go, Python, JavaScript, Bash, and watchdog targets publish architecture-only tags:
+
+```text
+v1.2.3-amd64
+v1.2.3-arm64
+```
+
+Use `--dry-run --no-push` to inspect the planned build and push commands. Use the TUI path `Build -> publish-images — build & publish image matrix` for an interactive, observable run.
+
 ## Architecture Summary
 
 - The control-plane is a minimal core plus optional modules from `platform/modules/`.

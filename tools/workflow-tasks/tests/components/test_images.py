@@ -16,6 +16,15 @@ from workflow_tasks.components.images import (
 from workflow_tasks.vm.models import VmRequest
 
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+LIVE_E2E_SCENARIO_IMAGE_CONSUMERS = (
+    "tools/workflow-tasks/src/workflow_tasks/components/images.py",
+    "tools/controlplane/src/controlplane_tool/e2e/container_local_runner.py",
+    "tools/controlplane/src/controlplane_tool/scenario/scenario_tasks.py",
+)
+REMOVED_RELEASE_IMAGE_CLI_SYNTAX = ("--arch-suffix", "--arch multi")
+
+
 @dataclass
 class _Fn:
     key: str
@@ -46,6 +55,23 @@ def _ctx(*, runtime: str = "java", functions: list | None = None) -> ScenarioExe
 def test_image_name_helpers() -> None:
     assert control_image("reg:5000") == "reg:5000/nanofaas/control-plane:e2e"
     assert runtime_image("reg:5000") == "reg:5000/nanofaas/function-runtime:e2e"
+
+
+def test_e2e_image_components_keep_local_e2e_tags() -> None:
+    assert control_image("localhost:5000") == "localhost:5000/nanofaas/control-plane:e2e"
+    assert runtime_image("localhost:5000") == "localhost:5000/nanofaas/function-runtime:e2e"
+
+
+def test_live_e2e_scenario_image_consumers_do_not_use_removed_images_cli_syntax() -> None:
+    violations = {
+        str(path.relative_to(REPO_ROOT)): syntax
+        for relative_path in LIVE_E2E_SCENARIO_IMAGE_CONSUMERS
+        for path in [REPO_ROOT / relative_path]
+        for syntax in REMOVED_RELEASE_IMAGE_CLI_SYNTAX
+        if syntax in path.read_text(encoding="utf-8")
+    }
+
+    assert violations == {}
 
 
 def test_function_image_specs_skips_fixtures_and_familyless() -> None:
