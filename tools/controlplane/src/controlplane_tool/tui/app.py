@@ -755,7 +755,7 @@ class NanofaasTUI:
                 return
             if action == "publish-images":
                 self._run_publish_images_workflow()
-                return
+                continue
 
             profile = _select_build_profile()
             if profile is None:
