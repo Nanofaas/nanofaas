@@ -109,7 +109,9 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert TUI_WRAPPER not in claude
     assert PIPELINE_ALIAS not in claude
 
-    assert "./scripts/controlplane.sh image --profile all" in workflow
+    assert "./scripts/controlplane.sh images --tag ${{ github.ref_name }} --arch all --flavor all --push --fail-fast" in workflow
+    assert "--arch-suffix" not in workflow
+    assert "bootBuildImage" not in workflow
     assert WORKFLOW_BUILD_WRAPPER not in workflow
 
     assert "scripts/controlplane.sh cli-test run cli-stack" in cli_doc

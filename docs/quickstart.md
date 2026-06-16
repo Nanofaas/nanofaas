@@ -85,9 +85,10 @@
   - `kubectl apply -f deploy/k8s/control-plane-deployment.yaml`
   - `kubectl apply -f deploy/k8s/control-plane-service.yaml`
 
-- Build and push images:
-  - `docker build -t nanofaas/control-plane:0.9.2 platform/control-plane/`
-  - `docker build -t nanofaas/function-runtime:0.9.2 platform/function-runtime/`
+- Publish the complete image matrix:
+  - `./scripts/controlplane.sh images --tag v1.2.3 --arch all --flavor all --push`
+  - Use `--dry-run --no-push` to inspect the full build plan without running Docker or Gradle.
+  - Use the TUI path `Build -> publish-images — build & publish image matrix` for an interactive run with per-image progress.
 
 ## Register and invoke
 
