@@ -288,6 +288,33 @@ def test_generate_go_gomod_has_module(tmp_path):
     assert "function-sdk-go" in content
 
 
+def test_generate_go_dockerfile_copies_sdk_where_gomod_replace_resolves(tmp_path):
+    """The Docker SDK copy destination must match the go.mod replace path.
+
+    Regression: the Dockerfile copied sdks/go to /src/function-sdk-go, but the
+    go.mod replace directive (../../../sdks/go, resolved from the build WORKDIR
+    /src/functions/go/<name>) points at /src/sdks/go, so `go build` failed with
+    "replacement directory ../../../sdks/go does not exist".
+    """
+    import posixpath
+    import re
+
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    gomod = (out / "go.mod").read_text()
+    dockerfile = (out / "Dockerfile").read_text()
+
+    replace_rel = re.search(r"replace\s+\S+\s+=>\s+(\S+)", gomod).group(1)
+    workdir = re.search(r"(?m)^WORKDIR\s+(/src/functions/go/\S+)", dockerfile).group(1)
+    resolved = posixpath.normpath(posixpath.join(workdir, replace_rel))  # /src/sdks/go
+    copy_dest = re.search(r"(?m)^COPY\s+sdks/go\s+(\S+)", dockerfile).group(1)
+
+    assert copy_dest == resolved, (
+        f"Dockerfile copies sdks/go to {copy_dest!r} but go.mod replace "
+        f"resolves to {resolved!r}"
+    )
+
+
 # --- generate_function (JavaScript) ---
 
 def test_generate_javascript_creates_sources(tmp_path):

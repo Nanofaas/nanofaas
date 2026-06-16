@@ -1281,7 +1281,9 @@ def test_publish_images_workflow_runs_executor_with_prompted_fail_fast(monkeypat
     ]
     assert captured["dry_run"] is False
     assert captured["fail_fast"] is False
-    assert Path(captured["runner_repo_root"]) == Path.cwd()
+    from controlplane_tool.workspace.paths import default_tool_paths
+
+    assert Path(captured["runner_repo_root"]) == default_tool_paths().workspace_root
     assert captured["output_listener"] is not None
 
 
@@ -1319,6 +1321,51 @@ def test_publish_images_workflow_non_dry_run_planned_steps_omit_push_when_disabl
     NanofaasTUI()._run_publish_images_workflow()
 
     assert captured["planned_steps"] == ["control-plane amd64-native build"]
+
+
+def test_publish_images_workflow_resolves_repo_root_independent_of_cwd(
+    monkeypatch, tmp_path
+) -> None:
+    """Selecting publish-images must work regardless of the process cwd.
+
+    Regression: the workflow read ``build.gradle`` from ``Path.cwd()``; when the
+    TUI was launched from anywhere other than the repo root (e.g. tools/controlplane)
+    it raised FileNotFoundError on the first line and bounced back to the menu.
+    """
+    import controlplane_tool.tui.app as tui_app
+
+    # Simulate launching the TUI from a directory with no build.gradle.
+    monkeypatch.chdir(tmp_path)
+
+    text_answers = iter(["v-run", "control-plane"])
+    select_answers = iter(["amd64", "native"])
+    confirm_answers = iter([True, True, False])  # push, dry-run, fail-fast
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "text",
+        lambda *args, **kwargs: _Prompt(next(text_answers)),
+    )
+    monkeypatch.setattr(tui_app, "_select_value", lambda *args, **kwargs: next(select_answers))
+    monkeypatch.setattr(
+        tui_app.questionary,
+        "confirm",
+        lambda *args, **kwargs: _Prompt(next(confirm_answers)),
+    )
+
+    def fake_live(self, *, title, summary_lines, planned_steps, action):  # noqa: ANN001
+        captured["summary_lines"] = summary_lines
+        dashboard = SimpleNamespace(append_log=lambda message: None)
+        sink = SimpleNamespace(_update=lambda: None)
+        return action(dashboard, sink)
+
+    monkeypatch.setattr(TuiWorkflowController, "run_live_workflow", fake_live)
+
+    # Must not raise FileNotFoundError despite cwd lacking build.gradle.
+    NanofaasTUI()._run_publish_images_workflow()
+
+    assert captured["summary_lines"][0] == "Tag: v-run"
 
 
 def test_publish_images_workflow_keep_going_failures_raise(monkeypatch) -> None:

@@ -813,7 +813,7 @@ class NanofaasTUI:
             return
 
     def _run_publish_images_workflow(self) -> None:
-        repo_root = Path.cwd()
+        repo_root = default_tool_paths().workspace_root
         default_tag = resolve_current_version(repo_root)
         tag = str(
             _ask(
