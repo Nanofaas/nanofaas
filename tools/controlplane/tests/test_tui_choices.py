@@ -1243,6 +1243,7 @@ def test_publish_images_workflow_runs_executor_with_prompted_fail_fast(monkeypat
 
     def fake_run_image_matrix_plan(runner, plan, dry_run, fail_fast):  # noqa: ANN001
         captured["runner_repo_root"] = runner.repo_root
+        captured["output_listener"] = getattr(runner.shell, "output_listener", None)
         captured["plan"] = plan
         captured["dry_run"] = dry_run
         captured["fail_fast"] = fail_fast
@@ -1280,6 +1281,7 @@ def test_publish_images_workflow_runs_executor_with_prompted_fail_fast(monkeypat
     assert captured["dry_run"] is False
     assert captured["fail_fast"] is False
     assert Path(captured["runner_repo_root"]) == Path.cwd()
+    assert captured["output_listener"] is not None
 
 
 def test_publish_images_workflow_non_dry_run_planned_steps_omit_push_when_disabled(

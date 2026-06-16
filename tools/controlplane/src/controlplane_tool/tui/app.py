@@ -902,7 +902,10 @@ class NanofaasTUI:
                         dashboard.append_log(f"Push: {_format_planned_command(cell.push_command)}")
                 return []
 
-            runner = CommandRunner(shell=SubprocessShell(), repo_root=repo_root)
+            # A non-None listener makes shellcraft stream output; workflow_tasks.shell
+            # forwards those lines to the active TUI workflow sink.
+            shell = SubprocessShell(output_listener=lambda _stream, _line: None)
+            runner = CommandRunner(shell=shell, repo_root=repo_root)
             results = run_image_matrix_plan(
                 runner,
                 plan,
