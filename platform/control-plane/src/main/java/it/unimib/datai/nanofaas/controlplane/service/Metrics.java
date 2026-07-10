@@ -193,7 +193,6 @@ public class Metrics {
     private Timer timer(String name, String function) {
         return Timer.builder(name)
                 .tag("function", function)
-                .publishPercentiles(0.5, 0.95, 0.99)
                 .register(registry);
     }
 
