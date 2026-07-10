@@ -93,6 +93,20 @@ class ExecutionCompletionHandlerTest {
     }
 
     @Test
+    void dispatch_whenExecutionAlreadyTerminal_releasesSlotAndSkipsRouter() {
+        InvocationTask task = task("exec-timeout-before-dispatch", "local-fn", ExecutionMode.LOCAL);
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(record);
+        record.markTimeout();
+
+        completionHandler.dispatch(task);
+
+        verify(enqueuer).releaseDispatchSlot("local-fn");
+        verifyNoInteractions(dispatcherRouter);
+        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
+    }
+
+    @Test
     void dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() throws Exception {
         InvocationTask task = task("exec-1", "local-fn", ExecutionMode.LOCAL);
         ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
@@ -159,12 +173,17 @@ class ExecutionCompletionHandlerTest {
         assertThat(record.completion().isDone()).isFalse();
         assertThat(record.task().attempt()).isEqualTo(3);
 
-        // Attempt 3 (last one, maxRetries=3)
+        // Attempt 3
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 3 failed"));
+        assertThat(record.completion().isDone()).isFalse();
+        assertThat(record.task().attempt()).isEqualTo(4);
+
+        // Attempt 4 (initial attempt + maxRetries=3)
+        completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 4 failed"));
 
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(3)).releaseDispatchSlot("testFunc");
+        verify(enqueuer, times(4)).releaseDispatchSlot("testFunc");
     }
 
     @Test

@@ -16,6 +16,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PoolDispatcherTest {
@@ -155,5 +156,49 @@ class PoolDispatcherTest {
         assertTrue(dr.result().success());
         assertEquals("plain-output", dr.result().output());
         server.shutdown();
+    }
+
+    @Test
+    void poolDispatchHandlesEmptySuccessfulResponse() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse().setResponseCode(204));
+        server.start();
+
+        try {
+            FunctionSpec spec = new FunctionSpec(
+                    "pool-fn",
+                    "image",
+                    null,
+                    Map.of(),
+                    null,
+                    1000,
+                    1,
+                    10,
+                    3,
+                    server.url("/invoke").toString(),
+                    ExecutionMode.POOL,
+                    null,
+                    null,
+                    null
+            );
+            InvocationTask task = new InvocationTask(
+                    "exec-pool",
+                    "pool-fn",
+                    spec,
+                    new InvocationRequest("payload", Map.of()),
+                    null,
+                    null,
+                    Instant.now(),
+                    1
+            );
+
+            DispatchResult result = new PoolDispatcher(WebClient.builder().build()).dispatch(task).get();
+
+            assertNotNull(result);
+            assertTrue(result.result().success());
+            assertNull(result.result().output());
+        } finally {
+            server.shutdown();
+        }
     }
 }

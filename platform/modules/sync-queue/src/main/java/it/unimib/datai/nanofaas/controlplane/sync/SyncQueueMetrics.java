@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class SyncQueueMetrics {
+    private static final String GLOBAL_FUNCTION_TAG = "";
+
     private final MeterRegistry registry;
     private final Map<String, Counter> rejectedCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> timedOutCounters = new ConcurrentHashMap<>();
@@ -29,8 +31,12 @@ public class SyncQueueMetrics {
 
     public SyncQueueMetrics(MeterRegistry registry) {
         this.registry = registry;
-        Gauge.builder("sync_queue_depth", globalDepth, AtomicInteger::get).register(registry);
-        this.globalWaitTimer = Timer.builder("sync_queue_wait_seconds").register(registry);
+        Gauge.builder("sync_queue_depth", globalDepth, AtomicInteger::get)
+                .tag("function", GLOBAL_FUNCTION_TAG)
+                .register(registry);
+        this.globalWaitTimer = Timer.builder("sync_queue_wait_seconds")
+                .tag("function", GLOBAL_FUNCTION_TAG)
+                .register(registry);
     }
 
     public void registerFunction(String functionName) {

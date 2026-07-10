@@ -154,7 +154,7 @@ class InvocationServiceRetryTest {
 
         ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
 
-        // Simulate 3 failed attempts (maxRetries=3)
+        // Simulate the initial attempt plus 3 retries (maxRetries=3)
         // Attempt 1
         invocationService.completeExecution(
                 response.executionId(),
@@ -171,16 +171,24 @@ class InvocationServiceRetryTest {
         assertThat(record.completion().isDone()).isFalse();
         assertThat(record.task().attempt()).isEqualTo(3);
 
-        // Attempt 3 (last one, maxRetries reached)
+        // Attempt 3
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 3 failed")
+        );
+        assertThat(record.completion().isDone()).isFalse();
+        assertThat(record.task().attempt()).isEqualTo(4);
+
+        // Attempt 4 (last one, maxRetries reached)
+        invocationService.completeExecution(
+                response.executionId(),
+                InvocationResult.error("ERROR", "Attempt 4 failed")
         );
 
         // NOW the future should be completed with the error
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(3)).releaseDispatchSlot("testFunc");
+        verify(enqueuer, times(4)).releaseDispatchSlot("testFunc");
     }
 
     @Test
