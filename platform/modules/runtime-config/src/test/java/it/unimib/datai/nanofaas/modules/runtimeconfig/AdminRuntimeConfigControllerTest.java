@@ -8,8 +8,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AdminRuntimeConfigControllerTest {
 
@@ -118,6 +126,73 @@ class AdminRuntimeConfigControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
         assertThat(configService.getSnapshot().revision()).isEqualTo(before.revision());
+    }
+
+    @Test
+    void concurrentPatchesSerializeApplyAndRollback() throws Exception {
+        RateLimiter rateLimiter = new RateLimiter();
+        rateLimiter.setMaxPerSecond(1000);
+        RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
+        CountDownLatch firstApplyEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstApply = new CountDownLatch(1);
+        AtomicInteger applyCalls = new AtomicInteger();
+
+        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry()) {
+            @Override
+            public void apply(RuntimeConfigSnapshot snapshot, RuntimeConfigSnapshot previous,
+                              RuntimeConfigService service) {
+                if (applyCalls.incrementAndGet() == 1) {
+                    firstApplyEntered.countDown();
+                    try {
+                        if (!releaseFirstApply.await(5, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Timed out waiting to release first apply");
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                    service.restore(previous);
+                    rateLimiter.setMaxPerSecond(previous.rateMaxPerSecond());
+                    throw new RuntimeConfigApplyException("forced apply failure", new RuntimeException("boom"));
+                }
+                super.apply(snapshot, previous, service);
+            }
+        };
+        AdminRuntimeConfigController controller = new AdminRuntimeConfigController(
+                configService, new RuntimeConfigValidator(), applier);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<ResponseEntity<?>> first = executor.submit(() -> controller.patch(
+                    patchRequest(0L, 777)));
+            assertThat(firstApplyEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            CountDownLatch secondStarted = new CountDownLatch(1);
+            Future<ResponseEntity<?>> second = executor.submit(() -> {
+                secondStarted.countDown();
+                return controller.patch(patchRequest(0L, 888));
+            });
+            assertThat(secondStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> second.get(250, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releaseFirstApply.countDown();
+
+            assertThat(first.get(5, TimeUnit.SECONDS).getStatusCode())
+                    .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+            assertThat(second.get(5, TimeUnit.SECONDS).getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(configService.getSnapshot().revision()).isEqualTo(1L);
+            assertThat(configService.getSnapshot().rateMaxPerSecond()).isEqualTo(888);
+            assertThat(rateLimiter.getMaxPerSecond()).isEqualTo(888);
+        } finally {
+            releaseFirstApply.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private AdminRuntimeConfigController.PatchRequest patchRequest(long revision, int rate) {
+        return new AdminRuntimeConfigController.PatchRequest(
+                revision, rate, null, null, null, null, null);
     }
 
     private AdminRuntimeConfigController controller() {

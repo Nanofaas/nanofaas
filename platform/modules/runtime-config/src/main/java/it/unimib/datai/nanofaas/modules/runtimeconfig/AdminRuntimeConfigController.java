@@ -54,7 +54,7 @@ public class AdminRuntimeConfigController {
     }
 
     @PatchMapping
-    public ResponseEntity<?> patch(@RequestBody PatchRequest request) {
+    public synchronized ResponseEntity<?> patch(@RequestBody PatchRequest request) {
         if (request.expectedRevision() == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "expectedRevision is required"));
         }
