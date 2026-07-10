@@ -15,8 +15,8 @@
 
 ### Sync Queue Metrics
 
-- sync_queue_depth (global + function tag)
-- sync_queue_wait_seconds (global + function tag)
+- sync_queue_depth (`function=""` for the global series, function name otherwise)
+- sync_queue_wait_seconds (`function=""` for the global series, function name otherwise)
 - sync_queue_admitted_total
 - sync_queue_rejected_total
 - sync_queue_timedout_total

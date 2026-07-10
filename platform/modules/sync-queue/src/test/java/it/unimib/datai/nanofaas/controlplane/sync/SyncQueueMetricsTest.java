@@ -1,11 +1,27 @@
 package it.unimib.datai.nanofaas.controlplane.sync;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SyncQueueMetricsTest {
+    @Test
+    void prometheusRegistryKeepsGlobalAndPerFunctionMeters() {
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+
+        metrics.registerFunction("echo");
+        metrics.recordWait("echo", 10);
+
+        assertThat(registry.find("sync_queue_depth").tag("function", "").gauge()).isNotNull();
+        assertThat(registry.find("sync_queue_depth").tag("function", "echo").gauge()).isNotNull();
+        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "").timer()).isNotNull();
+        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "echo").timer()).isNotNull();
+    }
+
     @Test
     void removeFunctionState_removesPerFunctionMeters() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();

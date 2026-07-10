@@ -57,10 +57,12 @@ public class PoolDispatcher implements Dispatcher {
                                 .orElse(MediaType.APPLICATION_JSON);
                         if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
                             return response.bodyToMono(String.class)
-                                    .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs));
+                                    .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
+                                    .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
                         }
                         return response.bodyToMono(Object.class)
-                                .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs));
+                                .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
+                                .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
                     }
                     return response.bodyToMono(String.class)
                             .defaultIfEmpty(response.statusCode().toString())

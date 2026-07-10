@@ -49,8 +49,18 @@ public class ExecutionCompletionHandler {
             return;
         }
 
-        record.markRunning();
-        record.markDispatchedAt();
+        boolean terminal;
+        synchronized (record) {
+            terminal = record.isTerminal();
+            if (!terminal) {
+                record.markRunning();
+                record.markDispatchedAt();
+            }
+        }
+        if (terminal) {
+            releaseDispatchSlotOnce(record, task.attempt(), task.functionName());
+            return;
+        }
         metrics.dispatch(task.functionName());
 
         ExecutionMode mode = task.functionSpec().executionMode();
@@ -128,7 +138,7 @@ public class ExecutionCompletionHandler {
         }
 
         boolean shouldRetry = !result.success()
-                && currentTask.attempt() < currentTask.functionSpec().maxRetries();
+                && currentTask.attempt() <= currentTask.functionSpec().maxRetries();
 
         if (shouldRetry) {
             metrics.retry(functionName);
