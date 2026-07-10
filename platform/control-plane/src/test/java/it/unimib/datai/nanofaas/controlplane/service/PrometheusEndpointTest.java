@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "nanofaas.defaults.concurrency=2",
                 "nanofaas.defaults.queueSize=10",
                 "nanofaas.defaults.maxRetries=3",
+                "nanofaas.metrics.profile=advanced",
                 "sync-queue.enabled=false",
                 // Avoid fixed port collisions when Gradle runs tests in parallel.
                 "management.server.port=0",

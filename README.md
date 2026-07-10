@@ -198,6 +198,16 @@ scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 
 ## Observability
 
 - Prometheus metrics are exposed via Spring Actuator (`/actuator/prometheus` on the management port).
+- `nanofaas.metrics.profile` selects the startup-only metrics profile and defaults to `basic`.
+  Set `NANOFAAS_METRICS_PROFILE=advanced` for detailed experiments (with Helm, add it to
+  `controlPlane.extraEnv`). The active value is exported as
+  `nanofaas_metrics_profile_info{profile="basic|advanced"} 1`.
+- `basic` retains JVM/HTTP metrics, invocation outcome counters, queue depth/in-flight gauges, and
+  `function_dispatch_total`, which is also an autoscaler input. It omits function latency timers,
+  cold/warm-start counters, per-function sync-queue series, and controller diagnostics.
+- `advanced` is a superset of `basic` and enables Prometheus histograms for function latency,
+  initialization, queue-wait, and end-to-end timers. Compute quantiles in Prometheus with
+  `histogram_quantile()`; the control plane does not publish non-aggregable client-side percentiles.
 
 ## API
 

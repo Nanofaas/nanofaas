@@ -27,6 +27,8 @@ management:
         enabled: true
 
 nanofaas:
+  metrics:
+    profile: basic
   admin:
     runtime-config:
       enabled: false
