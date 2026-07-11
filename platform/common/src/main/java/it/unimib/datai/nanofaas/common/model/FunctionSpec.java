@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.common.model;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
@@ -10,7 +11,7 @@ public record FunctionSpec(
         @NotBlank String image,
         List<String> command,
         Map<String, String> env,
-        ResourceSpec resources,
+        @Valid ResourceSpec resources,
         @Min(1) Integer timeoutMs,
         @Min(1) Integer concurrency,
         @Min(1) Integer queueSize,

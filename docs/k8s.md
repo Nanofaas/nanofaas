@@ -33,6 +33,24 @@
   mutable-tag behavior; use `IfNotPresent` with immutable image references to
   reduce registry pulls.
 
+### Per-function resources
+
+Function requests and limits use a backend-neutral contract:
+
+```yaml
+resources:
+  requests:
+    cpu: 0.25
+    memoryMiB: 256
+  limits:
+    cpu: 1
+    memoryMiB: 512
+```
+
+Kubernetes renders these as `250m`/`256Mi` requests and `1`/`512Mi`
+limits. The local Docker/Podman provider uses CPU shares and memory reservation
+for requests, and CPU quota and memory limit for limits.
+
 ## Labels & Annotations
 
 - Labels:

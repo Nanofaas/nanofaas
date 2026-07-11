@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.common.model;
 
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -162,9 +163,14 @@ class CommonModelTest {
 
     @Test
     void resourceSpec_recordAccessors() {
-        ResourceSpec r = new ResourceSpec("250m", "512Mi");
-        assertEquals("250m", r.cpu());
-        assertEquals("512Mi", r.memory());
+        ResourceQuantity requests = new ResourceQuantity(new BigDecimal("0.25"), 256);
+        ResourceQuantity limits = new ResourceQuantity(BigDecimal.ONE, 512);
+        ResourceSpec r = new ResourceSpec(requests, limits);
+
+        assertEquals(new BigDecimal("0.25"), r.requests().cpu());
+        assertEquals(256, r.requests().memoryMiB());
+        assertEquals(BigDecimal.ONE, r.limits().cpu());
+        assertEquals(512, r.limits().memoryMiB());
     }
 
     // --- ScalingConfig ---

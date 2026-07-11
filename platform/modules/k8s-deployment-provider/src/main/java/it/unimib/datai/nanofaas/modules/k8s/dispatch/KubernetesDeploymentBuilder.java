@@ -5,10 +5,12 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.api.model.autoscaling.v2.*;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -180,16 +182,43 @@ public class KubernetesDeploymentBuilder {
     private ResourceRequirementsBuilder buildResources(FunctionSpec spec) {
         ResourceRequirementsBuilder resources = new ResourceRequirementsBuilder();
         if (spec.resources() != null) {
-            if (spec.resources().cpu() != null) {
-                resources.addToRequests("cpu", new Quantity(spec.resources().cpu()));
-                resources.addToLimits("cpu", new Quantity(spec.resources().cpu()));
-            }
-            if (spec.resources().memory() != null) {
-                resources.addToRequests("memory", new Quantity(spec.resources().memory()));
-                resources.addToLimits("memory", new Quantity(spec.resources().memory()));
-            }
+            addResources(resources, spec.resources().requests(), true);
+            addResources(resources, spec.resources().limits(), false);
         }
         return resources;
+    }
+
+    private static void addResources(
+            ResourceRequirementsBuilder resources,
+            ResourceQuantity quantity,
+            boolean request
+    ) {
+        if (quantity == null) {
+            return;
+        }
+        if (quantity.cpu() != null) {
+            Quantity cpu = new Quantity(kubernetesCpu(quantity.cpu()));
+            if (request) {
+                resources.addToRequests("cpu", cpu);
+            } else {
+                resources.addToLimits("cpu", cpu);
+            }
+        }
+        if (quantity.memoryMiB() != null) {
+            Quantity memory = new Quantity(quantity.memoryMiB() + "Mi");
+            if (request) {
+                resources.addToRequests("memory", memory);
+            } else {
+                resources.addToLimits("memory", memory);
+            }
+        }
+    }
+
+    private static String kubernetesCpu(BigDecimal cores) {
+        BigDecimal normalized = cores.stripTrailingZeros();
+        return normalized.scale() <= 0
+                ? normalized.toPlainString()
+                : normalized.movePointRight(3).toBigIntegerExact() + "m";
     }
 
     private List<LocalObjectReference> buildImagePullSecrets(FunctionSpec spec) {
