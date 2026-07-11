@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -28,7 +29,10 @@ class KubernetesDeploymentBuilderTest {
         return new FunctionSpec(
                 "echo", "nanofaas/function-runtime:0.5.0",
                 List.of(), Map.of("MY_VAR", "hello"),
-                new ResourceSpec("250m", "128Mi"),
+                new ResourceSpec(
+                        new ResourceQuantity(new BigDecimal("0.25"), 128),
+                        new ResourceQuantity(BigDecimal.ONE, 256)
+                ),
                 30000, 4, 100, 3,
                 null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,
                 scaling
@@ -154,6 +158,8 @@ class KubernetesDeploymentBuilderTest {
         assertNotNull(container.getResources().getRequests());
         assertEquals("250m", container.getResources().getRequests().get("cpu").toString());
         assertEquals("128Mi", container.getResources().getRequests().get("memory").toString());
+        assertEquals("1", container.getResources().getLimits().get("cpu").toString());
+        assertEquals("256Mi", container.getResources().getLimits().get("memory").toString());
     }
 
     @Test

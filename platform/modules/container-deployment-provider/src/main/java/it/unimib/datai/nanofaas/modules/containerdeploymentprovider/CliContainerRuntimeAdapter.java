@@ -1,5 +1,10 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -32,6 +37,7 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         command.add(spec.containerName());
         command.add("-p");
         command.add(spec.hostPort() + ":8080");
+        addResourceFlags(command, spec.resources());
         spec.env().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey(Comparator.naturalOrder()))
                 .forEach(entry -> {
@@ -46,6 +52,33 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         ExecutionResult result = executor.run(command);
         if (!result.isSuccess()) {
             throw new IllegalStateException("Failed to start container '" + spec.containerName() + "': " + result.output());
+        }
+    }
+
+    private static void addResourceFlags(List<String> command, ResourceSpec resources) {
+        if (resources == null) {
+            return;
+        }
+        ResourceQuantity requests = resources.requests();
+        ResourceQuantity limits = resources.limits();
+        if (requests != null && requests.cpu() != null) {
+            int shares = Math.max(2, requests.cpu().multiply(BigDecimal.valueOf(1024))
+                    .setScale(0, RoundingMode.HALF_UP).intValueExact());
+            command.add("--cpu-shares");
+            command.add(Integer.toString(shares));
+        }
+        if (limits != null && limits.cpu() != null) {
+            command.add("--cpus");
+            command.add(limits.cpu().stripTrailingZeros().toPlainString());
+        }
+        if (requests != null && requests.memoryMiB() != null
+                && (limits == null || !requests.memoryMiB().equals(limits.memoryMiB()))) {
+            command.add("--memory-reservation");
+            command.add(requests.memoryMiB() + "m");
+        }
+        if (limits != null && limits.memoryMiB() != null) {
+            command.add("--memory");
+            command.add(limits.memoryMiB() + "m");
         }
     }
 

@@ -168,7 +168,8 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 state.spec.image(),
                 hostPort,
                 state.spec.command() == null ? List.of() : state.spec.command(),
-                buildEnv(state.spec)
+                buildEnv(state.spec),
+                state.spec.resources()
         );
 
         try {

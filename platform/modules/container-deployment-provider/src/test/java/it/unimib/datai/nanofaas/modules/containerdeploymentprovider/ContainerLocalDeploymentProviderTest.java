@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
@@ -9,6 +11,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -82,6 +85,27 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r3", "nanofaas-echo-r2");
         assertThat(proxy.backends()).containsExactly("http://127.0.0.1:19001");
         assertThat(provider.getReadyReplicas("echo")).isEqualTo(1);
+    }
+
+    @Test
+    void provision_passesResourcesToEveryReplica() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> new RecordingProxy("http://127.0.0.1:19090/invoke")
+        );
+        ResourceSpec resources = new ResourceSpec(
+                new ResourceQuantity(new BigDecimal("0.25"), 256),
+                new ResourceQuantity(BigDecimal.ONE, 512)
+        );
+
+        provider.provision(spec("echo", 2, resources));
+
+        assertThat(adapter.startedSpecs()).extracting(ContainerInstanceSpec::resources)
+                .containsExactly(resources, resources);
     }
 
     @Test
@@ -251,12 +275,16 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     private static FunctionSpec spec(String name, int minReplicas) {
+        return spec(name, minReplicas, null);
+    }
+
+    private static FunctionSpec spec(String name, int minReplicas, ResourceSpec resources) {
         return new FunctionSpec(
                 name,
                 "img:latest",
                 List.of("java", "-jar", "app.jar"),
                 new LinkedHashMap<>(Map.of("APP_MODE", "dev")),
-                null,
+                resources,
                 30_000,
                 4,
                 100,

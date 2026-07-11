@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 import java.util.List;
 import java.util.Map;
 
@@ -8,6 +9,7 @@ record ContainerInstanceSpec(
         String image,
         int hostPort,
         List<String> command,
-        Map<String, String> env
+        Map<String, String> env,
+        ResourceSpec resources
 ) {
 }

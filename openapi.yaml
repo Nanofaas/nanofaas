@@ -423,12 +423,27 @@ components:
     ResourceSpec:
       type: object
       properties:
+        requests:
+          $ref: '#/components/schemas/ResourceQuantity'
+        limits:
+          $ref: '#/components/schemas/ResourceQuantity'
+      description: >-
+        Optional per-function soft requests and hard limits. Kubernetes maps both
+        directly; the local container provider maps requests to CPU shares and
+        memory reservation, and limits to CPU quota and memory limit.
+    ResourceQuantity:
+      type: object
+      properties:
         cpu:
-          type: string
-          description: Kubernetes CPU request/limit (e.g., 250m)
-        memory:
-          type: string
-          description: Kubernetes memory request/limit (e.g., 256Mi)
+          type: number
+          format: decimal
+          minimum: 0.001
+          multipleOf: 0.001
+          description: CPU cores (for example, 0.25 is one quarter of a core)
+        memoryMiB:
+          type: integer
+          minimum: 1
+          description: Memory in mebibytes
     ScalingConfig:
       type: object
       properties:

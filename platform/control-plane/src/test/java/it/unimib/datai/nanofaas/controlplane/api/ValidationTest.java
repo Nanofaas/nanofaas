@@ -96,6 +96,65 @@ class ValidationTest {
     }
 
     @Test
+    void register_withNonPositiveResource_returns400() {
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"name":"myfunc","image":"myimage","resources":{"limits":{"cpu":0}}}
+                        """)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.details[0]").value(s -> ((String) s).contains("resources.limits.cpu"));
+    }
+
+    @Test
+    void register_withCpuPrecisionAboveMillicores_returns400() {
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"name":"myfunc","image":"myimage","resources":{"limits":{"cpu":0.0001}}}
+                        """)
+                .exchange()
+                .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void register_withResourceRequestAboveLimit_returns400() {
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {
+                          "name":"myfunc",
+                          "image":"myimage",
+                          "resources":{
+                            "requests":{"cpu":1,"memoryMiB":513},
+                            "limits":{"cpu":0.5,"memoryMiB":512}
+                          }
+                        }
+                        """)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.details[0]").value(s -> ((String) s).contains("request must not exceed limit"));
+    }
+
+    @Test
+    void register_withLegacyResourceFormat_returns400() {
+        webClient.post()
+                .uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"name":"myfunc","image":"myimage","resources":{"cpu":"250m","memory":"256Mi"}}
+                        """)
+                .exchange()
+                .expectStatus().isBadRequest();
+    }
+
+    @Test
     void register_withValidSpec_returns201() {
         FunctionSpec spec = new FunctionSpec(
                 "myfunc",
