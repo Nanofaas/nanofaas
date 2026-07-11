@@ -6,6 +6,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
+from workflow_tasks.execution.roles import ExecutionRole
+
 ExecutionTarget = Literal["host", "vm"]
 TaskStatus = Literal["pending", "running", "passed", "failed", "skipped"]
 
@@ -16,6 +18,7 @@ class CommandTaskSpec:
     summary: str
     argv: tuple[str, ...]
     target: ExecutionTarget = "host"
+    role: ExecutionRole | None = None
     env: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     cwd: Path | None = None
     remote_dir: str | None = None
@@ -24,6 +27,10 @@ class CommandTaskSpec:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "env", MappingProxyType(dict(self.env)))
+
+    @property
+    def execution_role(self) -> ExecutionRole:
+        return self.role or ("host" if self.target == "host" else "stack")
 
 
 @dataclass(frozen=True, slots=True)
