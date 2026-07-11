@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.modules.k8s.e2e;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -74,7 +75,8 @@ record K8sE2eScenarioManifest(
             String runtime,
             String image,
             String payloadPath,
-            String repoRelativePayloadPath) {
+            String repoRelativePayloadPath,
+            ResourceSpec resources) {
 
         Optional<String> resolvedPayloadPath(Map<String, String> payloads) {
             if (payloadPath != null && !payloadPath.isBlank()) {

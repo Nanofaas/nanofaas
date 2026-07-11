@@ -13,6 +13,14 @@ payload_dir = "payloads"
 word-stats-java = "word-stats-sample.json"
 json-transform-java = "json-transform-sample.json"
 
+[resources.word-stats-java.requests]
+cpu = 0.25
+memoryMiB = 256
+
+[resources.word-stats-java.limits]
+cpu = 0.5
+memoryMiB = 512
+
 [load]
 profile = "quick"
 targets = ["word-stats-java", "json-transform-java"]

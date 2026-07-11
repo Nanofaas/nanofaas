@@ -33,6 +33,29 @@ class ScenarioPrefectConfig(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class ResourceQuantity(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    cpu: float | None = Field(default=None, gt=0, multiple_of=0.001)
+    memory_mib: int | None = Field(default=None, alias="memoryMiB", gt=0)
+
+
+class ResourceSpec(BaseModel):
+    requests: ResourceQuantity | None = None
+    limits: ResourceQuantity | None = None
+
+    @model_validator(mode="after")
+    def validate_requests_within_limits(self) -> "ResourceSpec":
+        if self.requests is None or self.limits is None:
+            return self
+        for field in ("cpu", "memory_mib"):
+            request = getattr(self.requests, field)
+            limit = getattr(self.limits, field)
+            if request is not None and limit is not None and request > limit:
+                raise ValueError("resource request must not exceed limit")
+        return self
+
+
 class ScenarioSpec(BaseModel):
     name: str
     base_scenario: ScenarioName
@@ -42,6 +65,7 @@ class ScenarioSpec(BaseModel):
     namespace: str | None = None
     local_registry: str | None = Field(default_factory=default_registry_url)
     payloads: dict[str, str] = Field(default_factory=dict)
+    resources: dict[str, ResourceSpec] = Field(default_factory=dict)
     invoke: ScenarioInvokeConfig = Field(default_factory=ScenarioInvokeConfig)
     load: ScenarioLoadConfig = Field(default_factory=ScenarioLoadConfig)
     prefect: ScenarioPrefectConfig = Field(default_factory=ScenarioPrefectConfig)
@@ -65,6 +89,8 @@ class ScenarioSpec(BaseModel):
         invalid_targets = [target for target in self.load.targets if target not in selected_keys]
         if invalid_targets:
             raise ValueError("load.targets must be a subset of the selected functions")
+        if set(self.resources) - set(selected_keys):
+            raise ValueError("resources must refer to selected functions")
         return self
 
 
@@ -76,6 +102,7 @@ class ResolvedFunction(BaseModel):
     example_dir: Path | None = None
     image: str | None = None
     payload_path: Path | None = None
+    resources: ResourceSpec | None = None
 
     @classmethod
     def from_definition(
@@ -84,6 +111,7 @@ class ResolvedFunction(BaseModel):
         *,
         image: str | None,
         payload_path: Path | None,
+        resources: ResourceSpec | None = None,
     ) -> "ResolvedFunction":
         return cls(
             key=definition.key,
@@ -93,6 +121,7 @@ class ResolvedFunction(BaseModel):
             example_dir=definition.example_dir,
             image=image,
             payload_path=payload_path,
+            resources=resources,
         )
 
 
