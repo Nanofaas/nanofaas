@@ -41,60 +41,91 @@ public class KubernetesResourceManager {
         Deployment deployment = builder.buildDeployment(spec);
         Service service = builder.buildService(spec);
         KubernetesClient client = clientProvider.getObject();
+        boolean deploymentCreated = false;
+        boolean serviceCreated = false;
+        boolean hpaCreated = false;
 
-        var deploymentResource = client.apps().deployments()
-                .inNamespace(resolvedNamespace)
-                .withName(deployment.getMetadata().getName());
-        if (deploymentResource.get() == null) {
-            client.apps().deployments()
+        try {
+            var deploymentResource = client.apps().deployments()
                     .inNamespace(resolvedNamespace)
-                    .resource(deployment)
-                    .create();
-        } else {
-            deploymentResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(deployment));
-        }
-        log.info("Created/updated Deployment {} for function {}", deployment.getMetadata().getName(), spec.name());
-
-        var serviceResource = client.services()
-                .inNamespace(resolvedNamespace)
-                .withName(service.getMetadata().getName());
-        if (serviceResource.get() == null) {
-            client.services()
-                    .inNamespace(resolvedNamespace)
-                    .resource(service)
-                    .create();
-        } else {
-            serviceResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(service));
-        }
-        log.info("Created/updated Service {} for function {}", service.getMetadata().getName(), spec.name());
-
-        if (spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA) {
-            HorizontalPodAutoscaler hpa = builder.buildHpa(spec);
-            if (hpa != null) {
-                var hpaResource = client.autoscaling().v2().horizontalPodAutoscalers()
+                    .withName(deployment.getMetadata().getName());
+            if (deploymentResource.get() == null) {
+                client.apps().deployments()
                         .inNamespace(resolvedNamespace)
-                        .withName(hpa.getMetadata().getName());
-                if (hpaResource.get() == null) {
-                    client.autoscaling().v2().horizontalPodAutoscalers()
-                            .inNamespace(resolvedNamespace)
-                            .resource(hpa)
-                            .create();
-                } else {
-                    hpaResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(hpa));
-                }
-                log.info("Created/updated HPA {} for function {}", hpa.getMetadata().getName(), spec.name());
+                        .resource(deployment)
+                        .create();
+                deploymentCreated = true;
+            } else {
+                deploymentResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(deployment));
             }
-        } else {
-            client.autoscaling().v2().horizontalPodAutoscalers()
+            log.info("Created/updated Deployment {} for function {}", deployment.getMetadata().getName(), spec.name());
+
+            var serviceResource = client.services()
                     .inNamespace(resolvedNamespace)
-                    .withName(KubernetesDeploymentBuilder.deploymentName(spec.name()))
-                    .delete();
+                    .withName(service.getMetadata().getName());
+            if (serviceResource.get() == null) {
+                client.services()
+                        .inNamespace(resolvedNamespace)
+                        .resource(service)
+                        .create();
+                serviceCreated = true;
+            } else {
+                serviceResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(service));
+            }
+            log.info("Created/updated Service {} for function {}", service.getMetadata().getName(), spec.name());
+
+            if (spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA) {
+                HorizontalPodAutoscaler hpa = builder.buildHpa(spec);
+                if (hpa != null) {
+                    var hpaResource = client.autoscaling().v2().horizontalPodAutoscalers()
+                            .inNamespace(resolvedNamespace)
+                            .withName(hpa.getMetadata().getName());
+                    if (hpaResource.get() == null) {
+                        client.autoscaling().v2().horizontalPodAutoscalers()
+                                .inNamespace(resolvedNamespace)
+                                .resource(hpa)
+                                .create();
+                        hpaCreated = true;
+                    } else {
+                        hpaResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(hpa));
+                    }
+                    log.info("Created/updated HPA {} for function {}", hpa.getMetadata().getName(), spec.name());
+                }
+            } else {
+                client.autoscaling().v2().horizontalPodAutoscalers()
+                        .inNamespace(resolvedNamespace)
+                        .withName(KubernetesDeploymentBuilder.deploymentName(spec.name()))
+                        .delete();
+            }
+        } catch (RuntimeException failure) {
+            String deploymentName = KubernetesDeploymentBuilder.deploymentName(spec.name());
+            if (hpaCreated) {
+                suppressCleanupFailure(failure, () -> client.autoscaling().v2().horizontalPodAutoscalers()
+                        .inNamespace(resolvedNamespace).withName(deploymentName).delete());
+            }
+            if (serviceCreated) {
+                suppressCleanupFailure(failure, () -> client.services().inNamespace(resolvedNamespace)
+                        .withName(KubernetesDeploymentBuilder.serviceName(spec.name())).delete());
+            }
+            if (deploymentCreated) {
+                suppressCleanupFailure(failure, () -> client.apps().deployments().inNamespace(resolvedNamespace)
+                        .withName(deploymentName).delete());
+            }
+            throw failure;
         }
 
         String serviceUrl = String.format("http://%s.%s.svc.cluster.local:8080/invoke",
                 KubernetesDeploymentBuilder.serviceName(spec.name()), resolvedNamespace);
         log.info("Function {} provisioned at {}", spec.name(), serviceUrl);
         return serviceUrl;
+    }
+
+    private static void suppressCleanupFailure(RuntimeException provisioningFailure, Runnable cleanup) {
+        try {
+            cleanup.run();
+        } catch (RuntimeException cleanupFailure) {
+            provisioningFailure.addSuppressed(cleanupFailure);
+        }
     }
 
     /**
