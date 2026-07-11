@@ -39,6 +39,15 @@ def scenario_manifest_payload(scenario: ResolvedScenario) -> dict[str, object]:
                 "image": function.image,
                 "payloadPath": str(function.payload_path) if function.payload_path is not None else None,
                 "repoRelativePayloadPath": _repo_relative_path(function.payload_path),
+                **(
+                    {
+                        "resources": function.resources.model_dump(
+                            mode="python", exclude_none=True, by_alias=True
+                        )
+                    }
+                    if function.resources is not None
+                    else {}
+                ),
             }
             for function in scenario.functions
         ],

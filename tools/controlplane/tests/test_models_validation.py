@@ -177,6 +177,21 @@ def test_scenario_spec_rejects_invalid_load_target() -> None:
         )
 
 
+def test_scenario_spec_rejects_resource_request_above_limit() -> None:
+    with pytest.raises(ValidationError, match="resource request must not exceed limit"):
+        ScenarioSpec(
+            name="test",
+            base_scenario="validate-k3s",
+            functions=["word-stats-java"],
+            resources={
+                "word-stats-java": {
+                    "requests": {"cpu": 1, "memoryMiB": 513},
+                    "limits": {"cpu": 0.5, "memoryMiB": 512},
+                }
+            },
+        )
+
+
 # ---------------------------------------------------------------------------
 # scenario_models.py — ResolvedScenario helpers
 # ---------------------------------------------------------------------------

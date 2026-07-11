@@ -11,6 +11,7 @@ from workflow_tasks import (
 )
 from workflow_tasks.components.operations import RemoteCommandOperation
 from workflow_tasks.vm.models import VmInfo
+from workflow_tasks.vm.adapters import VmLifecycleAdapter
 
 from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.scenario.catalog import ScenarioDefinition
@@ -82,7 +83,14 @@ class K3sJunitCurlPlan:
     # ── workflow assembly ───────────────────────────────────────────────────────
 
     def _build_setup(self) -> _Setup:
-        return build_setup(self.runner, self.request)
+        setup = build_setup(self.runner, self.request)
+        if setup.context.vm_request.lifecycle == "external":
+            setup.lifecycle = VmLifecycleAdapter(
+                self.runner.vm,
+                lifecycle="external",
+                credentials=setup.context.vm_request,
+            )
+        return setup
 
     def _assemble(
         self,

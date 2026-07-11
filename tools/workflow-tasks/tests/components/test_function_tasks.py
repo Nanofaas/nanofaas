@@ -43,6 +43,23 @@ def test_function_spec_to_body_omits_scaling_config_by_default() -> None:
     assert "scalingConfig" not in body
 
 
+def test_function_spec_to_body_includes_resources_when_present() -> None:
+    resources = {
+        "requests": {"cpu": 0.25, "memoryMiB": 256},
+        "limits": {"cpu": 0.5, "memoryMiB": 512},
+    }
+
+    body = FunctionSpec(name="echo", image="reg/echo:e2e", resources=resources).to_body()
+
+    assert body["resources"] == resources
+
+
+def test_function_spec_to_body_omits_resources_by_default() -> None:
+    body = FunctionSpec(name="echo", image="reg/echo:e2e").to_body()
+
+    assert "resources" not in body
+
+
 def test_register_functions_posts_each_spec() -> None:
     task = RegisterFunctions(
         task_id="fn.register",

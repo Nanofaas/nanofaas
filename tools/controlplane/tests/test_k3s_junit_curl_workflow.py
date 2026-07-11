@@ -114,6 +114,36 @@ def _workflow_plan(request: E2eRequest):
     return build_k3s_junit_curl_plan(runner, request)
 
 
+def test_external_lifecycle_is_preserved_for_vm_start_and_teardown() -> None:
+    shell = RecordingShell()
+    request = E2eRequest(
+        scenario="validate-k3s",
+        runtime="java",
+        vm=VmRequest(
+            lifecycle="external",
+            host="vm.example.test",
+            user="researcher",
+            home="/srv/researcher",
+        ),
+    )
+    plan = build_k3s_junit_curl_plan(
+        E2eRunner(repo_root=Path("/repo"), shell=shell),
+        request,
+    )
+
+    setup = plan._build_setup()
+    info = setup.lifecycle.ensure_running(setup.vm_config)
+    setup.lifecycle.destroy(info)
+
+    assert info.host == "vm.example.test"
+    assert info.user == "researcher"
+    assert info.home == "/srv/researcher"
+    assert shell.commands == [
+        ["ssh", "researcher@vm.example.test", "true"],
+        ["echo", "Skipping teardown for external VM lifecycle"],
+    ]
+
+
 def test_workflow_task_ids_match_snapshot_with_cleanup() -> None:
     workflow_ids = _workflow_plan(_request(cleanup_vm=True)).workflow_task_ids
     assert workflow_ids == EXPECTED_TASK_IDS

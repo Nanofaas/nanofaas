@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +30,11 @@ class K8sE2eScenarioManifestTest {
                       "family": "word-stats",
                       "runtime": "java",
                       "image": "localhost:5000/nanofaas/java-word-stats:e2e",
-                      "payloadPath": "/tmp/word-stats.json"
+                      "payloadPath": "/tmp/word-stats.json",
+                      "resources": {
+                        "requests": {"cpu": 0.25, "memoryMiB": 256},
+                        "limits": {"cpu": 0.5, "memoryMiB": 512}
+                      }
                     }
                   ],
                   "payloads": {
@@ -52,6 +57,11 @@ class K8sE2eScenarioManifestTest {
             assertEquals("nanofaas-e2e-alt", loaded.get().namespaceOr("nanofaas-e2e"));
             assertEquals(List.of("word-stats-java"), loaded.get().loadTargets());
             assertEquals("word-stats-java", loaded.get().selectedFunctions().getFirst().key());
+            var resources = loaded.get().selectedFunctions().getFirst().resources();
+            assertEquals(new BigDecimal("0.25"), resources.requests().cpu());
+            assertEquals(256, resources.requests().memoryMiB());
+            assertEquals(new BigDecimal("0.5"), resources.limits().cpu());
+            assertEquals(512, resources.limits().memoryMiB());
             assertEquals(
                     "/tmp/word-stats.json",
                     loaded.get().payloadPathFor("word-stats-java").orElseThrow()

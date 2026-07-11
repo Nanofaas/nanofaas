@@ -83,6 +83,7 @@ def resolve_scenario_spec(spec: ScenarioSpec, *, source_path: Path | None = None
                 definition,
                 image=_rewrite_registry(definition.default_image, local_registry),
                 payload_path=payload_path,
+                resources=spec.resources.get(definition.key),
             )
         )
 
@@ -154,6 +155,11 @@ def overlay_scenario_selection(
             namespace=namespace if namespace is not None else base.namespace,
             local_registry=local_registry or base.local_registry,
             payloads=payloads,
+            resources={
+                function.key: function.resources
+                for function in base.functions
+                if function.key in selected_keys and function.resources is not None
+            },
             invoke=base.invoke.model_copy(deep=True),
             load=base.load.model_copy(update={"targets": load_targets}, deep=True),
             prefect=base.prefect.model_copy(deep=True),
