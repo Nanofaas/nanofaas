@@ -73,8 +73,11 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 scaleTo(state, desiredReplicas(spec));
                 return new ProvisionResult(proxy.endpointUrl(), backendId());
             } catch (RuntimeException e) {
+                for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
+                    suppressCleanupFailure(e, () -> removeReplica(state, replicaIndex));
+                }
                 states.remove(spec.name());
-                safeClose(proxy);
+                suppressCleanupFailure(e, proxy::close);
                 throw e;
             }
         } finally {
@@ -168,11 +171,11 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 buildEnv(state.spec)
         );
 
-        adapter.runContainer(instanceSpec);
         try {
+            adapter.runContainer(instanceSpec);
             endpointProbe.awaitReady(baseUrl, properties.readinessTimeout(), properties.readinessPollInterval());
         } catch (RuntimeException e) {
-            adapter.removeContainer(containerName);
+            suppressCleanupFailure(e, () -> adapter.removeContainer(containerName));
             throw e;
         }
         state.replicas.put(replicaIndex, new ReplicaState(containerName, hostPort, baseUrl));
@@ -241,6 +244,14 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
             proxy.close();
         } catch (RuntimeException ignored) {
             // Best-effort cleanup.
+        }
+    }
+
+    private static void suppressCleanupFailure(RuntimeException provisioningFailure, Runnable cleanup) {
+        try {
+            cleanup.run();
+        } catch (RuntimeException cleanupFailure) {
+            provisioningFailure.addSuppressed(cleanupFailure);
         }
     }
 

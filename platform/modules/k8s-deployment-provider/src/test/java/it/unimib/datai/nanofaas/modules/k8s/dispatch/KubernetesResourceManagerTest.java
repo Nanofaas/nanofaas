@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.autoscaling.v2.HorizontalPodAutoscaler;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
+import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.when;
 @EnableKubernetesMockClient(crud = true)
 class KubernetesResourceManagerTest {
     KubernetesClient client;
+    KubernetesMockServer server;
 
     private KubernetesResourceManager resourceManager;
 
@@ -62,6 +64,62 @@ class KubernetesResourceManagerTest {
         var svc = client.services().inNamespace("default").withName("fn-echo").get();
         assertNotNull(svc);
         assertEquals("ClusterIP", svc.getSpec().getType());
+    }
+
+    @Test
+    void provision_serviceCreationFailure_removesNewDeployment() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+        server.expect().post()
+                .withPath("/api/v1/namespaces/default/services")
+                .andReturn(422, "service creation failed")
+                .once();
+
+        assertThrows(RuntimeException.class, () -> resourceManager.provision(spec(scaling)));
+
+        assertNull(client.apps().deployments().inNamespace("default").withName("fn-echo").get());
+        assertNull(client.services().inNamespace("default").withName("fn-echo").get());
+    }
+
+    @Test
+    void provision_serviceCreationFailure_preservesExistingDeployment() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+        KubernetesDeploymentBuilder deploymentBuilder = new KubernetesDeploymentBuilder(
+                new KubernetesProperties("default", null));
+        client.apps().deployments().inNamespace("default")
+                .resource(deploymentBuilder.buildDeployment(spec(scaling)))
+                .create();
+        String existingUid = client.apps().deployments().inNamespace("default")
+                .withName("fn-echo").get().getMetadata().getUid();
+        server.expect().post()
+                .withPath("/api/v1/namespaces/default/services")
+                .andReturn(422, "service creation failed")
+                .once();
+
+        assertThrows(RuntimeException.class, () -> resourceManager.provision(spec(scaling)));
+
+        Deployment deployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
+        assertNotNull(deployment);
+        assertEquals(existingUid, deployment.getMetadata().getUid());
+        assertNull(client.services().inNamespace("default").withName("fn-echo").get());
+    }
+
+    @Test
+    void provision_hpaCreationFailure_removesNewServiceAndDeployment() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.HPA, 1, 5,
+                List.of(new ScalingMetric("cpu", "80", null)));
+        server.expect().post()
+                .withPath("/apis/autoscaling/v2/namespaces/default/horizontalpodautoscalers")
+                .andReturn(422, "hpa creation failed")
+                .once();
+
+        assertThrows(RuntimeException.class, () -> resourceManager.provision(spec(scaling)));
+
+        assertNull(client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get());
+        assertNull(client.services().inNamespace("default").withName("fn-echo").get());
+        assertNull(client.apps().deployments().inNamespace("default").withName("fn-echo").get());
     }
 
     @Test

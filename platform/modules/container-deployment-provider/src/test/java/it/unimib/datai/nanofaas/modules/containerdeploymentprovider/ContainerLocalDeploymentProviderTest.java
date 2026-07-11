@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 class ContainerLocalDeploymentProviderTest {
 
@@ -138,6 +139,26 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void provision_startFailureAfterCreation_removesContainer() {
+        FailAfterStartContainerRuntimeAdapter adapter = new FailAfterStartContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001),
+                functionName -> proxy
+        );
+
+        assertThatThrownBy(() -> provider.provision(spec("echo", 1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("start result lost");
+
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
+        assertThat(proxy.isClosed()).isTrue();
+    }
+
+    @Test
     void provision_readinessFailure_removesContainerAndClosesProxy() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
@@ -155,6 +176,53 @@ class ContainerLocalDeploymentProviderTest {
 
         assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
         assertThat(proxy.isClosed()).isTrue();
+    }
+
+    @Test
+    void provision_secondReplicaFailure_removesAllStartedContainersAndAllowsRetry() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy firstProxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        RecordingProxy secondProxy = new RecordingProxy("http://127.0.0.1:19091/invoke");
+        AtomicInteger proxyCreations = new AtomicInteger();
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new FailSecondOnceEndpointProbe(),
+                new FixedPortAllocator(19001, 19002, 19003, 19004),
+                functionName -> proxyCreations.getAndIncrement() == 0 ? firstProxy : secondProxy
+        );
+
+        assertThatThrownBy(() -> provider.provision(spec("echo", 2)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("second replica failed");
+
+        assertThat(adapter.removedContainers())
+                .containsExactly("nanofaas-echo-r2", "nanofaas-echo-r1");
+        assertThat(firstProxy.isClosed()).isTrue();
+        assertThat(provider.provision(spec("echo", 2)).endpointUrl())
+                .isEqualTo("http://127.0.0.1:19091/invoke");
+        assertThat(proxyCreations.get()).isEqualTo(2);
+    }
+
+    @Test
+    void provision_failedReplicaCleanup_preservesProvisioningFailure() {
+        FailingRemoveContainerRuntimeAdapter adapter = new FailingRemoveContainerRuntimeAdapter();
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new FailSecondOnceEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> new RecordingProxy("http://127.0.0.1:19090/invoke")
+        );
+
+        Throwable failure = catchThrowable(() -> provider.provision(spec("echo", 2)));
+
+        assertThat(failure).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("second replica failed");
+        assertThat(failure.getSuppressed())
+                .extracting(Throwable::getMessage)
+                .containsExactly("remove failed");
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
     }
 
     @Test
@@ -297,6 +365,24 @@ class ContainerLocalDeploymentProviderTest {
         }
     }
 
+    private static final class FailingRemoveContainerRuntimeAdapter extends RecordingContainerRuntimeAdapter {
+        @Override
+        public void removeContainer(String containerName) {
+            if (containerName.endsWith("-r2")) {
+                throw new IllegalStateException("remove failed");
+            }
+            super.removeContainer(containerName);
+        }
+    }
+
+    private static final class FailAfterStartContainerRuntimeAdapter extends RecordingContainerRuntimeAdapter {
+        @Override
+        public void runContainer(ContainerInstanceSpec spec) {
+            super.runContainer(spec);
+            throw new IllegalStateException("start result lost");
+        }
+    }
+
     private static final class ReadyEndpointProbe implements EndpointProbe {
         @Override
         public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
@@ -336,6 +422,22 @@ class ContainerLocalDeploymentProviderTest {
         @Override
         public boolean isReady(String baseUrl) {
             return false;
+        }
+    }
+
+    private static final class FailSecondOnceEndpointProbe implements EndpointProbe {
+        private final AtomicInteger calls = new AtomicInteger();
+
+        @Override
+        public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
+            if (calls.incrementAndGet() == 2) {
+                throw new IllegalStateException("second replica failed");
+            }
+        }
+
+        @Override
+        public boolean isReady(String baseUrl) {
+            return true;
         }
     }
 
