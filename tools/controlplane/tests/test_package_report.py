@@ -11,13 +11,13 @@ def test_calculate_metrics_counts_internal_outgoing_and_incoming_edges() -> None
     metrics = calculate_metrics(
         packages=[
             "controlplane_tool.core",
-            "controlplane_tool.loadtest",
+            "controlplane_tool.plans",
             "controlplane_tool.tui",
         ],
         edges=[
             ("controlplane_tool.core.models", "controlplane_tool.core.net_utils"),
-            ("controlplane_tool.loadtest.k6_ops", "controlplane_tool.core.models"),
-            ("controlplane_tool.tui.app", "controlplane_tool.loadtest.loadtest_models"),
+            ("controlplane_tool.plans.validate", "controlplane_tool.core.models"),
+            ("controlplane_tool.tui.app", "controlplane_tool.plans.validate"),
         ],
     )
 
@@ -30,8 +30,8 @@ def test_calculate_metrics_counts_internal_outgoing_and_incoming_edges() -> None
         incoming_imports=1,
         instability=0.0,
     )
-    assert by_package["controlplane_tool.loadtest"] == PackageMetrics(
-        package="controlplane_tool.loadtest",
+    assert by_package["controlplane_tool.plans"] == PackageMetrics(
+        package="controlplane_tool.plans",
         internal_imports=0,
         outgoing_imports=1,
         incoming_imports=1,

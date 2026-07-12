@@ -23,8 +23,6 @@ install_product_commands(app)
 
 
 def main() -> None:
-    from controlplane_tool.tui.setup import setup_ui
-    setup_ui()
     install_rich_tracebacks(show_locals=False)
     # No arguments → launch the interactive Rich TUI
     if len(sys.argv) == 1:

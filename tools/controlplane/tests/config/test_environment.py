@@ -47,6 +47,11 @@ def test_multipass_environment_uses_role_names() -> None:
     assert config.target("loadgen").name == "nanofaas-loadgen"
 
 
+def test_multipass_environment_requires_stack_name() -> None:
+    with pytest.raises(ValidationError, match="stack name is required"):
+        EnvironmentConfig(provider="multipass")
+
+
 def test_azure_environment_requires_provider_configuration() -> None:
     with pytest.raises(ValidationError, match="azure configuration is required"):
         EnvironmentConfig(provider="azure")

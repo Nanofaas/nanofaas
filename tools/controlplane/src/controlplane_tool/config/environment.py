@@ -50,6 +50,10 @@ class EnvironmentConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider(self) -> "EnvironmentConfig":
+        if self.provider == "multipass":
+            stack = self.roles.get("stack")
+            if stack is None or not stack.name:
+                raise ValueError("stack name is required for multipass provider")
         if self.provider == "external":
             stack = self.roles.get("stack")
             if stack is None or not stack.host:

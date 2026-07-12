@@ -6,13 +6,14 @@ import shutil
 
 import typer
 import yaml
-from workflow_tasks.execution.bindings import RoleBindings
-from workflow_tasks.tasks.executors import HostCommandTaskExecutor
+from workflow_tasks.loadtest.adapters import HttpPrometheusClient
 
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
-from controlplane_tool.core.task_shell_adapter import ShellCommandTaskRunner
+from controlplane_tool.cli.execution import build_role_bindings
 from controlplane_tool.plans.cli import build_cli_plan
+from controlplane_tool.plans.loadtest import build_loadtest_plan
 from controlplane_tool.plans.validate import build_validate_plan
+from controlplane_tool.workspace.paths import default_tool_paths
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -30,20 +31,30 @@ def _environment(path: Path | None) -> EnvironmentConfig:
     return EnvironmentConfig.model_validate(_read(path)) if path else EnvironmentConfig(provider="local")
 
 
-def _local_bindings(environment: EnvironmentConfig) -> RoleBindings:
-    if environment.provider != "local":
-        raise ValueError(f"provider {environment.provider!r} requires a remote executor")
-    executor = HostCommandTaskExecutor(ShellCommandTaskRunner())
-    return RoleBindings(host=executor, stack=executor, loadgen=executor)
-
-
-def _workflow(scenario: ScenarioConfig, environment: EnvironmentConfig):
-    bindings = _local_bindings(environment)
+def _workflow(
+    scenario: ScenarioConfig,
+    environment: EnvironmentConfig,
+    *,
+    control_plane_url: str = "http://127.0.0.1:8080",
+    prometheus_url: str = "http://127.0.0.1:9090",
+    run_dir: Path | None = None,
+):
+    bindings, fetcher = build_role_bindings(environment)
+    paths = default_tool_paths()
     if scenario.workflow == "validate":
-        return build_validate_plan(scenario, bindings)
+        return build_validate_plan(scenario, bindings, repo_root=paths.workspace_root)
     if scenario.workflow == "cli":
-        return build_cli_plan(scenario, bindings)
-    raise ValueError("loadtest requires Prometheus and artifact options")
+        return build_cli_plan(scenario, bindings, repo_root=paths.workspace_root)
+    return build_loadtest_plan(
+        scenario,
+        environment,
+        bindings,
+        control_plane_url=control_plane_url,
+        prometheus_client=HttpPrometheusClient(prometheus_url),
+        run_dir=run_dir or paths.runs_dir / "latest",
+        fetcher=fetcher,
+        repo_root=paths.workspace_root,
+    )
 
 
 def _render(workflow) -> None:
@@ -77,9 +88,18 @@ def install_product_commands(app: typer.Typer) -> None:
         only: str | None = typer.Option(None, "--only"),
         start: str | None = typer.Option(None, "--from"),
         until: str | None = typer.Option(None, "--until"),
+        control_plane_url: str = typer.Option("http://127.0.0.1:8080", "--control-plane-url"),
+        prometheus_url: str = typer.Option("http://127.0.0.1:9090", "--prometheus-url"),
+        run_dir: Path | None = typer.Option(None, "--run-dir"),
     ) -> None:
         workflow = _slice(
-            _workflow(_scenario(scenario), _environment(environment)),
+            _workflow(
+                _scenario(scenario),
+                _environment(environment),
+                control_plane_url=control_plane_url,
+                prometheus_url=prometheus_url,
+                run_dir=run_dir,
+            ),
             only=only, start=start, until=until,
         )
         workflow.keep_infrastructure = keep
@@ -92,15 +112,24 @@ def install_product_commands(app: typer.Typer) -> None:
         only: str | None = typer.Option(None, "--only"),
         start: str | None = typer.Option(None, "--from"),
         until: str | None = typer.Option(None, "--until"),
+        control_plane_url: str = typer.Option("http://127.0.0.1:8080", "--control-plane-url"),
+        prometheus_url: str = typer.Option("http://127.0.0.1:9090", "--prometheus-url"),
+        run_dir: Path | None = typer.Option(None, "--run-dir"),
     ) -> None:
         _render(_slice(
-            _workflow(_scenario(scenario), _environment(environment)),
+            _workflow(
+                _scenario(scenario),
+                _environment(environment),
+                control_plane_url=control_plane_url,
+                prometheus_url=prometheus_url,
+                run_dir=run_dir,
+            ),
             only=only, start=start, until=until,
         ))
 
     @app.command("list")
     def list_command() -> None:
-        for path in sorted(Path("tools/controlplane/scenarios-v2").glob("*.yaml")):
+        for path in sorted((default_tool_paths().tool_root / "scenarios-v2").glob("*.yaml")):
             typer.echo(path)
 
     @app.command("inspect")
