@@ -19,7 +19,7 @@ differ between languages are marked accordingly.
 Start the platform locally:
 
 ```bash
-scripts/controlplane.sh run --profile core   # API on http://localhost:8080
+./gradlew :control-plane:bootRun   # API on http://localhost:8080
 ```
 
 ---
@@ -211,4 +211,4 @@ nanofaas exec get <executionId> --watch
 - Add more payload cases in `payloads/` for edge cases and error paths.
 - Deploy to Kubernetes: see `docs/k8s.md`.
 - Run a full E2E load test: see `docs/e2e-tutorial.md`.
-- Validate the built-in JavaScript demos through controlplane flows with `scripts/controlplane.sh functions show-preset demo-javascript`, `scripts/controlplane.sh e2e run k3s-junit-curl --function-preset demo-javascript --dry-run`, or `scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run`.
+- Add the function key to a YAML scenario, inspect it with `scripts/controlplane.sh plan <scenario>`, then execute the same file with `scripts/controlplane.sh run <scenario>`.

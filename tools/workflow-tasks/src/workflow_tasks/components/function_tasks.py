@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 
@@ -16,6 +17,7 @@ class FunctionSpec:
     queue_size: int = 20
     max_retries: int = 3
     scaling_config: dict[str, object] | None = None
+    resources: Mapping[str, object] | None = None
 
     def to_body(self) -> dict[str, object]:
         body: dict[str, object] = {
@@ -29,6 +31,8 @@ class FunctionSpec:
         }
         if self.scaling_config is not None:
             body["scalingConfig"] = self.scaling_config
+        if self.resources is not None:
+            body["resources"] = self.resources
         return body
 
 

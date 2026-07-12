@@ -10,20 +10,14 @@ import grimp
 ROOT_PACKAGE = "controlplane_tool"
 TOP_LEVEL_PACKAGES = (
     "controlplane_tool.app",
-    "controlplane_tool.building",
     "controlplane_tool.cli",
-    "controlplane_tool.cli_validation",
+    "controlplane_tool.config",
     "controlplane_tool.core",
-    "controlplane_tool.e2e",
+    "controlplane_tool.devtools",
     "controlplane_tool.functions",
-    "controlplane_tool.infra",
-    "controlplane_tool.loadtest",
-    "controlplane_tool.orchestation",
-    "controlplane_tool.scenario",
-    "controlplane_tool.sut",
+    "controlplane_tool.plans",
     "controlplane_tool.tui",
     "controlplane_tool.workspace",
-    "controlplane_tool.workflow",
 )
 
 

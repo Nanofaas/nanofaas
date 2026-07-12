@@ -1,90 +1,15 @@
-# Control Plane Modules
+# Control-plane modules
 
-The control-plane is split into:
+The control plane has a minimal core and optional modules under `platform/modules`. Modules implement `ControlPlaneModule` and expose Spring configuration through `ServiceLoader`.
 
-- a minimal core (always included)
-- optional modules under `platform/modules/`
-
-Optional modules are loaded through the `ControlPlaneModule` SPI (via `ServiceLoader`) and imported as Spring `@Configuration` classes at startup.
-
-The core provides no-op defaults for:
-
-- `InvocationEnqueuer`
-- `ScalingMetricsSource`
-- `SyncQueueGateway`
-- `ImageValidator`
-
-## Optional modules
-
-- `async-queue`: per-function async queues + scheduler; provides queue-backed `InvocationEnqueuer` and `ScalingMetricsSource`; enables `POST /v1/functions/{name}:enqueue`.
-- `sync-queue`: sync invocation queueing/admission control and wait estimation; provides `SyncQueueGateway` behavior for `POST /v1/functions/{name}:invoke`.
-- `autoscaler`: internal autoscaling components that consume scaling metrics and update concurrency/replica behavior.
-- `runtime-config`: hot runtime config service (rate limit + sync-queue knobs) and optional admin API at `/v1/admin/runtime-config` when `nanofaas.admin.runtime-config.enabled=true`.
-- `image-validator`: Kubernetes-backed image pull validation for function registration (overrides core no-op validator).
-- `k8s-deployment-provider`: managed Kubernetes Deployment/Service provisioning; reconciles resources in place, removes stale HPAs when scaling strategy changes away from `HPA`, and supports `nanofaas.k8s.image-pull-policy` (default `Always`; set `IfNotPresent` for immutable image references to reduce registry pulls).
-- `build-metadata`: diagnostic endpoint `GET /modules/build-metadata`.
-
-## Build-time selection
-
-For the common profiles, prefer the canonical wrapper:
+Select modules at build time with Gradle:
 
 ```bash
-scripts/controlplane.sh jar --profile core
-scripts/controlplane.sh jar --profile k8s
-scripts/controlplane.sh jar --profile container-local
-scripts/controlplane.sh jar --profile all
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=none
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=async-queue,sync-queue
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
 ```
 
-Use `--modules <csv|none|all>` when you need to override the profile-derived selector:
+The equivalent environment selector is `NANOFAAS_CONTROL_PLANE_MODULES`. `none` cannot be combined with other values and unknown names fail the build.
 
-```bash
-scripts/controlplane.sh jar --profile core --modules async-queue,sync-queue
-scripts/controlplane.sh jar --profile all --modules all
-scripts/controlplane.sh jar --profile core --modules none
-scripts/controlplane.sh inspect --profile core --modules build-metadata
-scripts/controlplane.sh matrix --task :control-plane:bootJar --modules async-queue,sync-queue --dry-run
-```
-
-Raw Gradle module selection remains available for advanced workflows through these selectors:
-
-- `-PcontrolPlaneModules=<csv>`
-- `NANOFAAS_CONTROL_PLANE_MODULES=<csv>`
-
-Rules:
-
-- `none` cannot be combined with other values.
-- unknown module names fail the build.
-
-Default behavior when the selector is omitted:
-
-- Runtime/artifact tasks (`bootRun`, `bootJar`, `bootBuildImage`, `build`, `assemble`) include all optional modules.
-- Non-runtime tasks (for example `:control-plane:test`) keep the core-only setup.
-
-## Module layout
-
-Create a module under `platform/modules/<module-name>/`:
-
-```text
-platform/modules/
-  my-module/
-    build.gradle
-    src/main/java/.../MyModule.java
-    src/main/java/.../MyModuleConfiguration.java
-    src/main/resources/META-INF/services/it.unimib.datai.nanofaas.common.controlplane.ControlPlaneModule
-```
-
-## Module contract
-
-Implement `it.unimib.datai.nanofaas.common.controlplane.ControlPlaneModule` and return one or more Spring `@Configuration` classes.
-The control-plane loads these module classes via `ServiceLoader` during startup.
-
-## Conventions
-
-- **Package:** `it.unimib.datai.nanofaas.modules.<module-name>`
-- **Bean registration:** Declare beans explicitly with `@Bean` in `@Configuration` classes. Do not rely on component scanning, because module packages are not part of the default app scan.
-- **Controllers:** `@Controller` and `@RestController` are both fine when the controller bean is created from module configuration.
-
-## Example module
-
-`platform/modules/build-metadata` is a reference module.
-When included, it adds endpoint `GET /modules/build-metadata`.
+Current modules include async and sync queues, autoscaling, runtime configuration, image validation, Kubernetes and container deployment providers, and build metadata. Each module owns its tests and explicit `@Bean` registrations; module packages are not discovered through application component scanning.

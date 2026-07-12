@@ -76,4 +76,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image matrix
-        run: ./scripts/controlplane.sh images --tag ${{ github.ref_name }} --arch all --flavor all --push --fail-fast
+        run: |
+          ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage \
+            -PcontrolPlaneModules=all \
+            -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} \
+            -PfunctionRuntimeImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
