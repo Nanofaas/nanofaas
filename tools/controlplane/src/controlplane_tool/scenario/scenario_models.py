@@ -26,13 +26,6 @@ class ScenarioLoadConfig(BaseModel):
     targets: list[str] = Field(default_factory=list)
 
 
-class ScenarioPrefectConfig(BaseModel):
-    enabled: bool = False
-    deployment_name: str | None = None
-    work_pool: str | None = None
-    tags: list[str] = Field(default_factory=list)
-
-
 class ResourceQuantity(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -68,7 +61,6 @@ class ScenarioSpec(BaseModel):
     resources: dict[str, ResourceSpec] = Field(default_factory=dict)
     invoke: ScenarioInvokeConfig = Field(default_factory=ScenarioInvokeConfig)
     load: ScenarioLoadConfig = Field(default_factory=ScenarioLoadConfig)
-    prefect: ScenarioPrefectConfig = Field(default_factory=ScenarioPrefectConfig)
 
     @model_validator(mode="after")
     def validate_selection(self) -> "ScenarioSpec":
@@ -138,7 +130,6 @@ class ResolvedScenario(BaseModel):
     payloads: dict[str, Path] = Field(default_factory=dict)
     invoke: ScenarioInvokeConfig = Field(default_factory=ScenarioInvokeConfig)
     load: ScenarioLoadConfig = Field(default_factory=ScenarioLoadConfig)
-    prefect: ScenarioPrefectConfig = Field(default_factory=ScenarioPrefectConfig)
 
     def payload_overrides(self) -> dict[str, str]:
         return {key: str(path) for key, path in self.payloads.items()}

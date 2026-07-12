@@ -100,7 +100,6 @@ def resolve_scenario_spec(spec: ScenarioSpec, *, source_path: Path | None = None
         payloads=payloads,
         invoke=spec.invoke,
         load=spec.load,
-        prefect=spec.prefect,
     )
 
 
@@ -162,7 +161,6 @@ def overlay_scenario_selection(
             },
             invoke=base.invoke.model_copy(deep=True),
             load=base.load.model_copy(update={"targets": load_targets}, deep=True),
-            prefect=base.prefect.model_copy(deep=True),
         ),
         source_path=base.source_path,
     )

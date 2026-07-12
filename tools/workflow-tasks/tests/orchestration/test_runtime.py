@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import sys
 
 from workflow_tasks.orchestration import (
     FlowRunResult,
@@ -19,13 +20,24 @@ def test_run_local_flow_returns_normalized_run_metadata() -> None:
     assert result.status == "completed"
     assert result.flow_id == "sample.flow"
     assert result.flow_run_id
-    assert result.orchestrator_backend in {"none", "prefect-local"}
+    assert result.orchestrator_backend == "direct"
     assert isinstance(result.started_at, datetime)
     assert isinstance(result.finished_at, datetime)
     assert result.started_at <= result.finished_at
 
 
-def test_run_local_flow_failure_suppresses_prefect_console_noise(capsys) -> None:
+def test_run_local_flow_ignores_prefect_configuration(monkeypatch) -> None:
+    monkeypatch.setenv("PREFECT_API_URL", "https://prefect.invalid")
+    sys.modules.pop("prefect", None)
+
+    result = run_local_flow("sample.flow", lambda: "ok")
+
+    assert result.status == "completed"
+    assert result.orchestrator_backend == "direct"
+    assert "prefect" not in sys.modules
+
+
+def test_run_local_flow_failure_does_not_write_console_noise(capsys) -> None:
     def broken_flow() -> str:
         raise RuntimeError("boom")
 

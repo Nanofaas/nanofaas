@@ -17,7 +17,6 @@ from workflow_tasks import (
 )
 from controlplane_tool.tui.workflow_renderer import render_event as _render_event
 from workflow_tasks.workflow.event_builders import build_log_event, build_task_event
-from workflow_tasks.integrations.prefect import normalize_task_state
 from workflow_tasks.workflow.events import WorkflowContext
 
 
@@ -87,10 +86,10 @@ def test_workflow_log_from_background_thread_uses_bound_sink(fake_sink) -> None:
 
 def test_render_event_shows_cancelled_tasks(capsys) -> None:
     _render_event(
-        normalize_task_state(
+        build_task_event(
+            kind="task.cancelled",
             flow_id="e2e.k8s_vm",
             task_id="images.build_core",
-            state_name="Cancelled",
             title="Build core images",
         )
     )
