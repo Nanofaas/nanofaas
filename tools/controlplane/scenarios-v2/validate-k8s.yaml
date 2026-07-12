@@ -1,0 +1,5 @@
+workflow: validate
+backend: k8s
+build: docker
+functions:
+  - word-stats-java

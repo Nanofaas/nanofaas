@@ -5,12 +5,7 @@ import sys
 import typer
 from rich.traceback import install as install_rich_tracebacks
 
-from controlplane_tool.cli.commands import install_cli_commands
-from controlplane_tool.cli.test_commands import install_cli_test_commands
-from controlplane_tool.cli.e2e_commands import install_e2e_commands
-from controlplane_tool.cli.function_commands import install_function_commands
-from controlplane_tool.cli.loadtest_commands import install_loadtest_commands
-from controlplane_tool.cli.vm_commands import install_vm_commands
+from controlplane_tool.cli.product import install_product_commands
 
 app = typer.Typer(
     help="Control plane orchestration product for building, test, and reporting."
@@ -24,12 +19,7 @@ def tui() -> None:
     NanofaasTUI().run()
 
 
-install_cli_commands(app)
-install_cli_test_commands(app)
-install_vm_commands(app)
-install_e2e_commands(app)
-install_function_commands(app)
-install_loadtest_commands(app)
+install_product_commands(app)
 
 
 def main() -> None:
