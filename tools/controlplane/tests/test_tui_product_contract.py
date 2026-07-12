@@ -19,7 +19,6 @@ def test_tui_main_menu_uses_canonical_product_sections() -> None:
         "validation",
         "loadtest",
         "catalog",
-        "profiles",
         "exit",
     ]
 
