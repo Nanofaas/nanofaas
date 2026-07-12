@@ -41,6 +41,8 @@ def test_loadtest_wrapper_routes_to_python_runner() -> None:
     assert "experiments/e2e-loadtest.sh" not in script
     assert "controlplane.sh" in script
     assert "loadtest run" in script
+    assert "--saved-profile" not in script
+    assert "--scenario-file tools/controlplane/scenarios/k8s-demo-java.toml" in script
 
 
 def test_gitignore_includes_controlplane_runs_dir() -> None:
