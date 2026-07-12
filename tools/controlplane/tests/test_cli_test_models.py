@@ -8,6 +8,10 @@ from controlplane_tool.scenario.components import resolve_scenario_environment
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
+def test_cli_test_request_has_no_saved_profile_contract() -> None:
+    assert "saved_profile" not in CliTestRequest.model_fields
+
+
 def test_cli_test_request_allows_missing_vm_for_vm_backed_scenarios() -> None:
     request = CliTestRequest(scenario="cli-stack")
 
