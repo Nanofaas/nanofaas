@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from controlplane_tool.autoscaling.tasks import (
+from workflow_tasks.loadtest.autoscaling import (
     FetchAutoscalingSummary,
     ReplicaProbe,
     ReplicaWatcher,

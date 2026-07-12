@@ -72,7 +72,7 @@ def test_one_vm_adapter_builds_autoscaling_tail_tasks(tmp_path: Path) -> None:
 
     tasks = adapter.post_loadgen_tasks(_ctx())
 
-    from controlplane_tool.autoscaling.tasks import (
+    from workflow_tasks.loadtest.autoscaling import (
         FetchAutoscalingSummary,
         RunK6WithReplicaWatch,
         VerifyAutoscalingReplicas,
