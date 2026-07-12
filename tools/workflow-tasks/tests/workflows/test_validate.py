@@ -80,6 +80,20 @@ def test_kubernetes_validation_uses_stack_role_and_inspects_requests_and_limits(
     assert specs[-1].argv[3] == "fn-word-stats-java"
 
 
+def test_kubernetes_docker_build_creates_both_core_jars() -> None:
+    specs = validate_task_specs(
+        ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
+    )
+
+    assert specs[1].argv == (
+        "./gradlew",
+        ":control-plane:bootJar",
+        ":function-runtime:bootJar",
+        "-PcontrolPlaneModules=k8s-deployment-provider",
+        "--no-daemon",
+    )
+
+
 def test_buildpack_changes_only_the_jvm_build_command() -> None:
     specs = validate_task_specs(
         ValidateWorkflowRequest(
