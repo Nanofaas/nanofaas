@@ -3,8 +3,6 @@ Smoke tests for main.py — verifies the Typer app registers expected command gr
 """
 from __future__ import annotations
 
-import os
-
 from typer.testing import CliRunner
 
 from controlplane_tool.app.main import app
@@ -49,16 +47,3 @@ def test_cli_test_run_vm_route_is_removed() -> None:
     """cli-test run vm must fail after legacy CLI consumer cleanup."""
     result = runner.invoke(app, ["cli-test", "run", "vm", "--dry-run"])
     assert result.exit_code != 0, "cli-test run vm should fail — vm route was removed"
-
-
-def test_prefect_runtime_smoke_command_runs_without_api_url(monkeypatch) -> None:
-    monkeypatch.delenv("PREFECT_API_URL", raising=False)
-
-    result = runner.invoke(app, ["prefect-runtime-smoke"], env={})
-
-    assert result.exit_code == 0
-    assert "controlplane.prefect_runtime_smoke" in result.output
-    assert "completed" in result.output
-    assert "Beginning flow run" not in result.output
-    assert "EventsWorker" not in result.output
-    assert "PREFECT_API_URL" not in os.environ

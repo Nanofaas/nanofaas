@@ -10,7 +10,6 @@ from controlplane_tool.cli.test_commands import install_cli_test_commands
 from controlplane_tool.cli.e2e_commands import install_e2e_commands
 from controlplane_tool.cli.function_commands import install_function_commands
 from controlplane_tool.cli.loadtest_commands import install_loadtest_commands
-from workflow_tasks.orchestration import run_local_flow
 from controlplane_tool.cli.vm_commands import install_vm_commands
 
 app = typer.Typer(
@@ -23,14 +22,6 @@ def tui() -> None:
     from controlplane_tool.tui.app import NanofaasTUI
 
     NanofaasTUI().run()
-
-
-@app.command("prefect-runtime-smoke", hidden=True)
-def prefect_runtime_smoke() -> None:
-    result = run_local_flow("controlplane.prefect_runtime_smoke", lambda: "ok")
-    typer.echo(
-        f"{result.flow_id} {result.status} {result.orchestrator_backend} {result.flow_run_id}"
-    )
 
 
 install_cli_commands(app)

@@ -19,7 +19,6 @@ dependencies = [
     "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@402c406",
     "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@95b1029",
     "proxmox-sdk @ git+https://github.com/miciav/proxmox-sdk.git@9e20703",
-    "prefect>=3,<4",
     "shellcraft @ git+https://github.com/miciav/shellcraft.git",
     "tui-toolkit",
     "workflow-tasks",
