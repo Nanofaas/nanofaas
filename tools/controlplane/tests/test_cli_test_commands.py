@@ -36,26 +36,6 @@ def test_cli_test_inspect_shows_gradle_task_and_vm_requirement() -> None:
     assert "Accepts Function Selection: False" in result.stdout
 
 
-def test_cli_test_run_uses_saved_profile_default_scenario() -> None:
-    result = CliRunner().invoke(
-        app,
-        ["cli-test", "run", "--saved-profile", "demo-java", "--dry-run"],
-    )
-
-    assert result.exit_code == 0
-    assert "Scenario: cli-stack" in result.stdout
-
-
-def test_cli_test_run_saved_profile_demo_javascript_defaults_to_cli_stack() -> None:
-    result = CliRunner().invoke(
-        app,
-        ["cli-test", "run", "--saved-profile", "demo-javascript", "--dry-run"],
-    )
-
-    assert result.exit_code == 0
-    assert "Scenario: cli-stack" in result.stdout
-
-
 def test_cli_test_run_host_platform_rejects_explicit_function_preset() -> None:
     result = CliRunner().invoke(
         app,
@@ -64,17 +44,6 @@ def test_cli_test_run_host_platform_rejects_explicit_function_preset() -> None:
 
     assert result.exit_code == 2
     assert "does not accept function selection" in (result.stdout + result.stderr)
-
-
-def test_cli_test_run_host_platform_ignores_saved_profile_function_defaults() -> None:
-    result = CliRunner().invoke(
-        app,
-        ["cli-test", "run", "host-platform", "--saved-profile", "demo-java", "--dry-run"],
-    )
-
-    assert result.exit_code == 0
-    assert "Scenario: host-platform" in result.stdout
-    assert "Resolved Functions:" not in result.stdout
 
 
 def test_cli_test_run_deploy_host_dry_run_accepts_demo_java_preset() -> None:
@@ -171,17 +140,6 @@ def test_cli_test_list_does_not_advertise_vm_scenario() -> None:
     lines = result.stdout.splitlines()
     scenario_names = [line.split()[1] for line in lines if "│" in line and len(line.split()) > 1]
     assert "vm" not in scenario_names, f"vm still listed in cli-test catalog: {scenario_names}"
-
-
-def test_cli_test_run_missing_saved_profile_exits_cleanly() -> None:
-    result = CliRunner().invoke(
-        app,
-        ["cli-test", "run", "--saved-profile", "does-not-exist"],
-    )
-
-    assert result.exit_code == 2
-    assert "Profile not found" in (result.stdout + result.stderr)
-    assert "Traceback" not in (result.stdout + result.stderr)
 
 
 def test_cli_test_run_missing_scenario_file_exits_cleanly() -> None:

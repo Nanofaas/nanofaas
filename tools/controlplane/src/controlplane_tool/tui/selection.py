@@ -60,12 +60,14 @@ class TuiSelectionResult:
         return [f"Selection: {self.source}"]
 
     def as_resolver_kwargs(self) -> dict[str, object]:
-        return {
+        kwargs: dict[str, object] = {
             "function_preset": self.function_preset,
             "functions_csv": self.functions_csv,
             "scenario_file": self.scenario_file,
-            "saved_profile": self.saved_profile,
         }
+        if self.saved_profile is not None:
+            kwargs["saved_profile"] = self.saved_profile
+        return kwargs
 
 
 def _choice(title: str, value: str, description: str) -> questionary.Choice:
@@ -108,14 +110,6 @@ def selection_source_choices(target: TuiSelectionTarget) -> list[questionary.Cho
                 "Scenario file",
                 "scenario-file",
                 "Choose a compatible TOML manifest from tools/controlplane/scenarios/.",
-            )
-        )
-    if target.allow_saved_profiles:
-        choices.append(
-            _choice(
-                "Saved profile",
-                "saved-profile",
-                "Choose a saved profile that contributes a compatible function selection.",
             )
         )
     return choices

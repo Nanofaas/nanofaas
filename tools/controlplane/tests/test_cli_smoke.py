@@ -76,12 +76,13 @@ def test_generic_controlplane_wrapper_uses_locked_tool() -> None:
     assert "uv run --project tools/controlplane --locked controlplane-tool" in script
 
 
-def test_demo_java_profile_exists() -> None:
-    assert resolve_workspace_path(Path("tools/controlplane/profiles/demo-java.toml")).exists()
+def test_run_commands_do_not_expose_saved_profiles() -> None:
+    runner = CliRunner()
 
-
-def test_demo_javascript_profile_exists() -> None:
-    assert resolve_workspace_path(Path("tools/controlplane/profiles/demo-javascript.toml")).exists()
+    for command in (("e2e", "run"), ("cli-test", "run"), ("loadtest", "run")):
+        result = runner.invoke(app, [*command, "--help"])
+        assert result.exit_code == 0
+        assert "--saved-profile" not in result.stdout
 
 
 def test_cli_vm_runner_not_exported_from_cli_runtime() -> None:
