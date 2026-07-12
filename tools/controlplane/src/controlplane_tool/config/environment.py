@@ -15,6 +15,7 @@ class RoleTarget(BaseModel):
     host: str | None = None
     user: str = "ubuntu"
     home: str | None = None
+    kubeconfig: str | None = None
     cpus: int = Field(default=4, gt=0)
     memory: str = "12G"
     disk: str = "30G"

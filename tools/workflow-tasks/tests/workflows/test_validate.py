@@ -77,6 +77,7 @@ def test_kubernetes_validation_uses_stack_role_and_inspects_requests_and_limits(
     assert specs[0].role == "stack"
     assert all(task.role == "stack" for task in specs[2:])
     assert ("-n", "research") == specs[-1].argv[4:6]
+    assert specs[-1].argv[3] == "fn-word-stats-java"
 
 
 def test_buildpack_changes_only_the_jvm_build_command() -> None:

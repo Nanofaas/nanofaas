@@ -27,13 +27,24 @@ def _command(argv: tuple[str, ...], env: dict[str, str], cwd: str) -> str:
 
 
 class _RemoteRunner:
-    def __init__(self, runner: HostCommandRunner, target: RoleTarget, provider: str) -> None:
+    def __init__(
+        self,
+        runner: HostCommandRunner,
+        target: RoleTarget,
+        provider: str,
+        default_env: dict[str, str] | None = None,
+    ) -> None:
         self._runner = runner
         self._target = target
         self._provider = provider
+        self._default_env = default_env or {}
 
     def run_vm_command(self, argv, *, env, remote_dir, dry_run):
-        command = _command(argv, env, remote_dir or f"{_home(self._target)}/nanofaas")
+        command = _command(
+            argv,
+            {**self._default_env, **env},
+            remote_dir or f"{_home(self._target)}/nanofaas",
+        )
         if self._provider == "multipass":
             if not self._target.name:
                 raise ValueError("Multipass role requires an instance name")
@@ -76,8 +87,13 @@ def build_role_bindings(
 
     def remote(role: str):
         target = environment.target(role)  # type: ignore[arg-type]
+        default_env = (
+            {"KUBECONFIG": target.kubeconfig or f"{_home(target)}/.kube/config"}
+            if role == "stack"
+            else None
+        )
         executor = VmCommandTaskExecutor(
-            _RemoteRunner(command_runner, target, environment.provider)
+            _RemoteRunner(command_runner, target, environment.provider, default_env)
         )
         return RetargetingCommandTaskExecutor(executor, "vm")
 

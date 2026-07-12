@@ -34,7 +34,10 @@ def test_external_stack_uses_ssh_in_remote_repository() -> None:
     )
 
     assert runner.calls[0][0][:4] == ["ssh", "-o", "BatchMode=yes", "alice@vm.example"]
-    assert "cd /srv/alice/nanofaas && ansible-playbook site.yml" in runner.calls[0][0][-1]
+    assert (
+        "cd /srv/alice/nanofaas && env KUBECONFIG=/srv/alice/.kube/config "
+        "ansible-playbook site.yml"
+    ) in runner.calls[0][0][-1]
 
 
 def test_multipass_stack_uses_named_instance() -> None:
@@ -50,6 +53,29 @@ def test_multipass_stack_uses_named_instance() -> None:
 
     assert runner.calls[0][0][:4] == ["multipass", "exec", "nanofaas-stack", "--"]
     assert "cd /home/ubuntu/nanofaas" in runner.calls[0][0][-1]
+
+
+def test_remote_stack_exports_its_kubeconfig() -> None:
+    runner = RecordingRunner()
+    environment = EnvironmentConfig.model_validate(
+        {
+            "provider": "external",
+            "roles": {
+                "stack": {
+                    "host": "vm.example",
+                    "home": "/srv/nanofaas",
+                    "kubeconfig": "/etc/nanofaas/kubeconfig",
+                }
+            },
+        }
+    )
+
+    bindings, _ = build_role_bindings(environment, runner=runner)
+    bindings.stack.run(
+        CommandTaskSpec(task_id="check", summary="check", argv=("kubectl", "get", "nodes"))
+    )
+
+    assert "env KUBECONFIG=/etc/nanofaas/kubeconfig kubectl get nodes" in runner.calls[0][0][-1]
 
 
 def test_distinct_external_loadgen_gets_distinct_executor_and_fetcher() -> None:
