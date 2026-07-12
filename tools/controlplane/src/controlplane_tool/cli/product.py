@@ -65,6 +65,7 @@ def _render(workflow) -> None:
 def _slice(workflow, *, only: str | None, start: str | None, until: str | None):
     ids = [task.task_id for task in workflow.tasks]
     selected = ids
+    sliced = any((only, start, until))
     if only:
         selected = [only]
     else:
@@ -76,6 +77,21 @@ def _slice(workflow, *, only: str | None, start: str | None, until: str | None):
     if unknown:
         raise ValueError(f"unknown task: {', '.join(sorted(unknown))}")
     workflow.tasks = [task for task in workflow.tasks if task.task_id in selected]
+    if sliced:
+        selected_set = set(selected)
+
+        def acquired_by_selection(task) -> bool:
+            cleanup_id = task.task_id
+            candidates = {
+                cleanup_id.replace(".delete.", ".register."),
+                cleanup_id.replace(".delete.", ".apply."),
+                cleanup_id.replace(".uninstall.", ".deploy."),
+            }
+            return not candidates.isdisjoint(selected_set)
+
+        workflow.cleanup_tasks = [
+            task for task in workflow.cleanup_tasks if acquired_by_selection(task)
+        ]
     return workflow
 
 

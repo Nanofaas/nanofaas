@@ -124,7 +124,7 @@ def _resource_inspection(
         "kubectl",
         "get",
         "deployment",
-        function.name,
+        f"fn-{function.name}",
         "-n",
         request.namespace,
     )
