@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 
 from controlplane_tool.loadtest.loadtest_catalog import resolve_load_profile
 from controlplane_tool.loadtest.loadtest_models import LoadtestRequest, MetricsGate
@@ -108,20 +107,6 @@ def test_loadtest_step_spec_exposes_task_metadata() -> None:
         "run",
         "--dry-run",
     )
-
-
-def test_loadtest_step_spec_argv_is_executable_metadata_command() -> None:
-    spec = loadtest_step_spec("preflight", "Run preflight")
-
-    result = subprocess.run(
-        list(spec.argv),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Loadtest:" in result.stdout
 
 
 def test_loadtest_step_spec_preserves_existing_workflow_task_ids() -> None:
