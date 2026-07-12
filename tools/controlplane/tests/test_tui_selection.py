@@ -125,12 +125,11 @@ def _profile(
     )
 
 
-def test_multi_function_target_exposes_default_preset_scenario_and_profile_sources() -> None:
+def test_multi_function_target_exposes_only_direct_selection_sources() -> None:
     assert [choice.value for choice in selection_source_choices(cli_stack_target())] == [
         "default",
         "preset",
         "scenario-file",
-        "saved-profile",
     ]
 
 
@@ -139,7 +138,6 @@ def test_single_function_target_exposes_function_not_preset_source() -> None:
         "default",
         "function",
         "scenario-file",
-        "saved-profile",
     ]
 
 
@@ -174,7 +172,6 @@ def test_selection_result_exposes_resolver_kwargs() -> None:
         "function_preset": None,
         "functions_csv": None,
         "scenario_file": scenario_path,
-        "saved_profile": None,
     }
 
 

@@ -345,7 +345,6 @@ def cli_test_run(
     function_preset: str | None = typer.Option(None, "--function-preset"),
     functions: str | None = typer.Option(None, "--functions"),
     scenario_file: Path | None = typer.Option(None, "--scenario-file"),
-    saved_profile: str | None = typer.Option(None, "--saved-profile"),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     def _action() -> None:
@@ -366,7 +365,7 @@ def cli_test_run(
             function_preset=function_preset,
             functions_csv=functions,
             scenario_file=scenario_file,
-            saved_profile=saved_profile,
+            saved_profile=None,
         )
         runner = _runner()
         if dry_run:

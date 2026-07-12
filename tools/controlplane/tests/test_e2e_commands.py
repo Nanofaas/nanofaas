@@ -336,19 +336,6 @@ def test_container_local_dry_run_no_longer_uses_placeholder_echo() -> None:
     assert "echo container-local verification workflow" not in result.stdout
 
 
-def test_container_local_rejects_multi_function_saved_profile() -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        ["e2e", "run", "container-local", "--saved-profile", "demo-java", "--dry-run"],
-    )
-
-    assert result.exit_code == 2
-    rendered = result.stdout + result.stderr
-    assert "container-local" in rendered
-    assert "exactly one selected function" in rendered
-
-
 def test_container_local_accepts_single_explicit_function() -> None:
     runner = CliRunner()
     result = runner.invoke(

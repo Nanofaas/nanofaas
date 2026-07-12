@@ -334,14 +334,13 @@ def install_loadtest_commands(app: typer.Typer) -> None:
     def run_command(
         scenario_file: Path | None = typer.Option(None, "--scenario-file"),
         load_profile_name: str | None = typer.Option(None, "--load-profile"),
-        saved_profile: str | None = typer.Option(None, "--saved-profile"),
         dry_run: bool = typer.Option(False, "--dry-run"),
     ) -> None:
         request = _build_request_or_exit(
-            saved_profile=saved_profile,
+            saved_profile=None,
             scenario_file=scenario_file,
             load_profile_name=load_profile_name,
-            run_name=saved_profile,
+            run_name=None,
         )
         run_loadtest_request(request, dry_run=dry_run)
 
