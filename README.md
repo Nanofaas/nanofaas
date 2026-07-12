@@ -1,255 +1,27 @@
-# nanofaas
+# NanoFaaS
 
-Minimal, high-performance FaaS control plane and Java function runtime with pluggable managed-deployment backends, optimized for low latency and fast startup (GraalVM-ready).
+NanoFaaS is a research FaaS platform with a Java 21/Spring Boot control plane, Java and Python function runtimes, container and Kubernetes deployment providers, and a CLI.
 
-## Modules
-
-- `platform/control-plane/` API gateway, in-memory queueing, scheduler thread, and backend-neutral dispatch core
-- `platform/modules/` optional modules, including managed deployment providers such as `k8s-deployment-provider` and `container-deployment-provider`
-- `sdks/go/` Go SDK for authoring NanoFaaS functions with an embedded HTTP runtime
-- `sdks/javascript/` TypeScript/JavaScript SDK for authoring NanoFaaS functions on Node.js
-- `platform/function-runtime/` HTTP runtime for Java function handlers
-- `python-runtime/` HTTP runtime for Python function handlers
-- `platform/common/` shared DTOs and runtime contracts
-- `deploy/k8s/` Kubernetes manifests and templates
-- `docs/` architecture and operational docs
-- `openapi.yaml` public API specification
-
-## Requirements
-
-- Java 21 (SDKMAN recommended)
-- Docker-compatible container runtime (Docker Desktop or equivalent)
-- For Kubernetes E2E: `python3`, OpenSSH client, internet access, and a Debian/Ubuntu-style target VM
-- VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library (`workflow_tasks/infra/ansible_assets/`)
-- [Multipass](https://multipass.run) only if you want the scripts to create/manage the VM (`E2E_VM_LIFECYCLE=multipass`)
-
-## Quickstart (local)
-
-Invoke these commands in 2 different terminals:
-```bash
-scripts/controlplane.sh run --profile core
-./gradlew :function-runtime:bootRun
-```
-
-Use `scripts/controlplane.sh run --profile all` to start the full optional-module stack.
-Use `scripts/controlplane.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local`
-for a no-Kubernetes managed-deployment profile.
-
-## Control-plane tooling
-
-Canonical tool root: `tools/controlplane/`.
-Canonical shell entrypoint: `scripts/controlplane.sh`.
-
-Use the canonical wrapper below for unified build, VM lifecycle, CLI validation, E2E, and TUI flows:
+## Build and test
 
 ```bash
-scripts/controlplane.sh building --profile core --dry-run
-scripts/controlplane.sh functions list
-scripts/controlplane.sh functions show-preset demo-javascript
-scripts/controlplane.sh functions show-preset demo-loadtest
-scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
-scripts/controlplane.sh cli-test list
-scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
-scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
-scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
-scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run validate-k3s --function-preset demo-java --dry-run
-scripts/controlplane.sh e2e run validate-k3s --function-preset demo-javascript --dry-run
-scripts/controlplane.sh e2e run loadtest-helm-legacy --dry-run
-scripts/controlplane.sh e2e run loadtest-two-vm --dry-run
-scripts/controlplane.sh e2e run loadtest-two-vm --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
-scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
-scripts/controlplane.sh e2e run validate-k3s --saved-profile demo-java --dry-run
-scripts/controlplane.sh e2e all --only validate-k3s --dry-run
-scripts/controlplane.sh loadtest list-profiles
-scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
-scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run
-scripts/e2e-loadtest.sh --profile demo-java --dry-run
-scripts/controlplane.sh tui
-```
-
-Use `scripts/controlplane.sh loadtest run ...` for the first-class k6 + Prometheus workflow. `scripts/e2e-loadtest.sh` remains a compatibility wrapper for the legacy Helm/Grafana/parity path and delegates to `experiments/e2e-loadtest.sh`; registry-only summary flags such as `--summary-only` belong to `scripts/e2e-loadtest-registry.sh`. Use `scripts/controlplane.sh e2e run loadtest-two-vm ...` when the Helm stack and the k6 generator must run on separate VMs; it writes `k6-summary.json`, `metrics/prometheus-snapshots.json`, `summary.json`, and `report.html` under `tools/controlplane/runs/`. Use `scripts/controlplane.sh e2e run loadtest-one-vm` when the Helm stack, k6 load generation, Prometheus snapshots, report generation, and autoscaling verification should run through the modern workflow on one VM. Use `scripts/controlplane.sh tui` for the interactive product surface, then pick or create profiles from the `Profiles` section.
-Within `Validation -> platform -> validate-k3s`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
-The TUI only offers saved profiles and scenario manifests compatible with `validate-k3s`; incompatible entries are filtered out instead of failing at execution time.
-The same generalized selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> container-local`.
-`cli-stack` and `deploy-host` accept built-in defaults, compatible function presets, scenario manifests, and saved profiles, while `container-local` supports single function selection, compatible single-function scenario manifests such as `tools/controlplane/scenarios/container-local-smoke.toml`, and compatible single-function saved profiles.
-`loadtest-helm-legacy` remains excluded from this selector path because its runtime allowlist intentionally omits JavaScript for the compatibility workflow.
-
-For VM-backed scenarios, provisioning is executed against the resolved VM host over SSH/Ansible rather than `localhost`. `scripts/controlplane.sh e2e all ...` plans one shared VM bootstrap block for VM-backed scenarios, reuses that session across scenarios, and tears the Multipass VM down once at the end unless `--no-cleanup-vm` is set. When `E2E_VM_LIFECYCLE=external`, the tool never attempts VM teardown.
-
-The VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library at `tools/workflow-tasks/src/workflow_tasks/infra/ansible_assets/`.
-
-Artifacts are written under:
-
-- `tools/controlplane/profiles/<profile>.toml`
-- `tools/controlplane/scenarios/<scenario>.toml`
-- `tools/controlplane/runs/<timestamp>-<profile>/summary.json`
-- `tools/controlplane/runs/<timestamp>-<profile>/report.html`
-
-Function/scenario selection precedence for `scripts/controlplane.sh e2e run` is:
-
-1. explicit CLI override (`--function-preset` or `--functions`)
-2. `--scenario-file`
-3. `--saved-profile`
-
-When a CLI override is layered on top of a scenario file or saved profile, the tool preserves the inherited scenario metadata and shrinks payload/load selections to the chosen function subset. `loadtest-helm-legacy` and the VM loadtest scenarios default to the lean `demo-java` preset (2 function images instead of 8 — pass `--function-preset demo-loadtest` or a scenario file for the full matrix), and unsupported Go selections are rejected before the compatibility backend runs. For `validate-k3s`, the resolved selection is forwarded into the VM via `-Dnanofaas.e2e.scenarioManifest=...`, so the executed `K8sE2eTest` consumes the same manifest shown by dry-run output.
-
-The repository ships `tools/controlplane/profiles/demo-java.toml` as a ready-to-run example profile.
-Saved profiles can also persist `cli_test.default_scenario`, so `scripts/controlplane.sh cli-test run --saved-profile demo-java --dry-run` can resolve the scenario from the profile.
-`validate-k3s`, `loadtest-helm-legacy`, and `cli-stack` are the self-bootstrapping VM-backed scenarios. When you do not pass an explicit VM request, the controlplane tool creates and configures a managed VM and installs scenario-specific software inside that VM instead of assuming host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`.
-Within `cli-test`, `cli-stack` is the canonical VM-backed CLI stack scenario: it builds the CLI in the VM, installs Helm, k3s, and the registry there, then validates function build/push/apply/invoke/enqueue/delete plus `platform install/status/uninstall`. `host-platform` remains intentionally platform-only and ignores saved function selections, while `vm` preserves the legacy in-VM CLI path and `deploy-host` iterates the full selected set on the host. Missing saved profiles or scenario files fail fast with exit code 2.
-
-## Build images (buildpacks)
-
-```bash
-scripts/controlplane.sh image --profile all -- -PcontrolPlaneImage=nanofaas/control-plane:buildpack
-./gradlew :function-runtime:bootBuildImage
-```
-
-## Custom control-plane builds
-
-Use the wrapper for the common profiles:
-
-```bash
-scripts/controlplane.sh building --profile container-local --dry-run
-scripts/controlplane.sh jar --profile core
-scripts/controlplane.sh run --profile container-local -- --args=--nanofaas.deployment.default-backend=container-local
-scripts/controlplane.sh image --profile k8s -- -PcontrolPlaneImage=nanofaas/control-plane:test
-scripts/controlplane.sh native --profile all
-scripts/controlplane.sh test --profile core -- --tests '*CoreDefaultsTest'
-scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
-scripts/controlplane.sh inspect --profile all
-```
-
-Raw Gradle remains available for low-level/advanced workflows.
-
-```bash
-# include one module
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=build-metadata
-
-# run with the local managed-deployment provider only
-./gradlew :control-plane:bootRun \
-  -PcontrolPlaneModules=container-deployment-provider \
-  --args='--nanofaas.deployment.default-backend=container-local'
-
-# include all modules found under platform/modules/
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
-
-# include no optional modules (core only)
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=none
-
-# inspect which modules are included in the current build
-./gradlew :control-plane:printSelectedControlPlaneModules -PcontrolPlaneModules=build-metadata
-```
-
-You can also use `NANOFAAS_CONTROL_PLANE_MODULES` instead of `-PcontrolPlaneModules`.
-Module authoring details are in `docs/control-plane-modules.md`.
-
-## Native build (GraalVM)
-
-```bash
-./scripts/native-build.sh
-```
-
-## Tests
-
-```bash
+./gradlew build
 ./gradlew test
-cd sdks/go && go test ./...
-cd sdks/javascript && npm test
-cd functions/javascript/word-stats && npm install && npm test
+./gradlew :control-plane:bootRun
 ```
 
-E2E (local):
-```bash
-./scripts/controlplane.sh e2e run validate-docker-pool
-```
+Docker-backed and Kubernetes tests require their respective runtimes. Kubernetes deployment is performed through the Helm chart in `deploy/helm/nanofaas`.
 
-E2E (buildpacks):
-```bash
-./scripts/controlplane.sh e2e run validate-buildpack-pool
-```
+## Control-plane workflows
 
-E2E (Kubernetes VM + k3s):
-```bash
-./gradlew k8sE2e
-./scripts/controlplane.sh e2e run validate-k3s
-```
-
-VM-based E2E can also target an existing local or remote VM over SSH/SCP:
+The Python control-plane tool reads versioned YAML scenarios and environment bindings. Its only commands are `run`, `plan`, `list`, `inspect`, `doctor`, and `tui`.
 
 ```bash
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=192.168.64.20 E2E_VM_USER=ubuntu ./scripts/controlplane.sh e2e run validate-k3s
-E2E_VM_LIFECYCLE=external E2E_VM_HOST=ci-k3s.example.com E2E_VM_USER=dev E2E_VM_HOME=/srv/dev E2E_KUBECONFIG_SERVER=https://ci-k3s.example.com:6443 ./scripts/controlplane.sh cli-test run host-platform
+scripts/controlplane.sh list
+scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
+  --environment tools/controlplane/environments/multipass.yaml
+scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
+  --environment tools/controlplane/environments/external.yaml.example
 ```
 
-Supported external-VM variables:
-`E2E_VM_LIFECYCLE=external`, `E2E_VM_HOST`, `E2E_VM_USER`, `E2E_VM_HOME`, `E2E_KUBECONFIG_PATH`, `E2E_REMOTE_PROJECT_DIR`, `E2E_PUBLIC_HOST`, `E2E_KUBECONFIG_SERVER`.
-SSH/SCP are always used for remote command execution and file transfer. VM provisioning is driven by Ansible over SSH for both `multipass` and `external` lifecycle modes. If `ansible-playbook` is not already installed on the host, the scripts bootstrap it idempotently in a local virtualenv and fall back to a user-site `pip` install when `python3 -m venv` is unavailable. k3s defaults to the latest official release at run time; set `K3S_VERSION` only when you need to pin a specific version. Multipass is used only for VM lifecycle when `E2E_VM_LIFECYCLE=multipass`.
-For wrapper-driven VM scenarios, `--no-cleanup-vm` preserves the installed stack for debugging, but external VMs are never deleted by the tool.
-Most top-level `scripts/e2e*.sh` files remain compatibility shims over `scripts/controlplane.sh`; `scripts/e2e-loadtest.sh` is the intentional exception because it preserves the legacy Helm/Grafana/parity workflow via `experiments/e2e-loadtest.sh`, while `scripts/e2e-loadtest-registry.sh` owns registry-summary flows such as `--summary-only`.
-
-E2E/module matrix (control-plane optional modules compile):
-```bash
-scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
-./scripts/test-control-plane-module-combinations.sh
-```
-
-## Observability
-
-- Prometheus metrics are exposed via Spring Actuator (`/actuator/prometheus` on the management port).
-- `nanofaas.metrics.profile` selects the startup-only metrics profile and defaults to `basic`.
-  Set `NANOFAAS_METRICS_PROFILE=advanced` for detailed experiments (with Helm, add it to
-  `controlPlane.extraEnv`). The active value is exported as
-  `nanofaas_metrics_profile_info{profile="basic|advanced"} 1`.
-- `basic` retains JVM/HTTP metrics, invocation outcome counters, queue depth/in-flight gauges, and
-  `function_dispatch_total`, which is also an autoscaler input. It omits function latency timers,
-  cold/warm-start counters, per-function sync-queue series, and controller diagnostics.
-- `advanced` is a superset of `basic` and enables Prometheus histograms for function latency,
-  initialization, queue-wait, and end-to-end timers. Compute quantiles in Prometheus with
-  `histogram_quantile()`; the control plane does not publish non-aggregable client-side percentiles.
-
-## API
-
-- See `openapi.yaml` for request/response contracts and examples.
-
-## Docs
-
-- `docs/tutorial-java-function.md` — step-by-step guide to writing, building, and invoking a Java function.
-- `docs/tutorial-function.md` — step-by-step guide to scaffolding and deploying Java, Python, and JavaScript functions.
-- `docs/architecture.md` and `docs/quickstart.md` provide a full overview and operational notes.
-- `docs/no-k8s-profile.md` documents the `container-local` managed-deployment profile.
-- `docs/loadtest-payload-profile.md` documents payload variability modes, metrics, and validation commands for k6 load tests.
-- `sdks/go/README.md` documents the planned Go function authoring/runtime SDK.
-- `sdks/javascript/README.md` documents the JavaScript function authoring/runtime SDK.
-
-## JavaScript Scope
-
-The JavaScript authoring workflow remains first-class under `sdks/javascript/`,
-`functions/javascript/`, and `tools/fn-init/`.
-V2 also wires JavaScript into `tools/controlplane` catalogs, saved profiles, and VM-backed
-dry-run/E2E flows such as `validate-k3s` and `cli-stack`.
-The JavaScript SDK is packaged from `sdks/javascript/` and validated with
-`npm pack --dry-run`. Container images are published with
-`./scripts/controlplane.sh images --tag TAG --arch all --flavor all --push`.
-Build and publish automation remains tracked separately in the live GitOps
-workflow.
-
-## nanofaas-cli (CLI)
-
-Standalone CLI (GraalVM native) under the `clients/cli/` subproject.
-
-Build a native executable (requires GraalVM):
-
-```bash
-./gradlew :nanofaas-cli:nativeCompile
-./clients/cli/build/native/nativeCompile/nanofaas-cli --help
-```
-
-Run on the JVM:
-
-```bash
-./gradlew :nanofaas-cli:run --args="--help"
-```
-
-Command reference: `docs/nanofaas-cli.md`.
+The external environment is suitable for a remote VM reachable through SSH and provisioned separately with Ansible. See `tools/controlplane/README.md` and `docs/quickstart.md`.

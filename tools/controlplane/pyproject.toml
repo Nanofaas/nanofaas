@@ -7,20 +7,8 @@ dependencies = [
     "typer>=0.12.5",
     "questionary>=2.1.1",
     "pydantic>=2.9.2",
-    "jinja2>=3.1.4",
-    "plotly>=5.24.1",
-    "tomli-w>=1.0.0",
-    "httpx>=0.27",
-    "tenacity>=8.3",
-    "pydantic-settings>=2.5",
     "pyyaml>=6.0.2",
-    "flask>=3.0",
     "rich>=13.8",
-    "multipass-sdk @ git+https://github.com/miciav/multipass-sdk.git@402c406",
-    "azure-vm-sdk @ git+https://github.com/miciav/azure-vm-sdk.git@95b1029",
-    "proxmox-sdk @ git+https://github.com/miciav/proxmox-sdk.git@9e20703",
-    "shellcraft @ git+https://github.com/miciav/shellcraft.git",
-    "tui-toolkit",
     "workflow-tasks",
 ]
 
@@ -50,7 +38,6 @@ dev = [
 ]
 
 [tool.uv.sources]
-tui-toolkit = { path = "../tui-toolkit", editable = true }
 workflow-tasks = { path = "../workflow-tasks", editable = true }
 
 [tool.ruff]
@@ -62,30 +49,12 @@ select = ["F", "SLF"]
 
 [tool.ruff.lint.per-file-ignores]
 "diagnose_proxmox_ssh.py" = ["SLF001"]
-"src/controlplane_tool/cli_validation/cli_host_runner.py" = ["SLF001"]
-"src/controlplane_tool/cli_validation/cli_test_runner.py" = ["SLF001"]
-"src/controlplane_tool/e2e/e2e_runner.py" = ["SLF001"]
-"src/controlplane_tool/scenario/scenarios/two_vm_loadtest.py" = ["SLF001"]
-"src/controlplane_tool/scenario/scenarios/k3s_junit_curl.py" = ["SLF001"]
-"src/controlplane_tool/scenario/scenarios/helm_stack.py" = ["SLF001"]
-"src/controlplane_tool/scenario/scenarios/cli_stack.py" = ["SLF001"]
-"src/controlplane_tool/scenario/scenarios/cli_vm.py" = ["SLF001"]
-"src/controlplane_tool/scenario/scenarios/cli_host.py" = ["SLF001"]
 "src/controlplane_tool/tui/app.py" = ["SLF001"]
 "tests/**/*.py" = ["F841", "SLF001"]
 
 [tool.basedpyright]
 include = [
-    "src/controlplane_tool/app/main.py",
-    "src/controlplane_tool/building",
-    "src/controlplane_tool/cli/commands.py",
-    "src/controlplane_tool/core/task_shell_adapter.py",
-    "src/controlplane_tool/devtools/quality.py",
-    "src/controlplane_tool/orchestation/flow_catalog.py",
-    "src/controlplane_tool/orchestation/infra_flows.py",
-    "src/controlplane_tool/scenario/tasks",
-    "src/controlplane_tool/tui/workflow.py",
-    "src/controlplane_tool/tui/workflow_controller.py",
+    "src/controlplane_tool",
 ]
 typeCheckingMode = "basic"
 reportMissingTypeStubs = false

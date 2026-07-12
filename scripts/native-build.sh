@@ -48,8 +48,7 @@ fi
 sdk use java "$GRAALVM_VERSION"
 set -u
 
-./scripts/controlplane.sh native --profile all
-./gradlew :function-runtime:nativeCompile
+./gradlew :control-plane:nativeCompile :function-runtime:nativeCompile -PcontrolPlaneModules=all
 
 RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then

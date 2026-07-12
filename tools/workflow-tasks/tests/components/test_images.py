@@ -19,8 +19,8 @@ from workflow_tasks.vm.models import VmRequest
 REPO_ROOT = Path(__file__).resolve().parents[4]
 LIVE_E2E_SCENARIO_IMAGE_CONSUMERS = (
     "tools/workflow-tasks/src/workflow_tasks/components/images.py",
-    "tools/controlplane/src/controlplane_tool/e2e/container_local_runner.py",
-    "tools/controlplane/src/controlplane_tool/scenario/scenario_tasks.py",
+    "tools/workflow-tasks/src/workflow_tasks/workflows/validate.py",
+    "tools/controlplane/src/controlplane_tool/plans/validate.py",
 )
 REMOVED_RELEASE_IMAGE_CLI_SYNTAX = ("--arch-suffix", "--arch multi")
 
