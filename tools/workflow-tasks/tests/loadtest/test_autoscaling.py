@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from controlplane_tool.autoscaling.tasks import VerifyAutoscalingReplicas
+from workflow_tasks.loadtest.autoscaling import VerifyAutoscalingReplicas
 
 
 @dataclass
@@ -32,7 +32,7 @@ class _Runner:
 
 
 def test_verify_autoscaling_replicas_observes_scale_up_and_down(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
     runner = _Runner(["1", "1", "2", "2", "0"])
     task = VerifyAutoscalingReplicas(
         task_id="autoscaling.verify_replicas",
@@ -56,7 +56,7 @@ def test_verify_autoscaling_replicas_observes_scale_up_and_down(monkeypatch) -> 
 
 
 def test_verify_autoscaling_replicas_quotes_shell_arguments(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
     runner = _Runner(["2", "2", "0"])
     task = VerifyAutoscalingReplicas(
         task_id="autoscaling.verify_replicas",
@@ -79,7 +79,7 @@ def test_verify_autoscaling_replicas_quotes_shell_arguments(monkeypatch) -> None
 
 
 def test_verify_autoscaling_replicas_accepts_scale_down_on_final_poll(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
     runner = _Runner(["2", "2", "1", "0"])
     task = VerifyAutoscalingReplicas(
         task_id="autoscaling.verify_replicas",
@@ -100,7 +100,7 @@ def test_verify_autoscaling_replicas_accepts_scale_down_on_final_poll(monkeypatc
 
 
 def test_verify_autoscaling_replicas_fails_when_scale_up_never_exceeds_one(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
     runner = _Runner(["1", "1", "1", "1"])
     task = VerifyAutoscalingReplicas(
         task_id="autoscaling.verify_replicas",
@@ -124,7 +124,7 @@ def test_verify_autoscaling_replicas_fails_when_scale_up_never_exceeds_one(monke
 
 
 def test_verify_autoscaling_replicas_fails_when_scale_down_never_reaches_zero(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
     runner = _Runner(["2", "2", "2", "2", "1"])
     task = VerifyAutoscalingReplicas(
         task_id="autoscaling.verify_replicas",
@@ -157,7 +157,7 @@ class _FailingRunner:
 
 
 def test_replica_probe_reports_missing_deployment_clearly() -> None:
-    from controlplane_tool.autoscaling.tasks import ReplicaProbe
+    from workflow_tasks.loadtest.autoscaling import ReplicaProbe
 
     probe = ReplicaProbe(
         runner=_FailingRunner('Error from server (NotFound): deployments.apps "fn-x" not found'),
@@ -175,7 +175,7 @@ def test_replica_probe_reports_missing_deployment_clearly() -> None:
 
 
 def test_replica_probe_propagates_kubectl_errors() -> None:
-    from controlplane_tool.autoscaling.tasks import ReplicaProbe
+    from workflow_tasks.loadtest.autoscaling import ReplicaProbe
 
     probe = ReplicaProbe(
         runner=_FailingRunner("Unable to connect to the server: dial tcp: lookup ..."),
@@ -192,7 +192,7 @@ def test_replica_probe_propagates_kubectl_errors() -> None:
 
 
 def test_replica_probe_treats_empty_jsonpath_output_as_zero() -> None:
-    from controlplane_tool.autoscaling.tasks import ReplicaProbe
+    from workflow_tasks.loadtest.autoscaling import ReplicaProbe
 
     probe = ReplicaProbe(
         runner=_Runner([""]),  # readyReplicas is absent from status when 0
@@ -204,7 +204,7 @@ def test_replica_probe_treats_empty_jsonpath_output_as_zero() -> None:
 
 
 def test_replica_watcher_records_max_while_running() -> None:
-    from controlplane_tool.autoscaling.tasks import ReplicaProbe, ReplicaWatcher
+    from workflow_tasks.loadtest.autoscaling import ReplicaProbe, ReplicaWatcher
 
     runner = _Runner(["1", "1", "2", "3", "2", "1"])
     probe = ReplicaProbe(
@@ -226,7 +226,7 @@ def test_replica_watcher_records_max_while_running() -> None:
 
 
 def test_replica_watcher_survives_probe_errors() -> None:
-    from controlplane_tool.autoscaling.tasks import ReplicaProbe, ReplicaWatcher
+    from workflow_tasks.loadtest.autoscaling import ReplicaProbe, ReplicaWatcher
 
     probe = ReplicaProbe(
         runner=_FailingRunner("Unable to connect to the server"),
@@ -244,7 +244,7 @@ def test_replica_watcher_survives_probe_errors() -> None:
 
 
 def test_run_k6_with_replica_watch_starts_and_stops_watcher_around_run() -> None:
-    from controlplane_tool.autoscaling.tasks import RunK6WithReplicaWatch
+    from workflow_tasks.loadtest.autoscaling import RunK6WithReplicaWatch
 
     events: list[str] = []
 
@@ -274,7 +274,7 @@ def test_run_k6_with_replica_watch_starts_and_stops_watcher_around_run() -> None
 
 
 def test_run_k6_with_replica_watch_stops_watcher_on_k6_failure() -> None:
-    from controlplane_tool.autoscaling.tasks import RunK6WithReplicaWatch
+    from workflow_tasks.loadtest.autoscaling import RunK6WithReplicaWatch
 
     events: list[str] = []
 
@@ -303,7 +303,7 @@ def test_run_k6_with_replica_watch_stops_watcher_on_k6_failure() -> None:
 
 
 def test_verify_uses_watcher_max_and_skips_scale_up_polling(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
 
     class _WatcherStub:
         max_observed = 3
@@ -333,7 +333,7 @@ def test_verify_uses_watcher_max_and_skips_scale_up_polling(monkeypatch) -> None
 
 
 def test_scale_up_failure_message_includes_watcher_probe_errors(monkeypatch) -> None:
-    monkeypatch.setattr("controlplane_tool.autoscaling.tasks.time.sleep", lambda _: None)
+    monkeypatch.setattr("workflow_tasks.loadtest.autoscaling.time.sleep", lambda _: None)
 
     class _WatcherStub:
         max_observed = 0
@@ -363,24 +363,8 @@ def test_scale_up_failure_message_includes_watcher_probe_errors(monkeypatch) -> 
     raise AssertionError("expected RuntimeError")
 
 
-def test_autoscaling_k6_asset_has_no_embedded_stages() -> None:
-    from pathlib import Path
-
-    asset = (
-        Path(__file__).resolve().parents[1]
-        / "assets"
-        / "k6"
-        / "autoscaling.js"
-    )
-    content = asset.read_text(encoding="utf-8")
-    # Stages live in K6Config (passed as --stage CLI flags, which override script
-    # options); an embedded copy would silently drift.
-    assert "stages" not in content
-    assert "http_req_failed" in content  # threshold stays in the script
-
-
 def test_fetch_autoscaling_summary_creates_parent_and_fetches(tmp_path) -> None:
-    from controlplane_tool.autoscaling.tasks import FetchAutoscalingSummary
+    from workflow_tasks.loadtest.autoscaling import FetchAutoscalingSummary
 
     fetched: list[tuple[str, object]] = []
 

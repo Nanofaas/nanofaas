@@ -5,8 +5,24 @@ from pathlib import Path
 import shlex
 import threading
 import time
+from typing import Any, Protocol
 
+from workflow_tasks.loadtest.ports import RemoteFileFetcher
 from workflow_tasks.tasks.executors import VmCommandRunner
+
+
+class Runnable(Protocol):
+    def run(self) -> Any: ...
+
+
+class Watcher(Protocol):
+    errors: list[str]
+
+    @property
+    def max_observed(self) -> int: ...
+
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -119,8 +135,8 @@ class RunK6WithReplicaWatch:
 
     task_id: str
     title: str
-    run_k6: object
-    watcher: object
+    run_k6: Runnable
+    watcher: Watcher
 
     def run(self):
         self.watcher.start()
@@ -142,7 +158,7 @@ class VerifyAutoscalingReplicas:
     scale_down_initial_delay_seconds: int = 90
     scale_down_polls: int = 24
     poll_interval_seconds: int = 5
-    watcher: object | None = None
+    watcher: Watcher | None = None
 
     def _probe(self) -> ReplicaProbe:
         return ReplicaProbe(
@@ -204,7 +220,7 @@ class FetchAutoscalingSummary:
 
     task_id: str
     title: str
-    fetcher: object  # RemoteFileFetcher: fetch_from(remote: str, local: Path)
+    fetcher: RemoteFileFetcher
     remote_path: str
     local_path: Path
 
