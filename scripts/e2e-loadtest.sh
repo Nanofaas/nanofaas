@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 dry_run=false
-profile_args=()
+scenario_args=()
 
 while (($#)); do
   case "$1" in
@@ -18,7 +18,7 @@ while (($#)); do
         exit 2
       fi
       case "$2" in
-        demo-java) profile_args=(--saved-profile demo-java) ;;
+        demo-java) scenario_args=(--scenario-file tools/controlplane/scenarios/k8s-demo-java.toml) ;;
         *)
           echo "Unsupported --profile '$2'. Supported values: demo-java." >&2
           exit 2
@@ -44,10 +44,10 @@ done
 
 if [[ "${dry_run}" == "true" ]]; then
   echo "Compatibility wrapper: scripts/controlplane.sh loadtest run"
-  if [[ ${#profile_args[@]} -gt 0 ]]; then
-    echo "Profile args: ${profile_args[*]}"
+  if [[ ${#scenario_args[@]} -gt 0 ]]; then
+    echo "Scenario args: ${scenario_args[*]}"
   fi
   exit 0
 fi
 
-exec "${SCRIPT_DIR}/controlplane.sh" loadtest run "${profile_args[@]}"
+exec "${SCRIPT_DIR}/controlplane.sh" loadtest run "${scenario_args[@]}"

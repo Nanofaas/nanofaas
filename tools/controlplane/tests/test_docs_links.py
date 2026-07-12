@@ -80,12 +80,11 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "scripts/controlplane.sh e2e run loadtest-two-vm --dry-run" in tool_readme
     assert "two-vm-loadtest-java.toml" in tool_readme
     assert "scripts/controlplane.sh cli-test list" in tool_readme
-    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run" in tool_readme
-    assert "scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run" in tool_readme
-    assert "scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run" in tool_readme
+    assert "scripts/controlplane.sh cli-test run cli-stack --function-preset demo-java --dry-run" in tool_readme
+    assert "scripts/controlplane.sh cli-test run cli-stack --function-preset demo-javascript --dry-run" in tool_readme
+    assert "scripts/controlplane.sh cli-test run host-platform --dry-run" in tool_readme
     assert "self-bootstrapping VM-backed scenarios" in tool_readme
     assert "instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`" in tool_readme
-    assert "compatible saved profile such as `demo-javascript`" in tool_readme
     assert "filtered out instead of failing at execution time" in tool_readme
     assert "Validation -> cli -> cli-stack" in tool_readme
     assert "Validation -> host -> deploy-host" in tool_readme
@@ -95,11 +94,9 @@ def test_docs_reference_canonical_controlplane_commands() -> None:
     assert "left pane is plan-ordered top-level phases only" in tool_readme
     assert "nested work is separate detail, not peer phases" in tool_readme
     assert "scripts/controlplane.sh loadtest show-profile quick" in tool_readme
-    assert "scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run" in tool_readme
     assert "scripts/controlplane.sh vm up" in tool_readme
     assert "scripts/controlplane.sh functions show-preset demo-java" in tool_readme
     assert "scripts/controlplane.sh functions show-preset demo-javascript" in tool_readme
-    assert "cli_test.default_scenario" in tool_readme
     assert "single-function" in tool_readme
     assert BUILD_WRAPPER not in tool_readme
     assert TUI_WRAPPER not in tool_readme

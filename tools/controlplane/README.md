@@ -37,9 +37,9 @@ scripts/controlplane.sh functions show-preset demo-javascript
 scripts/controlplane.sh functions show-preset demo-loadtest
 scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
 scripts/controlplane.sh cli-test list
-scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-java --dry-run
-scripts/controlplane.sh cli-test run cli-stack --saved-profile demo-javascript --dry-run
-scripts/controlplane.sh cli-test run host-platform --saved-profile demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --function-preset demo-java --dry-run
+scripts/controlplane.sh cli-test run cli-stack --function-preset demo-javascript --dry-run
+scripts/controlplane.sh cli-test run host-platform --dry-run
 scripts/controlplane.sh cli-test run deploy-host --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run validate-k3s --function-preset demo-java --dry-run
 scripts/controlplane.sh e2e run validate-k3s --function-preset demo-javascript --dry-run
@@ -48,13 +48,10 @@ scripts/controlplane.sh e2e run loadtest-two-vm --dry-run
 scripts/controlplane.sh e2e run loadtest-two-vm --scenario-file tools/controlplane/scenarios/two-vm-loadtest-java.toml --dry-run
 scripts/controlplane.sh e2e run loadtest-proxmox --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
-scripts/controlplane.sh e2e run validate-k3s --saved-profile demo-java --dry-run
 scripts/controlplane.sh e2e all --only validate-k3s --dry-run
 scripts/controlplane.sh loadtest list-profiles
 scripts/controlplane.sh loadtest show-profile quick
 scripts/controlplane.sh loadtest run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --load-profile quick --dry-run
-scripts/controlplane.sh loadtest run --saved-profile demo-java --dry-run
-scripts/controlplane.sh loadtest inspect --saved-profile demo-java
 scripts/e2e-loadtest.sh --profile demo-java --dry-run
 ```
 
@@ -132,17 +129,16 @@ scripts/controlplane.sh e2e run loadtest-proxmox \
 
 All six `--proxmox-*` flags (`--proxmox-host`, `--proxmox-node`, `--proxmox-user`, `--proxmox-password`, `--proxmox-template-id`, `--proxmox-ssh-key`) mirror the fields in `proxmox.toml` and override whatever the config file supplies.
 
-Use the canonical wrapper for saved-profile / interactive runs as well:
+Use the canonical wrapper for interactive runs as well:
 
 ```bash
 scripts/controlplane.sh tui
 ```
 
-The interactive TUI owns profile selection and profile creation. Use the `Profiles` section to inspect saved profiles and the `Load Testing` / `Validation` sections to consume them.
-Within `Validation -> platform -> validate-k3s`, the TUI can now reuse the built-in default selection, a function preset such as `demo-javascript`, a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`, or a compatible saved profile such as `demo-javascript`.
-The TUI only offers saved profiles and scenario manifests compatible with `validate-k3s`; incompatible entries are filtered out instead of failing at execution time.
+Within `Validation -> platform -> validate-k3s`, the TUI can reuse the built-in default selection, a function preset such as `demo-javascript`, or a scenario manifest such as `tools/controlplane/scenarios/k8s-demo-javascript.toml`.
+The TUI only offers scenario manifests compatible with `validate-k3s`; incompatible entries are filtered out instead of failing at execution time.
 The same generalized selection model is available at `Validation -> cli -> cli-stack`, `Validation -> host -> deploy-host`, and `Validation -> platform -> validate-container-local`.
-`cli-stack` and `deploy-host` accept built-in defaults, compatible presets, scenario files, and saved profiles. `validate-container-local` supports single function selection, compatible single-function scenario files, and compatible single-function saved profiles.
+`cli-stack` and `deploy-host` accept built-in defaults, compatible presets, and scenario files. `validate-container-local` supports single function selection and compatible single-function scenario files.
 `loadtest-helm-legacy` remains excluded from this selector path because its runtime allowlist intentionally omits JavaScript for the compatibility workflow.
 
 In the live workflow view, the left pane is plan-ordered top-level phases only. nested work is separate detail, not peer phases, so verification substeps stay attached under the active phase instead of becoming new rows.
@@ -170,24 +166,21 @@ Function selection is first-class in the tool:
 - inspect one function with `scripts/controlplane.sh functions show word-stats-java`
 - inspect one preset with `scripts/controlplane.sh functions show-preset demo-java`
 - reuse TOML scenarios from `tools/controlplane/scenarios/`
-- reuse saved defaults from `tools/controlplane/profiles/<profile>.toml`
 
 `e2e run` accepts one of:
 
 - `--function-preset <name>`
 - `--functions <csv>`
 - `--scenario-file <path>`
-- `--saved-profile <name>`
 
 Selection precedence is:
 
 1. explicit CLI override (`--function-preset` or `--functions`)
 2. scenario file
-3. saved profile defaults
 
-When a CLI override is combined with `--scenario-file` or `--saved-profile`, the tool preserves the base scenario metadata (`invoke`, payload mapping, namespace, and `load.profile`) and narrows `load.targets` and payloads to the selected subset instead of rebuilding the scenario from scratch.
+When a CLI override is combined with `--scenario-file`, the tool preserves the base scenario metadata (`invoke`, payload mapping, namespace, and `load.profile`) and narrows `load.targets` and payloads to the selected subset instead of rebuilding the scenario from scratch.
 
-`controlplane_tool.scenario.selection_resolution` owns shared scenario/profile
+`controlplane_tool.scenario.selection_resolution` owns shared scenario
 selection primitives used by CLI surfaces: CSV parsing, workspace-relative
 scenario paths, explicit selection detection, construction from
 `ScenarioSelectionConfig`, and overlaying runtime/namespace/registry or
@@ -196,19 +189,8 @@ request construction, validation, and rendering local to their command surface.
 Use `controlplane_tool.scenario.scenario_loader` directly only for lower-level
 scenario manifest loading and raw scenario overlay operations.
 
-Loadtest saved profiles can also persist:
-
-- `loadtest.default_load_profile`
-- `loadtest.metrics_gate_mode`
-- `loadtest.scenario_file` or `loadtest.function_preset`
-
-CLI validation saved profiles can also persist:
-
-- `cli_test.default_scenario`
-
-That lets the same saved profile drive `scripts/controlplane.sh cli-test run --saved-profile <name>` without repeating the scenario name on the command line.
 `validate-k3s`, `loadtest-helm-legacy`, and `cli-stack` are the self-bootstrapping VM-backed scenarios. When no explicit VM request is provided, the controlplane tool creates and configures a managed VM and installs scenario-specific software inside that VM instead of requiring host-installed Helm, kubectl, k3s, local-registry tooling, or `nanofaas-cli`.
-`cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the local registry there, then validates function build/push/apply/invoke/enqueue/delete together with `platform install/status/uninstall`. `host-platform` is intentionally platform-only, so saved-profile runtime and namespace defaults still apply there but function selections do not. `vm` preserves the legacy in-VM CLI validation path, `deploy-host` builds, pushes, and registers every selected function on the host, and missing saved profiles or scenario files fail validation with exit code 2.
+`cli-stack` is the canonical VM-backed CLI stack scenario: it compiles the CLI in the VM, installs Helm, k3s, and the local registry there, then validates function build/push/apply/invoke/enqueue/delete together with `platform install/status/uninstall`. `host-platform` is intentionally platform-only and does not accept function selection. `vm` preserves the legacy in-VM CLI validation path, `deploy-host` builds, pushes, and registers every selected function on the host, and missing scenario files fail validation with exit code 2.
 
 Scenario defaults are scenario-aware:
 
@@ -228,22 +210,18 @@ scripts/controlplane.sh e2e run loadtest-helm-legacy --dry-run
 scripts/controlplane.sh e2e run loadtest-helm-legacy --functions word-stats-java,json-transform-java --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --dry-run
 scripts/controlplane.sh e2e run --scenario-file tools/controlplane/scenarios/k8s-demo-java.toml --functions word-stats-java --dry-run
-scripts/controlplane.sh e2e run validate-k3s --saved-profile demo-java --dry-run
 ```
 
 ## Artifacts
 
-Loadtest runs write profiles and reports under:
+Loadtest runs write scenarios and reports under:
 
-- `tools/controlplane/profiles/<profile>.toml`
 - `tools/controlplane/scenarios/<scenario>.toml`
-- `tools/controlplane/runs/<timestamp>-<profile>/summary.json`
-- `tools/controlplane/runs/<timestamp>-<profile>/report.html`
+- `tools/controlplane/runs/<timestamp>-<run-name>/summary.json`
+- `tools/controlplane/runs/<timestamp>-<run-name>/report.html`
 
 ## Metrics and k6 notes
 
-- Prometheus URL is not requested in the wizard.
-- The wizard stores loadtest defaults without inventing a separate execution semantic.
 - The compatibility metrics flow auto-registers the `tool-metrics-echo` fixture before k6.
 - The metrics flow verifies `demo-word-stats-deployment` in `DEPLOYMENT` mode.
 - The metrics flow auto-starts a mock Kubernetes API backend when needed.
@@ -253,8 +231,8 @@ Loadtest runs write profiles and reports under:
 ## Package architecture checks
 
 The Python package is split into semantic packages under `controlplane_tool/`.
-`controlplane_tool.app` is reserved for entrypoints; shared path discovery, settings,
-and saved-profile persistence live under `controlplane_tool.workspace`.
+`controlplane_tool.app` is reserved for entrypoints; shared path discovery and settings
+live under `controlplane_tool.workspace`.
 Use the bundled quality gate for fast local checks before committing Python tool changes:
 
 ```bash
