@@ -395,11 +395,6 @@ _MAIN_MENU_CHOICES = [
         "Browse function definitions, presets, and per-function metadata used by scenarios, demos, and load tests.",
     ),
     _choice(
-        "Profiles",
-        "profiles",
-        "Create, inspect, and remove saved profiles that capture defaults across building, validation, and load-testing workflows.",
-    ),
-    _choice(
         "Exit",
         "exit",
         "Leave the interactive tool without starting another workflow.",
@@ -726,13 +721,11 @@ class NanofaasTUI:
                         "validation": self._validation_menu,
                         "loadtest": self._loadtest_menu,
                         "catalog": self._catalog_menu,
-                        "profiles": self._profiles_menu,
                         "vm": self._vm_menu,
                         "registry": self._registry_menu,
                         "e2e": self._e2e_menu,
                         "cli_e2e": self._cli_e2e_menu,
                         "functions": self._functions_menu,
-                        "profile": self._profile_menu,
                     }[choice]()
                 except KeyboardInterrupt:
                     console.print("\n  [dim]← back[/]")
