@@ -399,7 +399,6 @@ def test_tui_cli_stack_default_selection_resolves_request_and_passes_it_to_flow(
     assert callable(called["event_listener"])
     assert called["request"].scenario == "cli-stack"
     assert called["request"].function_preset == "demo-java"
-    assert called["request"].saved_profile is None
     assert called["request"].scenario_file is None
     assert called["request"].resolved_scenario.function_keys == [
         "word-stats-java",
@@ -504,7 +503,6 @@ def test_tui_cli_stack_can_use_saved_profile(monkeypatch) -> None:
     assert called["scenario"] == "cli-stack"
     assert called["request"].scenario == "cli-stack"
     assert called["request"].function_preset == "demo-javascript"
-    assert called["request"].saved_profile == "demo-javascript"
     assert called["request"].resolved_scenario.function_keys == [
         "word-stats-javascript",
         "json-transform-javascript",
@@ -604,7 +602,6 @@ def test_tui_deploy_host_can_use_javascript_preset(monkeypatch) -> None:
     assert called["flow_id"] == "e2e.validate_deploy_host"
     assert called["request"].scenario == "validate-deploy-host"
     assert called["request"].function_preset == "demo-javascript"
-    assert called["request"].saved_profile is None
     assert called["request"].scenario_file is None
     assert called["request"].resolved_scenario.function_keys == [
         "word-stats-javascript",
@@ -652,7 +649,6 @@ def test_tui_deploy_host_can_use_saved_profile(monkeypatch) -> None:
     assert called["flow_id"] == "e2e.validate_deploy_host"
     assert called["request"].scenario == "validate-deploy-host"
     assert called["request"].function_preset == "demo-javascript"
-    assert called["request"].saved_profile == "demo-javascript"
     assert called["request"].resolved_scenario.function_keys == [
         "word-stats-javascript",
         "json-transform-javascript",
@@ -753,7 +749,6 @@ def test_tui_container_local_can_use_single_javascript_function(monkeypatch) -> 
     assert called["request"].scenario == "validate-container-local"
     assert called["request"].function_preset is None
     assert called["request"].functions == ["word-stats-javascript"]
-    assert called["request"].saved_profile is None
     assert called["request"].scenario_file is None
     assert called["request"].resolved_scenario.function_keys == ["word-stats-javascript"]
     assert called["summary_lines"] == [
@@ -2331,7 +2326,6 @@ def test_tui_k3s_junit_curl_scenario_runs_shared_flow_not_direct_execute(monkeyp
     assert called["request"].cleanup_vm is True
     assert called["request"].function_preset == "demo-java"
     assert called["request"].scenario_file is None
-    assert called["request"].saved_profile is None
     assert called["request"].scenario_source == "built-in default"
     assert called["request"].resolved_scenario is not None
     assert called["request"].resolved_scenario.function_keys == [
@@ -2384,7 +2378,6 @@ def test_tui_k3s_junit_curl_scenario_can_use_javascript_preset(monkeypatch) -> N
     assert called["scenario"] == "validate-k3s"
     assert called["request"].function_preset == "demo-javascript"
     assert called["request"].scenario_file is None
-    assert called["request"].saved_profile is None
     assert called["request"].scenario_source == "explicit CLI override"
     assert called["request"].resolved_scenario.function_keys == [
         "word-stats-javascript",
@@ -2444,7 +2437,6 @@ def test_tui_k3s_junit_curl_scenario_can_use_scenario_file(monkeypatch) -> None:
 
     assert called["scenario"] == "validate-k3s"
     assert called["request"].function_preset == "demo-javascript"
-    assert called["request"].saved_profile is None
     assert called["request"].scenario_file == resolve_workspace_path(
         Path("tools/controlplane/scenarios/k8s-demo-javascript.toml")
     )
@@ -2496,7 +2488,6 @@ def test_tui_k3s_junit_curl_scenario_can_use_saved_profile(monkeypatch) -> None:
     NanofaasTUI()._run_vm_e2e_scenario("validate-k3s")
 
     assert called["scenario"] == "validate-k3s"
-    assert called["request"].saved_profile == "demo-javascript"
     assert called["request"].scenario_file is None
     assert called["request"].function_preset == "demo-javascript"
     assert called["request"].scenario_source == "saved profile: demo-javascript"

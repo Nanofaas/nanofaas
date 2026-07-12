@@ -143,7 +143,6 @@ class CliTestRunner:
             function_preset=request.function_preset,
             functions=list(request.functions),
             scenario_file=request.scenario_file,
-            saved_profile=request.saved_profile,
             scenario_source=request.scenario_source,
             resolved_scenario=resolved_scenario,
             vm=request.vm,

@@ -16,7 +16,6 @@ class E2eRequest(BaseModel):
     function_preset: str | None = None
     functions: list[str] = Field(default_factory=list)
     scenario_file: Path | None = None
-    saved_profile: str | None = None
     scenario_source: str | None = None
     resolved_scenario: ResolvedScenario | None = None
     vm: VmRequest | None = None

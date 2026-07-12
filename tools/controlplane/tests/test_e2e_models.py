@@ -2,6 +2,10 @@ from controlplane_tool.e2e.e2e_models import E2eRequest
 from controlplane_tool.infra.vm.vm_models import VmRequest
 
 
+def test_e2e_request_has_no_saved_profile_contract() -> None:
+    assert "saved_profile" not in E2eRequest.model_fields
+
+
 def test_e2e_request_tracks_scenario_runtime_and_vm_config() -> None:
     request = E2eRequest(
         scenario="validate-k3s",
