@@ -7,9 +7,11 @@ import shutil
 import typer
 import yaml
 from workflow_tasks.loadtest.adapters import HttpPrometheusClient
+from workflow_tasks.workflow.context import bind_workflow_sink
 
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from controlplane_tool.cli.execution import build_role_bindings
+from controlplane_tool.cli.progress import ConsoleProgressSink
 from controlplane_tool.plans.cli import build_cli_plan
 from controlplane_tool.plans.loadtest import build_loadtest_plan
 from controlplane_tool.plans.validate import build_validate_plan
@@ -119,7 +121,8 @@ def install_product_commands(app: typer.Typer) -> None:
             only=only, start=start, until=until,
         )
         workflow.keep_infrastructure = keep
-        workflow.run()
+        with bind_workflow_sink(ConsoleProgressSink()):
+            workflow.run()
 
     @app.command("plan")
     def plan_command(
