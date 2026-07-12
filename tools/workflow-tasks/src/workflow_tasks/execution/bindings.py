@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, replace
+from typing import Literal, Protocol
 
 from workflow_tasks.execution.roles import ExecutionRole
 from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
@@ -30,3 +30,18 @@ class RoleBoundCommandTaskExecutor:
 
     def run(self, task: CommandTaskSpec, *, dry_run: bool = False) -> TaskResult:
         return self._bindings.executor_for(task.execution_role).run(task, dry_run=dry_run)
+
+
+class RetargetingCommandTaskExecutor:
+    """Adapt a legacy target-checking executor to an explicitly bound role."""
+
+    def __init__(
+        self,
+        executor: CommandTaskExecutor,
+        target: Literal["host", "vm"],
+    ) -> None:
+        self._executor = executor
+        self._target = target
+
+    def run(self, task: CommandTaskSpec, *, dry_run: bool = False) -> TaskResult:
+        return self._executor.run(replace(task, target=self._target), dry_run=dry_run)
