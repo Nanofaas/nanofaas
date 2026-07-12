@@ -49,6 +49,45 @@ def test_run_renders_normalized_task_progress(monkeypatch) -> None:
     assert "[test.task] passed" in result.stdout
 
 
+def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
+    actions: list[str] = []
+    workflow = Workflow(tasks=[_Task()])
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product.provision_environment",
+        lambda *args, **kwargs: actions.append("provision"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product._workflow",
+        lambda *args, **kwargs: workflow,
+    )
+    monkeypatch.setattr(workflow, "run", lambda: actions.append("run"))
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "scenarios-v2/validate-k8s.yaml",
+            "--environment",
+            "environments/multipass.yaml",
+            "--provision",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert actions == ["provision", "run"]
+
+
+def test_run_rejects_provisioning_for_local_environment() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["run", "scenarios-v2/validate-container.yaml", "--provision"],
+    )
+
+    assert result.exit_code != 0
+    assert "--provision requires a non-local environment" in result.output
+
+
 def test_inspect_renders_validated_configuration() -> None:
     result = CliRunner().invoke(app, ["inspect", "scenarios-v2/cli.yaml"])
 

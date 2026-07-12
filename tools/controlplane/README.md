@@ -30,19 +30,24 @@ Local execution is the default. VM-backed workflows bind the `stack` and optiona
 scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
   --environment tools/controlplane/environments/multipass.yaml
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/external.yaml.example
+  --environment tools/controlplane/environments/multipass.yaml \
+  --provision
 ```
 
-Multipass uses `multipass exec`. External, Azure and Proxmox targets execute through SSH; provisioning may be performed separately by Ansible or provider tooling. Commands run from `<home>/nanofaas` on remote machines.
+`--provision` is an explicit, idempotent first-run step for Multipass and external SSH environments. It creates or reuses the Multipass VM, or reuses the configured external host, then runs the separately maintained Ansible tasks and synchronizes the repository. It never destroys a VM. Omit the flag on later runs. Azure and Proxmox provisioning remains provider-specific. Commands run from `<home>/nanofaas` on remote machines.
 
 Load testing uses the same command:
 
 ```bash
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
+  --environment tools/controlplane/environments/multipass.yaml \
+  --provision \
   --control-plane-url http://stack:30080 \
   --prometheus-url http://stack:30090 \
   --run-dir tools/controlplane/runs/experiment-1
 ```
+
+On later load-test runs, omit `--provision`.
 
 Task subsets are selected with `--only`, `--from`, or `--until`; `--keep` preserves acquired infrastructure while still cleaning transient processes.
 

@@ -48,6 +48,9 @@ def _build(request: ValidateWorkflowRequest, role: Literal["host", "stack"]) -> 
         if request.build == "buildpack"
         else ":control-plane:bootJar"
     )
+    targets = (target,)
+    if request.backend == "k8s" and request.build == "docker":
+        targets += (":function-runtime:bootJar",)
     modules = {
         "container": "container-deployment-provider",
         "k8s": "k8s-deployment-provider",
@@ -58,7 +61,7 @@ def _build(request: ValidateWorkflowRequest, role: Literal["host", "stack"]) -> 
     return _task(
         "build.jvm",
         "./gradlew",
-        target,
+        *targets,
         *module_args,
         "--no-daemon",
         role=role,

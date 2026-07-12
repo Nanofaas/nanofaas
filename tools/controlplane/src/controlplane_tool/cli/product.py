@@ -12,6 +12,7 @@ from workflow_tasks.workflow.context import bind_workflow_sink
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from controlplane_tool.cli.execution import build_role_bindings
 from controlplane_tool.cli.progress import ConsoleProgressSink
+from controlplane_tool.cli.provisioning import provision_environment
 from controlplane_tool.plans.cli import build_cli_plan
 from controlplane_tool.plans.loadtest import build_loadtest_plan
 from controlplane_tool.plans.validate import build_validate_plan
@@ -102,6 +103,7 @@ def install_product_commands(app: typer.Typer) -> None:
     def run_command(
         scenario: Path = typer.Argument(..., exists=True),
         environment: Path | None = typer.Option(None, "--environment", exists=True),
+        provision: bool = typer.Option(False, "--provision"),
         keep: bool = typer.Option(False, "--keep"),
         only: str | None = typer.Option(None, "--only"),
         start: str | None = typer.Option(None, "--from"),
@@ -110,10 +112,14 @@ def install_product_commands(app: typer.Typer) -> None:
         prometheus_url: str = typer.Option("http://127.0.0.1:9090", "--prometheus-url"),
         run_dir: Path | None = typer.Option(None, "--run-dir"),
     ) -> None:
+        scenario_config = _scenario(scenario)
+        environment_config = _environment(environment)
+        if provision and environment_config.provider == "local":
+            raise typer.BadParameter("--provision requires a non-local environment")
         workflow = _slice(
             _workflow(
-                _scenario(scenario),
-                _environment(environment),
+                scenario_config,
+                environment_config,
                 control_plane_url=control_plane_url,
                 prometheus_url=prometheus_url,
                 run_dir=run_dir,
@@ -122,6 +128,12 @@ def install_product_commands(app: typer.Typer) -> None:
         )
         workflow.keep_infrastructure = keep
         with bind_workflow_sink(ConsoleProgressSink()):
+            if provision:
+                provision_environment(
+                    scenario_config,
+                    environment_config,
+                    repo_root=default_tool_paths().workspace_root,
+                )
             workflow.run()
 
     @app.command("plan")
