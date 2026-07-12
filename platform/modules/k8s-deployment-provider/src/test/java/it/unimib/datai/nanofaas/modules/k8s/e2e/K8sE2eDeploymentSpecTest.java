@@ -5,6 +5,8 @@ import io.fabric8.kubernetes.api.model.KubernetesResource;
 import io.fabric8.kubernetes.api.model.Probe;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -13,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.math.BigDecimal;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -73,6 +77,32 @@ class K8sE2eDeploymentSpecTest {
                 () -> assertEquals("k8s-echo", targets.getFirst().name()),
                 () -> assertEquals("legacy-echo", targets.getFirst().family())
         );
+    }
+
+    @Test
+    void registrationSpec_includesManifestResources() {
+        ResourceSpec resources = new ResourceSpec(
+                new ResourceQuantity(new BigDecimal("0.25"), 256),
+                new ResourceQuantity(new BigDecimal("0.5"), 512));
+        var manifest = new K8sE2eScenarioManifest(
+                "resources",
+                "validate-k3s",
+                "java",
+                "nanofaas-e2e",
+                List.of(new K8sE2eScenarioManifest.SelectedFunction(
+                        "word-stats-java",
+                        "word-stats",
+                        "java",
+                        "registry/word-stats:e2e",
+                        null,
+                        null,
+                        resources)),
+                Map.of(),
+                null);
+
+        var target = K8sE2eTest.registrationTargets(Optional.of(manifest)).getFirst();
+
+        assertEquals(resources, K8sE2eTest.registrationSpec(target).get("resources"));
     }
 
     private static Deployment renderedDeployment(

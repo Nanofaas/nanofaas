@@ -1,0 +1,3 @@
+workflow: loadtest
+functions:
+  - word-stats-java

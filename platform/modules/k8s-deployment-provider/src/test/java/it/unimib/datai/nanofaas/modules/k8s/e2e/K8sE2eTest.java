@@ -10,6 +10,8 @@ import io.fabric8.kubernetes.client.LocalPortForward;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import it.unimib.datai.nanofaas.controlplane.e2e.E2eApiSupport;
+import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -20,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -75,7 +78,7 @@ class K8sE2eTest {
             awaitHealth(mgmtPort, "/actuator/health/readiness");
 
             for (RegistrationTarget target : registrationTargets(scenarioManifest())) {
-                var registerResponse = E2eApiSupport.registerDeploymentFunction(target.name(), target.image());
+                var registerResponse = E2eApiSupport.registerFunction(registrationSpec(target));
                 String endpointUrl = registerResponse.then()
                         .statusCode(201)
                         .body("name", equalTo(target.name()))
@@ -92,6 +95,7 @@ class K8sE2eTest {
                                 "http://fn-" + target.name() + "." + namespace() + ".svc.cluster.local:8080/invoke"),
                         "expected provider-derived service endpoint but was " + endpointUrl);
                 awaitManagedFunctionReady(target.name());
+                assertManagedFunctionResources(target);
 
                 RestAssured.get("/v1/functions")
                         .then()
@@ -225,7 +229,8 @@ class K8sE2eTest {
                     "k8s-echo",
                     "legacy-echo",
                     RUNTIME_IMAGE,
-                    Map.of("message", "hi")));
+                    Map.of("message", "hi"),
+                    null));
         }
 
         K8sE2eScenarioManifest resolvedManifest = manifest.get();
@@ -234,8 +239,18 @@ class K8sE2eTest {
                         function.key(),
                         function.family(),
                         function.image() == null || function.image().isBlank() ? RUNTIME_IMAGE : function.image(),
-                        readInvocationPayload(resolvedManifest, function)))
+                        readInvocationPayload(resolvedManifest, function),
+                        function.resources()))
                 .toList();
+    }
+
+    static Map<String, Object> registrationSpec(RegistrationTarget target) {
+        Map<String, Object> spec = new LinkedHashMap<>(
+                E2eApiSupport.deploymentFunctionSpec(target.name(), target.image()));
+        if (target.resources() != null) {
+            spec.put("resources", target.resources());
+        }
+        return spec;
     }
 
     private static Optional<K8sE2eScenarioManifest> scenarioManifest() {
@@ -321,7 +336,45 @@ class K8sE2eTest {
         });
     }
 
-    static record RegistrationTarget(String name, String family, String image, Object payload) {
+    static record RegistrationTarget(
+            String name,
+            String family,
+            String image,
+            Object payload,
+            ResourceSpec resources) {
+    }
+
+    private static void assertManagedFunctionResources(RegistrationTarget target) {
+        if (target.resources() == null) {
+            return;
+        }
+        Deployment deployment = client.apps().deployments()
+                .inNamespace(namespace())
+                .withName("fn-" + target.name())
+                .get();
+        var actual = deployment.getSpec().getTemplate().getSpec().getContainers().getFirst().getResources();
+        assertResourceQuantity(target.resources().requests(), actual.getRequests());
+        assertResourceQuantity(target.resources().limits(), actual.getLimits());
+    }
+
+    private static void assertResourceQuantity(
+            ResourceQuantity expected,
+            Map<String, io.fabric8.kubernetes.api.model.Quantity> actual) {
+        if (expected == null) {
+            return;
+        }
+        if (expected.cpu() != null) {
+            var cpu = expected.cpu().stripTrailingZeros();
+            String expectedCpu = cpu.scale() <= 0
+                    ? cpu.toPlainString()
+                    : cpu.movePointRight(3).toBigIntegerExact() + "m";
+            org.junit.jupiter.api.Assertions.assertEquals(expectedCpu, actual.get("cpu").getAmount());
+        }
+        if (expected.memoryMiB() != null) {
+            org.junit.jupiter.api.Assertions.assertEquals(
+                    expected.memoryMiB() + "Mi",
+                    actual.get("memory").getAmount());
+        }
     }
 
     private static boolean hasReadyEndpoint(Endpoints endpoints) {

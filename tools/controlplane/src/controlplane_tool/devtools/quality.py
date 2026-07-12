@@ -5,24 +5,20 @@ import sys
 
 ENTRYPOINT_IMPORT_MODULES = (
     "controlplane_tool.app.main",
-    "controlplane_tool.cli.commands",
-    "controlplane_tool.building.gradle_executor",
+    "controlplane_tool.cli.product",
+    "controlplane_tool.tui.app",
 )
 
 
 _GRIMP_CHECK = """
 import grimp
 
-graph = grimp.build_graph("controlplane_tool", "tui_toolkit", "workflow_tasks")
+graph = grimp.build_graph("controlplane_tool", "workflow_tasks")
 violations = []
 
-chain = graph.find_shortest_chain(importer="workflow_tasks", imported="tui_toolkit")
+chain = graph.find_shortest_chain(importer="workflow_tasks", imported="controlplane_tool")
 if chain:
-    violations.append(f"workflow_tasks -> tui_toolkit: {' -> '.join(chain)}")
-
-chain = graph.find_shortest_chain(importer="tui_toolkit", imported="controlplane_tool")
-if chain:
-    violations.append(f"tui_toolkit -> controlplane_tool: {' -> '.join(chain)}")
+    violations.append(f"workflow_tasks -> controlplane_tool: {' -> '.join(chain)}")
 
 if violations:
     for v in violations:

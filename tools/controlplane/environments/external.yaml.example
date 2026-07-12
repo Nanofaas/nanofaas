@@ -1,0 +1,6 @@
+provider: external
+roles:
+  stack:
+    host: vm.example
+    user: ubuntu
+    home: /home/ubuntu
