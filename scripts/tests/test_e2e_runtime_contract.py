@@ -38,7 +38,15 @@ def _ensure_tool_src_on_path() -> None:
 
 def test_ansible_playbooks_exist_for_vm_provisioning() -> None:
     """Ansible playbooks are still the authoritative provisioning source."""
-    ansible_dir = REPO_ROOT / "ops" / "ansible"
+    ansible_dir = (
+        REPO_ROOT
+        / "tools"
+        / "workflow-tasks"
+        / "src"
+        / "workflow_tasks"
+        / "infra"
+        / "ansible_assets"
+    )
     assert (ansible_dir / "ansible.cfg").exists()
     assert (ansible_dir / "playbooks" / "provision-base.yml").exists()
     assert (ansible_dir / "playbooks" / "provision-k3s.yml").exists()
@@ -48,7 +56,7 @@ def test_ansible_playbooks_exist_for_vm_provisioning() -> None:
 
 def test_helm_control_plane_template_quotes_extra_env_values() -> None:
     template = (
-        REPO_ROOT / "helm" / "nanofaas" / "templates" / "control-plane-deployment.yaml"
+        REPO_ROOT / "deploy" / "helm" / "nanofaas" / "templates" / "control-plane-deployment.yaml"
     ).read_text(encoding="utf-8")
     assert "{{- range $env := . }}" in template
     assert "value: {{ $env.value | quote }}" in template

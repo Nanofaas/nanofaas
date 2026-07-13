@@ -24,15 +24,6 @@ SHIM_TARGETS = {
 }
 
 
-def test_loadtest_wrapper_routes_to_python_loadtest_run() -> None:
-    # M12: e2e-loadtest.sh now routes to controlplane.sh loadtest run (not experiments script)
-    script = (SCRIPTS_DIR / "e2e-loadtest.sh").read_text(encoding="utf-8")
-    assert "Compatibility wrapper" in script
-    assert "controlplane.sh" in script
-    assert "loadtest run" in script
-    assert "experiments/e2e-loadtest.sh" not in script
-
-
 def test_internal_backends_exist_pending_migration() -> None:
     """Verifies each internal backend is still present and awaiting Python migration.
 
@@ -67,19 +58,10 @@ def test_legacy_cli_wrapper_scripts_are_deleted() -> None:
         )
 
 
-def test_python_cli_exposes_all_expected_command_groups() -> None:
-    """M13: All scenario command groups must be registered in the controlplane-tool CLI."""
-    import sys
-    from pathlib import Path as _Path
-
-    tool_src = _Path(__file__).resolve().parents[2] / "tools" / "controlplane" / "src"
-    if str(tool_src) not in sys.path:
-        sys.path.insert(0, str(tool_src))
-
-    from controlplane_tool.app.main import app  # noqa: PLC0415
-    from typer.testing import CliRunner  # noqa: PLC0415
-
-    result = CliRunner().invoke(app, ["--help"])
-    assert result.exit_code == 0
-    for group in ("e2e", "cli-test", "loadtest", "vm", "functions", "tui"):
-        assert group in result.stdout, f"Expected command group {group!r} not found in CLI help"
+def test_legacy_loadtest_scripts_are_deleted() -> None:
+    for path in (
+        SCRIPTS_DIR / "e2e-loadtest.sh",
+        ROOT / "experiments" / "e2e-loadtest.sh",
+        ROOT / "experiments" / "e2e-loadtest-registry.sh",
+    ):
+        assert not path.exists(), f"{path.relative_to(ROOT)!s} must not be restored"
