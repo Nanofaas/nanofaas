@@ -40,6 +40,7 @@ class IssueCoverageTest {
         assertTrue(Files.exists(root.resolve("deploy/k8s/rbac.yaml")));
         assertTrue(Files.exists(root.resolve("deploy/k8s/control-plane-deployment.yaml")));
         assertTrue(Files.exists(root.resolve("deploy/k8s/control-plane-service.yaml")));
+        assertFalse(Files.exists(root.resolve("deploy/helm/nanofaas-runtime")));
     }
 
     @Test

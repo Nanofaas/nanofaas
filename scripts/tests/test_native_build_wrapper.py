@@ -7,6 +7,7 @@ SCRIPT = REPO_ROOT / "scripts" / "native-build.sh"
 
 def test_native_build_uses_control_plane_wrapper() -> None:
     script = SCRIPT.read_text(encoding="utf-8")
-    assert "./scripts/controlplane.sh native --profile all" in script
-    assert "./gradlew :control-plane:nativeCompile" not in script
-    assert "./gradlew :function-runtime:nativeCompile" in script
+    assert ":control-plane:nativeCompile" in script
+    assert ":services:java:warm-echo:nativeCompile" in script
+    assert "services/java/warm-echo/build/native/nativeCompile/warm-echo" in script
+    assert ":function-runtime:nativeCompile" not in script
