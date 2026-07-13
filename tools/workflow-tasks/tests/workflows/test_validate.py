@@ -1,6 +1,8 @@
 from workflow_tasks.workflows.validate import (
     ValidateFunction,
     ValidateWorkflowRequest,
+    k8s_deployment_specs,
+    registration_specs,
     validate_cleanup_specs,
     validate_task_specs,
 )
@@ -92,6 +94,37 @@ def test_kubernetes_docker_build_creates_both_core_jars() -> None:
         "-PcontrolPlaneModules=k8s-deployment-provider",
         "--no-daemon",
     )
+
+
+def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
+    request = ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
+
+    specs = k8s_deployment_specs(request, expose_node_ports=True)
+
+    assert [spec.task_id for spec in specs] == [
+        "stack.preflight",
+        "build.jvm",
+        "images.build.control-plane",
+        "images.push.control-plane",
+        "images.build.function-runtime",
+        "images.push.function-runtime",
+        "images.build.word-stats-java",
+        "images.push.word-stats-java",
+        "helm.deploy.control-plane",
+        "helm.deploy.function-runtime",
+    ]
+    control_plane = specs[-2]
+    assert "controlPlane.service.type=NodePort" in control_plane.argv
+    assert "prometheus.create=true" in control_plane.argv
+
+
+def test_registration_specs_are_reusable_without_invocation() -> None:
+    request = ValidateWorkflowRequest(backend="k8s", functions=(FUNCTION,))
+
+    specs = registration_specs(request)
+
+    assert [spec.task_id for spec in specs] == ["functions.register.word-stats-java"]
+    assert specs[0].role == "stack"
 
 
 def test_buildpack_changes_only_the_jvm_build_command() -> None:
