@@ -14,6 +14,7 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,6 +22,14 @@ class RootCommandTest {
 
     @TempDir
     Path tmp;
+
+    @Test
+    void exposesOnlyBackendNeutralCommands() {
+        CommandLine cli = new CommandLine(new RootCommand());
+
+        assertThat(cli.getSubcommands().keySet())
+                .isEqualTo(Set.of("fn", "invoke", "enqueue", "exec", "deploy"));
+    }
 
     @Test
     void helpPrintsUsage() {
@@ -115,4 +124,3 @@ class RootCommandTest {
         }
     }
 }
-
