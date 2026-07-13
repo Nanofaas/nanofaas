@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from pathlib import Path
 import shutil
+import subprocess
 
 import typer
 import yaml
@@ -103,6 +105,56 @@ def _slice(workflow, *, only: str | None, start: str | None, until: str | None):
     return workflow
 
 
+def _git_commit(repo_root: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ("git", "rev-parse", "HEAD"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _write_run_metadata(
+    run_dir: Path,
+    *,
+    status: str,
+    error: str | None,
+    started_at: datetime,
+    scenario_path: Path,
+    scenario: ScenarioConfig,
+    environment_path: Path | None,
+    environment: EnvironmentConfig,
+    sink: ConsoleProgressSink,
+    repo_root: Path,
+) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    metadata = {
+        "schema_version": 1,
+        "status": status,
+        "error": error,
+        "started_at": started_at.isoformat(),
+        "ended_at": datetime.now(UTC).isoformat(),
+        "git_commit": _git_commit(repo_root),
+        "scenario": {
+            "source": str(scenario_path),
+            "config": scenario.model_dump(mode="json", by_alias=True),
+        },
+        "environment": {
+            "source": str(environment_path) if environment_path else None,
+            "config": environment.model_dump(mode="json", by_alias=True),
+        },
+        "tasks": sink.records,
+    }
+    (run_dir / "run-metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
+
+
 def install_product_commands(app: typer.Typer) -> None:
     @app.command("run")
     def run_command(
@@ -121,38 +173,77 @@ def install_product_commands(app: typer.Typer) -> None:
         environment_config = _environment(environment)
         if provision and environment_config.provider == "local":
             raise typer.BadParameter("--provision requires a non-local environment")
-        with bind_workflow_sink(ConsoleProgressSink()):
-            provisioning = (
-                provision_environment(
-                    scenario_config,
-                    environment_config,
-                    repo_root=default_tool_paths().workspace_root,
-                    keep=keep,
-                )
-                if provision
-                else nullcontext()
-            )
-            with provisioning:
-                if scenario_config.workflow == "loadtest":
-                    control_plane_url, prometheus_url = resolve_loadtest_urls(
-                        environment_config,
-                        control_plane_url=control_plane_url,
-                        prometheus_url=prometheus_url,
-                    )
-                workflow = _slice(
-                    _workflow(
+        paths = default_tool_paths()
+        effective_run_dir = run_dir
+        if scenario_config.workflow == "loadtest" and effective_run_dir is None:
+            effective_run_dir = paths.runs_dir / "latest"
+        sink = ConsoleProgressSink()
+        started_at = datetime.now(UTC)
+        try:
+            with bind_workflow_sink(sink):
+                provisioning = (
+                    provision_environment(
                         scenario_config,
                         environment_config,
-                        control_plane_url=control_plane_url or "http://127.0.0.1:8080",
-                        prometheus_url=prometheus_url or "http://127.0.0.1:9090",
-                        run_dir=run_dir,
-                    ),
-                    only=only,
-                    start=start,
-                    until=until,
+                        repo_root=paths.workspace_root,
+                        keep=keep,
+                    )
+                    if provision
+                    else nullcontext()
                 )
-                workflow.keep_infrastructure = keep
-                workflow.run()
+                with provisioning:
+                    if scenario_config.workflow == "loadtest":
+                        control_plane_url, prometheus_url = resolve_loadtest_urls(
+                            environment_config,
+                            control_plane_url=control_plane_url,
+                            prometheus_url=prometheus_url,
+                        )
+                    workflow = _slice(
+                        _workflow(
+                            scenario_config,
+                            environment_config,
+                            control_plane_url=control_plane_url or "http://127.0.0.1:8080",
+                            prometheus_url=prometheus_url or "http://127.0.0.1:9090",
+                            run_dir=effective_run_dir,
+                        ),
+                        only=only,
+                        start=start,
+                        until=until,
+                    )
+                    workflow.keep_infrastructure = keep
+                    workflow.run()
+        except BaseException as exc:
+            if effective_run_dir is not None:
+                try:
+                    _write_run_metadata(
+                        effective_run_dir,
+                        status="failed",
+                        error=str(exc),
+                        started_at=started_at,
+                        scenario_path=scenario,
+                        scenario=scenario_config,
+                        environment_path=environment,
+                        environment=environment_config,
+                        sink=sink,
+                        repo_root=paths.workspace_root,
+                    )
+                except OSError:
+                    pass
+            raise
+        else:
+            if effective_run_dir is not None:
+                _write_run_metadata(
+                    effective_run_dir,
+                    status="passed",
+                    error=None,
+                    started_at=started_at,
+                    scenario_path=scenario,
+                    scenario=scenario_config,
+                    environment_path=environment,
+                    environment=environment_config,
+                    sink=sink,
+                    repo_root=paths.workspace_root,
+                )
 
     @app.command("plan")
     def plan_command(
