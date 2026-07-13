@@ -95,6 +95,32 @@ def test_kubernetes_docker_build_creates_both_core_jars() -> None:
     )
 
 
+def test_kubernetes_validation_enables_junit_queue_and_metrics_contracts() -> None:
+    specs = validate_task_specs(
+        ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
+    )
+
+    argv = next(
+        spec for spec in specs if spec.task_id == "helm.deploy.control-plane"
+    ).argv
+    settings = [
+        value for value in argv if value.startswith("controlPlane.extraEnv[")
+    ]
+    admission = next(
+        index
+        for index, value in enumerate(settings)
+        if value.endswith("=SYNC_QUEUE_ADMISSION_ENABLED")
+    )
+    metrics = next(
+        index
+        for index, value in enumerate(settings)
+        if value.endswith("=NANOFAAS_METRICS_PROFILE")
+    )
+
+    assert settings[admission + 1].endswith("=true")
+    assert settings[metrics + 1].endswith("=advanced")
+
+
 def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
     request = ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
 

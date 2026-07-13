@@ -180,6 +180,7 @@ def k8s_deployment_specs(
     *,
     expose_node_ports: bool = False,
     metrics_profile: str | None = None,
+    sync_queue_admission_enabled: bool = False,
 ) -> tuple[CommandTaskSpec, ...]:
     if request.backend != "k8s":
         raise ValueError("Kubernetes deployment specs require the k8s backend")
@@ -234,6 +235,7 @@ def k8s_deployment_specs(
         control_plane_image=f"{request.registry}/nanofaas/control-plane:e2e",
         expose_node_port=expose_node_ports,
         metrics_profile=metrics_profile,
+        sync_queue_admission_enabled=sync_queue_admission_enabled,
     )
     tasks.append(
         _task(
@@ -307,7 +309,13 @@ def validate_task_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSp
 
     role: Literal["host", "stack"] = "stack" if request.backend == "k8s" else "host"
     if request.backend == "k8s":
-        tasks = list(k8s_deployment_specs(request))
+        tasks = list(
+            k8s_deployment_specs(
+                request,
+                metrics_profile="advanced",
+                sync_queue_admission_enabled=True,
+            )
+        )
     else:
         tasks = [_build(request, role)]
         for function in request.functions:
