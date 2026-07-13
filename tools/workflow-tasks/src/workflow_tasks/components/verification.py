@@ -139,7 +139,7 @@ def plan_run_k8s_junit(context: ScenarioExecutionContext) -> tuple[ScenarioOpera
                 k8s_e2e_test_vm_script(
                     remote_dir=_remote_project_dir(context),
                     kubeconfig_path=_kubeconfig_path(context),
-                    runtime_image=f"{context.local_registry}/nanofaas/function-runtime:e2e",
+                    warm_echo_image=f"{context.local_registry}/nanofaas/java-warm-echo:e2e",
                     namespace=_namespace(context),
                     remote_manifest_path=remote_manifest_path,
                 ),

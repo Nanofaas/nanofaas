@@ -10,7 +10,7 @@ def k8s_e2e_test_vm_script(
     *,
     remote_dir: str,
     kubeconfig_path: str,
-    runtime_image: str,
+    warm_echo_image: str,
     namespace: str,
     remote_manifest_path: str | None = None,
 ) -> str:
@@ -19,7 +19,7 @@ def k8s_e2e_test_vm_script(
         manifest_property = f"-Dnanofaas.e2e.scenarioManifest={shlex.quote(remote_manifest_path)} "
     command = (
         f"KUBECONFIG={shlex.quote(kubeconfig_path)} "
-        f"FUNCTION_RUNTIME_IMAGE={shlex.quote(runtime_image)} "
+        f"WARM_ECHO_IMAGE={shlex.quote(warm_echo_image)} "
         f"NANOFAAS_E2E_NAMESPACE={shlex.quote(namespace)} "
         f"./gradlew :control-plane-modules:k8s-deployment-provider:test "
         f"{manifest_property}-PrunE2e --tests "

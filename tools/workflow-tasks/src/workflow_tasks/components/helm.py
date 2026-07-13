@@ -6,7 +6,7 @@ from types import MappingProxyType
 from workflow_tasks.components.context import ScenarioExecutionContext
 from workflow_tasks.components.models import ScenarioComponentDefinition
 from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
-from workflow_tasks.components.images import control_image, runtime_image
+from workflow_tasks.components.images import control_image
 from workflow_tasks.loadtest.two_vm import (
     LOADTEST_SCENARIOS,
     TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
@@ -71,15 +71,6 @@ def control_plane_helm_values(
     return values
 
 
-def function_runtime_helm_values(*, function_runtime_image: str) -> dict[str, str]:
-    repository, tag = _image_parts(function_runtime_image)
-    return {
-        "functionRuntime.image.repository": repository,
-        "functionRuntime.image.tag": tag,
-        "functionRuntime.image.pullPolicy": "Always",
-    }
-
-
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
     return MappingProxyType(dict(env or {}))
 
@@ -141,44 +132,8 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
     )
 
 
-def plan_deploy_function_runtime(
-    context: ScenarioExecutionContext,
-) -> tuple[ScenarioOperation, ...]:
-    namespace = _effective_namespace(context)
-    values = function_runtime_helm_values(
-        function_runtime_image=runtime_image(context.local_registry),
-    )
-    return (
-        RemoteCommandOperation(
-            operation_id="helm.deploy_function_runtime",
-            summary="Deploy function runtime with Helm",
-            argv=(
-                "helm",
-                "upgrade",
-                "--install",
-                "function-runtime",
-                "deploy/helm/nanofaas-runtime",
-                "-n",
-                namespace,
-                "--wait",
-                "--timeout",
-                "3m",
-                *_set_args(values),
-            ),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
 HELM_DEPLOY_CONTROL_PLANE = ScenarioComponentDefinition(
     component_id="helm.deploy_control_plane",
     summary="Deploy control plane with Helm",
     planner=plan_deploy_control_plane,
-)
-
-HELM_DEPLOY_FUNCTION_RUNTIME = ScenarioComponentDefinition(
-    component_id="helm.deploy_function_runtime",
-    summary="Deploy function runtime with Helm",
-    planner=plan_deploy_function_runtime,
 )
