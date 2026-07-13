@@ -41,9 +41,11 @@ def default_prometheus_queries(function_name: str) -> tuple[PrometheusQuery, ...
         PrometheusQuery("function_cold_start_total", f"function_cold_start_total{function}"),
         PrometheusQuery("function_warm_start_total", f"function_warm_start_total{function}"),
         PrometheusQuery(
-            "function_latency_count", f"function_latency_ms_seconds_count{function}"
+            "function_latency_count", f"function_latency_ms_seconds_count{function}", True
         ),
-        PrometheusQuery("function_latency_sum", f"function_latency_ms_seconds_sum{function}"),
+        PrometheusQuery(
+            "function_latency_sum", f"function_latency_ms_seconds_sum{function}", True
+        ),
         PrometheusQuery(
             "function_init_duration_count",
             f"function_init_duration_ms_seconds_count{function}",
@@ -63,10 +65,11 @@ def default_prometheus_queries(function_name: str) -> tuple[PrometheusQuery, ...
         PrometheusQuery(
             "function_e2e_latency_sum", f"function_e2e_latency_ms_seconds_sum{function}"
         ),
-        PrometheusQuery("process_cpu_usage", f"process_cpu_usage{control_plane}"),
+        PrometheusQuery("process_cpu_usage", f"process_cpu_usage{control_plane}", True),
         PrometheusQuery(
             "jvm_heap_used_bytes",
             'jvm_memory_used_bytes{app="nanofaas-control-plane",area="heap"}',
+            True,
         ),
     )
 

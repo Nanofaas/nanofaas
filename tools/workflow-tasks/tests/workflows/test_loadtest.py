@@ -31,6 +31,10 @@ def test_default_prometheus_queries_use_exported_metrics_and_filters() -> None:
 
     assert queries["function_dispatch_total"].required is True
     assert queries["function_success_total"].required is True
+    assert queries["function_latency_count"].required is True
+    assert queries["function_latency_sum"].required is True
+    assert queries["process_cpu_usage"].required is True
+    assert queries["jvm_heap_used_bytes"].required is True
     assert queries["function_dispatch_total"].expr == (
         'function_dispatch_total{function="word-\\"stats"}'
     )

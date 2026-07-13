@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import nullcontext
 from datetime import UTC, datetime
@@ -119,6 +120,38 @@ def _git_commit(repo_root: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _git_provenance(repo_root: Path) -> dict[str, object]:
+    commit = _git_commit(repo_root)
+    try:
+        status = subprocess.run(
+            ("git", "status", "--porcelain=v1"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        diff = subprocess.run(
+            ("git", "diff", "--binary", "HEAD"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return {"git_commit": commit, "git_dirty": None, "git_diff_sha256": None, "git_status": []}
+    if status.returncode != 0 or diff.returncode != 0:
+        return {"git_commit": commit, "git_dirty": None, "git_diff_sha256": None, "git_status": []}
+    fingerprint = hashlib.sha256(
+        (status.stdout + "\0" + diff.stdout).encode("utf-8")
+    ).hexdigest()
+    return {
+        "git_commit": commit,
+        "git_dirty": bool(status.stdout.strip()),
+        "git_diff_sha256": fingerprint,
+        "git_status": status.stdout.splitlines(),
+    }
+
+
 def _write_run_metadata(
     run_dir: Path,
     *,
@@ -139,7 +172,7 @@ def _write_run_metadata(
         "error": error,
         "started_at": started_at.isoformat(),
         "ended_at": datetime.now(UTC).isoformat(),
-        "git_commit": _git_commit(repo_root),
+        **_git_provenance(repo_root),
         "scenario": {
             "source": str(scenario_path),
             "config": scenario.model_dump(mode="json", by_alias=True),
