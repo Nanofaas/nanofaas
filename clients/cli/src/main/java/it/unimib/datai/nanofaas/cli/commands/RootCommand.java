@@ -8,8 +8,6 @@ import it.unimib.datai.nanofaas.cli.commands.exec.ExecCommand;
 import it.unimib.datai.nanofaas.cli.commands.deploy.DeployCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.EnqueueCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.InvokeCommand;
-import it.unimib.datai.nanofaas.cli.commands.k8s.K8sCommand;
-import it.unimib.datai.nanofaas.cli.commands.platform.PlatformCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -18,15 +16,13 @@ import java.nio.file.Path;
 @Command(
         name = "nanofaas",
         mixinStandardHelpOptions = true,
-        description = "Nanofaas CLI (control-plane client + Kubernetes helpers).",
+        description = "Nanofaas control-plane client.",
         subcommands = {
                 FnCommand.class,
                 InvokeCommand.class,
                 EnqueueCommand.class,
                 ExecCommand.class,
-                DeployCommand.class,
-                K8sCommand.class,
-                PlatformCommand.class
+                DeployCommand.class
         }
 )
 public class RootCommand {
