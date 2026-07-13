@@ -5,7 +5,7 @@ import picocli.CommandLine.Command;
 
 import java.util.List;
 
-@Command(name = "list", description = "List registered functions.")
+@Command(name = "list", mixinStandardHelpOptions = true, description = "List registered functions.")
 public class FnListCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand

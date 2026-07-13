@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
-@Command(name = "get", description = "Get a function spec by name.")
+@Command(name = "get", mixinStandardHelpOptions = true, description = "Get a function spec by name.")
 public class FnGetCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand

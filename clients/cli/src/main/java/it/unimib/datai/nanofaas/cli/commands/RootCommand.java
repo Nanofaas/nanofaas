@@ -10,12 +10,14 @@ import it.unimib.datai.nanofaas.cli.commands.invoke.EnqueueCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.InvokeCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ScopeType;
 
 import java.nio.file.Path;
 
 @Command(
         name = "nanofaas",
         mixinStandardHelpOptions = true,
+        versionProvider = VersionProvider.class,
         description = "Nanofaas control-plane client.",
         subcommands = {
                 FnCommand.class,
@@ -27,13 +29,16 @@ import java.nio.file.Path;
 )
 public class RootCommand {
 
-    @Option(names = {"--config"}, description = "Path to config file (default: ~/.config/nanofaas/config.yaml).")
+    @Option(names = {"--config"}, scope = ScopeType.INHERIT,
+            description = "Path to config file (default: ~/.config/nanofaas/config.yaml).")
     Path configPath;
 
-    @Option(names = {"--endpoint"}, description = "Control-plane base URL (overrides config/env).")
+    @Option(names = {"--endpoint"}, scope = ScopeType.INHERIT,
+            description = "Control-plane base URL (overrides config/env).")
     String endpoint;
 
-    @Option(names = {"--namespace", "-n"}, description = "Kubernetes namespace (overrides config/env).")
+    @Option(names = {"--namespace", "-n"}, scope = ScopeType.INHERIT,
+            description = "Function namespace (overrides config/env).")
     String namespace;
 
     private ConfigStore store;

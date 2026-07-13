@@ -14,7 +14,8 @@ import picocli.CommandLine.ParentCommand;
 
 import java.nio.file.Path;
 
-@Command(name = "deploy", description = "Build+push image (docker buildx) and apply the function spec.")
+@Command(name = "deploy", mixinStandardHelpOptions = true,
+        description = "Build+push image (docker buildx) and apply the function spec.")
 public class DeployCommand implements Runnable {
 
     @ParentCommand
