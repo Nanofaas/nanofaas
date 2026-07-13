@@ -59,7 +59,16 @@ def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "controlplane_tool.cli.product._workflow",
-        lambda *args, **kwargs: workflow,
+        lambda *args, **kwargs: actions.append(
+            f"build:{kwargs['control_plane_url']}:{kwargs['prometheus_url']}"
+        ) or workflow,
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product.resolve_loadtest_urls",
+        lambda *args, **kwargs: (
+            actions.append("resolve") or "http://stack:30080",
+            "http://stack:30090",
+        ),
     )
     monkeypatch.setattr(workflow, "run", lambda: actions.append("run"))
 
@@ -67,7 +76,7 @@ def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
         app,
         [
             "run",
-            "scenarios-v2/validate-k8s.yaml",
+            "scenarios-v2/loadtest.yaml",
             "--environment",
             "environments/multipass.yaml",
             "--provision",
@@ -75,7 +84,12 @@ def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert actions == ["provision", "run"]
+    assert actions == [
+        "provision",
+        "resolve",
+        "build:http://stack:30080:http://stack:30090",
+        "run",
+    ]
 
 
 def test_run_rejects_provisioning_for_local_environment() -> None:

@@ -1,17 +1,60 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 import shlex
 
+from multipass import MultipassClient
 from workflow_tasks.execution.bindings import RetargetingCommandTaskExecutor, RoleBindings
 from workflow_tasks.tasks.executors import (
     HostCommandRunner,
     HostCommandTaskExecutor,
     VmCommandTaskExecutor,
 )
+from workflow_tasks.vm.models import VmRequest
+from workflow_tasks.vm.multipass import resolve_connection_host
 
 from controlplane_tool.config.environment import EnvironmentConfig, RoleTarget
 from controlplane_tool.core.task_shell_adapter import ShellCommandTaskRunner
+
+
+StackHostResolver = Callable[[RoleTarget], str]
+
+
+def resolve_loadtest_urls(
+    environment: EnvironmentConfig,
+    *,
+    control_plane_url: str | None = None,
+    prometheus_url: str | None = None,
+    dry_run: bool = False,
+    host_resolver: StackHostResolver | None = None,
+) -> tuple[str, str]:
+    if control_plane_url is not None and prometheus_url is not None:
+        return control_plane_url, prometheus_url
+
+    target = environment.target("stack")
+    if environment.provider == "local":
+        host = "127.0.0.1"
+    elif environment.provider == "multipass":
+        if host_resolver is not None:
+            host = host_resolver(target)
+        else:
+            host = resolve_connection_host(
+                VmRequest(lifecycle="multipass", name=target.name),
+                MultipassClient(),
+                dry_run=dry_run,
+            )
+    elif target.host:
+        host = target.host
+    else:
+        raise ValueError(
+            f"{environment.provider} stack requires a host or explicit load-test URLs"
+        )
+
+    return (
+        control_plane_url or f"http://{host}:30080",
+        prometheus_url or f"http://{host}:30090",
+    )
 
 
 def _home(target: RoleTarget) -> str:
