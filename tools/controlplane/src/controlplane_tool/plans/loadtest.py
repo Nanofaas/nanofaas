@@ -53,7 +53,16 @@ def build_loadtest_plan(
         }
     functions = tuple(_resolve_function(config, key) for key in config.functions)
     if scaling_config is not None:
-        functions = tuple(replace(function, scaling_config=scaling_config) for function in functions)
+        functions = tuple(
+            replace(
+                function,
+                scaling_config=scaling_config,
+                timeout_ms=30000,
+                concurrency=4,
+                queue_size=100,
+            )
+            for function in functions
+        )
     target = functions[0]
     dedicated = "loadgen" in environment.roles
     remote = environment.provider != "local"
@@ -72,7 +81,9 @@ def build_loadtest_plan(
         backend="k8s",
         build=config.build,
         functions=functions,
-        additional_modules=("autoscaler",) if config.autoscaling else (),
+        additional_modules=("autoscaler", "async-queue", "sync-queue")
+        if config.autoscaling
+        else (),
     )
     stack = workflow_from_specs(
         k8s_deployment_specs(deployment, expose_node_ports=True)

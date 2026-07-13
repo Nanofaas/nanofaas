@@ -24,6 +24,10 @@ class ValidateFunction:
     payload: str
     resources: dict[str, object] | None = None
     scaling_config: dict[str, object] | None = None
+    timeout_ms: int = 5000
+    concurrency: int = 2
+    queue_size: int = 20
+    max_retries: int = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,10 +282,10 @@ def registration_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSpe
             "name": function.name,
             "image": function.image,
             "executionMode": "DEPLOYMENT",
-            "timeoutMs": 5000,
-            "concurrency": 2,
-            "queueSize": 20,
-            "maxRetries": 3,
+            "timeoutMs": function.timeout_ms,
+            "concurrency": function.concurrency,
+            "queueSize": function.queue_size,
+            "maxRetries": function.max_retries,
         }
         if function.resources is not None:
             body["resources"] = function.resources

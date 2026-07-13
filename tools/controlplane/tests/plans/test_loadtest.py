@@ -148,9 +148,16 @@ def test_autoscaling_loadtest_builds_registers_and_observes_scaler(tmp_path: Pat
         task for task in workflow.tasks if task.task_id == "functions.register.word-stats-java"
     )
     run = next(task for task in workflow.tasks if task.task_id == "loadgen.run_k6")
-    assert "-PcontrolPlaneModules=k8s-deployment-provider,autoscaler" in build.spec.argv
+    assert (
+        "-PcontrolPlaneModules=k8s-deployment-provider,autoscaler,async-queue,sync-queue"
+        in build.spec.argv
+    )
     assert "scalingConfig" in " ".join(register.spec.argv)
     assert "INTERNAL" in " ".join(register.spec.argv)
+    assert "timeoutMs" in " ".join(register.spec.argv)
+    assert "30000" in " ".join(register.spec.argv)
+    assert "queueSize" in " ".join(register.spec.argv)
+    assert "100" in " ".join(register.spec.argv)
     assert run.run_k6.config.script_path.name == "autoscaling.js"
     assert [(stage.duration, stage.target) for stage in run.run_k6.config.stages] == [
         ("10s", 10),

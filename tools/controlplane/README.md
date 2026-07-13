@@ -42,12 +42,14 @@ Load testing uses the same command:
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
   --environment tools/controlplane/environments/multipass.yaml \
   --provision \
-  --control-plane-url http://stack:30080 \
-  --prometheus-url http://stack:30090 \
   --run-dir tools/controlplane/runs/experiment-1
 ```
 
-On later load-test runs, omit `--provision`.
+The load test deploys the stack with Helm, registers its function, runs k6 with
+autoscaling observation, captures Prometheus data and removes the Helm releases.
+The stack address is discovered from the environment; URL flags are only needed
+to override it. On later runs, omit `--provision`. Use
+`environments/multipass-two-vm.yaml` to place k6 on a dedicated VM.
 
 Task subsets are selected with `--only`, `--from`, or `--until`; `--keep` preserves acquired infrastructure while still cleaning transient processes.
 
