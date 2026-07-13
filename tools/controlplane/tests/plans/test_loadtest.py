@@ -125,6 +125,28 @@ def test_loadtest_plan_owns_stack_registration_and_cleanup(tmp_path: Path) -> No
     ]
 
 
+def test_loadtest_plan_enables_advanced_metrics(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+
+    workflow = build_loadtest_plan(
+        SCENARIO,
+        EnvironmentConfig.model_validate(
+            {"provider": "multipass", "roles": {"stack": {"name": "stack"}}}
+        ),
+        RoleBindings(host=executor, stack=executor),
+        control_plane_url="http://stack:30080",
+        prometheus_client=NoopPrometheus(),
+        run_dir=tmp_path,
+        fetcher=object(),
+    )
+
+    deploy = next(task for task in workflow.tasks if task.task_id == "helm.deploy.control-plane")
+    assert any(
+        "NANOFAAS_METRICS_PROFILE" in argument for argument in deploy.spec.argv
+    )
+    assert any("advanced" in argument for argument in deploy.spec.argv)
+
+
 def test_autoscaling_loadtest_builds_registers_and_observes_scaler(tmp_path: Path) -> None:
     executor = RecordingExecutor()
     config = ScenarioConfig(
