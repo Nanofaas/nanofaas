@@ -404,56 +404,58 @@ coesistenza di versioni diverse.
 ## 7. CLI e SDK
 
 ### Stato attuale
-L'interazione con nanofaas avviene solo tramite chiamate HTTP manuali (curl)
-o attraverso l'OpenAPI spec (`openapi.yaml`) con client generati.
-Non esiste un tool ufficiale da riga di comando o libreria client.
+Esiste una CLI Java nativa e backend-neutral. Espone `fn apply|list|get|delete|test`,
+`invoke`, `enqueue`, `exec get` e `deploy`; comunica soltanto con l'API HTTP del
+control-plane. `deploy` usa localmente Docker Buildx e applica poi la funzione via
+API. Il provisioning di VM, Helm/Kubernetes e gli scenari E2E restano responsabilita
+del tool Python `controlplane`.
 
 ### Problema
-- L'onboarding di nuovi sviluppatori richiede conoscenza dell'API REST.
-- Operazioni comuni (deploy, invoke, logs) richiedono comandi curl lunghi.
-- Non c'e scaffolding per creare nuove funzioni.
+- Manca un riepilogo HTTP della piattaforma, indipendente dal provider sottostante.
+- L'onboarding richiede ancora di conoscere il confine fra la CLI applicativa e il
+  tool di provisioning.
+- Non esiste un SDK client pubblico e stabile.
 
 ### Soluzione proposta
 
-**Fase 1 - CLI minimale (Go):**
+**Fase 1 - Status backend-neutral:**
 ```bash
-nanofaas function list
-nanofaas function deploy --name my-func --image my-func:v1 --runtime java
-nanofaas function invoke my-func --data '{"input": "hello"}'
-nanofaas function delete my-func
-nanofaas execution get <execution-id>
-nanofaas execution list --function my-func --status error
+nanofaas status
 ```
-- Scritto in Go per distribuzione come singolo binario.
-- Configurazione via `~/.nanofaas/config.yaml` (endpoint, api-key).
-- Output formattabile: JSON, table, YAML.
+- Aggiungere un endpoint HTTP del control-plane che riporti health, versione,
+  moduli attivi e capability esposte.
+- La CLI lo visualizza senza dipendere da Helm, Kubernetes, Docker o dal provider
+  di deployment.
+- Il contratto deve essere estendibile e versionato; non deve promettere dettagli
+  operativi del backend (pod, log o describe Kubernetes).
 
-**Fase 2 - Scaffolding:**
+**Fase 2 - SDK client (Python, Java):**
+```python
+from nanofaas import Client
+client = Client("http://control-plane:8080")
+result = client.invoke("my-func", {"input": "hello"})
+```
+- Librerie sottili sopra l'OpenAPI, con lo stesso modello di errore della CLI.
+
+**Fase 3 - Scaffolding:**
 ```bash
 nanofaas init --runtime python --name my-func
 # Crea: my-func/handler.py, my-func/Dockerfile, my-func/function.yaml
 ```
-- Template per ogni runtime supportato.
+- Il generatore `fn-init` copre gia i template principali; valutare un comando CLI
+  solo se rende il flusso piu semplice senza duplicare il tool.
 - `function.yaml` contiene la FunctionSpec in formato dichiarativo.
 - `nanofaas deploy -f function.yaml` per deploy da file.
 
-**Fase 3 - SDK client (Python, Java):**
-- Libreria Python:
-  ```python
-  from nanofaas import Client
-  client = Client("http://control-plane:8080", api_key="...")
-  result = client.invoke("my-func", {"input": "hello"})
-  ```
-- Libreria Java (gia quasi possibile con WebClient, ma wrapper tipizzato).
-- Generazione automatica da OpenAPI spec con `openapi-generator`.
-
 ### Dipendenze
-- Beneficia da [Autenticazione](#1-autenticazione-e-autorizzazione) per supporto API key nel CLI.
+- Lo status beneficia da un contratto di capability del control-plane; non richiede
+  autenticazione, ma dovra rispettarla quando la sezione 1 verra implementata.
+- Gli SDK beneficiano dalla stabilizzazione dell'OpenAPI.
 
 ### Complessita stimata
-- Fase 1: **Media** (1-2 settimane)
-- Fase 2: **Bassa** (2-3 giorni)
-- Fase 3: **Bassa** per generazione da OpenAPI (1-2 giorni), **Media** per SDK custom (1 settimana)
+- Fase 1: **Bassa** (2-3 giorni)
+- Fase 2: **Bassa** per generazione da OpenAPI (1-2 giorni), **Media** per SDK custom (1 settimana)
+- Fase 3: **Bassa** (2-3 giorni)
 
 ---
 

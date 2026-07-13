@@ -28,8 +28,9 @@ public final class BuildSpecLoader {
             throw new IllegalArgumentException("Missing x-cli.build.context in " + functionYaml);
         }
 
-        Path context = Path.of(contextText);
-        Path dockerfile = Path.of(text(build, "dockerfile", "Dockerfile"));
+        Path manifestDirectory = functionYaml.toAbsolutePath().normalize().getParent();
+        Path context = manifestDirectory.resolve(contextText).normalize();
+        Path dockerfile = context.resolve(text(build, "dockerfile", "Dockerfile")).normalize();
         String platform = text(build, "platform", null);
         boolean push = bool(build, "push", true);
         Map<String, String> buildArgs = map(build.path("buildArgs"));
