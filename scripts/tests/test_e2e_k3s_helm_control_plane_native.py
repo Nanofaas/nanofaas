@@ -3,10 +3,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "e2e-k3s-helm.sh"
-PROM_CONFIG_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "prometheus-configmap.yaml"
-PROM_RBAC_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "prometheus-rbac.yaml"
-CADVISOR_DAEMONSET_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "cadvisor-daemonset.yaml"
-CADVISOR_SERVICE_TEMPLATE = REPO_ROOT / "helm" / "nanofaas" / "templates" / "cadvisor-service.yaml"
+PROM_CONFIG_TEMPLATE = REPO_ROOT / "deploy" / "helm" / "nanofaas" / "templates" / "prometheus-configmap.yaml"
+PROM_RBAC_TEMPLATE = REPO_ROOT / "deploy" / "helm" / "nanofaas" / "templates" / "prometheus-rbac.yaml"
+CADVISOR_DAEMONSET_TEMPLATE = REPO_ROOT / "deploy" / "helm" / "nanofaas" / "templates" / "cadvisor-daemonset.yaml"
+CADVISOR_SERVICE_TEMPLATE = REPO_ROOT / "deploy" / "helm" / "nanofaas" / "templates" / "cadvisor-service.yaml"
 
 
 def test_prometheus_templates_support_container_metrics_modes():

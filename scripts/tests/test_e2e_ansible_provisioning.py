@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ANSIBLE_DIR = REPO_ROOT / "ops" / "ansible"
+ANSIBLE_DIR = REPO_ROOT / "tools" / "workflow-tasks" / "src" / "workflow_tasks" / "infra" / "ansible_assets"
 
 
 def test_ansible_layout_exists_for_vm_provisioning():
