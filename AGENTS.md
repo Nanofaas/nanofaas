@@ -4,7 +4,7 @@
 
 - `platform/common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
 - `platform/control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic (supports JOB and WARM execution modes).
-- `platform/function-runtime/` hosts the Java function invocation HTTP server and handler registry.
+- `sdks/java/` provides the reusable Java invocation runtime; `services/java/warm-echo/` is its runnable long-running example service.
 - `python-runtime/` provides Python function runtime with watchdog for WARM execution mode (OpenWhisk-style).
 - `docs/` holds architecture and operational documentation; `openapi.yaml` is the API spec.
 - `deploy/k8s/` contains Kubernetes manifests; `scripts/` provides helper workflows.
@@ -15,8 +15,8 @@
 - `./gradlew build` — compile all modules and assemble artifacts.
 - `./gradlew test` — run unit/integration/E2E tests (requires container runtime).
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
-- `./gradlew :function-runtime:bootRun` — run the function runtime locally.
-- `./gradlew :control-plane:bootBuildImage` and `:function-runtime:bootBuildImage` — create buildpack images.
+- `./gradlew :services:java:warm-echo:bootRun` — run the warm-echo example service locally.
+- `./gradlew :control-plane:bootBuildImage` and `:services:java:warm-echo:bootBuildImage` — create buildpack images.
 - `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/` — build Python runtime image.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `scripts/controlplane.sh e2e run docker` and `scripts/controlplane.sh e2e run buildpack` — run local E2E suites.
@@ -26,7 +26,7 @@
 
 - Java 21 toolchain; 4-space indentation; `com.nanofaas` package root.
 - Class names `PascalCase`, methods/fields `camelCase`, constants `SCREAMING_SNAKE_CASE`.
-- Configuration lives in `platform/control-plane/src/main/resources/application.yml` and `platform/function-runtime/src/main/resources/application.yml`.
+- Configuration lives in `platform/control-plane/src/main/resources/application.yml` and `services/java/warm-echo/src/main/resources/application.yml`.
 
 ## Testing Guidelines
 

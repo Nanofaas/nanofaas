@@ -777,7 +777,7 @@ Il deploy richiede applicazione manuale con `kubectl apply -f k8s/`.
 
 ### Stato attuale
 Due runtime ufficiali:
-- **Java** (`function-runtime`): Spring Boot servlet, SPI handler loading.
+- **Java** (`sdks/java`): runtime HTTP riusabile; `services/java/warm-echo` e' il servizio WARM di esempio.
 - **Python** (`python-runtime`): Flask + Gunicorn, dynamic module loading.
 
 Il contratto runtime e semplice: un server HTTP che accetta `POST /invoke`
