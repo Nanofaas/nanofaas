@@ -1,10 +1,12 @@
 from typer.testing import CliRunner
+import json
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from contextlib import contextmanager
 
 from controlplane_tool.app.main import app
-from controlplane_tool.cli.product import _slice, _workflow
+from controlplane_tool.cli.product import _git_provenance, _slice, _workflow
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from workflow_tasks.core.workflow import Workflow
 
@@ -50,7 +52,7 @@ def test_run_renders_normalized_task_progress(monkeypatch) -> None:
     assert "[test.task] passed" in result.stdout
 
 
-def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
+def test_run_provisions_before_executing_workflow(monkeypatch, tmp_path: Path) -> None:
     actions: list[str] = []
     workflow = Workflow(tasks=[_Task()])
 
@@ -78,6 +80,16 @@ def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(workflow, "run", lambda: actions.append("run"))
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product._git_provenance",
+        lambda *args: actions.append("provenance")
+        or {
+            "git_commit": "abc",
+            "git_dirty": False,
+            "git_diff_sha256": "digest",
+            "git_status": [],
+        },
+    )
 
     result = CliRunner().invoke(
         app,
@@ -87,17 +99,91 @@ def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
             "--environment",
             "environments/multipass.yaml",
             "--provision",
+            "--run-dir",
+            str(tmp_path),
         ],
     )
 
     assert result.exit_code == 0
     assert actions == [
+        "provenance",
         "provision:keep=False",
         "resolve",
         "build:http://stack:30080:http://stack:30090",
         "run",
         "cleanup",
     ]
+    metadata = json.loads((tmp_path / "run-metadata.json").read_text(encoding="utf-8"))
+    assert metadata["schema_version"] == 1
+    assert metadata["status"] == "passed"
+    assert metadata["git_commit"]
+    assert isinstance(metadata["git_dirty"], bool)
+    assert metadata["git_diff_sha256"]
+    assert isinstance(metadata["git_status"], list)
+    assert metadata["scenario"]["config"]["workflow"] == "loadtest"
+    assert metadata["environment"]["config"]["provider"] == "multipass"
+    assert metadata["tasks"] == []
+
+
+def test_git_provenance_fingerprints_tracked_and_untracked_content(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=repo, check=True)
+    tracked = repo / "tracked.txt"
+    tracked.write_text("base", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=repo, check=True)
+
+    clean = _git_provenance(repo)
+    tracked.write_text("changed", encoding="utf-8")
+    tracked_change = _git_provenance(repo)
+    untracked = repo / "untracked.txt"
+    untracked.write_text("one", encoding="utf-8")
+    untracked_one = _git_provenance(repo)
+    untracked.write_text("two", encoding="utf-8")
+    untracked_two = _git_provenance(repo)
+
+    assert clean["git_dirty"] is False
+    assert tracked_change["git_diff_sha256"] != clean["git_diff_sha256"]
+    assert untracked_one["git_diff_sha256"] != tracked_change["git_diff_sha256"]
+    assert untracked_two["git_diff_sha256"] != untracked_one["git_diff_sha256"]
+
+
+def test_failed_loadtest_writes_failure_metadata(monkeypatch, tmp_path: Path) -> None:
+    @dataclass
+    class _FailTask:
+        task_id: str = "loadtest.fail"
+        title: str = "Fail load test"
+
+        def run(self) -> None:
+            raise RuntimeError("load exploded")
+
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product._workflow",
+        lambda *args, **kwargs: Workflow(tasks=[_FailTask()]),
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product.resolve_loadtest_urls",
+        lambda *args, **kwargs: ("http://stack:30080", "http://stack:30090"),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "scenarios-v2/loadtest.yaml",
+            "--run-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    metadata = json.loads((tmp_path / "run-metadata.json").read_text(encoding="utf-8"))
+    assert metadata["status"] == "failed"
+    assert metadata["error"] == "load exploded"
+    assert metadata["tasks"][-1]["status"] == "failed"
 
 
 def test_run_rejects_provisioning_for_local_environment() -> None:

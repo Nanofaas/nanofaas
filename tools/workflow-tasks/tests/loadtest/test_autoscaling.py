@@ -328,8 +328,25 @@ def test_verify_uses_watcher_max_and_skips_scale_up_polling(monkeypatch) -> None
 
     assert summary.max_replicas_observed == 3
     assert summary.final_desired_replicas == 0
+    assert task.result == summary
     # One kubectl call total (the final desired check), no scale-up polling.
     assert len(runner.commands) == 1
+
+
+def test_verify_result_requires_a_completed_run(monkeypatch) -> None:
+    task = VerifyAutoscalingReplicas(
+        task_id="autoscaling.verify_replicas",
+        title="Verify autoscaling replicas",
+        runner=_Runner([]),
+        namespace="nanofaas",
+        deployment_name="fn-word-stats-java",
+        remote_dir=".",
+    )
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="has not been called"):
+        _ = task.result
 
 
 def test_scale_up_failure_message_includes_watcher_probe_errors(monkeypatch) -> None:

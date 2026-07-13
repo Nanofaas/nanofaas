@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,17 +21,57 @@ from workflow_tasks.loadtest.tasks import (
     FetchVmResults,
     RunK6,
     WriteK6Report,
+    WriteLoadtestSummary,
 )
 from workflow_tasks.tasks.command_task import CommandTask
 from workflow_tasks.tasks.models import CommandTaskSpec
 
-DEFAULT_PROMETHEUS_QUERIES = (
-    PrometheusQuery("function_dispatch_total", "function_dispatch_total", required=True),
-    PrometheusQuery("function_success_total", "function_success_total", required=True),
-    PrometheusQuery("function_error_total", "function_error_total"),
-    PrometheusQuery("function_latency_ms", "function_latency_ms"),
-    PrometheusQuery("process_cpu_usage", "process_cpu_usage"),
-)
+def default_prometheus_queries(function_name: str) -> tuple[PrometheusQuery, ...]:
+    function = f"{{function={json.dumps(function_name)}}}"
+    control_plane = '{app="nanofaas-control-plane"}'
+    return (
+        PrometheusQuery("function_dispatch_total", f"function_dispatch_total{function}", True),
+        PrometheusQuery("function_success_total", f"function_success_total{function}", True),
+        PrometheusQuery("function_error_total", f"function_error_total{function}"),
+        PrometheusQuery("function_retry_total", f"function_retry_total{function}"),
+        PrometheusQuery("function_timeout_total", f"function_timeout_total{function}"),
+        PrometheusQuery(
+            "function_queue_rejected_total", f"function_queue_rejected_total{function}"
+        ),
+        PrometheusQuery("function_cold_start_total", f"function_cold_start_total{function}"),
+        PrometheusQuery("function_warm_start_total", f"function_warm_start_total{function}"),
+        PrometheusQuery(
+            "function_latency_count", f"function_latency_ms_seconds_count{function}", True
+        ),
+        PrometheusQuery(
+            "function_latency_sum", f"function_latency_ms_seconds_sum{function}", True
+        ),
+        PrometheusQuery(
+            "function_init_duration_count",
+            f"function_init_duration_ms_seconds_count{function}",
+        ),
+        PrometheusQuery(
+            "function_init_duration_sum", f"function_init_duration_ms_seconds_sum{function}"
+        ),
+        PrometheusQuery(
+            "function_queue_wait_count", f"function_queue_wait_ms_seconds_count{function}"
+        ),
+        PrometheusQuery(
+            "function_queue_wait_sum", f"function_queue_wait_ms_seconds_sum{function}"
+        ),
+        PrometheusQuery(
+            "function_e2e_latency_count", f"function_e2e_latency_ms_seconds_count{function}"
+        ),
+        PrometheusQuery(
+            "function_e2e_latency_sum", f"function_e2e_latency_ms_seconds_sum{function}"
+        ),
+        PrometheusQuery("process_cpu_usage", f"process_cpu_usage{control_plane}", True),
+        PrometheusQuery(
+            "jvm_heap_used_bytes",
+            'jvm_memory_used_bytes{app="nanofaas-control-plane",area="heap"}',
+            True,
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +191,7 @@ def build_loadtest_workflow(
         remote_dir=".",
     )
     watcher: ReplicaWatcher | None = None
+    verifier: VerifyAutoscalingReplicas | None = None
     run_task: Any = run_k6
     if request.autoscaling:
         watcher = ReplicaWatcher(
@@ -179,17 +221,16 @@ def build_loadtest_workflow(
             )
         )
     if watcher is not None:
-        tasks.append(
-            VerifyAutoscalingReplicas(
-                task_id="autoscaling.verify_replicas",
-                title="Verify autoscaling replica lifecycle",
-                runner=_RoleRunner(bindings, "stack"),
-                namespace=request.namespace,
-                deployment_name=f"fn-{request.function_name}",
-                remote_dir=".",
-                watcher=watcher,
-            )
+        verifier = VerifyAutoscalingReplicas(
+            task_id="autoscaling.verify_replicas",
+            title="Verify autoscaling replica lifecycle",
+            runner=_RoleRunner(bindings, "stack"),
+            namespace=request.namespace,
+            deployment_name=f"fn-{request.function_name}",
+            remote_dir=".",
+            watcher=watcher,
         )
+        tasks.append(verifier)
     tasks.extend(
         (
             CapturePrometheusSnapshot(
@@ -208,6 +249,13 @@ def build_loadtest_workflow(
                 title="Write load-test report",
                 data_dir=request.run_dir,
                 output_dir=request.run_dir,
+            ),
+            WriteLoadtestSummary(
+                task_id="loadtest.write_summary",
+                title="Write load-test summary",
+                data_dir=request.run_dir,
+                output_dir=request.run_dir,
+                autoscaling=verifier,
             ),
             _EvaluateK6Gate(
                 task_id="metrics.evaluate_gate",

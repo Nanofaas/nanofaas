@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import shlex
 import threading
@@ -159,6 +159,21 @@ class VerifyAutoscalingReplicas:
     scale_down_polls: int = 24
     poll_interval_seconds: int = 5
     watcher: Watcher | None = None
+    _result: AutoscalingSummary | None = field(default=None, init=False, repr=False)
+
+    @property
+    def result(self) -> AutoscalingSummary:
+        if self._result is None:
+            raise RuntimeError("VerifyAutoscalingReplicas.run() has not been called")
+        return self._result
+
+    def _complete(self, max_replicas: int, final_desired: int) -> AutoscalingSummary:
+        self._result = AutoscalingSummary(
+            deployment_name=self.deployment_name,
+            max_replicas_observed=max_replicas,
+            final_desired_replicas=final_desired,
+        )
+        return self._result
 
     def _probe(self) -> ReplicaProbe:
         return ReplicaProbe(
@@ -196,20 +211,12 @@ class VerifyAutoscalingReplicas:
         time.sleep(self.scale_down_initial_delay_seconds)
         final_desired = self._desired_replicas()
         if final_desired == 0:
-            return AutoscalingSummary(
-                deployment_name=self.deployment_name,
-                max_replicas_observed=max_replicas,
-                final_desired_replicas=final_desired,
-            )
+            return self._complete(max_replicas, final_desired)
         for _ in range(self.scale_down_polls):
             time.sleep(self.poll_interval_seconds)
             final_desired = self._desired_replicas()
             if final_desired == 0:
-                return AutoscalingSummary(
-                    deployment_name=self.deployment_name,
-                    max_replicas_observed=max_replicas,
-                    final_desired_replicas=final_desired,
-                )
+                return self._complete(max_replicas, final_desired)
 
         raise RuntimeError(f"Scale-down to 0 not observed: desired replicas = {final_desired}")
 
