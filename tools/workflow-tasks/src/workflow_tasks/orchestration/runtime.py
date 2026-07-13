@@ -27,7 +27,6 @@ def _run_direct(
     flow_id: str,
     flow_fn: Callable[..., T],
     *args: object,
-    orchestrator_backend: str = "direct",
     **kwargs: object,
 ) -> FlowRunResult[T]:
     started_at = _now_utc()
@@ -38,7 +37,7 @@ def _run_direct(
         return FlowRunResult.failed(
             flow_id=flow_id,
             flow_run_id=flow_run_id,
-            orchestrator_backend=orchestrator_backend,
+            orchestrator_backend="direct",
             started_at=started_at,
             finished_at=_now_utc(),
             error=_format_flow_error(exc),
@@ -46,7 +45,7 @@ def _run_direct(
     return FlowRunResult.completed(
         flow_id=flow_id,
         flow_run_id=flow_run_id,
-        orchestrator_backend=orchestrator_backend,
+        orchestrator_backend="direct",
         started_at=started_at,
         finished_at=_now_utc(),
         result=result,
