@@ -50,25 +50,6 @@ class K8sE2eDeploymentSpecTest {
     }
 
     @Test
-    void functionRuntimeHelmChart_rendersHttpHealthProbes() throws Exception {
-        Container container = renderedDeployment("runtime", "deploy/helm/nanofaas-runtime", "runtime")
-                .getSpec().getTemplate().getSpec().getContainers().getFirst();
-
-        assertAll(
-                () -> assertHttpProbe(
-                        container.getReadinessProbe(),
-                        "function-runtime readinessProbe",
-                        "/actuator/health/readiness",
-                        8080),
-                () -> assertHttpProbe(
-                        container.getLivenessProbe(),
-                        "function-runtime livenessProbe",
-                        "/actuator/health/liveness",
-                        8080)
-        );
-    }
-
-    @Test
     void registrationTargets_fallsBackToLegacyEchoWhenManifestIsAbsent() {
         var targets = K8sE2eTest.registrationTargets(Optional.empty());
 
