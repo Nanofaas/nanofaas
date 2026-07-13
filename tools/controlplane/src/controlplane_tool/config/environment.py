@@ -15,6 +15,7 @@ class RoleTarget(BaseModel):
     host: str | None = None
     user: str = "ubuntu"
     home: str | None = None
+    kubeconfig: str | None = None
     cpus: int = Field(default=4, gt=0)
     memory: str = "12G"
     disk: str = "30G"
@@ -27,6 +28,8 @@ class AzureEnvironment(BaseModel):
     location: str
     image_urn: str | None = None
     ssh_key_path: str | None = None
+    vm_size: str = "Standard_D4s_v5"
+    loadgen_vm_size: str = "Standard_B1s"
 
 
 class ProxmoxEnvironment(BaseModel):

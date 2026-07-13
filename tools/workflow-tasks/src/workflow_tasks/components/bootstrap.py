@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
 from types import MappingProxyType
 
 from multipass import find_ssh_public_key
 
-from workflow_tasks.vm.multipass import _find_ssh_private_key_path, repo_rsync_command, repo_sync_ssh_rsh
+from workflow_tasks.vm.multipass import (
+    _find_ssh_private_key_path,
+    repo_rsync_command,
+    repo_sync_ssh_rsh,
+)
 
 from workflow_tasks.vm.models import VmRequest
 from workflow_tasks.components.context import ScenarioExecutionContext
@@ -51,13 +57,16 @@ def _ansible_operation(
 ) -> RemoteCommandOperation:
     # Playbooks are bundled with the library.
     from workflow_tasks.infra.ansible import bundled_ansible_root
+
     ansible_root = bundled_ansible_root()
     extra_args: list[str] = []
     for key, value in extra_vars.items():
         extra_args.extend(["-e", f"{key}={value}"])
 
     private_key = _find_ssh_private_key_path(find_ssh_public_key())
-    private_key_args: list[str] = ["--private-key", str(private_key)] if private_key is not None else []
+    private_key_args: list[str] = (
+        ["--private-key", str(private_key)] if private_key is not None else []
+    )
 
     command: list[str] = [
         "ansible-playbook",
@@ -140,6 +149,9 @@ def plan_repo_sync_to_vm(context: ScenarioExecutionContext) -> tuple[ScenarioOpe
                         user=vm_request.user,
                         host=vm_request.host,
                         destination=destination,
+                        ssh_rsh=repo_sync_ssh_rsh(
+                            _find_ssh_private_key_path(find_ssh_public_key())
+                        ),
                     )
                 ),
             ),
@@ -155,13 +167,47 @@ def plan_repo_sync_to_vm(context: ScenarioExecutionContext) -> tuple[ScenarioOpe
                     user=vm_request.user,
                     host=f"<multipass-ip:{vm_request.name or 'nanofaas-e2e'}>",
                     destination=destination,
-                    ssh_rsh=repo_sync_ssh_rsh(
-                        _find_ssh_private_key_path(find_ssh_public_key())
-                    ),
+                    ssh_rsh=repo_sync_ssh_rsh(_find_ssh_private_key_path(find_ssh_public_key())),
                 )
             ),
         ),
     )
+
+
+def retarget_bootstrap_operation(
+    operation: RemoteCommandOperation,
+    *,
+    context: ScenarioExecutionContext,
+    host: str,
+    port: int | None = None,
+    private_key: Path | None = None,
+) -> RemoteCommandOperation:
+    """Point an Ansible or repository-sync operation at a resolved SSH endpoint."""
+    if operation.argv and operation.argv[0] == "ansible-playbook":
+        argv = list(operation.argv)
+        if "-i" in argv:
+            argv[argv.index("-i") + 1] = f"{host},"
+        if port is not None:
+            argv.extend(["-e", f"ansible_port={port}"])
+        if private_key is not None:
+            if "--private-key" in argv:
+                argv[argv.index("--private-key") + 1] = str(private_key)
+            else:
+                argv.extend(["--private-key", str(private_key)])
+        return replace(operation, argv=tuple(argv))
+
+    if operation.operation_id == "repo.sync_to_vm":
+        request = context.vm_request
+        argv = repo_rsync_command(
+            source=context.repo_root,
+            user=request.user,
+            host=host,
+            destination=_remote_project_dir(request),
+            ssh_rsh=repo_sync_ssh_rsh(private_key, port=port),
+        )
+        return replace(operation, argv=tuple(argv))
+
+    return operation
 
 
 def plan_registry_ensure_container(

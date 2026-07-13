@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -9,9 +10,16 @@ from workflow_tasks.workflows.loadtest import (
     LoadtestWorkflowRequest,
     build_loadtest_workflow,
 )
+from workflow_tasks.workflows.validate import (
+    ValidateWorkflowRequest,
+    k8s_deployment_specs,
+    registration_specs,
+    validate_cleanup_specs,
+)
 
 from controlplane_tool.config.environment import EnvironmentConfig
 from controlplane_tool.config.scenario import ScenarioConfig
+from controlplane_tool.plans._assembly import workflow_from_specs
 from controlplane_tool.plans.validate import _resolve_function
 
 
@@ -31,35 +39,81 @@ def build_loadtest_plan(
     run_dir: Path,
     fetcher: RemoteFileFetcher | object | None = None,
     repo_root: Path | None = None,
-    stages: tuple[tuple[str, int], ...] = (("15s", 1), ("30s", 3)),
+    stages: tuple[tuple[str, int], ...] | None = None,
 ) -> Workflow:
     if config.workflow != "loadtest":
         raise ValueError("load-test plan requires a loadtest scenario")
-    target = _resolve_function(config, config.functions[0])
+    scaling_config: dict[str, object] | None = None
+    if config.autoscaling:
+        scaling_config = {
+            "strategy": "INTERNAL",
+            "minReplicas": 0,
+            "maxReplicas": 5,
+            "metrics": [{"type": "in_flight", "target": "2"}],
+        }
+    functions = tuple(_resolve_function(config, key) for key in config.functions)
+    if scaling_config is not None:
+        functions = tuple(
+            replace(
+                function,
+                scaling_config=scaling_config,
+                timeout_ms=30000,
+                concurrency=4,
+                queue_size=100,
+            )
+            for function in functions
+        )
+    target = functions[0]
     dedicated = "loadgen" in environment.roles
     remote = environment.provider != "local"
     root = repo_root or Path.cwd()
     if remote:
         role_target = environment.target("loadgen" if dedicated else "stack")
         home = _home(role_target.user, role_target.home)
-        script_path = Path(home) / "nanofaas/tools/controlplane/assets/k6/two-vm-function-invoke.js"
+        script_name = "autoscaling.js" if config.autoscaling else "two-vm-function-invoke.js"
+        script_path = Path(home) / f"nanofaas/tools/controlplane/assets/k6/{script_name}"
         summary_path = Path(home) / "nanofaas-loadtest/k6-summary.json"
     else:
-        script_path = root / "tools/controlplane/assets/k6/two-vm-function-invoke.js"
+        script_name = "autoscaling.js" if config.autoscaling else "two-vm-function-invoke.js"
+        script_path = root / f"tools/controlplane/assets/k6/{script_name}"
         summary_path = run_dir / "k6-summary.json"
-    return build_loadtest_workflow(
+    deployment = ValidateWorkflowRequest(
+        backend="k8s",
+        build=config.build,
+        functions=functions,
+        additional_modules=("autoscaler", "async-queue", "sync-queue")
+        if config.autoscaling
+        else (),
+    )
+    stack = workflow_from_specs(
+        k8s_deployment_specs(deployment, expose_node_ports=True)
+        + registration_specs(deployment),
+        bindings,
+        cwd=root,
+    )
+    load = build_loadtest_workflow(
         LoadtestWorkflowRequest(
             control_plane_url=control_plane_url,
             function_name=target.name,
             script_path=script_path,
             summary_path=summary_path,
             run_dir=run_dir,
-            stages=stages,
+            stages=stages or (
+                (("10s", 10), ("20s", 20), ("90s", 20), ("10s", 0))
+                if config.autoscaling
+                else (("15s", 1), ("30s", 3))
+            ),
             prometheus_queries=DEFAULT_PROMETHEUS_QUERIES,
             dedicated_loadgen=dedicated,
             fetch_results=remote,
+            autoscaling=config.autoscaling,
         ),
         bindings,
         prometheus_client=prometheus_client,
         fetcher=cast(RemoteFileFetcher | None, fetcher),
     )
+    stack.tasks.extend(load.tasks)
+    stack.cleanup_tasks = workflow_from_specs(
+        validate_cleanup_specs(deployment), bindings, cwd=root
+    ).tasks
+    return stack

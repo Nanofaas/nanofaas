@@ -23,6 +23,11 @@ class ValidateFunction:
     build_argv: tuple[str, ...]
     payload: str
     resources: dict[str, object] | None = None
+    scaling_config: dict[str, object] | None = None
+    timeout_ms: int = 5000
+    concurrency: int = 2
+    queue_size: int = 20
+    max_retries: int = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +37,7 @@ class ValidateWorkflowRequest:
     build: Build = "docker"
     namespace: str = "nanofaas-e2e"
     registry: str = "localhost:5000"
+    additional_modules: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.functions:
@@ -48,17 +54,24 @@ def _build(request: ValidateWorkflowRequest, role: Literal["host", "stack"]) -> 
         if request.build == "buildpack"
         else ":control-plane:bootJar"
     )
+    targets = (target,)
+    if request.backend == "k8s" and request.build == "docker":
+        targets += (":function-runtime:bootJar",)
     modules = {
         "container": "container-deployment-provider",
         "k8s": "k8s-deployment-provider",
     }
+    selected_modules = (
+        ((modules[request.backend],) if request.backend in modules else ())
+        + request.additional_modules
+    )
     module_args = (
-        (f"-PcontrolPlaneModules={modules[request.backend]}",) if request.backend in modules else ()
+        (f"-PcontrolPlaneModules={','.join(selected_modules)}",) if selected_modules else ()
     )
     return _task(
         "build.jvm",
         "./gradlew",
-        target,
+        *targets,
         *module_args,
         "--no-daemon",
         role=role,
@@ -124,7 +137,7 @@ def _resource_inspection(
         "kubectl",
         "get",
         "deployment",
-        function.name,
+        f"fn-{function.name}",
         "-n",
         request.namespace,
     )
@@ -157,6 +170,145 @@ def _resource_inspection(
     return _task(f"resources.inspect.k8s.{function.key}", *argv, role=role)
 
 
+def _set_args(values: dict[str, str]) -> tuple[str, ...]:
+    return tuple(
+        argument
+        for key, value in values.items()
+        for argument in ("--set", f"{key}={value}")
+    )
+
+
+def k8s_deployment_specs(
+    request: ValidateWorkflowRequest,
+    *,
+    expose_node_ports: bool = False,
+) -> tuple[CommandTaskSpec, ...]:
+    if request.backend != "k8s":
+        raise ValueError("Kubernetes deployment specs require the k8s backend")
+
+    tasks = [_task("stack.preflight", "kubectl", "version", "--client", role="stack")]
+    tasks.append(_build(request, "stack"))
+    for name, image, dockerfile, context in (
+        (
+            "control-plane",
+            f"{request.registry}/nanofaas/control-plane:e2e",
+            "platform/control-plane/Dockerfile",
+            "platform/control-plane",
+        ),
+        (
+            "function-runtime",
+            f"{request.registry}/nanofaas/function-runtime:e2e",
+            "platform/function-runtime/Dockerfile",
+            "platform/function-runtime",
+        ),
+    ):
+        tasks.append(
+            _task(
+                f"images.build.{name}",
+                "docker",
+                "build",
+                "-f",
+                dockerfile,
+                "-t",
+                image,
+                context,
+                role="stack",
+            )
+        )
+        tasks.append(_task(f"images.push.{name}", "docker", "push", image, role="stack"))
+
+    for function in request.functions:
+        tasks.append(
+            _task(f"images.build.{function.key}", *function.build_argv, role="stack")
+        )
+        tasks.append(
+            _task(
+                f"images.push.{function.key}",
+                "docker",
+                "push",
+                function.image,
+                role="stack",
+            )
+        )
+
+    control_values = control_plane_helm_values(
+        namespace=request.namespace,
+        control_plane_image=f"{request.registry}/nanofaas/control-plane:e2e",
+        expose_node_port=expose_node_ports,
+    )
+    runtime_values = function_runtime_helm_values(
+        function_runtime_image=f"{request.registry}/nanofaas/function-runtime:e2e"
+    )
+    tasks.extend(
+        (
+            _task(
+                "helm.deploy.control-plane",
+                "helm",
+                "upgrade",
+                "--install",
+                "nanofaas",
+                "deploy/helm/nanofaas",
+                "--namespace",
+                request.namespace,
+                "--create-namespace",
+                "--wait",
+                *_set_args(control_values),
+                role="stack",
+            ),
+            _task(
+                "helm.deploy.function-runtime",
+                "helm",
+                "upgrade",
+                "--install",
+                "function-runtime",
+                "deploy/helm/nanofaas-runtime",
+                "--namespace",
+                request.namespace,
+                "--wait",
+                *_set_args(runtime_values),
+                role="stack",
+            ),
+        )
+    )
+    return tuple(tasks)
+
+
+def registration_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSpec, ...]:
+    role: Literal["host", "stack"] = "stack" if request.backend == "k8s" else "host"
+    endpoint = _endpoint(request)
+    specs: list[CommandTaskSpec] = []
+    for function in request.functions:
+        body: dict[str, object] = {
+            "name": function.name,
+            "image": function.image,
+            "executionMode": "DEPLOYMENT",
+            "timeoutMs": function.timeout_ms,
+            "concurrency": function.concurrency,
+            "queueSize": function.queue_size,
+            "maxRetries": function.max_retries,
+        }
+        if function.resources is not None:
+            body["resources"] = function.resources
+        if function.scaling_config is not None:
+            body["scalingConfig"] = function.scaling_config
+        specs.append(
+            _task(
+                f"functions.register.{function.key}",
+                *_curl(
+                    request,
+                    "-fsS",
+                    "-H",
+                    "Content-Type: application/json",
+                    "--data",
+                    json.dumps(body, separators=(",", ":")),
+                    f"{endpoint}/v1/functions",
+                ),
+                role=role,
+            )
+        )
+    return tuple(specs)
+
+
 def validate_task_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSpec, ...]:
     """Render the validate workflow without depending on an execution provider."""
     if request.backend == "pool":
@@ -173,57 +325,13 @@ def validate_task_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSp
         )
 
     role: Literal["host", "stack"] = "stack" if request.backend == "k8s" else "host"
-    tasks: list[CommandTaskSpec] = []
     if request.backend == "k8s":
-        tasks.append(_task("stack.preflight", "kubectl", "version", "--client", role=role))
-    tasks.append(_build(request, role))
-    if request.backend == "k8s":
-        core_images = (
-            (
-                "control-plane",
-                f"{request.registry}/nanofaas/control-plane:e2e",
-                "platform/control-plane/Dockerfile",
-                "platform/control-plane",
-            ),
-            (
-                "function-runtime",
-                f"{request.registry}/nanofaas/function-runtime:e2e",
-                "platform/function-runtime/Dockerfile",
-                "platform/function-runtime",
-            ),
-        )
-        for name, image, dockerfile, context in core_images:
+        tasks = list(k8s_deployment_specs(request))
+    else:
+        tasks = [_build(request, role)]
+        for function in request.functions:
             tasks.append(
-                _task(
-                    f"images.build.{name}",
-                    "docker",
-                    "build",
-                    "-f",
-                    dockerfile,
-                    "-t",
-                    image,
-                    context,
-                    role=role,
-                )
-            )
-            tasks.append(_task(f"images.push.{name}", "docker", "push", image, role=role))
-    for function in request.functions:
-        tasks.append(
-            _task(
-                f"images.build.{function.key}",
-                *function.build_argv,
-                role=role,
-            )
-        )
-        if request.backend == "k8s":
-            tasks.append(
-                _task(
-                    f"images.push.{function.key}",
-                    "docker",
-                    "push",
-                    function.image,
-                    role=role,
-                )
+                _task(f"images.build.{function.key}", *function.build_argv, role=role)
             )
 
     if request.backend == "container":
@@ -241,96 +349,22 @@ def validate_task_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSp
                 "--nanofaas.container-local.bind-host=127.0.0.1",
             )
         )
-    else:
-        control_image = f"{request.registry}/nanofaas/control-plane:e2e"
-        control_values = control_plane_helm_values(
-            namespace=request.namespace,
-            control_plane_image=control_image,
-        )
-        runtime_values = function_runtime_helm_values(
-            function_runtime_image=f"{request.registry}/nanofaas/function-runtime:e2e"
-        )
-
-        def set_args(values: dict[str, str]) -> tuple[str, ...]:
-            return tuple(
-                argument
-                for key, value in values.items()
-                for argument in ("--set", f"{key}={value}")
-            )
-
-        tasks.append(
-            _task(
-                "helm.deploy.control-plane",
-                "helm",
-                "upgrade",
-                "--install",
-                "nanofaas",
-                "deploy/helm/nanofaas",
-                "--namespace",
-                request.namespace,
-                "--create-namespace",
-                "--wait",
-                *set_args(control_values),
-                role=role,
-            )
-        )
-        tasks.append(
-            _task(
-                "helm.deploy.function-runtime",
-                "helm",
-                "upgrade",
-                "--install",
-                "function-runtime",
-                "deploy/helm/nanofaas-runtime",
-                "--namespace",
-                request.namespace,
-                "--wait",
-                *set_args(runtime_values),
-                role=role,
-            )
-        )
-
+    tasks.extend(registration_specs(request))
+    endpoint = _endpoint(request)
     for function in request.functions:
-        body: dict[str, object] = {
-            "name": function.name,
-            "image": function.image,
-            "executionMode": "DEPLOYMENT",
-            "timeoutMs": 5000,
-            "concurrency": 2,
-            "queueSize": 20,
-            "maxRetries": 3,
-        }
-        if function.resources is not None:
-            body["resources"] = function.resources
-        endpoint = _endpoint(request)
-        tasks.extend(
-            (
-                _task(
-                    f"functions.register.{function.key}",
-                    *_curl(
-                        request,
-                        "-fsS",
-                        "-H",
-                        "Content-Type: application/json",
-                        "--data",
-                        json.dumps(body, separators=(",", ":")),
-                        f"{endpoint}/v1/functions",
-                    ),
-                    role=role,
+        tasks.append(
+            _task(
+                f"functions.invoke.{function.key}",
+                *_curl(
+                    request,
+                    "-fsS",
+                    "-H",
+                    "Content-Type: application/json",
+                    "--data",
+                    function.payload,
+                    f"{endpoint}/v1/functions/{function.name}:invoke",
                 ),
-                _task(
-                    f"functions.invoke.{function.key}",
-                    *_curl(
-                        request,
-                        "-fsS",
-                        "-H",
-                        "Content-Type: application/json",
-                        "--data",
-                        function.payload,
-                        f"{endpoint}/v1/functions/{function.name}:invoke",
-                    ),
-                    role=role,
-                ),
+                role=role,
             )
         )
         tasks.append(_resource_inspection(request, function, role))

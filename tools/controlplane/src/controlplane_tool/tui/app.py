@@ -5,6 +5,7 @@ from pathlib import Path
 
 import questionary
 
+from controlplane_tool.cli.execution import resolve_loadtest_urls
 from controlplane_tool.cli.product import _environment, _render, _scenario, _workflow
 from controlplane_tool.workspace.paths import default_tool_paths
 
@@ -31,7 +32,20 @@ class NanofaasTUI:
         scenario_path = Path(self._choose("Scenario", scenarios))
         environment_path = Path(self._choose("Environment", environments))
         action = self._choose("Action", ["plan", "run"])
-        workflow = _workflow(_scenario(scenario_path), _environment(environment_path))
+        scenario = _scenario(scenario_path)
+        environment = _environment(environment_path)
+        control_plane_url = "http://127.0.0.1:8080"
+        prometheus_url = "http://127.0.0.1:9090"
+        if scenario.workflow == "loadtest":
+            control_plane_url, prometheus_url = resolve_loadtest_urls(
+                environment, dry_run=action == "plan"
+            )
+        workflow = _workflow(
+            scenario,
+            environment,
+            control_plane_url=control_plane_url,
+            prometheus_url=prometheus_url,
+        )
         if action == "plan":
             _render(workflow)
             return

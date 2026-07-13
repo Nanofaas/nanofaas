@@ -1,7 +1,21 @@
 from typer.testing import CliRunner
 from pathlib import Path
+from dataclasses import dataclass
+from contextlib import contextmanager
 
 from controlplane_tool.app.main import app
+from controlplane_tool.cli.product import _slice, _workflow
+from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
+from workflow_tasks.core.workflow import Workflow
+
+
+@dataclass
+class _Task:
+    task_id: str = "test.task"
+    title: str = "Test task"
+
+    def run(self) -> None:
+        pass
 
 
 def test_top_level_exposes_only_six_product_commands() -> None:
@@ -23,6 +37,79 @@ def test_plan_builds_shared_validate_workflow() -> None:
     assert "resources.inspect.k8s.word-stats-java" in result.stdout
 
 
+def test_run_renders_normalized_task_progress(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product._workflow",
+        lambda *args, **kwargs: Workflow(tasks=[_Task()]),
+    )
+
+    result = CliRunner().invoke(app, ["run", "scenarios-v2/validate-container.yaml"])
+
+    assert result.exit_code == 0
+    assert "[test.task] running" in result.stdout
+    assert "[test.task] passed" in result.stdout
+
+
+def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
+    actions: list[str] = []
+    workflow = Workflow(tasks=[_Task()])
+
+    @contextmanager
+    def provision(*args, **kwargs):
+        actions.append(f"provision:keep={kwargs['keep']}")
+        try:
+            yield
+        finally:
+            actions.append("cleanup")
+
+    monkeypatch.setattr("controlplane_tool.cli.product.provision_environment", provision)
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product._workflow",
+        lambda *args, **kwargs: (
+            actions.append(f"build:{kwargs['control_plane_url']}:{kwargs['prometheus_url']}")
+            or workflow
+        ),
+    )
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product.resolve_loadtest_urls",
+        lambda *args, **kwargs: (
+            actions.append("resolve") or "http://stack:30080",
+            "http://stack:30090",
+        ),
+    )
+    monkeypatch.setattr(workflow, "run", lambda: actions.append("run"))
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "scenarios-v2/loadtest.yaml",
+            "--environment",
+            "environments/multipass.yaml",
+            "--provision",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert actions == [
+        "provision:keep=False",
+        "resolve",
+        "build:http://stack:30080:http://stack:30090",
+        "run",
+        "cleanup",
+    ]
+
+
+def test_run_rejects_provisioning_for_local_environment() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["run", "scenarios-v2/validate-container.yaml", "--provision"],
+    )
+
+    assert result.exit_code != 0
+    assert "--provision requires a non-local environment" in result.output
+
+
 def test_inspect_renders_validated_configuration() -> None:
     result = CliRunner().invoke(app, ["inspect", "scenarios-v2/cli.yaml"])
 
@@ -39,6 +126,17 @@ def test_plan_can_select_one_task() -> None:
     assert result.exit_code == 0
     assert "functions.invoke.word-stats-java" in result.stdout
     assert "images.build.word-stats-java" not in result.stdout
+
+
+def test_task_slice_keeps_only_cleanup_for_selected_acquisitions() -> None:
+    workflow = _workflow(
+        ScenarioConfig(workflow="validate", backend="k8s", functions=["word-stats-java"]),
+        EnvironmentConfig(provider="local"),
+    )
+
+    _slice(workflow, only="stack.preflight", start=None, until=None)
+
+    assert workflow.cleanup_tasks == []
 
 
 def test_plan_accepts_external_ssh_environment(tmp_path: Path) -> None:

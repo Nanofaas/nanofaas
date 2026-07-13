@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from workflow_tasks.components.function_tasks import FunctionSpec, RegisterFunctions
@@ -78,8 +79,6 @@ def test_register_functions_posts_each_spec() -> None:
 
 
 def test_register_functions_raises_on_http_error() -> None:
-    import urllib.error
-
     task = RegisterFunctions(
         task_id="fn.register",
         title="Register",
@@ -96,9 +95,7 @@ def test_register_functions_raises_on_http_error() -> None:
     raise AssertionError("expected RuntimeError")
 
 
-def _http_error(code: int) -> "urllib.error.HTTPError":
-    import urllib.error
-
+def _http_error(code: int) -> urllib.error.HTTPError:
     return urllib.error.HTTPError("http://cp:8080/v1/functions", code, "conflict", None, None)
 
 

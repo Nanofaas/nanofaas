@@ -1,6 +1,8 @@
 from workflow_tasks.workflows.validate import (
     ValidateFunction,
     ValidateWorkflowRequest,
+    k8s_deployment_specs,
+    registration_specs,
     validate_cleanup_specs,
     validate_task_specs,
 )
@@ -77,6 +79,85 @@ def test_kubernetes_validation_uses_stack_role_and_inspects_requests_and_limits(
     assert specs[0].role == "stack"
     assert all(task.role == "stack" for task in specs[2:])
     assert ("-n", "research") == specs[-1].argv[4:6]
+    assert specs[-1].argv[3] == "fn-word-stats-java"
+
+
+def test_kubernetes_docker_build_creates_both_core_jars() -> None:
+    specs = validate_task_specs(
+        ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
+    )
+
+    assert specs[1].argv == (
+        "./gradlew",
+        ":control-plane:bootJar",
+        ":function-runtime:bootJar",
+        "-PcontrolPlaneModules=k8s-deployment-provider",
+        "--no-daemon",
+    )
+
+
+def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
+    request = ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
+
+    specs = k8s_deployment_specs(request, expose_node_ports=True)
+
+    assert [spec.task_id for spec in specs] == [
+        "stack.preflight",
+        "build.jvm",
+        "images.build.control-plane",
+        "images.push.control-plane",
+        "images.build.function-runtime",
+        "images.push.function-runtime",
+        "images.build.word-stats-java",
+        "images.push.word-stats-java",
+        "helm.deploy.control-plane",
+        "helm.deploy.function-runtime",
+    ]
+    control_plane = specs[-2]
+    assert "controlPlane.service.type=NodePort" in control_plane.argv
+    assert "prometheus.create=true" in control_plane.argv
+
+
+def test_registration_specs_are_reusable_without_invocation() -> None:
+    request = ValidateWorkflowRequest(backend="k8s", functions=(FUNCTION,))
+
+    specs = registration_specs(request)
+
+    assert [spec.task_id for spec in specs] == ["functions.register.word-stats-java"]
+
+
+def test_registration_specs_include_optional_scaling_config() -> None:
+    target = ValidateFunction(
+        key=FUNCTION.key,
+        name=FUNCTION.name,
+        image=FUNCTION.image,
+        build_argv=FUNCTION.build_argv,
+        payload=FUNCTION.payload,
+        scaling_config={"strategy": "INTERNAL", "minReplicas": 0, "maxReplicas": 5},
+    )
+
+    spec = registration_specs(
+        ValidateWorkflowRequest(backend="k8s", functions=(target,))
+    )[0]
+
+    command = " ".join(spec.argv)
+    assert "scalingConfig" in command
+    assert "INTERNAL" in command
+    assert "maxReplicas" in command
+
+
+def test_k8s_build_can_include_additional_control_plane_modules() -> None:
+    specs = k8s_deployment_specs(
+        ValidateWorkflowRequest(
+            backend="k8s",
+            functions=(FUNCTION,),
+            additional_modules=("autoscaler",),
+        )
+    )
+
+    build = next(spec for spec in specs if spec.task_id == "build.jvm")
+    assert "-PcontrolPlaneModules=k8s-deployment-provider,autoscaler" in build.argv
+    assert specs[0].role == "stack"
 
 
 def test_buildpack_changes_only_the_jvm_build_command() -> None:

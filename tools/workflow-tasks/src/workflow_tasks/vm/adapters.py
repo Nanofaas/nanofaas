@@ -32,7 +32,15 @@ class VmLifecycleAdapter:
                 "disk": config.disk,
             }
         )
-        self._vm.ensure_running(request)  # type: ignore[attr-defined]
+        result = self._vm.ensure_running(request)  # type: ignore[attr-defined]
+        return_code = getattr(result, "return_code", 0)
+        if isinstance(return_code, int) and return_code != 0:
+            detail = (
+                getattr(result, "stderr", "")
+                or getattr(result, "stdout", "")
+                or "VM lifecycle preflight failed"
+            )
+            raise RuntimeError(str(detail).strip())
         host = self._vm.connection_host(request)  # type: ignore[attr-defined]
         # Derive user/home from the credentials request: Azure uses azureuser,
         # and a hardcoded /home/ubuntu made every remote path unwritable there.

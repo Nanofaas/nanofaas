@@ -42,12 +42,13 @@ class Workflow:
                 break
 
         cleanup_errors: list[str] = []
-        for task in self.cleanup_tasks:
-            try:
-                with workflow_step(task_id=task.task_id, title=task.title):
-                    task.run()
-            except Exception as exc:
-                cleanup_errors.append(str(exc))
+        if not self.keep_infrastructure:
+            for task in self.cleanup_tasks:
+                try:
+                    with workflow_step(task_id=task.task_id, title=task.title):
+                        task.run()
+                except Exception as exc:
+                    cleanup_errors.append(str(exc))
 
         for resource in reversed(acquired_resources):
             if self.keep_infrastructure and resource.infrastructure:
