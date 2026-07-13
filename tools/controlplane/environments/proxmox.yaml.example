@@ -1,0 +1,19 @@
+provider: proxmox
+roles:
+  stack:
+    name: nanofaas-proxmox
+    cpus: 4
+    memory: 12G
+    disk: 30G
+  loadgen:
+    name: nanofaas-proxmox-loadgen
+    cpus: 2
+    memory: 2G
+    disk: 10G
+proxmox:
+  host: pve.example.com
+  node: pve
+  user: root@pam
+  password_env: PROXMOX_PASSWORD
+  template_id: 9000
+  ssh_key_path: /home/you/.ssh/id_ed25519

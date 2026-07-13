@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from pathlib import Path
 import shutil
 
@@ -31,7 +32,11 @@ def _scenario(path: Path) -> ScenarioConfig:
 
 
 def _environment(path: Path | None) -> EnvironmentConfig:
-    return EnvironmentConfig.model_validate(_read(path)) if path else EnvironmentConfig(provider="local")
+    return (
+        EnvironmentConfig.model_validate(_read(path))
+        if path
+        else EnvironmentConfig(provider="local")
+    )
 
 
 def _workflow(
@@ -73,7 +78,7 @@ def _slice(workflow, *, only: str | None, start: str | None, until: str | None):
         selected = [only]
     else:
         if start:
-            selected = selected[ids.index(start):]
+            selected = selected[ids.index(start) :]
         if until:
             selected = selected[: selected.index(until) + 1]
     unknown = set(selected) - set(ids)
@@ -117,30 +122,37 @@ def install_product_commands(app: typer.Typer) -> None:
         if provision and environment_config.provider == "local":
             raise typer.BadParameter("--provision requires a non-local environment")
         with bind_workflow_sink(ConsoleProgressSink()):
-            if provision:
+            provisioning = (
                 provision_environment(
                     scenario_config,
                     environment_config,
                     repo_root=default_tool_paths().workspace_root,
+                    keep=keep,
                 )
-            if scenario_config.workflow == "loadtest":
-                control_plane_url, prometheus_url = resolve_loadtest_urls(
-                    environment_config,
-                    control_plane_url=control_plane_url,
-                    prometheus_url=prometheus_url,
-                )
-            workflow = _slice(
-                _workflow(
-                    scenario_config,
-                    environment_config,
-                    control_plane_url=control_plane_url or "http://127.0.0.1:8080",
-                    prometheus_url=prometheus_url or "http://127.0.0.1:9090",
-                    run_dir=run_dir,
-                ),
-                only=only, start=start, until=until,
+                if provision
+                else nullcontext()
             )
-            workflow.keep_infrastructure = keep
-            workflow.run()
+            with provisioning:
+                if scenario_config.workflow == "loadtest":
+                    control_plane_url, prometheus_url = resolve_loadtest_urls(
+                        environment_config,
+                        control_plane_url=control_plane_url,
+                        prometheus_url=prometheus_url,
+                    )
+                workflow = _slice(
+                    _workflow(
+                        scenario_config,
+                        environment_config,
+                        control_plane_url=control_plane_url or "http://127.0.0.1:8080",
+                        prometheus_url=prometheus_url or "http://127.0.0.1:9090",
+                        run_dir=run_dir,
+                    ),
+                    only=only,
+                    start=start,
+                    until=until,
+                )
+                workflow.keep_infrastructure = keep
+                workflow.run()
 
     @app.command("plan")
     def plan_command(
@@ -162,16 +174,20 @@ def install_product_commands(app: typer.Typer) -> None:
                 prometheus_url=prometheus_url,
                 dry_run=True,
             )
-        _render(_slice(
-            _workflow(
-                scenario_config,
-                environment_config,
-                control_plane_url=control_plane_url or "http://127.0.0.1:8080",
-                prometheus_url=prometheus_url or "http://127.0.0.1:9090",
-                run_dir=run_dir,
-            ),
-            only=only, start=start, until=until,
-        ))
+        _render(
+            _slice(
+                _workflow(
+                    scenario_config,
+                    environment_config,
+                    control_plane_url=control_plane_url or "http://127.0.0.1:8080",
+                    prometheus_url=prometheus_url or "http://127.0.0.1:9090",
+                    run_dir=run_dir,
+                ),
+                only=only,
+                start=start,
+                until=until,
+            )
+        )
 
     @app.command("list")
     def list_command() -> None:

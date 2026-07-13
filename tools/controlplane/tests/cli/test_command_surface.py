@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
 from pathlib import Path
 from dataclasses import dataclass
+from contextlib import contextmanager
 
 from controlplane_tool.app.main import app
 from controlplane_tool.cli.product import _slice, _workflow
@@ -52,16 +53,22 @@ def test_run_renders_normalized_task_progress(monkeypatch) -> None:
 def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
     actions: list[str] = []
     workflow = Workflow(tasks=[_Task()])
-    monkeypatch.setattr(
-        "controlplane_tool.cli.product.provision_environment",
-        lambda *args, **kwargs: actions.append("provision"),
-        raising=False,
-    )
+
+    @contextmanager
+    def provision(*args, **kwargs):
+        actions.append(f"provision:keep={kwargs['keep']}")
+        try:
+            yield
+        finally:
+            actions.append("cleanup")
+
+    monkeypatch.setattr("controlplane_tool.cli.product.provision_environment", provision)
     monkeypatch.setattr(
         "controlplane_tool.cli.product._workflow",
-        lambda *args, **kwargs: actions.append(
-            f"build:{kwargs['control_plane_url']}:{kwargs['prometheus_url']}"
-        ) or workflow,
+        lambda *args, **kwargs: (
+            actions.append(f"build:{kwargs['control_plane_url']}:{kwargs['prometheus_url']}")
+            or workflow
+        ),
     )
     monkeypatch.setattr(
         "controlplane_tool.cli.product.resolve_loadtest_urls",
@@ -85,10 +92,11 @@ def test_run_provisions_before_executing_workflow(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert actions == [
-        "provision",
+        "provision:keep=False",
         "resolve",
         "build:http://stack:30080:http://stack:30090",
         "run",
+        "cleanup",
     ]
 
 
