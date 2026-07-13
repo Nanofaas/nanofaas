@@ -574,8 +574,8 @@ def test_capture_prometheus_snapshot_shifts_window_to_prometheus_clock(tmp_path:
     assert abs(queried.end.timestamp() - (window.end.timestamp() + offset)) <= 60
 
 
-def test_capture_prometheus_snapshot_keeps_window_without_server_time(tmp_path: Path) -> None:
-    client = _RecordingPrometheusClient()  # no server_time() -> unshifted (back-compat)
+def test_capture_prometheus_snapshot_adds_scrape_margin_without_server_time(tmp_path: Path) -> None:
+    client = _RecordingPrometheusClient()
     window = _make_window()
     task = CapturePrometheusSnapshot(
         task_id="metrics.snapshot",
@@ -586,4 +586,6 @@ def test_capture_prometheus_snapshot_keeps_window_without_server_time(tmp_path: 
         output_dir=tmp_path,
     )
     task.run()
-    assert client.calls[0][1] == window
+    queried = client.calls[0][1]
+    assert (window.start - queried.start).total_seconds() == 30
+    assert (queried.end - window.end).total_seconds() == 30

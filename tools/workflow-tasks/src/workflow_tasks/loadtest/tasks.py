@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -166,21 +167,30 @@ class CapturePrometheusSnapshot:
         robust to that skew. Clients without ``server_time`` (e.g. test fakes) are
         left unshifted.
         """
+        margin = timedelta(seconds=self._WINDOW_MARGIN_S)
+        expanded = TimeWindow(start=window.start - margin, end=window.end + margin)
         server_time = getattr(self.client, "server_time", None)
         if server_time is None:
-            return window
+            return expanded
         try:
             offset = float(server_time()) - datetime.now(timezone.utc).timestamp()
         except (RuntimeError, OSError, ValueError, TypeError):
-            return window
+            return expanded
         if abs(offset) < self._CLOCK_SKEW_THRESHOLD_S:
-            return window
+            return expanded
         shift = timedelta(seconds=offset)
-        margin = timedelta(seconds=self._WINDOW_MARGIN_S)
-        return TimeWindow(start=window.start + shift - margin, end=window.end + shift + margin)
+        return TimeWindow(start=expanded.start + shift, end=expanded.end + shift)
 
     def run(self) -> Path:
-        window = self._align_window(self._resolve_window())
+        source_window = self._resolve_window()
+        wait_seconds = (
+            source_window.end
+            + timedelta(seconds=self._WINDOW_MARGIN_S)
+            - datetime.now(timezone.utc)
+        ).total_seconds()
+        if wait_seconds > 0:
+            time.sleep(min(wait_seconds, self._WINDOW_MARGIN_S))
+        window = self._align_window(source_window)
         metrics_dir = self.output_dir / "metrics"
         metrics_dir.mkdir(parents=True, exist_ok=True)
 

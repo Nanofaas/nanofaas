@@ -105,6 +105,9 @@ def test_run_provisions_before_executing_workflow(monkeypatch, tmp_path: Path) -
     assert metadata["schema_version"] == 1
     assert metadata["status"] == "passed"
     assert metadata["git_commit"]
+    assert isinstance(metadata["git_dirty"], bool)
+    assert metadata["git_diff_sha256"]
+    assert isinstance(metadata["git_status"], list)
     assert metadata["scenario"]["config"]["workflow"] == "loadtest"
     assert metadata["environment"]["config"]["provider"] == "multipass"
     assert metadata["tasks"] == []
