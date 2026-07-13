@@ -23,6 +23,7 @@ class ValidateFunction:
     build_argv: tuple[str, ...]
     payload: str
     resources: dict[str, object] | None = None
+    scaling_config: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,7 @@ class ValidateWorkflowRequest:
     build: Build = "docker"
     namespace: str = "nanofaas-e2e"
     registry: str = "localhost:5000"
+    additional_modules: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.functions:
@@ -55,8 +57,12 @@ def _build(request: ValidateWorkflowRequest, role: Literal["host", "stack"]) -> 
         "container": "container-deployment-provider",
         "k8s": "k8s-deployment-provider",
     }
+    selected_modules = (
+        ((modules[request.backend],) if request.backend in modules else ())
+        + request.additional_modules
+    )
     module_args = (
-        (f"-PcontrolPlaneModules={modules[request.backend]}",) if request.backend in modules else ()
+        (f"-PcontrolPlaneModules={','.join(selected_modules)}",) if selected_modules else ()
     )
     return _task(
         "build.jvm",
@@ -279,6 +285,8 @@ def registration_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSpe
         }
         if function.resources is not None:
             body["resources"] = function.resources
+        if function.scaling_config is not None:
+            body["scalingConfig"] = function.scaling_config
         specs.append(
             _task(
                 f"functions.register.{function.key}",
