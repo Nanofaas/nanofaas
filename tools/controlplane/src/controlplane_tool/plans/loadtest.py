@@ -9,9 +9,16 @@ from workflow_tasks.workflows.loadtest import (
     LoadtestWorkflowRequest,
     build_loadtest_workflow,
 )
+from workflow_tasks.workflows.validate import (
+    ValidateWorkflowRequest,
+    k8s_deployment_specs,
+    registration_specs,
+    validate_cleanup_specs,
+)
 
 from controlplane_tool.config.environment import EnvironmentConfig
 from controlplane_tool.config.scenario import ScenarioConfig
+from controlplane_tool.plans._assembly import workflow_from_specs
 from controlplane_tool.plans.validate import _resolve_function
 
 
@@ -47,7 +54,18 @@ def build_loadtest_plan(
     else:
         script_path = root / "tools/controlplane/assets/k6/two-vm-function-invoke.js"
         summary_path = run_dir / "k6-summary.json"
-    return build_loadtest_workflow(
+    deployment = ValidateWorkflowRequest(
+        backend="k8s",
+        build=config.build,
+        functions=tuple(_resolve_function(config, key) for key in config.functions),
+    )
+    stack = workflow_from_specs(
+        k8s_deployment_specs(deployment, expose_node_ports=True)
+        + registration_specs(deployment),
+        bindings,
+        cwd=root,
+    )
+    load = build_loadtest_workflow(
         LoadtestWorkflowRequest(
             control_plane_url=control_plane_url,
             function_name=target.name,
@@ -63,3 +81,8 @@ def build_loadtest_plan(
         prometheus_client=prometheus_client,
         fetcher=cast(RemoteFileFetcher | None, fetcher),
     )
+    stack.tasks.extend(load.tasks)
+    stack.cleanup_tasks = workflow_from_specs(
+        validate_cleanup_specs(deployment), bindings, cwd=root
+    ).tasks
+    return stack

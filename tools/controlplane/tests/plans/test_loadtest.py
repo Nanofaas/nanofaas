@@ -92,5 +92,34 @@ def test_provider_contract_selects_role_and_result_transport(
         fetcher=object() if fetches else None,
     )
 
-    assert workflow.tasks[0].spec.role == expected_role
+    preflight = next(task for task in workflow.tasks if task.task_id == "loadgen.preflight")
+    assert preflight.spec.role == expected_role
     assert ("loadgen.fetch_results" in workflow.task_ids) is fetches
+
+
+def test_loadtest_plan_owns_stack_registration_and_cleanup(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+
+    workflow = build_loadtest_plan(
+        SCENARIO,
+        EnvironmentConfig.model_validate(
+            {"provider": "multipass", "roles": {"stack": {"name": "stack"}}}
+        ),
+        RoleBindings(host=executor, stack=executor),
+        control_plane_url="http://stack:30080",
+        prometheus_client=NoopPrometheus(),
+        run_dir=tmp_path,
+        fetcher=object(),
+    )
+
+    assert workflow.task_ids.index("helm.deploy.function-runtime") < workflow.task_ids.index(
+        "functions.register.word-stats-java"
+    )
+    assert workflow.task_ids.index("functions.register.word-stats-java") < workflow.task_ids.index(
+        "loadgen.run_k6"
+    )
+    assert [task.task_id for task in workflow.cleanup_tasks] == [
+        "functions.delete.word-stats-java",
+        "helm.uninstall.function-runtime",
+        "helm.uninstall.control-plane",
+    ]
