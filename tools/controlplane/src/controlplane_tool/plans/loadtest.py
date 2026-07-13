@@ -6,9 +6,9 @@ from workflow_tasks.core.workflow import Workflow
 from workflow_tasks.execution.bindings import RoleBindings
 from workflow_tasks.loadtest.ports import PrometheusClient, RemoteFileFetcher
 from workflow_tasks.workflows.loadtest import (
-    DEFAULT_PROMETHEUS_QUERIES,
     LoadtestWorkflowRequest,
     build_loadtest_workflow,
+    default_prometheus_queries,
 )
 from workflow_tasks.workflows.validate import (
     ValidateWorkflowRequest,
@@ -86,7 +86,11 @@ def build_loadtest_plan(
         else (),
     )
     stack = workflow_from_specs(
-        k8s_deployment_specs(deployment, expose_node_ports=True)
+        k8s_deployment_specs(
+            deployment,
+            expose_node_ports=True,
+            metrics_profile="advanced",
+        )
         + registration_specs(deployment),
         bindings,
         cwd=root,
@@ -103,7 +107,7 @@ def build_loadtest_plan(
                 if config.autoscaling
                 else (("15s", 1), ("30s", 3))
             ),
-            prometheus_queries=DEFAULT_PROMETHEUS_QUERIES,
+            prometheus_queries=default_prometheus_queries(target.name),
             dedicated_loadgen=dedicated,
             fetch_results=remote,
             autoscaling=config.autoscaling,

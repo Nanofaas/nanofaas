@@ -8,6 +8,7 @@ from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
 from workflow_tasks.workflows.loadtest import (
     LoadtestWorkflowRequest,
     build_loadtest_workflow,
+    default_prometheus_queries,
 )
 
 
@@ -23,6 +24,37 @@ class RecordingExecutor:
 class NoopPrometheus:
     def query_range(self, *args, **kwargs):
         return [{"timestamp": "2026-01-01T00:00:00Z", "value": 1.0}]
+
+
+def test_default_prometheus_queries_use_exported_metrics_and_filters() -> None:
+    queries = {query.name: query for query in default_prometheus_queries('word-"stats')}
+
+    assert queries["function_dispatch_total"].required is True
+    assert queries["function_success_total"].required is True
+    assert queries["function_latency_count"].required is True
+    assert queries["function_latency_sum"].required is True
+    assert queries["process_cpu_usage"].required is True
+    assert queries["jvm_heap_used_bytes"].required is True
+    assert queries["function_dispatch_total"].expr == (
+        'function_dispatch_total{function="word-\\"stats"}'
+    )
+    assert queries["function_retry_total"].expr.startswith("function_retry_total{")
+    assert queries["function_timeout_total"].expr.startswith("function_timeout_total{")
+    assert queries["function_queue_rejected_total"].expr.startswith(
+        "function_queue_rejected_total{"
+    )
+    assert queries["function_latency_sum"].expr.startswith(
+        "function_latency_ms_seconds_sum{"
+    )
+    assert queries["function_queue_wait_count"].expr.startswith(
+        "function_queue_wait_ms_seconds_count{"
+    )
+    assert queries["process_cpu_usage"].expr == (
+        'process_cpu_usage{app="nanofaas-control-plane"}'
+    )
+    assert queries["jvm_heap_used_bytes"].expr == (
+        'jvm_memory_used_bytes{app="nanofaas-control-plane",area="heap"}'
+    )
 
 
 def request(
@@ -56,6 +88,7 @@ def test_shared_stack_and_loadgen_use_stack_role(tmp_path: Path) -> None:
         "loadgen.run_k6",
         "metrics.prometheus_snapshot",
         "loadtest.write_report",
+        "loadtest.write_summary",
         "metrics.evaluate_gate",
     ]
     assert workflow.tasks[0].spec.role == "stack"

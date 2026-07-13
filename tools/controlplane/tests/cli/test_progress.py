@@ -20,6 +20,22 @@ def test_console_progress_reports_task_status_and_elapsed_time() -> None:
         "[helm.deploy] running  Deploy Helm",
         "[helm.deploy] failed   1.0s  timeout",
     ]
+    assert sink.records == [
+        {
+            "task_id": "build.jvm",
+            "title": "Build JVM",
+            "status": "passed",
+            "duration_seconds": 2.5,
+            "detail": "",
+        },
+        {
+            "task_id": "helm.deploy",
+            "title": "Deploy Helm",
+            "status": "failed",
+            "duration_seconds": 1.0,
+            "detail": "timeout",
+        },
+    ]
 
 
 def _event(kind: str, task_id: str, title: str, detail: str = "") -> WorkflowEvent:

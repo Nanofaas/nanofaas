@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from pathlib import Path
 import shutil
+import subprocess
 
 import typer
 import yaml
@@ -103,6 +106,100 @@ def _slice(workflow, *, only: str | None, start: str | None, until: str | None):
     return workflow
 
 
+def _git_commit(repo_root: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ("git", "rev-parse", "HEAD"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _git_provenance(repo_root: Path) -> dict[str, object]:
+    commit = _git_commit(repo_root)
+    try:
+        status = subprocess.run(
+            ("git", "status", "--porcelain=v1"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        diff = subprocess.run(
+            ("git", "diff", "--binary", "HEAD"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        untracked = subprocess.run(
+            ("git", "ls-files", "--others", "--exclude-standard", "-z"),
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return {"git_commit": commit, "git_dirty": None, "git_diff_sha256": None, "git_status": []}
+    if status.returncode != 0 or diff.returncode != 0 or untracked.returncode != 0:
+        return {"git_commit": commit, "git_dirty": None, "git_diff_sha256": None, "git_status": []}
+    digest = hashlib.sha256((status.stdout + "\0" + diff.stdout).encode("utf-8"))
+    for relative_path in filter(None, untracked.stdout.split("\0")):
+        digest.update(b"\0untracked\0")
+        digest.update(relative_path.encode("utf-8"))
+        try:
+            digest.update((repo_root / relative_path).read_bytes())
+        except OSError:
+            digest.update(b"\0unavailable")
+    return {
+        "git_commit": commit,
+        "git_dirty": bool(status.stdout.strip()),
+        "git_diff_sha256": digest.hexdigest(),
+        "git_status": status.stdout.splitlines(),
+    }
+
+
+def _write_run_metadata(
+    run_dir: Path,
+    *,
+    status: str,
+    error: str | None,
+    started_at: datetime,
+    scenario_path: Path,
+    scenario: ScenarioConfig,
+    environment_path: Path | None,
+    environment: EnvironmentConfig,
+    sink: ConsoleProgressSink,
+    provenance: dict[str, object],
+) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    metadata = {
+        "schema_version": 1,
+        "status": status,
+        "error": error,
+        "started_at": started_at.isoformat(),
+        "ended_at": datetime.now(UTC).isoformat(),
+        **provenance,
+        "scenario": {
+            "source": str(scenario_path),
+            "config": scenario.model_dump(mode="json", by_alias=True),
+        },
+        "environment": {
+            "source": str(environment_path) if environment_path else None,
+            "config": environment.model_dump(mode="json", by_alias=True),
+        },
+        "tasks": sink.records,
+    }
+    (run_dir / "run-metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
+
+
 def install_product_commands(app: typer.Typer) -> None:
     @app.command("run")
     def run_command(
@@ -121,38 +218,78 @@ def install_product_commands(app: typer.Typer) -> None:
         environment_config = _environment(environment)
         if provision and environment_config.provider == "local":
             raise typer.BadParameter("--provision requires a non-local environment")
-        with bind_workflow_sink(ConsoleProgressSink()):
-            provisioning = (
-                provision_environment(
-                    scenario_config,
-                    environment_config,
-                    repo_root=default_tool_paths().workspace_root,
-                    keep=keep,
-                )
-                if provision
-                else nullcontext()
-            )
-            with provisioning:
-                if scenario_config.workflow == "loadtest":
-                    control_plane_url, prometheus_url = resolve_loadtest_urls(
-                        environment_config,
-                        control_plane_url=control_plane_url,
-                        prometheus_url=prometheus_url,
-                    )
-                workflow = _slice(
-                    _workflow(
+        paths = default_tool_paths()
+        effective_run_dir = run_dir
+        if scenario_config.workflow == "loadtest" and effective_run_dir is None:
+            effective_run_dir = paths.runs_dir / "latest"
+        sink = ConsoleProgressSink()
+        started_at = datetime.now(UTC)
+        provenance = _git_provenance(paths.workspace_root)
+        try:
+            with bind_workflow_sink(sink):
+                provisioning = (
+                    provision_environment(
                         scenario_config,
                         environment_config,
-                        control_plane_url=control_plane_url or "http://127.0.0.1:8080",
-                        prometheus_url=prometheus_url or "http://127.0.0.1:9090",
-                        run_dir=run_dir,
-                    ),
-                    only=only,
-                    start=start,
-                    until=until,
+                        repo_root=paths.workspace_root,
+                        keep=keep,
+                    )
+                    if provision
+                    else nullcontext()
                 )
-                workflow.keep_infrastructure = keep
-                workflow.run()
+                with provisioning:
+                    if scenario_config.workflow == "loadtest":
+                        control_plane_url, prometheus_url = resolve_loadtest_urls(
+                            environment_config,
+                            control_plane_url=control_plane_url,
+                            prometheus_url=prometheus_url,
+                        )
+                    workflow = _slice(
+                        _workflow(
+                            scenario_config,
+                            environment_config,
+                            control_plane_url=control_plane_url or "http://127.0.0.1:8080",
+                            prometheus_url=prometheus_url or "http://127.0.0.1:9090",
+                            run_dir=effective_run_dir,
+                        ),
+                        only=only,
+                        start=start,
+                        until=until,
+                    )
+                    workflow.keep_infrastructure = keep
+                    workflow.run()
+        except BaseException as exc:
+            if effective_run_dir is not None:
+                try:
+                    _write_run_metadata(
+                        effective_run_dir,
+                        status="failed",
+                        error=str(exc),
+                        started_at=started_at,
+                        scenario_path=scenario,
+                        scenario=scenario_config,
+                        environment_path=environment,
+                        environment=environment_config,
+                        sink=sink,
+                        provenance=provenance,
+                    )
+                except OSError:
+                    pass
+            raise
+        else:
+            if effective_run_dir is not None:
+                _write_run_metadata(
+                    effective_run_dir,
+                    status="passed",
+                    error=None,
+                    started_at=started_at,
+                    scenario_path=scenario,
+                    scenario=scenario_config,
+                    environment_path=environment,
+                    environment=environment_config,
+                    sink=sink,
+                    provenance=provenance,
+                )
 
     @app.command("plan")
     def plan_command(
