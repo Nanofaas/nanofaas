@@ -1,0 +1,9 @@
+name: warm-echo
+image: localhost:5000/nanofaas/java-warm-echo:e2e
+executionMode: DEPLOYMENT
+catalog:
+  family: warm-echo
+  runtime: java
+  description: Long-running Java echo service compatible with NanoFaaS.
+  defaultImage: localhost:5000/nanofaas/java-warm-echo:e2e
+  defaultPayload: echo-sample.json

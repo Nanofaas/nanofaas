@@ -44,6 +44,7 @@ def test_run_k8s_junit_embeds_gradle_e2e_script() -> None:
     rendered = " ".join(ops[0].argv)
     assert "K8sE2eTest" in rendered
     assert "k8s-deployment-provider:test" in rendered
+    assert "WARM_ECHO_IMAGE=localhost:5000/nanofaas/java-warm-echo:e2e" in rendered
 
 
 def test_run_k3s_curl_checks_uses_injected_command() -> None:

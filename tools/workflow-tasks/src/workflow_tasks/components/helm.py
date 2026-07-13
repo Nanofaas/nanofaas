@@ -6,7 +6,7 @@ from types import MappingProxyType
 from workflow_tasks.components.context import ScenarioExecutionContext
 from workflow_tasks.components.models import ScenarioComponentDefinition
 from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
-from workflow_tasks.components.images import control_image, runtime_image
+from workflow_tasks.components.images import control_image
 from workflow_tasks.loadtest.two_vm import (
     LOADTEST_SCENARIOS,
     TWO_VM_CONTROL_PLANE_ACTUATOR_NODE_PORT,
@@ -28,6 +28,7 @@ def control_plane_helm_values(
     control_plane_image: str,
     expose_node_port: bool = False,
     metrics_profile: str | None = None,
+    sync_queue_admission_enabled: bool = False,
 ) -> dict[str, str]:
     repository, tag = _image_parts(control_plane_image)
     callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
@@ -47,7 +48,7 @@ def control_plane_helm_values(
         ("NANOFAAS_K8S_CALLBACK_URL", callback_url),
         ("SYNC_QUEUE_ENABLED", "true"),
         ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
-        ("SYNC_QUEUE_ADMISSION_ENABLED", "false"),
+        ("SYNC_QUEUE_ADMISSION_ENABLED", str(sync_queue_admission_enabled).lower()),
         ("SYNC_QUEUE_MAX_DEPTH", sync_queue_depth),
         ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
         ("SYNC_QUEUE_MAX_ESTIMATED_WAIT", "2s"),
@@ -69,15 +70,6 @@ def control_plane_helm_values(
         values["prometheus.service.type"] = "NodePort"
         values["prometheus.service.nodePort"] = str(TWO_VM_PROMETHEUS_NODE_PORT)
     return values
-
-
-def function_runtime_helm_values(*, function_runtime_image: str) -> dict[str, str]:
-    repository, tag = _image_parts(function_runtime_image)
-    return {
-        "functionRuntime.image.repository": repository,
-        "functionRuntime.image.tag": tag,
-        "functionRuntime.image.pullPolicy": "Always",
-    }
 
 
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
@@ -141,44 +133,8 @@ def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[Scenar
     )
 
 
-def plan_deploy_function_runtime(
-    context: ScenarioExecutionContext,
-) -> tuple[ScenarioOperation, ...]:
-    namespace = _effective_namespace(context)
-    values = function_runtime_helm_values(
-        function_runtime_image=runtime_image(context.local_registry),
-    )
-    return (
-        RemoteCommandOperation(
-            operation_id="helm.deploy_function_runtime",
-            summary="Deploy function runtime with Helm",
-            argv=(
-                "helm",
-                "upgrade",
-                "--install",
-                "function-runtime",
-                "deploy/helm/nanofaas-runtime",
-                "-n",
-                namespace,
-                "--wait",
-                "--timeout",
-                "3m",
-                *_set_args(values),
-            ),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
 HELM_DEPLOY_CONTROL_PLANE = ScenarioComponentDefinition(
     component_id="helm.deploy_control_plane",
     summary="Deploy control plane with Helm",
     planner=plan_deploy_control_plane,
-)
-
-HELM_DEPLOY_FUNCTION_RUNTIME = ScenarioComponentDefinition(
-    component_id="helm.deploy_function_runtime",
-    summary="Deploy function runtime with Helm",
-    planner=plan_deploy_function_runtime,
 )

@@ -36,7 +36,7 @@ class KubernetesResourceManagerTest {
 
     private FunctionSpec spec(ScalingConfig scaling) {
         return new FunctionSpec(
-                "echo", "nanofaas/function-runtime:0.5.0",
+                "echo", "nanofaas/java-warm-echo:0.5.0",
                 List.of(), Map.of(),
                 null, 30000, 4, 100, 3,
                 null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,

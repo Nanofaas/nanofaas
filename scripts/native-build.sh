@@ -48,14 +48,14 @@ fi
 sdk use java "$GRAALVM_VERSION"
 set -u
 
-./gradlew :control-plane:nativeCompile :function-runtime:nativeCompile -PcontrolPlaneModules=all
+./gradlew :control-plane:nativeCompile :services:java:warm-echo:nativeCompile -PcontrolPlaneModules=all
 
 RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then
   CONTROL_BIN="platform/control-plane/build/native/nativeCompile/control-plane"
-  RUNTIME_BIN="platform/function-runtime/build/native/nativeCompile/function-runtime"
+  WARM_ECHO_BIN="services/java/warm-echo/build/native/nativeCompile/warm-echo"
   CONTROL_PID=""
-  RUNTIME_PID=""
+  WARM_ECHO_PID=""
 
   is_port_in_use() {
     local port="$1"
@@ -99,14 +99,14 @@ if [ "$RUN_SMOKE" = "1" ]; then
   if [ "$MGMT_PORT" = "$CONTROL_PORT" ]; then
     MGMT_PORT=$(pick_available_port "$((MGMT_PORT + 1))")
   fi
-  RUNTIME_PORT=$(pick_available_port "${RUNTIME_SERVER_PORT:-18090}")
-  if [ "$RUNTIME_PORT" = "$CONTROL_PORT" ] || [ "$RUNTIME_PORT" = "$MGMT_PORT" ]; then
-    RUNTIME_PORT=$(pick_available_port "$((RUNTIME_PORT + 1))")
+  WARM_ECHO_PORT=$(pick_available_port "${WARM_ECHO_SERVER_PORT:-18090}")
+  if [ "$WARM_ECHO_PORT" = "$CONTROL_PORT" ] || [ "$WARM_ECHO_PORT" = "$MGMT_PORT" ]; then
+    WARM_ECHO_PORT=$(pick_available_port "$((WARM_ECHO_PORT + 1))")
   fi
 
-  trap 'if [ -n "${CONTROL_PID}" ] && kill -0 "${CONTROL_PID}" 2>/dev/null; then kill "${CONTROL_PID}"; fi; if [ -n "${RUNTIME_PID}" ] && kill -0 "${RUNTIME_PID}" 2>/dev/null; then kill "${RUNTIME_PID}"; fi' EXIT
+  trap 'if [ -n "${CONTROL_PID}" ] && kill -0 "${CONTROL_PID}" 2>/dev/null; then kill "${CONTROL_PID}"; fi; if [ -n "${WARM_ECHO_PID}" ] && kill -0 "${WARM_ECHO_PID}" 2>/dev/null; then kill "${WARM_ECHO_PID}"; fi' EXIT
 
-  echo "Native smoke ports: control=${CONTROL_PORT}, management=${MGMT_PORT}, runtime=${RUNTIME_PORT}"
+  echo "Native smoke ports: control=${CONTROL_PORT}, management=${MGMT_PORT}, warm-echo=${WARM_ECHO_PORT}"
 
   if [ -x "$CONTROL_BIN" ]; then
     "$CONTROL_BIN" --server.port="${CONTROL_PORT}" --management.server.port="${MGMT_PORT}" &
@@ -116,17 +116,17 @@ if [ "$RUN_SMOKE" = "1" ]; then
     exit 1
   fi
 
-  if [ -x "$RUNTIME_BIN" ]; then
-    "$RUNTIME_BIN" --server.port="${RUNTIME_PORT}" &
-    RUNTIME_PID=$!
+  if [ -x "$WARM_ECHO_BIN" ]; then
+    "$WARM_ECHO_BIN" --server.port="${WARM_ECHO_PORT}" &
+    WARM_ECHO_PID=$!
   else
-    echo "Missing function-runtime native binary: $RUNTIME_BIN" >&2
+    echo "Missing warm-echo native binary: $WARM_ECHO_BIN" >&2
     exit 1
   fi
 
   wait_for_http_ok "http://localhost:${MGMT_PORT}/actuator/health"
-  wait_for_http_ok "http://localhost:${RUNTIME_PORT}/actuator/health"
-  curl -sf -X POST "http://localhost:${RUNTIME_PORT}/invoke" \
+  wait_for_http_ok "http://localhost:${WARM_ECHO_PORT}/actuator/health"
+  curl -sf -X POST "http://localhost:${WARM_ECHO_PORT}/invoke" \
     -H 'Content-Type: application/json' \
     -d '{"input":{"message":"hi"}}' > /dev/null
 

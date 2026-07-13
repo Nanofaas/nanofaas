@@ -77,9 +77,9 @@ jobs:
 
       - name: Build and push image matrix
         run: |
-          ./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage \
+          ./gradlew :control-plane:bootBuildImage :services:java:warm-echo:bootBuildImage \
             -PcontrolPlaneModules=all \
             -PcontrolPlaneImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }} \
-            -PfunctionRuntimeImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
+            -PwarmEchoImage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-warm-echo:${{ github.ref_name }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-plane:${{ github.ref_name }}
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/function-runtime:${{ github.ref_name }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/java-warm-echo:${{ github.ref_name }}

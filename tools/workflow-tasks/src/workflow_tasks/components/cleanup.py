@@ -59,31 +59,6 @@ def plan_uninstall_control_plane(context: ScenarioExecutionContext) -> tuple[Sce
     )
 
 
-def plan_uninstall_function_runtime(
-    context: ScenarioExecutionContext,
-) -> tuple[ScenarioOperation, ...]:
-    namespace = _namespace(context)
-    return (
-        RemoteCommandOperation(
-            operation_id="cleanup.uninstall_function_runtime",
-            summary="Uninstall function runtime with Helm",
-            argv=(
-                "helm",
-                "uninstall",
-                "function-runtime",
-                "-n",
-                namespace,
-                "--wait",
-                "--timeout",
-                "5m",
-                "--ignore-not-found",
-            ),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
-
-
 def plan_vm_down(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
     vm_request = context.vm_request
     if vm_request.lifecycle == "external":
@@ -107,12 +82,6 @@ UNINSTALL_CONTROL_PLANE = ScenarioComponentDefinition(
     component_id="cleanup.uninstall_control_plane",
     summary="Uninstall control plane with Helm",
     planner=plan_uninstall_control_plane,
-)
-
-UNINSTALL_FUNCTION_RUNTIME = ScenarioComponentDefinition(
-    component_id="cleanup.uninstall_function_runtime",
-    summary="Uninstall function runtime with Helm",
-    planner=plan_uninstall_function_runtime,
 )
 
 VM_DOWN = ScenarioComponentDefinition(

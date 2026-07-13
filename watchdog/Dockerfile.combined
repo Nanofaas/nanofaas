@@ -1,7 +1,7 @@
-# Combined image: Rust watchdog + Java function runtime
+# Combined image: Rust watchdog + Java warm-echo service
 #
 # Usage:
-#   docker build -f Dockerfile.combined -t nanofaas/function-runtime:watchdog ..
+#   docker build -f Dockerfile.combined -t nanofaas/java-warm-echo:watchdog ..
 
 # Stage 1: Build Rust watchdog
 FROM rust:1.83-alpine AS watchdog-builder
@@ -14,19 +14,24 @@ COPY watchdog/src ./src
 
 RUN cargo build --release
 
-# Stage 2: Build Java function runtime
-FROM eclipse-temurin:17-jdk-alpine AS java-builder
+# Stage 2: Build Java warm-echo service
+FROM eclipse-temurin:21-jdk-alpine AS java-builder
 
 WORKDIR /build
 COPY gradlew settings.gradle build.gradle gradle.properties ./
 COPY gradle ./gradle
-COPY common ./common
-COPY function-runtime ./function-runtime
+COPY platform/common ./platform/common
+COPY platform/control-plane ./platform/control-plane
+COPY sdks/java ./sdks/java
+COPY sdks/java-lite ./sdks/java-lite
+COPY clients/cli ./clients/cli
+COPY services/java/warm-echo ./services/java/warm-echo
+COPY functions ./functions
 
-RUN ./gradlew :function-runtime:bootJar --no-daemon
+RUN ./gradlew :services:java:warm-echo:bootJar --no-daemon
 
 # Stage 3: Final minimal image
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:21-jre-alpine
 
 # Install minimal dependencies
 RUN apk add --no-cache tini
@@ -36,8 +41,8 @@ WORKDIR /app
 # Copy watchdog binary
 COPY --from=watchdog-builder /build/target/release/nanofaas-watchdog /usr/local/bin/watchdog
 
-# Copy Java runtime
-COPY --from=java-builder /build/function-runtime/build/libs/*.jar /app/app.jar
+# Copy Java warm-echo service
+COPY --from=java-builder /build/services/java/warm-echo/build/libs/app.jar /app/app.jar
 
 # Environment defaults
 ENV RUNTIME_URL=http://127.0.0.1:8080/invoke

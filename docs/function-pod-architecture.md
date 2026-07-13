@@ -225,9 +225,9 @@ come header `X-Execution-Id` e il body e' un `InvocationRequest`.
 
 ## Come si usa il watchdog
 
-### Caso 1: Funzione Java con runtime nanofaas
+### Caso 1: Funzione Java con SDK NanoFaaS
 
-L'utente scrive un handler Java e lo pacchettizza con il function-runtime:
+L'utente scrive un handler Java e lo pacchettizza con `sdks/java`:
 
 ```
 Dockerfile:
@@ -236,7 +236,7 @@ Dockerfile:
   ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 ```
 
-Il jar contiene sia il function-runtime (server HTTP Spring Boot) sia
+Il jar contiene il runtime HTTP riusabile di `sdks/java` e
 l'handler utente. L'handler viene scoperto automaticamente via Spring
 component scan grazie all'annotazione `@NanofaasFunction`.
 
@@ -480,7 +480,7 @@ dependencies {
 3. Il binary nativo risultante include:
    - SubstrateVM (runtime GraalVM minimale)
    - Spring Boot (AOT-processed)
-   - function-runtime (InvokeController, HandlerRegistry)
+   - SDK Java NanoFaaS (InvokeController, HandlerRegistry)
    - Il tuo handler
 
 4. Dockerfile nativo:
@@ -533,7 +533,7 @@ ENTRYPOINT ["/app/handler"]
 |           v                                                    |
 |  Layer 2: RUNTIME                                              |
 |  +----------------------------------------------------------+  |
-|  |  Java: Spring Boot (function-runtime + handler)          |  |
+|  |  Java: Spring Boot (SDK Java NanoFaaS + handler)         |  |
 |  |    - InvokeController: POST /invoke                      |  |
 |  |    - HandlerRegistry: scopre @NanofaasFunction via scan  |  |
 |  |    - CallbackClient: POSTa risultato al control plane    |  |

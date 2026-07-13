@@ -24,10 +24,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Tag("inter_e2e")
 class BuildpackE2eTest {
     private static final String CONTROL_IMAGE = "nanofaas/control-plane:buildpack";
-    private static final String RUNTIME_IMAGE = "nanofaas/function-runtime:buildpack";
+    private static final String WARM_ECHO_IMAGE = "nanofaas/java-warm-echo:buildpack";
     private static final Network network = Network.newNetwork();
 
-    private static GenericContainer<?> functionRuntime;
+    private static GenericContainer<?> warmEcho;
     private static GenericContainer<?> controlPlane;
 
     @BeforeAll
@@ -42,15 +42,15 @@ class BuildpackE2eTest {
 
         runGradleBuild();
 
-        functionRuntime = new GenericContainer<>(RUNTIME_IMAGE)
+        warmEcho = new GenericContainer<>(WARM_ECHO_IMAGE)
                 .withExposedPorts(8080)
                 .withNetwork(network)
-                .withNetworkAliases("function-runtime")
+                .withNetworkAliases("warm-echo")
                 .waitingFor(Wait.forListeningPort());
 
         controlPlane = E2eTestSupport.createControlPlaneContainer(network, Duration.ofSeconds(60));
 
-        functionRuntime.start();
+        warmEcho.start();
         controlPlane.start();
 
         RestAssured.baseURI = "http://" + controlPlane.getHost();
@@ -59,8 +59,8 @@ class BuildpackE2eTest {
 
     @Test
     void buildpackRegisterInvokeAndPoll() {
-        String endpointUrl = "http://function-runtime:8080/invoke";
-        Map<String, Object> spec = E2eApiSupport.poolFunctionSpec("bp-echo", RUNTIME_IMAGE, endpointUrl);
+        String endpointUrl = "http://warm-echo:8080/invoke";
+        Map<String, Object> spec = E2eApiSupport.poolFunctionSpec("bp-echo", WARM_ECHO_IMAGE, endpointUrl);
         E2eApiSupport.registerFunction(spec);
         E2eApiSupport.awaitSyncInvokeSuccess("bp-echo", "hi");
 
@@ -81,7 +81,7 @@ class BuildpackE2eTest {
             runProjectCommand(projectRoot, controlPlaneCommand);
         }
 
-        runProjectCommand(projectRoot, functionRuntimeImageCommand());
+        runProjectCommand(projectRoot, warmEchoImageCommand());
     }
 
     static List<String> controlPlaneImageCommand(boolean imageOverride) {
@@ -98,11 +98,11 @@ class BuildpackE2eTest {
                 "--no-daemon");
     }
 
-    static List<String> functionRuntimeImageCommand() {
+    static List<String> warmEchoImageCommand() {
         return List.of(
                 "./gradlew",
-                ":function-runtime:bootBuildImage",
-                "-PfunctionRuntimeImage=" + RUNTIME_IMAGE,
+                ":services:java:warm-echo:bootBuildImage",
+                "-PwarmEchoImage=" + WARM_ECHO_IMAGE,
                 "--no-daemon");
     }
 

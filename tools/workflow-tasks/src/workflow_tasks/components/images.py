@@ -14,8 +14,8 @@ def control_image(local_registry: str) -> str:
     return f"{local_registry}/nanofaas/control-plane:e2e"
 
 
-def runtime_image(local_registry: str) -> str:
-    return f"{local_registry}/nanofaas/function-runtime:e2e"
+def warm_echo_image(local_registry: str) -> str:
+    return f"{local_registry}/nanofaas/java-warm-echo:e2e"
 
 
 def function_image_specs(
@@ -61,7 +61,7 @@ _RUST_CP_DIR = (
 
 def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
     control_plane_image = control_image(context.local_registry)
-    function_runtime_image = runtime_image(context.local_registry)
+    warm_echo = warm_echo_image(context.local_registry)
     if context.runtime == "rust":
         control_context = _RUST_CP_DIR
         control_dockerfile = f"{_RUST_CP_DIR}/Dockerfile"
@@ -81,7 +81,7 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                 argv=(
                     "./gradlew",
                     ":control-plane:bootJar",
-                    ":function-runtime:bootJar",
+                    ":services:java:warm-echo:bootJar",
                     "--no-daemon",
                     "-q",
                 ),
@@ -108,16 +108,16 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                 execution_target="vm",
             ),
             RemoteCommandOperation(
-                operation_id="images.build_core.runtime_image",
-                summary="Build function-runtime image",
+                operation_id="images.build_core.warm_echo_image",
+                summary="Build warm-echo image",
                 argv=(
                     "docker",
                     "build",
                     "-f",
-                    "platform/function-runtime/Dockerfile",
+                    "services/java/warm-echo/Dockerfile",
                     "-t",
-                    function_runtime_image,
-                    "platform/function-runtime",
+                    warm_echo,
+                    "services/java/warm-echo",
                 ),
                 env=_frozen_env(),
                 execution_target="vm",
@@ -130,9 +130,9 @@ def plan_build_core(context: ScenarioExecutionContext) -> tuple[ScenarioOperatio
                 execution_target="vm",
             ),
             RemoteCommandOperation(
-                operation_id="images.build_core.push_runtime_image",
-                summary="Push function-runtime image",
-                argv=("docker", "push", function_runtime_image),
+                operation_id="images.build_core.push_warm_echo_image",
+                summary="Push warm-echo image",
+                argv=("docker", "push", warm_echo),
                 env=_frozen_env(),
                 execution_target="vm",
             ),
@@ -159,7 +159,7 @@ def plan_build_selected_functions(
 ) -> tuple[ScenarioOperation, ...]:
     selected_specs = function_image_specs(
         context.resolved_scenario,
-        runtime_image(context.local_registry),
+        warm_echo_image(context.local_registry),
     )
     operations: list[ScenarioOperation] = []
     for image, runtime_kind, family, fn_key in selected_specs:

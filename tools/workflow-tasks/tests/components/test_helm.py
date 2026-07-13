@@ -30,7 +30,6 @@ def _ctx(scenario_name: str) -> ScenarioExecutionContext:
 
 def test_helm_component_definitions_present() -> None:
     assert helm_mod.HELM_DEPLOY_CONTROL_PLANE.component_id == "helm.deploy_control_plane"
-    assert helm_mod.HELM_DEPLOY_FUNCTION_RUNTIME.component_id == "helm.deploy_function_runtime"
 
 
 def test_control_plane_planner_runs_for_loadtest_scenario() -> None:
@@ -43,11 +42,6 @@ def test_control_plane_planner_runs_for_loadtest_scenario() -> None:
 
 def test_control_plane_planner_runs_for_plain_scenario() -> None:
     ops = helm_mod.HELM_DEPLOY_CONTROL_PLANE.planner(_ctx("k3s-junit-curl"))
-    assert len(ops) >= 1
-
-
-def test_function_runtime_planner_runs() -> None:
-    ops = helm_mod.HELM_DEPLOY_FUNCTION_RUNTIME.planner(_ctx("k3s-junit-curl"))
     assert len(ops) >= 1
 
 
@@ -90,11 +84,14 @@ def test_loadtest_helm_values_allow_cold_start_queueing() -> None:
     assert _extra_env(regular, "SYNC_QUEUE_MAX_QUEUE_WAIT") == "5s"
     assert _extra_env(loadtest, "SYNC_QUEUE_MAX_DEPTH") == "100"
     assert _extra_env(loadtest, "SYNC_QUEUE_MAX_QUEUE_WAIT") == "30s"
+    assert _extra_env(loadtest, "SYNC_QUEUE_ADMISSION_ENABLED") == "false"
 
 
-def test_function_runtime_helm_values_parses_image() -> None:
-    values = helm_mod.function_runtime_helm_values(
-        function_runtime_image="localhost:5000/runtime:v1.2.3"
+def test_helm_values_can_enable_sync_queue_admission_for_validation() -> None:
+    values = helm_mod.control_plane_helm_values(
+        namespace="ns",
+        control_plane_image="control:latest",
+        sync_queue_admission_enabled=True,
     )
-    assert values["functionRuntime.image.repository"] == "localhost:5000/runtime"
-    assert values["functionRuntime.image.tag"] == "v1.2.3"
+
+    assert _extra_env(values, "SYNC_QUEUE_ADMISSION_ENABLED") == "true"
