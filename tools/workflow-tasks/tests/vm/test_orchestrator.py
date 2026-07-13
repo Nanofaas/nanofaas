@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from multipass import MultipassCommandError
 from workflow_tasks.shell import RecordingShell, ShellExecutionResult
 from workflow_tasks.vm.models import VmRequest

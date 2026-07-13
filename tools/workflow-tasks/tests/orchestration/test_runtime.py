@@ -37,6 +37,16 @@ def test_run_local_flow_ignores_prefect_configuration(monkeypatch) -> None:
     assert "prefect" not in sys.modules
 
 
+def test_run_local_flow_forwards_orchestrator_backend_keyword_to_flow() -> None:
+    def sample_flow(*, orchestrator_backend: str) -> str:
+        return orchestrator_backend
+
+    result = run_local_flow("sample.flow", sample_flow, orchestrator_backend="flow-value")
+
+    assert result.result == "flow-value"
+    assert result.orchestrator_backend == "direct"
+
+
 def test_run_local_flow_failure_does_not_write_console_noise(capsys) -> None:
     def broken_flow() -> str:
         raise RuntimeError("boom")

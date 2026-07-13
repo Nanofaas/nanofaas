@@ -1,7 +1,6 @@
 """Tests for VmRequest proxmox lifecycle fields."""
 from __future__ import annotations
 
-import pytest
 from workflow_tasks.vm.models import VmRequest
 
 
