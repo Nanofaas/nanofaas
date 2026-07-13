@@ -1,11 +1,12 @@
 from typer.testing import CliRunner
 import json
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from contextlib import contextmanager
 
 from controlplane_tool.app.main import app
-from controlplane_tool.cli.product import _slice, _workflow
+from controlplane_tool.cli.product import _git_provenance, _slice, _workflow
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from workflow_tasks.core.workflow import Workflow
 
@@ -79,6 +80,16 @@ def test_run_provisions_before_executing_workflow(monkeypatch, tmp_path: Path) -
         ),
     )
     monkeypatch.setattr(workflow, "run", lambda: actions.append("run"))
+    monkeypatch.setattr(
+        "controlplane_tool.cli.product._git_provenance",
+        lambda *args: actions.append("provenance")
+        or {
+            "git_commit": "abc",
+            "git_dirty": False,
+            "git_diff_sha256": "digest",
+            "git_status": [],
+        },
+    )
 
     result = CliRunner().invoke(
         app,
@@ -95,6 +106,7 @@ def test_run_provisions_before_executing_workflow(monkeypatch, tmp_path: Path) -
 
     assert result.exit_code == 0
     assert actions == [
+        "provenance",
         "provision:keep=False",
         "resolve",
         "build:http://stack:30080:http://stack:30090",
@@ -111,6 +123,32 @@ def test_run_provisions_before_executing_workflow(monkeypatch, tmp_path: Path) -
     assert metadata["scenario"]["config"]["workflow"] == "loadtest"
     assert metadata["environment"]["config"]["provider"] == "multipass"
     assert metadata["tasks"] == []
+
+
+def test_git_provenance_fingerprints_tracked_and_untracked_content(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=repo, check=True)
+    tracked = repo / "tracked.txt"
+    tracked.write_text("base", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=repo, check=True)
+
+    clean = _git_provenance(repo)
+    tracked.write_text("changed", encoding="utf-8")
+    tracked_change = _git_provenance(repo)
+    untracked = repo / "untracked.txt"
+    untracked.write_text("one", encoding="utf-8")
+    untracked_one = _git_provenance(repo)
+    untracked.write_text("two", encoding="utf-8")
+    untracked_two = _git_provenance(repo)
+
+    assert clean["git_dirty"] is False
+    assert tracked_change["git_diff_sha256"] != clean["git_diff_sha256"]
+    assert untracked_one["git_diff_sha256"] != tracked_change["git_diff_sha256"]
+    assert untracked_two["git_diff_sha256"] != untracked_one["git_diff_sha256"]
 
 
 def test_failed_loadtest_writes_failure_metadata(monkeypatch, tmp_path: Path) -> None:
