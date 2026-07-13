@@ -1,11 +1,11 @@
-package it.unimib.datai.nanofaas.runtime;
+package it.unimib.datai.nanofaas.services.warmecho;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class FunctionRuntimeApplication {
+public class WarmEchoApplication {
     public static void main(String[] args) {
-        SpringApplication.run(FunctionRuntimeApplication.class, args);
+        SpringApplication.run(WarmEchoApplication.class, args);
     }
 }

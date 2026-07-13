@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.runtime;
+package it.unimib.datai.nanofaas.services.warmecho;
 
 import it.unimib.datai.nanofaas.sdk.runtime.CallbackClient;
 import it.unimib.datai.nanofaas.sdk.runtime.CallbackPayload;

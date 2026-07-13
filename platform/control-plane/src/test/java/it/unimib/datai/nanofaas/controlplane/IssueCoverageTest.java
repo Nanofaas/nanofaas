@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IssueCoverageTest {
@@ -12,7 +13,8 @@ class IssueCoverageTest {
     void issue001_structureExists() {
         Path root = repoRoot();
         assertTrue(Files.isDirectory(root.resolve("platform/control-plane")));
-        assertTrue(Files.isDirectory(root.resolve("platform/function-runtime")));
+        assertTrue(Files.isDirectory(root.resolve("services/java/warm-echo")));
+        assertFalse(Files.exists(root.resolve("platform/function-runtime")));
         assertTrue(Files.isDirectory(root.resolve("platform/common")));
     }
 
@@ -27,7 +29,7 @@ class IssueCoverageTest {
     void issue003_dockerfilesExist() {
         Path root = repoRoot();
         assertTrue(Files.exists(root.resolve("platform/control-plane/Dockerfile")));
-        assertTrue(Files.exists(root.resolve("platform/function-runtime/Dockerfile")));
+        assertTrue(Files.exists(root.resolve("services/java/warm-echo/Dockerfile")));
     }
 
     @Test
