@@ -246,7 +246,11 @@ class DeployCommandTest {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
-                .setBody("{\"name\":\"echo\",\"image\":\"nanofaas-test-deploy3:latest\"}"));
+                .setBody("""
+                        {"name":"echo","image":"nanofaas-test-deploy3:latest",
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
+                         "runtimeMode":"HTTP"}
+                        """));
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);

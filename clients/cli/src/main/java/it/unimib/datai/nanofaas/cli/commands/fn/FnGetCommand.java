@@ -1,10 +1,11 @@
 package it.unimib.datai.nanofaas.cli.commands.fn;
 
-import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.cli.http.FunctionDetails;
+import it.unimib.datai.nanofaas.cli.http.HttpJson;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
-@Command(name = "get", mixinStandardHelpOptions = true, description = "Get a function spec by name.")
+@Command(name = "get", mixinStandardHelpOptions = true, description = "Get function details by name.")
 public class FnGetCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand
@@ -15,11 +16,10 @@ public class FnGetCommand implements Runnable {
 
     @Override
     public void run() {
-        FunctionSpec spec = parent.root.controlPlaneClient().getFunctionOrNull(name);
-        if (spec == null) {
+        FunctionDetails function = parent.root.controlPlaneClient().getFunctionOrNull(name);
+        if (function == null) {
             throw new IllegalArgumentException("Function not found: " + name);
         }
-        // For now print JSON-ish via record toString; we'll switch to JSON output later.
-        System.out.println(spec);
+        System.out.println(new HttpJson().toJson(function));
     }
 }

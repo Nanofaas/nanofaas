@@ -87,7 +87,11 @@ class FnApplyCommandTest {
         server.enqueue(new MockResponse()
                 .setResponseCode(201)
                 .addHeader("Content-Type", "application/json")
-                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\",\"timeoutMs\":1000}"));
+                .setBody("""
+                        {"name":"echo","image":"registry.example/echo:1","timeoutMs":1000,
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
+                         "runtimeMode":"HTTP"}
+                        """));
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
@@ -134,7 +138,11 @@ class FnApplyCommandTest {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
-                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\",\"timeoutMs\":1000}"));
+                .setBody("""
+                        {"name":"echo","image":"registry.example/echo:1","timeoutMs":1000,
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
+                         "runtimeMode":"HTTP"}
+                        """));
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
@@ -155,6 +163,45 @@ class FnApplyCommandTest {
 
         RecordedRequest r2 = server.takeRequest();
         assertThat(r2.getMethod()).isEqualTo("GET");
+    }
+
+    @Test
+    void applyDoesNotReplaceUnchangedManagedDeployment() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        java.nio.file.Files.writeString(fn, """
+                name: echo
+                image: registry.example/echo:1
+                executionMode: DEPLOYMENT
+                """);
+
+        server.enqueue(new MockResponse().setResponseCode(409));
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"name":"echo","image":"registry.example/echo:1","command":[],"env":{},
+                         "timeoutMs":30000,"concurrency":4,"queueSize":100,"maxRetries":3,
+                         "endpointUrl":"http://echo.functions.svc",
+                         "requestedExecutionMode":"DEPLOYMENT",
+                         "effectiveExecutionMode":"POOL",
+                         "deploymentBackend":"kubernetes","runtimeMode":"HTTP",
+                         "scalingConfig":{"strategy":"INTERNAL","minReplicas":1,"maxReplicas":10,
+                           "metrics":[{"type":"queue_depth","target":"5"}]}}
+                        """));
+        server.enqueue(new MockResponse().setResponseCode(204));
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
+
+        CommandLine cli = new CommandLine(new RootCommand());
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "fn", "apply", "-f", fn.toString());
+
+        assertThat(exit).isZero();
+        assertThat(server.getRequestCount()).isEqualTo(2);
     }
 
     @Test
