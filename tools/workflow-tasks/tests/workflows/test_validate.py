@@ -66,12 +66,11 @@ def test_kubernetes_validation_uses_stack_role_and_inspects_requests_and_limits(
         "build.jvm",
         "images.build.control-plane",
         "images.push.control-plane",
-        "images.build.function-runtime",
-        "images.push.function-runtime",
+        "images.build.warm-echo",
+        "images.push.warm-echo",
         "images.build.word-stats-java",
         "images.push.word-stats-java",
         "helm.deploy.control-plane",
-        "helm.deploy.function-runtime",
         "functions.register.word-stats-java",
         "functions.invoke.word-stats-java",
         "resources.inspect.k8s.word-stats-java",
@@ -90,10 +89,36 @@ def test_kubernetes_docker_build_creates_both_core_jars() -> None:
     assert specs[1].argv == (
         "./gradlew",
         ":control-plane:bootJar",
-        ":function-runtime:bootJar",
+        ":services:java:warm-echo:bootJar",
         "-PcontrolPlaneModules=k8s-deployment-provider",
         "--no-daemon",
     )
+
+
+def test_kubernetes_validation_enables_junit_queue_and_metrics_contracts() -> None:
+    specs = validate_task_specs(
+        ValidateWorkflowRequest(backend="k8s", build="docker", functions=(FUNCTION,))
+    )
+
+    argv = next(
+        spec for spec in specs if spec.task_id == "helm.deploy.control-plane"
+    ).argv
+    settings = [
+        value for value in argv if value.startswith("controlPlane.extraEnv[")
+    ]
+    admission = next(
+        index
+        for index, value in enumerate(settings)
+        if value.endswith("=SYNC_QUEUE_ADMISSION_ENABLED")
+    )
+    metrics = next(
+        index
+        for index, value in enumerate(settings)
+        if value.endswith("=NANOFAAS_METRICS_PROFILE")
+    )
+
+    assert settings[admission + 1].endswith("=true")
+    assert settings[metrics + 1].endswith("=advanced")
 
 
 def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
@@ -106,14 +131,13 @@ def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
         "build.jvm",
         "images.build.control-plane",
         "images.push.control-plane",
-        "images.build.function-runtime",
-        "images.push.function-runtime",
+        "images.build.warm-echo",
+        "images.push.warm-echo",
         "images.build.word-stats-java",
         "images.push.word-stats-java",
         "helm.deploy.control-plane",
-        "helm.deploy.function-runtime",
     ]
-    control_plane = specs[-2]
+    control_plane = specs[-1]
     assert "controlPlane.service.type=NodePort" in control_plane.argv
     assert "prometheus.create=true" in control_plane.argv
 
@@ -194,7 +218,6 @@ def test_cleanup_deletes_functions_before_kubernetes_releases() -> None:
 
     assert [spec.task_id for spec in specs] == [
         "functions.delete.word-stats-java",
-        "helm.uninstall.function-runtime",
         "helm.uninstall.control-plane",
     ]
     assert all(spec.role == "stack" for spec in specs)

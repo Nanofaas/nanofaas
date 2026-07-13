@@ -5,12 +5,12 @@
 ```json
 {
   "name": "echo",
-  "image": "nanofaas/function-runtime:0.5.0",
+  "image": "nanofaas/java-warm-echo:0.5.0",
   "timeoutMs": 10000,
   "concurrency": 2,
   "queueSize": 50,
   "maxRetries": 3,
-  "executionMode": "REMOTE"
+  "executionMode": "DEPLOYMENT"
 }
 ```
 

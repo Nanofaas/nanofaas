@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class K8sE2eTest {
     private static final String DEFAULT_NS = System.getenv().getOrDefault("NANOFAAS_E2E_NAMESPACE", "nanofaas-e2e");
-    private static final String RUNTIME_IMAGE = System.getenv().getOrDefault("FUNCTION_RUNTIME_IMAGE", "nanofaas/function-runtime:e2e");
+    private static final String WARM_ECHO_IMAGE = System.getenv().getOrDefault("WARM_ECHO_IMAGE", "nanofaas/java-warm-echo:e2e");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static KubernetesClient client;
 
@@ -53,7 +53,6 @@ class K8sE2eTest {
                 client.namespaces().withName(namespace()).get(),
                 "expected namespace to be created by the Python runner");
         awaitDeploymentReady("nanofaas-control-plane");
-        awaitDeploymentReady("function-runtime");
         awaitServiceReady("control-plane");
     }
 
@@ -153,7 +152,7 @@ class K8sE2eTest {
 
             String fn = "k8s-echo-sync-queue";
             E2eApiSupport.registerFunction(E2eApiSupport.deploymentFunctionSpec(
-                    fn, RUNTIME_IMAGE, 5000, 1, 20, 3));
+                    fn, WARM_ECHO_IMAGE, 5000, 1, 20, 3));
             E2eApiSupport.awaitSyncInvokeSuccess(fn, "warmup");
 
             Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofSeconds(2)).untilAsserted(() -> {
@@ -200,7 +199,7 @@ class K8sE2eTest {
             awaitHealth(mgmtPort, "/actuator/health/readiness");
 
             String functionName = "k8s-cold-metrics";
-            E2eApiSupport.registerDeploymentFunction(functionName, RUNTIME_IMAGE);
+            E2eApiSupport.registerDeploymentFunction(functionName, WARM_ECHO_IMAGE);
 
             E2eApiSupport.awaitSyncInvokeSuccess(functionName, "cold");
             E2eApiSupport.awaitSyncInvokeSuccess(functionName, "warm-1");
@@ -228,7 +227,7 @@ class K8sE2eTest {
             return List.of(new RegistrationTarget(
                     "k8s-echo",
                     "legacy-echo",
-                    RUNTIME_IMAGE,
+                    WARM_ECHO_IMAGE,
                     Map.of("message", "hi"),
                     null));
         }
@@ -238,7 +237,7 @@ class K8sE2eTest {
                 .map(function -> new RegistrationTarget(
                         function.key(),
                         function.family(),
-                        function.image() == null || function.image().isBlank() ? RUNTIME_IMAGE : function.image(),
+                        function.image() == null || function.image().isBlank() ? WARM_ECHO_IMAGE : function.image(),
                         readInvocationPayload(resolvedManifest, function),
                         function.resources()))
                 .toList();

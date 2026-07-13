@@ -5,10 +5,7 @@ import shlex
 from dataclasses import dataclass, replace
 from typing import Literal
 
-from workflow_tasks.components.helm import (
-    control_plane_helm_values,
-    function_runtime_helm_values,
-)
+from workflow_tasks.components.helm import control_plane_helm_values
 from workflow_tasks.tasks.models import CommandTaskSpec
 
 Backend = Literal["pool", "container", "k8s"]
@@ -56,7 +53,7 @@ def _build(request: ValidateWorkflowRequest, role: Literal["host", "stack"]) -> 
     )
     targets = (target,)
     if request.backend == "k8s" and request.build == "docker":
-        targets += (":function-runtime:bootJar",)
+        targets += (":services:java:warm-echo:bootJar",)
     modules = {
         "container": "container-deployment-provider",
         "k8s": "k8s-deployment-provider",
@@ -183,6 +180,7 @@ def k8s_deployment_specs(
     *,
     expose_node_ports: bool = False,
     metrics_profile: str | None = None,
+    sync_queue_admission_enabled: bool = False,
 ) -> tuple[CommandTaskSpec, ...]:
     if request.backend != "k8s":
         raise ValueError("Kubernetes deployment specs require the k8s backend")
@@ -197,10 +195,10 @@ def k8s_deployment_specs(
             "platform/control-plane",
         ),
         (
-            "function-runtime",
-            f"{request.registry}/nanofaas/function-runtime:e2e",
-            "platform/function-runtime/Dockerfile",
-            "platform/function-runtime",
+            "warm-echo",
+            f"{request.registry}/nanofaas/java-warm-echo:e2e",
+            "services/java/warm-echo/Dockerfile",
+            "services/java/warm-echo",
         ),
     ):
         tasks.append(
@@ -237,39 +235,22 @@ def k8s_deployment_specs(
         control_plane_image=f"{request.registry}/nanofaas/control-plane:e2e",
         expose_node_port=expose_node_ports,
         metrics_profile=metrics_profile,
+        sync_queue_admission_enabled=sync_queue_admission_enabled,
     )
-    runtime_values = function_runtime_helm_values(
-        function_runtime_image=f"{request.registry}/nanofaas/function-runtime:e2e"
-    )
-    tasks.extend(
-        (
-            _task(
-                "helm.deploy.control-plane",
-                "helm",
-                "upgrade",
-                "--install",
-                "nanofaas",
-                "deploy/helm/nanofaas",
-                "--namespace",
-                request.namespace,
-                "--create-namespace",
-                "--wait",
-                *_set_args(control_values),
-                role="stack",
-            ),
-            _task(
-                "helm.deploy.function-runtime",
-                "helm",
-                "upgrade",
-                "--install",
-                "function-runtime",
-                "deploy/helm/nanofaas-runtime",
-                "--namespace",
-                request.namespace,
-                "--wait",
-                *_set_args(runtime_values),
-                role="stack",
-            ),
+    tasks.append(
+        _task(
+            "helm.deploy.control-plane",
+            "helm",
+            "upgrade",
+            "--install",
+            "nanofaas",
+            "deploy/helm/nanofaas",
+            "--namespace",
+            request.namespace,
+            "--create-namespace",
+            "--wait",
+            *_set_args(control_values),
+            role="stack",
         )
     )
     return tuple(tasks)
@@ -328,7 +309,13 @@ def validate_task_specs(request: ValidateWorkflowRequest) -> tuple[CommandTaskSp
 
     role: Literal["host", "stack"] = "stack" if request.backend == "k8s" else "host"
     if request.backend == "k8s":
-        tasks = list(k8s_deployment_specs(request))
+        tasks = list(
+            k8s_deployment_specs(
+                request,
+                metrics_profile="advanced",
+                sync_queue_admission_enabled=True,
+            )
+        )
     else:
         tasks = [_build(request, role)]
         for function in request.functions:
@@ -398,28 +385,16 @@ def validate_cleanup_specs(
         for function in request.functions
     ]
     if request.backend == "k8s":
-        cleanup.extend(
-            (
-                _task(
-                    "helm.uninstall.function-runtime",
-                    "helm",
-                    "uninstall",
-                    "function-runtime",
-                    "--namespace",
-                    request.namespace,
-                    "--ignore-not-found",
-                    role=role,
-                ),
-                _task(
-                    "helm.uninstall.control-plane",
-                    "helm",
-                    "uninstall",
-                    "nanofaas",
-                    "--namespace",
-                    request.namespace,
-                    "--ignore-not-found",
-                    role=role,
-                ),
+        cleanup.append(
+            _task(
+                "helm.uninstall.control-plane",
+                "helm",
+                "uninstall",
+                "nanofaas",
+                "--namespace",
+                request.namespace,
+                "--ignore-not-found",
+                role=role,
             )
         )
     return tuple(cleanup)
