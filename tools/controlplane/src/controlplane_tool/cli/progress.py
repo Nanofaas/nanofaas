@@ -18,6 +18,7 @@ class ConsoleProgressSink:
         self._write = write
         self._clock = clock
         self._started: dict[str, float] = {}
+        self.records: list[dict[str, object]] = []
 
     def emit(self, event: WorkflowEvent) -> None:
         task_id = event.task_id
@@ -32,6 +33,15 @@ class ConsoleProgressSink:
         now = self._clock()
         elapsed = now - self._started.pop(task_id, now)
         status = "passed" if event.kind == "task.completed" else "failed"
+        self.records.append(
+            {
+                "task_id": task_id,
+                "title": event.title,
+                "status": status,
+                "duration_seconds": round(elapsed, 3),
+                "detail": event.detail,
+            }
+        )
         detail = f"  {event.detail}" if event.detail else ""
         self._write(f"[{task_id}] {status:<8} {elapsed:.1f}s{detail}")
 
