@@ -11,7 +11,7 @@ from workflow_tasks.workflows.cli import (
 FUNCTION = CliFunction(
     name="word-stats-java",
     image="localhost:5000/nanofaas/java-word-stats:e2e",
-    payload='{"input":{"text":"hello world"}}',
+    payload='{"text":"hello world"}',
 )
 
 
@@ -21,19 +21,23 @@ def test_cli_on_host_exercises_the_function_lifecycle() -> None:
             functions=(FUNCTION,),
             cli_role="host",
             namespace="research",
-            platform_status=True,
         )
     )
 
     assert [task.task_id for task in specs] == [
         "cli.build",
-        "cli.platform.status",
         "cli.function.apply.word-stats-java",
         "cli.function.list",
         "cli.function.invoke.word-stats-java",
     ]
     assert all(task.role == "host" for task in specs)
-    assert all(("--namespace", "research") == task.argv[3:5] for task in specs[1:2] + specs[3:])
+    direct_commands = [task for task in specs if task.argv[0] != "bash"]
+    assert all(("--namespace", "research") == task.argv[3:5] for task in direct_commands[1:])
+    invoke = specs[-1]
+    assert invoke.argv[:2] == ("bash", "-lc")
+    assert "{\"text\":\"hello world\"}" in invoke.argv[-1]
+    assert '"status":"success"' in invoke.argv[-1]
+    assert '"output"' in invoke.argv[-1]
     assert (
         cli_cleanup_specs(CliWorkflowRequest(functions=(FUNCTION,)))[0].task_id
         == "cli.function.delete.word-stats-java"

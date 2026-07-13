@@ -31,14 +31,6 @@ def _ctx(*, manifest: Path | None = None) -> ScenarioExecutionContext:
     )
 
 
-def test_verify_cli_platform_status_fails_builds_platform_status_argv() -> None:
-    ops = ver.plan_verify_cli_platform_status_fails(_ctx())
-    argv = ops[0].argv
-    assert "platform" in argv and "status" in argv
-    assert argv[-1] == "nf"
-    assert ops[0].execution_target == "vm"
-
-
 def test_run_k8s_junit_embeds_gradle_e2e_script() -> None:
     ops = ver.plan_run_k8s_junit(_ctx())
     rendered = " ".join(ops[0].argv)

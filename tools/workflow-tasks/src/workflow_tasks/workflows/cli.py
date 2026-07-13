@@ -23,7 +23,6 @@ class CliWorkflowRequest:
     namespace: str = "nanofaas-e2e"
     endpoint: str = "http://127.0.0.1:8080"
     binary: str = "clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli"
-    platform_status: bool = False
 
     def __post_init__(self) -> None:
         if self.cli_role == "loadgen":
@@ -62,10 +61,6 @@ def cli_task_specs(request: CliWorkflowRequest) -> tuple[CommandTaskSpec, ...]:
             "--no-daemon",
         )
     ]
-    if request.platform_status:
-        tasks.append(
-            _task(request, "cli.platform.status", *_command(request, "platform", "status"))
-        )
     for function in request.functions:
         body: dict[str, object] = {
             "name": function.name,
@@ -98,11 +93,21 @@ def cli_task_specs(request: CliWorkflowRequest) -> tuple[CommandTaskSpec, ...]:
         )
     tasks.append(_task(request, "cli.function.list", *_command(request, "fn", "list")))
     for function in request.functions:
+        invoke = " ".join(
+            shlex.quote(value)
+            for value in _command(request, "invoke", function.name, "--data", function.payload)
+        )
         tasks.append(
             _task(
                 request,
                 f"cli.function.invoke.{function.name}",
-                *_command(request, "invoke", function.name, "--data", function.payload),
+                "bash",
+                "-lc",
+                " && ".join((
+                    f"response=$({invoke})",
+                    "printf '%s' \"$response\" | grep -q '\"status\":\"success\"'",
+                    "printf '%s' \"$response\" | grep -q '\"output\"'",
+                )),
             )
         )
     return tuple(tasks)

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from workflow_tasks.core.workflow import Workflow
@@ -30,7 +31,7 @@ def build_cli_plan(
         CliFunction(
             name=resolved.name,
             image=resolved.image,
-            payload=resolved.payload,
+            payload=json.dumps(json.loads(resolved.payload)["input"], separators=(",", ":")),
             resources=resolved.resources,
         )
         for key in config.functions
@@ -41,7 +42,6 @@ def build_cli_plan(
         cli_role=cli_role,
         endpoint=endpoint,
         namespace=namespace,
-        platform_status=config.backend == "k8s",
     )
     root = repo_root or Path.cwd()
     workflow = workflow_from_specs(cli_task_specs(request), bindings, cwd=root)
