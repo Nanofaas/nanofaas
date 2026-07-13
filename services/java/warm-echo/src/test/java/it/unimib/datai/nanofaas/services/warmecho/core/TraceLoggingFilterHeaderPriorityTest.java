@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.runtime.core;
+package it.unimib.datai.nanofaas.services.warmecho.core;
 
 import it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilter;
 import it.unimib.datai.nanofaas.sdk.runtime.RuntimeSettings;

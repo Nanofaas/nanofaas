@@ -43,7 +43,7 @@ tasks.named('processAotTestResources') { enabled = false }
 tasks.named('aotTestClasses') { enabled = false }
 
 bootBuildImage {
-    imageName = project.findProperty('functionRuntimeImage') ?: (System.getenv('FUNCTION_RUNTIME_IMAGE') ?: 'nanofaas/function-runtime:buildpack')
+    imageName = project.findProperty('warmEchoImage') ?: (System.getenv('WARM_ECHO_IMAGE') ?: 'nanofaas/java-warm-echo:buildpack')
     // Builder/run image are overrideable to support multi-arch native builds (e.g., ARM64 on Apple Silicon).
     // On arm64 hosts the official paketobuildpacks/*-jammy-tiny images lack an arm64
     // manifest; fall back to dashaun's multi-arch mirror so the build works everywhere.
