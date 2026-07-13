@@ -21,18 +21,19 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Tag("inter_e2e")
 class E2eFlowTest {
     private static final Network network = Network.newNetwork();
-    private static final java.nio.file.Path FUNCTION_RUNTIME_JAR = E2eTestSupport.resolveBootJar(
-            E2eTestSupport.PROJECT_ROOT.resolve("function-runtime/build/libs"),
-            "function-runtime-");
+    private static final java.nio.file.Path REPOSITORY_ROOT = E2eTestSupport.PROJECT_ROOT.getParent();
+    private static final java.nio.file.Path WARM_ECHO_JAR = E2eTestSupport.resolveBootJar(
+            REPOSITORY_ROOT.resolve("services/java/warm-echo/build/libs"),
+            "warm-echo-");
 
-    private static final GenericContainer<?> functionRuntime = new GenericContainer<>(
+    private static final GenericContainer<?> warmEcho = new GenericContainer<>(
             new ImageFromDockerfile()
-                    .withFileFromPath("Dockerfile", E2eTestSupport.PROJECT_ROOT.resolve("function-runtime/Dockerfile"))
-                    .withFileFromPath("build/libs/" + FUNCTION_RUNTIME_JAR.getFileName(), FUNCTION_RUNTIME_JAR)
+                    .withFileFromPath("Dockerfile", REPOSITORY_ROOT.resolve("services/java/warm-echo/Dockerfile"))
+                    .withFileFromPath("build/libs/" + WARM_ECHO_JAR.getFileName(), WARM_ECHO_JAR)
     )
             .withExposedPorts(8080)
             .withNetwork(network)
-            .withNetworkAliases("function-runtime")
+            .withNetworkAliases("warm-echo")
             .waitingFor(Wait.forListeningPort());
 
     private static final GenericContainer<?> controlPlane = E2eTestSupport.createControlPlaneContainer(
@@ -42,7 +43,7 @@ class E2eFlowTest {
     @BeforeAll
     static void startContainers() {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Docker not available");
-        functionRuntime.start();
+        warmEcho.start();
         controlPlane.start();
         RestAssured.baseURI = "http://" + controlPlane.getHost();
         RestAssured.port = controlPlane.getMappedPort(8080);
@@ -50,10 +51,10 @@ class E2eFlowTest {
 
     @Test
     void e2eRegisterInvokeAndPoll() {
-        String endpointUrl = "http://function-runtime:8080/invoke";
+        String endpointUrl = "http://warm-echo:8080/invoke";
         Map<String, Object> spec = E2eApiSupport.poolFunctionSpec(
                 "e2e-echo",
-                E2eTestSupport.versionedImage("function-runtime"),
+                E2eTestSupport.versionedImage("java-warm-echo"),
                 endpointUrl
         );
         E2eApiSupport.registerFunction(spec);
