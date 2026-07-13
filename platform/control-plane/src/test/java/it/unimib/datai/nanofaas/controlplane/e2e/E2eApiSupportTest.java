@@ -13,16 +13,16 @@ class E2eApiSupportTest {
     void poolFunctionSpec_containsExpectedDefaults() {
         Map<String, Object> spec = E2eApiSupport.poolFunctionSpec(
                 "echo",
-                "nanofaas/function-runtime:test",
-                "http://function-runtime:8080/invoke",
+                "nanofaas/java-warm-echo:test",
+                "http://warm-echo:8080/invoke",
                 5000,
                 2,
                 20,
                 3);
 
         assertThat(spec).containsEntry("name", "echo");
-        assertThat(spec).containsEntry("image", "nanofaas/function-runtime:test");
-        assertThat(spec).containsEntry("endpointUrl", "http://function-runtime:8080/invoke");
+        assertThat(spec).containsEntry("image", "nanofaas/java-warm-echo:test");
+        assertThat(spec).containsEntry("endpointUrl", "http://warm-echo:8080/invoke");
         assertThat(spec).containsEntry("executionMode", "POOL");
         assertThat(spec).containsEntry("timeoutMs", 5000);
         assertThat(spec).containsEntry("concurrency", 2);
@@ -34,14 +34,14 @@ class E2eApiSupportTest {
     void deploymentFunctionSpec_omitsEndpointAndUsesDeploymentMode() {
         Map<String, Object> spec = E2eApiSupport.deploymentFunctionSpec(
                 "echo",
-                "nanofaas/function-runtime:test",
+                "nanofaas/java-warm-echo:test",
                 5000,
                 2,
                 20,
                 3);
 
         assertThat(spec).containsEntry("name", "echo");
-        assertThat(spec).containsEntry("image", "nanofaas/function-runtime:test");
+        assertThat(spec).containsEntry("image", "nanofaas/java-warm-echo:test");
         assertThat(spec).containsEntry("executionMode", "DEPLOYMENT");
         assertThat(spec).doesNotContainKey("endpointUrl");
         assertThat(spec).containsEntry("timeoutMs", 5000);

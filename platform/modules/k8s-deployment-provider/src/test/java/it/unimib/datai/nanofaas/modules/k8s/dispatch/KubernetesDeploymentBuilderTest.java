@@ -27,7 +27,7 @@ class KubernetesDeploymentBuilderTest {
 
     private FunctionSpec spec(ScalingConfig scaling) {
         return new FunctionSpec(
-                "echo", "nanofaas/function-runtime:0.5.0",
+                "echo", "nanofaas/java-warm-echo:0.5.0",
                 List.of(), Map.of("MY_VAR", "hello"),
                 new ResourceSpec(
                         new ResourceQuantity(new BigDecimal("0.25"), 128),
@@ -80,7 +80,7 @@ class KubernetesDeploymentBuilderTest {
     @Test
     void buildDeployment_filtersReservedEnvVars() {
         FunctionSpec specWithReserved = new FunctionSpec(
-                "echo", "nanofaas/function-runtime:0.5.0",
+                "echo", "nanofaas/java-warm-echo:0.5.0",
                 List.of(), Map.of("FUNCTION_NAME", "hacked", "MY_VAR", "ok"),
                 null, 30000, 4, 100, 3,
                 null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null, null

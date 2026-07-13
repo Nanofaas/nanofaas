@@ -52,7 +52,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
         );
         return new FunctionSpec(
                 "echo",
-                "nanofaas/function-runtime:0.5.0",
+                "nanofaas/java-warm-echo:0.5.0",
                 List.of(),
                 Map.of(),
                 null,
@@ -132,7 +132,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 .withNewSpec()
                 .addNewContainer()
                 .withName("runtime")
-                .withImage("nanofaas/function-runtime:0.5.0")
+                .withImage("nanofaas/java-warm-echo:0.5.0")
                 .endContainer()
                 .endSpec()
                 .endTemplate()
@@ -151,7 +151,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 .withNewSpec()
                 .addNewContainer()
                 .withName("runtime")
-                .withImage("nanofaas/function-runtime:0.5.0")
+                .withImage("nanofaas/java-warm-echo:0.5.0")
                 .endContainer()
                 .endSpec()
                 .withNewStatus()
