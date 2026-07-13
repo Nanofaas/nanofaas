@@ -27,6 +27,7 @@ def control_plane_helm_values(
     namespace: str,
     control_plane_image: str,
     expose_node_port: bool = False,
+    metrics_profile: str | None = None,
 ) -> dict[str, str]:
     repository, tag = _image_parts(control_plane_image)
     callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
@@ -55,6 +56,8 @@ def control_plane_helm_values(
         ("SYNC_QUEUE_THROUGHPUT_WINDOW", "10s"),
         ("SYNC_QUEUE_PER_FUNCTION_MIN_SAMPLES", "1"),
     ]
+    if metrics_profile is not None:
+        extra_env.append(("NANOFAAS_METRICS_PROFILE", metrics_profile))
     for index, (name, value) in enumerate(extra_env):
         values[f"controlPlane.extraEnv[{index}].name"] = name
         values[f"controlPlane.extraEnv[{index}].value"] = value
@@ -108,10 +111,12 @@ def _set_args(values: Mapping[str, str]) -> tuple[str, ...]:
 
 def plan_deploy_control_plane(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
     namespace = _effective_namespace(context)
+    loadtest = context.scenario_name in LOADTEST_SCENARIOS
     values = control_plane_helm_values(
         namespace=namespace,
         control_plane_image=control_image(context.local_registry),
-        expose_node_port=context.scenario_name in LOADTEST_SCENARIOS,
+        expose_node_port=loadtest,
+        metrics_profile="advanced" if loadtest else None,
     )
     return (
         RemoteCommandOperation(

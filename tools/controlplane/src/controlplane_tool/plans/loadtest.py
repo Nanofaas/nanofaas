@@ -86,7 +86,11 @@ def build_loadtest_plan(
         else (),
     )
     stack = workflow_from_specs(
-        k8s_deployment_specs(deployment, expose_node_ports=True)
+        k8s_deployment_specs(
+            deployment,
+            expose_node_ports=True,
+            metrics_profile="advanced",
+        )
         + registration_specs(deployment),
         bindings,
         cwd=root,

@@ -182,6 +182,7 @@ def k8s_deployment_specs(
     request: ValidateWorkflowRequest,
     *,
     expose_node_ports: bool = False,
+    metrics_profile: str | None = None,
 ) -> tuple[CommandTaskSpec, ...]:
     if request.backend != "k8s":
         raise ValueError("Kubernetes deployment specs require the k8s backend")
@@ -235,6 +236,7 @@ def k8s_deployment_specs(
         namespace=request.namespace,
         control_plane_image=f"{request.registry}/nanofaas/control-plane:e2e",
         expose_node_port=expose_node_ports,
+        metrics_profile=metrics_profile,
     )
     runtime_values = function_runtime_helm_values(
         function_runtime_image=f"{request.registry}/nanofaas/function-runtime:e2e"

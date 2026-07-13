@@ -37,6 +37,8 @@ def test_control_plane_planner_runs_for_loadtest_scenario() -> None:
     scenario = next(iter(LOADTEST_SCENARIOS))
     ops = helm_mod.HELM_DEPLOY_CONTROL_PLANE.planner(_ctx(scenario))
     assert len(ops) >= 1
+    assert any("NANOFAAS_METRICS_PROFILE" in argument for argument in ops[0].argv)
+    assert any("advanced" in argument for argument in ops[0].argv)
 
 
 def test_control_plane_planner_runs_for_plain_scenario() -> None:
