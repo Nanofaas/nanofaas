@@ -27,6 +27,8 @@ def test_validate_plan_dispatches_k8s_tasks_to_stack_binding() -> None:
 
     assert host.seen == []
     assert [task.task_id for task in stack.seen] == plan.task_ids
+    assert "images.build.warm-echo" in plan.task_ids
+    assert "helm.deploy.function-runtime" not in plan.task_ids
 
 
 def test_validate_plan_keeps_container_validation_local() -> None:

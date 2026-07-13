@@ -112,7 +112,7 @@ def test_loadtest_plan_owns_stack_registration_and_cleanup(tmp_path: Path) -> No
         fetcher=object(),
     )
 
-    assert workflow.task_ids.index("helm.deploy.function-runtime") < workflow.task_ids.index(
+    assert workflow.task_ids.index("helm.deploy.control-plane") < workflow.task_ids.index(
         "functions.register.word-stats-java"
     )
     assert workflow.task_ids.index("functions.register.word-stats-java") < workflow.task_ids.index(
@@ -120,7 +120,6 @@ def test_loadtest_plan_owns_stack_registration_and_cleanup(tmp_path: Path) -> No
     )
     assert [task.task_id for task in workflow.cleanup_tasks] == [
         "functions.delete.word-stats-java",
-        "helm.uninstall.function-runtime",
         "helm.uninstall.control-plane",
     ]
 

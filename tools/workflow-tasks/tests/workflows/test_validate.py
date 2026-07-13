@@ -66,12 +66,11 @@ def test_kubernetes_validation_uses_stack_role_and_inspects_requests_and_limits(
         "build.jvm",
         "images.build.control-plane",
         "images.push.control-plane",
-        "images.build.function-runtime",
-        "images.push.function-runtime",
+        "images.build.warm-echo",
+        "images.push.warm-echo",
         "images.build.word-stats-java",
         "images.push.word-stats-java",
         "helm.deploy.control-plane",
-        "helm.deploy.function-runtime",
         "functions.register.word-stats-java",
         "functions.invoke.word-stats-java",
         "resources.inspect.k8s.word-stats-java",
@@ -90,7 +89,7 @@ def test_kubernetes_docker_build_creates_both_core_jars() -> None:
     assert specs[1].argv == (
         "./gradlew",
         ":control-plane:bootJar",
-        ":function-runtime:bootJar",
+        ":services:java:warm-echo:bootJar",
         "-PcontrolPlaneModules=k8s-deployment-provider",
         "--no-daemon",
     )
@@ -106,14 +105,13 @@ def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
         "build.jvm",
         "images.build.control-plane",
         "images.push.control-plane",
-        "images.build.function-runtime",
-        "images.push.function-runtime",
+        "images.build.warm-echo",
+        "images.push.warm-echo",
         "images.build.word-stats-java",
         "images.push.word-stats-java",
         "helm.deploy.control-plane",
-        "helm.deploy.function-runtime",
     ]
-    control_plane = specs[-2]
+    control_plane = specs[-1]
     assert "controlPlane.service.type=NodePort" in control_plane.argv
     assert "prometheus.create=true" in control_plane.argv
 
@@ -194,7 +192,6 @@ def test_cleanup_deletes_functions_before_kubernetes_releases() -> None:
 
     assert [spec.task_id for spec in specs] == [
         "functions.delete.word-stats-java",
-        "helm.uninstall.function-runtime",
         "helm.uninstall.control-plane",
     ]
     assert all(spec.role == "stack" for spec in specs)
