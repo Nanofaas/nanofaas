@@ -124,6 +124,39 @@ def test_registration_specs_are_reusable_without_invocation() -> None:
     specs = registration_specs(request)
 
     assert [spec.task_id for spec in specs] == ["functions.register.word-stats-java"]
+
+
+def test_registration_specs_include_optional_scaling_config() -> None:
+    target = ValidateFunction(
+        key=FUNCTION.key,
+        name=FUNCTION.name,
+        image=FUNCTION.image,
+        build_argv=FUNCTION.build_argv,
+        payload=FUNCTION.payload,
+        scaling_config={"strategy": "INTERNAL", "minReplicas": 0, "maxReplicas": 5},
+    )
+
+    spec = registration_specs(
+        ValidateWorkflowRequest(backend="k8s", functions=(target,))
+    )[0]
+
+    command = " ".join(spec.argv)
+    assert "scalingConfig" in command
+    assert "INTERNAL" in command
+    assert "maxReplicas" in command
+
+
+def test_k8s_build_can_include_additional_control_plane_modules() -> None:
+    specs = k8s_deployment_specs(
+        ValidateWorkflowRequest(
+            backend="k8s",
+            functions=(FUNCTION,),
+            additional_modules=("autoscaler",),
+        )
+    )
+
+    build = next(spec for spec in specs if spec.task_id == "build.jvm")
+    assert "-PcontrolPlaneModules=k8s-deployment-provider,autoscaler" in build.argv
     assert specs[0].role == "stack"
 
 

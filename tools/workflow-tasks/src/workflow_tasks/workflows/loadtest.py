@@ -8,6 +8,12 @@ from workflow_tasks.core.workflow import Workflow
 from workflow_tasks.execution.bindings import RoleBindings
 from workflow_tasks.execution.roles import ExecutionRole
 from workflow_tasks.loadtest.models import K6Config, K6Stage, PrometheusQuery, TimeWindow
+from workflow_tasks.loadtest.autoscaling import (
+    ReplicaProbe,
+    ReplicaWatcher,
+    RunK6WithReplicaWatch,
+    VerifyAutoscalingReplicas,
+)
 from workflow_tasks.loadtest.ports import PrometheusClient, RemoteFileFetcher
 from workflow_tasks.loadtest.tasks import (
     CapturePrometheusSnapshot,
@@ -41,6 +47,8 @@ class LoadtestWorkflowRequest:
     payload_path: Path | None = None
     vus: int | None = None
     duration: str | None = None
+    autoscaling: bool = False
+    namespace: str = "nanofaas-e2e"
 
 
 class _RoleRunner:
@@ -121,7 +129,7 @@ def build_loadtest_workflow(
         str(request.summary_path.parent),
     )
     run_k6 = RunK6(
-        task_id="loadgen.run_k6",
+        task_id="loadgen.run_k6.inner" if request.autoscaling else "loadgen.run_k6",
         title="Run k6 load test",
         runner=_RoleRunner(bindings, role),
         config=K6Config(
@@ -141,7 +149,24 @@ def build_loadtest_workflow(
         ),
         remote_dir=".",
     )
-    tasks: list[Any] = [preflight, prepare, run_k6]
+    watcher: ReplicaWatcher | None = None
+    run_task: Any = run_k6
+    if request.autoscaling:
+        watcher = ReplicaWatcher(
+            ReplicaProbe(
+                runner=_RoleRunner(bindings, "stack"),
+                namespace=request.namespace,
+                deployment_name=f"fn-{request.function_name}",
+                remote_dir=".",
+            )
+        )
+        run_task = RunK6WithReplicaWatch(
+            task_id="loadgen.run_k6",
+            title="Run autoscaling k6 load test",
+            run_k6=run_k6,
+            watcher=watcher,
+        )
+    tasks: list[Any] = [preflight, prepare, run_task]
     if request.fetch_results:
         assert fetcher is not None
         tasks.append(
@@ -151,6 +176,18 @@ def build_loadtest_workflow(
                 fetcher=fetcher,
                 remote_source=str(request.summary_path),
                 local_dest=request.run_dir,
+            )
+        )
+    if watcher is not None:
+        tasks.append(
+            VerifyAutoscalingReplicas(
+                task_id="autoscaling.verify_replicas",
+                title="Verify autoscaling replica lifecycle",
+                runner=_RoleRunner(bindings, "stack"),
+                namespace=request.namespace,
+                deployment_name=f"fn-{request.function_name}",
+                remote_dir=".",
+                watcher=watcher,
             )
         )
     tasks.extend(

@@ -123,3 +123,39 @@ def test_loadtest_plan_owns_stack_registration_and_cleanup(tmp_path: Path) -> No
         "helm.uninstall.function-runtime",
         "helm.uninstall.control-plane",
     ]
+
+
+def test_autoscaling_loadtest_builds_registers_and_observes_scaler(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+    config = ScenarioConfig(
+        workflow="loadtest", functions=["word-stats-java"], autoscaling=True
+    )
+
+    workflow = build_loadtest_plan(
+        config,
+        EnvironmentConfig.model_validate(
+            {"provider": "multipass", "roles": {"stack": {"name": "stack"}}}
+        ),
+        RoleBindings(host=executor, stack=executor),
+        control_plane_url="http://stack:30080",
+        prometheus_client=NoopPrometheus(),
+        run_dir=tmp_path,
+        fetcher=object(),
+    )
+
+    build = next(task for task in workflow.tasks if task.task_id == "build.jvm")
+    register = next(
+        task for task in workflow.tasks if task.task_id == "functions.register.word-stats-java"
+    )
+    run = next(task for task in workflow.tasks if task.task_id == "loadgen.run_k6")
+    assert "-PcontrolPlaneModules=k8s-deployment-provider,autoscaler" in build.spec.argv
+    assert "scalingConfig" in " ".join(register.spec.argv)
+    assert "INTERNAL" in " ".join(register.spec.argv)
+    assert run.run_k6.config.script_path.name == "autoscaling.js"
+    assert [(stage.duration, stage.target) for stage in run.run_k6.config.stages] == [
+        ("10s", 10),
+        ("20s", 20),
+        ("90s", 20),
+        ("10s", 0),
+    ]
+    assert "autoscaling.verify_replicas" in workflow.task_ids
