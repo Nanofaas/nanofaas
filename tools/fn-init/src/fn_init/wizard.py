@@ -113,7 +113,7 @@ def show_next_steps(name: str, lang: str, output_dir: Path) -> None:
         f"[dim]cd[/] {output_dir}\n\n"
         "[dim]# implement your handler, then:[/]\n"
         "nanofaas deploy -f function.yaml\n"
-        f"nanofaas invoke {name} -d @payloads/happy-path.json\n\n"
+        f"nanofaas invoke {name} -d '{{\"key\":\"value\"}}'\n\n"
         "[dim]# run contract tests:[/]\n"
         f"nanofaas fn test {name} --payloads ./payloads/\n\n"
         "[dim]# run unit tests:[/]\n"
