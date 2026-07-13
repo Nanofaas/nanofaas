@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Run locally
 ./scripts/controlplane.sh run --profile core # API on :8080, metrics on :8081
-./gradlew :function-runtime:bootRun # Handler on :8080
+./gradlew :services:java:warm-echo:bootRun # Example service on :8080
 
 # Run all tests
 ./gradlew test
@@ -43,7 +43,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Build OCI images
 ./scripts/controlplane.sh image --profile all
-./gradlew :function-runtime:bootBuildImage
+./gradlew :services:java:warm-echo:bootBuildImage
 
 # Control-plane optional module selection
 ./scripts/controlplane.sh run --profile all
@@ -104,15 +104,8 @@ Execution Modes:
 
 Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
 
-### platform/function-runtime/
-Minimal HTTP server for Java function handlers:
-- **InvokeController** - POST `/invoke` endpoint
-- **HandlerRegistry** - SPI-based handler loading
-- **TraceLoggingFilter** - Propagates X-Trace-Id and X-Execution-Id headers
-
-Supports WARM mode via `X-Execution-Id` header for OpenWhisk-style execution.
-
-Spring Web (servlet). Port: 8080.
+### sdks/java/ and services/java/warm-echo/
+`sdks/java` supplies the reusable HTTP invocation runtime (`/invoke`, tracing and callbacks). `services/java/warm-echo` embeds that SDK as a runnable WARM reference service; it is provisioned through the normal function-registration API, never installed as shared infrastructure.
 
 ### python-runtime/ (deprecated)
 Legacy Python runtime. New Python functions should use `sdks/python/` instead.

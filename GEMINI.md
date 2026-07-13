@@ -27,11 +27,9 @@ The system consists of four main modules:
     -   **Pool Dispatcher:** Routes to warm containers for OpenWhisk-style execution (WARM mode).
     -   **Execution Store:** Tracks state of executions (Pending, Running, Succeeded, Failed).
 
-2.  **`function-runtime/`**: A minimal HTTP server wrapper for Java user functions.
-    -   Exposes a `POST /invoke` endpoint.
-    -   Executes the registered `FunctionHandler`.
-    -   Propagates `X-Trace-Id` and `X-Execution-Id` headers.
-    -   Supports WARM execution mode for OpenWhisk-style warm containers.
+2.  **`sdks/java/` and `services/java/warm-echo/`**: The SDK provides the reusable Java HTTP invocation runtime; warm-echo is a runnable long-running WARM example using it.
+    -   Exposes a `POST /invoke` endpoint through the SDK.
+    -   Is provisioned as a normal NanoFaaS function, not as shared infrastructure.
 
 3.  **`python-runtime/`**: Python function runtime with watchdog.
     -   Supports WARM execution mode (OpenWhisk-style).
@@ -65,7 +63,7 @@ The system consists of four main modules:
 | Service | Command | Port |
 | :--- | :--- | :--- |
 | **Control Plane** | `./gradlew :control-plane:bootRun` | `:8080` (API), `:8081` (Metrics) |
-| **Function Runtime** | `./gradlew :function-runtime:bootRun` | `:8080` |
+| **Warm Echo example** | `./gradlew :services:java:warm-echo:bootRun` | `:8080` |
 
 ### Native Builds (GraalVM)
 
@@ -78,7 +76,7 @@ To build native images using GraalVM:
 
 To build container images using Spring Boot Buildpacks:
 ```bash
-./gradlew :control-plane:bootBuildImage :function-runtime:bootBuildImage
+./gradlew :control-plane:bootBuildImage :services:java:warm-echo:bootBuildImage
 ```
 
 To build the Python runtime image:
@@ -95,7 +93,8 @@ cd python-runtime && ./build.sh
 ├── platform/control-plane/     # Main service (Gateway, Scheduler, K8s Dispatch)
 │   ├── src/main/resources/application.yml  # Main config
 │   └── src/test/java/  # Unit & E2E tests
-├── platform/function-runtime/  # Java function HTTP wrapper
+├── sdks/java/                   # Reusable Java invocation runtime
+├── services/java/warm-echo/     # Long-running WARM example service
 ├── python-runtime/     # Python function runtime with watchdog (WARM mode)
 ├── docs/               # Architecture and operational docs
 ├── k8s/                # Kubernetes manifests & templates
@@ -121,4 +120,4 @@ Configuration is primarily handled in `application.yml` files:
     -   `nanofaas.defaults.timeoutMs`
     -   `nanofaas.rate.maxPerSecond`
     -   `nanofaas.k8s.namespace`
-- **Function Runtime:** `function-runtime/src/main/resources/application.yml`
+- **Warm Echo example:** `services/java/warm-echo/src/main/resources/application.yml`
