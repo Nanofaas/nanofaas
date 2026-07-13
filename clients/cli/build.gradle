@@ -27,6 +27,12 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+tasks.named('processResources') {
+    filesMatching('nanofaas-cli.properties') {
+        expand(version: project.version)
+    }
+}
+
 tasks.withType(JavaCompile).configureEach {
     // Generate GraalVM reflection config for picocli command classes.
     options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]

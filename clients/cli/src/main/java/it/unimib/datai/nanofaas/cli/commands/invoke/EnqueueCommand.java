@@ -14,7 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-@Command(name = "enqueue", description = "Invoke a function asynchronously.")
+@Command(name = "enqueue", mixinStandardHelpOptions = true,
+        description = "Invoke a function asynchronously.")
 public class EnqueueCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand

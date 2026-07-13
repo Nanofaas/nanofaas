@@ -3,7 +3,7 @@ package it.unimib.datai.nanofaas.cli.commands.fn;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
-@Command(name = "delete", description = "Delete a function by name.")
+@Command(name = "delete", mixinStandardHelpOptions = true, description = "Delete a function by name.")
 public class FnDeleteCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand

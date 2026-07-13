@@ -46,6 +46,40 @@ class RootCommandTest {
     }
 
     @Test
+    void leafHelpPrintsUsage() {
+        CommandLine cli = new CommandLine(new RootCommand());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        cli.setOut(new PrintWriter(out, true));
+
+        int exit = cli.execute("fn", "list", "--help");
+
+        assertThat(exit).isZero();
+        assertThat(out.toString()).contains("Usage: nanofaas fn list");
+    }
+
+    @Test
+    void globalOptionIsAcceptedAfterSubcommands() {
+        RootCommand command = new RootCommand();
+        CommandLine cli = new CommandLine(command);
+
+        cli.parseArgs("fn", "list", "--endpoint", "http://localhost:8080");
+
+        assertThat(command.resolvedContext().endpoint()).isEqualTo("http://localhost:8080");
+    }
+
+    @Test
+    void versionComesFromTheBuild() {
+        CommandLine cli = new CommandLine(new RootCommand());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        cli.setOut(new PrintWriter(out, true));
+
+        int exit = cli.execute("--version");
+
+        assertThat(exit).isZero();
+        assertThat(out.toString()).contains("nanofaas 0.17.0");
+    }
+
+    @Test
     void commandWithNoEndpointExitsNonZero() {
         RootCommand cmd = new RootCommand();
         CommandLine cli = new CommandLine(cmd);

@@ -14,7 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-@Command(name = "invoke", description = "Invoke a function synchronously.")
+@Command(name = "invoke", mixinStandardHelpOptions = true,
+        description = "Invoke a function synchronously.")
 public class InvokeCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand

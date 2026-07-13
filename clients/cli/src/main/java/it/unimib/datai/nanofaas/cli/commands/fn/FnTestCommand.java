@@ -19,7 +19,8 @@ import java.util.Locale;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
-@Command(name = "test", description = "Run JSON contract payloads against a function.")
+@Command(name = "test", mixinStandardHelpOptions = true,
+        description = "Run JSON contract payloads against a function.")
 public class FnTestCommand implements Callable<Integer> {
 
     @ParentCommand

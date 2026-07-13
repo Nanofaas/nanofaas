@@ -10,7 +10,8 @@ import picocli.CommandLine.ParentCommand;
 
 import java.nio.file.Path;
 
-@Command(name = "apply", description = "Create or replace a function from a YAML spec.")
+@Command(name = "apply", mixinStandardHelpOptions = true,
+        description = "Create or replace a function from a YAML spec.")
 public class FnApplyCommand implements Runnable {
 
     @ParentCommand
