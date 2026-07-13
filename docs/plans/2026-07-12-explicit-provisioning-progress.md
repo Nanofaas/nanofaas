@@ -59,4 +59,3 @@
 4. Run both Python suites and quality gates.
 5. Execute the real Multipass `validate-k8s.yaml --provision` E2E and verify cleanup.
 6. Run GitNexus change detection, commit, reindex, and push the branch.
-
