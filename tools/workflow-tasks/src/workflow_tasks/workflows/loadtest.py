@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -24,13 +25,49 @@ from workflow_tasks.loadtest.tasks import (
 from workflow_tasks.tasks.command_task import CommandTask
 from workflow_tasks.tasks.models import CommandTaskSpec
 
-DEFAULT_PROMETHEUS_QUERIES = (
-    PrometheusQuery("function_dispatch_total", "function_dispatch_total", required=True),
-    PrometheusQuery("function_success_total", "function_success_total", required=True),
-    PrometheusQuery("function_error_total", "function_error_total"),
-    PrometheusQuery("function_latency_ms", "function_latency_ms"),
-    PrometheusQuery("process_cpu_usage", "process_cpu_usage"),
-)
+def default_prometheus_queries(function_name: str) -> tuple[PrometheusQuery, ...]:
+    function = f"{{function={json.dumps(function_name)}}}"
+    control_plane = '{app="nanofaas-control-plane"}'
+    return (
+        PrometheusQuery("function_dispatch_total", f"function_dispatch_total{function}", True),
+        PrometheusQuery("function_success_total", f"function_success_total{function}", True),
+        PrometheusQuery("function_error_total", f"function_error_total{function}"),
+        PrometheusQuery("function_retry_total", f"function_retry_total{function}"),
+        PrometheusQuery("function_timeout_total", f"function_timeout_total{function}"),
+        PrometheusQuery(
+            "function_queue_rejected_total", f"function_queue_rejected_total{function}"
+        ),
+        PrometheusQuery("function_cold_start_total", f"function_cold_start_total{function}"),
+        PrometheusQuery("function_warm_start_total", f"function_warm_start_total{function}"),
+        PrometheusQuery(
+            "function_latency_count", f"function_latency_ms_seconds_count{function}"
+        ),
+        PrometheusQuery("function_latency_sum", f"function_latency_ms_seconds_sum{function}"),
+        PrometheusQuery(
+            "function_init_duration_count",
+            f"function_init_duration_ms_seconds_count{function}",
+        ),
+        PrometheusQuery(
+            "function_init_duration_sum", f"function_init_duration_ms_seconds_sum{function}"
+        ),
+        PrometheusQuery(
+            "function_queue_wait_count", f"function_queue_wait_ms_seconds_count{function}"
+        ),
+        PrometheusQuery(
+            "function_queue_wait_sum", f"function_queue_wait_ms_seconds_sum{function}"
+        ),
+        PrometheusQuery(
+            "function_e2e_latency_count", f"function_e2e_latency_ms_seconds_count{function}"
+        ),
+        PrometheusQuery(
+            "function_e2e_latency_sum", f"function_e2e_latency_ms_seconds_sum{function}"
+        ),
+        PrometheusQuery("process_cpu_usage", f"process_cpu_usage{control_plane}"),
+        PrometheusQuery(
+            "jvm_heap_used_bytes",
+            'jvm_memory_used_bytes{app="nanofaas-control-plane",area="heap"}',
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
