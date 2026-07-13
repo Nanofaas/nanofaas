@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,6 +11,7 @@ from workflow_tasks.loadtest.models import PrometheusQuery, TimeWindow
 from workflow_tasks.loadtest.ports import PrometheusClient, RemoteFileFetcher
 
 if TYPE_CHECKING:
+    from workflow_tasks.loadtest.autoscaling import VerifyAutoscalingReplicas
     from workflow_tasks.loadtest.models import K6Config, K6RunResult
     from workflow_tasks.tasks.executors import VmCommandRunner
 
@@ -215,7 +216,9 @@ def _render_k6_html(k6_summary: dict, prom_snapshot: dict | None) -> str:
     for name, entry in metrics.items():
         if not isinstance(entry, dict):
             continue
-        values = entry.get("values", {})
+        values = entry.get("values")
+        if not isinstance(values, dict):
+            values = entry
         formatted = " | ".join(
             f"{k}: {v:.3g}" if isinstance(v, float) else f"{k}: {v}"
             for k, v in values.items()
@@ -289,3 +292,49 @@ class WriteK6Report:
         dest = self.output_dir / "report.html"
         dest.write_text(html, encoding="utf-8")
         return dest
+
+
+def _point_stats(points: list[dict]) -> dict[str, float | int]:
+    values = [float(point["value"]) for point in points if "value" in point]
+    if not values:
+        return {"points": 0}
+    return {
+        "points": len(values),
+        "first": values[0],
+        "last": values[-1],
+        "delta": values[-1] - values[0],
+        "min": min(values),
+        "max": max(values),
+    }
+
+
+@dataclass
+class WriteLoadtestSummary:
+    task_id: str
+    title: str
+    data_dir: Path
+    output_dir: Path
+    autoscaling: "VerifyAutoscalingReplicas | None" = None
+
+    def run(self) -> Path:
+        k6 = json.loads((self.data_dir / "k6-summary.json").read_text(encoding="utf-8"))
+        prometheus_path = self.data_dir / "metrics" / "prometheus-snapshot.json"
+        prometheus = (
+            json.loads(prometheus_path.read_text(encoding="utf-8"))
+            if prometheus_path.exists()
+            else {"queries": {}}
+        )
+        selected = ("http_reqs", "http_req_failed", "http_req_duration", "checks")
+        summary = {
+            "schema_version": 1,
+            "k6": {name: k6.get("metrics", {}).get(name, {}) for name in selected},
+            "prometheus": {
+                name: _point_stats(entry.get("points", []))
+                for name, entry in prometheus.get("queries", {}).items()
+            },
+            "autoscaling": asdict(self.autoscaling.result) if self.autoscaling else None,
+        }
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        destination = self.output_dir / "summary.json"
+        destination.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        return destination
