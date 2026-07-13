@@ -71,6 +71,25 @@ def test_control_plane_helm_values_contains_namespace() -> None:
     assert values["namespace.name"] == "myns"
 
 
+def _extra_env(values: dict[str, str], name: str) -> str:
+    name_key = next(key for key, value in values.items() if value == name)
+    return values[name_key.replace(".name", ".value")]
+
+
+def test_loadtest_helm_values_allow_cold_start_queueing() -> None:
+    regular = helm_mod.control_plane_helm_values(
+        namespace="ns", control_plane_image="control:latest"
+    )
+    loadtest = helm_mod.control_plane_helm_values(
+        namespace="ns", control_plane_image="control:latest", expose_node_port=True
+    )
+
+    assert _extra_env(regular, "SYNC_QUEUE_MAX_DEPTH") == "1"
+    assert _extra_env(regular, "SYNC_QUEUE_MAX_QUEUE_WAIT") == "5s"
+    assert _extra_env(loadtest, "SYNC_QUEUE_MAX_DEPTH") == "100"
+    assert _extra_env(loadtest, "SYNC_QUEUE_MAX_QUEUE_WAIT") == "30s"
+
+
 def test_function_runtime_helm_values_parses_image() -> None:
     values = helm_mod.function_runtime_helm_values(
         function_runtime_image="localhost:5000/runtime:v1.2.3"

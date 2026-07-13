@@ -39,17 +39,21 @@ Omit `--provision` on subsequent runs.
 
 ## Load test
 
-The stack must already expose the control-plane and Prometheus, and k6 must be installed on the stack or dedicated load-generator role.
+The load-test workflow builds and deploys NanoFaaS with Helm, registers the
+function, runs k6, verifies autoscaling, captures metrics and cleans up the
+deployment. Provisioning only prepares the VM and installs its prerequisites.
 
 ```bash
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
   --environment tools/controlplane/environments/external.yaml \
   --provision \
-  --control-plane-url http://stack.example:30080 \
-  --prometheus-url http://stack.example:30090 \
   --run-dir tools/controlplane/runs/e2e
 ```
 
-`--provision` installs k6 on the dedicated `loadgen` role when present, otherwise on `stack`; omit it after the first run.
+The stack host and NodePort endpoints are derived from the environment. Explicit
+URL options remain available as overrides. `--provision` installs k6 on the
+dedicated `loadgen` role when present, otherwise on `stack`; omit it after the
+first run. For a two-VM Multipass run use
+`tools/controlplane/environments/multipass-two-vm.yaml`.
 
 Use `--keep` while investigating a failed environment and task slicing for targeted reruns.
