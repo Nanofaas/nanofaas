@@ -16,6 +16,8 @@ public final class DockerBuildx {
 
         if (spec.push()) {
             cmd.add("--push");
+        } else {
+            cmd.add("--load");
         }
 
         cmd.add("--tag");
