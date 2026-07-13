@@ -11,7 +11,7 @@ from workflow_tasks.components.images import (
     function_image_specs,
     plan_build_core,
     plan_build_selected_functions,
-    runtime_image,
+    warm_echo_image,
 )
 from workflow_tasks.vm.models import VmRequest
 
@@ -54,12 +54,12 @@ def _ctx(*, runtime: str = "java", functions: list | None = None) -> ScenarioExe
 
 def test_image_name_helpers() -> None:
     assert control_image("reg:5000") == "reg:5000/nanofaas/control-plane:e2e"
-    assert runtime_image("reg:5000") == "reg:5000/nanofaas/function-runtime:e2e"
+    assert warm_echo_image("reg:5000") == "reg:5000/nanofaas/java-warm-echo:e2e"
 
 
 def test_e2e_image_components_keep_local_e2e_tags() -> None:
     assert control_image("localhost:5000") == "localhost:5000/nanofaas/control-plane:e2e"
-    assert runtime_image("localhost:5000") == "localhost:5000/nanofaas/function-runtime:e2e"
+    assert warm_echo_image("localhost:5000") == "localhost:5000/nanofaas/java-warm-echo:e2e"
 
 
 def test_live_e2e_scenario_image_consumers_do_not_use_removed_images_cli_syntax() -> None:
@@ -89,7 +89,8 @@ def test_plan_build_core_java_builds_jars_and_pushes() -> None:
     ids = [op.operation_id for op in plan_build_core(_ctx(runtime="java"))]
     assert "images.build_core.boot_jars" in ids
     assert "images.build_core.control_image" in ids
-    assert "images.build_core.push_runtime_image" in ids
+    assert "images.build_core.warm_echo_image" in ids
+    assert "images.build_core.push_warm_echo_image" in ids
 
 
 def test_plan_build_core_rust_skips_boot_jars() -> None:
