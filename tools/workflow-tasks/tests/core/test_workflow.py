@@ -76,6 +76,19 @@ def test_workflow_cleanup_runs_after_success_too() -> None:
     assert calls == ["a", "cleanup"]
 
 
+def test_keep_infrastructure_skips_static_cleanup_tasks() -> None:
+    calls: list[str] = []
+    workflow = Workflow(
+        tasks=[_OkTask(task_id="a", title="A", calls=calls)],
+        cleanup_tasks=[_OkTask(task_id="cleanup", title="Cleanup", calls=calls)],
+        keep_infrastructure=True,
+    )
+
+    workflow.run()
+
+    assert calls == ["a"]
+
+
 def test_workflow_task_ids_includes_all_tasks() -> None:
     calls: list[str] = []
     workflow = Workflow(
