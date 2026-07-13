@@ -34,7 +34,13 @@ scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
   --provision
 ```
 
-`--provision` is an explicit, idempotent first-run step for Multipass and external SSH environments. It creates or reuses the Multipass VM, or reuses the configured external host, then runs the separately maintained Ansible tasks and synchronizes the repository. It never destroys a VM. Omit the flag on later runs. Azure and Proxmox provisioning remains provider-specific. Commands run from `<home>/nanofaas` on remote machines.
+`--provision` creates or reuses Multipass, Azure, and Proxmox VMs, or reuses an
+external SSH host. It then runs the shared Ansible bootstrap tasks and synchronizes
+the repository. Managed VMs are deleted when the run finishes, including after a
+failure; pass `--keep` to preserve them. External hosts are never deleted. Commands
+run from `<home>/nanofaas` on remote machines. Copy `azure.yaml.example` or
+`proxmox.yaml.example` to configure those providers; Proxmox reads its password from
+the environment variable named by `password_env`.
 
 Load testing uses the same command:
 
@@ -48,10 +54,12 @@ scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
 The load test deploys the stack with Helm, registers its function, runs k6 with
 autoscaling observation, captures Prometheus data and removes the Helm releases.
 The stack address is discovered from the environment; URL flags are only needed
-to override it. On later runs, omit `--provision`. Use
-`environments/multipass-two-vm.yaml` to place k6 on a dedicated VM.
+to override it. Use an environment with a `loadgen` role to place k6 on a dedicated
+VM.
 
-Task subsets are selected with `--only`, `--from`, or `--until`; `--keep` preserves acquired infrastructure while still cleaning transient processes.
+Task subsets are selected with `--only`, `--from`, or `--until`; `--keep` preserves
+managed VMs and acquired platform infrastructure while still cleaning transient
+processes.
 
 ## Development
 
