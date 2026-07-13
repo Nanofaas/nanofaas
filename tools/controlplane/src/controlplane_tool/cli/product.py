@@ -10,7 +10,7 @@ from workflow_tasks.loadtest.adapters import HttpPrometheusClient
 from workflow_tasks.workflow.context import bind_workflow_sink
 
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
-from controlplane_tool.cli.execution import build_role_bindings
+from controlplane_tool.cli.execution import build_role_bindings, resolve_loadtest_urls
 from controlplane_tool.cli.progress import ConsoleProgressSink
 from controlplane_tool.cli.provisioning import provision_environment
 from controlplane_tool.plans.cli import build_cli_plan
@@ -108,25 +108,14 @@ def install_product_commands(app: typer.Typer) -> None:
         only: str | None = typer.Option(None, "--only"),
         start: str | None = typer.Option(None, "--from"),
         until: str | None = typer.Option(None, "--until"),
-        control_plane_url: str = typer.Option("http://127.0.0.1:8080", "--control-plane-url"),
-        prometheus_url: str = typer.Option("http://127.0.0.1:9090", "--prometheus-url"),
+        control_plane_url: str | None = typer.Option(None, "--control-plane-url"),
+        prometheus_url: str | None = typer.Option(None, "--prometheus-url"),
         run_dir: Path | None = typer.Option(None, "--run-dir"),
     ) -> None:
         scenario_config = _scenario(scenario)
         environment_config = _environment(environment)
         if provision and environment_config.provider == "local":
             raise typer.BadParameter("--provision requires a non-local environment")
-        workflow = _slice(
-            _workflow(
-                scenario_config,
-                environment_config,
-                control_plane_url=control_plane_url,
-                prometheus_url=prometheus_url,
-                run_dir=run_dir,
-            ),
-            only=only, start=start, until=until,
-        )
-        workflow.keep_infrastructure = keep
         with bind_workflow_sink(ConsoleProgressSink()):
             if provision:
                 provision_environment(
@@ -134,6 +123,23 @@ def install_product_commands(app: typer.Typer) -> None:
                     environment_config,
                     repo_root=default_tool_paths().workspace_root,
                 )
+            if scenario_config.workflow == "loadtest":
+                control_plane_url, prometheus_url = resolve_loadtest_urls(
+                    environment_config,
+                    control_plane_url=control_plane_url,
+                    prometheus_url=prometheus_url,
+                )
+            workflow = _slice(
+                _workflow(
+                    scenario_config,
+                    environment_config,
+                    control_plane_url=control_plane_url or "http://127.0.0.1:8080",
+                    prometheus_url=prometheus_url or "http://127.0.0.1:9090",
+                    run_dir=run_dir,
+                ),
+                only=only, start=start, until=until,
+            )
+            workflow.keep_infrastructure = keep
             workflow.run()
 
     @app.command("plan")
@@ -143,16 +149,25 @@ def install_product_commands(app: typer.Typer) -> None:
         only: str | None = typer.Option(None, "--only"),
         start: str | None = typer.Option(None, "--from"),
         until: str | None = typer.Option(None, "--until"),
-        control_plane_url: str = typer.Option("http://127.0.0.1:8080", "--control-plane-url"),
-        prometheus_url: str = typer.Option("http://127.0.0.1:9090", "--prometheus-url"),
+        control_plane_url: str | None = typer.Option(None, "--control-plane-url"),
+        prometheus_url: str | None = typer.Option(None, "--prometheus-url"),
         run_dir: Path | None = typer.Option(None, "--run-dir"),
     ) -> None:
-        _render(_slice(
-            _workflow(
-                _scenario(scenario),
-                _environment(environment),
+        scenario_config = _scenario(scenario)
+        environment_config = _environment(environment)
+        if scenario_config.workflow == "loadtest":
+            control_plane_url, prometheus_url = resolve_loadtest_urls(
+                environment_config,
                 control_plane_url=control_plane_url,
                 prometheus_url=prometheus_url,
+                dry_run=True,
+            )
+        _render(_slice(
+            _workflow(
+                scenario_config,
+                environment_config,
+                control_plane_url=control_plane_url or "http://127.0.0.1:8080",
+                prometheus_url=prometheus_url or "http://127.0.0.1:9090",
                 run_dir=run_dir,
             ),
             only=only, start=start, until=until,
