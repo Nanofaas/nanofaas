@@ -129,6 +129,7 @@ def build_validate_plan(
         backend=config.backend,
         build=config.build,
         functions=tuple(_resolve_function(config, key) for key in config.functions),
+        additional_modules=("async-queue", "sync-queue") if config.backend == "k8s" else (),
     )
     root = repo_root or Path.cwd()
     specs = validate_task_specs(request)

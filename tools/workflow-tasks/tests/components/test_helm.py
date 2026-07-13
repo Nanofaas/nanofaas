@@ -84,3 +84,14 @@ def test_loadtest_helm_values_allow_cold_start_queueing() -> None:
     assert _extra_env(regular, "SYNC_QUEUE_MAX_QUEUE_WAIT") == "5s"
     assert _extra_env(loadtest, "SYNC_QUEUE_MAX_DEPTH") == "100"
     assert _extra_env(loadtest, "SYNC_QUEUE_MAX_QUEUE_WAIT") == "30s"
+    assert _extra_env(loadtest, "SYNC_QUEUE_ADMISSION_ENABLED") == "false"
+
+
+def test_helm_values_can_enable_sync_queue_admission_for_validation() -> None:
+    values = helm_mod.control_plane_helm_values(
+        namespace="ns",
+        control_plane_image="control:latest",
+        sync_queue_admission_enabled=True,
+    )
+
+    assert _extra_env(values, "SYNC_QUEUE_ADMISSION_ENABLED") == "true"

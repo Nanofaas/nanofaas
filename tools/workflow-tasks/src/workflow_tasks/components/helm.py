@@ -28,6 +28,7 @@ def control_plane_helm_values(
     control_plane_image: str,
     expose_node_port: bool = False,
     metrics_profile: str | None = None,
+    sync_queue_admission_enabled: bool = False,
 ) -> dict[str, str]:
     repository, tag = _image_parts(control_plane_image)
     callback_url = f"http://control-plane.{namespace}.svc.cluster.local:8080/v1/internal/executions"
@@ -47,7 +48,7 @@ def control_plane_helm_values(
         ("NANOFAAS_K8S_CALLBACK_URL", callback_url),
         ("SYNC_QUEUE_ENABLED", "true"),
         ("NANOFAAS_SYNC_QUEUE_ENABLED", "true"),
-        ("SYNC_QUEUE_ADMISSION_ENABLED", "false"),
+        ("SYNC_QUEUE_ADMISSION_ENABLED", str(sync_queue_admission_enabled).lower()),
         ("SYNC_QUEUE_MAX_DEPTH", sync_queue_depth),
         ("NANOFAAS_SYNC_QUEUE_MAX_CONCURRENCY", "1"),
         ("SYNC_QUEUE_MAX_ESTIMATED_WAIT", "2s"),
