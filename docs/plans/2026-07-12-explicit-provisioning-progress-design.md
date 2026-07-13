@@ -19,4 +19,3 @@ Provisioning is idempotent. A failure aborts the scenario and leaves the VM inta
 A small console sink consumes the existing normalized `WorkflowEvent` stream. It prints one line when a task starts and a completion/failure line with elapsed time. The workflow and task libraries remain UI-independent; Typer output stays in the control-plane tool. Captured command output continues to appear in exceptions, avoiding duplicate successful build logs.
 
 Provisioning operations run inside the same event context, so users see one ordered sequence before scenario tasks. Tests use recording orchestrators and sinks; the real gate is a Multipass k3s E2E.
-
