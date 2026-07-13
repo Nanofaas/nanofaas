@@ -42,6 +42,7 @@ class ScenarioConfig(BaseModel):
     build: BuildStrategy = "docker"
     functions: list[str] = Field(min_length=1)
     resources: dict[str, ResourceSpec] = Field(default_factory=dict)
+    autoscaling: bool = False
 
     @model_validator(mode="after")
     def validate_workflow(self) -> "ScenarioConfig":
@@ -49,4 +50,6 @@ class ScenarioConfig(BaseModel):
             raise ValueError("backend is required for validate workflow")
         if set(self.resources) - set(self.functions):
             raise ValueError("resources must refer to selected functions")
+        if self.autoscaling and self.workflow != "loadtest":
+            raise ValueError("autoscaling is only supported by the loadtest workflow")
         return self

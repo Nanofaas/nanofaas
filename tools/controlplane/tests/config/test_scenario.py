@@ -53,6 +53,24 @@ def test_resources_must_refer_to_selected_functions() -> None:
         )
 
 
+def test_autoscaling_is_opt_in_for_loadtest() -> None:
+    config = ScenarioConfig(
+        workflow="loadtest", functions=["word-stats-java"], autoscaling=True
+    )
+
+    assert config.autoscaling is True
+
+
+def test_autoscaling_is_rejected_outside_loadtest() -> None:
+    with pytest.raises(ValidationError, match="autoscaling is only supported"):
+        ScenarioConfig(
+            workflow="validate",
+            backend="k8s",
+            functions=["word-stats-java"],
+            autoscaling=True,
+        )
+
+
 def test_rejects_legacy_fields() -> None:
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         ScenarioConfig.model_validate(

@@ -4,8 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from workflow_tasks.vm.models import VmRequest
 
 
@@ -208,5 +206,4 @@ def test_transfer_from_no_ssh_key(mock_client_cls, mock_subproc) -> None:
         result = provider.transfer_from(req, source="/remote/file", destination=Path("/local"))
     assert result.return_code == 0
     assert "-i" not in result.command
-
 

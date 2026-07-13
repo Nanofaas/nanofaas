@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from workflow_tasks.vm.adapters import AzureVmAdapter, MultipassVmAdapter, VmLifecycleAdapter
-from workflow_tasks.vm.models import VmConfig, VmInfo
+from workflow_tasks.vm.models import VmConfig, VmInfo, VmRequest
 
 
 def _make_orchestrator(host: str = "10.0.0.1") -> MagicMock:
@@ -23,6 +26,25 @@ def test_vm_lifecycle_adapter_ensure_running_returns_vm_info() -> None:
     assert info.name == "my-vm"
     assert info.host == "192.168.1.1"
     assert info.user == "ubuntu"
+
+
+def test_vm_lifecycle_adapter_rejects_failed_provider_result() -> None:
+    orch = _make_orchestrator()
+    orch.ensure_running.return_value = SimpleNamespace(
+        return_code=255,
+        stdout="",
+        stderr="SSH unavailable",
+    )
+    adapter = VmLifecycleAdapter(
+        orch,
+        lifecycle="external",
+        credentials=VmRequest(lifecycle="external", host="vm.example"),
+    )
+
+    with pytest.raises(RuntimeError, match="SSH unavailable"):
+        adapter.ensure_running(VmConfig(name="vm.example"))
+
+    orch.connection_host.assert_not_called()
 
 
 def test_vm_lifecycle_adapter_destroy_calls_teardown() -> None:

@@ -1,7 +1,8 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from workflow_tasks.execution.bindings import RoleBindings
+from workflow_tasks.loadtest.autoscaling import RunK6WithReplicaWatch
 from workflow_tasks.loadtest.models import PrometheusQuery
 from workflow_tasks.tasks.models import CommandTaskSpec, TaskResult
 from workflow_tasks.workflows.loadtest import (
@@ -105,3 +106,15 @@ def test_remote_shared_role_can_fetch_results_without_a_dedicated_loadgen(
 
     assert workflow.tasks[0].spec.role == "stack"
     assert workflow.task_ids[3] == "loadgen.fetch_results"
+
+
+def test_autoscaling_wraps_k6_and_verifies_replica_lifecycle(tmp_path: Path) -> None:
+    workflow = build_loadtest_workflow(
+        replace(request(tmp_path, dedicated=False), autoscaling=True),
+        RoleBindings(host=RecordingExecutor(), stack=RecordingExecutor()),
+        prometheus_client=NoopPrometheus(),
+    )
+
+    run = next(task for task in workflow.tasks if task.task_id == "loadgen.run_k6")
+    assert isinstance(run, RunK6WithReplicaWatch)
+    assert "autoscaling.verify_replicas" in workflow.task_ids

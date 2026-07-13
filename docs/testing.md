@@ -17,6 +17,9 @@ scripts/controlplane.sh plan tools/controlplane/scenarios-v2/loadtest.yaml \
   --environment tools/controlplane/environments/external.yaml.example
 ```
 
-Actual container validation needs Docker. Kubernetes validation needs a prepared k3s VM, local through Multipass or remote through SSH. Load tests additionally need k6 and a reachable Prometheus endpoint.
+Actual container validation needs Docker. With `--provision`, Kubernetes validation
+can prepare Multipass, Azure, or Proxmox VMs; an external SSH host remains
+user-managed. Load tests additionally need provider credentials and network access.
+Managed VMs are deleted after the run unless `--keep` is set.
 
 Use `--only`, `--from`, and `--until` to isolate tasks. Use `--keep` only when infrastructure must remain available for investigation.

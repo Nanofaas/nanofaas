@@ -1,0 +1,16 @@
+provider: azure
+roles:
+  stack:
+    name: nanofaas-azure
+  loadgen:
+    name: nanofaas-azure-loadgen
+    cpus: 2
+    memory: 2G
+    disk: 10G
+azure:
+  resource_group: nanofaas-rg
+  location: westeurope
+  vm_size: Standard_D4s_v5
+  loadgen_vm_size: Standard_B1s
+  image_urn: Canonical:ubuntu-24_04-lts:server:latest
+  ssh_key_path: /home/you/.ssh/id_ed25519

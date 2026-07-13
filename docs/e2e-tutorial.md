@@ -13,34 +13,47 @@ scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-container.y
 
 ## Kubernetes in Multipass
 
-Prepare the named VM with k3s, Helm, a registry, JDK 21 and the repository checkout at `/home/ubuntu/nanofaas`. The provisioning tasks are maintained separately from this tool. Then run:
+On the first run, explicitly create or reuse the named VM and apply the separately maintained Ansible tasks:
 
 ```bash
 scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
   --environment tools/controlplane/environments/multipass.yaml
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/multipass.yaml
+  --environment tools/controlplane/environments/multipass.yaml \
+  --provision
 ```
+
+The result contains k3s, Helm, a local registry, JDK 21 and the repository at `/home/ubuntu/nanofaas`. Subsequent runs omit `--provision`. Failures leave the VM running for diagnosis.
 
 ## Remote VM through SSH and Ansible
 
-Copy `tools/controlplane/environments/external.yaml.example`, set host/user/home, and provision the VM idempotently with the external Ansible project. The same scenario then runs commands over SSH:
+Copy `tools/controlplane/environments/external.yaml.example` to `external.yaml` and set host/user/home. The first run connects over SSH, applies the same idempotent Ansible tasks, and synchronizes the repository; it never creates or destroys the remote VM:
 
 ```bash
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/external.yaml
+  --environment tools/controlplane/environments/external.yaml \
+  --provision
 ```
+
+Omit `--provision` on subsequent runs.
 
 ## Load test
 
-The stack must already expose the control-plane and Prometheus, and k6 must be installed on the stack or dedicated load-generator role.
+The load-test workflow builds and deploys NanoFaaS with Helm, registers the
+function, runs k6, verifies autoscaling, captures metrics and cleans up the
+deployment. Provisioning only prepares the VM and installs its prerequisites.
 
 ```bash
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
   --environment tools/controlplane/environments/external.yaml \
-  --control-plane-url http://stack.example:30080 \
-  --prometheus-url http://stack.example:30090 \
+  --provision \
   --run-dir tools/controlplane/runs/e2e
 ```
+
+The stack host and NodePort endpoints are derived from the environment. Explicit
+URL options remain available as overrides. `--provision` installs k6 on the
+dedicated `loadgen` role when present, otherwise on `stack`; omit it after the
+first run. For a two-VM Multipass run use
+`tools/controlplane/environments/multipass-two-vm.yaml`.
 
 Use `--keep` while investigating a failed environment and task slicing for targeted reruns.
