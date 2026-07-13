@@ -84,6 +84,7 @@ def test_shared_stack_and_loadgen_use_stack_role(tmp_path: Path) -> None:
         "loadgen.run_k6",
         "metrics.prometheus_snapshot",
         "loadtest.write_report",
+        "loadtest.write_summary",
         "metrics.evaluate_gate",
     ]
     assert workflow.tasks[0].spec.role == "stack"

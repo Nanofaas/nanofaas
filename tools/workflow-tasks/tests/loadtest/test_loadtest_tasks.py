@@ -14,6 +14,7 @@ from workflow_tasks.loadtest.tasks import (
     InstallK6,
     RunK6,
     WriteK6Report,
+    WriteLoadtestSummary,
 )
 
 
@@ -407,6 +408,33 @@ def test_write_k6_report_generates_html(tmp_path: Path) -> None:
     assert "http_reqs" in html
 
 
+def test_write_k6_report_renders_current_flat_k6_summary(tmp_path: Path) -> None:
+    (tmp_path / "k6-summary.json").write_text(
+        json.dumps(
+            {
+                "metrics": {
+                    "http_req_duration": {
+                        "avg": 12.5,
+                        "med": 8.0,
+                        "p(95)": 25.75,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    html = WriteK6Report(
+        task_id="loadtest.write_report",
+        title="Write report",
+        data_dir=tmp_path,
+        output_dir=tmp_path,
+    ).run().read_text(encoding="utf-8")
+
+    assert "avg: 12.5" in html
+    assert "p(95): 25.8" in html
+
+
 def test_write_k6_report_includes_prometheus_section_when_snapshot_present(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     (data_dir / "metrics").mkdir(parents=True)
@@ -443,6 +471,74 @@ def test_write_k6_report_works_without_prometheus_snapshot(tmp_path: Path) -> No
     )
     report_path = task.run()
     assert report_path.exists()
+
+
+def test_write_loadtest_summary_combines_k6_prometheus_and_autoscaling(
+    tmp_path: Path,
+) -> None:
+    from workflow_tasks.loadtest.autoscaling import AutoscalingSummary
+
+    (tmp_path / "metrics").mkdir()
+    (tmp_path / "k6-summary.json").write_text(
+        json.dumps(
+            {
+                "metrics": {
+                    "http_reqs": {"count": 100, "rate": 10.0},
+                    "http_req_failed": {"value": 0.01},
+                    "http_req_duration": {"avg": 12.0, "p(95)": 25.0},
+                    "checks": {"passes": 99, "fails": 1},
+                    "ignored": {"value": 7},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "metrics" / "prometheus-snapshot.json").write_text(
+        json.dumps(
+            {
+                "queries": {
+                    "function_dispatch_total": {
+                        "points": [
+                            {"timestamp": "t0", "value": 2.0},
+                            {"timestamp": "t1", "value": 102.0},
+                        ]
+                    },
+                    "missing_optional": {"points": []},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _Autoscaling:
+        result = AutoscalingSummary("fn-word-stats-java", 4, 0)
+
+    destination = WriteLoadtestSummary(
+        task_id="loadtest.write_summary",
+        title="Write load-test summary",
+        data_dir=tmp_path,
+        output_dir=tmp_path,
+        autoscaling=_Autoscaling(),
+    ).run()
+    summary = json.loads(destination.read_text(encoding="utf-8"))
+
+    assert summary["schema_version"] == 1
+    assert summary["k6"]["http_reqs"]["count"] == 100
+    assert "ignored" not in summary["k6"]
+    assert summary["prometheus"]["function_dispatch_total"] == {
+        "points": 2,
+        "first": 2.0,
+        "last": 102.0,
+        "delta": 100.0,
+        "min": 2.0,
+        "max": 102.0,
+    }
+    assert summary["prometheus"]["missing_optional"] == {"points": 0}
+    assert summary["autoscaling"] == {
+        "deployment_name": "fn-word-stats-java",
+        "max_replicas_observed": 4,
+        "final_desired_replicas": 0,
+    }
 
 
 class _ClockOffsetPrometheusClient:

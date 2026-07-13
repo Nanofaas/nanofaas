@@ -21,6 +21,7 @@ from workflow_tasks.loadtest.tasks import (
     FetchVmResults,
     RunK6,
     WriteK6Report,
+    WriteLoadtestSummary,
 )
 from workflow_tasks.tasks.command_task import CommandTask
 from workflow_tasks.tasks.models import CommandTaskSpec
@@ -187,6 +188,7 @@ def build_loadtest_workflow(
         remote_dir=".",
     )
     watcher: ReplicaWatcher | None = None
+    verifier: VerifyAutoscalingReplicas | None = None
     run_task: Any = run_k6
     if request.autoscaling:
         watcher = ReplicaWatcher(
@@ -216,17 +218,16 @@ def build_loadtest_workflow(
             )
         )
     if watcher is not None:
-        tasks.append(
-            VerifyAutoscalingReplicas(
-                task_id="autoscaling.verify_replicas",
-                title="Verify autoscaling replica lifecycle",
-                runner=_RoleRunner(bindings, "stack"),
-                namespace=request.namespace,
-                deployment_name=f"fn-{request.function_name}",
-                remote_dir=".",
-                watcher=watcher,
-            )
+        verifier = VerifyAutoscalingReplicas(
+            task_id="autoscaling.verify_replicas",
+            title="Verify autoscaling replica lifecycle",
+            runner=_RoleRunner(bindings, "stack"),
+            namespace=request.namespace,
+            deployment_name=f"fn-{request.function_name}",
+            remote_dir=".",
+            watcher=watcher,
         )
+        tasks.append(verifier)
     tasks.extend(
         (
             CapturePrometheusSnapshot(
@@ -245,6 +246,13 @@ def build_loadtest_workflow(
                 title="Write load-test report",
                 data_dir=request.run_dir,
                 output_dir=request.run_dir,
+            ),
+            WriteLoadtestSummary(
+                task_id="loadtest.write_summary",
+                title="Write load-test summary",
+                data_dir=request.run_dir,
+                output_dir=request.run_dir,
+                autoscaling=verifier,
             ),
             _EvaluateK6Gate(
                 task_id="metrics.evaluate_gate",
