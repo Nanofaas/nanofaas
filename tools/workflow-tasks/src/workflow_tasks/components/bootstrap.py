@@ -140,6 +140,9 @@ def plan_repo_sync_to_vm(context: ScenarioExecutionContext) -> tuple[ScenarioOpe
                         user=vm_request.user,
                         host=vm_request.host,
                         destination=destination,
+                        ssh_rsh=repo_sync_ssh_rsh(
+                            _find_ssh_private_key_path(find_ssh_public_key())
+                        ),
                     )
                 ),
             ),

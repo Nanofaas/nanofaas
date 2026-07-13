@@ -1,10 +1,29 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from workflow_tasks import VmRequest, workflow_step
+from workflow_tasks import (
+    EnsureVmRunning,
+    HostCommandTaskExecutor,
+    VmConfig,
+    VmLifecycleAdapter,
+    VmRequest,
+    Workflow,
+    command_task_from_operation,
+)
+from workflow_tasks.components.bootstrap import (
+    plan_k3s_configure_registry,
+    plan_k3s_install,
+    plan_loadtest_install_k6,
+    plan_registry_ensure_container,
+    plan_repo_sync_to_vm,
+    plan_vm_provision_base,
+)
+from workflow_tasks.components.context import ScenarioExecutionContext
+from workflow_tasks.components.operations import RemoteCommandOperation
 from workflow_tasks.vm.orchestrator import VmOrchestrator
 
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
@@ -27,12 +46,84 @@ def _request(environment: EnvironmentConfig, target: RoleTarget) -> VmRequest:
     )
 
 
-def _run(task_id: str, title: str, operation: Callable[[], Any]) -> None:
-    with workflow_step(task_id=task_id, title=title):
-        result = operation()
-        if result.return_code != 0:
-            detail = result.stderr or result.stdout or "command failed"
-            raise RuntimeError(detail.strip())
+def _ensure_vm(orchestrator: Any, request: VmRequest, *, role: str) -> VmRequest:
+    lifecycle = VmLifecycleAdapter(
+        orchestrator,
+        lifecycle=request.lifecycle,
+        credentials=request,
+    )
+    task = EnsureVmRunning(
+        task_id=f"provision.{role}.ensure",
+        title=f"Ensure {role} VM is running",
+        lifecycle=lifecycle,
+        config=VmConfig(
+            name=request.name or request.host or role,
+            cpus=request.cpus,
+            memory=request.memory,
+            disk=request.disk,
+        ),
+    )
+    Workflow(tasks=[task]).run()
+    info = task.result
+    return request.model_copy(
+        update={
+            "lifecycle": "external",
+            "host": info.host,
+            "user": info.user,
+            "home": info.home,
+        }
+    )
+
+
+def _context(repo_root: Path, request: VmRequest) -> ScenarioExecutionContext:
+    return ScenarioExecutionContext(
+        repo_root=repo_root,
+        scenario_name="provision",
+        runtime="java",
+        namespace=None,
+        local_registry="localhost:5000",
+        resolved_scenario=None,
+        vm_request=request,
+        cleanup_vm=False,
+    )
+
+
+def _run_operations(
+    orchestrator: Any,
+    operations: Iterable[RemoteCommandOperation],
+    *,
+    role: str,
+) -> None:
+    executor = HostCommandTaskExecutor(orchestrator.shell)
+    tasks = [
+        command_task_from_operation(
+            replace(operation, operation_id=f"provision.{role}.{operation.operation_id}"),
+            executor,
+        )
+        for operation in operations
+    ]
+    Workflow(tasks=tasks).run()
+
+
+def _stack_operations(
+    scenario: ScenarioConfig,
+    context: ScenarioExecutionContext,
+    *,
+    dedicated_loadgen: bool,
+) -> tuple[RemoteCommandOperation, ...]:
+    planners = [plan_vm_provision_base]
+    if scenario.backend == "k8s" or scenario.workflow == "loadtest":
+        planners.extend(
+            [
+                plan_k3s_install,
+                plan_registry_ensure_container,
+                plan_k3s_configure_registry,
+            ]
+        )
+    if scenario.workflow == "loadtest" and not dedicated_loadgen:
+        planners.append(plan_loadtest_install_k6)
+    planners.append(plan_repo_sync_to_vm)
+    return tuple(operation for planner in planners for operation in planner(context))
 
 
 def provision_environment(
@@ -46,42 +137,31 @@ def provision_environment(
         raise ValueError("--provision requires a non-local environment")
 
     orchestrator = orchestrator_factory(repo_root)
-    stack = _request(environment, environment.target("stack"))
-    _run("provision.stack.ensure", "Ensure stack VM is running", lambda: orchestrator.ensure_running(stack))
-    _run(
-        "provision.stack.base",
-        "Install stack dependencies",
-        lambda: orchestrator.install_dependencies(stack, install_helm=True),
+    dedicated_loadgen = scenario.workflow == "loadtest" and "loadgen" in environment.roles
+    stack = _ensure_vm(
+        orchestrator,
+        _request(environment, environment.target("stack")),
+        role="stack",
     )
-    if scenario.backend == "k8s" or scenario.workflow == "loadtest":
-        _run("provision.stack.k3s", "Install k3s", lambda: orchestrator.install_k3s(stack))
-        _run(
-            "provision.stack.registry",
-            "Configure container registry",
-            lambda: orchestrator.setup_registry(stack),
-        )
-    if scenario.workflow == "loadtest" and "loadgen" not in environment.roles:
-        _run(
-            "provision.stack.k6",
-            "Install k6 on stack VM",
-            lambda: orchestrator.ansible.run_playbook("install-k6.yml", stack),
-        )
-    _run("provision.stack.sync", "Sync project to stack VM", lambda: orchestrator.sync_project(stack))
+    _run_operations(
+        orchestrator,
+        _stack_operations(
+            scenario,
+            _context(repo_root, stack),
+            dedicated_loadgen=dedicated_loadgen,
+        ),
+        role="stack",
+    )
 
-    if scenario.workflow == "loadtest" and "loadgen" in environment.roles:
-        loadgen = _request(environment, environment.target("loadgen"))
-        _run(
-            "provision.loadgen.ensure",
-            "Ensure load-generator VM is running",
-            lambda: orchestrator.ensure_running(loadgen),
+    if dedicated_loadgen:
+        loadgen = _ensure_vm(
+            orchestrator,
+            _request(environment, environment.target("loadgen")),
+            role="loadgen",
         )
-        _run(
-            "provision.loadgen.k6",
-            "Install k6 on load-generator VM",
-            lambda: orchestrator.ansible.run_playbook("install-k6.yml", loadgen),
-        )
-        _run(
-            "provision.loadgen.sync",
-            "Sync project to load-generator VM",
-            lambda: orchestrator.sync_project(loadgen),
+        context = _context(repo_root, loadgen)
+        _run_operations(
+            orchestrator,
+            (*plan_loadtest_install_k6(context), *plan_repo_sync_to_vm(context)),
+            role="loadgen",
         )
