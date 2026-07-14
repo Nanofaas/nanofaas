@@ -53,3 +53,9 @@ graalvmNative {
         }
     }
 }
+
+tasks.register('nativeSmoke', Exec) {
+    dependsOn tasks.named('nativeCompile')
+    commandLine 'python3', rootProject.file('scripts/native-cli-smoke.py').absolutePath,
+            layout.buildDirectory.file('native/nativeCompile/nanofaas-cli').get().asFile.absolutePath
+}
