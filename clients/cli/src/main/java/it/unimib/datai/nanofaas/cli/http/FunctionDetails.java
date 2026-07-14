@@ -1,0 +1,64 @@
+package it.unimib.datai.nanofaas.cli.http;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
+import it.unimib.datai.nanofaas.common.model.RuntimeMode;
+import it.unimib.datai.nanofaas.common.model.ScalingConfig;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record FunctionDetails(
+        String name,
+        String image,
+        List<String> command,
+        Map<String, String> env,
+        ResourceSpec resources,
+        Integer timeoutMs,
+        Integer concurrency,
+        Integer queueSize,
+        Integer maxRetries,
+        String endpointUrl,
+        ExecutionMode requestedExecutionMode,
+        ExecutionMode effectiveExecutionMode,
+        String deploymentBackend,
+        String degradationReason,
+        RuntimeMode runtimeMode,
+        String runtimeCommand,
+        ScalingConfig scalingConfig,
+        List<String> imagePullSecrets
+) {
+    public boolean matches(FunctionSpec requested) {
+        ExecutionMode requestedMode = requested.executionMode() == null
+                ? ExecutionMode.DEPLOYMENT
+                : requested.executionMode();
+        RuntimeMode requestedRuntime = requested.runtimeMode() == null
+                ? RuntimeMode.HTTP
+                : requested.runtimeMode();
+        boolean endpointMatches = requestedMode == ExecutionMode.DEPLOYMENT
+                || matchesIfSpecified(endpointUrl, requested.endpointUrl());
+        return Objects.equals(name, requested.name())
+                && Objects.equals(image, requested.image())
+                && matchesIfSpecified(command, requested.command())
+                && matchesIfSpecified(env, requested.env())
+                && matchesIfSpecified(resources, requested.resources())
+                && matchesIfSpecified(timeoutMs, requested.timeoutMs())
+                && matchesIfSpecified(concurrency, requested.concurrency())
+                && matchesIfSpecified(queueSize, requested.queueSize())
+                && matchesIfSpecified(maxRetries, requested.maxRetries())
+                && endpointMatches
+                && requestedExecutionMode == requestedMode
+                && runtimeMode == requestedRuntime
+                && matchesIfSpecified(runtimeCommand, requested.runtimeCommand())
+                && matchesIfSpecified(scalingConfig, requested.scalingConfig())
+                && matchesIfSpecified(imagePullSecrets, requested.imagePullSecrets());
+    }
+
+    private static boolean matchesIfSpecified(Object actual, Object requested) {
+        return requested == null || Objects.equals(actual, requested);
+    }
+}

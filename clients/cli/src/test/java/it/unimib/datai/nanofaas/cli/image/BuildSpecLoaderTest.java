@@ -33,8 +33,9 @@ class BuildSpecLoaderTest {
 
         BuildSpec spec = BuildSpecLoader.load(p);
 
-        assertThat(spec.context()).isEqualTo(Path.of("./fn"));
-        assertThat(spec.dockerfile()).isEqualTo(Path.of("Dockerfile"));
+        Path context = tmp.resolve("fn").toAbsolutePath().normalize();
+        assertThat(spec.context()).isEqualTo(context);
+        assertThat(spec.dockerfile()).isEqualTo(context.resolve("Dockerfile"));
         assertThat(spec.platform()).isEqualTo("linux/amd64");
         assertThat(spec.push()).isTrue();
         assertThat(spec.buildArgs()).isEqualTo(Map.of("VERSION", "1.2.3"));
@@ -82,10 +83,31 @@ class BuildSpecLoaderTest {
 
         BuildSpec spec = BuildSpecLoader.load(p);
 
-        assertThat(spec.context()).isEqualTo(Path.of("."));
-        assertThat(spec.dockerfile()).isEqualTo(Path.of("Dockerfile"));
+        Path context = tmp.toAbsolutePath().normalize();
+        assertThat(spec.context()).isEqualTo(context);
+        assertThat(spec.dockerfile()).isEqualTo(context.resolve("Dockerfile"));
         assertThat(spec.platform()).isNull();
         assertThat(spec.push()).isTrue();
         assertThat(spec.buildArgs()).isEmpty();
+    }
+
+    @Test
+    void resolvesBuildPathsFromTheManifestDirectory() throws Exception {
+        Path manifestDirectory = Files.createDirectories(tmp.resolve("definitions"));
+        Path manifest = manifestDirectory.resolve("function.yaml");
+        Files.writeString(manifest, """
+                name: echo
+                image: example/echo:1
+                x-cli:
+                  build:
+                    context: ../build-context
+                    dockerfile: containers/Dockerfile
+                """);
+
+        BuildSpec spec = BuildSpecLoader.load(manifest);
+
+        Path context = tmp.resolve("build-context").toAbsolutePath().normalize();
+        assertThat(spec.context()).isEqualTo(context);
+        assertThat(spec.dockerfile()).isEqualTo(context.resolve("containers/Dockerfile"));
     }
 }

@@ -8,36 +8,37 @@ import it.unimib.datai.nanofaas.cli.commands.exec.ExecCommand;
 import it.unimib.datai.nanofaas.cli.commands.deploy.DeployCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.EnqueueCommand;
 import it.unimib.datai.nanofaas.cli.commands.invoke.InvokeCommand;
-import it.unimib.datai.nanofaas.cli.commands.k8s.K8sCommand;
-import it.unimib.datai.nanofaas.cli.commands.platform.PlatformCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ScopeType;
 
 import java.nio.file.Path;
 
 @Command(
         name = "nanofaas",
         mixinStandardHelpOptions = true,
-        description = "Nanofaas CLI (control-plane client + Kubernetes helpers).",
+        versionProvider = VersionProvider.class,
+        description = "Nanofaas control-plane client.",
         subcommands = {
                 FnCommand.class,
                 InvokeCommand.class,
                 EnqueueCommand.class,
                 ExecCommand.class,
-                DeployCommand.class,
-                K8sCommand.class,
-                PlatformCommand.class
+                DeployCommand.class
         }
 )
 public class RootCommand {
 
-    @Option(names = {"--config"}, description = "Path to config file (default: ~/.config/nanofaas/config.yaml).")
+    @Option(names = {"--config"}, scope = ScopeType.INHERIT,
+            description = "Path to config file (default: ~/.config/nanofaas/config.yaml).")
     Path configPath;
 
-    @Option(names = {"--endpoint"}, description = "Control-plane base URL (overrides config/env).")
+    @Option(names = {"--endpoint"}, scope = ScopeType.INHERIT,
+            description = "Control-plane base URL (overrides config/env).")
     String endpoint;
 
-    @Option(names = {"--namespace", "-n"}, description = "Kubernetes namespace (overrides config/env).")
+    @Option(names = {"--namespace", "-n"}, scope = ScopeType.INHERIT,
+            description = "Function namespace (overrides config/env).")
     String namespace;
 
     private ConfigStore store;

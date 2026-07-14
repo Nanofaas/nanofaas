@@ -47,6 +47,7 @@ class DockerBuildxTest {
 
         assertThat(cmd).containsExactly(
                 "docker", "buildx", "build",
+                "--load",
                 "--tag", "my-image:1",
                 "./app"
         );
@@ -83,6 +84,7 @@ class DockerBuildxTest {
 
         assertThat(cmd).contains("--build-arg", "ARG1=val1");
         assertThat(cmd).contains("--build-arg", "ARG2=val2");
+        assertThat(cmd).contains("--load");
         assertThat(cmd).doesNotContain("--push", "--platform", "-f");
     }
 
@@ -100,6 +102,6 @@ class DockerBuildxTest {
 
         assertThat(cmd).contains("--platform", "linux/arm64");
         assertThat(cmd).contains("-f", "Dockerfile.custom");
-        assertThat(cmd).doesNotContain("--push");
+        assertThat(cmd).contains("--load").doesNotContain("--push");
     }
 }

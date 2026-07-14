@@ -27,11 +27,14 @@ class FnGetCommandTest {
     }
 
     @Test
-    void getFoundFunctionPrintsSpec() {
+    void getFoundFunctionPrintsJsonResponse() {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
-                .setBody("{\"name\":\"echo\",\"image\":\"img/echo:1\"}"));
+                .setBody("""
+                        {"name":"echo","image":"img/echo:1",
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"POOL"}
+                        """));
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
@@ -40,7 +43,10 @@ class FnGetCommandTest {
                 cli, "--endpoint", server.url("/").toString(), "fn", "get", "echo");
         assertThat(result.exitCode()).isEqualTo(0);
 
-        assertThat(result.stdout()).contains("echo");
+        assertThat(result.stdout().trim())
+                .startsWith("{")
+                .contains("\"name\":\"echo\"")
+                .contains("\"requestedExecutionMode\":\"DEPLOYMENT\"");
     }
 
     @Test

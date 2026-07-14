@@ -6,6 +6,7 @@ import picocli.CommandLine.ParentCommand;
 
 @Command(
         name = "exec",
+        mixinStandardHelpOptions = true,
         description = "Manage executions.",
         subcommands = {ExecGetCommand.class}
 )

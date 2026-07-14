@@ -7,10 +7,17 @@ public final class NanofaasCli {
     private NanofaasCli() {}
 
     public static void main(String[] args) {
-        CommandLine cli = new CommandLine(new RootCommand());
-        cli.setExpandAtFiles(false);
-        int exitCode = cli.execute(args);
+        int exitCode = commandLine().execute(args);
         System.exit(exitCode);
     }
-}
 
+    static CommandLine commandLine() {
+        CommandLine cli = new CommandLine(new RootCommand());
+        cli.setExpandAtFiles(false);
+        cli.setExecutionExceptionHandler((exception, commandLine, parseResult) -> {
+            commandLine.getErr().println("Error: " + exception.getMessage());
+            return CommandLine.ExitCode.SOFTWARE;
+        });
+        return cli;
+    }
+}

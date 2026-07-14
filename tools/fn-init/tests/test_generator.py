@@ -417,3 +417,5 @@ def test_show_next_steps_for_javascript_mentions_npm_commands(capsys):
     assert "npm install" in captured
     assert "npm test" in captured
     assert "npm run build" in captured
+    assert "nanofaas invoke greet -d '{\"key\":\"value\"}'" in captured
+    assert "@payloads/happy-path.json" not in captured

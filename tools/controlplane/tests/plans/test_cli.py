@@ -46,12 +46,12 @@ def test_cli_plan_resolves_all_selected_functions_and_resources() -> None:
 
     assert [task.task_id for task in plan.tasks] == [
         "cli.build",
-        "cli.platform.status",
         "cli.function.apply.word-stats-java",
         "cli.function.apply.json-transform-python",
         "cli.function.list",
         "cli.function.invoke.word-stats-java",
         "cli.function.invoke.json-transform-python",
     ]
-    assert "http://stack.example:8080" in plan.tasks[1].spec.argv
-    assert '"memoryMiB":512' in plan.tasks[2].spec.argv[-1]
+    assert "http://stack.example:8080" in " ".join(plan.tasks[1].spec.argv)
+    assert '"memoryMiB":512' in plan.tasks[1].spec.argv[-1]
+    assert '"input"' not in plan.tasks[-2].spec.argv[-1]

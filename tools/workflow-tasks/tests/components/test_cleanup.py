@@ -50,4 +50,3 @@ def test_vm_down_external_skips_teardown() -> None:
 def test_component_definitions_present() -> None:
     assert cl.UNINSTALL_CONTROL_PLANE.component_id == "cleanup.uninstall_control_plane"
     assert cl.VM_DOWN.component_id == "vm.down"
-    assert cl.VERIFY_CLI_PLATFORM_STATUS_FAILS.component_id == "cleanup.verify_cli_platform_status_fails"
