@@ -1,30 +1,76 @@
 # NanoFaaS control-plane tool
 
-The tool has one product model: a scenario says what to execute and an environment says where each role runs. Task implementations live in `tools/workflow-tasks`.
+The control-plane tool is the orchestration entry point for provisioning and
+validating NanoFaaS. A scenario defines *what* to execute; an environment binds
+each role to a local host, a managed VM, or an external SSH host. Task
+implementations live in `tools/workflow-tasks` so that this package remains the
+product-facing composition layer.
 
-## Commands
+It is intentionally separate from the `nanofaas` CLI: the CLI calls the
+control-plane HTTP API to manage functions, while this tool creates VMs, installs
+k3s and Helm, distributes images, and runs end-to-end or load-test workflows.
 
-The public surface is intentionally limited to:
+## Prerequisites
 
-- `run` — execute a scenario;
-- `plan` — print the ordered tasks without executing them;
-- `list` — list bundled scenarios;
-- `inspect` — print validated scenario data;
-- `doctor` — check required host commands;
-- `tui` — use the same plan/run path interactively.
+- [uv](https://docs.astral.sh/uv/) on the machine that runs the tool.
+- Docker or a compatible runtime for container scenarios and image builds.
+- Multipass for local VM-backed Kubernetes validation.
+- SSH and Ansible for an external VM; provider credentials for Azure or Proxmox
+  when using managed VMs.
 
-From the repository root:
+The canonical launcher is always run from the repository root. It creates and
+uses the locked uv environment automatically:
 
 ```bash
+scripts/controlplane.sh --help
+scripts/controlplane.sh doctor
 scripts/controlplane.sh list
+```
+
+## First validation
+
+Inspect the plan before executing it. The container scenario is the smallest
+local path and does not require a Kubernetes cluster:
+
+```bash
 scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-container.yaml
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-container.yaml
+```
+
+The interactive UI uses exactly the same plan/run implementation:
+
+```bash
 scripts/controlplane.sh tui
 ```
 
-## Environments
+## Commands
 
-Local execution is the default. VM-backed workflows bind the `stack` and optional `loadgen` roles:
+| Command | Purpose |
+|---|---|
+| `list` | List bundled scenarios. |
+| `inspect <scenario>` | Print validated scenario data. |
+| `plan <scenario>` | Render the ordered operations without executing them. |
+| `run <scenario>` | Execute a scenario in its selected environment. |
+| `doctor` | Check commands required by the local host. |
+| `tui` | Select and run the same workflows interactively. |
+
+Use `--help` after any command to see its supported options. The supported
+scenario files are in `scenarios-v2/`.
+
+## Environments and VM lifecycle
+
+Local execution is the default. VM-backed workflows bind the `stack` and optional
+`loadgen` roles through an environment file.
+
+| Environment | Use case | Lifecycle |
+|---|---|---|
+| none | Local container validation | No VM is created. |
+| `multipass.yaml` | Local k3s VM | Managed VM; removed after the run by default. |
+| `external.yaml.example` | Existing SSH-only VM | Never created or deleted by the tool. |
+| `azure.yaml.example` | Azure VM | Managed VM; removed after the run by default. |
+| `proxmox.yaml.example` | Proxmox VM | Managed VM; removed after the run by default. |
+
+For a Multipass-backed Kubernetes run:
 
 ```bash
 scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
@@ -34,34 +80,35 @@ scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
   --provision
 ```
 
-`--provision` creates or reuses Multipass, Azure, and Proxmox VMs, or reuses an
-external SSH host. It then runs the shared Ansible bootstrap tasks and synchronizes
-the repository. Managed VMs are deleted when the run finishes, including after a
-failure; pass `--keep` to preserve them. External hosts are never deleted. Commands
-run from `<home>/nanofaas` on remote machines. Copy `azure.yaml.example` or
-`proxmox.yaml.example` to configure those providers; Proxmox reads its password from
-the environment variable named by `password_env`.
+`--provision` creates or reuses a managed VM, runs the shared Ansible bootstrap,
+and synchronizes the repository. Managed VMs are deleted even after a failure;
+pass `--keep` when they must remain available for inspection. External hosts are
+never deleted. Remote commands run from `<home>/nanofaas`.
 
-Load testing uses the same command:
+Copy the Azure or Proxmox example before use and fill in provider values.
+Proxmox reads its password from the environment variable named by `password_env`.
+
+## Load testing
+
+Load testing follows the same plan-first workflow:
 
 ```bash
+scripts/controlplane.sh plan tools/controlplane/scenarios-v2/loadtest.yaml \
+  --environment tools/controlplane/environments/multipass.yaml
 scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
   --environment tools/controlplane/environments/multipass.yaml \
   --provision \
   --run-dir tools/controlplane/runs/experiment-1
 ```
 
-The load test deploys the stack with Helm, registers its function, runs k6 with
-autoscaling observation, captures Prometheus data and removes the Helm releases.
-The stack address is discovered from the environment; URL flags are only needed
-to override it. Use an environment with a `loadgen` role to place k6 on a dedicated
-VM.
-
-Task subsets are selected with `--only`, `--from`, or `--until`; `--keep` preserves
-managed VMs and acquired platform infrastructure while still cleaning transient
-processes.
+The workflow deploys the stack with Helm, registers the selected function, runs
+k6, observes autoscaling, and captures Prometheus data. Use an environment with
+a `loadgen` role when k6 must run on a dedicated VM. `--only`, `--from`, and
+`--until` select task subsets.
 
 ## Development
+
+For direct development inside this package:
 
 ```bash
 cd tools/controlplane
@@ -74,4 +121,9 @@ uv run controlplane-package-report
 uv run pydeps controlplane_tool
 ```
 
-GitNexus impact analysis is required before symbol changes and change detection before commits.
+## Related documentation
+
+- [Repository quickstart](../../docs/quickstart.md)
+- [Control-plane operation](../../docs/control-plane.md)
+- [E2E tutorial](../../docs/e2e-tutorial.md)
+- [NanoFaaS CLI guide](../../docs/nanofaas-cli.md)
