@@ -92,6 +92,8 @@ model. See [the control-plane tool guide](tools/controlplane/README.md) and the
 
 - [Quickstart](docs/quickstart.md): local build, CLI, and infrastructure paths.
 - [CLI guide](docs/nanofaas-cli.md): commands, payloads, deploy behavior, and scope.
+- [Control-plane tool guide](tools/controlplane/README.md): provisioning, environments, and scenarios.
+- [Control-plane operation](docs/control-plane.md): Java control-plane deployment overview.
 - [Testing guide](docs/testing.md): test layers and commands.
 - [E2E tutorial](docs/e2e-tutorial.md): validation environments and scenarios.
 - [Function pod architecture](docs/function-pod-architecture.md): function execution model.

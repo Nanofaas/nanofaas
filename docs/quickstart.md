@@ -61,6 +61,15 @@ The smoke test starts a temporary local HTTP stub and verifies `--help`,
 
 ## Provision and validate a platform
 
+The control-plane tool owns this lifecycle. It uses a locked uv environment
+through the repository launcher; first verify its local prerequisites and list
+the available scenarios:
+
+```bash
+scripts/controlplane.sh doctor
+scripts/controlplane.sh list
+```
+
 Inspect a workflow before running it:
 
 ```bash
@@ -84,8 +93,12 @@ only when they must remain available for inspection. External VMs are never dele
 
 Use `scripts/controlplane.sh tui` for the interactive client.
 
+For the complete command reference, provider configuration, VM cleanup rules,
+and load-test workflow, read the [control-plane tool guide](../tools/controlplane/README.md).
+
 ## Where to go next
 
 - [CLI guide](nanofaas-cli.md) for function operations and deploy semantics.
+- [Control-plane tool guide](../tools/controlplane/README.md) for provisioning and scenarios.
 - [Testing guide](testing.md) for the appropriate test layer.
 - [E2E tutorial](e2e-tutorial.md) for scenario-specific validation.
