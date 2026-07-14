@@ -1,11 +1,11 @@
 package it.unimib.datai.nanofaas.cli.commands.fn;
 
-import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.cli.http.FunctionDetails;
 import picocli.CommandLine.Command;
 
 import java.util.List;
 
-@Command(name = "list", description = "List registered functions.")
+@Command(name = "list", mixinStandardHelpOptions = true, description = "List registered functions.")
 public class FnListCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand
@@ -13,8 +13,8 @@ public class FnListCommand implements Runnable {
 
     @Override
     public void run() {
-        List<FunctionSpec> functions = parent.root.controlPlaneClient().listFunctions();
-        for (FunctionSpec f : functions) {
+        List<FunctionDetails> functions = parent.root.controlPlaneClient().listFunctions();
+        for (FunctionDetails f : functions) {
             System.out.printf("%s\t%s%n", f.name(), f.image());
         }
     }

@@ -10,7 +10,7 @@ import picocli.CommandLine.Parameters;
 import java.io.IOException;
 import java.time.Duration;
 
-@Command(name = "get", description = "Get execution status/result.")
+@Command(name = "get", mixinStandardHelpOptions = true, description = "Get execution status/result.")
 public class ExecGetCommand implements Runnable {
 
     @picocli.CommandLine.ParentCommand

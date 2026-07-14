@@ -6,6 +6,7 @@ import picocli.CommandLine.Command;
 
 @Command(
         name = "fn",
+        mixinStandardHelpOptions = true,
         description = "Manage registered functions.",
         subcommands = {
                 FnListCommand.class,

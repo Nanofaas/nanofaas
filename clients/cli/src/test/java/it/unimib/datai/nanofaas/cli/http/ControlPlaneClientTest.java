@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.cli.http;
 
+import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -41,7 +42,7 @@ class ControlPlaneClientTest {
 
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        List<FunctionSpec> fns = client.listFunctions();
+        List<FunctionDetails> fns = client.listFunctions();
         RecordedRequest req = server.takeRequest();
 
         assertThat(req.getMethod()).isEqualTo("GET");
@@ -76,7 +77,7 @@ class ControlPlaneClientTest {
                 null
         );
 
-        FunctionSpec created = client.registerFunction(spec);
+        FunctionDetails created = client.registerFunction(spec);
         RecordedRequest req = server.takeRequest();
 
         assertThat(req.getMethod()).isEqualTo("POST");
@@ -114,7 +115,7 @@ class ControlPlaneClientTest {
 
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        FunctionSpec spec = client.getFunctionOrNull("echo");
+        FunctionDetails spec = client.getFunctionOrNull("echo");
         RecordedRequest req = server.takeRequest();
 
         assertThat(req.getMethod()).isEqualTo("GET");
@@ -124,12 +125,30 @@ class ControlPlaneClientTest {
     }
 
     @Test
+    void getFunctionReadsRequestedExecutionModeFromResponseContract() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"name":"echo","image":"example/echo:1",
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"POOL"}
+                        """));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        FunctionDetails function = client.getFunctionOrNull("echo");
+
+        assertThat(function.requestedExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
+        assertThat(function.effectiveExecutionMode()).isEqualTo(ExecutionMode.POOL);
+    }
+
+    @Test
     void getFunctionOrNullReturnsNullOn404() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(404));
 
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        FunctionSpec spec = client.getFunctionOrNull("missing");
+        FunctionDetails spec = client.getFunctionOrNull("missing");
         RecordedRequest req = server.takeRequest();
 
         assertThat(req.getPath()).isEqualTo("/v1/functions/missing");

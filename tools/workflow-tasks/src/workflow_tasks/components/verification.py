@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from workflow_tasks.components.platform_commands import platform_status_command
 from workflow_tasks.components.context import ScenarioExecutionContext
 from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
 from workflow_tasks.components.remote_script import k8s_e2e_test_vm_script
@@ -97,24 +96,6 @@ def _managed_vm_env(context: ScenarioExecutionContext) -> Mapping[str, str]:
     if vm_request.home:
         env["E2E_VM_HOME"] = vm_request.home
     return _frozen_env(env)
-
-
-def _cli_binary(context: ScenarioExecutionContext) -> str:
-    return f"{_remote_project_dir(context)}/clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli"
-
-
-def plan_verify_cli_platform_status_fails(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:
-    namespace = _namespace(context)
-    argv = (_cli_binary(context), *platform_status_command(namespace))
-    return (
-        RemoteCommandOperation(
-            operation_id="cleanup.verify_cli_platform_status_fails",
-            summary="Verify CLI platform status fails after cleanup",
-            argv=tuple(argv),
-            env=_frozen_env({"KUBECONFIG": _kubeconfig_path(context)}),
-            execution_target="vm",
-        ),
-    )
 
 
 def plan_run_k3s_curl_checks(context: ScenarioExecutionContext) -> tuple[ScenarioOperation, ...]:

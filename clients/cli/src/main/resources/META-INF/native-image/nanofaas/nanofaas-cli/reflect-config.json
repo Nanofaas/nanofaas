@@ -1,0 +1,57 @@
+[
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.FunctionDetails",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.FunctionSpec",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ResourceSpec",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ResourceQuantity",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ScalingConfig",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ScalingMetric",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.InvocationRequest",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.InvocationResponse",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ExecutionStatus",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.common.model.ErrorInfo",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  }
+]

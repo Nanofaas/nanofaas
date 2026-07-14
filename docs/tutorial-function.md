@@ -173,7 +173,7 @@ This builds the container image and registers the function on the control plane.
 ## Step 6 — Invoke
 
 ```bash
-nanofaas invoke greet -d @payloads/happy-path.json
+nanofaas invoke greet -d '{"name":"Alice"}'
 ```
 
 Expected response:
@@ -198,7 +198,7 @@ to `expected`.
 ## Step 8 — Invoke asynchronously (optional)
 
 ```bash
-nanofaas enqueue greet -d @payloads/happy-path.json
+nanofaas enqueue greet -d '{"name":"Alice"}'
 # returns {"executionId": "..."}
 
 nanofaas exec get <executionId> --watch

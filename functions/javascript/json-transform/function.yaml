@@ -6,7 +6,7 @@ executionMode: DEPLOYMENT
 
 x-cli:
   build:
-    context: ../../../..
+    context: ../../..
     dockerfile: functions/javascript/json-transform/Dockerfile
     platform: linux/amd64
     push: true

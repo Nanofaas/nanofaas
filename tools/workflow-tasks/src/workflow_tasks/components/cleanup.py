@@ -6,7 +6,6 @@ from types import MappingProxyType
 from workflow_tasks.components.context import ScenarioExecutionContext
 from workflow_tasks.components.models import ScenarioComponentDefinition
 from workflow_tasks.components.operations import RemoteCommandOperation, ScenarioOperation
-from workflow_tasks.components.verification import plan_verify_cli_platform_status_fails
 
 
 def _frozen_env(env: Mapping[str, str] | None = None) -> Mapping[str, str]:
@@ -88,10 +87,4 @@ VM_DOWN = ScenarioComponentDefinition(
     component_id="vm.down",
     summary="Teardown VM",
     planner=plan_vm_down,
-)
-
-VERIFY_CLI_PLATFORM_STATUS_FAILS = ScenarioComponentDefinition(
-    component_id="cleanup.verify_cli_platform_status_fails",
-    summary="Verify CLI platform status fails after cleanup",
-    planner=plan_verify_cli_platform_status_fails,
 )

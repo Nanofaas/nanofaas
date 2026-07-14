@@ -29,7 +29,7 @@ public final class ControlPlaneClient {
         this.json = json;
     }
 
-    public List<FunctionSpec> listFunctions() {
+    public List<FunctionDetails> listFunctions() {
         HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions"))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
@@ -47,7 +47,7 @@ public final class ControlPlaneClient {
         }
     }
 
-    public FunctionSpec getFunctionOrNull(String name) {
+    public FunctionDetails getFunctionOrNull(String name) {
         HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions/" + name))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
@@ -60,7 +60,7 @@ public final class ControlPlaneClient {
         if (resp.statusCode() != 200) {
             throw httpError("get function", resp);
         }
-        return json.fromJson(resp.body(), FunctionSpec.class);
+        return json.fromJson(resp.body(), FunctionDetails.class);
     }
 
     public void deleteFunction(String name) {
@@ -78,7 +78,7 @@ public final class ControlPlaneClient {
         }
     }
 
-    public FunctionSpec registerFunction(FunctionSpec spec) {
+    public FunctionDetails registerFunction(FunctionSpec spec) {
         String body = json.toJson(spec);
         HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions"))
                 .header("Content-Type", "application/json")
@@ -90,7 +90,7 @@ public final class ControlPlaneClient {
         if (resp.statusCode() != 201) {
             throw httpError("register function", resp);
         }
-        return json.fromJson(resp.body(), FunctionSpec.class);
+        return json.fromJson(resp.body(), FunctionDetails.class);
     }
 
     public InvocationResponse invokeSync(String name, InvocationRequest request,
