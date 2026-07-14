@@ -48,7 +48,7 @@ fi
 sdk use java "$GRAALVM_VERSION"
 set -u
 
-./gradlew :control-plane:nativeCompile :services:java:warm-echo:nativeCompile -PcontrolPlaneModules=all
+./gradlew :control-plane:nativeCompile :services:java:warm-echo:nativeCompile :nanofaas-cli:nativeCompile -PcontrolPlaneModules=all
 
 RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then
@@ -129,6 +129,8 @@ if [ "$RUN_SMOKE" = "1" ]; then
   curl -sf -X POST "http://localhost:${WARM_ECHO_PORT}/invoke" \
     -H 'Content-Type: application/json' \
     -d '{"input":{"message":"hi"}}' > /dev/null
+
+  ./gradlew :nanofaas-cli:nativeSmoke
 
   echo "Native smoke checks OK"
 fi
