@@ -1,10 +1,65 @@
 # Quickstart
 
-Build the Java platform:
+This guide separates the application CLI from infrastructure provisioning. The
+`nanofaas` CLI talks only to the control-plane HTTP API; the Python
+control-plane tool provisions VMs and installs the platform.
+
+## Prerequisites
+
+- Java 21 for the regular Gradle build.
+- Docker or a compatible container runtime for Docker-backed tests and local
+  image builds.
+- GraalVM with Native Image only for the standalone CLI executable.
+- Multipass for the local k3s path; SSH and Ansible for an external VM.
+
+## Build the platform
 
 ```bash
 ./gradlew build
 ```
+
+Run the control plane locally when developing its HTTP API:
+
+```bash
+./gradlew :control-plane:bootRun
+```
+
+## Build the CLI
+
+Build a JVM distribution:
+
+```bash
+./gradlew :nanofaas-cli:installDist
+CLI=clients/cli/build/install/nanofaas-cli/bin/nanofaas-cli
+"$CLI" --help
+```
+
+With a control plane listening locally, pass its endpoint explicitly:
+
+```bash
+"$CLI" --endpoint http://localhost:8080 fn list
+```
+
+Build the standalone native executable when `native-image` is available through
+`JAVA_HOME`:
+
+```bash
+./gradlew :nanofaas-cli:nativeCompile
+NATIVE_CLI=clients/cli/build/native/nativeCompile/nanofaas-cli
+"$NATIVE_CLI" --help
+```
+
+Verify the native distribution without deploying a platform:
+
+```bash
+./gradlew :nanofaas-cli:nativeSmoke
+```
+
+The smoke test starts a temporary local HTTP stub and verifies `--help`,
+`--version`, and `fn list`. For the command surface, payload formats, and the
+`deploy` behavior, read the [CLI guide](nanofaas-cli.md).
+
+## Provision and validate a platform
 
 Inspect a workflow before running it:
 
@@ -28,3 +83,9 @@ Azure and Proxmox use the same workflow. Copy the matching example from
 only when they must remain available for inspection. External VMs are never deleted.
 
 Use `scripts/controlplane.sh tui` for the interactive client.
+
+## Where to go next
+
+- [CLI guide](nanofaas-cli.md) for function operations and deploy semantics.
+- [Testing guide](testing.md) for the appropriate test layer.
+- [E2E tutorial](e2e-tutorial.md) for scenario-specific validation.
