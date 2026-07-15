@@ -1,8 +1,11 @@
+import json
+
 import pytest
 
 from experiments.lib.payload_corpora import (
     CASES_PER_PROFILE,
     PROFILE_SCALES,
+    generate_all,
     validate_corpus,
 )
 
@@ -114,3 +117,58 @@ def test_roman_input_must_be_in_range():
 
     with pytest.raises(ValueError, match="between 1 and 3999"):
         validate_corpus(corpus, "roman-numeral", "small")
+
+
+def test_generation_is_byte_deterministic_and_valid():
+    first = generate_all()
+    second = generate_all()
+
+    assert first == second
+    assert len(first) == 9
+    for path, serialized in first.items():
+        corpus = json.loads(serialized)
+        assert serialized.endswith("\n")
+        assert path.as_posix().endswith(
+            f"{corpus['family']}/performance-{corpus['profile']}.json"
+        )
+        validate_corpus(corpus, corpus["family"], corpus["profile"])
+
+
+def test_each_json_profile_covers_all_operations():
+    generated = generate_all()
+
+    for profile in ("small", "medium", "large"):
+        path = next(
+            path
+            for path in generated
+            if path.as_posix().endswith(
+                f"json-transform/performance-{profile}.json"
+            )
+        )
+        corpus = json.loads(generated[path])
+        assert {case["input"]["operation"] for case in corpus["cases"]} == {
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max",
+        }
+
+
+def test_roman_profiles_are_unique_and_in_range():
+    generated = generate_all()
+
+    for profile, expected_count in PROFILE_SCALES["roman-numeral"].items():
+        path = next(
+            path
+            for path in generated
+            if path.as_posix().endswith(
+                f"roman-numeral/performance-{profile}.json"
+            )
+        )
+        corpus = json.loads(generated[path])
+        numbers = [case["input"]["number"] for case in corpus["cases"]]
+        assert len(numbers) == expected_count
+        assert len(set(numbers)) == expected_count
+        assert min(numbers) == 1
+        assert max(numbers) == 3999

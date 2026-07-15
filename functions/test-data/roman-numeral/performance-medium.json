@@ -1,0 +1,390 @@
+{
+  "family": "roman-numeral",
+  "profile": "medium",
+  "cases": [
+    {
+      "name": "roman-0001",
+      "input": {
+        "number": 1
+      }
+    },
+    {
+      "name": "roman-0064",
+      "input": {
+        "number": 64
+      }
+    },
+    {
+      "name": "roman-0128",
+      "input": {
+        "number": 128
+      }
+    },
+    {
+      "name": "roman-0191",
+      "input": {
+        "number": 191
+      }
+    },
+    {
+      "name": "roman-0255",
+      "input": {
+        "number": 255
+      }
+    },
+    {
+      "name": "roman-0318",
+      "input": {
+        "number": 318
+      }
+    },
+    {
+      "name": "roman-0382",
+      "input": {
+        "number": 382
+      }
+    },
+    {
+      "name": "roman-0445",
+      "input": {
+        "number": 445
+      }
+    },
+    {
+      "name": "roman-0509",
+      "input": {
+        "number": 509
+      }
+    },
+    {
+      "name": "roman-0572",
+      "input": {
+        "number": 572
+      }
+    },
+    {
+      "name": "roman-0636",
+      "input": {
+        "number": 636
+      }
+    },
+    {
+      "name": "roman-0699",
+      "input": {
+        "number": 699
+      }
+    },
+    {
+      "name": "roman-0763",
+      "input": {
+        "number": 763
+      }
+    },
+    {
+      "name": "roman-0826",
+      "input": {
+        "number": 826
+      }
+    },
+    {
+      "name": "roman-0889",
+      "input": {
+        "number": 889
+      }
+    },
+    {
+      "name": "roman-0953",
+      "input": {
+        "number": 953
+      }
+    },
+    {
+      "name": "roman-1016",
+      "input": {
+        "number": 1016
+      }
+    },
+    {
+      "name": "roman-1080",
+      "input": {
+        "number": 1080
+      }
+    },
+    {
+      "name": "roman-1143",
+      "input": {
+        "number": 1143
+      }
+    },
+    {
+      "name": "roman-1207",
+      "input": {
+        "number": 1207
+      }
+    },
+    {
+      "name": "roman-1270",
+      "input": {
+        "number": 1270
+      }
+    },
+    {
+      "name": "roman-1334",
+      "input": {
+        "number": 1334
+      }
+    },
+    {
+      "name": "roman-1397",
+      "input": {
+        "number": 1397
+      }
+    },
+    {
+      "name": "roman-1461",
+      "input": {
+        "number": 1461
+      }
+    },
+    {
+      "name": "roman-1524",
+      "input": {
+        "number": 1524
+      }
+    },
+    {
+      "name": "roman-1588",
+      "input": {
+        "number": 1588
+      }
+    },
+    {
+      "name": "roman-1651",
+      "input": {
+        "number": 1651
+      }
+    },
+    {
+      "name": "roman-1714",
+      "input": {
+        "number": 1714
+      }
+    },
+    {
+      "name": "roman-1778",
+      "input": {
+        "number": 1778
+      }
+    },
+    {
+      "name": "roman-1841",
+      "input": {
+        "number": 1841
+      }
+    },
+    {
+      "name": "roman-1905",
+      "input": {
+        "number": 1905
+      }
+    },
+    {
+      "name": "roman-1968",
+      "input": {
+        "number": 1968
+      }
+    },
+    {
+      "name": "roman-2032",
+      "input": {
+        "number": 2032
+      }
+    },
+    {
+      "name": "roman-2095",
+      "input": {
+        "number": 2095
+      }
+    },
+    {
+      "name": "roman-2159",
+      "input": {
+        "number": 2159
+      }
+    },
+    {
+      "name": "roman-2222",
+      "input": {
+        "number": 2222
+      }
+    },
+    {
+      "name": "roman-2286",
+      "input": {
+        "number": 2286
+      }
+    },
+    {
+      "name": "roman-2349",
+      "input": {
+        "number": 2349
+      }
+    },
+    {
+      "name": "roman-2412",
+      "input": {
+        "number": 2412
+      }
+    },
+    {
+      "name": "roman-2476",
+      "input": {
+        "number": 2476
+      }
+    },
+    {
+      "name": "roman-2539",
+      "input": {
+        "number": 2539
+      }
+    },
+    {
+      "name": "roman-2603",
+      "input": {
+        "number": 2603
+      }
+    },
+    {
+      "name": "roman-2666",
+      "input": {
+        "number": 2666
+      }
+    },
+    {
+      "name": "roman-2730",
+      "input": {
+        "number": 2730
+      }
+    },
+    {
+      "name": "roman-2793",
+      "input": {
+        "number": 2793
+      }
+    },
+    {
+      "name": "roman-2857",
+      "input": {
+        "number": 2857
+      }
+    },
+    {
+      "name": "roman-2920",
+      "input": {
+        "number": 2920
+      }
+    },
+    {
+      "name": "roman-2984",
+      "input": {
+        "number": 2984
+      }
+    },
+    {
+      "name": "roman-3047",
+      "input": {
+        "number": 3047
+      }
+    },
+    {
+      "name": "roman-3111",
+      "input": {
+        "number": 3111
+      }
+    },
+    {
+      "name": "roman-3174",
+      "input": {
+        "number": 3174
+      }
+    },
+    {
+      "name": "roman-3237",
+      "input": {
+        "number": 3237
+      }
+    },
+    {
+      "name": "roman-3301",
+      "input": {
+        "number": 3301
+      }
+    },
+    {
+      "name": "roman-3364",
+      "input": {
+        "number": 3364
+      }
+    },
+    {
+      "name": "roman-3428",
+      "input": {
+        "number": 3428
+      }
+    },
+    {
+      "name": "roman-3491",
+      "input": {
+        "number": 3491
+      }
+    },
+    {
+      "name": "roman-3555",
+      "input": {
+        "number": 3555
+      }
+    },
+    {
+      "name": "roman-3618",
+      "input": {
+        "number": 3618
+      }
+    },
+    {
+      "name": "roman-3682",
+      "input": {
+        "number": 3682
+      }
+    },
+    {
+      "name": "roman-3745",
+      "input": {
+        "number": 3745
+      }
+    },
+    {
+      "name": "roman-3809",
+      "input": {
+        "number": 3809
+      }
+    },
+    {
+      "name": "roman-3872",
+      "input": {
+        "number": 3872
+      }
+    },
+    {
+      "name": "roman-3936",
+      "input": {
+        "number": 3936
+      }
+    },
+    {
+      "name": "roman-3999",
+      "input": {
+        "number": 3999
+      }
+    }
+  ]
+}
