@@ -50,14 +50,35 @@ enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    fn from_str(s: &str) -> Self {
+    fn parse(s: &str) -> Result<Self, String> {
         match s.to_uppercase().as_str() {
-            "HTTP" => Self::Http,
-            "STDIO" => Self::Stdio,
-            "FILE" => Self::File,
-            _ => Self::Http, // default
+            "HTTP" => Ok(Self::Http),
+            "STDIO" => Ok(Self::Stdio),
+            "FILE" => Ok(Self::File),
+            _ => Err(format!("EXECUTION_MODE must be HTTP, STDIO, or FILE (got {s:?})")),
         }
     }
+}
+
+fn parse_command(command: &str) -> Result<Vec<String>, String> {
+    let argv = shlex::split(command)
+        .ok_or_else(|| "WATCHDOG_CMD contains invalid shell quoting".to_string())?;
+    if argv.is_empty() {
+        return Err("WATCHDOG_CMD must not be empty".to_string());
+    }
+    Ok(argv)
+}
+
+fn parse_u64(name: &str, value: &str) -> Result<u64, String> {
+    value
+        .parse()
+        .map_err(|_| format!("{name} must be an unsigned integer"))
+}
+
+fn parse_u16(name: &str, value: &str) -> Result<u16, String> {
+    value
+        .parse()
+        .map_err(|_| format!("{name} must be an unsigned 16-bit integer"))
 }
 
 #[derive(Debug, Clone)]
@@ -100,22 +121,20 @@ impl Config {
         let callback_url = env::var("CALLBACK_URL").ok();
         let execution_id = env::var("EXECUTION_ID").ok();
 
-        let timeout_ms: u64 = env::var("TIMEOUT_MS")
-            .unwrap_or_else(|_| "30000".to_string())
-            .parse()
-            .map_err(|_| "TIMEOUT_MS must be a number")?;
+        let timeout_ms = parse_u64(
+            "TIMEOUT_MS",
+            &env::var("TIMEOUT_MS").unwrap_or_else(|_| "30000".to_string()),
+        )?;
 
         let trace_id = env::var("TRACE_ID").ok();
 
-        let command = env::var("WATCHDOG_CMD")
-            .unwrap_or_else(|_| "java -jar /app/app.jar".to_string())
-            .split_whitespace()
-            .map(String::from)
-            .collect();
+        let command = parse_command(
+            &env::var("WATCHDOG_CMD").unwrap_or_else(|_| "java -jar /app/app.jar".to_string()),
+        )?;
 
-        let mode = ExecutionMode::from_str(
+        let mode = ExecutionMode::parse(
             &env::var("EXECUTION_MODE").unwrap_or_else(|_| "HTTP".to_string())
-        );
+        )?;
 
         // In warm mode, watchdog typically binds to 8080. Default the internal runtime to 8081
         // to avoid port conflicts when mode=HTTP and the runtime is an internal server.
@@ -130,10 +149,10 @@ impl Config {
 
         let health_url = env::var("HEALTH_URL").ok();
 
-        let ready_timeout_ms: u64 = env::var("READY_TIMEOUT_MS")
-            .unwrap_or_else(|_| "10000".to_string())
-            .parse()
-            .unwrap_or(10000);
+        let ready_timeout_ms = parse_u64(
+            "READY_TIMEOUT_MS",
+            &env::var("READY_TIMEOUT_MS").unwrap_or_else(|_| "10000".to_string()),
+        )?;
 
         let input_file = env::var("INPUT_FILE")
             .unwrap_or_else(|_| "/tmp/input.json".to_string());
@@ -141,10 +160,10 @@ impl Config {
         let output_file = env::var("OUTPUT_FILE")
             .unwrap_or_else(|_| "/tmp/output.json".to_string());
 
-        let warm_port: u16 = env::var("WARM_PORT")
-            .unwrap_or_else(|_| "8080".to_string())
-            .parse()
-            .unwrap_or(8080);
+        let warm_port = parse_u16(
+            "WARM_PORT",
+            &env::var("WARM_PORT").unwrap_or_else(|_| "8080".to_string()),
+        )?;
 
         Ok(Config {
             warm,
@@ -1002,5 +1021,33 @@ async fn execute_file_mode(config: &Config, payload: &serde_json::Value) -> Invo
             error!(error = %e, "Function execution failed");
             InvocationResult::error("FUNCTION_ERROR", &e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_command_preserves_quoted_arguments() {
+        assert_eq!(
+            parse_command("python3 -c 'print(\"hello world\")'").unwrap(),
+            vec!["python3", "-c", "print(\"hello world\")"]
+        );
+    }
+
+    #[test]
+    fn parse_command_rejects_unclosed_quote() {
+        assert!(parse_command("python3 -c '").is_err());
+    }
+
+    #[test]
+    fn parse_u64_rejects_invalid_values() {
+        assert!(parse_u64("TIMEOUT_MS", "soon").is_err());
+    }
+
+    #[test]
+    fn execution_mode_rejects_unknown_value() {
+        assert!(ExecutionMode::parse("OTHER").is_err());
     }
 }
