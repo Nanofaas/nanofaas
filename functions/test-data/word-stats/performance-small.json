@@ -1,0 +1,34 @@
+{
+  "family": "word-stats",
+  "profile": "small",
+  "cases": [
+    {
+      "name": "small-natural-text-01",
+      "input": {
+        "text": "systems process message network latency distributed systems process message network latency, distributed systems process message network latency. distributed systems process message network, latency distributed systems process message network latency distributed systems process message, network. latency distributed systems process message network latency distributed systems process, message network latency distributed systems process message. network latency distributed systems, process message network latency distributed systems process message network latency distributed, systems process. message network latency distributed systems process message network latency, distributed systems process message network latency distributed systems. process message network, latency distributed systems process message network latency distributed systems process message, network",
+        "topN": 10
+      }
+    },
+    {
+      "name": "small-natural-text-02",
+      "input": {
+        "text": "fox jumps over service Quick brown fox jumps over service Quick, brown fox jumps over service Quick. brown fox jumps over service, Quick brown fox jumps over service Quick brown fox jumps over, service. Quick brown fox jumps over service Quick brown fox jumps, over service Quick brown fox jumps over. service Quick brown fox, jumps over service Quick brown fox jumps over service Quick brown, fox jumps. over service Quick brown fox jumps over service Quick, brown fox jumps over service Quick brown fox. jumps over service, Quick brown fox jumps over service Quick brown fox jumps over, service",
+        "topN": 10
+      }
+    },
+    {
+      "name": "small-natural-text-03",
+      "input": {
+        "text": "response metric trace worker queue request response metric trace worker queue, request response metric trace worker queue. request response metric trace worker, queue request response metric trace worker queue request response metric trace, worker. queue request response metric trace worker queue request response metric, trace worker queue request response metric trace. worker queue request response, metric trace worker queue request response metric trace worker queue request, response metric. trace worker queue request response metric trace worker queue, request response metric trace worker queue request response. metric trace worker, queue request response metric trace worker queue request response metric trace, worker",
+        "topN": 10
+      }
+    },
+    {
+      "name": "small-natural-text-04",
+      "input": {
+        "text": "scale event data function runtime cluster scale event data function runtime, cluster scale event data function runtime. cluster scale event data function, runtime cluster scale event data function runtime cluster scale event data, function. runtime cluster scale event data function runtime cluster scale event, data function runtime cluster scale event data. function runtime cluster scale, event data function runtime cluster scale event data function runtime cluster, scale event. data function runtime cluster scale event data function runtime, cluster scale event data function runtime cluster scale. event data function, runtime cluster scale event data function runtime cluster scale event data, function",
+        "topN": 10
+      }
+    }
+  ]
+}

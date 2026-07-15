@@ -1,0 +1,455 @@
+{
+  "family": "json-transform",
+  "profile": "small",
+  "cases": [
+    {
+      "name": "small-count",
+      "input": {
+        "data": [
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "senior",
+            "salary": 40000,
+            "age": 22,
+            "score": 50
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "junior",
+            "salary": 40173,
+            "age": 27,
+            "score": 57
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "mid",
+            "salary": 40346,
+            "age": 32,
+            "score": 64
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "senior",
+            "salary": 40519,
+            "age": 37,
+            "score": 71
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "junior",
+            "salary": 40692,
+            "age": 42,
+            "score": 78
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "mid",
+            "salary": 40865,
+            "age": 47,
+            "score": 85
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "senior",
+            "salary": 41038,
+            "age": 52,
+            "score": 92
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "junior",
+            "salary": 41211,
+            "age": 22,
+            "score": 99
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "mid",
+            "salary": 41384,
+            "age": 27,
+            "score": 55
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "senior",
+            "salary": 41557,
+            "age": 32,
+            "score": 62
+          }
+        ],
+        "groupBy": "dept",
+        "operation": "count"
+      }
+    },
+    {
+      "name": "small-sum",
+      "input": {
+        "data": [
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "senior",
+            "salary": 40997,
+            "age": 23,
+            "score": 53
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "junior",
+            "salary": 41170,
+            "age": 28,
+            "score": 60
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "mid",
+            "salary": 41343,
+            "age": 33,
+            "score": 67
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "senior",
+            "salary": 41516,
+            "age": 38,
+            "score": 74
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "junior",
+            "salary": 41689,
+            "age": 43,
+            "score": 81
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "mid",
+            "salary": 41862,
+            "age": 48,
+            "score": 88
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "senior",
+            "salary": 42035,
+            "age": 53,
+            "score": 95
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "junior",
+            "salary": 42208,
+            "age": 23,
+            "score": 51
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "mid",
+            "salary": 42381,
+            "age": 28,
+            "score": 58
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "senior",
+            "salary": 42554,
+            "age": 33,
+            "score": 65
+          }
+        ],
+        "groupBy": "dept",
+        "operation": "sum",
+        "valueField": "salary"
+      }
+    },
+    {
+      "name": "small-avg",
+      "input": {
+        "data": [
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "senior",
+            "salary": 41994,
+            "age": 24,
+            "score": 56
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "junior",
+            "salary": 42167,
+            "age": 29,
+            "score": 63
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "mid",
+            "salary": 42340,
+            "age": 34,
+            "score": 70
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "senior",
+            "salary": 42513,
+            "age": 39,
+            "score": 77
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "junior",
+            "salary": 42686,
+            "age": 44,
+            "score": 84
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "mid",
+            "salary": 42859,
+            "age": 49,
+            "score": 91
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "senior",
+            "salary": 43032,
+            "age": 54,
+            "score": 98
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "junior",
+            "salary": 43205,
+            "age": 24,
+            "score": 54
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "mid",
+            "salary": 43378,
+            "age": 29,
+            "score": 61
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "senior",
+            "salary": 43551,
+            "age": 34,
+            "score": 68
+          }
+        ],
+        "groupBy": "dept",
+        "operation": "avg",
+        "valueField": "salary"
+      }
+    },
+    {
+      "name": "small-min",
+      "input": {
+        "data": [
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "senior",
+            "salary": 42991,
+            "age": 25,
+            "score": 59
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "junior",
+            "salary": 43164,
+            "age": 30,
+            "score": 66
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "mid",
+            "salary": 43337,
+            "age": 35,
+            "score": 73
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "senior",
+            "salary": 43510,
+            "age": 40,
+            "score": 80
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "junior",
+            "salary": 43683,
+            "age": 45,
+            "score": 87
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "mid",
+            "salary": 43856,
+            "age": 50,
+            "score": 94
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "senior",
+            "salary": 44029,
+            "age": 55,
+            "score": 50
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "junior",
+            "salary": 44202,
+            "age": 25,
+            "score": 57
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "mid",
+            "salary": 44375,
+            "age": 30,
+            "score": 64
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "senior",
+            "salary": 44548,
+            "age": 35,
+            "score": 71
+          }
+        ],
+        "groupBy": "dept",
+        "operation": "min",
+        "valueField": "salary"
+      }
+    },
+    {
+      "name": "small-max",
+      "input": {
+        "data": [
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "senior",
+            "salary": 43988,
+            "age": 26,
+            "score": 62
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "junior",
+            "salary": 44161,
+            "age": 31,
+            "score": 69
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "mid",
+            "salary": 44334,
+            "age": 36,
+            "score": 76
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "senior",
+            "salary": 44507,
+            "age": 41,
+            "score": 83
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "junior",
+            "salary": 44680,
+            "age": 46,
+            "score": 90
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "mid",
+            "salary": 44853,
+            "age": 51,
+            "score": 97
+          },
+          {
+            "dept": "ops",
+            "region": "latam",
+            "tier": "senior",
+            "salary": 45026,
+            "age": 56,
+            "score": 53
+          },
+          {
+            "dept": "finance",
+            "region": "emea",
+            "tier": "junior",
+            "salary": 45199,
+            "age": 26,
+            "score": 60
+          },
+          {
+            "dept": "eng",
+            "region": "na",
+            "tier": "mid",
+            "salary": 45372,
+            "age": 31,
+            "score": 67
+          },
+          {
+            "dept": "sales",
+            "region": "apac",
+            "tier": "senior",
+            "salary": 45545,
+            "age": 36,
+            "score": 74
+          }
+        ],
+        "groupBy": "dept",
+        "operation": "max",
+        "valueField": "salary"
+      }
+    }
+  ]
+}

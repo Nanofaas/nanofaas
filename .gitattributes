@@ -1,0 +1,2 @@
+# Generated corpora are verified byte-for-byte by generate-payload-corpora.py.
+functions/test-data/**/performance-*.json -diff

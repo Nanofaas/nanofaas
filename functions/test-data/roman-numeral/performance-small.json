@@ -1,0 +1,54 @@
+{
+  "family": "roman-numeral",
+  "profile": "small",
+  "cases": [
+    {
+      "name": "roman-0001",
+      "input": {
+        "number": 1
+      }
+    },
+    {
+      "name": "roman-0004",
+      "input": {
+        "number": 4
+      }
+    },
+    {
+      "name": "roman-0009",
+      "input": {
+        "number": 9
+      }
+    },
+    {
+      "name": "roman-0040",
+      "input": {
+        "number": 40
+      }
+    },
+    {
+      "name": "roman-0090",
+      "input": {
+        "number": 90
+      }
+    },
+    {
+      "name": "roman-0400",
+      "input": {
+        "number": 400
+      }
+    },
+    {
+      "name": "roman-0900",
+      "input": {
+        "number": 900
+      }
+    },
+    {
+      "name": "roman-3999",
+      "input": {
+        "number": 3999
+      }
+    }
+  ]
+}
