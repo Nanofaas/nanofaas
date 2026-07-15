@@ -3,7 +3,7 @@
 
 import argparse
 
-from lib.payload_corpora import REPO_ROOT, generate_all
+from lib.payload_corpora import REPO_ROOT, generate_all, generate_catalog_samples
 
 
 def main():
@@ -15,7 +15,9 @@ def main():
     )
     args = parser.parse_args()
 
-    for relative_path, expected in generate_all().items():
+    generated = generate_all()
+    generated.update(generate_catalog_samples(generated))
+    for relative_path, expected in generated.items():
         path = REPO_ROOT / relative_path
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != expected:

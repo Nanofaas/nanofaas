@@ -16,3 +16,4 @@ catalog:
   runtime: javascript
   description: Node.js JavaScript roman numeral conversion demo.
   defaultImage: localhost:5000/nanofaas/javascript-roman-numeral:e2e
+  defaultPayload: roman-numeral-sample.json

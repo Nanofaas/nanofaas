@@ -32,6 +32,25 @@ def generate_all():
     return generated
 
 
+def generate_catalog_samples(corpora=None):
+    """Return one canonical small input per family for catalog smoke tests."""
+    corpora = generate_all() if corpora is None else corpora
+    generated = {}
+    for family in FAMILIES:
+        corpus_path = (
+            Path("functions/test-data") / family / "performance-small.json"
+        )
+        first_input = json.loads(corpora[corpus_path])["cases"][0]["input"]
+        sample_path = (
+            Path("tools/controlplane/scenarios/payloads")
+            / f"{family}-sample.json"
+        )
+        generated[sample_path] = (
+            json.dumps(first_input, indent=2, ensure_ascii=False) + "\n"
+        )
+    return generated
+
+
 def _generate_corpus(family, profile):
     if family == "word-stats":
         return _generate_word_stats(profile)

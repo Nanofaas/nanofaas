@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from controlplane_tool.functions.catalog import (
     _discover_example_functions,
@@ -76,7 +77,27 @@ def test_dynamic_catalog_exposes_manifest_backed_roman_numeral_details() -> None
 
     assert function.description == "Java roman numeral conversion demo."
     assert function.default_image == "localhost:5000/nanofaas/java-roman-numeral:e2e"
-    assert function.default_payload_file is None
+    assert function.default_payload_file == "roman-numeral-sample.json"
+
+
+def test_every_demo_function_declares_a_resolvable_default_payload() -> None:
+    families = {"word-stats", "json-transform", "roman-numeral"}
+    runtimes = {"java", "java-lite", "go", "python", "javascript", "exec"}
+    payloads_root = Path(__file__).resolve().parents[1] / "scenarios" / "payloads"
+    functions = [function for function in list_functions() if function.family in families]
+
+    assert {(function.family, function.runtime) for function in functions} == {
+        (family, runtime) for family in families for runtime in runtimes
+    }
+    for function in functions:
+        assert function.example_dir is not None
+        manifest = yaml.safe_load(
+            (function.example_dir / "function.yaml").read_text(encoding="utf-8")
+        )
+        declared = manifest["catalog"].get("defaultPayload")
+        assert declared == f"{function.family}-sample.json", function.key
+        assert function.default_payload_file == declared
+        assert (payloads_root / declared).is_file()
 
 
 def test_demo_java_preset_contains_only_java_functions() -> None:
@@ -172,6 +193,17 @@ def test_discovery_ignores_generated_build_directories(tmp_path: Path) -> None:
     functions = _discover_example_functions(examples, payloads)
 
     assert [function.key for function in functions] == ["word-stats-java"]
+
+
+def test_discovery_ignores_shared_function_test_data(tmp_path: Path) -> None:
+    examples = tmp_path / "functions"
+    payloads = tmp_path / "payloads"
+    _write(examples / "test-data" / "word-stats" / "correctness.json", "{}")
+    _write(examples / "go" / "word-stats" / "Dockerfile", "FROM scratch")
+
+    functions = _discover_example_functions(examples, payloads)
+
+    assert [function.key for function in functions] == ["word-stats-go"]
 
 
 def test_discovers_java_lite_function_with_convention_fallback(tmp_path: Path) -> None:

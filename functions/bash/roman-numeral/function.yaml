@@ -16,3 +16,4 @@ catalog:
   runtime: exec
   description: Exec/watchdog roman numeral conversion demo.
   defaultImage: localhost:5000/nanofaas/bash-roman-numeral:e2e
+  defaultPayload: roman-numeral-sample.json
