@@ -133,6 +133,44 @@ test_stdio_timeout() {
     end_test "$test_name"
 }
 
+test_stdio_timeout_terminates_process_group() {
+    local test_name="stdio_timeout_terminates_process_group"
+    start_test "$test_name"
+
+    local handler_pid_file child_pid_file
+    handler_pid_file=$(mktemp)
+    child_pid_file=$(mktemp)
+    rm -f "$handler_pid_file" "$child_pid_file"
+
+    start_callback_server
+
+    CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
+    EXECUTION_ID="exec-stdio-process-group" \
+    EXECUTION_MODE=STDIO \
+    TIMEOUT_MS=500 \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/stdio_handler.py" \
+    INVOCATION_PAYLOAD='{"input": "test"}' \
+    TEST_SCENARIO=spawn_child_hang \
+    HANDLER_PID_FILE="$handler_pid_file" \
+    CHILD_PID_FILE="$child_pid_file" \
+    $WATCHDOG_BIN &
+    wait $! || true
+
+    local handler_pid child_pid
+    handler_pid=$(cat "$handler_pid_file")
+    child_pid=$(cat "$child_pid_file")
+
+    if kill -0 "$handler_pid" 2>/dev/null || kill -0 "$child_pid" 2>/dev/null; then
+        fail_test "timed-out handler process group is still running"
+    else
+        pass_test
+    fi
+
+    rm -f "$handler_pid_file" "$child_pid_file"
+    stop_callback_server
+    end_test "$test_name"
+}
+
 test_stdio_invalid_json() {
     local test_name="stdio_invalid_json"
     start_test "$test_name"
@@ -314,6 +352,7 @@ run_stdio_tests() {
     test_stdio_error_exit
     test_stdio_exit_code_42
     test_stdio_timeout
+    test_stdio_timeout_terminates_process_group
     test_stdio_invalid_json
     test_stdio_empty_output
     test_stdio_large_output
