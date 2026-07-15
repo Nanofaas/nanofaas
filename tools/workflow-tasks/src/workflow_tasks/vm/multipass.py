@@ -16,7 +16,7 @@ REPO_SYNC_EXCLUDE_PATTERNS = (
     ".pytest_cache/", ".venv/", ".uv/", "node_modules/", "dist/",
     "/building/", "out/", "target/", "building-test/", "k6/results/",
     "experiments/k6/results/", "experiments/loadtest/results/",
-    "experiments/.image-cache/", "tooling/runs/", "tools/controlplane/runs/",
+    "experiments/.image-cache/", "tools/controlplane/runs/",
     "recovery/",
 )
 
