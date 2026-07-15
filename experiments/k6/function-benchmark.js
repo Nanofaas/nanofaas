@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { SharedArray } from 'k6/data';
+import { Rate } from 'k6/metrics';
 import { sleep } from 'k6';
 
 import {
@@ -11,6 +12,7 @@ import {
 import { loadBenchmarkConfig, validateCorpus } from './payload-model.js';
 
 const config = loadBenchmarkConfig(__ENV);
+const functionResponseValid = new Rate('function_response_valid');
 
 function loadCorpus(family, profile) {
     const key = `${family}/${profile}`;
@@ -46,6 +48,7 @@ export const options = {
     thresholds: {
         http_req_duration: ['p(95)<3000', 'p(99)<5000'],
         http_req_failed: ['rate<0.15'],
+        function_response_valid: ['rate==1'],
     },
 };
 
@@ -56,6 +59,6 @@ export default function () {
         buildInvocationPayload(input),
         { headers: { 'Content-Type': 'application/json' }, timeout: '30s' },
     );
-    checkFunctionResponse(response, config.family);
+    functionResponseValid.add(checkFunctionResponse(response, config.family));
     sleep(0.1);
 }

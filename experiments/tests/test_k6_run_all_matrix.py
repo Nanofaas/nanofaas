@@ -1,4 +1,6 @@
+import json
 import os
+import shutil
 import subprocess
 from itertools import product
 from pathlib import Path
@@ -6,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "experiments" / "k6" / "run-all.sh"
+BENCHMARK = ROOT / "experiments" / "k6" / "function-benchmark.js"
 FAMILIES = ("word-stats", "json-transform", "roman-numeral")
 RUNTIMES = ("java", "java-lite", "python", "go", "javascript", "exec")
 
@@ -61,3 +64,27 @@ def test_runner_rejects_unknown_or_empty_profile_lists() -> None:
 
         assert result.returncode != 0
         assert "K6_PAYLOAD_PROFILES" in result.stderr
+
+
+def test_benchmark_fails_when_semantic_responses_are_invalid() -> None:
+    k6 = shutil.which("k6")
+    assert k6 is not None, "k6 is required to inspect the benchmark"
+    result = subprocess.run(
+        [
+            k6,
+            "inspect",
+            "-e",
+            "NANOFAAS_FUNCTION=word-stats-java",
+            "-e",
+            "NANOFAAS_FAMILY=word-stats",
+            str(BENCHMARK),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    thresholds = json.loads(result.stdout)["thresholds"]
+    assert thresholds["function_response_valid"] == ["rate==1"]
