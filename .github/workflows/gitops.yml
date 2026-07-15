@@ -52,8 +52,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq netcat-openbsd
       - name: Run watchdog tests
         run: |
-          cargo test --manifest-path watchdog/Cargo.toml
-          bash watchdog/test-local.sh
+          cargo test --manifest-path runtimes/watchdog/Cargo.toml
+          bash runtimes/watchdog/test-local.sh
 
   publish:
     needs: [test-java, test-python, test-watchdog]
