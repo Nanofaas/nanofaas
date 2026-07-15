@@ -18,7 +18,7 @@ class RomanNumeralHandlerTest {
     @SuppressWarnings("unchecked")
     void satisfiesSharedContract() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode cases = mapper.readTree(Path.of("../..", "contract-tests", "roman-numeral.json").toFile()).get("cases");
+        JsonNode cases = mapper.readTree(Path.of("../..", "test-data", "roman-numeral", "correctness.json").toFile()).get("cases");
         for (JsonNode contractCase : cases) {
             Object input = mapper.convertValue(contractCase.get("input"), Object.class);
             Map<String, Object> actual = (Map<String, Object>) handler.handle(new InvocationRequest(input, null));

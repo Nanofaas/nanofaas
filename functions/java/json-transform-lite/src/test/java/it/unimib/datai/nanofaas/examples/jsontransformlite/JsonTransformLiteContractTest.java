@@ -15,7 +15,7 @@ class JsonTransformLiteContractTest {
     @SuppressWarnings("unchecked")
     void satisfiesSharedContract() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode cases = mapper.readTree(Path.of("../..", "contract-tests", "json-transform.json").toFile()).get("cases");
+        JsonNode cases = mapper.readTree(Path.of("../..", "test-data", "json-transform", "correctness.json").toFile()).get("cases");
         Method handle = JsonTransformLite.class.getDeclaredMethod("handle", Object.class);
         handle.setAccessible(true);
         for (JsonNode contractCase : cases) {

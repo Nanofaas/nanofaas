@@ -16,7 +16,7 @@ function createContext(): HandlerContext {
 }
 
 test("handleWordStats satisfies the shared contract", async () => {
-    const fixture = JSON.parse(await readFile("../../contract-tests/word-stats.json", "utf8"));
+    const fixture = JSON.parse(await readFile("../../test-data/word-stats/correctness.json", "utf8"));
     for (const contractCase of fixture.cases) {
         assert.deepEqual(
             await handleWordStats(createContext(), { input: contractCase.input }),

@@ -62,7 +62,7 @@ def test_handle_non_integer():
 
 
 SHARED_CASES = json.loads(
-    (Path(__file__).parents[3] / "contract-tests" / "roman-numeral.json").read_text()
+    (Path(__file__).parents[3] / "test-data" / "roman-numeral" / "correctness.json").read_text()
 )["cases"]
 
 

@@ -19,7 +19,7 @@ jq '
       | ($in.operation // "count") as $op
       | ($in.valueField) as $vf
       | if ($data == null or $groupBy == null) then
-          {"error":"Fields '\''data'\'' and '\''groupBy'\'' are required"}
+          {"error":"Fields '\''data'\'' (array) and '\''groupBy'\'' (string) are required"}
         elif ($op != "count" and ($vf == null or ($vf|tostring|length) == 0)) then
           {"error":("Field '\''valueField'\'' is required for operation: " + ($op|tostring))}
         else
@@ -45,4 +45,3 @@ jq '
         end
     end
 ' <<<"$req"
-

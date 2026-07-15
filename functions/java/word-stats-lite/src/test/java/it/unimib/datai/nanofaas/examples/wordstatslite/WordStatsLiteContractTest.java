@@ -16,7 +16,7 @@ class WordStatsLiteContractTest {
     @SuppressWarnings("unchecked")
     void satisfiesSharedContract() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode cases = mapper.readTree(Path.of("../..", "contract-tests", "word-stats.json").toFile()).get("cases");
+        JsonNode cases = mapper.readTree(Path.of("../..", "test-data", "word-stats", "correctness.json").toFile()).get("cases");
         Method handle = WordStatsLite.class.getDeclaredMethod("handle", Object.class);
         handle.setAccessible(true);
         for (JsonNode contractCase : cases) {

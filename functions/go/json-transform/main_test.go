@@ -18,7 +18,7 @@ func TestSharedContract(t *testing.T) {
 			Expected any    `json:"expected"`
 		} `json:"cases"`
 	}
-	data, err := os.ReadFile("../../contract-tests/json-transform.json")
+	data, err := os.ReadFile("../../test-data/json-transform/correctness.json")
 	if err != nil {
 		t.Fatal(err)
 	}
