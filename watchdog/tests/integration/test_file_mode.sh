@@ -169,6 +169,9 @@ test_file_invalid_json() {
 test_file_timeout() {
     local test_name="file_timeout"
     start_test "$test_name"
+    local handler_pid_file child_pid_file
+    handler_pid_file=$(mktemp)
+    child_pid_file=$(mktemp)
 
     start_callback_server
 
@@ -180,13 +183,24 @@ test_file_timeout() {
     INPUT_FILE="/tmp/test_input.json" \
     OUTPUT_FILE="/tmp/test_output.json" \
     INVOCATION_PAYLOAD='{"input": "test"}' \
-    TEST_SCENARIO=hang \
+    HANDLER_PID_FILE="$handler_pid_file" \
+    CHILD_PID_FILE="$child_pid_file" \
+    TEST_SCENARIO=spawn_child_hang \
     $WATCHDOG_BIN &
     wait $! || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "false" "$test_name"
     assert_json_contains "$callback" "TIMEOUT" "$test_name - timeout error"
+    local handler_pid child_pid
+    handler_pid=$(cat "$handler_pid_file")
+    child_pid=$(cat "$child_pid_file")
+    if kill -0 "$handler_pid" 2>/dev/null || kill -0 "$child_pid" 2>/dev/null; then
+        fail_test "$test_name - timed-out process group is still running"
+    else
+        pass_test
+    fi
+    rm -f "$handler_pid_file" "$child_pid_file"
 
     stop_callback_server
     end_test "$test_name"
