@@ -382,7 +382,10 @@ async fn spawn_http_runtime(config: &Config) -> Result<Child, String> {
 
     // In warm mode the watchdog binds to WARM_PORT (default 8080), so the internal runtime
     // should bind to a different port (default 8081).
-    cmd.env("PORT", if config.warm { "8081" } else { "8080" });
+    let runtime_port = if config.warm { "8081" } else { "8080" };
+    cmd.env("PORT", runtime_port)
+        .env("SERVER_PORT", runtime_port)
+        .process_group(0);
 
     cmd.spawn()
         .map_err(|e| format!("Failed to spawn runtime: {}", e))
@@ -561,25 +564,26 @@ async fn run_file_warm(
     let (program, args) = config.command.split_first().unwrap();
     info!(command = %program, "Running function");
 
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .env("EXECUTION_ID", execution_id)
         .env("TRACE_ID", trace_id.unwrap_or(""))
         .env("INPUT_FILE", &config.input_file)
         .env("OUTPUT_FILE", &config.output_file)
+        .process_group(0);
+    let mut child = command
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
     // Wait for process with timeout
-    let status = timeout(
-        Duration::from_millis(config.timeout_ms),
-        child.wait()
-    ).await
-        .map_err(|_| {
-            kill_process(&child);
-            "Process timed out".to_string()
-        })?
-        .map_err(|e| format!("Process error: {}", e))?;
+    let status = match timeout(Duration::from_millis(config.timeout_ms), child.wait()).await {
+        Ok(status) => status.map_err(|e| format!("Process error: {e}"))?,
+        Err(_) => {
+            terminate_process_group(&mut child).await;
+            return Err("Process timed out".to_string());
+        }
+    };
 
     if !status.success() {
         return Err(format!("Process exited with {}", status));
@@ -995,8 +999,7 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
     // Wait for ready
     if let Err(e) = wait_for_http_ready(config).await {
         error!(error = %e, "Runtime failed to start");
-        kill_process(&child);
-        let _ = child.wait().await;
+        terminate_process_group(&mut child).await;
         return InvocationResult::error("STARTUP_ERROR", &e);
     }
 
@@ -1007,8 +1010,7 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
     ).await;
 
     // Cleanup
-    kill_process(&child);
-    let _ = child.wait().await;
+    terminate_process_group(&mut child).await;
 
     match invoke_result {
         Ok(Ok(output)) => {
