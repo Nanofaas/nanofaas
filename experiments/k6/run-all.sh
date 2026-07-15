@@ -6,6 +6,8 @@ set -euo pipefail
 #
 # Usage:
 #   NANOFAAS_URL=http://<VM_IP>:30080 ./k6/run-all.sh
+#   K6_PAYLOAD_PROFILES=small,medium,large NANOFAAS_URL=... ./k6/run-all.sh
+#   ./k6/run-all.sh --list
 #
 # Output: k6/results/ directory with JSON summaries per function.
 #
@@ -13,7 +15,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXPERIMENTS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
-NANOFAAS_URL="${NANOFAAS_URL:?Set NANOFAAS_URL to the nanofaas API endpoint (e.g. http://192.168.64.5:30080)}"
 
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
@@ -22,16 +23,48 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[k6]${NC} $*"; }
 info() { echo -e "${CYAN}[k6]${NC} $*"; }
 
-mkdir -p "${RESULTS_DIR}"
+FAMILIES=("word-stats" "json-transform" "roman-numeral")
+RUNTIMES=("java" "java-lite" "python" "go" "javascript" "exec")
 
-TESTS=(
-    "word-stats-java"
-    "json-transform-java"
-    "word-stats-python"
-    "json-transform-python"
-    "word-stats-exec"
-    "json-transform-exec"
-)
+if [[ "${K6_PAYLOAD_PROFILES+x}" == "x" ]]; then
+    profile_list="${K6_PAYLOAD_PROFILES}"
+else
+    profile_list="small"
+fi
+
+if [[ -z "${profile_list}" || "${profile_list}" == ,* || "${profile_list}" == *, || "${profile_list}" == *,,* ]]; then
+    echo "ERROR: K6_PAYLOAD_PROFILES must be a comma-separated list of small, medium, or large" >&2
+    exit 1
+fi
+
+IFS=',' read -r -a PROFILES <<< "${profile_list}"
+for profile in "${PROFILES[@]}"; do
+    case "${profile}" in
+        small|medium|large) ;;
+        *)
+            echo "ERROR: K6_PAYLOAD_PROFILES contains unknown profile: ${profile}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ "${1:-}" == "--list" ]]; then
+    for family in "${FAMILIES[@]}"; do
+        for runtime in "${RUNTIMES[@]}"; do
+            for profile in "${PROFILES[@]}"; do
+                printf '%s\t%s\t%s\t%s\n' "${family}" "${runtime}" "${profile}" "${family}-${runtime}"
+            done
+        done
+    done
+    exit 0
+elif [[ $# -ne 0 ]]; then
+    echo "Usage: $0 [--list]" >&2
+    exit 1
+fi
+
+NANOFAAS_URL="${NANOFAAS_URL:?Set NANOFAAS_URL to the nanofaas API endpoint (e.g. http://192.168.64.5:30080)}"
+mkdir -p "${RESULTS_DIR}"
+RUN_IDS=()
 
 # Pre-flight: verify API is reachable
 log "Checking nanofaas API at ${NANOFAAS_URL}..."
@@ -47,28 +80,32 @@ log "Registered functions:"
 curl -sf "${NANOFAAS_URL}/v1/functions" | python3 -m json.tool 2>/dev/null || curl -sf "${NANOFAAS_URL}/v1/functions"
 echo ""
 
-for test in "${TESTS[@]}"; do
-    script="${SCRIPT_DIR}/${test}.js"
-    if [[ ! -f "${script}" ]]; then
-        log "SKIP: ${script} not found"
-        continue
-    fi
+for family in "${FAMILIES[@]}"; do
+    for runtime in "${RUNTIMES[@]}"; do
+        for profile in "${PROFILES[@]}"; do
+            function_name="${family}-${runtime}"
+            run_id="${family}-${runtime}-${profile}"
+            RUN_IDS+=("${run_id}")
 
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log "Running: ${test}"
-    log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            log "Running: ${function_name} (${profile})"
+            log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    k6 run \
-        --env "NANOFAAS_URL=${NANOFAAS_URL}" \
-        --summary-export="${RESULTS_DIR}/${test}.json" \
-        "${script}" 2>&1 | tee "${RESULTS_DIR}/${test}.log"
+            k6 run \
+                --env "NANOFAAS_URL=${NANOFAAS_URL}" \
+                --env "NANOFAAS_FUNCTION=${function_name}" \
+                --env "NANOFAAS_FAMILY=${family}" \
+                --env "K6_PAYLOAD_PROFILE=${profile}" \
+                --summary-export="${RESULTS_DIR}/${run_id}.json" \
+                "${SCRIPT_DIR}/function-benchmark.js" 2>&1 | tee "${RESULTS_DIR}/${run_id}.log"
 
-    log "Results saved to ${RESULTS_DIR}/${test}.json"
-    echo ""
+            log "Results saved to ${RESULTS_DIR}/${run_id}.json"
+            echo ""
 
-    # Cool-down between tests
-    log "Cool-down 10s..."
-    sleep 10
+            log "Cool-down 10s..."
+            sleep 10
+        done
+    done
 done
 
 log ""
@@ -84,7 +121,7 @@ log "Summary:"
 printf "%-25s %10s %10s %10s %10s %10s\n" "Function" "Requests" "Failed" "p95(ms)" "p99(ms)" "Avg(ms)"
 printf "%-25s %10s %10s %10s %10s %10s\n" "--------" "--------" "------" "-------" "-------" "-------"
 
-for test in "${TESTS[@]}"; do
+for test in "${RUN_IDS[@]}"; do
     json="${RESULTS_DIR}/${test}.json"
     if [[ -f "${json}" ]]; then
         python3 - "${json}" "${EXPERIMENTS_ROOT}" "${test}" <<'PYEOF' 2>/dev/null || echo "${test}: parse error"
