@@ -64,7 +64,7 @@ first difference.
 
 | Variable | Required | Values / default |
 | --- | --- | --- |
-| `NANOFAAS_URL` | yes | control-plane base URL |
+| `NANOFAAS_URL` | no | `http://localhost:30080` (default) |
 | `NANOFAAS_FUNCTION` | yes | deployed function name |
 | `NANOFAAS_FAMILY` | yes | `word-stats`, `json-transform`, `roman-numeral` |
 | `K6_PAYLOAD_PROFILE` | no | `small` (default), `medium`, `large` |
@@ -81,8 +81,9 @@ k6 run \
   experiments/k6/function-benchmark.js
 ```
 
-The benchmark validates the semantic response for the selected family and
-records request size in the `payload_size_bytes` trend.
+The benchmark validates the semantic response for the selected family, requires
+`function_response_valid` to remain at 100%, and records request size in the
+`payload_size_bytes` trend.
 
 ## Full runtime matrix
 
