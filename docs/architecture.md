@@ -26,7 +26,7 @@
   - Execution Store (in-memory)
 - Function images (separate pods):
   - Java: reusable invocation runtime from `sdks/java`; `services/java/warm-echo` is the long-running WARM reference image
-  - Python Runtime: Watchdog-based runtime for WARM execution mode
+  - Python: FastAPI runtime from `sdks/python`
   - Both accept `X-Execution-Id` and `X-Trace-Id` headers
 
 ## Data Flow
@@ -58,7 +58,7 @@
 - `platform/control-plane/` : Spring Boot app (gateway, scheduler, dispatcher)
 - `sdks/java/` : reusable Java invocation runtime
 - `services/java/warm-echo/` : runnable WARM example service, provisioned through normal function registration
-- `python-runtime/` : Python runtime with watchdog for WARM execution mode
+- `sdks/python/` : Python function SDK and FastAPI runtime
 - `platform/common/` : shared models (FunctionSpec, InvocationRequest, ErrorInfo)
 - `k8s/` : manifests and templates
 - `docs/` : architecture, control-plane, runtime, observability

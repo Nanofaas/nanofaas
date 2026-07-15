@@ -5,7 +5,7 @@
 - `platform/common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
 - `platform/control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic (supports JOB and WARM execution modes).
 - `sdks/java/` provides the reusable Java invocation runtime; `services/java/warm-echo/` is its runnable long-running example service.
-- `python-runtime/` provides Python function runtime with watchdog for WARM execution mode (OpenWhisk-style).
+- `sdks/python/` provides the Python function SDK and FastAPI runtime.
 - `docs/` holds architecture and operational documentation; `openapi.yaml` is the API spec.
 - `deploy/k8s/` contains Kubernetes manifests; `scripts/` provides helper workflows.
 - Tests live in `*/src/test/java` with E2E tests under `platform/control-plane/src/test/java/.../e2e`.
@@ -17,7 +17,6 @@
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
 - `./gradlew :services:java:warm-echo:bootRun` — run the warm-echo example service locally.
 - `./gradlew :control-plane:bootBuildImage` and `:services:java:warm-echo:bootBuildImage` — create buildpack images.
-- `python-runtime/build.sh` or `docker build -t nanofaas/python-runtime python-runtime/` — build Python runtime image.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `scripts/controlplane.sh e2e run docker` and `scripts/controlplane.sh e2e run buildpack` — run local E2E suites.
 - `scripts/controlplane.sh e2e run k3s-junit-curl` — provision a Multipass VM with k3s, deploy via Helm, run curl checks, and then run `K8sE2eTest`.

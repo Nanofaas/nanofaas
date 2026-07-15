@@ -21,8 +21,12 @@ def test_e2e_k3s_common_shell_is_deleted() -> None:
     )
 
 
+def test_legacy_python_runtime_is_deleted() -> None:
+    assert not (REPO_ROOT / "python-runtime").exists()
+
+
 # ---------------------------------------------------------------------------
-# Python-runtime contract (M8+): verify that the Python substrate that
+# Python provisioning contract (M8+): verify that the Python substrate that
 # replaced the shell contracts above is importable and coherent.
 # ---------------------------------------------------------------------------
 
