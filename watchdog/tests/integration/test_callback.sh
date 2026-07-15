@@ -273,6 +273,40 @@ test_callback_output_included() {
     end_test "$test_name"
 }
 
+test_callback_exhaustion_fails_watchdog() {
+    local test_name="callback_exhaustion"
+    start_test "$test_name"
+
+    start_callback_server "error_503"
+
+    CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
+    EXECUTION_ID="exec-cb-011" \
+    EXECUTION_MODE=STDIO \
+    TIMEOUT_MS=5000 \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/stdio_handler.py" \
+    INVOCATION_PAYLOAD='{"input": "test"}' \
+    TEST_SCENARIO=success \
+    $WATCHDOG_BIN &
+    local watchdog_pid=$!
+
+    local exit_code
+    if wait "$watchdog_pid"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+
+    assert_equals "$(get_callback_count)" "3" "$test_name - retries exhausted"
+    if [ "$exit_code" -eq 0 ]; then
+        fail_test "$test_name - watchdog exited successfully after callback failure"
+    else
+        pass_test
+    fi
+
+    stop_callback_server
+    end_test "$test_name"
+}
+
 # ============================================================================
 # Run all Callback tests
 # ============================================================================
@@ -292,6 +326,7 @@ run_callback_tests() {
     test_callback_always_sent_on_crash
     test_callback_no_trace_id
     test_callback_output_included
+    test_callback_exhaustion_fails_watchdog
 
     echo ""
     echo "Callback Tests: $TESTS_PASSED passed, $TESTS_FAILED failed"
