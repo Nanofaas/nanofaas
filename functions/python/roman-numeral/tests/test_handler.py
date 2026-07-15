@@ -1,4 +1,6 @@
 import pytest
+import json
+from pathlib import Path
 from unittest.mock import patch
 from handler import handle, _to_roman
 
@@ -57,3 +59,13 @@ def test_handle_out_of_range_zero():
 def test_handle_non_integer():
     result = _invoke({"number": "abc"})
     assert "error" in result
+
+
+SHARED_CASES = json.loads(
+    (Path(__file__).parents[3] / "contract-tests" / "roman-numeral.json").read_text()
+)["cases"]
+
+
+@pytest.mark.parametrize("contract_case", SHARED_CASES, ids=lambda case: case["name"])
+def test_shared_contract(contract_case):
+    assert _invoke(contract_case["input"]) == contract_case["expected"]

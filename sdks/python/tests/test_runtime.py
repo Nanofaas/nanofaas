@@ -1,5 +1,7 @@
 import os
 import sys
+import asyncio
+import importlib
 import threading
 from unittest.mock import patch, MagicMock
 
@@ -17,6 +19,19 @@ from nanofaas.sdk import decorator
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+def test_handler_timeout_environment_uses_milliseconds():
+    original = os.environ.get("NANOFAAS_HANDLER_TIMEOUT")
+    try:
+        os.environ["NANOFAAS_HANDLER_TIMEOUT"] = "250"
+        assert importlib.reload(_app).HANDLER_TIMEOUT_SECONDS == 0.25
+    finally:
+        if original is None:
+            os.environ.pop("NANOFAAS_HANDLER_TIMEOUT", None)
+        else:
+            os.environ["NANOFAAS_HANDLER_TIMEOUT"] = original
+        importlib.reload(_app)
 
 def test_health(client):
     response = client.get("/health")
@@ -102,7 +117,9 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
     mock_response.status_code = 200
 
     async def _to_thread(*args, **kwargs):
-        return mock_response
+        if args[0] is requests.post:
+            return mock_response
+        return args[0](*args[1:], **kwargs)
 
     mock_to_thread.side_effect = _to_thread
 
@@ -156,3 +173,101 @@ def test_cold_start_counted_exactly_once_under_concurrency(client, monkeypatch):
     # Exactly one request should be marked as a cold start.
     assert len(cold_starts) == 1, \
         f"Expected exactly 1 cold-start, got {len(cold_starts)}: {cold_starts}"
+
+
+def test_malformed_json_returns_invalid_json(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return input_data
+
+    response = client.post(
+        "/invoke",
+        content="{",
+        headers={"Content-Type": "application/json", "X-Execution-Id": "exec-json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"code": "INVALID_JSON", "message": "Request body must be valid JSON"}
+    }
+
+
+def test_handler_timeout_returns_504(client, monkeypatch):
+    monkeypatch.setattr(_app, "HANDLER_TIMEOUT_SECONDS", 0.01, raising=False)
+
+    @decorator.nanofaas_function
+    async def slow_handler(_input_data):
+        await asyncio.sleep(0.1)
+
+    response = client.post(
+        "/invoke",
+        json={"input": "slow"},
+        headers={"X-Execution-Id": "exec-timeout"},
+    )
+
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "HANDLER_TIMEOUT"
+
+
+@patch("requests.post")
+def test_trace_environment_fallback_and_dispatch_attempt_are_forwarded(mock_post, client, monkeypatch):
+    mock_post.return_value.status_code = 204
+    monkeypatch.setattr(_app, "DEFAULT_TRACE_ID", "trace-env", raising=False)
+
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return input_data
+
+    response = client.post(
+        "/invoke",
+        json={"input": "ok"},
+        headers={
+            "X-Execution-Id": "exec-context",
+            "X-Dispatch-Attempt": "4",
+            "X-Callback-Url": "http://control-plane/callbacks",
+        },
+    )
+
+    assert response.status_code == 200
+    headers = mock_post.call_args.kwargs["headers"]
+    assert headers["X-Trace-Id"] == "trace-env"
+    assert headers["X-Dispatch-Attempt"] == "4"
+
+
+def test_callback_retries_retryable_status_but_not_permanent_4xx():
+    retryable = MagicMock(side_effect=[
+        MagicMock(status_code=429),
+        MagicMock(status_code=204),
+    ])
+    with patch("requests.post", retryable):
+        asyncio.run(_app.send_callback("http://cp/callbacks", "exec-retry", None, {}))
+    assert retryable.call_count == 2
+
+    permanent = MagicMock(return_value=MagicMock(status_code=400))
+    with patch("requests.post", permanent):
+        asyncio.run(_app.send_callback("http://cp/callbacks", "exec-400", None, {}))
+    assert permanent.call_count == 1
+
+
+@patch("requests.post")
+def test_callback_submission_is_bounded(mock_post, client, monkeypatch):
+    slots = threading.BoundedSemaphore(1)
+    slots.acquire()
+    monkeypatch.setattr(_app, "_callback_slots", slots, raising=False)
+
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return input_data
+
+    response = client.post(
+        "/invoke",
+        json={"input": "ok"},
+        headers={
+            "X-Execution-Id": "exec-full",
+            "X-Callback-Url": "http://control-plane/callbacks",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_post.assert_not_called()
+    slots.release()

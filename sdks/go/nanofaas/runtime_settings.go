@@ -2,6 +2,7 @@ package nanofaas
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,7 +26,9 @@ type InvocationContext struct {
 func LoadRuntimeSettingsFromEnv() RuntimeSettings {
 	timeout := defaultHandlerTimeout
 	if raw := os.Getenv("NANOFAAS_HANDLER_TIMEOUT"); raw != "" {
-		if parsed, err := time.ParseDuration(raw); err == nil {
+		if milliseconds, err := strconv.ParseInt(raw, 10, 64); err == nil && milliseconds > 0 {
+			timeout = time.Duration(milliseconds) * time.Millisecond
+		} else if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
 			timeout = parsed
 		}
 	}

@@ -17,9 +17,11 @@ import type {
 } from "./types.js";
 
 const DEFAULT_HANDLER_TIMEOUT_MS = 30_000;
+const DEFAULT_CALLBACK_QUEUE_SIZE = 128;
+const CALLBACK_RETRY_DELAYS_MS = [100, 500, 2_000];
 
 type RuntimeState = {
-    options: Required<Pick<RuntimeOptions, "handlerTimeoutMs">> & RuntimeOptions;
+    options: Required<Pick<RuntimeOptions, "handlerTimeoutMs" | "callbackQueueSize">> & RuntimeOptions;
     handlers: Map<string, Handler>;
     server: Server | undefined;
     port: number | undefined;
@@ -27,6 +29,8 @@ type RuntimeState = {
     startedAt: number;
     metrics: RuntimeMetrics;
     logger: ReturnType<typeof createLogger>;
+    callbackController: AbortController;
+    callbacks: Set<Promise<void>>;
 };
 
 function readEnvString(name: string): string | undefined {
@@ -83,12 +87,19 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     if (chunks.length === 0) {
         return {};
     }
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    try {
+        return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    } catch {
+        throw new NanofaasError("INVALID_JSON", "Request body must be valid JSON");
+    }
 }
 
 function normalizeInvocationRequest(payload: unknown): InvocationRequest {
     if (isJsonObject(payload)) {
         const input = "input" in payload ? (payload.input as JsonValue) : (payload as JsonValue);
+        if (payload.metadata !== undefined && payload.metadata !== null && !isMetadataRecord(payload.metadata)) {
+            throw new NanofaasError("INVALID_REQUEST", "Invocation metadata must be a string map");
+        }
         const metadata = isMetadataRecord(payload.metadata) ? payload.metadata : undefined;
         return metadata === undefined ? { input } : { input, metadata };
     }
@@ -147,7 +158,9 @@ async function sendCallback(
     callbackUrl: string | undefined,
     executionId: string,
     traceId: string | undefined,
+    dispatchAttempt: string | undefined,
     payload: CallbackPayload,
+    signal: AbortSignal,
 ): Promise<void> {
     if (!callbackUrl) {
         return;
@@ -160,27 +173,75 @@ async function sendCallback(
     if (traceId) {
         headers["x-trace-id"] = traceId;
     }
-
-    try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-            state.metrics.callbackFailures.inc();
-            state.logger.warn("callback delivery failed", {
-                executionId,
-                statusCode: response.status,
-            });
-        }
-    } catch (error) {
-        state.metrics.callbackFailures.inc();
-        state.logger.warn("callback delivery failed", {
-            executionId,
-            error: toErrorInfo(error).message,
-        });
+    if (dispatchAttempt) {
+        headers["x-dispatch-attempt"] = dispatchAttempt;
     }
+
+    for (let attempt = 0; attempt < CALLBACK_RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload),
+                signal,
+            });
+            if (response.ok) return;
+            const permanent = response.status >= 400
+                && response.status < 500
+                && response.status !== 408
+                && response.status !== 429;
+            if (permanent || attempt === CALLBACK_RETRY_DELAYS_MS.length - 1) {
+                state.metrics.callbackFailures.inc();
+                state.logger.warn("callback delivery failed", { executionId, statusCode: response.status });
+                return;
+            }
+        } catch (error) {
+            if (signal.aborted) return;
+            if (attempt === CALLBACK_RETRY_DELAYS_MS.length - 1) {
+                state.metrics.callbackFailures.inc();
+                state.logger.warn("callback delivery failed", {
+                    executionId,
+                    error: toErrorInfo(error).message,
+                });
+                return;
+            }
+        }
+
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, CALLBACK_RETRY_DELAYS_MS[attempt]);
+            signal.addEventListener("abort", () => {
+                clearTimeout(timer);
+                resolve();
+            }, { once: true });
+        });
+        if (signal.aborted) return;
+    }
+}
+
+function dispatchCallback(
+    state: RuntimeState,
+    callbackUrl: string | undefined,
+    executionId: string,
+    traceId: string | undefined,
+    dispatchAttempt: string | undefined,
+    payload: CallbackPayload,
+): void {
+    if (!callbackUrl) return;
+    if (state.callbacks.size >= state.options.callbackQueueSize) {
+        state.metrics.callbackFailures.inc();
+        return;
+    }
+    const callback = sendCallback(
+        state,
+        callbackUrl,
+        executionId,
+        traceId,
+        dispatchAttempt,
+        payload,
+        state.callbackController.signal,
+    );
+    state.callbacks.add(callback);
+    void callback.finally(() => state.callbacks.delete(callback));
 }
 
 async function invokeHandler(
@@ -227,12 +288,16 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
     const handler = selectHandler(state);
     const executionIdHeader = req.headers["x-execution-id"];
     const traceIdHeader = req.headers["x-trace-id"];
+    const dispatchAttemptHeader = req.headers["x-dispatch-attempt"];
     const executionId = typeof executionIdHeader === "string" && executionIdHeader.trim() !== ""
         ? executionIdHeader.trim()
         : readEnvString("EXECUTION_ID");
     const traceId = typeof traceIdHeader === "string" && traceIdHeader.trim() !== ""
         ? traceIdHeader.trim()
         : readEnvString("TRACE_ID");
+    const dispatchAttempt = typeof dispatchAttemptHeader === "string" && dispatchAttemptHeader.trim() !== ""
+        ? dispatchAttemptHeader.trim()
+        : undefined;
 
     if (!executionId) {
         writeJson(res, 400, {
@@ -274,7 +339,7 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
             responseHeaders["x-init-duration-ms"] = String(Date.now() - state.startedAt);
         }
 
-        void sendCallback(state, callbackUrl, executionId, traceId, {
+        dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
             success: true,
             output,
             error: null,
@@ -283,10 +348,14 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
         writeJson(res, 200, output, responseHeaders);
     } catch (error) {
         const info = toErrorInfo(error);
-        const status = info.code === "HANDLER_TIMEOUT" ? 504 : info.code === "INVALID_JSON" ? 400 : 500;
+        const status = info.code === "HANDLER_TIMEOUT"
+            ? 504
+            : info.code === "INVALID_JSON" || info.code === "INVALID_REQUEST"
+                ? 400
+                : 500;
         state.metrics.invocations.inc({ success: "false" });
 
-        void sendCallback(state, callbackUrl, executionId, traceId, {
+        dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
             success: false,
             output: null,
             error: info,
@@ -335,6 +404,7 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
         options: {
             ...options,
             handlerTimeoutMs: resolveHandlerTimeoutMs(options.handlerTimeoutMs),
+            callbackQueueSize: options.callbackQueueSize ?? DEFAULT_CALLBACK_QUEUE_SIZE,
         },
         handlers: new Map<string, Handler>(),
         server: undefined,
@@ -343,6 +413,8 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
         startedAt: Date.now(),
         metrics: createMetrics(),
         logger: createLogger("nanofaas.runtime"),
+        callbackController: new AbortController(),
+        callbacks: new Set<Promise<void>>(),
     };
 
     return {
@@ -355,6 +427,10 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
             selectHandler(state);
             if (state.server) {
                 return;
+            }
+
+            if (state.callbackController.signal.aborted) {
+                state.callbackController = new AbortController();
             }
 
             const requestedPort = resolvePort(options.port);
@@ -392,6 +468,8 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
         },
 
         async stop(): Promise<void> {
+            state.callbackController.abort();
+            await Promise.allSettled(state.callbacks);
             if (!state.server) {
                 return;
             }

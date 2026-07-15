@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "name": "orders equal frequencies alphabetically",
+      "input": {"text": "beta alpha gamma beta alpha", "topN": 3},
+      "expected": {
+        "wordCount": 5,
+        "uniqueWords": 3,
+        "topWords": [
+          {"word": "alpha", "count": 2},
+          {"word": "beta", "count": 2},
+          {"word": "gamma", "count": 1}
+        ],
+        "averageWordLength": 4.6
+      }
+    },
+    {
+      "name": "accepts plain string input",
+      "input": "hello world",
+      "expected": {
+        "wordCount": 2,
+        "uniqueWords": 2,
+        "topWords": [
+          {"word": "hello", "count": 1},
+          {"word": "world", "count": 1}
+        ],
+        "averageWordLength": 5.0
+      }
+    },
+    {
+      "name": "rejects missing text",
+      "input": {},
+      "expected": {"error": "Field 'text' is required and must be non-empty"}
+    }
+  ]
+}

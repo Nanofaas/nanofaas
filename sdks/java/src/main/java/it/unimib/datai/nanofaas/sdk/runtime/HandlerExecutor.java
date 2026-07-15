@@ -22,7 +22,7 @@ public class HandlerExecutor {
     private final ExecutorService executor;
 
     public HandlerExecutor(
-            @Value("${nanofaas.handler.timeout-ms:30000}") long timeoutMs) {
+            @Value("${nanofaas.handler.timeout-ms:${NANOFAAS_HANDLER_TIMEOUT:30000}}") long timeoutMs) {
         this.timeoutMs = timeoutMs;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }

@@ -1,8 +1,11 @@
 package it.unimib.datai.nanofaas.examples.romannumeral;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -10,6 +13,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class RomanNumeralHandlerTest {
 
     private final RomanNumeralHandler handler = new RomanNumeralHandler();
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void satisfiesSharedContract() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode cases = mapper.readTree(Path.of("../..", "contract-tests", "roman-numeral.json").toFile()).get("cases");
+        for (JsonNode contractCase : cases) {
+            Object input = mapper.convertValue(contractCase.get("input"), Object.class);
+            Map<String, Object> actual = (Map<String, Object>) handler.handle(new InvocationRequest(input, null));
+            JsonNode expected = contractCase.get("expected");
+            String key = expected.has("error") ? "error" : "roman";
+            assertEquals(expected.get(key).asText(), actual.get(key), contractCase.get("name").asText());
+        }
+    }
 
     @Test
     void convertsKnownValues() {

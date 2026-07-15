@@ -1,0 +1,5 @@
+catalog:
+  family: roman-numeral
+  runtime: java-lite
+  description: Java Lite SDK roman numeral conversion demo.
+  defaultImage: localhost:5000/nanofaas/java-lite-roman-numeral:e2e

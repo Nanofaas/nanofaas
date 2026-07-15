@@ -16,7 +16,7 @@ def handle(input_data):
     value_field = input_data.get("valueField")
 
     if data is None or group_by is None:
-        return {"error": "Fields 'data' and 'groupBy' are required"}
+        return {"error": "Fields 'data' (array) and 'groupBy' (string) are required"}
 
     if operation != "count" and not value_field:
         return {"error": f"Field 'valueField' is required for operation: {operation}"}

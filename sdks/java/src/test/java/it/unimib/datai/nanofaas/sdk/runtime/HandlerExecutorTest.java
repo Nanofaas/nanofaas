@@ -4,8 +4,12 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.test.context.support.TestPropertySourceUtils;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -13,6 +17,23 @@ import static org.mockito.Mockito.*;
 class HandlerExecutorTest {
 
     private HandlerExecutor executor;
+
+    @Test
+    void commonTimeoutEnvironmentValueUsesMilliseconds() {
+        try (var context = new AnnotationConfigApplicationContext()) {
+            TestPropertySourceUtils.addInlinedPropertiesToEnvironment(
+                    context, "NANOFAAS_HANDLER_TIMEOUT=25");
+            context.registerBean(HandlerExecutor.class);
+            context.refresh();
+            HandlerExecutor configured = context.getBean(HandlerExecutor.class);
+
+            assertThrows(TimeoutException.class, () -> configured.execute(
+                    request -> {
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(100));
+                        return "late";
+                    }, new InvocationRequest(null, null)));
+        }
+    }
 
     @AfterEach
     void tearDown() {

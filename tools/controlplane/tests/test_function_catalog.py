@@ -44,8 +44,10 @@ def test_function_catalog_discovers_repository_examples() -> None:
         "word-stats-exec",
         "json-transform-exec",
         "roman-numeral-java",
+        "roman-numeral-java-lite",
         "roman-numeral-go",
         "roman-numeral-python",
+        "roman-numeral-javascript",
         "roman-numeral-exec",
         "tool-metrics-echo",
     }.issubset(keys)

@@ -33,6 +33,7 @@ GET  /metrics
 import os
 import importlib
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -88,6 +89,8 @@ app = FastAPI(title="nanoFaaS Python Runtime", lifespan=lifespan)
 
 CALLBACK_URL = os.environ.get('CALLBACK_URL', '')
 DEFAULT_EXECUTION_ID = os.environ.get('EXECUTION_ID', '')
+DEFAULT_TRACE_ID = os.environ.get('TRACE_ID', '')
+HANDLER_TIMEOUT_SECONDS = float(os.environ.get('NANOFAAS_HANDLER_TIMEOUT', '30000')) / 1000.0
 HANDLER_MODULE = os.environ.get('HANDLER_MODULE')
 FUNCTION_NAME = os.environ.get('FUNCTION_NAME') or HANDLER_MODULE or "unknown"
 
@@ -142,8 +145,15 @@ _first_invocation = True
 # threading.Lock is intentional: the critical section is a non-yielding boolean swap
 # (no awaits), so it is safe and avoids the overhead of an asyncio.Lock acquire.
 _cold_start_lock = threading.Lock()
+_callback_slots = threading.BoundedSemaphore(128)
 
-async def send_callback(callback_url: str, execution_id: str, trace_id: str | None, result: dict):
+async def send_callback(
+    callback_url: str,
+    execution_id: str,
+    trace_id: str | None,
+    result: dict,
+    dispatch_attempt: str | None = None,
+):
     """Send an invocation result to the control-plane callback endpoint.
 
     Performs up to three HTTP POST attempts with exponential-ish back-off
@@ -173,10 +183,12 @@ async def send_callback(callback_url: str, execution_id: str, trace_id: str | No
     headers = {"Content-Type": "application/json"}
     if trace_id:
         headers["X-Trace-Id"] = trace_id
+    if dispatch_attempt:
+        headers["X-Dispatch-Attempt"] = dispatch_attempt
 
     logger.info(f"Sending callback to {url}")
     delays = [0.1, 0.5]
-    for attempt, delay in enumerate(delays):
+    for attempt in range(3):
         try:
             resp = await asyncio.to_thread(
                 requests.post, url, json=result, headers=headers, timeout=5
@@ -184,24 +196,31 @@ async def send_callback(callback_url: str, execution_id: str, trace_id: str | No
             if resp.status_code < 400:
                 logger.info("Callback sent successfully")
                 return
+            if 400 <= resp.status_code < 500 and resp.status_code not in (408, 429):
+                logger.warning(f"Permanent callback failure with status {resp.status_code}")
+                return
             logger.warning(f"Callback failed with status {resp.status_code} (attempt {attempt + 1})")
         except Exception as e:
             logger.warning(f"Callback error: {e} (attempt {attempt + 1})")
-        await asyncio.sleep(delay)
-
-    # Final attempt (no sleep after)
-    try:
-        resp = await asyncio.to_thread(
-            requests.post, url, json=result, headers=headers, timeout=5
-        )
-        if resp.status_code < 400:
-            logger.info("Callback sent successfully")
-            return
-        logger.warning(f"Callback failed with status {resp.status_code} (attempt {len(delays) + 1})")
-    except Exception as e:
-        logger.warning(f"Callback error: {e} (attempt {len(delays) + 1})")
+        if attempt < len(delays):
+            await asyncio.sleep(delays[attempt])
 
     logger.error("Callback failed after all retries")
+
+
+async def _send_callback_with_slot(*args):
+    try:
+        await send_callback(*args)
+    finally:
+        _callback_slots.release()
+
+
+def _schedule_callback(background_tasks: BackgroundTasks, *args) -> bool:
+    if not _callback_slots.acquire(blocking=False):
+        logger.warning("Dropping callback because the callback queue is full")
+        return False
+    background_tasks.add_task(_send_callback_with_slot, *args)
+    return True
 
 @app.post("/invoke")
 async def invoke(
@@ -209,7 +228,8 @@ async def invoke(
     background_tasks: BackgroundTasks,
     x_execution_id: str | None = Header(None),
     x_trace_id: str | None = Header(None),
-    x_callback_url: str | None = Header(None)
+    x_callback_url: str | None = Header(None),
+    x_dispatch_attempt: str | None = Header(None),
 ):
     """Handle a single function invocation request.
 
@@ -245,7 +265,7 @@ async def invoke(
         handler is registered.
     """
     execution_id = x_execution_id or DEFAULT_EXECUTION_ID
-    trace_id = x_trace_id
+    trace_id = x_trace_id or DEFAULT_TRACE_ID or None
     callback_url = x_callback_url or CALLBACK_URL
     
     if not execution_id:
@@ -273,16 +293,17 @@ async def invoke(
         
         logger.info(f"Invoking handler for execution {execution_id}")
         
-        if asyncio.iscoroutinefunction(handler):
-            output = await handler(input_data)
-        else:
-            output = handler(input_data)
+        invocation = handler(input_data) if asyncio.iscoroutinefunction(handler) \
+            else asyncio.to_thread(handler, input_data)
+        output = await asyncio.wait_for(invocation, timeout=HANDLER_TIMEOUT_SECONDS)
 
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
         result = {"success": True, "output": output, "error": None}
 
         if callback_url:
-            background_tasks.add_task(send_callback, callback_url, execution_id, trace_id, result)
+            _schedule_callback(
+                background_tasks, callback_url, execution_id, trace_id, result, x_dispatch_attempt
+            )
 
         headers = {}
         if is_cold_start:
@@ -293,6 +314,31 @@ async def invoke(
             RUNTIME_INIT_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(init_duration_ms / 1000.0)
 
         return JSONResponse(content=output if isinstance(output, (dict, list)) else {"result": output}, headers=headers)
+    except json.JSONDecodeError:
+        error = {"code": "INVALID_JSON", "message": "Request body must be valid JSON"}
+        if callback_url:
+            _schedule_callback(
+                background_tasks,
+                callback_url,
+                execution_id,
+                trace_id,
+                {"success": False, "output": None, "error": error},
+                x_dispatch_attempt,
+            )
+        return JSONResponse(status_code=400, content={"error": error})
+    except asyncio.TimeoutError:
+        error = {"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"}
+        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
+        if callback_url:
+            _schedule_callback(
+                background_tasks,
+                callback_url,
+                execution_id,
+                trace_id,
+                {"success": False, "output": None, "error": error},
+                x_dispatch_attempt,
+            )
+        return JSONResponse(status_code=504, content={"error": error})
     except Exception as e:
         logger.exception(f"Handler error in execution {execution_id}: {e}")
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
@@ -302,7 +348,9 @@ async def invoke(
             "error": {"code": "HANDLER_ERROR", "message": str(e)}
         }
         if callback_url:
-            background_tasks.add_task(send_callback, callback_url, execution_id, trace_id, error_result)
+            _schedule_callback(
+                background_tasks, callback_url, execution_id, trace_id, error_result, x_dispatch_attempt
+            )
             
         return JSONResponse(status_code=500, content={"error": str(e)})
     finally:

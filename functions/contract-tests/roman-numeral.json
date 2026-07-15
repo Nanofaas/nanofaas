@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"name": "converts a canonical value", "input": {"number": 1994}, "expected": {"roman": "MCMXCIV"}},
+    {"name": "rejects missing number", "input": {}, "expected": {"error": "missing required field: number"}},
+    {"name": "rejects a string number", "input": {"number": "42"}, "expected": {"error": "field 'number' must be an integer"}},
+    {"name": "rejects an out-of-range number", "input": {"number": 4000}, "expected": {"error": "number must be between 1 and 3999, got: 4000"}},
+    {"name": "rejects non-object input", "input": [], "expected": {"error": "Input must be a JSON object"}}
+  ]
+}

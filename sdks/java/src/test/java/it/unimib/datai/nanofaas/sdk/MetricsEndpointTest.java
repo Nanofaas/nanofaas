@@ -12,8 +12,14 @@ import it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistry;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.when;
+
+import org.springframework.http.MediaType;
+
+import java.util.Map;
 
 @SpringBootTest(
         classes = MetricsEndpointTest.TestApp.class,
@@ -45,8 +51,19 @@ class MetricsEndpointTest {
 
     @Test
     void metrics_isExposed() throws Exception {
+        when(handlerRegistry.resolve()).thenReturn(request -> Map.of("ok", true));
+        mvc.perform(post("/invoke")
+                        .header("X-Execution-Id", "exec-metrics")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":\"ok\"}"))
+                .andExpect(status().isOk());
+
         mvc.perform(get("/metrics"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("# HELP")));
+                .andExpect(content().string(containsString("runtime_invocations_total")))
+                .andExpect(content().string(containsString("runtime_invocation_duration_seconds")))
+                .andExpect(content().string(containsString("runtime_in_flight")))
+                .andExpect(content().string(containsString("runtime_cold_start")))
+                .andExpect(content().string(containsString("runtime_callback_failures")));
     }
 }

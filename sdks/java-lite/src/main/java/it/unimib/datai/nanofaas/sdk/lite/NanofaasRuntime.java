@@ -22,11 +22,13 @@ public final class NanofaasRuntime {
     private final HttpServer server;
     private final int port;
     private final String functionName;
+    private final InvokeHandler invokeHandler;
 
-    private NanofaasRuntime(HttpServer server, int port, String functionName) {
+    private NanofaasRuntime(HttpServer server, int port, String functionName, InvokeHandler invokeHandler) {
         this.server = server;
         this.port = port;
         this.functionName = functionName;
+        this.invokeHandler = invokeHandler;
     }
 
     public static Builder builder() {
@@ -39,6 +41,7 @@ public final class NanofaasRuntime {
     public void start() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Shutting down nanofaas-lite runtime for function '{}'", functionName);
+            invokeHandler.shutdownCallbacks();
             server.stop(5);
         }));
 
@@ -58,6 +61,7 @@ public final class NanofaasRuntime {
      * Stops the server (for testing).
      */
     public void stop() {
+        invokeHandler.shutdownCallbacks();
         server.stop(0);
     }
 
@@ -100,27 +104,22 @@ public final class NanofaasRuntime {
                 effectiveName = "unknown";
             }
 
-                        ObjectMapper objectMapper = new ObjectMapper()
-
-                                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-            
-
-                        String callbackUrl = System.getenv("CALLBACK_URL");
-
-            
-                        CallbackClient callbackClient = new CallbackClient(objectMapper, callbackUrl);
-            
+            ObjectMapper objectMapper = new ObjectMapper()
+                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            String callbackUrl = System.getenv("CALLBACK_URL");
+            CallbackClient callbackClient = new CallbackClient(objectMapper, callbackUrl);
             RuntimeMetrics metrics = new RuntimeMetrics(effectiveName);
 
             try {
                 HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
                 server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
-                server.createContext("/invoke", new InvokeHandler(handler, callbackClient, metrics, objectMapper, effectiveName));
+                InvokeHandler invokeHandler = new InvokeHandler(
+                        handler, callbackClient, metrics, objectMapper, effectiveName);
+                server.createContext("/invoke", invokeHandler);
                 server.createContext("/health", new HealthHandler());
                 server.createContext("/metrics", new MetricsHandler(metrics.getRegistry()));
 
-                return new NanofaasRuntime(server, port, effectiveName);
+                return new NanofaasRuntime(server, port, effectiveName, invokeHandler);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to create HTTP server on port " + port, e);
             }

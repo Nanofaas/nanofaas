@@ -13,13 +13,13 @@ def handle(input_data):
             text = input_data
             top_n = 10
         else:
-            return {"error": "Field 'text' is required"}
+            return {"error": "Field 'text' is required and must be non-empty"}
     else:
         text = input_data.get("text")
         top_n = input_data.get("topN", 10)
 
     if not text:
-        return {"error": "Text is empty"}
+        return {"error": "Field 'text' is required and must be non-empty"}
 
     # Use regex to find words (alphanumeric)
     words = re.findall(r'\w+', text.lower())
@@ -28,8 +28,8 @@ def handle(input_data):
 
     counts = Counter(words)
     top_words = [
-        {"word": word, "count": count} 
-        for word, count in counts.most_common(top_n)
+        {"word": word, "count": count}
+        for word, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n]
     ]
     
     avg_len = sum(len(w) for w in words) / len(words)

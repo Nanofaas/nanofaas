@@ -19,7 +19,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -178,5 +180,89 @@ class InvokeHandlerTest {
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(405, response.statusCode());
+    }
+
+    @Test
+    void malformedJsonReturns400() throws Exception {
+        startServer(req -> Map.of("ok", true));
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + "/invoke"))
+                .header("Content-Type", "application/json")
+                .header("X-Execution-Id", "exec-json")
+                .POST(HttpRequest.BodyPublishers.ofString("{"))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(400, response.statusCode());
+        assertTrue(response.body().contains("INVALID_JSON"));
+    }
+
+    @Test
+    void handlerTimeoutReturns504() throws Exception {
+        System.setProperty("nanofaas.handler.timeout.ms", "20");
+        try {
+            startServer(req -> {
+                java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(200));
+                return Map.of("late", true);
+            });
+            String body = objectMapper.writeValueAsString(new InvocationRequest(Map.of(), null));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + port + "/invoke"))
+                    .header("Content-Type", "application/json")
+                    .header("X-Execution-Id", "exec-timeout")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            assertEquals(504, response.statusCode());
+            assertTrue(response.body().contains("HANDLER_TIMEOUT"));
+        } finally {
+            System.clearProperty("nanofaas.handler.timeout.ms");
+        }
+    }
+
+    @Test
+    void callbackDispatchUsesBoundedWorkerAndQueue() throws Exception {
+        System.setProperty("nanofaas.callback.worker.count", "1");
+        System.setProperty("nanofaas.callback.queue.capacity", "1");
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger started = new AtomicInteger();
+        HttpServer callbackServer = HttpServer.create(new InetSocketAddress(0), 0);
+        callbackServer.createContext("/", exchange -> {
+            started.incrementAndGet();
+            try {
+                release.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        callbackServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+        callbackServer.start();
+        try {
+            startServer(
+                    req -> Map.of("ok", true),
+                    new CallbackClient(objectMapper, "http://localhost:" + callbackServer.getAddress().getPort()));
+            String body = objectMapper.writeValueAsString(new InvocationRequest(Map.of(), null));
+            for (int i = 0; i < 3; i++) {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:" + port + "/invoke"))
+                        .header("Content-Type", "application/json")
+                        .header("X-Execution-Id", "exec-queue-" + i)
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build();
+                assertEquals(200, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+            }
+            Thread.sleep(100);
+            assertEquals(1, started.get());
+        } finally {
+            release.countDown();
+            callbackServer.stop(0);
+            System.clearProperty("nanofaas.callback.worker.count");
+            System.clearProperty("nanofaas.callback.queue.capacity");
+        }
     }
 }

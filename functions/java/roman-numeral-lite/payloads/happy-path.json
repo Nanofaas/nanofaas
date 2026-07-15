@@ -1,0 +1,9 @@
+{
+  "description": "convert 1994 to a Roman numeral",
+  "input": {
+    "number": 1994
+  },
+  "expected": {
+    "roman": "MCMXCIV"
+  }
+}
