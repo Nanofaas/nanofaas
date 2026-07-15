@@ -28,7 +28,7 @@ env PYTHONPATH=sdks/python/src uv run --project sdks/python pytest -q \
 
 npm --prefix sdks/javascript test
 for directory in functions/javascript/word-stats functions/javascript/json-transform functions/javascript/roman-numeral; do
-  (cd "$directory" && npm test)
+  (cd "$directory" && npm ci && npm test)
 done
 
 for family in word-stats json-transform roman-numeral; do
