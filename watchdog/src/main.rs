@@ -1028,6 +1028,7 @@ async fn main() -> ExitCode {
     // Send callback
     if let Err(e) = send_callback(&config, result).await {
         error!(error = %e, "Failed to send callback after all retries");
+        return ExitCode::from(1);
     }
 
     info!("Watchdog exiting");
