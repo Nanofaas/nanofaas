@@ -21,12 +21,12 @@ elif [[ "$input_type" == "object" ]]; then
   text="$(jq -r '.input.text // empty' <<<"$req")"
   top_n="$(jq -r '.input.topN // 10' <<<"$req")"
 else
-  jq -n --arg msg "Field 'text' is required" '{error:$msg}'
+  jq -n --arg msg "Field 'text' is required and must be non-empty" '{error:$msg}'
   exit 0
 fi
 
 if [[ -z "${text}" ]]; then
-  jq -n --arg msg "Text is empty" '{error:$msg}'
+  jq -n --arg msg "Field 'text' is required and must be non-empty" '{error:$msg}'
   exit 0
 fi
 
@@ -49,7 +49,7 @@ unique_words="$(sort -u "$tmp_words" | wc -l | tr -d ' ')"
 
 avg_len="$(awk '{sum+=length($0)} END { if (NR>0) printf "%.2f", sum/NR; else printf "0.0" }' "$tmp_words")"
 
-top_lines="$(awk '{c[$0]++} END { for (w in c) print c[w] "\t" w }' "$tmp_words" | sort -nr | head -n "$top_n")"
+top_lines="$(awk '{c[$0]++} END { for (w in c) print c[w] "\t" w }' "$tmp_words" | sort -k1,1nr -k2,2 | head -n "$top_n")"
 top_words_json="$(printf "%s\n" "$top_lines" | jq -R -s '
   split("\n")
   | map(select(length>0))
@@ -62,4 +62,3 @@ jq -n \
   --argjson topWords "$top_words_json" \
   --argjson averageWordLength "$avg_len" \
   '{wordCount:$wordCount, uniqueWords:$uniqueWords, topWords:$topWords, averageWordLength:$averageWordLength}'
-

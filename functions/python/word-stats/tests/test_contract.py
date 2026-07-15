@@ -12,7 +12,7 @@ handle = MODULE.handle
 
 
 CASES = json.loads(
-    (Path(__file__).parents[3] / "contract-tests" / "word-stats.json").read_text()
+    (Path(__file__).parents[3] / "test-data" / "word-stats" / "correctness.json").read_text()
 )["cases"]
 
 

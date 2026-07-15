@@ -30,3 +30,25 @@ npm --prefix sdks/javascript test
 for directory in functions/javascript/word-stats functions/javascript/json-transform functions/javascript/roman-numeral; do
   (cd "$directory" && npm test)
 done
+
+for family in word-stats json-transform roman-numeral; do
+  fixture="functions/test-data/$family/correctness.json"
+  handler="functions/bash/$family/handler.sh"
+  if [[ ! -f "$fixture" ]]; then
+    echo "missing bash contract fixture: $fixture" >&2
+    exit 1
+  fi
+  while IFS= read -r contract_case; do
+    name="$(jq -r '.name' <<<"$contract_case")"
+    input="$(jq -c '.input' <<<"$contract_case")"
+    expected="$(jq -c '.expected' <<<"$contract_case")"
+    actual="$(jq -cn --argjson input "$input" '{input:$input}' | bash "$handler")"
+    if ! jq -en --argjson actual "$actual" --argjson expected "$expected" \
+      '$actual == $expected' >/dev/null; then
+      echo "bash $family contract failed: $name" >&2
+      echo "expected: $(jq -cS . <<<"$expected")" >&2
+      echo "actual:   $(jq -cS . <<<"$actual")" >&2
+      exit 1
+    fi
+  done < <(jq -c '.cases[]' "$fixture")
+done
