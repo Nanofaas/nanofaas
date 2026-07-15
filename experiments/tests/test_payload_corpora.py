@@ -6,6 +6,7 @@ from experiments.lib.payload_corpora import (
     CASES_PER_PROFILE,
     PROFILE_SCALES,
     generate_all,
+    generate_catalog_samples,
     validate_corpus,
 )
 
@@ -172,3 +173,26 @@ def test_roman_profiles_are_unique_and_in_range():
         assert len(set(numbers)) == expected_count
         assert min(numbers) == 1
         assert max(numbers) == 3999
+
+
+def test_catalog_samples_match_each_family_first_small_input():
+    corpora = generate_all()
+    samples = generate_catalog_samples()
+
+    assert {path.as_posix() for path in samples} == {
+        f"tools/controlplane/scenarios/payloads/{family}-sample.json"
+        for family in PROFILE_SCALES
+    }
+    for family in PROFILE_SCALES:
+        corpus_path = next(
+            path
+            for path in corpora
+            if path.as_posix().endswith(f"{family}/performance-small.json")
+        )
+        sample_path = next(
+            path
+            for path in samples
+            if path.as_posix().endswith(f"{family}-sample.json")
+        )
+        first_input = json.loads(corpora[corpus_path])["cases"][0]["input"]
+        assert json.loads(samples[sample_path]) == first_input

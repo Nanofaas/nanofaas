@@ -16,3 +16,4 @@ catalog:
   runtime: go
   description: Go roman numeral conversion demo.
   defaultImage: localhost:5000/nanofaas/go-roman-numeral:e2e
+  defaultPayload: roman-numeral-sample.json

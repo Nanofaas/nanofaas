@@ -49,7 +49,7 @@ _RUNTIME_DIR_TO_CATALOG_RUNTIME: dict[str, FunctionRuntimeKind] = {
 _DISCOVERABLE_RUNTIMES: frozenset[FunctionRuntimeKind] = frozenset(
     {"java", "java-lite", "go", "python", "exec", "javascript"}
 )
-_IGNORED_DISCOVERY_DIRS = frozenset({"build", "building"})
+_IGNORED_DISCOVERY_DIRS = frozenset({"build", "building", "test-data"})
 
 
 def _load_function_manifest(path: Path) -> dict[str, object]:
