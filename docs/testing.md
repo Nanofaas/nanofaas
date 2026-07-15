@@ -23,3 +23,18 @@ user-managed. Load tests additionally need provider credentials and network acce
 Managed VMs are deleted after the run unless `--keep` is set.
 
 Use `--only`, `--from`, and `--until` to isolate tasks. Use `--keep` only when infrastructure must remain available for investigation.
+
+## Watchdog
+
+The watchdog has Rust unit tests and local integration tests for HTTP, STDIO, FILE, callback, metrics, and warm lifecycle behavior. They require Rust, Python 3, `jq`, `curl`, and `nc`; Docker and a VM are not required.
+
+```bash
+cargo test --manifest-path runtimes/watchdog/Cargo.toml
+bash runtimes/watchdog/test-local.sh
+
+# Focused suites while debugging
+bash runtimes/watchdog/test-local.sh --http
+bash runtimes/watchdog/test-local.sh --stdio
+bash runtimes/watchdog/test-local.sh --file
+bash runtimes/watchdog/test-local.sh --callback
+```

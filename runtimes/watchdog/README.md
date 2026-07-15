@@ -125,6 +125,8 @@ TIMEOUT_MS=30000
 **Notes:**
 - In warm DEPLOYMENT mode, the control plane reads the HTTP response body as the function output (no per-invocation callback).
 - For `EXECUTION_MODE=HTTP`, configure `RUNTIME_URL`/`HEALTH_URL` to point to the internal runtime. By default the watchdog assumes the internal runtime listens on port `8081` in warm mode.
+- The watchdog owns the internal HTTP runtime. If it exits unexpectedly, the watchdog exits with failure so the container platform can restart the container; it does not run an internal restart loop.
+- `SIGTERM` and `SIGINT` trigger a graceful shutdown of the watchdog and its owned HTTP runtime.
 
 ## Examples
 
@@ -285,6 +287,14 @@ process.stdin.on('end', () => {
 | `INVOCATION_PAYLOAD` | No | `null` | JSON payload (one-shot only) |
 | `WARM_PORT` | No | 8080 | HTTP port for warm server (when `WARM=true`) |
 
+## Lifecycle and validation
+
+`WATCHDOG_CMD` is parsed as an argv-style command and preserves shell-style quoted arguments (for example, `python3 -c 'print("hello world")'`). It is not executed through a shell. Invalid quoting, unsupported `EXECUTION_MODE` values, and non-numeric `TIMEOUT_MS`, `READY_TIMEOUT_MS`, or `WARM_PORT` are configuration errors and cause startup to fail.
+
+Every child starts in its own process group. On timeout or shutdown the watchdog sends `SIGTERM` to the group, waits briefly, then escalates to `SIGKILL` and reaps the child. This includes descendants started by the handler.
+
+For one-shot invocations, delivering the callback is part of success: the watchdog retries delivery three times with backoff and exits non-zero if all attempts fail. Clients must therefore continue to treat callbacks as at-least-once delivery and remain idempotent.
+
 ## Callback Format
 
 ### Success
@@ -338,11 +348,4 @@ docker build -t nanofaas/watchdog:latest .
 | Release | ~4 MB |
 | Release + strip | ~2 MB |
 
-## Performance
-
-| Metric | Value |
-|--------|-------|
-| Startup time | <1 ms |
-| Memory overhead | ~2-3 MB |
-| HTTP invoke latency | <1 ms |
-| STDIO invoke latency | <1 ms |
+Performance characteristics depend on the function runtime, image, host, and configured limits. Measure the complete deployment with a reproducible benchmark before using latency or memory figures for capacity planning.

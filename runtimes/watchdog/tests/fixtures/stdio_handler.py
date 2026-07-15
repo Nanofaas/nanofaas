@@ -6,6 +6,7 @@ Reads JSON from stdin, writes JSON to stdout.
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -53,6 +54,18 @@ def main():
 
     elif SCENARIO == "hang":
         # Hang forever
+        time.sleep(3600)
+
+    elif SCENARIO == "spawn_child_hang":
+        handler_pid_file = os.environ.get("HANDLER_PID_FILE")
+        if handler_pid_file:
+            with open(handler_pid_file, "w", encoding="utf-8") as pid_file:
+                pid_file.write(str(os.getpid()))
+        child = subprocess.Popen(["sleep", "3600"])
+        child_pid_file = os.environ.get("CHILD_PID_FILE")
+        if child_pid_file:
+            with open(child_pid_file, "w", encoding="utf-8") as pid_file:
+                pid_file.write(str(child.pid))
         time.sleep(3600)
 
     elif SCENARIO == "stderr_output":
