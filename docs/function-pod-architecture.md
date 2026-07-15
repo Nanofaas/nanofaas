@@ -156,7 +156,10 @@ WARM (ExecutionMode = DEPLOYMENT, pod persistente)
 In modalita' WARM il watchdog **espone un server HTTP**: accetta richieste
 su `/invoke` e restituisce l'output direttamente nella risposta HTTP.
 Per `STDIO`/`FILE` esegue `WATCHDOG_CMD` a ogni invocazione; per `HTTP`
-puo' fare da reverse proxy verso un runtime interno.
+fa da reverse proxy verso un runtime interno su `127.0.0.1:8081`. Il processo
+del runtime HTTP e' posseduto dal watchdog: se termina inaspettatamente, il
+watchdog esce con errore e delega il riavvio a Kubernetes o al runtime container.
+Su `SIGTERM`/`SIGINT` arresta invece runtime e server in modo pulito.
 
 ---
 
@@ -184,6 +187,7 @@ puo' fare da reverse proxy verso un runtime interno.
 | `TIMEOUT_MS` | `30000` | Timeout in millisecondi |
 | `EXECUTION_MODE` | `HTTP` | RuntimeMode sottostante |
 | `WATCHDOG_CMD` | `java -jar /app/app.jar` | Comando per avviare il runtime |
+| `RUNTIME_URL` | `http://127.0.0.1:8081/invoke` | Endpoint interno per runtime HTTP warm |
 
 **Differenza chiave**: nel warm mode non ci sono `EXECUTION_ID`,
 `CALLBACK_URL`, `INVOCATION_PAYLOAD` come ENV. L'`executionId` arriva

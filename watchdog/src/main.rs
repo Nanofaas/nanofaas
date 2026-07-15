@@ -1149,4 +1149,13 @@ mod tests {
     fn execution_mode_rejects_unknown_value() {
         assert!(ExecutionMode::parse("OTHER").is_err());
     }
+
+    #[test]
+    fn combined_image_runs_as_a_warm_http_proxy() {
+        let dockerfile = include_str!("../Dockerfile.combined");
+
+        assert!(dockerfile.contains("ENV WARM=true"));
+        assert!(dockerfile.contains("ENV EXECUTION_MODE=HTTP"));
+        assert!(dockerfile.contains("ENV RUNTIME_URL=http://127.0.0.1:8081/invoke"));
+    }
 }
