@@ -267,9 +267,8 @@ async def invoke(
     RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
     try:
         payload = await request.json()
-        # Java SDK expects the whole body as InvocationRequest, which has 'input' and 'metadata'
-        # The existing python-runtime app.py used request.get_json() which is the whole body
-        # Let's be consistent with Java SDK: it passes 'input' to the handler
+        # Keep the Python runtime aligned with the Java InvocationRequest contract.
+        # Handlers receive the input field rather than the transport envelope.
         input_data = payload.get("input") if isinstance(payload, dict) else payload
         
         logger.info(f"Invoking handler for execution {execution_id}")

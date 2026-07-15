@@ -780,7 +780,7 @@ Il deploy richiede applicazione manuale con `kubectl apply -f k8s/`.
 ### Stato attuale
 Due runtime ufficiali:
 - **Java** (`sdks/java`): runtime HTTP riusabile; `services/java/warm-echo` e' il servizio WARM di esempio.
-- **Python** (`python-runtime`): Flask + Gunicorn, dynamic module loading.
+- **Python** (`sdks/python`): FastAPI runtime for decorated handlers.
 
 Il contratto runtime e semplice: un server HTTP che accetta `POST /invoke`
 e posta il risultato al `CALLBACK_URL`.
