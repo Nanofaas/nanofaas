@@ -31,10 +31,9 @@ The system consists of four main modules:
     -   Exposes a `POST /invoke` endpoint through the SDK.
     -   Is provisioned as a normal NanoFaaS function, not as shared infrastructure.
 
-3.  **`python-runtime/`**: Python function runtime with watchdog.
-    -   Supports WARM execution mode (OpenWhisk-style).
+3.  **`sdks/python/`**: Python function SDK with a FastAPI runtime.
+    -   Supports synchronous and asynchronous Python handlers.
     -   Accepts `X-Execution-Id` and `X-Trace-Id` headers.
-    -   Build: `python-runtime/build.sh` or `docker build`.
 
 4.  **`common/`**: Shared library containing:
     -   Data Transfer Objects (DTOs) like `FunctionSpec`, `InvocationRequest`.
@@ -79,12 +78,6 @@ To build container images using Spring Boot Buildpacks:
 ./gradlew :control-plane:bootBuildImage :services:java:warm-echo:bootBuildImage
 ```
 
-To build the Python runtime image:
-```bash
-cd python-runtime && ./build.sh
-# or: docker build -t nanofaas/python-runtime python-runtime/
-```
-
 ## Project Structure
 
 ```text
@@ -95,7 +88,7 @@ cd python-runtime && ./build.sh
 │   └── src/test/java/  # Unit & E2E tests
 ├── sdks/java/                   # Reusable Java invocation runtime
 ├── services/java/warm-echo/     # Long-running WARM example service
-├── python-runtime/     # Python function runtime with watchdog (WARM mode)
+├── sdks/python/        # Python function SDK and FastAPI runtime
 ├── docs/               # Architecture and operational docs
 ├── k8s/                # Kubernetes manifests & templates
 ├── scripts/            # Helper scripts for E2E and setup
