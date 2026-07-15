@@ -64,7 +64,7 @@ l'intero ciclo di vita del processo figlio.
 
 ## Il Watchdog in dettaglio
 
-Il watchdog (`watchdog/src/main.rs`) e' un binary Rust compilato staticamente
+Il watchdog (`runtimes/watchdog/src/main.rs`) e' un binary Rust compilato staticamente
 con musl libc. Gira su un'immagine `FROM scratch` (~2 MB totali).
 
 ### Modalita' di comunicazione (RuntimeMode)
