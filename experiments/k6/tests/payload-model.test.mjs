@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
     hasExpectedOutput,
+    loadBenchmarkConfig,
     selectPayload,
     selectPayloadIndex,
     validateCorpus,
@@ -60,4 +61,43 @@ test('hasExpectedOutput validates the minimal family output shape', () => {
     assert.equal(hasExpectedOutput('roman-numeral', { output: { roman: 'IV' } }), true);
     assert.equal(hasExpectedOutput('word-stats', { output: { error: 'bad' } }), false);
     assert.throws(() => hasExpectedOutput('unknown', { output: {} }), /family/);
+});
+
+test('loadBenchmarkConfig validates required values and applies defaults', () => {
+    assert.deepEqual(
+        loadBenchmarkConfig({
+            NANOFAAS_FUNCTION: 'word-stats-java',
+            NANOFAAS_FAMILY: 'word-stats',
+        }),
+        {
+            functionName: 'word-stats-java',
+            family: 'word-stats',
+            profile: 'small',
+            selection: 'sequential',
+        },
+    );
+});
+
+test('loadBenchmarkConfig rejects missing and unknown values', () => {
+    assert.throws(() => loadBenchmarkConfig({ NANOFAAS_FAMILY: 'word-stats' }), /function/i);
+    assert.throws(
+        () => loadBenchmarkConfig({ NANOFAAS_FUNCTION: 'fn', NANOFAAS_FAMILY: 'unknown' }),
+        /family/,
+    );
+    assert.throws(
+        () => loadBenchmarkConfig({
+            NANOFAAS_FUNCTION: 'fn',
+            NANOFAAS_FAMILY: 'word-stats',
+            K6_PAYLOAD_PROFILE: 'huge',
+        }),
+        /profile/,
+    );
+    assert.throws(
+        () => loadBenchmarkConfig({
+            NANOFAAS_FUNCTION: 'fn',
+            NANOFAAS_FAMILY: 'word-stats',
+            K6_PAYLOAD_SELECTION: 'legacy-random',
+        }),
+        /selection/,
+    );
 });
