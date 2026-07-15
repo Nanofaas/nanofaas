@@ -37,10 +37,12 @@ test("handleJsonTransform aggregates the shared sample", async () => {
 
     assert.deepEqual(output, {
         groupBy: "dept",
-        operation: "avg",
+        operation: "count",
         groups: {
-            eng: 100000,
-            ops: 70000,
+            eng: 3,
+            sales: 3,
+            ops: 2,
+            finance: 2,
         },
     });
 });
