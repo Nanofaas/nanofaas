@@ -25,6 +25,10 @@ def test_legacy_python_runtime_is_deleted() -> None:
     assert not (REPO_ROOT / "python-runtime").exists()
 
 
+def test_legacy_root_tooling_is_deleted() -> None:
+    assert not (REPO_ROOT / "tooling").exists()
+
+
 # ---------------------------------------------------------------------------
 # Python provisioning contract (M8+): verify that the Python substrate that
 # replaced the shell contracts above is importable and coherent.

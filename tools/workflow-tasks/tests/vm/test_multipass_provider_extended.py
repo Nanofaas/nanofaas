@@ -84,6 +84,16 @@ def test_repo_rsync_command_no_ssh_rsh() -> None:
     assert "-e" not in cmd
 
 
+def test_repo_rsync_command_does_not_exclude_removed_legacy_tooling() -> None:
+    cmd = repo_rsync_command(
+        source=Path("/local/repo"),
+        user="ubuntu",
+        host="192.168.1.1",
+        destination="/home/ubuntu/project",
+    )
+    assert "--exclude=tooling/runs/" not in cmd
+
+
 def test_repo_rsync_command_with_ssh_rsh() -> None:
     cmd = repo_rsync_command(
         source=Path("/local/repo"),
