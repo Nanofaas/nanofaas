@@ -19,6 +19,7 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use serde::Serialize;
 use std::env;
+use std::future::IntoFuture;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use std::time::Duration;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 use tokio::time::{timeout, Instant};
 use tracing::{debug, error, info, warn};
 
@@ -323,19 +324,6 @@ impl WatchdogMetrics {
 // ============================================================================
 // Process Management
 // ============================================================================
-
-fn kill_process(child: &Child) {
-    if let Some(pid) = child.id() {
-        let pid = Pid::from_raw(pid as i32);
-        info!(pid = pid.as_raw(), "Terminating process");
-        // Try SIGTERM first
-        let _ = signal::kill(pid, Signal::SIGTERM);
-        // Give it 100ms to terminate gracefully
-        std::thread::sleep(Duration::from_millis(100));
-        // Force kill if still running
-        let _ = signal::kill(pid, Signal::SIGKILL);
-    }
-}
 
 async fn terminate_process_group(child: &mut Child) {
     let Some(pid) = child.id() else {
@@ -825,6 +813,25 @@ async fn invoke_http_warm(
     }
 }
 
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate = tokio::signal::unix::signal(
+            tokio::signal::unix::SignalKind::terminate(),
+        )
+        .expect("failed to install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    tokio::signal::ctrl_c().await.ok();
+
+    info!("Shutdown signal received");
+}
+
 async fn execute_warm_server(config: Config) -> ExitCode {
     info!(port = config.warm_port, mode = ?config.mode, "Starting warm server");
 
@@ -840,8 +847,7 @@ async fn execute_warm_server(config: Config) -> ExitCode {
 
         if let Err(e) = wait_for_http_ready(&config).await {
             error!(error = %e, "Runtime failed to start");
-            kill_process(&c);
-            let _ = c.wait().await;
+            terminate_process_group(&mut c).await;
             return ExitCode::from(1);
         }
         Some(c)
@@ -868,8 +874,7 @@ async fn execute_warm_server(config: Config) -> ExitCode {
         Err(e) => {
             error!(error = %e, "Failed to bind to port");
             if let Some(ref mut c) = child {
-                kill_process(c);
-                let _ = c.wait().await;
+                terminate_process_group(c).await;
             }
             return ExitCode::from(1);
         }
@@ -877,26 +882,69 @@ async fn execute_warm_server(config: Config) -> ExitCode {
 
     info!(addr = %addr, "Warm server listening");
 
-    let shutdown = async {
-        tokio::signal::ctrl_c().await.ok();
-        info!("Shutdown signal received");
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+        })
+        .into_future();
+    tokio::pin!(server);
+    let mut shutdown_tx = Some(shutdown_tx);
+
+    let exit_code = if let Some(runtime) = child.as_mut() {
+        tokio::select! {
+            server_result = &mut server => {
+                if let Err(e) = server_result {
+                    error!(error = %e, "Server error");
+                }
+                terminate_process_group(runtime).await;
+                ExitCode::from(1)
+            }
+            runtime_result = runtime.wait() => {
+                match runtime_result {
+                    Ok(status) => error!(%status, "HTTP runtime exited unexpectedly"),
+                    Err(e) => error!(error = %e, "Failed while waiting for HTTP runtime"),
+                }
+                let _ = shutdown_tx.take().unwrap().send(());
+                if let Err(e) = (&mut server).await {
+                    error!(error = %e, "Server error during runtime shutdown");
+                }
+                ExitCode::from(1)
+            }
+            _ = shutdown_signal() => {
+                let _ = shutdown_tx.take().unwrap().send(());
+                info!("Shutting down runtime");
+                terminate_process_group(runtime).await;
+                if let Err(e) = (&mut server).await {
+                    error!(error = %e, "Server error during shutdown");
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+        }
+    } else {
+        tokio::select! {
+            server_result = &mut server => {
+                if let Err(e) = server_result {
+                    error!(error = %e, "Server error");
+                }
+                ExitCode::from(1)
+            }
+            _ = shutdown_signal() => {
+                let _ = shutdown_tx.take().unwrap().send(());
+                if let Err(e) = (&mut server).await {
+                    error!(error = %e, "Server error during shutdown");
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+        }
     };
 
-    if let Err(e) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
-    {
-        error!(error = %e, "Server error");
-    }
-
-    if let Some(ref mut c) = child {
-        info!("Shutting down runtime");
-        kill_process(c);
-        let _ = c.wait().await;
-    }
-
     info!("Warm server shutdown complete");
-    ExitCode::SUCCESS
+    exit_code
 }
 
 // ============================================================================
