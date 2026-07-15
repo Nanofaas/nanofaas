@@ -1,8 +1,11 @@
 package it.unimib.datai.nanofaas.examples.jsontransform;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -11,6 +14,28 @@ import static org.junit.jupiter.api.Assertions.*;
 class JsonTransformHandlerTest {
 
     private final JsonTransformHandler handler = new JsonTransformHandler();
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void satisfiesSharedContract() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode cases = mapper.readTree(Path.of("../..", "contract-tests", "json-transform.json").toFile()).get("cases");
+        for (JsonNode contractCase : cases) {
+            Object input = mapper.convertValue(contractCase.get("input"), Object.class);
+            Map<String, Object> actual = (Map<String, Object>) handler.handle(new InvocationRequest(input, null));
+            JsonNode expected = contractCase.get("expected");
+            String name = contractCase.get("name").asText();
+            if (expected.has("error")) {
+                assertEquals(expected.get("error").asText(), actual.get("error"), name);
+            } else {
+                assertEquals(expected.get("groupBy").asText(), actual.get("groupBy"), name);
+                assertEquals(expected.get("operation").asText(), actual.get("operation"), name);
+                Map<String, Object> groups = (Map<String, Object>) actual.get("groups");
+                expected.get("groups").fields().forEachRemaining(entry ->
+                        assertEquals(entry.getValue().asDouble(), ((Number) groups.get(entry.getKey())).doubleValue(), name));
+            }
+        }
+    }
 
     @Test
     @SuppressWarnings("unchecked")

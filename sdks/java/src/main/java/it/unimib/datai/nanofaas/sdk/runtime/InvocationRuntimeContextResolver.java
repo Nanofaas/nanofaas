@@ -22,6 +22,9 @@ public class InvocationRuntimeContextResolver {
         String effectiveExecutionId = (headerExecutionId != null && !headerExecutionId.isBlank())
                 ? headerExecutionId
                 : runtimeSettings.executionId();
-        return new InvocationRuntimeContext(effectiveExecutionId, traceId);
+        String effectiveTraceId = (traceId != null && !traceId.isBlank())
+                ? traceId
+                : runtimeSettings.traceId();
+        return new InvocationRuntimeContext(effectiveExecutionId, effectiveTraceId);
     }
 }

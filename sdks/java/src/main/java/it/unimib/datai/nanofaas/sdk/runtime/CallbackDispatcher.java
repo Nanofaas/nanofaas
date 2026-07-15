@@ -29,12 +29,22 @@ public class CallbackDispatcher {
 
     private final CallbackClient callbackClient;
     private final ThreadPoolExecutor executor;
+    private final RuntimeMetricsFilter runtimeMetrics;
 
     @Autowired
     public CallbackDispatcher(
             CallbackClient callbackClient,
+            RuntimeMetricsFilter runtimeMetrics,
             @Value("${nanofaas.callback.worker-count:2}") int workerCount) {
-        this(callbackClient, new ThreadPoolExecutor(
+        this(callbackClient, newExecutor(workerCount), runtimeMetrics);
+    }
+
+    public CallbackDispatcher(CallbackClient callbackClient, int workerCount) {
+        this(callbackClient, newExecutor(workerCount), null);
+    }
+
+    private static ThreadPoolExecutor newExecutor(int workerCount) {
+        return new ThreadPoolExecutor(
                 workerCount,
                 workerCount,
                 0L,
@@ -46,12 +56,17 @@ public class CallbackDispatcher {
                     thread.setDaemon(true);  // daemon: JVM can exit even if callbacks are in-flight
                     return thread;
                 },
-                new ThreadPoolExecutor.AbortPolicy()));
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor) {
+        this(callbackClient, executor, null);
+    }
+
+    CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor, RuntimeMetricsFilter runtimeMetrics) {
         this.callbackClient = callbackClient;
         this.executor = executor;
+        this.runtimeMetrics = runtimeMetrics;
     }
 
     public boolean submit(String executionId, CallbackPayload payload, String traceId) {
@@ -60,10 +75,18 @@ public class CallbackDispatcher {
 
     public boolean submit(String executionId, CallbackPayload payload, String traceId, String dispatchAttempt) {
         try {
-            executor.execute(() -> callbackClient.sendResult(executionId, payload, traceId, dispatchAttempt));
+            executor.execute(() -> {
+                if (!callbackClient.sendResult(executionId, payload, traceId, dispatchAttempt)
+                        && runtimeMetrics != null) {
+                    runtimeMetrics.recordCallbackFailure();
+                }
+            });
             return true;
         } catch (RejectedExecutionException ex) {
             log.warn("Dropping callback for execution {} because dispatcher queue is full", executionId);
+            if (runtimeMetrics != null) {
+                runtimeMetrics.recordCallbackFailure();
+            }
             return false;
         }
     }

@@ -14,24 +14,26 @@ public class WordStatsLite {
 
     public static void main(String[] args) {
         NanofaasRuntime.builder()
-                .handler(request -> {
-                    log.info("Processing word stats for execution {}", FunctionContext.getExecutionId());
-
-                    Map<String, Object> input = toMap(request.input());
-                    String text = (String) input.get("text");
-                    if (text == null || text.isBlank()) {
-                        return Map.of("error", "Field 'text' is required and must be non-empty");
-                    }
-
-                    int topN = input.containsKey("topN")
-                            ? ((Number) input.get("topN")).intValue()
-                            : 10;
-
-                    return analyze(text, topN);
-                })
+                .handler(request -> handle(request.input()))
                 .functionName("word-stats-lite")
                 .build()
                 .start();
+    }
+
+    static Object handle(Object rawInput) {
+        log.info("Processing word stats for execution {}", FunctionContext.getExecutionId());
+
+        Map<String, Object> input = toMap(rawInput);
+        String text = (String) input.get("text");
+        if (text == null || text.isBlank()) {
+            return Map.of("error", "Field 'text' is required and must be non-empty");
+        }
+
+        int topN = input.containsKey("topN")
+                ? ((Number) input.get("topN")).intValue()
+                : 10;
+
+        return analyze(text, topN);
     }
 
     @SuppressWarnings("unchecked")
@@ -58,7 +60,10 @@ public class WordStatsLite {
                 .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
 
         List<Map<String, Object>> topWords = freq.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .sorted((left, right) -> {
+                    int byCount = Long.compare(right.getValue(), left.getValue());
+                    return byCount != 0 ? byCount : left.getKey().compareTo(right.getKey());
+                })
                 .limit(topN)
                 .map(e -> Map.<String, Object>of("word", e.getKey(), "count", e.getValue()))
                 .toList();

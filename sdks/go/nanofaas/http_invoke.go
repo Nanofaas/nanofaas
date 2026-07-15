@@ -22,6 +22,7 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 	}
 
 	runtimeContext := r.settings.ResolveInvocationContext(req.Header.Get("X-Execution-Id"), req.Header.Get("X-Trace-Id"))
+	dispatchAttempt := req.Header.Get("X-Dispatch-Attempt")
 	if runtimeContext.ExecutionID == "" {
 		writeErrorJSON(w, http.StatusBadRequest, "Execution ID not configured")
 		return
@@ -64,13 +65,13 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 		r.markHandlerDuration(time.Since(start).Seconds())
 		if result.err != nil {
 			r.markInvocation("error")
-			r.submitCallback(runtimeContext, Failure("HANDLER_ERROR", result.err.Error()))
+			r.submitCallback(runtimeContext, Failure("HANDLER_ERROR", result.err.Error()), dispatchAttempt)
 			writeErrorJSON(w, http.StatusInternalServerError, result.err.Error())
 			return
 		}
 
 		r.markInvocation("success")
-		r.submitCallback(runtimeContext, Success(result.output))
+		r.submitCallback(runtimeContext, Success(result.output), dispatchAttempt)
 		if isColdStart {
 			w.Header().Set("X-Cold-Start", "true")
 			w.Header().Set("X-Init-Duration-Ms", formatInitDurationHeader(r.coldStart.InitDurationMs()))
@@ -81,7 +82,7 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 		r.markHandlerDuration(time.Since(start).Seconds())
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			r.markInvocation("timeout")
-			r.submitCallback(runtimeContext, Failure("HANDLER_TIMEOUT", "Handler exceeded configured timeout"))
+			r.submitCallback(runtimeContext, Failure("HANDLER_TIMEOUT", "Handler exceeded configured timeout"), dispatchAttempt)
 			writeErrorJSON(w, http.StatusGatewayTimeout, "Handler timed out")
 			return
 		}
@@ -90,8 +91,8 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Runtime) submitCallback(runtimeContext InvocationContext, result InvocationResult) {
-	if ok := r.callbackDispatcher.Submit(context.Background(), runtimeContext.ExecutionID, result, runtimeContext.TraceID); !ok {
+func (r *Runtime) submitCallback(runtimeContext InvocationContext, result InvocationResult, dispatchAttempt string) {
+	if ok := r.callbackDispatcher.SubmitWithDispatchAttempt(context.Background(), runtimeContext.ExecutionID, result, runtimeContext.TraceID, dispatchAttempt); !ok {
 		r.markCallbackDrop()
 	}
 }

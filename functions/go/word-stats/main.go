@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -98,6 +99,6 @@ func analyze(text string, topN int) map[string]any {
 		"wordCount":         len(words),
 		"uniqueWords":       len(frequencies),
 		"topWords":          topWords,
-		"averageWordLength": float64(int(average*100)) / 100,
+		"averageWordLength": math.Round(average*100) / 100,
 	}
 }

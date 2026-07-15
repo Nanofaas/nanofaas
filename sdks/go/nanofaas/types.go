@@ -11,12 +11,13 @@ type ErrorInfo struct {
 }
 
 type InvocationResult struct {
-	Output any        `json:"output,omitempty"`
-	Error  *ErrorInfo `json:"error,omitempty"`
+	Success bool       `json:"success"`
+	Output  any        `json:"output"`
+	Error   *ErrorInfo `json:"error"`
 }
 
 func Success(output any) InvocationResult {
-	return InvocationResult{Output: output}
+	return InvocationResult{Success: true, Output: output}
 }
 
 func Failure(code, message string) InvocationResult {

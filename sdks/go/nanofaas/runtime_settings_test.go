@@ -43,7 +43,7 @@ func TestLoadRuntimeSettingsFromEnvReadsExplicitValues(t *testing.T) {
 	t.Setenv("TRACE_ID", "env-trace")
 	t.Setenv("CALLBACK_URL", "http://callback")
 	t.Setenv("FUNCTION_HANDLER", "word-stats")
-	t.Setenv("NANOFAAS_HANDLER_TIMEOUT", "45s")
+	t.Setenv("NANOFAAS_HANDLER_TIMEOUT", "45000")
 
 	settings := LoadRuntimeSettingsFromEnv()
 
@@ -54,6 +54,16 @@ func TestLoadRuntimeSettingsFromEnvReadsExplicitValues(t *testing.T) {
 		settings.FunctionHandler != "word-stats" ||
 		settings.HandlerTimeout != 45*time.Second {
 		t.Fatalf("unexpected settings: %+v", settings)
+	}
+}
+
+func TestLoadRuntimeSettingsFromEnvKeepsDurationCompatibility(t *testing.T) {
+	t.Setenv("NANOFAAS_HANDLER_TIMEOUT", "45s")
+
+	settings := LoadRuntimeSettingsFromEnv()
+
+	if settings.HandlerTimeout != 45*time.Second {
+		t.Fatalf("unexpected compatible timeout: %s", settings.HandlerTimeout)
 	}
 }
 

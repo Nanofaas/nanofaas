@@ -30,13 +30,13 @@ class InvocationRuntimeContextResolverTest {
     }
 
     @Test
-    void resolve_preservesNullTraceId() {
+    void resolve_nullTraceIdFallsBackToInjectedTraceId() {
         InvocationRuntimeContextResolver resolver = new InvocationRuntimeContextResolver(
                 new RuntimeSettings("env-exec-id", "env-trace-id", "http://callback", "handler"));
 
         InvocationRuntimeContext context = resolver.resolve(null, null);
 
         assertEquals("env-exec-id", context.executionId());
-        assertNull(context.traceId());
+        assertEquals("env-trace-id", context.traceId());
     }
 }

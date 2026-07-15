@@ -214,3 +214,38 @@ func TestInvokeRecoversFromHandlerPanicAndReportsStructuredError(t *testing.T) {
 		t.Fatalf("expected one callback, got %d", callbackCount.Load())
 	}
 }
+
+func TestInvokeForwardsDispatchAttemptToCallback(t *testing.T) {
+	dispatchAttempt := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dispatchAttempt <- r.Header.Get("X-Dispatch-Attempt")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	rt := NewRuntime(WithSettings(RuntimeSettings{
+		ExecutionID:    "env-exec",
+		HandlerTimeout: time.Second,
+		CallbackURL:    server.URL + "/v1/internal/executions",
+	}))
+	rt.callbackClient = NewCallbackClient(server.URL + "/v1/internal/executions")
+	rt.callbackDispatcher = NewCallbackDispatcher(rt.callbackClient, 1, 4)
+	defer func() { _ = rt.callbackDispatcher.Shutdown(context.Background()) }()
+	rt.Register("echo", func(_ context.Context, req InvocationRequest) (any, error) {
+		return req.Input, nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/invoke", strings.NewReader(`{"input":"hi"}`))
+	req.Header.Set("X-Execution-Id", "exec-1")
+	req.Header.Set("X-Dispatch-Attempt", "3")
+	rt.Handler().ServeHTTP(httptest.NewRecorder(), req)
+
+	select {
+	case attempt := <-dispatchAttempt:
+		if attempt != "3" {
+			t.Fatalf("unexpected dispatch attempt %q", attempt)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("callback not received")
+	}
+}

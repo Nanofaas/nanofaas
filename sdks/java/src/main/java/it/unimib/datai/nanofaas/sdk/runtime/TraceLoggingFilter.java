@@ -29,12 +29,15 @@ public class TraceLoggingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String traceId = request.getHeader("X-Trace-Id");
+        if (traceId == null || traceId.isBlank()) {
+            traceId = runtimeSettings.traceId();
+        }
         // Prefer header (warm mode) over env (one-shot mode)
         String executionId = request.getHeader("X-Execution-Id");
         if (executionId == null || executionId.isBlank()) {
             executionId = runtimeSettings.executionId();
         }
-        if (traceId != null) {
+        if (traceId != null && !traceId.isBlank()) {
             MDC.put("traceId", traceId);
         }
         if (executionId != null && !executionId.isBlank()) {

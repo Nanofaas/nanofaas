@@ -21,7 +21,10 @@ public class RomanNumeralHandler implements FunctionHandler {
     public Object handle(InvocationRequest request) {
         log.info("roman-numeral invoked, executionId={}", FunctionContext.getExecutionId());
 
-        var input = (Map<String, Object>) request.input();
+        if (!(request.input() instanceof Map<?, ?> rawInput)) {
+            return Map.of("error", "Input must be a JSON object");
+        }
+        var input = (Map<String, Object>) rawInput;
 
         if (!input.containsKey("number")) {
             return Map.of("error", "missing required field: number");

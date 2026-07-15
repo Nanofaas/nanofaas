@@ -4,6 +4,7 @@
 package it.unimib.datai.nanofaas.sdk.lite.callback;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,11 +53,27 @@ public final class CallbackClient {
             return false;
         }
 
+        final byte[] body;
+        try {
+            body = objectMapper.writeValueAsBytes(result);
+        } catch (JsonProcessingException ex) {
+            log.error("Failed to serialize callback payload for execution {}", executionId, ex);
+            return false;
+        }
+
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
-                doSend(executionId, result, traceId, dispatchAttempt);
-                log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
-                return true;
+                int status = doSend(executionId, body, traceId, dispatchAttempt);
+                if (status >= 200 && status < 300) {
+                    log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
+                    return true;
+                }
+                if (status >= 400 && status < 500 && status != 408 && status != 429) {
+                    log.error("Permanent callback failure for execution {} with status {}", executionId, status);
+                    return false;
+                }
+                log.warn("Callback failed for execution {} (attempt {}) with status {}",
+                        executionId, attempt + 1, status);
             } catch (Exception ex) {
                 log.warn("Callback failed for execution {} (attempt {}): {}",
                         executionId, attempt + 1, ex.getMessage());
@@ -76,16 +93,12 @@ public final class CallbackClient {
         return false;
     }
 
-    private void doSend(String executionId, InvocationResult result, String traceId, String dispatchAttempt) throws Exception {
+    private int doSend(String executionId, byte[] body, String traceId, String dispatchAttempt) throws Exception {
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
                 : System.getenv("TRACE_ID");
 
-        String url = baseUrl.endsWith(":complete")
-                ? baseUrl
-                : baseUrl + "/" + executionId + ":complete";
-
-        byte[] body = objectMapper.writeValueAsBytes(result);
+        String url = callbackUrl(executionId);
 
         HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -99,9 +112,19 @@ public final class CallbackClient {
             reqBuilder.header("X-Dispatch-Attempt", dispatchAttempt);
         }
 
-        HttpResponse<Void> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.discarding());
-        if (response.statusCode() >= 400) {
-            throw new RuntimeException("Callback returned HTTP " + response.statusCode());
+        return httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+
+    private String callbackUrl(String executionId) {
+        String base = baseUrl.strip();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
         }
+        int completeSuffix = base.lastIndexOf(":complete");
+        if (completeSuffix >= 0) {
+            int slash = base.lastIndexOf('/', completeSuffix);
+            if (slash >= 0) base = base.substring(0, slash);
+        }
+        return base + "/" + executionId + ":complete";
     }
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { getLogger, type HandlerContext } from "nanofaas-function-sdk";
@@ -13,6 +14,17 @@ function createContext(): HandlerContext {
         isColdStart: false,
     };
 }
+
+test("handleWordStats satisfies the shared contract", async () => {
+    const fixture = JSON.parse(await readFile("../../contract-tests/word-stats.json", "utf8"));
+    for (const contractCase of fixture.cases) {
+        assert.deepEqual(
+            await handleWordStats(createContext(), { input: contractCase.input }),
+            contractCase.expected,
+            contractCase.name,
+        );
+    }
+});
 
 test("handleWordStats returns an error when text is missing", async () => {
     const output = await handleWordStats(createContext(), {

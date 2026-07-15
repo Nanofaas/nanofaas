@@ -53,6 +53,7 @@ export type RuntimeOptions = {
     port?: number;
     handlerTimeoutMs?: number;
     callbackUrl?: string;
+    callbackQueueSize?: number;
     functionHandler?: string;
 };
 

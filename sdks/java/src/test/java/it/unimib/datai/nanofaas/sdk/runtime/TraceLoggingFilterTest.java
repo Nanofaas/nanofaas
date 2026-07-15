@@ -112,4 +112,19 @@ class TraceLoggingFilterTest {
         assertEquals("env-exec-id", capturedExec.get());
         assertNull(MDC.get("executionId"));
     }
+
+    @Test
+    void blankTraceHeader_fallsBackToEnvTraceId() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("X-Trace-Id", "   ");
+        AtomicReference<String> capturedTrace = new AtomicReference<>();
+
+        filter.doFilterInternal(
+                request,
+                new MockHttpServletResponse(),
+                (req, res) -> capturedTrace.set(MDC.get("traceId")));
+
+        assertEquals("env-trace-id", capturedTrace.get());
+        assertNull(MDC.get("traceId"));
+    }
 }

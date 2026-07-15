@@ -26,6 +26,10 @@ func NewCallbackClient(baseURL string) *CallbackClient {
 }
 
 func (c *CallbackClient) SendResult(ctx context.Context, executionID string, result InvocationResult, traceID string) bool {
+	return c.SendResultWithDispatchAttempt(ctx, executionID, result, traceID, "")
+}
+
+func (c *CallbackClient) SendResultWithDispatchAttempt(ctx context.Context, executionID string, result InvocationResult, traceID, dispatchAttempt string) bool {
 	if strings.TrimSpace(c.baseURL) == "" || strings.TrimSpace(executionID) == "" {
 		return false
 	}
@@ -44,6 +48,9 @@ func (c *CallbackClient) SendResult(ctx context.Context, executionID string, res
 		req.Header.Set("Content-Type", "application/json")
 		if strings.TrimSpace(traceID) != "" {
 			req.Header.Set("X-Trace-Id", traceID)
+		}
+		if strings.TrimSpace(dispatchAttempt) != "" {
+			req.Header.Set("X-Dispatch-Attempt", dispatchAttempt)
 		}
 
 		resp, err := c.httpClient.Do(req)

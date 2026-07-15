@@ -77,3 +77,4 @@ if (!unknownModules.isEmpty()) {
     throw new GradleException("Unknown control-plane modules: ${unknownModules}. Available: ${availableModules}")
 }
 include 'functions:java:roman-numeral'
+include 'functions:java:roman-numeral-lite'

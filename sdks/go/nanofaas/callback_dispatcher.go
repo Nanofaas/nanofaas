@@ -7,9 +7,10 @@ import (
 )
 
 type callbackJob struct {
-	executionID string
-	result      InvocationResult
-	traceID     string
+	executionID     string
+	result          InvocationResult
+	traceID         string
+	dispatchAttempt string
 }
 
 type CallbackDispatcher struct {
@@ -39,7 +40,7 @@ func NewCallbackDispatcher(client *CallbackClient, workerCount, queueSize int) *
 		go func() {
 			defer d.wg.Done()
 			for job := range d.jobs {
-				d.client.SendResult(d.ctx, job.executionID, job.result, job.traceID)
+				d.client.SendResultWithDispatchAttempt(d.ctx, job.executionID, job.result, job.traceID, job.dispatchAttempt)
 			}
 		}()
 	}
@@ -47,6 +48,10 @@ func NewCallbackDispatcher(client *CallbackClient, workerCount, queueSize int) *
 }
 
 func (d *CallbackDispatcher) Submit(ctx context.Context, executionID string, result InvocationResult, traceID string) bool {
+	return d.SubmitWithDispatchAttempt(ctx, executionID, result, traceID, "")
+}
+
+func (d *CallbackDispatcher) SubmitWithDispatchAttempt(ctx context.Context, executionID string, result InvocationResult, traceID, dispatchAttempt string) bool {
 	if d.closed.Load() {
 		return false
 	}
@@ -58,7 +63,7 @@ func (d *CallbackDispatcher) Submit(ctx context.Context, executionID string, res
 	}()
 
 	select {
-	case d.jobs <- callbackJob{executionID: executionID, result: result, traceID: traceID}:
+	case d.jobs <- callbackJob{executionID: executionID, result: result, traceID: traceID, dispatchAttempt: dispatchAttempt}:
 		return true
 	case <-ctx.Done():
 		return false

@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {
+      "name": "averages values by group",
+      "input": {
+        "data": [
+          {"dept": "eng", "salary": 90000},
+          {"dept": "ops", "salary": 70000},
+          {"dept": "eng", "salary": 110000}
+        ],
+        "groupBy": "dept",
+        "operation": "avg",
+        "valueField": "salary"
+      },
+      "expected": {
+        "groupBy": "dept",
+        "operation": "avg",
+        "groups": {"eng": 100000.0, "ops": 70000.0}
+      }
+    },
+    {
+      "name": "rejects missing group field",
+      "input": {"data": []},
+      "expected": {"error": "Fields 'data' (array) and 'groupBy' (string) are required"}
+    },
+    {
+      "name": "rejects non-object input",
+      "input": [],
+      "expected": {"error": "Input must be a JSON object"}
+    }
+  ]
+}

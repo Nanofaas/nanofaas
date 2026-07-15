@@ -61,7 +61,10 @@ public class WordStatsHandler implements FunctionHandler {
                 .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
 
         List<Map<String, Object>> topWords = freq.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .sorted((left, right) -> {
+                    int byCount = Long.compare(right.getValue(), left.getValue());
+                    return byCount != 0 ? byCount : left.getKey().compareTo(right.getKey());
+                })
                 .limit(topN)
                 .map(e -> Map.<String, Object>of("word", e.getKey(), "count", e.getValue()))
                 .toList();
