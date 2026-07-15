@@ -1,171 +1,109 @@
-# Load Test Payload Profile
+# Static function payload profiles
 
-This document describes the new payload variability model used by k6 load tests,
-the new payload metrics, and how to validate them.
+The function benchmarks use deterministic, repository-owned JSON corpora. The
+same inputs can therefore be replayed against Java, Java Lite, Go, Python,
+JavaScript, and exec/bash implementations without runtime-specific generators.
 
-It applies to:
+## Corpus layout and schema
 
-- `scripts/e2e-loadtest.sh`
-- `scripts/e2e-loadtest-registry.sh`
-- `scripts/e2e-loadtest-registry.sh --interactive`
-- k6 workload scripts under `k6/word-stats-*.js` and `k6/json-transform-*.js`
+Each family owns these files under `functions/test-data/<family>/`:
 
-Current benchmark coverage does **not** include the Go demos yet. The deploy
-and Helm flows register `word-stats-go` and `json-transform-go`, but there are
-no dedicated `experiments/k6/*-go.js` workload scripts in the repository at the
-time of writing.
+- `correctness.json`: shared input/output contract cases.
+- `performance-small.json`, `performance-medium.json`, and
+  `performance-large.json`: raw benchmark inputs.
 
-## Payload Modes
+A performance corpus has this shape:
 
-Payload behavior is controlled with:
-
-- `K6_PAYLOAD_MODE`
-- `K6_PAYLOAD_POOL_SIZE`
-
-### `K6_PAYLOAD_MODE`
-
-Supported values:
-
-- `legacy-random`: historical behavior (non-pool random generation)
-- `pool-sequential`: deterministic walk over a pool of size `K6_PAYLOAD_POOL_SIZE`
-- `pool-random`: uniform random pick from a pool of size `K6_PAYLOAD_POOL_SIZE`
-
-Default:
-
-- `legacy-random`
-
-### `K6_PAYLOAD_POOL_SIZE`
-
-Positive integer (`>= 1`), default `5000`.
-
-The value is used by `pool-sequential` and `pool-random`.
-
-## How Payloads Are Built
-
-Shared logic is implemented in:
-
-- `k6/payload-model.js` (pure functions, unit-tested with Node)
-- `k6/common.js` (k6 runtime integration and metrics)
-
-For each iteration:
-
-1. A payload index is selected according to mode.
-2. Input object is generated (`word-stats` or `json-transform`).
-3. Request JSON is built as `{ "input": ... }`.
-4. Payload byte size is recorded in k6 metric `payload_size_bytes`.
-
-## New k6 Metric
-
-### `payload_size_bytes`
-
-Type: `Trend`.
-
-Recorded in `k6/common.js` for every request before `http.post(...)`.
-
-Summary export includes:
-
-- `avg`
-- `med` (Q2)
-- `p(25)` (Q1)
-- `p(75)` (Q3)
-
-This is enabled by running k6 with:
-
-- `--summary-trend-stats "avg,min,med,max,p(25),p(75),p(90),p(95)"`
-
-(`scripts/e2e-loadtest.sh` now sets this by default).
-
-## New Summary Section
-
-`scripts/e2e-loadtest-registry.sh` now prints:
-
-- `SECTION 9: PAYLOAD PROFILE (k6 INPUT MIX)`
-
-Columns:
-
-- `Iter`: iteration count from k6 summary
-- `Unique`: estimated unique payloads used
-- `Cover%`: estimated coverage of the configured pool
-- `Reuse`: `Iter / Unique`
-- `Collisions`: `Iter - Unique`
-- `Avg(B)`, `Q1(B)`, `Q2(B)`, `Q3(B)`: payload size distribution
-
-### Estimation model
-
-For pool size `N` and iterations `k`:
-
-- `pool-sequential`:
-  - `Unique = min(k, N)` (exact)
-  - `Cover% = Unique / N * 100`
-- `pool-random`:
-  - `Unique = N * (1 - (1 - 1/N)^k)` (expected distinct)
-  - `Cover% = Unique / N * 100`
-  - `Collisions = k - Unique`
-- `legacy-random`:
-  - `Unique/Cover%/Reuse/Collisions` are shown as `-`
-
-## Interactive Flow
-
-`./scripts/e2e-loadtest-registry.sh --interactive` now asks for:
-
-1. payload mode
-2. pool size (when mode is `pool-sequential` or `pool-random`)
-
-Selected values are propagated to load generation automatically.
-
-## How To Run
-
-### Registry interactive run
-
-```bash
-./scripts/e2e-loadtest-registry.sh --interactive
+```json
+{
+  "family": "word-stats",
+  "profile": "small",
+  "cases": [
+    {"name": "small-natural-text-01", "input": {"text": "...", "topN": 10}}
+  ]
+}
 ```
 
-### Non-interactive run
+The caller adds the transport envelope. Corpus files intentionally contain only
+the function's `input` object.
+
+## Exact profile scales
+
+| Family | Scale unit | small | medium | large | Cases per profile |
+| --- | --- | ---: | ---: | ---: | ---: |
+| word-stats | words per input | 100 | 5,000 | 50,000 | 4 |
+| json-transform | records per input | 10 | 500 | 5,000 | 5 |
+| roman-numeral | distinct integers | 8 | 64 | 3,999 | 8 / 64 / 3,999 |
+
+Word counts allow a 5% validation tolerance for punctuation tokenization, while
+JSON record counts are exact. Every JSON profile covers `count`, `sum`, `avg`,
+`min`, and `max` once.
+
+Roman `small` contains canonical boundary and subtractive values (`1`, `4`,
+`9`, `40`, `90`, `400`, `900`, `3999`). `medium` contains 64 unique values
+stratified across the full valid interval. `large` exhaustively contains every
+integer from 1 through 3999.
+
+## Generation and validation
+
+The standard-library generator is deterministic and also derives each catalog
+sample from the first `small` input:
 
 ```bash
-K6_PAYLOAD_MODE=pool-sequential \
-K6_PAYLOAD_POOL_SIZE=5000 \
-./scripts/e2e-loadtest-registry.sh
+python3 experiments/generate-payload-corpora.py
+python3 experiments/generate-payload-corpora.py --check
 ```
 
-### Summary only from existing artifacts
+`--check` compares generated bytes with the committed files and fails at the
+first difference.
+
+## Generic k6 benchmark
+
+`experiments/k6/function-benchmark.js` loads one static corpus through a k6
+`SharedArray`. Configure it with:
+
+| Variable | Required | Values / default |
+| --- | --- | --- |
+| `NANOFAAS_URL` | yes | control-plane base URL |
+| `NANOFAAS_FUNCTION` | yes | deployed function name |
+| `NANOFAAS_FAMILY` | yes | `word-stats`, `json-transform`, `roman-numeral` |
+| `K6_PAYLOAD_PROFILE` | no | `small` (default), `medium`, `large` |
+| `K6_PAYLOAD_SELECTION` | no | `sequential` (default), `random` |
+
+Example:
 
 ```bash
-K6_PAYLOAD_MODE=pool-sequential \
-K6_PAYLOAD_POOL_SIZE=5000 \
-./scripts/e2e-loadtest-registry.sh --summary-only --no-refresh-summary-metrics
+k6 run \
+  -e NANOFAAS_URL=http://127.0.0.1:8080 \
+  -e NANOFAAS_FUNCTION=word-stats-go \
+  -e NANOFAAS_FAMILY=word-stats \
+  -e K6_PAYLOAD_PROFILE=small \
+  experiments/k6/function-benchmark.js
 ```
 
-## Validation and Tests
+The benchmark validates the semantic response for the selected family and
+records request size in the `payload_size_bytes` trend.
 
-### Unit tests for payload logic (Node)
+## Full runtime matrix
+
+`experiments/k6/run-all.sh` expands the Cartesian product of three families and
+six runtimes. It runs 18 `small` benchmarks by default:
 
 ```bash
-node --test k6/tests/payload-model.test.mjs
+NANOFAAS_URL=http://127.0.0.1:8080 experiments/k6/run-all.sh
 ```
 
-### Pytest bridge (runs Node test from scripts suite)
+Medium and large are opt-in because they are materially more expensive:
 
 ```bash
-uv run pytest scripts/tests/test_k6_payload_model_js.py -q
+NANOFAAS_URL=http://127.0.0.1:8080 \
+K6_PAYLOAD_PROFILES=small,medium,large \
+experiments/k6/run-all.sh
 ```
 
-### Full scripts test suite
+Use `experiments/k6/run-all.sh --list` to inspect the expanded matrix without a
+cluster.
 
-```bash
-uv run pytest scripts/tests -q
-```
-
-### k6 smoke test (syntax/integration)
-
-```bash
-K6_PAYLOAD_MODE=pool-sequential K6_PAYLOAD_POOL_SIZE=5000 NANOFAAS_URL=http://127.0.0.1:1 \
-  k6 run --stage 1s:1 --stage 1s:0 k6/word-stats-java.js
-
-K6_PAYLOAD_MODE=pool-sequential K6_PAYLOAD_POOL_SIZE=5000 NANOFAAS_URL=http://127.0.0.1:1 \
-  k6 run --stage 1s:1 --stage 1s:0 k6/json-transform-java.js
-```
-
-Note: with `NANOFAAS_URL=http://127.0.0.1:1` requests fail by design; this smoke
-test is only for script/runtime validation.
+Payload profiles and k6 load stages are independent dimensions. A profile
+controls the work and request size of one invocation; stages control concurrent
+virtual users over time. Changing one does not silently change the other.

@@ -1,0 +1,406 @@
+# Static Function Payload Corpora Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Give every function family reproducible correctness fixtures and reasonable static `small`, `medium`, and `large` performance corpora shared by all six runtimes.
+
+**Architecture:** Store raw family-owned inputs under `functions/test-data`, generate and validate them deterministically with Python standard-library code, and load them through one generic k6 benchmark. Keep payload profiles independent from existing k6 load stages and add only thin catalog adapters for default payloads.
+
+**Tech Stack:** JSON, Python 3 standard library, pytest, k6 JavaScript, Node.js test runner, Bash, jq, Gradle/JUnit, Go test, npm, uv.
+
+---
+
+### Task 1: Define and test the corpus model
+
+**Files:**
+- Create: `experiments/lib/payload_corpora.py`
+- Create: `experiments/tests/test_payload_corpora.py`
+
+**Step 1: Write failing model tests**
+
+Add tests that assert:
+
+```python
+def test_expected_profile_scales():
+    assert PROFILE_SCALES["word-stats"] == {
+        "small": 100,
+        "medium": 5_000,
+        "large": 50_000,
+    }
+    assert PROFILE_SCALES["json-transform"] == {
+        "small": 10,
+        "medium": 500,
+        "large": 5_000,
+    }
+    assert PROFILE_SCALES["roman-numeral"] == {
+        "small": 8,
+        "medium": 64,
+        "large": 3_999,
+    }
+```
+
+Also test that `validate_corpus()` rejects an empty case list, duplicate names, mismatched family/profile metadata, invalid family input, and an input outside the expected scale.
+
+**Step 2: Run the tests and confirm the red state**
+
+Run:
+
+```bash
+uv run --project sdks/python pytest -q experiments/tests/test_payload_corpora.py
+```
+
+Expected: FAIL because `experiments.lib.payload_corpora` does not exist.
+
+**Step 3: Implement the smallest corpus model**
+
+In `payload_corpora.py`, define:
+
+```python
+FAMILIES = ("word-stats", "json-transform", "roman-numeral")
+PROFILES = ("small", "medium", "large")
+PROFILE_SCALES = {
+    "word-stats": {"small": 100, "medium": 5_000, "large": 50_000},
+    "json-transform": {"small": 10, "medium": 500, "large": 5_000},
+    "roman-numeral": {"small": 8, "medium": 64, "large": 3_999},
+}
+CASES_PER_PROFILE = {"word-stats": 4, "json-transform": 5}
+```
+
+Implement family-specific shape and scale checks with plain dictionaries, lists, `json`, and `re`; do not add a schema dependency or class hierarchy. Require four word cases, five JSON cases, and the declared Roman cardinality. Allow a small documented word-count tolerance for punctuation, but require exact JSON record counts.
+
+**Step 4: Run the focused tests**
+
+Run the command from Step 2.
+
+Expected: PASS.
+
+**Step 5: Commit**
+
+```bash
+git add experiments/lib/payload_corpora.py experiments/tests/test_payload_corpora.py
+git commit -m "Define static payload corpus model"
+```
+
+### Task 2: Generate and commit deterministic corpora
+
+**Files:**
+- Create: `experiments/generate-payload-corpora.py`
+- Create: `functions/test-data/README.md`
+- Create: `functions/test-data/word-stats/performance-small.json`
+- Create: `functions/test-data/word-stats/performance-medium.json`
+- Create: `functions/test-data/word-stats/performance-large.json`
+- Create: `functions/test-data/json-transform/performance-small.json`
+- Create: `functions/test-data/json-transform/performance-medium.json`
+- Create: `functions/test-data/json-transform/performance-large.json`
+- Create: `functions/test-data/roman-numeral/performance-small.json`
+- Create: `functions/test-data/roman-numeral/performance-medium.json`
+- Create: `functions/test-data/roman-numeral/performance-large.json`
+- Modify: `experiments/tests/test_payload_corpora.py`
+
+**Step 1: Add failing generation tests**
+
+Test that two calls to `generate_all()` return byte-identical serialized content, every generated corpus passes `validate_corpus()`, all JSON transform operations appear across each profile, and Roman profiles contain unique integers in the inclusive range 1–3999.
+
+**Step 2: Run the focused tests**
+
+Expected: FAIL because generation functions are missing.
+
+**Step 3: Implement deterministic generators**
+
+Use fixed vocabulary and arithmetic sequences, not random state. Generate four named word cases and five named JSON cases per profile so sequential and random selection remain meaningful without bloating the repository. Each word case must stay near the target word count. Each JSON case must contain exactly the target row count and represent one of `count`, `sum`, `avg`, `min`, or `max`. Generate Roman profiles as 8 canonical boundary/subtractive values, 64 evenly stratified values, and all 3999 valid values.
+
+Expose this CLI:
+
+```bash
+python3 experiments/generate-payload-corpora.py
+python3 experiments/generate-payload-corpora.py --check
+```
+
+The first command writes stable, indented JSON ending in a newline. `--check` compares committed bytes with generated bytes and exits non-zero with the first mismatched path.
+
+**Step 4: Generate and verify the files**
+
+Run both CLI commands, then rerun the focused pytest file.
+
+Expected: both commands and all tests PASS.
+
+**Step 5: Commit**
+
+```bash
+git add experiments/generate-payload-corpora.py experiments/lib/payload_corpora.py experiments/tests/test_payload_corpora.py functions/test-data
+git commit -m "Add deterministic performance payload corpora"
+```
+
+### Task 3: Consolidate correctness fixtures and cover exec/bash
+
+**Files:**
+- Move: `functions/contract-tests/word-stats.json` → `functions/test-data/word-stats/correctness.json`
+- Move: `functions/contract-tests/json-transform.json` → `functions/test-data/json-transform/correctness.json`
+- Move: `functions/contract-tests/roman-numeral.json` → `functions/test-data/roman-numeral/correctness.json`
+- Modify: `functions/contract-tests/run.sh`
+- Modify: `functions/contract-tests/README.md`
+- Modify: contract fixture paths in Java, Java Lite, Go, Python, and JavaScript family tests
+- Modify: `functions/bash/word-stats/tests/test_handler.sh`
+- Modify: `functions/bash/json-transform/tests/test_handler.sh`
+- Modify: `functions/bash/roman-numeral/tests/test_handler.sh`
+
+**Step 1: Make the gate require bash contract coverage**
+
+Append the three bash test scripts to `functions/contract-tests/run.sh`. Update each script to iterate over the shared `correctness.json` cases with `jq`, invoke its handler, and compare the complete JSON result structurally with `jq -S`.
+
+**Step 2: Run the gate before moving fixtures**
+
+Run:
+
+```bash
+functions/contract-tests/run.sh
+```
+
+Expected: FAIL because bash tests do not yet consume the shared fixture path.
+
+**Step 3: Move fixtures and update every consumer**
+
+Use `git mv` for the three JSON files. Replace relative references in all existing contract tests. Keep `functions/contract-tests/run.sh` as the single language-agnostic entry point; do not introduce a second gate.
+
+**Step 4: Run the complete correctness gate**
+
+Run the command from Step 2.
+
+Expected: Gradle, Go, Python, JavaScript, and bash suites all PASS.
+
+**Step 5: Commit**
+
+```bash
+git add functions/contract-tests functions/test-data functions/bash functions/go functions/java functions/python functions/javascript
+git commit -m "Share correctness corpora with every runtime"
+```
+
+### Task 4: Replace runtime payload generation with static selection
+
+**Files:**
+- Modify: `experiments/k6/payload-model.js`
+- Modify: `experiments/k6/common.js`
+- Modify: `experiments/k6/tests/payload-model.test.mjs`
+- Modify: `experiments/tests/test_k6_payload_model_js.py`
+
+**Step 1: Replace generator tests with failing selector tests**
+
+Test these pure behaviors:
+
+```javascript
+assert.equal(selectPayloadIndex('sequential', 10, 12, () => 0.5), 2);
+assert.equal(selectPayloadIndex('random', 10, 12, () => 0.5), 5);
+assert.throws(() => selectPayloadIndex('invalid', 10, 0));
+assert.throws(() => validateCorpus({ cases: [] }, 'word-stats', 'small'));
+```
+
+Also test family/profile mismatch and missing `input` fields.
+
+**Step 2: Run Node tests and confirm failure**
+
+Run:
+
+```bash
+node --test experiments/k6/tests/payload-model.test.mjs
+```
+
+Expected: FAIL because the new validation API is absent.
+
+**Step 3: Remove runtime builders and implement selectors**
+
+Delete `buildWordStatsInput()` and `buildJsonTransformInput()`. Retain a small pure `selectPayloadIndex()` and add `selectPayload(corpus, mode, iteration, randomFn)`. Validate the corpus once during initialization. In `common.js`, keep invocation paths, envelope serialization, `payload_size_bytes`, and response checks; add one minimal output predicate per family.
+
+**Step 4: Run Node and Python bridge tests**
+
+```bash
+node --test experiments/k6/tests/payload-model.test.mjs
+uv run --project sdks/python pytest -q experiments/tests/test_k6_payload_model_js.py
+```
+
+Expected: PASS.
+
+**Step 5: Commit**
+
+```bash
+git add experiments/k6/common.js experiments/k6/payload-model.js experiments/k6/tests experiments/tests/test_k6_payload_model_js.py
+git commit -m "Load static payloads in k6 helpers"
+```
+
+### Task 5: Introduce one generic k6 benchmark
+
+**Files:**
+- Create: `experiments/k6/function-benchmark.js`
+- Modify: `experiments/k6/autoscaling.js`
+- Delete: `experiments/k6/word-stats-java.js`
+- Delete: `experiments/k6/word-stats-java-lite.js`
+- Delete: `experiments/k6/word-stats-python.js`
+- Delete: `experiments/k6/word-stats-exec.js`
+- Delete: `experiments/k6/json-transform-java.js`
+- Delete: `experiments/k6/json-transform-java-lite.js`
+- Delete: `experiments/k6/json-transform-python.js`
+- Delete: `experiments/k6/json-transform-exec.js`
+- Modify: `experiments/k6/tests/payload-model.test.mjs`
+
+**Step 1: Add failing configuration tests**
+
+Extract and test pure configuration validation for required function name, the three known families, the three profiles, and `sequential|random`. Assert defaults of `small` and `sequential`.
+
+**Step 2: Run Node tests and confirm failure**
+
+Expected: FAIL for the missing configuration loader.
+
+**Step 3: Implement the generic benchmark**
+
+During k6 initialization, load only the selected `functions/test-data/<family>/performance-<profile>.json`, preferably through literal family/profile branches compatible with k6 bundling. In the default function, choose one raw input, call `buildInvocationPayload()`, POST it, and call the family response predicate. Preserve current stages, thresholds, timeout, and sleep.
+
+Update `autoscaling.js` to consume the canonical `word-stats/small` corpus rather than a removed builder. Delete the eight wrappers only after the generic script covers their behavior.
+
+**Step 4: Verify JavaScript syntax and unit behavior**
+
+```bash
+node --test experiments/k6/tests/payload-model.test.mjs
+k6 inspect experiments/k6/function-benchmark.js
+```
+
+Expected: both commands PASS; `k6 inspect` reports the existing stage and threshold configuration.
+
+**Step 5: Commit**
+
+```bash
+git add experiments/k6
+git commit -m "Use one benchmark for all function runtimes"
+```
+
+### Task 6: Expand the benchmark matrix to all functions
+
+**Files:**
+- Modify: `experiments/k6/run-all.sh`
+- Create: `experiments/tests/test_k6_run_all_matrix.py`
+
+**Step 1: Add a failing matrix test**
+
+Parse the runner's declarative matrix and assert exactly the Cartesian product of:
+
+```python
+families = {"word-stats", "json-transform", "roman-numeral"}
+runtimes = {"java", "java-lite", "python", "go", "javascript", "exec"}
+```
+
+Assert that the default profile list is only `small`, while an explicit `K6_PAYLOAD_PROFILES=small,medium,large` expands to 54 runs.
+
+**Step 2: Run the focused test and confirm failure**
+
+```bash
+uv run --project sdks/python pytest -q experiments/tests/test_k6_run_all_matrix.py
+```
+
+Expected: FAIL because the current runner lists only six wrapper names.
+
+**Step 3: Implement the matrix loop**
+
+Replace the wrapper list with family, runtime, and profile loops that invoke `function-benchmark.js` with `NANOFAAS_FUNCTION`, `NANOFAAS_FAMILY`, and `K6_PAYLOAD_PROFILE`. Keep preflight, summaries, and cooldown. Reject unknown or empty profile lists before contacting the cluster. Include family, runtime, and profile in result filenames.
+
+**Step 4: Run shell and matrix checks**
+
+```bash
+bash -n experiments/k6/run-all.sh
+uv run --project sdks/python pytest -q experiments/tests/test_k6_run_all_matrix.py
+```
+
+Expected: PASS.
+
+**Step 5: Commit**
+
+```bash
+git add experiments/k6/run-all.sh experiments/tests/test_k6_run_all_matrix.py
+git commit -m "Benchmark every function implementation"
+```
+
+### Task 7: Align catalog default payloads
+
+**Files:**
+- Create: `tools/controlplane/scenarios/payloads/roman-numeral-sample.json`
+- Modify: `tools/controlplane/scenarios/payloads/word-stats-sample.json`
+- Modify: `tools/controlplane/scenarios/payloads/json-transform-sample.json`
+- Modify: all six `roman-numeral/function.yaml` manifests
+- Modify: `tools/controlplane/tests/test_function_catalog.py`
+- Modify: `experiments/lib/payload_corpora.py`
+- Modify: `experiments/tests/test_payload_corpora.py`
+
+**Step 1: Add failing catalog parity tests**
+
+Require every family/runtime catalog entry to declare a resolvable `defaultPayload`. Assert each sample equals the first canonical `small` input for that family.
+
+**Step 2: Run tests and confirm failure**
+
+```bash
+uv run --project tools/controlplane pytest -q tools/controlplane/tests/test_function_catalog.py experiments/tests/test_payload_corpora.py
+```
+
+Expected: FAIL for all six Roman entries and the absent Roman sample.
+
+**Step 3: Generate canonical catalog samples**
+
+Extend the corpus generator to write or check the three scenario payload files from the first `small` case. Add `defaultPayload: roman-numeral-sample.json` to the catalog block of every Roman manifest. Do not modify the control-plane fallback behavior in this work; the catalog will no longer exercise it for these functions.
+
+**Step 4: Run catalog and corpus checks**
+
+```bash
+python3 experiments/generate-payload-corpora.py --check
+uv run --project tools/controlplane pytest -q tools/controlplane/tests/test_function_catalog.py
+uv run --project sdks/python pytest -q experiments/tests/test_payload_corpora.py
+```
+
+Expected: PASS.
+
+**Step 5: Commit**
+
+```bash
+git add experiments functions tools/controlplane/scenarios/payloads tools/controlplane/tests/test_function_catalog.py
+git commit -m "Use canonical catalog payloads for every family"
+```
+
+### Task 8: Document and run final verification
+
+**Files:**
+- Modify: `docs/loadtest-payload-profile.md`
+- Modify: `functions/test-data/README.md`
+- Modify: `functions/contract-tests/README.md`
+
+**Step 1: Update documentation**
+
+Document the corpus schema, exact scale table, Roman diversity semantics, generator/check commands, generic k6 environment variables, default-small behavior, and the distinction between payload profiles and load stages.
+
+**Step 2: Run all local verification**
+
+```bash
+python3 experiments/generate-payload-corpora.py --check
+uv run --project sdks/python pytest -q experiments/tests/test_payload_corpora.py experiments/tests/test_k6_payload_model_js.py experiments/tests/test_k6_run_all_matrix.py
+node --test experiments/k6/tests/payload-model.test.mjs
+bash -n experiments/k6/run-all.sh
+functions/contract-tests/run.sh
+uv run --project tools/controlplane pytest -q tools/controlplane/tests/test_function_catalog.py
+```
+
+Expected: every command exits 0 with no failed tests.
+
+**Step 3: Run a live smoke matrix when a cluster is available**
+
+```bash
+NANOFAAS_URL=http://<cluster>:30080 \
+K6_PAYLOAD_PROFILES=small \
+experiments/k6/run-all.sh
+```
+
+Expected: all 18 runs complete, response checks pass, and summaries contain `payload_size_bytes`. Medium and large are opt-in because they are materially more expensive.
+
+**Step 4: Inspect scope before committing**
+
+Run GitNexus change detection and verify that affected files are limited to test data, experiment runners, family contract tests, catalog manifests, and documentation. Investigate any unrelated execution flow before proceeding.
+
+**Step 5: Commit documentation**
+
+```bash
+git add docs/loadtest-payload-profile.md functions/test-data/README.md functions/contract-tests/README.md
+git commit -m "Document shared function payload profiles"
+```
