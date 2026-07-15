@@ -4,7 +4,9 @@ import { Trend } from 'k6/metrics';
 import {
     buildJsonTransformInput as buildJsonTransformInputPure,
     buildWordStatsInput as buildWordStatsInputPure,
+    hasExpectedOutput,
     parsePositiveInt,
+    selectPayload as selectPayloadPure,
     selectPayloadIndex as selectPayloadIndexPure,
 } from './payload-model.js';
 
@@ -34,6 +36,10 @@ export function buildWordStatsInput(index) {
 
 export function buildJsonTransformInput(index) {
     return buildJsonTransformInputPure(index, Math.random);
+}
+
+export function selectCorpusPayload(corpus, mode = 'sequential') {
+    return selectPayloadPure(corpus, mode, exec.scenario.iterationInTest, Math.random);
 }
 
 export function buildInvocationPayload(input) {
@@ -70,4 +76,8 @@ export function checkInvocationResponse(res, syncPredicate) {
             return syncPredicate(body);
         },
     });
+}
+
+export function checkFunctionResponse(res, family) {
+    return checkInvocationResponse(res, (body) => hasExpectedOutput(family, body));
 }
