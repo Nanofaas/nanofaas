@@ -15,6 +15,7 @@ SCENARIO = os.environ.get("TEST_SCENARIO", "success")
 STARTUP_DELAY = int(os.environ.get("STARTUP_DELAY_MS", "0")) / 1000
 INVOKE_DELAY = int(os.environ.get("INVOKE_DELAY_MS", "0")) / 1000
 PORT = int(os.environ.get("PORT", "8080"))
+PID_FILE = os.environ.get("RUNTIME_PID_FILE")
 
 
 class TestHandler(BaseHTTPRequestHandler):
@@ -115,6 +116,10 @@ class TestHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    if PID_FILE:
+        with open(PID_FILE, "w", encoding="utf-8") as pid_file:
+            pid_file.write(str(os.getpid()))
+
     # Startup delay simulation
     if STARTUP_DELAY > 0:
         print(f"Simulating startup delay of {STARTUP_DELAY}s", file=sys.stderr)

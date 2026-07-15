@@ -1,8 +1,8 @@
 FROM rust:1.83-alpine AS watchdog-builder
 RUN apk add --no-cache musl-dev
 WORKDIR /build/watchdog
-COPY watchdog/Cargo.toml watchdog/Cargo.lock* ./
-COPY watchdog/src ./src
+COPY runtimes/watchdog/Cargo.toml runtimes/watchdog/Cargo.lock* ./
+COPY runtimes/watchdog/src ./src
 RUN cargo build --release && cp target/release/nanofaas-watchdog /watchdog
 
 FROM alpine:3.19

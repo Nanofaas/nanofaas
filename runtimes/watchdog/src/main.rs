@@ -19,14 +19,15 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use serde::Serialize;
 use std::env;
+use std::future::IntoFuture;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 use tokio::time::{timeout, Instant};
 use tracing::{debug, error, info, warn};
 
@@ -50,14 +51,35 @@ enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    fn from_str(s: &str) -> Self {
+    fn parse(s: &str) -> Result<Self, String> {
         match s.to_uppercase().as_str() {
-            "HTTP" => Self::Http,
-            "STDIO" => Self::Stdio,
-            "FILE" => Self::File,
-            _ => Self::Http, // default
+            "HTTP" => Ok(Self::Http),
+            "STDIO" => Ok(Self::Stdio),
+            "FILE" => Ok(Self::File),
+            _ => Err(format!("EXECUTION_MODE must be HTTP, STDIO, or FILE (got {s:?})")),
         }
     }
+}
+
+fn parse_command(command: &str) -> Result<Vec<String>, String> {
+    let argv = shlex::split(command)
+        .ok_or_else(|| "WATCHDOG_CMD contains invalid shell quoting".to_string())?;
+    if argv.is_empty() {
+        return Err("WATCHDOG_CMD must not be empty".to_string());
+    }
+    Ok(argv)
+}
+
+fn parse_u64(name: &str, value: &str) -> Result<u64, String> {
+    value
+        .parse()
+        .map_err(|_| format!("{name} must be an unsigned integer"))
+}
+
+fn parse_u16(name: &str, value: &str) -> Result<u16, String> {
+    value
+        .parse()
+        .map_err(|_| format!("{name} must be an unsigned 16-bit integer"))
 }
 
 #[derive(Debug, Clone)]
@@ -100,22 +122,20 @@ impl Config {
         let callback_url = env::var("CALLBACK_URL").ok();
         let execution_id = env::var("EXECUTION_ID").ok();
 
-        let timeout_ms: u64 = env::var("TIMEOUT_MS")
-            .unwrap_or_else(|_| "30000".to_string())
-            .parse()
-            .map_err(|_| "TIMEOUT_MS must be a number")?;
+        let timeout_ms = parse_u64(
+            "TIMEOUT_MS",
+            &env::var("TIMEOUT_MS").unwrap_or_else(|_| "30000".to_string()),
+        )?;
 
         let trace_id = env::var("TRACE_ID").ok();
 
-        let command = env::var("WATCHDOG_CMD")
-            .unwrap_or_else(|_| "java -jar /app/app.jar".to_string())
-            .split_whitespace()
-            .map(String::from)
-            .collect();
+        let command = parse_command(
+            &env::var("WATCHDOG_CMD").unwrap_or_else(|_| "java -jar /app/app.jar".to_string()),
+        )?;
 
-        let mode = ExecutionMode::from_str(
+        let mode = ExecutionMode::parse(
             &env::var("EXECUTION_MODE").unwrap_or_else(|_| "HTTP".to_string())
-        );
+        )?;
 
         // In warm mode, watchdog typically binds to 8080. Default the internal runtime to 8081
         // to avoid port conflicts when mode=HTTP and the runtime is an internal server.
@@ -130,10 +150,10 @@ impl Config {
 
         let health_url = env::var("HEALTH_URL").ok();
 
-        let ready_timeout_ms: u64 = env::var("READY_TIMEOUT_MS")
-            .unwrap_or_else(|_| "10000".to_string())
-            .parse()
-            .unwrap_or(10000);
+        let ready_timeout_ms = parse_u64(
+            "READY_TIMEOUT_MS",
+            &env::var("READY_TIMEOUT_MS").unwrap_or_else(|_| "10000".to_string()),
+        )?;
 
         let input_file = env::var("INPUT_FILE")
             .unwrap_or_else(|_| "/tmp/input.json".to_string());
@@ -141,10 +161,10 @@ impl Config {
         let output_file = env::var("OUTPUT_FILE")
             .unwrap_or_else(|_| "/tmp/output.json".to_string());
 
-        let warm_port: u16 = env::var("WARM_PORT")
-            .unwrap_or_else(|_| "8080".to_string())
-            .parse()
-            .unwrap_or(8080);
+        let warm_port = parse_u16(
+            "WARM_PORT",
+            &env::var("WARM_PORT").unwrap_or_else(|_| "8080".to_string()),
+        )?;
 
         Ok(Config {
             warm,
@@ -305,17 +325,28 @@ impl WatchdogMetrics {
 // Process Management
 // ============================================================================
 
-fn kill_process(child: &Child) {
-    if let Some(pid) = child.id() {
-        let pid = Pid::from_raw(pid as i32);
-        info!(pid = pid.as_raw(), "Terminating process");
-        // Try SIGTERM first
-        let _ = signal::kill(pid, Signal::SIGTERM);
-        // Give it 100ms to terminate gracefully
-        std::thread::sleep(Duration::from_millis(100));
-        // Force kill if still running
-        let _ = signal::kill(pid, Signal::SIGKILL);
+async fn terminate_process_group(child: &mut Child) {
+    let Some(pid) = child.id() else {
+        return;
+    };
+
+    let process_group = Pid::from_raw(pid as i32);
+    let _ = signal::killpg(process_group, Signal::SIGTERM);
+    if timeout(Duration::from_millis(100), child.wait()).await.is_err() {
+        let _ = signal::killpg(process_group, Signal::SIGKILL);
+        let _ = child.wait().await;
     }
+}
+
+async fn read_pipe<R>(mut pipe: R) -> Result<Vec<u8>, String>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut output = Vec::new();
+    pipe.read_to_end(&mut output)
+        .await
+        .map_err(|e| format!("Failed to read process output: {e}"))?;
+    Ok(output)
 }
 
 // ============================================================================
@@ -339,7 +370,10 @@ async fn spawn_http_runtime(config: &Config) -> Result<Child, String> {
 
     // In warm mode the watchdog binds to WARM_PORT (default 8080), so the internal runtime
     // should bind to a different port (default 8081).
-    cmd.env("PORT", if config.warm { "8081" } else { "8080" });
+    let runtime_port = if config.warm { "8081" } else { "8080" };
+    cmd.env("PORT", runtime_port)
+        .env("SERVER_PORT", runtime_port)
+        .process_group(0);
 
     cmd.spawn()
         .map_err(|e| format!("Failed to spawn runtime: {}", e))
@@ -425,13 +459,16 @@ async fn run_stdio_warm(
     let (program, args) = config.command.split_first().unwrap();
     info!(command = %program, mode = "STDIO", "Running function");
 
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .env("EXECUTION_ID", execution_id)
         .env("TRACE_ID", trace_id.unwrap_or(""))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0);
+    let mut child = command
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
@@ -446,23 +483,44 @@ async fn run_stdio_warm(
         drop(stdin);
     }
 
-    // Wait for process with timeout
-    let output = timeout(
-        Duration::from_millis(config.timeout_ms),
-        child.wait_with_output()
-    ).await
-        .map_err(|_| "Process timed out".to_string())?
-        .map_err(|e| format!("Process error: {}", e))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture process stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture process stderr".to_string())?;
+    let stdout_reader = tokio::spawn(read_pipe(stdout));
+    let stderr_reader = tokio::spawn(read_pipe(stderr));
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Process exited with {}: {}", output.status, stderr));
+    let status = match timeout(Duration::from_millis(config.timeout_ms), child.wait()).await {
+        Ok(status) => status.map_err(|e| format!("Process error: {e}"))?,
+        Err(_) => {
+            terminate_process_group(&mut child).await;
+            let _ = stdout_reader.await;
+            let _ = stderr_reader.await;
+            return Err("Process timed out".to_string());
+        }
+    };
+    let stdout = stdout_reader
+        .await
+        .map_err(|e| format!("Failed to join stdout reader: {e}"))??;
+    let stderr = stderr_reader
+        .await
+        .map_err(|e| format!("Failed to join stderr reader: {e}"))??;
+
+    if !status.success() {
+        return Err(format!(
+            "Process exited with {}: {}",
+            status,
+            String::from_utf8_lossy(&stderr)
+        ));
     }
 
     // Parse stdout as JSON
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(&stdout)
-        .map_err(|e| format!("Invalid JSON output: {} (raw: {})", e, stdout.trim()))
+    let stdout = String::from_utf8_lossy(&stdout);
+    serde_json::from_str(&stdout).map_err(|e| format!("Invalid JSON output: {} (raw: {})", e, stdout.trim()))
 }
 
 // ============================================================================
@@ -494,25 +552,26 @@ async fn run_file_warm(
     let (program, args) = config.command.split_first().unwrap();
     info!(command = %program, "Running function");
 
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .env("EXECUTION_ID", execution_id)
         .env("TRACE_ID", trace_id.unwrap_or(""))
         .env("INPUT_FILE", &config.input_file)
         .env("OUTPUT_FILE", &config.output_file)
+        .process_group(0);
+    let mut child = command
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
     // Wait for process with timeout
-    let status = timeout(
-        Duration::from_millis(config.timeout_ms),
-        child.wait()
-    ).await
-        .map_err(|_| {
-            kill_process(&child);
-            "Process timed out".to_string()
-        })?
-        .map_err(|e| format!("Process error: {}", e))?;
+    let status = match timeout(Duration::from_millis(config.timeout_ms), child.wait()).await {
+        Ok(status) => status.map_err(|e| format!("Process error: {e}"))?,
+        Err(_) => {
+            terminate_process_group(&mut child).await;
+            return Err("Process timed out".to_string());
+        }
+    };
 
     if !status.success() {
         return Err(format!("Process exited with {}", status));
@@ -754,6 +813,25 @@ async fn invoke_http_warm(
     }
 }
 
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate = tokio::signal::unix::signal(
+            tokio::signal::unix::SignalKind::terminate(),
+        )
+        .expect("failed to install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    tokio::signal::ctrl_c().await.ok();
+
+    info!("Shutdown signal received");
+}
+
 async fn execute_warm_server(config: Config) -> ExitCode {
     info!(port = config.warm_port, mode = ?config.mode, "Starting warm server");
 
@@ -769,8 +847,7 @@ async fn execute_warm_server(config: Config) -> ExitCode {
 
         if let Err(e) = wait_for_http_ready(&config).await {
             error!(error = %e, "Runtime failed to start");
-            kill_process(&c);
-            let _ = c.wait().await;
+            terminate_process_group(&mut c).await;
             return ExitCode::from(1);
         }
         Some(c)
@@ -797,8 +874,7 @@ async fn execute_warm_server(config: Config) -> ExitCode {
         Err(e) => {
             error!(error = %e, "Failed to bind to port");
             if let Some(ref mut c) = child {
-                kill_process(c);
-                let _ = c.wait().await;
+                terminate_process_group(c).await;
             }
             return ExitCode::from(1);
         }
@@ -806,26 +882,69 @@ async fn execute_warm_server(config: Config) -> ExitCode {
 
     info!(addr = %addr, "Warm server listening");
 
-    let shutdown = async {
-        tokio::signal::ctrl_c().await.ok();
-        info!("Shutdown signal received");
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+        })
+        .into_future();
+    tokio::pin!(server);
+    let mut shutdown_tx = Some(shutdown_tx);
+
+    let exit_code = if let Some(runtime) = child.as_mut() {
+        tokio::select! {
+            server_result = &mut server => {
+                if let Err(e) = server_result {
+                    error!(error = %e, "Server error");
+                }
+                terminate_process_group(runtime).await;
+                ExitCode::from(1)
+            }
+            runtime_result = runtime.wait() => {
+                match runtime_result {
+                    Ok(status) => error!(%status, "HTTP runtime exited unexpectedly"),
+                    Err(e) => error!(error = %e, "Failed while waiting for HTTP runtime"),
+                }
+                let _ = shutdown_tx.take().unwrap().send(());
+                if let Err(e) = (&mut server).await {
+                    error!(error = %e, "Server error during runtime shutdown");
+                }
+                ExitCode::from(1)
+            }
+            _ = shutdown_signal() => {
+                let _ = shutdown_tx.take().unwrap().send(());
+                info!("Shutting down runtime");
+                terminate_process_group(runtime).await;
+                if let Err(e) = (&mut server).await {
+                    error!(error = %e, "Server error during shutdown");
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+        }
+    } else {
+        tokio::select! {
+            server_result = &mut server => {
+                if let Err(e) = server_result {
+                    error!(error = %e, "Server error");
+                }
+                ExitCode::from(1)
+            }
+            _ = shutdown_signal() => {
+                let _ = shutdown_tx.take().unwrap().send(());
+                if let Err(e) = (&mut server).await {
+                    error!(error = %e, "Server error during shutdown");
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
+            }
+        }
     };
 
-    if let Err(e) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
-    {
-        error!(error = %e, "Server error");
-    }
-
-    if let Some(ref mut c) = child {
-        info!("Shutting down runtime");
-        kill_process(c);
-        let _ = c.wait().await;
-    }
-
     info!("Warm server shutdown complete");
-    ExitCode::SUCCESS
+    exit_code
 }
 
 // ============================================================================
@@ -909,6 +1028,7 @@ async fn main() -> ExitCode {
     // Send callback
     if let Err(e) = send_callback(&config, result).await {
         error!(error = %e, "Failed to send callback after all retries");
+        return ExitCode::from(1);
     }
 
     info!("Watchdog exiting");
@@ -928,8 +1048,7 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
     // Wait for ready
     if let Err(e) = wait_for_http_ready(config).await {
         error!(error = %e, "Runtime failed to start");
-        kill_process(&child);
-        let _ = child.wait().await;
+        terminate_process_group(&mut child).await;
         return InvocationResult::error("STARTUP_ERROR", &e);
     }
 
@@ -940,8 +1059,7 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
     ).await;
 
     // Cleanup
-    kill_process(&child);
-    let _ = child.wait().await;
+    terminate_process_group(&mut child).await;
 
     match invoke_result {
         Ok(Ok(output)) => {
@@ -1002,5 +1120,42 @@ async fn execute_file_mode(config: &Config, payload: &serde_json::Value) -> Invo
             error!(error = %e, "Function execution failed");
             InvocationResult::error("FUNCTION_ERROR", &e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_command_preserves_quoted_arguments() {
+        assert_eq!(
+            parse_command("python3 -c 'print(\"hello world\")'").unwrap(),
+            vec!["python3", "-c", "print(\"hello world\")"]
+        );
+    }
+
+    #[test]
+    fn parse_command_rejects_unclosed_quote() {
+        assert!(parse_command("python3 -c '").is_err());
+    }
+
+    #[test]
+    fn parse_u64_rejects_invalid_values() {
+        assert!(parse_u64("TIMEOUT_MS", "soon").is_err());
+    }
+
+    #[test]
+    fn execution_mode_rejects_unknown_value() {
+        assert!(ExecutionMode::parse("OTHER").is_err());
+    }
+
+    #[test]
+    fn combined_image_runs_as_a_warm_http_proxy() {
+        let dockerfile = include_str!("../Dockerfile.combined");
+
+        assert!(dockerfile.contains("ENV WARM=true"));
+        assert!(dockerfile.contains("ENV EXECUTION_MODE=HTTP"));
+        assert!(dockerfile.contains("ENV RUNTIME_URL=http://127.0.0.1:8081/invoke"));
     }
 }

@@ -66,6 +66,13 @@ case "$SCENARIO" in
         sleep 3600
         ;;
 
+    spawn_child_hang)
+        printf '%s\n' "$$" > "$HANDLER_PID_FILE"
+        sleep 3600 &
+        printf '%s\n' "$!" > "$CHILD_PID_FILE"
+        wait
+        ;;
+
     large_output)
         # Large output file
         echo '{"data": "' > "$OUTPUT"

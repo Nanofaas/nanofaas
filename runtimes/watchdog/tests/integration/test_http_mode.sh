@@ -19,18 +19,12 @@ test_http_success() {
     # Start callback server
     start_callback_server
 
-    # Start mock HTTP function
-    TEST_SCENARIO=success \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
-
     # Run watchdog
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-001" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=5000 \
-    WATCHDOG_CMD="sleep 0" \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "hello"}' \
     $WATCHDOG_BIN &
@@ -38,7 +32,6 @@ test_http_success() {
 
     # Wait for watchdog to complete
     wait $wd_pid || true
-    kill $http_pid 2>/dev/null || true
 
     # Verify callback
     local callback=$(get_last_callback)
@@ -55,21 +48,16 @@ test_http_echo() {
 
     start_callback_server
 
-    TEST_SCENARIO=echo \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
-
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-002" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=5000 \
-    WATCHDOG_CMD="sleep 0" \
+    TEST_SCENARIO=echo \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"test": "data", "number": 42}' \
     $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "true" "$test_name"
@@ -85,21 +73,16 @@ test_http_server_error_500() {
 
     start_callback_server
 
-    TEST_SCENARIO=error_500 \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
-
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-003" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=5000 \
-    WATCHDOG_CMD="sleep 0" \
+    TEST_SCENARIO=error_500 \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "test"}' \
     $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "false" "$test_name"
@@ -115,25 +98,32 @@ test_http_timeout() {
 
     start_callback_server
 
-    TEST_SCENARIO=hang \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
+    local runtime_pid_file
+    runtime_pid_file=$(mktemp)
 
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-004" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=1000 \
-    WATCHDOG_CMD="sleep 0" \
+    TEST_SCENARIO=hang \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
+    RUNTIME_PID_FILE="$runtime_pid_file" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "test"}' \
     $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "false" "$test_name"
     assert_json_contains "$callback" "TIMEOUT" "$test_name - timeout error"
+    local runtime_pid
+    runtime_pid=$(cat "$runtime_pid_file")
+    if kill -0 "$runtime_pid" 2>/dev/null; then
+        fail_test "$test_name - timed-out runtime is still running"
+    else
+        pass_test
+    fi
+    rm -f "$runtime_pid_file"
 
     stop_callback_server
     end_test "$test_name"
@@ -145,24 +135,16 @@ test_http_slow_startup() {
 
     start_callback_server
 
-    STARTUP_DELAY_MS=2000 \
-    TEST_SCENARIO=success \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-
-    # Don't wait for port - watchdog should handle this
-
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-005" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=10000 \
     READY_TIMEOUT_MS=5000 \
-    WATCHDOG_CMD="sleep 0" \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "slow"}' \
-    $WATCHDOG_BIN &
+    STARTUP_DELAY_MS=2000 TEST_SCENARIO=success $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "true" "$test_name"
@@ -177,27 +159,30 @@ test_http_startup_timeout() {
 
     start_callback_server
 
-    # Start a server that takes too long to start
-    STARTUP_DELAY_MS=10000 \
-    TEST_SCENARIO=success \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
+    local runtime_pid_file
+    runtime_pid_file=$(mktemp)
 
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-006" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=5000 \
     READY_TIMEOUT_MS=1000 \
-    WATCHDOG_CMD="sleep 0" \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
+    RUNTIME_PID_FILE="$runtime_pid_file" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "test"}' \
-    $WATCHDOG_BIN &
+    STARTUP_DELAY_MS=10000 TEST_SCENARIO=success $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "false" "$test_name"
     assert_json_contains "$callback" "STARTUP_ERROR" "$test_name - startup error"
+    if [ -s "$runtime_pid_file" ] && kill -0 "$(cat "$runtime_pid_file")" 2>/dev/null; then
+        fail_test "$test_name - startup runtime is still running"
+    else
+        pass_test
+    fi
+    rm -f "$runtime_pid_file"
 
     stop_callback_server
     end_test "$test_name"
@@ -209,21 +194,16 @@ test_http_invalid_json_response() {
 
     start_callback_server
 
-    TEST_SCENARIO=invalid_json \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
-
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-007" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=5000 \
-    WATCHDOG_CMD="sleep 0" \
+    TEST_SCENARIO=invalid_json \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "test"}' \
     $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "false" "$test_name"
@@ -239,21 +219,16 @@ test_http_large_response() {
 
     start_callback_server
 
-    TEST_SCENARIO=large_response \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
-
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-008" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=10000 \
-    WATCHDOG_CMD="sleep 0" \
+    TEST_SCENARIO=large_response \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "test"}' \
     $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_field "$callback" ".callback.payload.success" "true" "$test_name"
@@ -268,22 +243,16 @@ test_http_trace_id_propagation() {
 
     start_callback_server
 
-    TEST_SCENARIO=success \
-    python3 ${FIXTURES_DIR}/http_server.py &
-    local http_pid=$!
-    wait_for_port 8080
-
     CALLBACK_URL="http://127.0.0.1:$CALLBACK_PORT/v1/internal/executions" \
     EXECUTION_ID="exec-http-009" \
     EXECUTION_MODE=HTTP \
     TIMEOUT_MS=5000 \
     TRACE_ID="trace-abc-123" \
-    WATCHDOG_CMD="sleep 0" \
+    WATCHDOG_CMD="python3 ${FIXTURES_DIR}/http_server.py" \
     RUNTIME_URL="http://127.0.0.1:8080/invoke" \
     INVOCATION_PAYLOAD='{"input": "trace"}' \
     $WATCHDOG_BIN &
     wait $! || true
-    kill $http_pid 2>/dev/null || true
 
     local callback=$(get_last_callback)
     assert_json_contains "$callback" "trace-abc-123" "$test_name - trace ID in headers"
