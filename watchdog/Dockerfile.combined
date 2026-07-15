@@ -45,9 +45,13 @@ COPY --from=watchdog-builder /build/target/release/nanofaas-watchdog /usr/local/
 COPY --from=java-builder /build/services/java/warm-echo/build/libs/app.jar /app/app.jar
 
 # Environment defaults
-ENV RUNTIME_URL=http://127.0.0.1:8080/invoke
+ENV WARM=true
+ENV EXECUTION_MODE=HTTP
+ENV RUNTIME_URL=http://127.0.0.1:8081/invoke
 ENV WATCHDOG_CMD="java -jar /app/app.jar"
 ENV TIMEOUT_MS=30000
+
+EXPOSE 8080
 
 # Use tini as init system, watchdog as main process
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/watchdog"]
