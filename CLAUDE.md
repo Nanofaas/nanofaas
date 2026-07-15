@@ -54,9 +54,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./scripts/controlplane.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local'
 # Use --modules <csv|none|all> only for advanced overrides.
 
-# Build Python runtime image
-cd python-runtime && ./build.sh  # or: docker build -t nanofaas/python-runtime python-runtime/
-
 # Native build (GraalVM via SDKMAN)
 ./scripts/native-build.sh
 
@@ -106,9 +103,6 @@ Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
 
 ### sdks/java/ and services/java/warm-echo/
 `sdks/java` supplies the reusable HTTP invocation runtime (`/invoke`, tracing and callbacks). `services/java/warm-echo` embeds that SDK as a runnable WARM reference service; it is provisioned through the normal function-registration API, never installed as shared infrastructure.
-
-### python-runtime/ (deprecated)
-Legacy Python runtime. New Python functions should use `sdks/python/` instead.
 
 ### sdks/python/
 Python function SDK providing the FastAPI-based runtime for Python handlers.
