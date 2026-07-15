@@ -24,7 +24,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Instant};
@@ -337,6 +337,30 @@ fn kill_process(child: &Child) {
     }
 }
 
+async fn terminate_process_group(child: &mut Child) {
+    let Some(pid) = child.id() else {
+        return;
+    };
+
+    let process_group = Pid::from_raw(pid as i32);
+    let _ = signal::killpg(process_group, Signal::SIGTERM);
+    if timeout(Duration::from_millis(100), child.wait()).await.is_err() {
+        let _ = signal::killpg(process_group, Signal::SIGKILL);
+        let _ = child.wait().await;
+    }
+}
+
+async fn read_pipe<R>(mut pipe: R) -> Result<Vec<u8>, String>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut output = Vec::new();
+    pipe.read_to_end(&mut output)
+        .await
+        .map_err(|e| format!("Failed to read process output: {e}"))?;
+    Ok(output)
+}
+
 // ============================================================================
 // HTTP Mode
 // ============================================================================
@@ -444,13 +468,16 @@ async fn run_stdio_warm(
     let (program, args) = config.command.split_first().unwrap();
     info!(command = %program, mode = "STDIO", "Running function");
 
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .env("EXECUTION_ID", execution_id)
         .env("TRACE_ID", trace_id.unwrap_or(""))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0);
+    let mut child = command
         .spawn()
         .map_err(|e| format!("Failed to spawn process: {}", e))?;
 
@@ -465,23 +492,44 @@ async fn run_stdio_warm(
         drop(stdin);
     }
 
-    // Wait for process with timeout
-    let output = timeout(
-        Duration::from_millis(config.timeout_ms),
-        child.wait_with_output()
-    ).await
-        .map_err(|_| "Process timed out".to_string())?
-        .map_err(|e| format!("Process error: {}", e))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture process stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture process stderr".to_string())?;
+    let stdout_reader = tokio::spawn(read_pipe(stdout));
+    let stderr_reader = tokio::spawn(read_pipe(stderr));
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Process exited with {}: {}", output.status, stderr));
+    let status = match timeout(Duration::from_millis(config.timeout_ms), child.wait()).await {
+        Ok(status) => status.map_err(|e| format!("Process error: {e}"))?,
+        Err(_) => {
+            terminate_process_group(&mut child).await;
+            let _ = stdout_reader.await;
+            let _ = stderr_reader.await;
+            return Err("Process timed out".to_string());
+        }
+    };
+    let stdout = stdout_reader
+        .await
+        .map_err(|e| format!("Failed to join stdout reader: {e}"))??;
+    let stderr = stderr_reader
+        .await
+        .map_err(|e| format!("Failed to join stderr reader: {e}"))??;
+
+    if !status.success() {
+        return Err(format!(
+            "Process exited with {}: {}",
+            status,
+            String::from_utf8_lossy(&stderr)
+        ));
     }
 
     // Parse stdout as JSON
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(&stdout)
-        .map_err(|e| format!("Invalid JSON output: {} (raw: {})", e, stdout.trim()))
+    let stdout = String::from_utf8_lossy(&stdout);
+    serde_json::from_str(&stdout).map_err(|e| format!("Invalid JSON output: {} (raw: {})", e, stdout.trim()))
 }
 
 // ============================================================================
