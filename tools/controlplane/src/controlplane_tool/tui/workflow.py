@@ -272,7 +272,7 @@ class WorkflowKeyListener:
     ) -> None:
         self._dashboard = dashboard
         self._refresh = refresh
-        self._input_stream = input_stream or sys.stdin
+        self._input_stream = sys.stdin if input_stream is None else input_stream
         self._stop = Event()
         self._acknowledged = Event()
         self._waiting_for_acknowledgment = Event()
@@ -280,6 +280,13 @@ class WorkflowKeyListener:
         self._termios: Any = None
         self._fd: int | None = None
         self._original_attrs: Any = None
+
+    @property
+    def input_is_tty(self) -> bool:
+        return bool(
+            hasattr(self._input_stream, "isatty")
+            and self._input_stream.isatty()
+        )
 
     def handle_key(self, key: str) -> None:
         if self._waiting_for_acknowledgment.is_set():
@@ -293,7 +300,7 @@ class WorkflowKeyListener:
         self._acknowledged.wait(timeout=60)
 
     def start(self) -> None:
-        if not hasattr(self._input_stream, "isatty") or not self._input_stream.isatty():
+        if not self.input_is_tty:
             return
         try:
             import termios
