@@ -28,6 +28,17 @@ def test_render_screen_frame_with_brand_includes_logo_and_wordmark():
     assert "Title" in text
 
 
+def test_render_screen_frame_reserves_top_rows_for_ascii_logo():
+    brand = AppBrand(name="demo", wordmark="DEMO", ascii_logo="LOGO ONE\nLOGO TWO")
+    with bind_ui(UIContext(brand=brand)):
+        frame = render_screen_frame(title="Title", body=Text("hello"))
+
+    lines = _render(frame).splitlines()
+
+    assert lines[:2] == ["LOGO ONE", "LOGO TWO"]
+    assert lines[2].startswith("╭")
+
+
 def test_render_screen_frame_without_brand_does_not_show_nanofaas():
     """Empty wordmark / logo render as no-op."""
     with bind_ui(UIContext(brand=AppBrand())):

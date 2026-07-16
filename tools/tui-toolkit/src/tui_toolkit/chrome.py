@@ -16,8 +16,8 @@ def render_screen_frame(
     body: RenderableType,
     breadcrumb: str | None = None,
     footer_hint: str | None = None,
-) -> Panel:
-    """Wrap `body` in a themed Rich Panel with branded header and footer.
+) -> RenderableType:
+    """Render fixed top branding above a themed screen panel.
 
     Reads brand and theme from the active UIContext.
     """
@@ -35,19 +35,19 @@ def render_screen_frame(
         Text(resolved_breadcrumb, style=theme.muted) if resolved_breadcrumb else Text(""),
     )
 
-    content: list[RenderableType] = []
-    if brand.ascii_logo:
-        content.append(Text(brand.ascii_logo, style=theme.brand))
-    content.append(header)
+    content: list[RenderableType] = [header]
     content.append(Rule(style=theme.accent_dim))
     content.append(body)
     if resolved_footer:
         content.append(Rule(style=theme.accent_dim))
         content.append(Text(resolved_footer, style=theme.muted))
 
-    return Panel(
+    panel = Panel(
         Group(*content),
         title=Text(title, style="bold"),
         border_style=theme.accent_dim,
         padding=(1, 2),
     )
+    if not brand.ascii_logo:
+        return panel
+    return Group(Text(brand.ascii_logo, style=theme.brand), panel)
