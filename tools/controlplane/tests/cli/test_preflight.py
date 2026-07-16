@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from email.message import Message
+import http.client
 from io import BytesIO
 import urllib.error
 import urllib.request
@@ -103,6 +104,28 @@ def test_preflight_reports_a_malformed_base_url(monkeypatch: pytest.MonkeyPatch)
     message = str(caught.value)
     assert f"{base_url}/actuator/health" in message
     assert "unknown url type" in message
+    assert START_COMMAND in message
+
+
+def test_preflight_reports_an_incomplete_http_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IncompleteResponse(BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            raise http.client.IncompleteRead(b'{"status":')
+
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: IncompleteResponse(),
+    )
+
+    with pytest.raises(PreflightError) as caught:
+        preflight_control_plane(CLI_SCENARIO, LOCAL_ENVIRONMENT, base_url=BASE_URL)
+
+    message = str(caught.value)
+    assert HEALTH_URL in message
+    assert "HTTP response error" in message
     assert START_COMMAND in message
 
 
