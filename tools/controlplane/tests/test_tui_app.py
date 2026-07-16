@@ -898,6 +898,24 @@ def test_environment_selection_suppresses_provider_setup_for_executable_yaml(
     assert all(not choice.value.startswith("setup:") for choice in offered)
 
 
+def test_provider_setup_ignores_directories_at_file_boundaries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    environment_dir = environment_path.parent
+    (environment_dir / "azure.yaml.example").write_text("example\n", encoding="utf-8")
+    (environment_dir / "azure.yaml").mkdir()
+    (environment_dir / "proxmox.yaml.example").mkdir()
+    chooser = ScriptedChooser(iter([str(environment_path)]))
+
+    NanofaasTUI(choose=chooser)._select_environment()
+
+    offered_values = [choice.value for choice in chooser.calls[0][1]["choices"]]
+    assert offered_values == [str(environment_path), "setup:azure"]
+    assert str(environment_dir / "azure.yaml") not in offered_values
+    assert "setup:proxmox" not in offered_values
+
+
 def test_provider_setup_guidance_returns_to_rebuilt_environment_picker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -912,10 +930,18 @@ def test_provider_setup_guidance_returns_to_rebuilt_environment_picker(
     )
     screens: list[tuple[str, str, str]] = []
     tui = NanofaasTUI(choose=chooser)
+
+    def show_static(title: str, breadcrumb: str, body: str) -> None:
+        screens.append((title, breadcrumb, body))
+        if title == "Azure setup required":
+            (environment_dir / "azure.yaml").write_text(
+                "provider: azure\n", encoding="utf-8"
+            )
+
     monkeypatch.setattr(
         tui,
         "_show_static",
-        lambda title, breadcrumb, body: screens.append((title, breadcrumb, body)),
+        show_static,
     )
 
     selected = tui._select_environment()
@@ -923,6 +949,12 @@ def test_provider_setup_guidance_returns_to_rebuilt_environment_picker(
     assert selected == environment_path
     assert len(chooser.calls) == 3
     assert all(call[0] == "Environment" for call in chooser.calls)
+    second_picker_values = [
+        choice.value for choice in chooser.calls[1][1]["choices"]
+    ]
+    assert str(environment_dir / "azure.yaml") in second_picker_values
+    assert "setup:azure" not in second_picker_values
+    assert "setup:proxmox" in second_picker_values
     assert [screen[1] for screen in screens] == [
         "Main / Environment",
         "Main / Environment",
