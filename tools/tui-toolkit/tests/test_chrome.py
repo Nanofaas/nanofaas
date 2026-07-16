@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pytest
 from rich.console import Console
+from rich.console import Group
+from rich.panel import Panel
 from rich.text import Text
 
 from tui_toolkit.brand import AppBrand
@@ -21,6 +23,7 @@ def test_render_screen_frame_with_brand_includes_logo_and_wordmark():
     brand = AppBrand(name="demo", wordmark="DEMO", ascii_logo="◆ DEMO LOGO ◆")
     with bind_ui(UIContext(brand=brand)):
         panel = render_screen_frame(title="Title", body=Text("hello"))
+    assert isinstance(panel, Group)
     text = _render(panel)
     assert "DEMO" in text
     assert "◆ DEMO LOGO ◆" in text
@@ -43,6 +46,7 @@ def test_render_screen_frame_without_brand_does_not_show_nanofaas():
     """Empty wordmark / logo render as no-op."""
     with bind_ui(UIContext(brand=AppBrand())):
         panel = render_screen_frame(title="Title", body=Text("body"))
+    assert isinstance(panel, Panel)
     text = _render(panel)
     assert "body" in text
     assert "NANOFAAS" not in text
