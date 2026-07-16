@@ -39,7 +39,7 @@ class WorkflowDashboard:
         *,
         title: str,
         breadcrumb: str = "Main",
-        footer_hint: str = "l toggle logs | Ctrl+C back",
+        footer_hint: str = "l toggle logs | Ctrl+C exit",
         summary_lines: list[str] | None = None,
         planned_steps: list[str] | None = None,
         log_limit: int = 200,

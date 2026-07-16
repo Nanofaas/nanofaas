@@ -357,7 +357,9 @@ def select(
 
     Falls back to questionary.select() when stdin or stdout is not a TTY.
     Ctrl-C always raises KeyboardInterrupt. Esc does too unless ``escape_value``
-    opts into returning a caller-defined navigation value.
+    opts into returning a caller-defined navigation value in the full-screen TTY
+    backend. Questionary reports every fallback cancellation as ``None``, so its
+    cause cannot be distinguished and always raises KeyboardInterrupt.
     """
     if include_back:
         choices = _with_back(list(choices))

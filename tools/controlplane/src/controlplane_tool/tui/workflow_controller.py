@@ -31,7 +31,7 @@ class TuiWorkflowController:
         dashboard = WorkflowDashboard(
             title=title,
             breadcrumb=f"Main / {title}",
-            footer_hint="l toggle logs | Ctrl+C back",
+            footer_hint="l toggle logs | Ctrl+C exit",
             summary_lines=summary_lines,
             aggregator=aggregator,
         )

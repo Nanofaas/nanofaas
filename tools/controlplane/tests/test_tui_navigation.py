@@ -24,9 +24,9 @@ class ScriptedChooser:
     def __call__(self, message: str, **kwargs: Any) -> str:
         self.calls.append((message, kwargs))
         answer = next(self._answers)
-        if answer is KeyboardInterrupt:
-            raise KeyboardInterrupt
-        return answer
+        if isinstance(answer, str):
+            return answer
+        raise KeyboardInterrupt
 
 
 def test_main_menu_contains_only_supported_product_sections() -> None:

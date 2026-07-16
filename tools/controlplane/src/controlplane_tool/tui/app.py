@@ -228,12 +228,17 @@ class NanofaasTUI:
         scenario: Any = None
         environment: Any = None
         provision = False
+        keep = False
 
         while True:
             if state == "environment":
                 environment_path = self._select_environment()
                 if environment_path is None:
                     return
+                scenario = None
+                environment = None
+                provision = False
+                keep = False
                 state = "action"
                 continue
 
@@ -274,6 +279,7 @@ class NanofaasTUI:
                     breadcrumb=f"Main / {title}",
                 )
                 if provision_choice == "back":
+                    provision = False
                     state = "action"
                     continue
                 provision = provision_choice == "provision"
@@ -289,6 +295,7 @@ class NanofaasTUI:
                 breadcrumb=f"Main / {title}",
             )
             if cleanup_choice == "back":
+                keep = False
                 state = "action" if environment.provider == "local" else "provision"
                 continue
             keep = cleanup_choice == "keep"
