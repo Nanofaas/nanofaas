@@ -13,6 +13,7 @@ from rich.text import Text
 
 from controlplane_tool.cli import diagnostics
 from controlplane_tool.cli.execution import resolve_loadtest_urls
+from controlplane_tool.cli.preflight import PreflightError, preflight_control_plane
 from controlplane_tool.cli.product import _environment, _scenario, _workflow
 from controlplane_tool.cli.provisioning import provision_environment
 from controlplane_tool.tui.workflow_controller import TuiWorkflowController
@@ -366,6 +367,20 @@ class NanofaasTUI:
         except Exception as exc:
             self._show_static(
                 title="Preview error",
+                breadcrumb=f"Main / {title}",
+                body=str(exc),
+            )
+            return
+
+        try:
+            preflight_control_plane(
+                scenario,
+                environment,
+                base_url="http://127.0.0.1:8080",
+            )
+        except PreflightError as exc:
+            self._show_static(
+                title="Preflight error",
                 breadcrumb=f"Main / {title}",
                 body=str(exc),
             )
