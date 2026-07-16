@@ -163,7 +163,7 @@ class NanofaasTUI:
             if ".example" not in path.name
         ]
         if not environment_paths:
-            raise RuntimeError("at least one committed YAML environment is required")
+            raise RuntimeError("at least one executable YAML environment is required")
         choices = [
             Choice(path.stem, str(path), f"Use {path.name}.")
             for path in environment_paths
@@ -214,35 +214,44 @@ class NanofaasTUI:
             breadcrumb=f"Main / {title}",
         ) == "keep"
 
-        provisioning = (
-            provision_environment(
-                scenario,
-                environment,
-                repo_root=paths.workspace_root,
-                keep=keep,
-            )
-            if provision
-            else nullcontext()
-        )
         try:
-            workflow = self._build_workflow(
+            preview = self._build_workflow(
                 scenario,
                 environment,
-                dry_run=False,
+                dry_run=True,
             )
-            workflow.keep_infrastructure = keep
-            with provisioning:
-                self._controller.run_live_workflow(
-                    title=title,
-                    summary_lines=[
-                        f"Scenario: {scenario_path.name}",
-                        f"Environment: {environment_path.name}",
-                        f"Provision: {'yes' if provision else 'no'}",
-                        f"Cleanup: {'keep' if keep else 'cleanup'}",
-                    ],
-                    planned_steps=workflow.phase_titles,
-                    action=lambda _dashboard, _sink: workflow.run(),
+
+            def run_current_workflow(_dashboard: Any, _sink: Any) -> Any:
+                provisioning = (
+                    provision_environment(
+                        scenario,
+                        environment,
+                        repo_root=paths.workspace_root,
+                        keep=keep,
+                    )
+                    if provision
+                    else nullcontext()
                 )
+                with provisioning:
+                    workflow = self._build_workflow(
+                        scenario,
+                        environment,
+                        dry_run=False,
+                    )
+                    workflow.keep_infrastructure = keep
+                    return workflow.run()
+
+            self._controller.run_live_workflow(
+                title=title,
+                summary_lines=[
+                    f"Scenario: {scenario_path.name}",
+                    f"Environment: {environment_path.name}",
+                    f"Provision: {'yes' if provision else 'no'}",
+                    f"Cleanup: {'keep' if keep else 'cleanup'}",
+                ],
+                planned_steps=preview.phase_titles,
+                action=run_current_workflow,
+            )
         except Exception:
             # The controller preserves and acknowledges the failed final dashboard.
             # Returning keeps the user in the scenario's submenu.
@@ -283,7 +292,7 @@ class NanofaasTUI:
             title=title,
             body=table,
             breadcrumb=f"Main / {title}",
-            footer_hint="Press any key to continue" if input_is_tty else "Plan complete",
+            footer_hint="Press Enter to continue" if input_is_tty else "Plan complete",
         )
         self._console.clear()
         try:
