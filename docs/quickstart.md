@@ -104,12 +104,14 @@ policy. A single invariant branded header stays at the top as menus and static
 views change. Running a workflow opens the live workflow dashboard, where phase
 progress and command logs remain visible; press `l` to toggle the log panel.
 
-When only the provider templates are present, the environment picker still
+When only the provider templates are present, the TUI environment picker still
 shows **Azure (setup required)** and **Proxmox (setup required)**. Selecting
 either entry displays setup guidance, writes no files, and starts no workflow.
-The `.yaml.example` files are templates and are never executed: copy
-`azure.yaml.example` to `azure.yaml` or `proxmox.yaml.example` to
-`proxmox.yaml`, then fill in the provider credentials and configuration.
+The TUI never loads or executes `.yaml.example` templates. Copy
+`azure.yaml.example` to `azure.yaml` or `proxmox.yaml.example` to `proxmox.yaml`,
+then fill in the provider values and configuration. Keep external authentication
+outside YAML: run `az login` for Azure, and provide the Proxmox password through
+the environment variable named by `password_env`. Do not store secrets in YAML.
 
 For the complete command reference, provider configuration, VM cleanup rules,
 and load-test workflow, read the [control-plane tool guide](../tools/controlplane/README.md).
