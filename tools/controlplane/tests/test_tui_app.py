@@ -337,6 +337,52 @@ def test_non_local_run_enters_existing_provisioning_context(
     assert workflow.run_calls == 1
 
 
+def test_workflow_is_built_before_provisioning_wraps_only_the_live_controller(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    events: list[tuple[Any, ...]] = []
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+        provider="multipass",
+        calls=events,
+    )
+
+    @contextmanager
+    def provision(*args: object, **kwargs: object) -> Iterator[None]:
+        events.append(("enter",))
+        yield
+        events.append(("exit",))
+
+    class OrderingController:
+        def run_live_workflow(self, **kwargs: object) -> None:
+            events.append(("live",))
+            action = kwargs["action"]
+            assert callable(action)
+            action(None, None)
+
+    monkeypatch.setattr(tui_app, "provision_environment", provision)
+
+    NanofaasTUI(
+        choose=ScriptedChooser(
+            iter([str(environment_path), "run", "provision", "cleanup"])
+        ),
+        controller=OrderingController(),
+    )._workflow_menu("cli.yaml")
+
+    assert [event[0] for event in events] == [
+        "scenario",
+        "environment",
+        "workflow",
+        "enter",
+        "live",
+        "exit",
+    ]
+
+
 def test_keep_applies_to_provisioning_and_workflow_cleanup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
