@@ -225,13 +225,13 @@ class NanofaasTUI:
             else nullcontext()
         )
         try:
+            workflow = self._build_workflow(
+                scenario,
+                environment,
+                dry_run=False,
+            )
+            workflow.keep_infrastructure = keep
             with provisioning:
-                workflow = self._build_workflow(
-                    scenario,
-                    environment,
-                    dry_run=False,
-                )
-                workflow.keep_infrastructure = keep
                 self._controller.run_live_workflow(
                     title=title,
                     summary_lines=[
