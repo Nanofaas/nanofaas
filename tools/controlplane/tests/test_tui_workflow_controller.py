@@ -57,6 +57,20 @@ def test_controller_clears_console_uses_persistent_live_and_propagates_result() 
     listener.stop.assert_called_once_with()
 
 
+def test_controller_live_footer_describes_ctrl_c_as_exit() -> None:
+    console = MagicMock()
+    console.is_terminal = False
+    controller = TuiWorkflowController(console=console)
+    captured: list[str] = []
+
+    def capture_footer(dashboard: WorkflowDashboard, _sink: Any) -> None:
+        captured.append(dashboard.footer_hint)
+
+    run_with_mocks(controller, capture_footer)
+
+    assert captured == ["l toggle logs | Ctrl+C exit"]
+
+
 def test_controller_turns_thrown_exception_into_failed_terminal_snapshot() -> None:
     console = MagicMock()
     console.is_terminal = False

@@ -122,19 +122,33 @@ def test_multiselect_empty_choices_raises():
         multiselect("x", choices=[])
 
 
-def test_select_keyboard_interrupt_when_questionary_returns_none(monkeypatch):
+def test_non_tty_questionary_cancellation_stays_indistinguishable(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: False)
 
     class _Q:
-        def ask(self):
-            return None
+        result = None
 
-    monkeypatch.setattr(questionary, "select", lambda *a, **kw: _Q())
+        def ask(self):
+            return self.result
+
+    prompt = _Q()
+    monkeypatch.setattr(questionary, "select", lambda *a, **kw: prompt)
     with pytest.raises(KeyboardInterrupt):
         select("x", choices=[Choice("t", "v")])
     with pytest.raises(KeyboardInterrupt):
         select("x", choices=[Choice("t", "v")], escape_value="back")
+
+    prompt.result = "back"
+    assert (
+        select(
+            "x",
+            choices=[Choice("t", "v")],
+            include_back=True,
+            escape_value="back",
+        )
+        == "back"
+    )
 
 
 @pytest.mark.parametrize(

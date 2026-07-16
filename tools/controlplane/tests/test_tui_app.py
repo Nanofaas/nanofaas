@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from io import StringIO
 import json
 from pathlib import Path
@@ -29,9 +29,9 @@ class ScriptedChooser:
     def __call__(self, message: str, **kwargs: Any) -> str:
         self.calls.append((message, kwargs))
         answer = next(self._answers)
-        if answer is KeyboardInterrupt:
-            raise KeyboardInterrupt
-        return answer
+        if isinstance(answer, str):
+            return answer
+        raise KeyboardInterrupt
 
 
 class FakeWorkflow:
@@ -753,6 +753,57 @@ def test_keep_applies_to_provisioning_and_workflow_cleanup(
     assert preview.run_calls == 0
     assert workflow.keep_infrastructure is True
     assert workflow.run_calls == 1
+
+
+def test_reselecting_local_environment_resets_remote_provisioning_choice(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    local_path = _install_paths(monkeypatch, tmp_path)
+    remote_path = local_path.parent / "remote.yaml"
+    remote_path.write_text("provider: multipass\n", encoding="utf-8")
+    workflow = FakeWorkflow()
+    monkeypatch.setattr(tui_app, "_scenario", lambda _path: SimpleNamespace(workflow="cli"))
+    monkeypatch.setattr(
+        tui_app,
+        "_environment",
+        lambda path: SimpleNamespace(
+            provider="multipass" if path == remote_path else "local"
+        ),
+    )
+    monkeypatch.setattr(tui_app, "_workflow", lambda *args, **kwargs: workflow)
+    provision_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    monkeypatch.setattr(
+        tui_app,
+        "provision_environment",
+        lambda *args, **kwargs: provision_calls.append((args, kwargs)) or nullcontext(),
+    )
+    controller = RecordingController()
+    chooser = ScriptedChooser(
+        iter(
+            [
+                str(remote_path),
+                "run",
+                "provision",
+                "back",
+                "back",
+                "back",
+                str(local_path),
+                "run",
+                "cleanup",
+            ]
+        )
+    )
+
+    NanofaasTUI(choose=chooser, controller=controller)._workflow_menu("cli.yaml")
+
+    assert provision_calls == []
+    assert workflow.run_calls == 1
+    assert controller.calls[0]["summary_lines"] == [
+        "Scenario: cli.yaml",
+        "Environment: local.yaml",
+        "Provision: no",
+        "Cleanup: cleanup",
+    ]
 
 
 def test_workflow_failure_returns_to_the_previous_submenu(

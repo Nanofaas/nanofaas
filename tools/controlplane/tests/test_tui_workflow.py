@@ -42,6 +42,12 @@ def test_dashboard_renders_summary_phases_logs_breadcrumb_and_footer() -> None:
     assert "Boot VM" in text
 
 
+def test_dashboard_default_footer_describes_ctrl_c_as_exit() -> None:
+    dashboard = WorkflowDashboard(title="E2E")
+
+    assert dashboard.footer_hint == "l toggle logs | Ctrl+C exit"
+
+
 def test_dashboard_renders_nested_child_without_replacing_planned_rows() -> None:
     dashboard = WorkflowDashboard(
         title="E2E",
