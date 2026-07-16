@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -30,6 +31,8 @@ def preflight_control_plane(
         raise _failure(endpoint, str(error.reason)) from error
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise _failure(endpoint, "invalid JSON response") from error
+    except http.client.HTTPException as error:
+        raise _failure(endpoint, f"HTTP response error: {error}") from error
     except (OSError, ValueError) as error:
         raise _failure(endpoint, str(error)) from error
 

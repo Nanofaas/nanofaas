@@ -85,7 +85,11 @@ def test_run_renders_normalized_task_progress(monkeypatch) -> None:
 def test_run_aborts_local_cli_before_building_workflow_when_preflight_fails(
     monkeypatch,
 ) -> None:
-    preflight = MagicMock(side_effect=PreflightError("control plane unavailable"))
+    error = (
+        "Control plane unavailable; "
+        "start it with './gradlew :control-plane:bootRun'."
+    )
+    preflight = MagicMock(side_effect=PreflightError(error))
     build_cli_plan = MagicMock()
     monkeypatch.setattr(
         product_module, "preflight_control_plane", preflight, raising=False
@@ -94,8 +98,9 @@ def test_run_aborts_local_cli_before_building_workflow_when_preflight_fails(
 
     result = CliRunner().invoke(app, ["run", "scenarios-v2/cli.yaml"])
 
-    assert result.exit_code != 0
-    assert isinstance(result.exception, PreflightError)
+    assert result.exit_code == 1
+    assert result.stderr == f"Error: {error}\n"
+    assert "Traceback" not in result.output
     scenario, environment = preflight.call_args.args
     assert scenario.workflow == "cli"
     assert environment.provider == "local"

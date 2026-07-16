@@ -15,7 +15,7 @@ from workflow_tasks.workflow.context import bind_workflow_sink
 from controlplane_tool.cli import diagnostics
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from controlplane_tool.cli.execution import build_role_bindings, resolve_loadtest_urls
-from controlplane_tool.cli.preflight import preflight_control_plane
+from controlplane_tool.cli.preflight import PreflightError, preflight_control_plane
 from controlplane_tool.cli.progress import ConsoleProgressSink
 from controlplane_tool.cli.provisioning import provision_environment
 from controlplane_tool.plans.cli import build_cli_plan
@@ -253,11 +253,15 @@ def install_product_commands(app: typer.Typer) -> None:
                     effective_control_plane_url = (
                         control_plane_url or "http://127.0.0.1:8080"
                     )
-                    preflight_control_plane(
-                        scenario_config,
-                        environment_config,
-                        base_url=effective_control_plane_url,
-                    )
+                    try:
+                        preflight_control_plane(
+                            scenario_config,
+                            environment_config,
+                            base_url=effective_control_plane_url,
+                        )
+                    except PreflightError as exc:
+                        typer.echo(f"Error: {exc}", err=True)
+                        raise typer.Exit(1) from None
                     workflow = _slice(
                         _workflow(
                             scenario_config,
