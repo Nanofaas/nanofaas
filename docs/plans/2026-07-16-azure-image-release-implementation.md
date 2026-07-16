@@ -1,134 +1,96 @@
 # Azure Image Release Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Codex:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to implement this plan task-by-task in the current session.
 
-**Goal:** Build, benchmark, and publish the complete AMD64/ARM64 NanoFaaS image matrix from a controlled Azure run, with AMD64 performance gating before QEMU ARM64 work and GHCR publication.
+**Goal:** Build, benchmark, and publish every NanoFaaS AMD64/ARM64 image from a controlled Azure run, with an AMD64 performance gate before QEMU ARM64 builds and any GHCR release update.
 
-**Architecture:** Restore the deleted image-matrix behavior behind `controlplane-tool images`, but express commands with the current `workflow_tasks.CommandTaskSpec` and role bindings instead of restoring the removed `shellcraft` stack. A separate `controlplane-tool release` layer prepares versions and composes the existing Azure provisioning, local registry, load-test, metrics, QEMU, and GHCR promotion capabilities. Host, Multipass, and Proxmox can build experimental images; only a pinned Azure release environment can promote GHCR tags.
+**Architecture:** Restore `controlplane-tool images` using the current `workflow-tasks` primitives and the existing function catalog. Add a small `controlplane-tool release` coordinator that provisions the established Azure stack/loadgen topology, keeps candidates in the stack-local registry, runs three AMD64 benchmarks, then builds ARM64 under QEMU and promotes the exact artifacts to GHCR. Local, Multipass, and Proxmox remain non-publishing experiment backends.
 
 **Tech Stack:** Python 3.11+, Typer, Pydantic, `workflow-tasks`, Docker Buildx/BuildKit, QEMU/binfmt, Spring Boot Buildpacks, k3s, k6, Prometheus, Azure VMs, GHCR, skopeo, syft, cosign.
 
 ---
 
-## Execution protocol
+## Review corrections incorporated
 
-- Execute in the existing `codex/azure-image-release-plan` worktree or create a fresh implementation worktree from its merged commit.
-- Use `superpowers:subagent-driven-development` in the current session, with one implementation agent and one review pass per task.
-- The subagent API does not expose model selection. Treat the difficulty labels below as routing/review guidance; do not claim that a different model was selected when the runtime cannot select one.
-- Every implementation agent must read this plan and the approved design at `docs/plans/2026-07-16-azure-image-release-design.md`.
-- Before editing a listed existing symbol, rerun `gitnexus_impact(..., direction="upstream")`. Warn before proceeding on HIGH or CRITICAL results.
-- Before every commit, run `gitnexus_detect_changes(scope="staged")` and review all direct dependants.
-- After every commit, run `npx gitnexus analyze`; preserve embeddings if `.gitnexus/meta.json` reports a non-zero embedding count.
+This revision replaces the first plan at commit `4f067158` and fixes these execution problems:
 
-## Known high-risk seams
+- large orchestration tasks are split at phase boundaries so each implementation agent has one bounded responsibility;
+- GHCR and signing secrets are transferred with existing provider file-transfer APIs, consumed through files/stdin, and removed in always-run cleanup tasks;
+- release-only packages are installed by a release-builder playbook on the stack VM, not by the shared base provisioning used by loadgen and ordinary scenarios;
+- artifact promotion, SBOM generation, and signing are separate tasks with separately testable failure behavior;
+- source tests, AMD64 build, benchmark, ARM64 build, and publication are distinct gates;
+- a digest-verified phase journal permits safe resume without trusting stale or mismatched artifacts;
+- global atomicity across many registry tags is not claimed: immutable architecture tags are uploaded first, version manifests next, and mutable aliases last;
+- performance history is updated only after images, signatures, and attestations have all verified;
+- v0.18.0 performance records describe only the pinned Azure AMD64-native profile; QEMU ARM64 results are functional, never performance data.
 
-GitNexus currently reports HIGH risk for `build_loadtest_plan`, `ValidateWorkflowRequest`, and `k8s_deployment_specs`. Their changes below must be additive and default-compatible. The ordinary `run`, `plan`, TUI load-test path, and validation workflows must retain their current task lists when no prebuilt image set is supplied.
+## Execution rules
 
-## Final command surface
+- Execute with `superpowers:subagent-driven-development`: one fresh implementation agent and one review pass per task.
+- The subagent API has no model selector. Difficulty labels control task size and review depth, not the actual model; never claim otherwise.
+- Each agent reads this plan and `docs/plans/2026-07-16-azure-image-release-design.md` before acting.
+- Before editing an existing symbol, run `gitnexus_impact(target, direction="upstream")`. Warn before HIGH/CRITICAL edits.
+- Before each commit, run `gitnexus_detect_changes(scope="staged")`; after the commit, refresh GitNexus without deleting existing embeddings.
+- Follow TDD: failing focused test, minimal implementation, focused pass, affected-suite pass, commit.
+- Do not run the paid Azure acceptance release without separate user authorization.
+
+## Known blast radius
+
+GitNexus reports HIGH risk for `build_loadtest_plan`, `ValidateWorkflowRequest`, and `k8s_deployment_specs`. Task 4 changes them additively with defaults that preserve current CLI, TUI, validation, and load-test task lists. Those direct and transitive suites must pass before its commit.
+
+## Resulting commands
 
 ```bash
-# Portable, non-publishing operations
+# Portable and non-publishing
 controlplane-tool images plan --version v0.18.0 --arch all --flavor all
-controlplane-tool images build --version v0.18.0 --arch amd64 --environment environments/multipass.yaml
+controlplane-tool images build --version v0.18.0 --arch amd64 \
+  --environment environments/multipass.yaml
 
-# Version preparation on the host; review and commit before release
+# Version preparation; review and commit its output before release
 controlplane-tool release prepare v0.18.0
 
-# Authoritative release; only this command can write GHCR release tags
-controlplane-tool release plan v0.18.0 --environment environments/azure-release.yaml
-controlplane-tool release run v0.18.0 --environment environments/azure-release.yaml --provision
+# Azure-only authoritative flow
+controlplane-tool release plan v0.18.0 \
+  --environment environments/azure-release.yaml
+controlplane-tool release run v0.18.0 \
+  --environment environments/azure-release.yaml \
+  --ghcr-token-file /secure/ghcr-token \
+  --cosign-key-file /secure/cosign.key \
+  --cosign-password-file /secure/cosign-password \
+  --provision
 ```
 
-### Task 1: Add deterministic version preparation
+### Task 1: Implement deterministic version preparation
 
 **Difficulty:** Medium
-**Commit:** `Add release version preparation`
 
 **Files:**
 - Create: `tools/controlplane/src/controlplane_tool/release/__init__.py`
 - Create: `tools/controlplane/src/controlplane_tool/release/versioning.py`
 - Create: `tools/controlplane/tests/release/test_versioning.py`
 
-Release-time outputs of this command, not files to change while implementing the
-helper: `build.gradle`, `deploy/helm/nanofaas/Chart.yaml`,
-`deploy/helm/nanofaas/values.yaml`, `deploy/k8s/control-plane-deployment.yaml`,
-`runtimes/watchdog/Cargo.toml`, `runtimes/watchdog/Cargo.lock`,
-`sdks/python/pyproject.toml`, `sdks/python/uv.lock`,
-`functions/python/roman-numeral/uv.lock`, `tools/fn-init/src/fn_init/main.py`, and
-`clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/RootCommandTest.java`.
+**Steps:**
 
-**Step 1: Write failing version tests**
+1. Write tests for `normalize_version`, `read_project_version`, consistency checking, exact replacement counts, invalid versions, non-incrementing versions, and a mismatched source tree.
+2. Run `uv run pytest -q tests/release/test_versioning.py` from `tools/controlplane`; expect import failure.
+3. Implement:
 
-Create a temporary repository fixture containing every authoritative version form and assert:
+   ```python
+   def normalize_version(value: str) -> tuple[str, str]: ...
+   def read_project_version(repo_root: Path) -> str: ...
+   def verify_version_consistency(repo_root: Path) -> str: ...
+   def prepare_version(repo_root: Path, requested: str) -> tuple[Path, ...]: ...
+   ```
 
-```python
-def test_prepare_version_updates_all_authoritative_files(version_repo: Path) -> None:
-    changed = prepare_version(version_repo, "v0.18.0")
-    assert changed == EXPECTED_VERSION_FILES
-    assert read_project_version(version_repo) == "0.18.0"
-    assert "v0.18.0" in (version_repo / "deploy/helm/nanofaas/values.yaml").read_text()
+   Build and validate every rewritten content string before writing any file. Update only curated version locations; do not parse and re-emit YAML.
+4. The curated release-time outputs are `build.gradle`, Helm chart/values, the k8s deployment, watchdog Cargo files, Python SDK project/locks, Roman Numeral's Python lock, fn-init's published SDK default, and the CLI version assertion.
+5. Regenerate lockfiles with `cargo check`/`uv lock` after primary version edits; compare the resulting diff with the curated set.
+6. Run focused tests, `./gradlew verifyHelmVersionSync :nanofaas-cli:test`, and both `uv lock --check` commands.
+7. Run staged GitNexus detection and commit `Add release version preparation`.
 
-
-def test_prepare_version_rejects_partial_old_version_state(version_repo: Path) -> None:
-    chart = version_repo / "deploy/helm/nanofaas/Chart.yaml"
-    chart.write_text(chart.read_text().replace("0.17.0", "0.16.0"))
-    with pytest.raises(ValueError, match="version files disagree"):
-        prepare_version(version_repo, "v0.18.0")
-
-
-def test_prepare_version_rejects_invalid_or_non_incrementing_version(version_repo: Path) -> None:
-    with pytest.raises(ValueError):
-        prepare_version(version_repo, "latest")
-    with pytest.raises(ValueError):
-        prepare_version(version_repo, "v0.17.0")
-```
-
-**Step 2: Run the tests and confirm failure**
-
-Run: `uv run pytest -q tests/release/test_versioning.py` from `tools/controlplane`
-Expected: FAIL because `controlplane_tool.release.versioning` does not exist.
-
-**Step 3: Implement the minimal version helper**
-
-Use one strict semantic-version parser and a curated mapping of exact replacements. Do not parse and re-emit YAML. The public API is:
-
-```python
-VERSION_RE = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-
-def normalize_version(value: str) -> tuple[str, str]:
-    """Return (`0.18.0`, `v0.18.0`) or raise ValueError."""
-
-def read_project_version(repo_root: Path) -> str:
-    """Read the single Gradle project version."""
-
-def verify_version_consistency(repo_root: Path) -> str:
-    """Require every curated file to contain the same project version."""
-
-def prepare_version(repo_root: Path, requested: str) -> tuple[Path, ...]:
-    """Validate first, then replace all files; never leave a partial update."""
-```
-
-Build all rewritten contents in memory, validate replacement counts, and only then write files. Update lockfiles mechanically in this function; the task's verification step will regenerate and compare them with Cargo/uv.
-
-**Step 4: Run focused verification**
-
-Run: `uv run pytest -q tests/release/test_versioning.py` from `tools/controlplane`
-Expected: PASS.
-
-Run: `./gradlew verifyHelmVersionSync :nanofaas-cli:test`
-Expected: PASS with the repository's unchanged current version.
-
-Run: `uv lock --check` from `sdks/python` and `uv lock --check` from `functions/python/roman-numeral`
-Expected: both PASS.
-
-**Step 5: Stage, inspect, and commit**
-
-Stage only the new helper, its tests, and the CLI version assertion. Run GitNexus staged change detection, then commit.
-
-### Task 2: Restore and modernize the image matrix
+### Task 2: Restore the current 52-cell image matrix
 
 **Difficulty:** High
-**Commit:** `Restore portable image matrix planning`
 
 **Files:**
 - Create: `tools/controlplane/src/controlplane_tool/images/__init__.py`
@@ -137,216 +99,73 @@ Stage only the new helper, its tests, and the CLI version assertion. Run GitNexu
 - Modify: `functions/java/roman-numeral/build.gradle`
 - Test: `tools/controlplane/tests/test_function_catalog.py`
 
-**Step 1: Inspect the recoverable implementation**
+**Steps:**
 
-Read, but do not restore verbatim:
+1. Read the recoverable implementation and tests from `ee47d9a2^`; do not restore the deleted `shellcraft` dependency.
+2. Write failing tests asserting:
+   - `control-plane`, `java-warm-echo`, `watchdog`, and every non-fixture `list_functions()` entry are present;
+   - 52 cells result from two architectures and applicable flavors;
+   - Spring Java targets have JVM/native, Java Lite has native, and other runtimes have default flavor;
+   - tags are `v0.18.0-<arch>-<flavor>` or `v0.18.0-<arch>`;
+   - AMD64 cells always precede ARM64 cells;
+   - every discovered function Dockerfile maps to exactly one target.
+3. Implement immutable `ImageTarget`, `ImageCell`, and `ImagePlan` dataclasses using `CommandTaskSpec`, not a new execution abstraction.
+4. Dockerfile cells use single-platform `docker buildx build --load`. Native Spring cells reuse existing `bootBuildImage` and `imagePlatform`; JVM Spring cells run `bootJar` then their Dockerfile.
+5. Add Roman Numeral's missing GraalVM/`bootBuildImage` configuration by matching word-stats/json-transform. Rerun impact first.
+6. Run focused tests and `./gradlew :functions:java:roman-numeral:tasks --all`; require `bootBuildImage` and `nativeCompile`.
+7. Run staged detection and commit `Restore portable image matrix planning`.
 
-```bash
-git show ee47d9a2^:tools/controlplane/src/controlplane_tool/building/image_plan.py
-git show ee47d9a2^:tools/controlplane/tests/test_image_plan.py
-```
+### Task 3: Add the portable `images` command group and private transport
 
-Preserve its tag and flavor semantics. Replace `shellcraft.PlannedCommand` with the current `CommandTaskSpec`. Build targets must come from `list_functions()` so `roman-numeral` and future manifest-backed functions cannot silently disappear.
-
-**Step 2: Write failing catalog and matrix tests**
-
-Test the complete current catalog:
-
-```python
-def test_all_images_expand_to_current_52_cell_matrix(repo_root: Path) -> None:
-    plan = plan_image_matrix(repo_root, version="v0.18.0", arches=("amd64", "arm64"), flavors=("jvm", "native"))
-    assert len(plan.cells) == 52
-    assert {cell.target for cell in plan.cells} == {
-        "control-plane", "java-warm-echo", "watchdog",
-        *expected_function_image_names(),
-    }
-
-
-def test_release_tags_encode_architecture_and_flavor() -> None:
-    assert image_tag("v0.18.0", "amd64", "native") == "v0.18.0-amd64-native"
-    assert image_tag("v0.18.0", "arm64", "default") == "v0.18.0-arm64"
-
-
-def test_amd64_cells_precede_arm64_cells() -> None:
-    plan = plan_image_matrix(...)
-    arches = [cell.arch for cell in plan.cells]
-    assert arches == sorted(arches, key=("amd64", "arm64").index)
-```
-
-Also assert that fixture functions without images are ignored, every discovered Dockerfile is represented, Java functions have JVM/native cells, Java Lite has native cells, and other languages use the default flavor.
-
-**Step 3: Run the focused tests and confirm failure**
-
-Run: `uv run pytest -q tests/images/test_plan.py tests/test_function_catalog.py` from `tools/controlplane`
-Expected: FAIL because the matrix module is absent and Roman Numeral lacks native build configuration.
-
-**Step 4: Implement the matrix model**
-
-Keep the public model small:
-
-```python
-ImageArch = Literal["amd64", "arm64"]
-ImageFlavor = Literal["jvm", "native", "default"]
-
-@dataclass(frozen=True, slots=True)
-class ImageCell:
-    target: str
-    arch: ImageArch
-    flavor: ImageFlavor
-    local_image: str
-    build: CommandTaskSpec
-    local_push: CommandTaskSpec
-
-@dataclass(frozen=True, slots=True)
-class ImagePlan:
-    version: str
-    cells: tuple[ImageCell, ...]
-```
-
-Dockerfile cells use single-platform `docker buildx build --load --platform linux/<arch>`. Native Spring cells reuse existing Gradle `bootBuildImage` tasks and `imagePlatform`; JVM Spring cells run `bootJar` followed by the existing Dockerfile. All tasks use role `stack` when an environment is supplied and `host` otherwise. The build registry is configurable but defaults to `localhost:5000/nanofaas` for remote work.
-
-**Step 5: Add Roman Numeral native parity**
-
-Bring `functions/java/roman-numeral/build.gradle` in line with word-stats/json-transform: add the GraalVM plugin and the same configurable `bootBuildImage` block, using `roman-numeral.jar` and `functionImage`. Do not introduce a shared Gradle plugin in this task.
-
-**Step 6: Verify matrix and Gradle configuration**
-
-Run: `uv run pytest -q tests/images/test_plan.py tests/test_function_catalog.py`
-Expected: PASS.
-
-Run: `./gradlew :functions:java:roman-numeral:tasks --all`
-Expected: output contains `bootBuildImage` and `nativeCompile`.
-
-**Step 7: Commit after impact review**
-
-Rerun impact analysis for `list_functions` and the Roman Gradle project before editing. Run staged change detection and commit.
-
-### Task 3: Restore `controlplane-tool images` as a portable command group
-
-**Difficulty:** Medium
-**Commit:** `Add image matrix commands`
+**Difficulty:** High
 
 **Files:**
 - Create: `tools/controlplane/src/controlplane_tool/cli/images.py`
 - Create: `tools/controlplane/tests/cli/test_images_command.py`
-- Modify: `tools/controlplane/src/controlplane_tool/app/main.py:5-25`
+- Modify: `tools/controlplane/src/controlplane_tool/app/main.py`
 
-**Step 1: Write failing CLI tests**
+**Steps:**
 
-```python
-def test_images_plan_lists_cells_without_running_commands() -> None:
-    result = runner.invoke(app, ["images", "plan", "--version", "v0.18.0", "--only", "watchdog"])
-    assert result.exit_code == 0
-    assert "watchdog:v0.18.0-amd64" in result.stdout
-    assert "watchdog:v0.18.0-arm64" in result.stdout
+1. Write CLI tests for `images plan` and `images build`, selectors, environment loading, dry-run rendering, unknown targets, and failure propagation.
+2. Assert the portable command exposes no GHCR publication option and rejects a `ghcr.io/miciav/nanofaas` build registry.
+3. Register a Typer sub-app with only `plan` and `build`.
+4. Build role bindings with existing `build_role_bindings`; convert matrix commands with `workflow_from_specs`.
+5. Default the build role to stack. When an explicit builder role differs from the benchmark stack, use Docker image archives, relay them through existing provider `transfer_from`/`transfer_to`, load them on stack, and verify image IDs/digests. Do not add a format-conversion dependency or use an external registry for this transfer.
+6. Test archive and remote cleanup on success, transfer failure, load failure, and digest mismatch.
+7. Allow an explicit stack-local registry push because k3s needs candidates; never allow release tags on GHCR from this group.
+8. Run the new CLI tests plus `tests/cli/test_command_surface.py` and the full 303-test controlplane suite.
+9. Run staged detection and commit `Add image matrix commands`.
 
+### Task 4: Let load testing deploy exact prebuilt images
 
-def test_images_build_defaults_to_no_external_publication(monkeypatch) -> None:
-    result = runner.invoke(app, ["images", "build", "--version", "v0.18.0", "--dry-run"])
-    assert result.exit_code == 0
-    assert "ghcr.io" not in result.stdout
-    assert "docker push ghcr.io" not in result.stdout
-```
-
-Test `--arch`, `--flavor`, `--only`, unknown targets, environment loading, dry-run output, and failure propagation. Assert there is no GHCR push option on the portable command.
-
-**Step 2: Run and confirm failure**
-
-Run: `uv run pytest -q tests/cli/test_images_command.py` from `tools/controlplane`
-Expected: FAIL because the `images` group is absent.
-
-**Step 3: Implement the group**
-
-Expose a Typer sub-app with only `plan` and `build`. `plan` renders `CommandTaskSpec` values. `build` loads the optional environment, creates role bindings through `build_role_bindings`, converts the matrix specs with `workflow_from_specs`, and runs the workflow. Local-registry pushes are explicit and allowed; GHCR references are rejected here.
-
-Register the sub-app in `app/main.py`:
-
-```python
-from controlplane_tool.cli.images import images_app
-app.add_typer(images_app, name="images")
-```
-
-**Step 4: Verify CLI behavior**
-
-Run: `uv run pytest -q tests/cli/test_images_command.py tests/cli/test_command_surface.py`
-Expected: PASS.
-
-Run: `uv run controlplane-tool images plan --version v0.18.0 --only control-plane --arch amd64 --flavor all`
-Expected: JVM and native AMD64 commands, no execution.
-
-**Step 5: Commit**
-
-Run impact analysis for `app/main.py` command registration and staged change detection, then commit.
-
-### Task 4: Deploy exact prebuilt images through the existing load-test workflow
-
-**Difficulty:** High — HIGH GitNexus seam
-**Commit:** `Allow load tests to use prebuilt images`
+**Difficulty:** High — HIGH blast radius
 
 **Files:**
-- Modify: `tools/workflow-tasks/src/workflow_tasks/workflows/validate.py:20-270`
-- Modify: `tools/controlplane/src/controlplane_tool/plans/loadtest.py:25-120`
+- Modify: `tools/workflow-tasks/src/workflow_tasks/workflows/validate.py`
+- Modify: `tools/controlplane/src/controlplane_tool/plans/loadtest.py`
 - Modify: `tools/workflow-tasks/tests/workflows/test_validate.py`
 - Modify: `tools/controlplane/tests/plans/test_loadtest.py`
 
-**Step 1: Rerun and report impact analysis**
+**Steps:**
 
-Rerun upstream impact for `ValidateWorkflowRequest`, `k8s_deployment_specs`, and `build_loadtest_plan`. Confirm the known HIGH risk and list all d=1 callers before editing.
+1. Rerun impact for `ValidateWorkflowRequest`, `k8s_deployment_specs`, and `build_loadtest_plan`; report all d=1 dependants before editing.
+2. Add tests showing ordinary task IDs are byte-for-byte unchanged with defaults.
+3. Add tests for prebuilt mode: no Gradle/image build/push tasks, exact control-plane image in Helm values, exact function image in registration.
+4. Add only defaulted fields:
 
-**Step 2: Write backward-compatibility and prebuilt-image tests**
+   ```python
+   build_images: bool = True
+   control_plane_image: str | None = None
+   ```
 
-```python
-def test_k8s_prebuilt_mode_skips_every_build_and_uses_exact_images() -> None:
-    request = ValidateWorkflowRequest(
-        backend="k8s",
-        functions=(function(image="localhost:5000/nanofaas/java-word-stats:v0.18.0-amd64-native"),),
-        build_images=False,
-        control_plane_image="localhost:5000/nanofaas/control-plane:v0.18.0-amd64-native",
-    )
-    specs = k8s_deployment_specs(request)
-    assert not any(spec.task_id.startswith(("build.", "images.build.", "images.push.")) for spec in specs)
-    assert "v0.18.0-amd64-native" in " ".join(specs[-1].argv)
+   Require the override only when `build_images=False`.
+5. Add keyword-only `prebuilt_control_plane_image` and `prebuilt_function_images` to `build_loadtest_plan`; default `None` preserves every caller.
+6. Run focused suites, all workflow-tasks tests, and all controlplane tests. Inspect CLI `plan_command` and TUI `run_current_workflow` flows.
+7. Run staged detection and commit `Allow load tests to use prebuilt images`.
 
-
-def test_default_k8s_task_list_is_unchanged() -> None:
-    assert ids(k8s_deployment_specs(default_request())) == EXISTING_EXPECTED_IDS
-```
-
-In the controlplane tests, pass a prebuilt control-plane image plus a function-image mapping and assert that the load-test plan deploys/registers those exact references.
-
-**Step 3: Run tests and confirm failure**
-
-Run: `uv run pytest -q tests/workflows/test_validate.py` from `tools/workflow-tasks`
-Run: `uv run pytest -q tests/plans/test_loadtest.py` from `tools/controlplane`
-Expected: new tests FAIL; old tests PASS.
-
-**Step 4: Add optional, default-compatible fields**
-
-Add only:
-
-```python
-@dataclass(frozen=True, slots=True)
-class ValidateWorkflowRequest:
-    # existing fields...
-    build_images: bool = True
-    control_plane_image: str | None = None
-```
-
-Require `control_plane_image` when `build_images` is false. Wrap the current build/image-push block in `if request.build_images`; use the override in Helm values. Add optional keyword-only `prebuilt_control_plane_image` and `prebuilt_function_images` parameters to `build_loadtest_plan`; defaults preserve every current caller.
-
-**Step 5: Run direct and transitive tests**
-
-Run both focused suites above. Then run all 303 controlplane tests and all 439 workflow-tasks tests.
-Expected: PASS with unchanged ordinary plan/TUI behavior.
-
-**Step 6: Commit**
-
-Run staged GitNexus detection and inspect the `plan_command` and `run_current_workflow` flows before committing.
-
-### Task 5: Produce comparable three-run release metrics
+### Task 5: Add release metrics and regression policy
 
 **Difficulty:** High
-**Commit:** `Add release performance aggregation`
 
 **Files:**
 - Create: `tools/controlplane/src/controlplane_tool/release/metrics.py`
@@ -354,404 +173,243 @@ Run staged GitNexus detection and inspect the `plan_command` and `run_current_wo
 - Create: `tools/controlplane/release.yaml`
 - Create: `docs/performance/history.md`
 - Create: `docs/performance/releases/.gitkeep`
-- Modify: `tools/workflow-tasks/src/workflow_tasks/loadtest/tasks.py:25-55`
+- Modify: `tools/workflow-tasks/src/workflow_tasks/loadtest/tasks.py`
 - Modify: `tools/workflow-tasks/tests/loadtest/test_loadtest_tasks.py`
 
-**Step 1: Make k6 export p99**
+**Steps:**
 
-Write a failing assertion that `_build_k6_argv` contains:
+1. Add a failing test requiring k6 `--summary-trend-stats avg,min,med,max,p(50),p(90),p(95),p(99)`; then minimally add it to `_build_k6_argv`.
+2. Create three fixture summaries and test per-metric medians for throughput, error rate, p50/p95/p99, selected Prometheus aggregates, and peak replicas.
+3. Test that comparisons reject different provider/VM/architecture/flavor/scenario profiles.
+4. Store policy in `tools/controlplane/release.yaml`:
 
-```text
---summary-trend-stats avg,min,med,max,p(50),p(90),p(95),p(99)
-```
+   ```yaml
+   schemaVersion: 1
+   benchmark:
+     scenario: scenarios-v2/loadtest.yaml
+     runs: 3
+     profile: azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1
+     regression:
+       throughputMaxLossPercent: 10
+       p95MaxIncreasePercent: 15
+       errorRateMax: 0.30
+   ```
 
-Add those two arguments immediately after `--summary-export`. Rerun impact analysis for `_build_k6_argv` (currently LOW) and its direct tests.
+5. The first version must pass k6/autoscaling gates and becomes the baseline. Later versions compare with the newest identical-profile record.
+6. Implement deterministic rendering for the version JSON and `history.md`, but keep benchmark output in the run directory until the whole release verifies. Do not mutate published performance history at this gate.
+7. Run focused tests, both package linters/type checks, staged detection, and commit `Add release performance aggregation`.
 
-**Step 2: Write failing aggregation tests**
+### Task 6: Pin the Azure release environment and prepare only its stack
 
-Use three small `summary.json` fixtures and assert medians for:
-
-- `http_reqs.values.rate` as throughput;
-- `http_req_failed.values.rate` as error rate;
-- `http_req_duration.values.p(50)`, `p(95)`, and `p(99)`;
-- selected Prometheus point statistics;
-- autoscaling peak replicas.
-
-```python
-def test_aggregate_release_runs_uses_per_metric_median(tmp_path: Path) -> None:
-    record = aggregate_release_runs([run1, run2, run3], release_profile())
-    assert record["metrics"]["throughput_rps"] == 120.0
-    assert record["metrics"]["latency_ms"]["p95"] == 42.0
-
-
-def test_regression_gate_compares_only_identical_profiles() -> None:
-    with pytest.raises(ValueError, match="profile mismatch"):
-        evaluate_regression(candidate, baseline_from_other_provider, policy)
-```
-
-**Step 3: Implement a strict release record**
-
-`tools/controlplane/release.yaml` owns the policy, not Python constants:
-
-```yaml
-schemaVersion: 1
-benchmark:
-  scenario: scenarios-v2/loadtest.yaml
-  runs: 3
-  profile: azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1
-  regression:
-    throughputMaxLossPercent: 10
-    p95MaxIncreasePercent: 15
-    errorRateMax: 0.30
-```
-
-The first version has no comparative baseline and must still pass the scenario's k6 thresholds. Later versions compare only with the latest record carrying the identical profile identifier. Write JSON atomically to `docs/performance/releases/<version>.json` and regenerate the compact Markdown table deterministically.
-
-**Step 4: Verify**
-
-Run focused metrics and load-test task tests. Expected: PASS.
-Run `uv run ruff check src tests` from both Python packages. Expected: PASS.
-
-**Step 5: Commit**
-
-Run staged change detection and commit.
-
-### Task 6: Compose the Azure release workflow and hard guard
-
-**Difficulty:** Very high
-**Commit:** `Add gated Azure release workflow`
+**Difficulty:** Medium
 
 **Files:**
-- Create: `tools/controlplane/src/controlplane_tool/release/plan.py`
-- Create: `tools/controlplane/tests/release/test_plan.py`
+- Create: `tools/controlplane/environments/azure-release.yaml.example`
+- Create: `tools/workflow-tasks/src/workflow_tasks/infra/ansible_assets/playbooks/provision-release-builder.yml`
+- Modify: `tools/workflow-tasks/src/workflow_tasks/infra/ansible.py`
+- Modify: `tools/workflow-tasks/tests/infra/test_ansible.py`
+- Create: `tools/controlplane/tests/release/test_environment.py`
+
+**Steps:**
+
+1. Resolve an exact Ubuntu image version with `az vm image list ... --all`; store the exact URN, never `latest`.
+2. Configure stack `Standard_D4s_v5` with 128 GB disk and loadgen `Standard_D2s_v5` with 30 GB disk in West Europe.
+3. Write guard tests rejecting non-Azure providers, missing stack/loadgen roles, `latest` URNs, burstable VM sizes, and an unprepared project version.
+4. Add a release-only Ansible adapter/playbook installing `skopeo` and transport utilities on stack only. Let the digest-pinned binfmt container install QEMU handlers; do not also manage host binfmt packages.
+5. Keep shared `provision-base.yml` unchanged.
+6. Run config/Ansible tests, all workflow-tasks tests, staged detection, and commit `Add pinned Azure release environment`.
+
+### Task 7: Implement secure release credentials and cleanup
+
+**Difficulty:** High
+
+**Files:**
+- Create: `tools/controlplane/src/controlplane_tool/release/secrets.py`
+- Create: `tools/controlplane/tests/release/test_secrets.py`
+
+**Steps:**
+
+1. Test that token, signing key, and password paths must be regular local files with restrictive permissions; never accept secret values as CLI arguments.
+2. Reuse the selected Azure provider's `transfer_to` for three temporary remote files under a mode-0700 release directory.
+3. Authenticate with `docker login ghcr.io --password-stdin < token-file`; commands/events must contain paths only, never contents.
+4. Expose the cosign key/password paths to the later signing task without reading them into Python strings.
+5. Implement always-run remote deletion and local in-memory metadata cleanup. Test cleanup after success, phase failure, transfer failure, and authentication failure.
+6. Test rendered plans for absence of fixture secret contents.
+7. Run focused tests, staged detection, and commit `Transfer release credentials securely`.
+
+### Task 8: Add a durable, verified release journal
+
+**Difficulty:** Medium
+
+**Files:**
+- Create: `tools/controlplane/src/controlplane_tool/release/state.py`
+- Create: `tools/controlplane/tests/release/test_state.py`
+
+**Steps:**
+
+1. Define an append-only JSON journal under `runs/releases/<version>/state/` with schema version, source commit, prepared version, normalized release-config digest, environment digest, phase, artifact references, digests, timestamps, and outcome.
+2. Write tests for atomic entry creation, interrupted writes, corrupt entries, unknown schema versions, and phase-order violations.
+3. Add `--resume` validation tests: reuse a completed phase only when commit/version/config/environment match and every referenced local or remote artifact still has the recorded digest.
+4. Never resume from a mere success flag. On missing or mismatched evidence, invalidate that phase and every downstream phase, then rerun from the earliest invalid phase.
+5. Make journal entries contain paths, image references, and digests only; reject credentials and known fixture secret contents.
+6. Keep the journal after cleanup as the local audit record; remote candidate cleanup must not delete it.
+7. Run focused tests, staged detection, and commit `Add verified release resume state`.
+
+### Task 9: Build the Azure release coordinator through the AMD64 gate
+
+**Difficulty:** Very high
+
+**Files:**
+- Create: `tools/controlplane/src/controlplane_tool/release/run.py`
+- Create: `tools/controlplane/tests/release/test_run_amd64.py`
 - Create: `tools/controlplane/src/controlplane_tool/cli/release.py`
 - Create: `tools/controlplane/tests/cli/test_release_command.py`
 - Modify: `tools/controlplane/src/controlplane_tool/app/main.py`
 
-**Step 1: Write release-guard tests**
+**Steps:**
 
-Assert rejection before provisioning or task creation for:
+1. Test `release prepare`, offline `release plan`, and `release run` command surfaces.
+2. Test the hard guard: clean Git tree, requested/prepared version match, Azure pinned profile, complete roles, and explicit credential files. Expose `--resume`; without it, reject an existing journal for the same version.
+3. After ordinary provisioning, invoke the Task 6 release-builder adapter against the stack role only.
+4. Compose sequential phases: source tests → full AMD64 matrix → local-registry push → benchmark 1/2/3 → aggregate → regression gate.
+5. Create the source bundle with `git archive` from the guarded commit and synchronize it to stack through the existing provider transfer API. This includes only tracked content and excludes `.git`, credentials, worktrees, build outputs, and prior run artifacts; verify its checksum before running tests.
+6. Run source tests on stack from that verified archive. Reuse Gradle/uv; run Go, Node, Rust, and Bash tests in digest-pinned Docker toolchain images rather than installing mutable host toolchains.
+7. Invoke `build_loadtest_plan` three times with the exact AMD64-native control-plane/function references and `runs/releases/<version>/run-{1,2,3}` directories.
+8. Let each existing load-test workflow clean Helm/functions before the next run. Never rebuild candidates during benchmark.
+9. Record and verify Task 8 journal evidence at each boundary. Test fresh execution, safe resume, invalidation after digest mismatch, and refusal to cross a failed gate.
+10. With recording executors, inject failures into every phase and assert no ARM or GHCR command appears.
+11. Validate local credential-file metadata at startup, but defer transfer to the publication/signing phases so secrets do not remain on the VM during builds and benchmarks.
+12. Run focused tests and both full Python suites. Request a correctness review of gate ordering and resume behavior.
+13. Run staged detection and commit `Add AMD64-gated Azure release workflow`.
 
-- local, Multipass, Proxmox, and generic external providers;
-- Azure without both stack and loadgen roles;
-- an Azure image URN ending in `:latest`;
-- a burstable `Standard_B*` stack or loadgen size;
-- a dirty repository;
-- a requested version different from the prepared project version;
-- a missing `~/.docker/config.json` GHCR login on the stack VM.
-
-The guard's public contract is:
-
-```python
-def validate_release_context(
-    repo_root: Path,
-    version: str,
-    environment: EnvironmentConfig,
-    provenance: Mapping[str, object],
-) -> None: ...
-```
-
-**Step 2: Write phase-order tests**
-
-With recording executors, assert the exact high-level order:
-
-```python
-assert phases == [
-    "release.preflight",
-    "release.tests",
-    "images.amd64",
-    "benchmark.1", "benchmark.2", "benchmark.3",
-    "metrics.aggregate", "metrics.gate",
-    "qemu.prepare", "images.arm64", "images.arm64.smoke",
-    "release.promote", "release.verify", "release.attest",
-]
-```
-
-Inject a failure at each gate and assert no later phase runs. In particular, ARM64 and every GHCR operation must remain absent after a benchmark failure.
-
-**Step 3: Implement source-test and QEMU preparation tasks**
-
-Source tests run on the Azure stack VM after repository sync. Reuse Gradle and uv already installed by provisioning. Run Go, Node, Rust, and Bash tests in pinned Docker toolchain images rather than installing mutable host toolchains. QEMU preparation is idempotent:
-
-```bash
-docker run --privileged --rm tonistiigi/binfmt --install arm64
-docker buildx inspect nanofaas-release >/dev/null 2>&1 || \
-  docker buildx create --name nanofaas-release --driver docker-container --use
-docker buildx inspect --bootstrap nanofaas-release
-```
-
-Verify `linux/arm64` appears in the builder platforms before starting ARM work.
-
-**Step 4: Implement three isolated benchmark executions**
-
-Inside one provisioned pinned Azure environment, call `build_loadtest_plan` three times with prebuilt AMD64-native references and run directories:
-
-```text
-tools/controlplane/runs/releases/v0.18.0/run-1
-tools/controlplane/runs/releases/v0.18.0/run-2
-tools/controlplane/runs/releases/v0.18.0/run-3
-```
-
-Let each existing workflow uninstall the Helm release and delete the function before the next run. Do not rebuild candidate images. Aggregate only after all three run summaries exist.
-
-**Step 5: Implement ARM64 smoke tasks**
-
-For every ARM64 image, first inspect its architecture. Start service/function images under `--platform linux/arm64`, wait for `/health` (control-plane uses its management health endpoint), then remove the container. For the watchdog scratch image, execute the binary and distinguish an expected missing-child error from an `exec format error`. Any missing cell or smoke failure stops promotion.
-
-**Step 6: Add CLI commands**
-
-`release prepare` delegates to Task 1. `release plan` renders all phases and never provisions. `release run` enters `provision_environment`, rebuilds role bindings after provisioning, binds the existing progress sink, writes release run metadata, and preserves logs on failure. It never commits, tags Git, or pushes source code.
-
-**Step 7: Verify failure barriers**
-
-Run release plan and CLI tests, then both complete Python suites. Expected: PASS.
-
-**Step 8: Commit after review**
-
-Request a dedicated correctness review of phase ordering and negative tests. Run staged change detection and commit.
-
-### Task 7: Promote exact artifacts, manifests, aliases, SBOMs, and attestations
+### Task 10: Add QEMU ARM64 build and functional smoke gate
 
 **Difficulty:** High
-**Commit:** `Publish verified multi-architecture release images`
+
+**Files:**
+- Create: `tools/controlplane/src/controlplane_tool/release/arm.py`
+- Create: `tools/controlplane/tests/release/test_arm.py`
+- Modify: `tools/controlplane/src/controlplane_tool/release/run.py`
+
+**Steps:**
+
+1. Test that QEMU preparation and ARM tasks are unreachable before a passed aggregate gate.
+2. Register binfmt from a digest-pinned `tonistiigi/binfmt` image and create/reuse a named `docker-container` Buildx builder.
+3. Require `linux/arm64` in `docker buildx inspect --bootstrap` before building.
+4. Build and locally push every ARM64 cell; fail on a missing matrix cell.
+5. Inspect each architecture. Start server/function images with `--platform linux/arm64`, wait for their health endpoint, and always remove containers.
+6. For the watchdog scratch image, execute its binary and explicitly reject `exec format error`; document the expected missing-child exit.
+7. Assert no GHCR command runs after any ARM build/smoke failure.
+8. Run focused tests, the images plan tests, staged detection, and commit `Add QEMU ARM64 release gate`.
+
+### Task 11: Promote exact artifacts and create manifests
+
+**Difficulty:** High
 
 **Files:**
 - Create: `tools/controlplane/src/controlplane_tool/release/publish.py`
 - Create: `tools/controlplane/tests/release/test_publish.py`
-- Modify: `tools/controlplane/src/controlplane_tool/release/plan.py`
+- Modify: `tools/controlplane/src/controlplane_tool/release/run.py`
 
-**Step 1: Write publish-plan tests**
+**Steps:**
 
-Assert that publication starts only after all matrix cells and gate evidence exist. For a flavor-aware image, expect:
+1. Test the complete tag set for flavored/default images and `v0.18.0` as native alias.
+2. Require evidence for all 52 cells plus AMD64 benchmark and ARM smoke gates before planning publication.
+3. Transfer the GHCR token only now, authenticate through stdin, and register its deletion as always-run cleanup.
+4. Copy local-registry architecture images with `skopeo copy --preserve-digests --src-tls-verify=false` to immutable GHCR architecture tags.
+5. Compare source/destination digests. Stop before manifests on any mismatch.
+6. Create flavor/default manifests with `docker buildx imagetools create`; inspect and require exactly AMD64 and ARM64.
+7. Create version aliases only after every version manifest verifies. Do not update `latest` in v0.18.0.
+8. Do not claim cross-repository transactional publication. A release is complete only after the final verification record is written; immutable partial uploads are safe to rerun.
+9. Run focused tests with failures at copy, digest, manifest, and alias phases; staged detection; commit `Publish verified release image manifests`.
 
-```text
-v0.18.0-amd64-native
-v0.18.0-arm64-native
-v0.18.0-native
-v0.18.0
-v0.18.0-amd64-jvm
-v0.18.0-arm64-jvm
-v0.18.0-jvm
-```
+### Task 12: Generate SBOMs, sign evidence, and finalize records
 
-For default images, expect architecture tags and `v0.18.0`. Assert `v0.18.0` references the same native descriptors as `v0.18.0-native`. Assert mutable aliases are planned last.
-
-**Step 2: Preserve artifacts across registries**
-
-Use `skopeo copy --preserve-digests --src-tls-verify=false` from the Azure-local registry to immutable GHCR architecture tags. Compare source and destination manifest digests before creating indexes. Never rebuild or use `docker tag && docker build` in this phase.
-
-**Step 3: Create and verify indexes**
-
-Use `docker buildx imagetools create` to create flavor/default manifests from immutable architecture tags. Inspect each index and require exactly `linux/amd64` and `linux/arm64`. Only then create `v0.18.0` native aliases. Treat a version as complete only after every expected manifest verifies; do not update `latest` in the first implementation.
-
-**Step 4: Generate and attach supply-chain metadata**
-
-Generate SPDX JSON with syft against each final digest. Create an in-toto release predicate containing source commit, Azure profile, benchmark record, and all digests. Attach SBOM and predicate with cosign using a pre-provisioned operator-controlled key path and password environment on the Azure stack VM. The tool validates their presence but never transports or logs private key material.
-
-**Step 5: Verify with recording executors**
-
-Run: `uv run pytest -q tests/release/test_publish.py tests/release/test_plan.py`
-Expected: PASS, including digest mismatch, incomplete matrix, failed manifest, and missing signing credential cases.
-
-**Step 6: Commit**
-
-Run staged change detection and commit.
-
-### Task 8: Pin the Azure release environment and remove GitHub publication
-
-**Difficulty:** Medium
-**Commit:** `Make Azure the only image release authority`
+**Difficulty:** High
 
 **Files:**
-- Create: `tools/controlplane/environments/azure-release.yaml.example`
+- Create: `tools/controlplane/src/controlplane_tool/release/attest.py`
+- Create: `tools/controlplane/tests/release/test_attest.py`
+- Modify: `tools/controlplane/src/controlplane_tool/release/run.py`
+
+**Steps:**
+
+1. Test a release predicate containing schema version, source commit, Azure profile, benchmark record digest, and every final image digest.
+2. Transfer the signing key/password only now and register their deletion as always-run cleanup.
+3. Generate SPDX JSON with a digest-pinned syft container against final image digests.
+4. Sign/attach predicates and SBOMs with a digest-pinned cosign container, mounting only temporary secret files and Docker auth.
+5. Read the cosign password inside the remote shell from its file; never place it in argv, task env, logs, or metadata.
+6. Verify signatures/attestations before marking the release complete.
+7. Only after verification succeeds, atomically write `docs/performance/releases/<version>.json`, regenerate `history.md`, and append the final journal record. A signing failure must leave published performance history unchanged.
+8. If writing either documentation file fails, do not append the final journal record; `--resume` must retry finalization without rebuilding verified images.
+9. Always delete remote signing material, including when signing or verification fails.
+10. Run focused secret/redaction/failure/finalization tests, staged detection, and commit `Attest and finalize released artifacts`.
+
+### Task 13: Make Azure authoritative, document, and verify
+
+**Difficulty:** High
+
+**Files:**
 - Modify: `.github/workflows/gitops.yml`
-- Modify: `tools/controlplane/tests/config/test_environment.py`
 - Create: `scripts/tests/test_release_authority.py`
-- Modify: `tools/workflow-tasks/src/workflow_tasks/infra/ansible_assets/playbooks/provision-base.yml`
-- Modify: `tools/workflow-tasks/tests/infra/test_ansible.py`
-
-**Step 1: Resolve and pin an Azure image URN**
-
-Run:
-
-```bash
-az vm image list --location westeurope --publisher Canonical \
-  --offer ubuntu-24_04-lts --sku server --all \
-  --query "[-1].urn" -o tsv
-```
-
-Put the exact returned version in the example; never store `latest`. Configure:
-
-```yaml
-provider: azure
-roles:
-  stack:
-    name: nanofaas-release-stack
-    disk: 128G
-  loadgen:
-    name: nanofaas-release-loadgen
-    disk: 30G
-azure:
-  resource_group: nanofaas-release-rg
-  location: westeurope
-  vm_size: Standard_D4s_v5
-  loadgen_vm_size: Standard_D2s_v5
-  image_urn: <exact resolved URN>
-  ssh_key_path: /absolute/path/to/id_ed25519
-```
-
-**Step 2: Add builder utilities to stack provisioning**
-
-Add `qemu-user-static`, `binfmt-support`, `skopeo`, and required transport utilities to the base package list. Do not install k6 or builder-only packages on loadgen through a separate new framework; tolerate the small package overlap for the first version. syft/cosign may be run from pinned container images to avoid mutable host installation.
-
-**Step 3: Remove the GitHub publish job**
-
-Keep GitHub test jobs, but delete the tag-triggered `publish` job and package-write permission. The contract test must assert that `.github/workflows/gitops.yml` contains no `docker push`, `bootBuildImage` publication, or `packages: write`.
-
-**Step 4: Verify**
-
-Run configuration, Ansible, and script contract tests. Run `controlplane-tool release plan` against the example after replacing only the SSH path in a temporary copy. Expected: a pinned Azure plan.
-
-**Step 5: Commit**
-
-Run staged change detection and commit.
-
-### Task 9: Document operation, recovery, and metric history
-
-**Difficulty:** Medium
-**Commit:** `Document Azure image releases`
-
-**Files:**
 - Create: `docs/operations/image-releases.md`
 - Modify: `README.md`
 - Modify: `docs/performance/history.md`
-- Modify: `tools/controlplane/README.md` if present; otherwise do not create a duplicate tool README
+- Modify: `tools/controlplane/README.md` only if it already exists
 
-**Step 1: Write operator documentation**
+**Steps:**
 
-Document:
+1. Remove the GitHub tag-publish job and package-write permission; retain test jobs.
+2. Add a contract test rejecting `docker push`, release `bootBuildImage`, or `packages: write` in the GitHub workflow.
+3. Document preparation, version commit, dry run, paid Azure run, credentials, costs, 52 cells, tag policy, run/report paths, verified `--resume`, recovery, cleanup, and the AMD64-only performance claim.
+4. Document that local/Multipass/Proxmox builds cannot promote and GitHub Actions only tests.
+5. Run static checks:
 
-- prerequisites: Azure login, pinned environment copy, GHCR login on stack, cosign key, expected costs;
-- `release prepare`, mandatory review/commit, dry-run, real run, and post-run metric commit;
-- the 52-cell matrix and tag policy;
-- AMD64 native benchmark semantics and the absence of ARM64 performance claims;
-- local/Multipass/Proxmox experimental commands;
-- run artifact paths and the difference between `runs/latest` and versioned release runs;
-- failure behavior before/after immutable architecture upload;
-- manual cleanup and safe rerun using the same source commit/version;
-- why GitHub Actions tests remain while image publication is forbidden there.
+   ```bash
+   cd tools/workflow-tasks && uv run ruff check src tests && uv run basedpyright
+   cd ../controlplane && uv run ruff check src tests && uv run basedpyright
+   uv run controlplane-quality
+   ```
 
-**Step 2: Add documentation contract tests only where useful**
+6. Run all Python suites from their own package directories, `./gradlew build -PcontrolPlaneModules=all`, `functions/contract-tests/run.sh`, watchdog tests, and `git diff --check`.
+7. Render the 52-cell plan and an Azure release plan. Confirm order: tests → AMD64 → three benchmarks → gate → QEMU/ARM64 → smoke → copy/manifests → attest → cleanup.
+8. Run a small Multipass AMD64 experiment and verify GHCR remains unchanged.
+9. Run `gitnexus_detect_changes(scope="compare", base_ref="main")`; inspect ordinary CLI/TUI load-test flows.
+10. Request final code review and use `superpowers:verification-before-completion` before claiming completion.
+11. Commit `Document and verify Azure image releases`.
 
-Extend `scripts/tests/test_release_authority.py` to assert that the documented primary commands and Azure-only warning remain present. Do not snapshot prose.
+## Paid acceptance release
 
-**Step 3: Verify links and examples**
-
-Run CLI `--help` commands and the script test. Run `git diff --check`.
-
-**Step 4: Commit**
-
-Run staged change detection and commit.
-
-### Task 10: Full verification and controlled dry run
-
-**Difficulty:** High
-**Commit:** `Verify Azure release pipeline` only if verification itself requires tracked fixes; otherwise no commit.
-
-**Files:**
-- Modify only files required by failures discovered in this task, each through a fresh TDD/impact cycle.
-
-**Step 1: Run static and package checks**
-
-```bash
-cd tools/workflow-tasks && uv run ruff check src tests && uv run basedpyright
-cd ../controlplane && uv run ruff check src tests && uv run basedpyright
-uv run controlplane-quality
-```
-
-Expected: all PASS.
-
-**Step 2: Run Python suites from their required directories**
-
-```bash
-cd tools/controlplane && uv run pytest -q tests
-cd ../workflow-tasks && uv run pytest -q tests
-cd ../fn-init && uv run pytest -q tests
-```
-
-Expected: all PASS; controlplane baseline is at least 303 and workflow-tasks baseline at least 439 tests, plus the new tests.
-
-**Step 3: Run platform and function tests**
-
-```bash
-./gradlew build -PcontrolPlaneModules=all
-functions/contract-tests/run.sh
-cargo test --manifest-path runtimes/watchdog/Cargo.toml
-bash runtimes/watchdog/test-local.sh
-```
-
-Expected: all PASS.
-
-**Step 4: Validate the portable image plan without building**
-
-```bash
-cd tools/controlplane
-uv run controlplane-tool images plan --version v0.18.0 --arch all --flavor all
-```
-
-Expected: exactly 52 cells, AMD64 before ARM64, no GHCR push command.
-
-**Step 5: Run a Multipass experiment**
-
-Build a small representative subset only:
-
-```bash
-uv run controlplane-tool images build --version v0.18.0 \
-  --environment environments/multipass.yaml \
-  --only control-plane,watchdog --arch amd64 --flavor native
-```
-
-Expected: local/VM artifacts only; GHCR unchanged.
-
-**Step 6: Run Azure release dry-run**
-
-```bash
-uv run controlplane-tool release plan v0.18.0 \
-  --environment environments/azure-release.yaml
-```
-
-Expected: tests → AMD64 → three benchmarks → gate → QEMU/ARM64 → smoke → promotion → verification → attestation.
-
-**Step 7: Final GitNexus and diff audit**
-
-Run `gitnexus_detect_changes(scope="compare", base_ref="main")`. Inspect every affected flow, especially ordinary CLI/TUI load testing. Run `git diff --check` and verify no secrets, generated run artifacts, VM configuration copies, or private key paths are tracked.
-
-**Step 8: Request final code review**
-
-Use `superpowers:requesting-code-review`. Resolve correctness findings through `superpowers:receiving-code-review`, rerun the relevant tests, then use `superpowers:verification-before-completion` before claiming completion.
-
-## Real Azure release acceptance test
-
-This is intentionally not part of routine implementation verification because it provisions paid infrastructure and writes public GHCR artifacts. Run it only after code review and explicit user authorization:
+Run only after code review and explicit user authorization:
 
 ```bash
 controlplane-tool release prepare v0.18.0
-# review, test, and commit the version change
+# Review, test, and commit the version change.
 controlplane-tool release run v0.18.0 \
   --environment tools/controlplane/environments/azure-release.yaml \
+  --ghcr-token-file /secure/ghcr-token \
+  --cosign-key-file /secure/cosign.key \
+  --cosign-password-file /secure/cosign-password \
   --provision
+
+# After an interruption, only verified matching phases may be reused
+controlplane-tool release run v0.18.0 \
+  --environment tools/controlplane/environments/azure-release.yaml \
+  --ghcr-token-file /secure/ghcr-token \
+  --cosign-key-file /secure/cosign.key \
+  --cosign-password-file /secure/cosign-password \
+  --resume
 ```
 
 Acceptance requires:
 
 - all source tests pass on the Azure stack;
-- the exact AMD64-native candidates complete three benchmark runs;
-- the aggregate and regression gates pass;
-- all 52 matrix cells exist;
-- ARM64 cells pass QEMU smoke tests;
-- GHCR architecture digests match the Azure-local source digests;
-- every final index contains AMD64 and ARM64;
+- the exact AMD64-native candidates complete three benchmark runs and pass policy;
+- all 52 cells exist and ARM64 cells pass QEMU smoke tests;
+- GHCR architecture digests match their Azure-local sources;
+- each final manifest contains exactly AMD64 and ARM64;
 - `v0.18.0` and `v0.18.0-native` resolve to the same native descriptors;
-- SBOM and signed release predicate verification succeeds;
-- `docs/performance/releases/v0.18.0.json` and the history row are produced;
-- Azure cleanup completes unless `--keep` was explicitly requested.
+- SBOM and signed predicate verification succeeds;
+- `docs/performance/releases/v0.18.0.json` and `history.md` are produced;
+- the final journal record matches the source commit, configuration digests, published image digests, and performance-record digest;
+- all remote secret files and Azure resources are cleaned unless `--keep` was explicit.
