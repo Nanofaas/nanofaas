@@ -1,5 +1,8 @@
+import pytest
+
 from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
 from workflow_tasks.workflow.event_builders import build_log_event, build_task_event
+from workflow_tasks.workflow.models import WorkflowState
 
 
 def test_event_aggregator_maps_task_started_event_to_running_step() -> None:
@@ -359,3 +362,65 @@ def test_unresolved_parent_task_does_not_fall_back_to_planned_row() -> None:
         "Teardown VM",
         "Verify",
     ]
+
+
+@pytest.mark.parametrize("status", ["success", "failed", "cancelled"])
+def test_complete_running_phases_terminalizes_nested_children(
+    status: WorkflowState,
+) -> None:
+    bridge = WorkflowEventAggregator(planned_steps=["Run verification"])
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="tests.run_verification",
+            title="Run verification",
+        )
+    )
+    bridge.handle_event(
+        build_task_event(
+            kind="task.running",
+            flow_id="e2e.k3s_junit_curl",
+            task_id="verify.health",
+            parent_task_id="tests.run_verification",
+            title="Verify health",
+        )
+    )
+
+    bridge.complete_running_phases(status=status, detail="workflow finished")
+
+    snapshot = bridge.snapshot()
+    assert snapshot.phases[0].status == status
+    assert snapshot.phases[0].detail == "workflow finished"
+    assert snapshot.phases[0].finished_at is not None
+    assert snapshot.phases[0].children[0].status == status
+    assert snapshot.phases[0].children[0].detail == "workflow finished"
+    assert snapshot.phases[0].children[0].finished_at == snapshot.phases[0].finished_at
+
+
+def test_log_buffer_prefixes_stderr_and_trims_oldest_lines() -> None:
+    bridge = WorkflowEventAggregator(log_limit=2)
+
+    bridge.handle_event(build_log_event(flow_id="flow", line="first"))
+    bridge.handle_event(
+        build_log_event(flow_id="flow", line="second", stream="stderr")
+    )
+    bridge.handle_event(build_log_event(flow_id="flow", line="third"))
+
+    assert bridge.snapshot().logs == ["stderr │ second", "third"]
+
+
+def test_snapshot_logs_are_isolated_from_aggregator_state() -> None:
+    bridge = WorkflowEventAggregator()
+    bridge.append_log("original")
+
+    snapshot = bridge.snapshot()
+    snapshot.logs.append("external mutation")
+
+    assert bridge.snapshot().logs == ["original"]
+
+
+@pytest.mark.parametrize("log_limit", [0, -1])
+def test_non_positive_log_limit_is_rejected(log_limit: int) -> None:
+    with pytest.raises(ValueError, match="log_limit must be positive"):
+        WorkflowEventAggregator(log_limit=log_limit)
