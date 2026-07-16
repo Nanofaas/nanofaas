@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from controlplane_tool.app.main import app
+from controlplane_tool.cli.preflight import PreflightError
 from controlplane_tool.cli.product import _git_provenance, _slice, _workflow
 import controlplane_tool.cli.product as product_module
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
@@ -79,6 +80,68 @@ def test_run_renders_normalized_task_progress(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "[test.task] running" in result.stdout
     assert "[test.task] passed" in result.stdout
+
+
+def test_run_aborts_local_cli_before_building_workflow_when_preflight_fails(
+    monkeypatch,
+) -> None:
+    preflight = MagicMock(side_effect=PreflightError("control plane unavailable"))
+    build_cli_plan = MagicMock()
+    monkeypatch.setattr(
+        product_module, "preflight_control_plane", preflight, raising=False
+    )
+    monkeypatch.setattr(product_module, "build_cli_plan", build_cli_plan)
+
+    result = CliRunner().invoke(app, ["run", "scenarios-v2/cli.yaml"])
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, PreflightError)
+    scenario, environment = preflight.call_args.args
+    assert scenario.workflow == "cli"
+    assert environment.provider == "local"
+    assert preflight.call_args.kwargs == {"base_url": "http://127.0.0.1:8080"}
+    build_cli_plan.assert_not_called()
+
+
+def test_plan_does_not_run_preflight(monkeypatch) -> None:
+    preflight = MagicMock(side_effect=AssertionError("plan must remain offline"))
+    monkeypatch.setattr(
+        product_module, "preflight_control_plane", preflight, raising=False
+    )
+
+    result = CliRunner().invoke(app, ["plan", "scenarios-v2/cli.yaml"])
+
+    assert result.exit_code == 0
+    preflight.assert_not_called()
+
+
+def test_run_uses_custom_control_plane_url_for_preflight_and_cli_plan(
+    monkeypatch,
+) -> None:
+    preflight = MagicMock()
+    build_cli_plan = MagicMock(return_value=Workflow(tasks=[]))
+    monkeypatch.setattr(
+        product_module, "preflight_control_plane", preflight, raising=False
+    )
+    monkeypatch.setattr(product_module, "build_cli_plan", build_cli_plan)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "scenarios-v2/cli.yaml",
+            "--control-plane-url",
+            "http://control-plane.example:8181",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert preflight.call_args.kwargs == {
+        "base_url": "http://control-plane.example:8181"
+    }
+    assert build_cli_plan.call_args.kwargs["endpoint"] == (
+        "http://control-plane.example:8181"
+    )
 
 
 def test_run_provisions_before_executing_workflow(monkeypatch, tmp_path: Path) -> None:
