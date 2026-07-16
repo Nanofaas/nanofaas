@@ -47,3 +47,21 @@ def test_operator_docs_describe_the_adapted_tui_surface() -> None:
             "image-publishing menu",
         ):
             assert removed_menu not in text
+
+
+def test_operator_docs_explain_tui_provider_setup_entries() -> None:
+    paths = (
+        ROOT / "tools" / "controlplane" / "README.md",
+        ROOT / "docs" / "quickstart.md",
+    )
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert "Azure (setup required)" in text
+        assert "Proxmox (setup required)" in text
+        assert ".yaml.example" in text
+        assert "never executed" in text
+        assert "azure.yaml" in text
+        assert "proxmox.yaml" in text
+        assert "provider credentials and configuration" in text
+        assert "writes no files" in text
+        assert "starts no workflow" in text

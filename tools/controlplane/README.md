@@ -54,6 +54,13 @@ remain in that shared frame, while runs open the live workflow dashboard with
 phase state, nested verification work, errors, and command logs. Press `l` to
 hide or restore the log panel while a workflow is running.
 
+When only the provider templates are present, the environment picker still
+shows **Azure (setup required)** and **Proxmox (setup required)**. Selecting
+either entry displays setup guidance, writes no files, and starts no workflow.
+The `.yaml.example` files are templates and are never executed: copy
+`azure.yaml.example` to `azure.yaml` or `proxmox.yaml.example` to
+`proxmox.yaml`, then fill in the provider credentials and configuration.
+
 ## Commands
 
 | Command | Purpose |
@@ -96,7 +103,9 @@ and synchronizes the repository. Managed VMs are deleted even after a failure;
 pass `--keep` when they must remain available for inspection. External hosts are
 never deleted. Remote commands run from `<home>/nanofaas`.
 
-Copy the Azure or Proxmox example before use and fill in provider values.
+Copy the Azure or Proxmox example before CLI use and fill in provider values;
+the concrete `azure.yaml` or `proxmox.yaml` file is the executable environment
+configuration, never its `.yaml.example` template.
 Proxmox reads its password from the environment variable named by `password_env`.
 
 ## Load testing
