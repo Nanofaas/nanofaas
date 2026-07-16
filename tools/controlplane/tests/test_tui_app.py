@@ -1,8 +1,131 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
+import pytest
+from rich.table import Table
+
+import controlplane_tool.tui.app as tui_app
 from controlplane_tool.tui import NanofaasTUI
+
+
+class ScriptedChooser:
+    def __init__(self, answers: Iterator[str]) -> None:
+        self._answers = answers
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def __call__(self, message: str, **kwargs: Any) -> str:
+        self.calls.append((message, kwargs))
+        return next(self._answers)
+
+
+class FakeWorkflow:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.tasks = [SimpleNamespace(task_id="prepare", title="Prepare environment")]
+        self.phase_titles = ["Prepare environment", "Run checks"]
+        self.keep_infrastructure = False
+        self.run_calls = 0
+        self._error = error
+
+    def run(self) -> None:
+        self.run_calls += 1
+        if self._error is not None:
+            raise self._error
+
+
+class RecordingController:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.calls: list[dict[str, object]] = []
+        self._error = error
+
+    def run_live_workflow(self, **kwargs: object) -> None:
+        self.calls.append(kwargs)
+        action = kwargs["action"]
+        assert callable(action)
+        try:
+            action(None, None)
+        except Exception:
+            if self._error is None:
+                raise
+        if self._error is not None:
+            raise self._error
+
+
+class RecordingConsole:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, object | None]] = []
+
+    def clear(self) -> None:
+        self.calls.append(("clear", None))
+
+    def print(self, renderable: object) -> None:
+        self.calls.append(("print", renderable))
+
+
+class RecordingInput:
+    def __init__(self, *, tty: bool) -> None:
+        self.tty = tty
+        self.read_calls: list[int] = []
+
+    def isatty(self) -> bool:
+        return self.tty
+
+    def read(self, size: int = -1) -> str:
+        self.read_calls.append(size)
+        return "\n"
+
+
+def _install_paths(monkeypatch: pytest.MonkeyPatch, root: Path) -> Path:
+    environment_dir = root / "environments"
+    environment_dir.mkdir(parents=True)
+    environment_path = environment_dir / "local.yaml"
+    environment_path.write_text("provider: local\n", encoding="utf-8")
+    (root / "scenarios-v2").mkdir()
+    monkeypatch.setattr(
+        tui_app,
+        "default_tool_paths",
+        lambda: SimpleNamespace(tool_root=root, workspace_root=root),
+    )
+    return environment_path
+
+
+def _install_workflow_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    environment_path: Path,
+    workflow: FakeWorkflow,
+    scenario_kind: str = "cli",
+    provider: str = "local",
+    calls: list[tuple[Any, ...]] | None = None,
+) -> None:
+    call_log = calls if calls is not None else []
+    scenario = SimpleNamespace(workflow=scenario_kind)
+    environment = SimpleNamespace(provider=provider)
+
+    def load_scenario(path: Path) -> object:
+        call_log.append(("scenario", path))
+        return scenario
+
+    def load_environment(path: Path) -> object:
+        call_log.append(("environment", path))
+        assert path == environment_path
+        return environment
+
+    def build_workflow(
+        loaded_scenario: object,
+        loaded_environment: object,
+        **kwargs: object,
+    ) -> FakeWorkflow:
+        call_log.append(("workflow", loaded_scenario, loaded_environment, kwargs))
+        return workflow
+
+    monkeypatch.setattr(tui_app, "_scenario", load_scenario)
+    monkeypatch.setattr(tui_app, "_environment", load_environment)
+    monkeypatch.setattr(tui_app, "_workflow", build_workflow)
 
 
 def test_tui_exits_from_the_main_menu() -> None:
@@ -18,13 +141,267 @@ def test_tui_exits_from_the_main_menu() -> None:
 
 
 def test_tui_dispatches_a_stable_scenario_filename() -> None:
-    answers: list[str] = ["cli", "validate", "back", "exit"]
+    answers = iter(["cli", "validate", "back", "exit"])
     dispatched: list[str] = []
 
     def choose(message: str, **kwargs: object) -> str:
-        return answers.pop(0)
+        return next(answers)
 
     dispatch: Callable[[str], None] = dispatched.append
     NanofaasTUI(choose=choose, dispatch_scenario=dispatch).run()
 
     assert dispatched == ["cli.yaml"]
+
+
+def test_plan_uses_cli_helpers_and_renders_without_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    helper_calls: list[tuple[Any, ...]] = []
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+        calls=helper_calls,
+    )
+    frame = object()
+    frame_calls: list[dict[str, object]] = []
+
+    def render_frame(**kwargs: object) -> object:
+        frame_calls.append(kwargs)
+        return frame
+
+    monkeypatch.setattr(tui_app, "render_screen_frame", render_frame)
+    console = RecordingConsole()
+    input_stream = RecordingInput(tty=False)
+    chooser = ScriptedChooser(iter([str(environment_path), "plan"]))
+
+    NanofaasTUI(
+        choose=chooser,
+        controller=RecordingController(),
+        console=console,
+        input_stream=input_stream,
+    )._workflow_menu("cli.yaml")
+
+    assert [call[0] for call in helper_calls] == ["scenario", "environment", "workflow"]
+    assert helper_calls[0] == ("scenario", tmp_path / "scenarios-v2" / "cli.yaml")
+    assert workflow.run_calls == 0
+    assert len(frame_calls) == 1
+    assert frame_calls[0]["title"] == "CLI"
+    assert isinstance(frame_calls[0]["body"], Table)
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+    assert input_stream.read_calls == []
+
+
+def test_static_plan_acknowledges_only_for_an_input_tty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=FakeWorkflow(),
+    )
+    frame = object()
+    monkeypatch.setattr(tui_app, "render_screen_frame", lambda **kwargs: frame)
+    console = RecordingConsole()
+    input_stream = RecordingInput(tty=True)
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "plan"])),
+        controller=RecordingController(),
+        console=console,
+        input_stream=input_stream,
+    )._workflow_menu("cli.yaml")
+
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+    assert input_stream.read_calls == [1]
+
+
+def test_run_passes_phase_titles_and_exact_summary_to_live_controller(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+    )
+    controller = RecordingController()
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "run", "cleanup"])),
+        controller=controller,
+    )._workflow_menu("cli.yaml")
+
+    assert len(controller.calls) == 1
+    assert controller.calls[0]["title"] == "CLI"
+    assert controller.calls[0]["planned_steps"] == workflow.phase_titles
+    assert controller.calls[0]["summary_lines"] == [
+        "Scenario: cli.yaml",
+        "Environment: local.yaml",
+        "Provision: no",
+        "Cleanup: cleanup",
+    ]
+    assert workflow.run_calls == 1
+
+
+def test_loadtest_resolves_urls_before_building_workflow(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    calls: list[tuple[Any, ...]] = []
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+        scenario_kind="loadtest",
+        calls=calls,
+    )
+
+    def resolve(environment: object, **kwargs: object) -> tuple[str, str]:
+        calls.append(("resolve", environment, kwargs))
+        return "http://control-plane", "http://prometheus"
+
+    monkeypatch.setattr(tui_app, "resolve_loadtest_urls", resolve)
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "plan"])),
+        controller=RecordingController(),
+        console=RecordingConsole(),
+        input_stream=RecordingInput(tty=False),
+    )._workflow_menu("loadtest.yaml")
+
+    call_names = [call[0] for call in calls]
+    assert call_names == ["scenario", "environment", "resolve", "workflow"]
+    assert calls[2][2] == {"dry_run": True}
+    assert calls[3][3]["control_plane_url"] == "http://control-plane"
+    assert calls[3][3]["prometheus_url"] == "http://prometheus"
+
+
+def test_local_run_never_offers_or_enters_provisioning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=FakeWorkflow(),
+    )
+    provision_calls: list[object] = []
+    monkeypatch.setattr(
+        tui_app,
+        "provision_environment",
+        lambda *args, **kwargs: provision_calls.append((args, kwargs)),
+    )
+    chooser = ScriptedChooser(iter([str(environment_path), "run", "cleanup"]))
+
+    NanofaasTUI(choose=chooser, controller=RecordingController())._workflow_menu("cli.yaml")
+
+    assert "Provision environment?" not in [message for message, _ in chooser.calls]
+    assert provision_calls == []
+
+
+def test_non_local_run_enters_existing_provisioning_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+        provider="multipass",
+    )
+    lifecycle: list[tuple[Any, ...]] = []
+
+    @contextmanager
+    def provision(*args: object, **kwargs: object) -> Iterator[None]:
+        lifecycle.append(("enter", args, kwargs))
+        yield
+        lifecycle.append(("exit",))
+
+    monkeypatch.setattr(tui_app, "provision_environment", provision)
+
+    NanofaasTUI(
+        choose=ScriptedChooser(
+            iter([str(environment_path), "run", "provision", "cleanup"])
+        ),
+        controller=RecordingController(),
+    )._workflow_menu("cli.yaml")
+
+    assert [event[0] for event in lifecycle] == ["enter", "exit"]
+    assert workflow.run_calls == 1
+
+
+def test_keep_applies_to_provisioning_and_workflow_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+        provider="multipass",
+    )
+    provision_kwargs: list[dict[str, object]] = []
+
+    @contextmanager
+    def provision(*args: object, **kwargs: object) -> Iterator[None]:
+        provision_kwargs.append(kwargs)
+        yield
+
+    monkeypatch.setattr(tui_app, "provision_environment", provision)
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "run", "provision", "keep"])),
+        controller=RecordingController(),
+    )._workflow_menu("cli.yaml")
+
+    assert provision_kwargs[0]["keep"] is True
+    assert workflow.keep_infrastructure is True
+
+
+def test_workflow_failure_returns_to_the_previous_submenu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow(error=RuntimeError("workflow failed"))
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+    )
+    chooser = ScriptedChooser(
+        iter(["cli", "validate", str(environment_path), "run", "cleanup", "back", "exit"])
+    )
+
+    NanofaasTUI(choose=chooser, controller=RecordingController()).run()
+
+    assert [message for message, _ in chooser.calls].count("CLI") == 2
+    assert chooser.calls[-1][0] == "What would you like to do?"
+
+
+def test_environment_selection_offers_only_committed_yaml_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    environment_dir = environment_path.parent
+    (environment_dir / "azure.yaml").write_text("provider: azure\n", encoding="utf-8")
+    (environment_dir / "azure.yaml.example").write_text("example\n", encoding="utf-8")
+    (environment_dir / "proxmox.example.yaml").write_text("example\n", encoding="utf-8")
+    chooser = ScriptedChooser(iter([str(environment_path)]))
+
+    selected = NanofaasTUI(choose=chooser)._select_environment()
+
+    assert selected == environment_path
+    offered = chooser.calls[0][1]["choices"]
+    assert [choice.value for choice in offered] == [
+        str(environment_dir / "azure.yaml"),
+        str(environment_path),
+    ]
+    assert all(".example" not in choice.value for choice in offered)
