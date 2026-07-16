@@ -1,19 +1,30 @@
-from controlplane_tool.tui.app import NanofaasTUI
-from controlplane_tool.workspace.paths import default_tool_paths
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from controlplane_tool.tui import NanofaasTUI
 
 
-def test_tui_plans_the_same_scenario_and_environment_as_cli(capsys) -> None:
-    tool_root = default_tool_paths().tool_root
-    answers = iter(
-        [
-            str(tool_root / "scenarios-v2/validate-k8s.yaml"),
-            str(tool_root / "environments/local.yaml"),
-            "plan",
-        ]
-    )
+def test_tui_exits_from_the_main_menu() -> None:
+    calls: list[str] = []
 
-    NanofaasTUI(choose=lambda message, choices: next(answers)).run()
+    def choose(message: str, **kwargs: object) -> str:
+        calls.append(message)
+        return "exit"
 
-    output = capsys.readouterr().out
-    assert "images.build.word-stats-java" in output
-    assert "resources.inspect.k8s.word-stats-java" in output
+    NanofaasTUI(choose=choose).run()
+
+    assert calls == ["What would you like to do?"]
+
+
+def test_tui_dispatches_a_stable_scenario_filename() -> None:
+    answers: list[str] = ["cli", "validate", "back", "exit"]
+    dispatched: list[str] = []
+
+    def choose(message: str, **kwargs: object) -> str:
+        return answers.pop(0)
+
+    dispatch: Callable[[str], None] = dispatched.append
+    NanofaasTUI(choose=choose, dispatch_scenario=dispatch).run()
+
+    assert dispatched == ["cli.yaml"]
