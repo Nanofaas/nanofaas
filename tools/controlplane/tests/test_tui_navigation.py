@@ -105,16 +105,24 @@ def test_keyboard_interrupt_at_main_exits_navigation_cleanly() -> None:
 
 
 @pytest.mark.parametrize("section", ["validation", "cli", "loadtest", "tools"])
-def test_keyboard_interrupt_in_each_submenu_returns_to_main(section: str) -> None:
-    chooser = ScriptedChooser(iter([section, KeyboardInterrupt, "exit"]))
+def test_keyboard_interrupt_in_each_submenu_exits_navigation(section: str) -> None:
+    chooser = ScriptedChooser(iter([section, KeyboardInterrupt]))
 
     NanofaasTUI(choose=chooser).run()
 
     assert [message for message, _ in chooser.calls] == [
         "What would you like to do?",
         NanofaasTUI.SECTION_TITLES[section],
-        "What would you like to do?",
     ]
+
+
+@pytest.mark.parametrize("section", ["validation", "cli", "loadtest", "tools"])
+def test_each_submenu_opts_escape_into_back_navigation(section: str) -> None:
+    chooser = ScriptedChooser(iter([section, "back", "exit"]))
+
+    NanofaasTUI(choose=chooser).run()
+
+    assert chooser.calls[1][1]["escape_value"] == "back"
 
 
 def test_navigation_does_not_restore_old_aliases() -> None:

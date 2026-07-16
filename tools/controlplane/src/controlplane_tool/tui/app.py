@@ -120,22 +120,19 @@ class NanofaasTUI:
         self._input_stream = sys.stdin if input_stream is None else input_stream
 
     def run(self) -> None:
-        while True:
-            try:
+        try:
+            while True:
                 section = self._choose(
                     "What would you like to do?",
                     choices=self.MAIN_MENU,
                     title="Main",
                     breadcrumb="Main",
                 )
-            except KeyboardInterrupt:
-                return
-            if section == "exit":
-                return
-            try:
+                if section == "exit":
+                    return
                 self._dispatch_section(section)
-            except KeyboardInterrupt:
-                continue
+        except KeyboardInterrupt:
+            return
 
     def _dispatch_section(self, section: str) -> None:
         menu = self.SECTION_MENUS.get(section)
@@ -148,6 +145,7 @@ class NanofaasTUI:
                 title,
                 choices=menu,
                 include_back=True,
+                escape_value="back",
                 title=title,
                 breadcrumb=f"Main / {title}",
             )
@@ -169,6 +167,7 @@ class NanofaasTUI:
                     for name in scenario_names
                 ],
                 include_back=True,
+                escape_value="back",
                 title="Inspect scenario",
                 breadcrumb="Main / Tools / Inspect scenario",
             )
@@ -195,7 +194,7 @@ class NanofaasTUI:
                 body=body,
             )
 
-    def _select_environment(self) -> Path:
+    def _select_environment(self) -> Path | None:
         environment_dir = default_tool_paths().tool_root / "environments"
         environment_paths = [
             path
@@ -211,33 +210,91 @@ class NanofaasTUI:
         selected = self._choose(
             "Environment",
             choices=choices,
+            include_back=True,
+            escape_value="back",
             title="Environment",
             breadcrumb="Main / Environment",
         )
+        if selected == "back":
+            return None
         return Path(selected)
 
     def _workflow_menu(self, scenario_name: str) -> None:
         paths = default_tool_paths()
         scenario_path = paths.tool_root / "scenarios-v2" / scenario_name
-        environment_path = self._select_environment()
         title = _SCENARIO_TITLES[scenario_name]
-        action = self._choose(
-            "Action",
-            choices=_ACTION_CHOICES,
-            title=title,
-            breadcrumb=f"Main / {title}",
-        )
-        try:
-            scenario = _scenario(scenario_path)
-            environment = _environment(environment_path)
-        except Exception as exc:
-            self._show_static(
-                title="Configuration error",
-                breadcrumb=f"Main / {title}",
-                body=str(exc),
-            )
-            return
+        state = "environment"
+        environment_path: Path | None = None
+        scenario: Any = None
+        environment: Any = None
+        provision = False
 
+        while True:
+            if state == "environment":
+                environment_path = self._select_environment()
+                if environment_path is None:
+                    return
+                state = "action"
+                continue
+
+            if state == "action":
+                action = self._choose(
+                    "Action",
+                    choices=_ACTION_CHOICES,
+                    include_back=True,
+                    escape_value="back",
+                    title=title,
+                    breadcrumb=f"Main / {title}",
+                )
+                if action == "back":
+                    state = "environment"
+                    continue
+                try:
+                    scenario = _scenario(scenario_path)
+                    environment = _environment(environment_path)
+                except Exception as exc:
+                    self._show_static(
+                        title="Configuration error",
+                        breadcrumb=f"Main / {title}",
+                        body=str(exc),
+                    )
+                    return
+                if action == "plan":
+                    break
+                state = "cleanup" if environment.provider == "local" else "provision"
+                continue
+
+            if state == "provision":
+                provision_choice = self._choose(
+                    "Provision environment?",
+                    choices=_PROVISION_CHOICES,
+                    include_back=True,
+                    escape_value="back",
+                    title=title,
+                    breadcrumb=f"Main / {title}",
+                )
+                if provision_choice == "back":
+                    state = "action"
+                    continue
+                provision = provision_choice == "provision"
+                state = "cleanup"
+                continue
+
+            cleanup_choice = self._choose(
+                "Cleanup policy",
+                choices=_CLEANUP_CHOICES,
+                include_back=True,
+                escape_value="back",
+                title=title,
+                breadcrumb=f"Main / {title}",
+            )
+            if cleanup_choice == "back":
+                state = "action" if environment.provider == "local" else "provision"
+                continue
+            keep = cleanup_choice == "keep"
+            break
+
+        assert environment_path is not None
         if action == "plan":
             try:
                 workflow = self._build_workflow(
@@ -254,21 +311,6 @@ class NanofaasTUI:
                 return
             self._render_plan(title=title, workflow=workflow)
             return
-
-        provision = False
-        if environment.provider != "local":
-            provision = self._choose(
-                "Provision environment?",
-                choices=_PROVISION_CHOICES,
-                title=title,
-                breadcrumb=f"Main / {title}",
-            ) == "provision"
-        keep = self._choose(
-            "Cleanup policy",
-            choices=_CLEANUP_CHOICES,
-            title=title,
-            breadcrumb=f"Main / {title}",
-        ) == "keep"
 
         try:
             preview = self._build_workflow(
