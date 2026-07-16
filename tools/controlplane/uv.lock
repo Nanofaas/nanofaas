@@ -326,6 +326,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "questionary" },
     { name = "rich" },
+    { name = "tui-toolkit" },
     { name = "typer" },
     { name = "workflow-tasks" },
 ]
@@ -346,6 +347,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "questionary", specifier = ">=2.1.1" },
     { name = "rich", specifier = ">=13.8" },
+    { name = "tui-toolkit", editable = "../tui-toolkit" },
     { name = "typer", specifier = ">=0.12.5" },
     { name = "workflow-tasks", editable = "../workflow-tasks" },
 ]
@@ -1067,6 +1069,34 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/8c/25/f1540879c8815387980e56f973e54605bd924612399ace31487f7444171c/stdlib_list-0.12.0.tar.gz", hash = "sha256:517824f27ee89e591d8ae7c1dd9ff34f672eae50ee886ea31bb8816d77535675", size = 60923, upload-time = "2025-10-24T19:21:22.849Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/3d/2970b27a11ae17fb2d353e7a179763a2fe6f37d6d2a9f4d40104a2f132e9/stdlib_list-0.12.0-py3-none-any.whl", hash = "sha256:df2d11e97f53812a1756fb5510393a11e3b389ebd9239dc831c7f349957f62f2", size = 87615, upload-time = "2025-10-24T19:21:20.619Z" },
+]
+
+[[package]]
+name = "tui-toolkit"
+version = "0.1.0"
+source = { editable = "../tui-toolkit" }
+dependencies = [
+    { name = "prompt-toolkit" },
+    { name = "questionary" },
+    { name = "rich" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "prompt-toolkit", specifier = ">=3.0" },
+    { name = "questionary", specifier = ">=2.1.1" },
+    { name = "rich", specifier = ">=13.8" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.39.3" },
+    { name = "grimp", specifier = ">=3.14" },
+    { name = "import-linter", specifier = ">=2.11" },
+    { name = "pydeps", specifier = ">=3.0.6" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.15.12" },
 ]
 
 [[package]]

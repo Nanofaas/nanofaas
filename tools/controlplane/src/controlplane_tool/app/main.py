@@ -6,6 +6,7 @@ import typer
 from rich.traceback import install as install_rich_tracebacks
 
 from controlplane_tool.cli.product import install_product_commands
+from controlplane_tool.tui.setup import setup_ui
 
 app = typer.Typer(
     help="Control plane orchestration product for building, test, and reporting."
@@ -16,6 +17,7 @@ app = typer.Typer(
 def tui() -> None:
     from controlplane_tool.tui.app import NanofaasTUI
 
+    setup_ui()
     NanofaasTUI().run()
 
 
@@ -23,6 +25,7 @@ install_product_commands(app)
 
 
 def main() -> None:
+    setup_ui()
     install_rich_tracebacks(show_locals=False)
     # No arguments → launch the interactive Rich TUI
     if len(sys.argv) == 1:
