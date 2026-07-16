@@ -217,16 +217,16 @@ class NanofaasTUI:
             environment_paths = [
                 path
                 for path in sorted(environment_dir.glob("*.yaml"))
-                if ".example" not in path.name
+                if path.is_file() and ".example" not in path.name
             ]
             choices = [
                 Choice(path.stem, str(path), f"Use {path.name}.")
                 for path in environment_paths
             ]
             for provider, (label, template_name, target_name) in _PROVIDER_SETUP.items():
-                if (environment_dir / template_name).exists() and not (
+                if (environment_dir / template_name).is_file() and not (
                     environment_dir / target_name
-                ).exists():
+                ).is_file():
                     choices.append(
                         Choice(
                             f"{label} (setup required)",
