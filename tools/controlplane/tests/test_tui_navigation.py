@@ -96,15 +96,12 @@ def test_back_from_each_submenu_returns_to_main(section: str) -> None:
     ]
 
 
-def test_keyboard_interrupt_at_main_returns_to_main() -> None:
-    chooser = ScriptedChooser(iter([KeyboardInterrupt, "exit"]))
+def test_keyboard_interrupt_at_main_exits_navigation_cleanly() -> None:
+    chooser = ScriptedChooser(iter([KeyboardInterrupt]))
 
     NanofaasTUI(choose=chooser).run()
 
-    assert [message for message, _ in chooser.calls] == [
-        "What would you like to do?",
-        "What would you like to do?",
-    ]
+    assert [message for message, _ in chooser.calls] == ["What would you like to do?"]
 
 
 @pytest.mark.parametrize("section", ["validation", "cli", "loadtest", "tools"])

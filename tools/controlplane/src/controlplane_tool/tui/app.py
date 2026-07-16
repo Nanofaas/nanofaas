@@ -94,8 +94,11 @@ class NanofaasTUI:
                     title="Main",
                     breadcrumb="Main",
                 )
-                if section == "exit":
-                    return
+            except KeyboardInterrupt:
+                return
+            if section == "exit":
+                return
+            try:
                 self._dispatch_section(section)
             except KeyboardInterrupt:
                 continue
