@@ -43,6 +43,17 @@ The interactive UI uses exactly the same plan/run implementation:
 scripts/controlplane.sh tui
 ```
 
+The adapted TUI groups the four supported scenarios under **Validation**, **CLI**,
+and **Load Testing**; **Tools** provides validated scenario inspection and the
+same Docker/SSH prerequisite check as `doctor`. After choosing a workflow, select
+an environment and whether to plan or run it. Non-local runs also ask whether to
+provision the environment and whether cleanup should keep the infrastructure.
+
+Every menu and result view keeps one invariant branded header at the top. Plans
+remain in that shared frame, while runs open the live workflow dashboard with
+phase state, nested verification work, errors, and command logs. Press `l` to
+hide or restore the log panel while a workflow is running.
+
 ## Commands
 
 | Command | Purpose |

@@ -27,3 +27,23 @@ def test_launcher_is_a_locked_thin_wrapper() -> None:
     script = (ROOT / "scripts" / "controlplane.sh").read_text(encoding="utf-8")
 
     assert "uv run --project tools/controlplane --locked controlplane-tool" in script
+
+
+def test_operator_docs_describe_the_adapted_tui_surface() -> None:
+    paths = (ROOT / "tools" / "controlplane" / "README.md", ROOT / "docs" / "quickstart.md")
+    text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "scripts/controlplane.sh tui" in text
+    for section in ("Validation", "CLI", "Load Testing", "Tools"):
+        assert section in text
+    assert "branded header" in text
+    assert "live workflow" in text
+    assert "`l`" in text
+    for removed_menu in (
+        "Build menu",
+        "Environment menu",
+        "Catalog menu",
+        "saved-profile menu",
+        "image-publishing menu",
+    ):
+        assert removed_menu not in text

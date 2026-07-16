@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -180,6 +181,104 @@ def test_tui_dispatches_a_stable_scenario_filename() -> None:
     assert dispatched == ["cli.yaml"]
 
 
+def test_tools_inspect_selects_only_stable_scenarios_and_renders_validated_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_paths(monkeypatch, tmp_path)
+    loaded_paths: list[Path] = []
+
+    class Scenario:
+        def model_dump(self, *, by_alias: bool) -> dict[str, object]:
+            assert by_alias is True
+            return {"workflow": "validate", "x-function": "echo"}
+
+    def load_scenario(path: Path) -> Scenario:
+        loaded_paths.append(path)
+        return Scenario()
+
+    monkeypatch.setattr(tui_app, "_scenario", load_scenario)
+    frame = object()
+    frame_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tui_app,
+        "render_screen_frame",
+        lambda **kwargs: frame_calls.append(kwargs) or frame,
+    )
+    console = RecordingConsole()
+    chooser = ScriptedChooser(iter(["inspect", "validate-container.yaml", "back"]))
+
+    NanofaasTUI(
+        choose=chooser,
+        console=console,
+        input_stream=RecordingInput(tty=False),
+    )._dispatch_section("tools")
+
+    scenario_choices = chooser.calls[1][1]["choices"]
+    assert [choice.value for choice in scenario_choices] == [
+        "validate-container.yaml",
+        "validate-k8s.yaml",
+        "cli.yaml",
+        "loadtest.yaml",
+    ]
+    assert loaded_paths == [tmp_path / "scenarios-v2" / "validate-container.yaml"]
+    assert json.loads(str(frame_calls[0]["body"])) == {
+        "workflow": "validate",
+        "x-function": "echo",
+    }
+    assert frame_calls[0]["title"] == "Inspect scenario"
+    assert frame_calls[0]["breadcrumb"] == "Main / Tools / Inspect scenario"
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+
+
+@pytest.mark.parametrize(
+    ("available", "expected"),
+    [
+        ({"docker", "ssh"}, "ok"),
+        (set(), "missing executables: docker, ssh"),
+    ],
+)
+def test_tools_doctor_reuses_cli_prerequisites_inside_shared_chrome(
+    monkeypatch: pytest.MonkeyPatch,
+    available: set[str],
+    expected: str,
+) -> None:
+    checked: list[str] = []
+
+    def which(name: str) -> str | None:
+        checked.append(name)
+        return f"/usr/bin/{name}" if name in available else None
+
+    monkeypatch.setattr(tui_app.shutil, "which", which)
+    frame = object()
+    frame_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tui_app,
+        "render_screen_frame",
+        lambda **kwargs: frame_calls.append(kwargs) or frame,
+    )
+    console = RecordingConsole()
+    input_stream = RecordingInput(tty=True)
+    chooser = ScriptedChooser(iter(["doctor", "back"]))
+
+    NanofaasTUI(
+        choose=chooser,
+        console=console,
+        input_stream=input_stream,
+    )._dispatch_section("tools")
+
+    assert checked == ["docker", "ssh"]
+    assert frame_calls == [
+        {
+            "title": "Doctor",
+            "body": expected,
+            "breadcrumb": "Main / Tools / Doctor",
+            "footer_hint": "Press Enter to continue",
+        }
+    ]
+    assert input_stream.read_calls == [1]
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+
+
 def test_plan_uses_cli_helpers_and_renders_without_running(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -251,6 +350,73 @@ def test_static_plan_acknowledges_only_for_an_input_tty(
     assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
     assert frame_calls[0]["footer_hint"] == "Press Enter to continue"
     assert input_stream.read_calls == [1]
+
+
+def test_configuration_error_uses_the_shared_branded_static_view(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        tui_app,
+        "_scenario",
+        lambda _path: (_ for _ in ()).throw(ValueError("invalid scenario")),
+    )
+    frame = object()
+    frame_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tui_app,
+        "render_screen_frame",
+        lambda **kwargs: frame_calls.append(kwargs) or frame,
+    )
+    console = RecordingConsole()
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "plan"])),
+        console=console,
+        input_stream=RecordingInput(tty=False),
+    )._workflow_menu("cli.yaml")
+
+    assert frame_calls[0]["title"] == "Configuration error"
+    assert frame_calls[0]["breadcrumb"] == "Main / CLI"
+    assert frame_calls[0]["body"] == "invalid scenario"
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+
+
+def test_run_preview_error_uses_static_view_without_starting_live_dashboard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=FakeWorkflow(),
+    )
+    monkeypatch.setattr(
+        tui_app,
+        "_workflow",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("preview failed")),
+    )
+    frame = object()
+    frame_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tui_app,
+        "render_screen_frame",
+        lambda **kwargs: frame_calls.append(kwargs) or frame,
+    )
+    console = RecordingConsole()
+    controller = RecordingController()
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "run", "cleanup"])),
+        controller=controller,
+        console=console,
+        input_stream=RecordingInput(tty=False),
+    )._workflow_menu("cli.yaml")
+
+    assert frame_calls[0]["title"] == "Preview error"
+    assert frame_calls[0]["body"] == "preview failed"
+    assert controller.calls == []
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
 
 
 def test_run_passes_phase_titles_and_exact_summary_to_live_controller(
