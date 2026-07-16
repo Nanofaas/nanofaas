@@ -127,7 +127,7 @@ def test_non_tty_questionary_cancellation_stays_indistinguishable(monkeypatch):
     monkeypatch.setattr("sys.stdout.isatty", lambda: False)
 
     class _Q:
-        result = None
+        result: str | None = None
 
         def ask(self):
             return self.result
