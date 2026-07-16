@@ -56,12 +56,24 @@ def test_operator_docs_explain_tui_provider_setup_entries() -> None:
     )
     for path in paths:
         text = path.read_text(encoding="utf-8")
-        assert "Azure (setup required)" in text
-        assert "Proxmox (setup required)" in text
-        assert ".yaml.example" in text
-        assert "never executed" in text
-        assert "azure.yaml" in text
-        assert "proxmox.yaml" in text
-        assert "provider credentials and configuration" in text
-        assert "writes no files" in text
-        assert "starts no workflow" in text
+        marker = "When only the provider templates are present"
+        assert marker in text
+        setup_block = marker + text.split(marker, maxsplit=1)[1].split("\n\n", maxsplit=1)[0]
+
+        for phrase in (
+            "Azure (setup required)",
+            "Proxmox (setup required)",
+            ".yaml.example",
+            "azure.yaml",
+            "proxmox.yaml",
+            "The TUI never loads or executes",
+            "provider values and configuration",
+            "external authentication",
+            "az login",
+            "password_env",
+            "environment variable",
+            "Do not store secrets in YAML",
+            "writes no files",
+            "starts no workflow",
+        ):
+            assert phrase in setup_block
