@@ -22,13 +22,16 @@ from controlplane_tool.tui.workflow_controller import TuiWorkflowController
 
 
 class ScriptedChooser:
-    def __init__(self, answers: Iterator[str]) -> None:
+    def __init__(self, answers: Iterator[str | type[KeyboardInterrupt]]) -> None:
         self._answers = answers
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     def __call__(self, message: str, **kwargs: Any) -> str:
         self.calls.append((message, kwargs))
-        return next(self._answers)
+        answer = next(self._answers)
+        if answer is KeyboardInterrupt:
+            raise KeyboardInterrupt
+        return answer
 
 
 class FakeWorkflow:
@@ -791,3 +794,143 @@ def test_environment_selection_offers_only_available_executable_yaml_configs(
         str(environment_path),
     ]
     assert all(".example" not in choice.value for choice in offered)
+
+
+@pytest.mark.parametrize(
+    ("provider", "answers", "expected_messages"),
+    [
+        ("local", ["back"], ["Environment"]),
+        (
+            "local",
+            ["environment", "back", "back"],
+            ["Environment", "Action", "Environment"],
+        ),
+        (
+            "multipass",
+            ["environment", "run", "back", "back", "back"],
+            ["Environment", "Action", "Provision environment?", "Action", "Environment"],
+        ),
+        (
+            "multipass",
+            ["environment", "run", "existing", "back", "back", "back", "back"],
+            [
+                "Environment",
+                "Action",
+                "Provision environment?",
+                "Cleanup policy",
+                "Provision environment?",
+                "Action",
+                "Environment",
+            ],
+        ),
+        (
+            "local",
+            ["environment", "run", "back", "back", "back"],
+            ["Environment", "Action", "Cleanup policy", "Action", "Environment"],
+        ),
+    ],
+    ids=[
+        "environment-to-scenario",
+        "action-to-environment",
+        "provision-to-action",
+        "nonlocal-cleanup-to-provision",
+        "local-cleanup-to-action",
+    ],
+)
+def test_workflow_back_navigation_returns_to_exact_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    provider: str,
+    answers: list[str],
+    expected_messages: list[str],
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=FakeWorkflow(),
+        provider=provider,
+    )
+    resolved_answers = iter(
+        str(environment_path) if answer == "environment" else answer for answer in answers
+    )
+    chooser = ScriptedChooser(resolved_answers)
+
+    NanofaasTUI(choose=chooser, controller=RecordingController())._workflow_menu("cli.yaml")
+
+    assert [message for message, _ in chooser.calls] == expected_messages
+    assert all(kwargs["include_back"] is True for _, kwargs in chooser.calls)
+    assert all(kwargs["escape_value"] == "back" for _, kwargs in chooser.calls)
+
+
+def test_environment_back_returns_to_the_scenario_submenu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_paths(monkeypatch, tmp_path)
+    chooser = ScriptedChooser(iter(["cli", "validate", "back", "back", "exit"]))
+
+    NanofaasTUI(choose=chooser).run()
+
+    assert [message for message, _ in chooser.calls] == [
+        "What would you like to do?",
+        "CLI",
+        "Environment",
+        "CLI",
+        "What would you like to do?",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("provider", "answers", "expected_messages"),
+    [
+        ("local", [KeyboardInterrupt], ["Environment"]),
+        ("local", ["environment", KeyboardInterrupt], ["Environment", "Action"]),
+        (
+            "multipass",
+            ["environment", "run", KeyboardInterrupt],
+            ["Environment", "Action", "Provision environment?"],
+        ),
+        (
+            "multipass",
+            ["environment", "run", "existing", KeyboardInterrupt],
+            ["Environment", "Action", "Provision environment?", "Cleanup policy"],
+        ),
+        (
+            "local",
+            ["environment", "run", KeyboardInterrupt],
+            ["Environment", "Action", "Cleanup policy"],
+        ),
+    ],
+    ids=["environment", "action", "provision", "nonlocal-cleanup", "local-cleanup"],
+)
+def test_ctrl_c_from_every_workflow_depth_propagates_to_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    provider: str,
+    answers: list[str | type[KeyboardInterrupt]],
+    expected_messages: list[str],
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=FakeWorkflow(),
+        provider=provider,
+    )
+    resolved_answers = iter([
+        "cli",
+        "validate",
+        *(
+            str(environment_path) if answer == "environment" else answer
+            for answer in answers
+        ),
+    ])
+    chooser = ScriptedChooser(resolved_answers)
+
+    NanofaasTUI(choose=chooser, controller=RecordingController()).run()
+
+    assert [message for message, _ in chooser.calls] == [
+        "What would you like to do?",
+        "CLI",
+        *expected_messages,
+    ]

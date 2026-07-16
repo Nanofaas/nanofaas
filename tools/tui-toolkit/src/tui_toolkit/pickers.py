@@ -37,6 +37,8 @@ class Choice:
 Separator = questionary.Separator
 
 _BACK_VALUE = "back"
+_ESCAPE_RESULT = object()
+_INTERRUPT_RESULT = object()
 _SELECTOR_MIN_WIDTH = 48
 _DESCRIPTION_MIN_WIDTH = 40
 _PANEL_WEIGHT = 1
@@ -167,9 +169,12 @@ def _build_select_application(
 
     @bindings.add(Keys.ControlQ, eager=True)
     @bindings.add(Keys.ControlC, eager=True)
+    def _interrupt(event):
+        event.app.exit(result=_INTERRUPT_RESULT)
+
     @bindings.add("escape", eager=True)
-    def _cancel(event):
-        event.app.exit(result=None)
+    def _escape(event):
+        event.app.exit(result=_ESCAPE_RESULT)
 
     @bindings.add(Keys.Down, eager=True)
     @bindings.add("j", eager=True)
@@ -346,11 +351,13 @@ def select(
     title: str | None = None,
     breadcrumb: str | None = None,
     footer_hint: str | None = None,
+    escape_value: str | None = None,
 ) -> str:
     """Interactive single-select picker with a description side panel.
 
     Falls back to questionary.select() when stdin or stdout is not a TTY.
-    Pressing Ctrl-C / Esc raises KeyboardInterrupt.
+    Ctrl-C always raises KeyboardInterrupt. Esc does too unless ``escape_value``
+    opts into returning a caller-defined navigation value.
     """
     if include_back:
         choices = _with_back(list(choices))
@@ -370,7 +377,11 @@ def select(
         default=default, title=title, breadcrumb=breadcrumb, footer_hint=footer_hint,
     )
     result = app.run()
-    if result is None:
+    if result is _ESCAPE_RESULT:
+        if escape_value is not None:
+            return escape_value
+        raise KeyboardInterrupt
+    if result is _INTERRUPT_RESULT or result is None:
         raise KeyboardInterrupt
     return result
 
