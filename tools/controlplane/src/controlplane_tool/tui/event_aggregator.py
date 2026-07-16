@@ -17,6 +17,8 @@ class WorkflowEventAggregator:
         planned_steps: list[str] | None = None,
         log_limit: int = 200,
     ) -> None:
+        if log_limit <= 0:
+            raise ValueError("log_limit must be positive")
         self.log_limit = log_limit
         self._phases: list[TuiPhaseSnapshot] = []
         self._phase_by_task_id: dict[str, TuiPhaseSnapshot] = {}
@@ -75,13 +77,19 @@ class WorkflowEventAggregator:
         status: WorkflowState = "success",
         detail: str = "",
     ) -> None:
+        finished_at = time.time()
+
+        def complete_phase(phase: TuiPhaseSnapshot) -> None:
+            if phase.status == "running":
+                phase.status = status
+                if detail:
+                    phase.detail = detail
+                phase.finished_at = finished_at
+            for child in phase.children:
+                complete_phase(child)
+
         for phase in self._phases:
-            if phase.status != "running":
-                continue
-            phase.status = status
-            if detail:
-                phase.detail = detail
-            phase.finished_at = time.time()
+            complete_phase(phase)
 
     def handle_event(self, event: WorkflowEvent) -> None:
         if event.kind == "log.line":
