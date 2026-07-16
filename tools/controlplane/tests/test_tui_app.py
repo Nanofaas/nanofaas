@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from io import StringIO
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from rich.console import Console
 from rich.table import Table
 from workflow_tasks import WorkflowEvent, bind_workflow_sink, step, workflow_log
 
@@ -188,9 +190,17 @@ def test_tools_inspect_selects_only_stable_scenarios_and_renders_validated_json(
     loaded_paths: list[Path] = []
 
     class Scenario:
-        def model_dump(self, *, by_alias: bool) -> dict[str, object]:
+        def model_dump_json(self, *, by_alias: bool, indent: int) -> str:
             assert by_alias is True
-            return {"workflow": "validate", "x-function": "echo"}
+            assert indent == 2
+            return json.dumps(
+                {
+                    "workflow": "validate",
+                    "x-function": "echo",
+                    "detail": "[/bold] literal [/]",
+                },
+                indent=indent,
+            )
 
     def load_scenario(path: Path) -> Scenario:
         loaded_paths.append(path)
@@ -224,6 +234,7 @@ def test_tools_inspect_selects_only_stable_scenarios_and_renders_validated_json(
     assert json.loads(str(frame_calls[0]["body"])) == {
         "workflow": "validate",
         "x-function": "echo",
+        "detail": "[/bold] literal [/]",
     }
     assert frame_calls[0]["title"] == "Inspect scenario"
     assert frame_calls[0]["breadcrumb"] == "Main / Tools / Inspect scenario"
@@ -242,13 +253,24 @@ def test_tools_doctor_reuses_cli_prerequisites_inside_shared_chrome(
     available: set[str],
     expected: str,
 ) -> None:
-    checked: list[str] = []
-
-    def which(name: str) -> str | None:
-        checked.append(name)
-        return f"/usr/bin/{name}" if name in available else None
-
-    monkeypatch.setattr(tui_app.shutil, "which", which)
+    missing = [name for name in ("docker", "ssh") if name not in available]
+    shared_check = MagicMock(return_value=missing)
+    monkeypatch.setattr(
+        tui_app,
+        "diagnostics",
+        SimpleNamespace(missing_executables=shared_check),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        tui_app,
+        "shutil",
+        SimpleNamespace(
+            which=lambda _name: (_ for _ in ()).throw(
+                AssertionError("TUI duplicated the executable check")
+            )
+        ),
+        raising=False,
+    )
     frame = object()
     frame_calls: list[dict[str, object]] = []
     monkeypatch.setattr(
@@ -266,17 +288,29 @@ def test_tools_doctor_reuses_cli_prerequisites_inside_shared_chrome(
         input_stream=input_stream,
     )._dispatch_section("tools")
 
-    assert checked == ["docker", "ssh"]
-    assert frame_calls == [
-        {
-            "title": "Doctor",
-            "body": expected,
-            "breadcrumb": "Main / Tools / Doctor",
-            "footer_hint": "Press Enter to continue",
-        }
-    ]
+    shared_check.assert_called_once_with()
+    assert len(frame_calls) == 1
+    assert str(frame_calls[0].pop("body")) == expected
+    assert frame_calls[0] == {
+        "title": "Doctor",
+        "breadcrumb": "Main / Tools / Doctor",
+        "footer_hint": "Press Enter to continue",
+    }
     assert input_stream.read_calls == [1]
     assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+
+
+def test_static_plain_text_is_rendered_literally_without_rich_markup() -> None:
+    output = StringIO()
+    console = Console(file=output, width=100, color_system=None)
+    body = "[/bold] literal [/]"
+
+    NanofaasTUI(
+        console=console,
+        input_stream=StringIO(),
+    )._show_static("Error", "Main / Error", body)
+
+    assert body in output.getvalue()
 
 
 def test_plan_uses_cli_helpers_and_renders_without_running(
@@ -378,7 +412,7 @@ def test_configuration_error_uses_the_shared_branded_static_view(
 
     assert frame_calls[0]["title"] == "Configuration error"
     assert frame_calls[0]["breadcrumb"] == "Main / CLI"
-    assert frame_calls[0]["body"] == "invalid scenario"
+    assert str(frame_calls[0]["body"]) == "invalid scenario"
     assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
 
 
@@ -414,7 +448,7 @@ def test_run_preview_error_uses_static_view_without_starting_live_dashboard(
     )._workflow_menu("cli.yaml")
 
     assert frame_calls[0]["title"] == "Preview error"
-    assert frame_calls[0]["body"] == "preview failed"
+    assert str(frame_calls[0]["body"]) == "preview failed"
     assert controller.calls == []
     assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
 

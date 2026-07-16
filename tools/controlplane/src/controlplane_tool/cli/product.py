@@ -5,7 +5,6 @@ import json
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
-import shutil
 import subprocess
 
 import typer
@@ -13,6 +12,7 @@ import yaml
 from workflow_tasks.loadtest.adapters import HttpPrometheusClient
 from workflow_tasks.workflow.context import bind_workflow_sink
 
+from controlplane_tool.cli import diagnostics
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from controlplane_tool.cli.execution import build_role_bindings, resolve_loadtest_urls
 from controlplane_tool.cli.progress import ConsoleProgressSink
@@ -337,7 +337,7 @@ def install_product_commands(app: typer.Typer) -> None:
 
     @app.command("doctor")
     def doctor_command() -> None:
-        missing = [name for name in ("docker", "ssh") if shutil.which(name) is None]
+        missing = diagnostics.missing_executables()
         if missing:
             raise typer.BadParameter(f"missing executables: {', '.join(missing)}")
         typer.echo("ok")

@@ -4,9 +4,12 @@ import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from contextlib import contextmanager
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from controlplane_tool.app.main import app
 from controlplane_tool.cli.product import _git_provenance, _slice, _workflow
+import controlplane_tool.cli.product as product_module
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
 from workflow_tasks.core.workflow import Workflow
 
@@ -26,6 +29,32 @@ def test_top_level_exposes_only_six_product_commands() -> None:
     assert result.exit_code == 0
     commands = {command.name for command in app.registered_commands}
     assert commands == {"run", "plan", "list", "inspect", "doctor", "tui"}
+
+
+def test_doctor_uses_shared_diagnostics(monkeypatch) -> None:
+    shared_check = MagicMock(return_value=["docker"])
+    monkeypatch.setattr(
+        product_module,
+        "diagnostics",
+        SimpleNamespace(missing_executables=shared_check),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        product_module,
+        "shutil",
+        SimpleNamespace(
+            which=lambda _name: (_ for _ in ()).throw(
+                AssertionError("CLI duplicated the executable check")
+            )
+        ),
+        raising=False,
+    )
+
+    result = CliRunner().invoke(app, ["doctor"])
+
+    assert result.exit_code != 0
+    assert "missing executables: docker" in result.output
+    shared_check.assert_called_once_with()
 
 
 def test_plan_builds_shared_validate_workflow() -> None:
