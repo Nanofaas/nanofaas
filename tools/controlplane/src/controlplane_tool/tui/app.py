@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import nullcontext
-import json
 from pathlib import Path
-import shutil
 import sys
 from typing import Any
 
 from rich.table import Table
+from rich.text import Text
 
+from controlplane_tool.cli import diagnostics
 from controlplane_tool.cli.execution import resolve_loadtest_urls
 from controlplane_tool.cli.product import _environment, _scenario, _workflow
 from controlplane_tool.cli.provisioning import provision_environment
@@ -178,7 +178,7 @@ class NanofaasTUI:
                 scenario = _scenario(
                     default_tool_paths().tool_root / "scenarios-v2" / selected
                 )
-                body = json.dumps(scenario.model_dump(by_alias=True), indent=2)
+                body = scenario.model_dump_json(by_alias=True, indent=2)
             except Exception as exc:
                 body = str(exc)
             self._show_static(
@@ -187,7 +187,7 @@ class NanofaasTUI:
                 body=body,
             )
         elif action == "doctor":
-            missing = [name for name in ("docker", "ssh") if shutil.which(name) is None]
+            missing = diagnostics.missing_executables()
             body = f"missing executables: {', '.join(missing)}" if missing else "ok"
             self._show_static(
                 title="Doctor",
@@ -361,10 +361,11 @@ class NanofaasTUI:
         )
         self._console.clear()
         try:
+            rendered_body = Text(body) if isinstance(body, str) else body
             self._console.print(
                 render_screen_frame(
                     title=title,
-                    body=body,
+                    body=rendered_body,
                     breadcrumb=breadcrumb,
                     footer_hint=(
                         "Press Enter to continue" if input_is_tty else "View complete"
