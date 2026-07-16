@@ -11,6 +11,7 @@ from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
 from controlplane_tool.tui.workflow import TuiWorkflowSink, WorkflowDashboard, WorkflowKeyListener
 from tui_toolkit.console import console as default_console
 from workflow_tasks import bind_workflow_sink
+from workflow_tasks.workflow.event_builders import build_task_event
 
 
 class TuiWorkflowController:
@@ -54,23 +55,31 @@ class TuiWorkflowController:
         ) as active_live:
             live = active_live
             refresh()
-            listener.start()
             try:
+                listener.start()
                 with bind_workflow_sink(sink):
                     try:
                         result = action(dashboard, sink)
                     except Exception as exc:
                         error = exc
                         dashboard.error_detail = traceback.format_exc(limit=12)
-                        if dashboard.steps:
-                            running = next(
-                                (index for index, step in enumerate(dashboard.steps, 1) if step.state == "running"),
-                                1,
+                        snapshot = aggregator.snapshot()
+                        phase = next(
+                            (candidate for candidate in snapshot.phases if candidate.status == "running"),
+                            snapshot.phases[0] if snapshot.phases else None,
+                        )
+                        sink.emit(
+                            build_task_event(
+                                kind="task.failed",
+                                task_id=phase.task_id if phase else "workflow.failure",
+                                parent_task_id=phase.parent_task_id if phase else None,
+                                title=phase.label if phase else "Workflow failed",
+                                detail=str(exc),
                             )
-                            dashboard.mark_step_failed(running, detail=str(exc))
+                        )
                     dashboard.footer_hint = "Press any key to continue"
                     refresh()
-                    if self.console.is_terminal:
+                    if listener.input_is_tty:
                         listener.wait_for_acknowledgment()
             finally:
                 listener.stop()
