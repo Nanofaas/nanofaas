@@ -94,6 +94,23 @@ _CLEANUP_CHOICES = [
     Choice("Cleanup", "cleanup", "Remove infrastructure created by the workflow."),
     Choice("Keep", "keep", "Keep infrastructure after the workflow finishes."),
 ]
+_PROVIDER_SETUP = {
+    "azure": ("Azure", "azure.yaml.example", "azure.yaml"),
+    "proxmox": ("Proxmox", "proxmox.yaml.example", "proxmox.yaml"),
+}
+_PROVIDER_GUIDANCE = {
+    "azure": (
+        "cp tools/controlplane/environments/azure.yaml.example "
+        "tools/controlplane/environments/azure.yaml\n\n"
+        "Set the Azure provider values and ssh_key_path, then run az login."
+    ),
+    "proxmox": (
+        "cp tools/controlplane/environments/proxmox.yaml.example "
+        "tools/controlplane/environments/proxmox.yaml\n\n"
+        "Set host, node, template_id, and ssh_key_path. The template's password_env "
+        "names PROXMOX_PASSWORD; export that environment variable."
+    ),
+}
 
 
 class NanofaasTUI:
@@ -196,28 +213,49 @@ class NanofaasTUI:
 
     def _select_environment(self) -> Path | None:
         environment_dir = default_tool_paths().tool_root / "environments"
-        environment_paths = [
-            path
-            for path in sorted(environment_dir.glob("*.yaml"))
-            if ".example" not in path.name
-        ]
-        if not environment_paths:
-            raise RuntimeError("at least one executable YAML environment is required")
-        choices = [
-            Choice(path.stem, str(path), f"Use {path.name}.")
-            for path in environment_paths
-        ]
-        selected = self._choose(
-            "Environment",
-            choices=choices,
-            include_back=True,
-            escape_value="back",
-            title="Environment",
-            breadcrumb="Main / Environment",
-        )
-        if selected == "back":
-            return None
-        return Path(selected)
+        while True:
+            environment_paths = [
+                path
+                for path in sorted(environment_dir.glob("*.yaml"))
+                if ".example" not in path.name
+            ]
+            choices = [
+                Choice(path.stem, str(path), f"Use {path.name}.")
+                for path in environment_paths
+            ]
+            for provider, (label, template_name, target_name) in _PROVIDER_SETUP.items():
+                if (environment_dir / template_name).exists() and not (
+                    environment_dir / target_name
+                ).exists():
+                    choices.append(
+                        Choice(
+                            f"{label} (setup required)",
+                            f"setup:{provider}",
+                            f"Configure {target_name} before use.",
+                        )
+                    )
+            if not choices:
+                raise RuntimeError("at least one YAML environment or template is required")
+
+            selected = self._choose(
+                "Environment",
+                choices=choices,
+                include_back=True,
+                escape_value="back",
+                title="Environment",
+                breadcrumb="Main / Environment",
+            )
+            if selected == "back":
+                return None
+            if selected.startswith("setup:"):
+                provider = selected.removeprefix("setup:")
+                self._show_static(
+                    title=f"{_PROVIDER_SETUP[provider][0]} setup required",
+                    breadcrumb="Main / Environment",
+                    body=_PROVIDER_GUIDANCE[provider],
+                )
+                continue
+            return Path(selected)
 
     def _workflow_menu(self, scenario_name: str) -> None:
         paths = default_tool_paths()
