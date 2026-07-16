@@ -16,6 +16,7 @@ from workflow_tasks import WorkflowEvent, bind_workflow_sink, step, workflow_log
 
 import controlplane_tool.tui.app as tui_app
 import controlplane_tool.tui.workflow_controller as workflow_controller_module
+from controlplane_tool.cli.preflight import PreflightError
 from controlplane_tool.tui import NanofaasTUI
 from controlplane_tool.tui.workflow import TuiWorkflowSink
 from controlplane_tool.tui.workflow_controller import TuiWorkflowController
@@ -159,6 +160,11 @@ def _install_workflow_helpers(
     monkeypatch.setattr(tui_app, "_scenario", load_scenario)
     monkeypatch.setattr(tui_app, "_environment", load_environment)
     monkeypatch.setattr(tui_app, "_workflow", build_workflow)
+    monkeypatch.setattr(
+        tui_app,
+        "preflight_control_plane",
+        lambda *_args, **_kwargs: None,
+    )
 
 
 def test_tui_exits_from_the_main_menu() -> None:
@@ -453,6 +459,58 @@ def test_run_preview_error_uses_static_view_without_starting_live_dashboard(
     assert frame_calls[0]["title"] == "Preview error"
     assert str(frame_calls[0]["body"]) == "preview failed"
     assert controller.calls == []
+    assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
+
+
+def test_failed_cli_preflight_uses_static_view_without_starting_workflow(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    workflow = FakeWorkflow()
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+    )
+    preflight_calls: list[tuple[object, object, str]] = []
+
+    def fail_preflight(
+        scenario: object,
+        environment: object,
+        *,
+        base_url: str,
+    ) -> None:
+        preflight_calls.append((scenario, environment, base_url))
+        raise PreflightError("control plane unavailable")
+
+    monkeypatch.setattr(
+        tui_app,
+        "preflight_control_plane",
+        fail_preflight,
+    )
+    frame = object()
+    frame_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tui_app,
+        "render_screen_frame",
+        lambda **kwargs: frame_calls.append(kwargs) or frame,
+    )
+    console = RecordingConsole()
+    controller = RecordingController()
+
+    NanofaasTUI(
+        choose=ScriptedChooser(iter([str(environment_path), "run", "cleanup"])),
+        controller=controller,
+        console=console,
+        input_stream=RecordingInput(tty=False),
+    )._workflow_menu("cli.yaml")
+
+    assert len(preflight_calls) == 1
+    assert preflight_calls[0][2] == "http://127.0.0.1:8080"
+    assert frame_calls[0]["title"] == "Preflight error"
+    assert str(frame_calls[0]["body"]) == "control plane unavailable"
+    assert controller.calls == []
+    assert workflow.run_calls == 0
     assert console.calls == [("clear", None), ("print", frame), ("clear", None)]
 
 
@@ -771,6 +829,11 @@ def test_reselecting_local_environment_resets_remote_provisioning_choice(
         ),
     )
     monkeypatch.setattr(tui_app, "_workflow", lambda *args, **kwargs: workflow)
+    monkeypatch.setattr(
+        tui_app,
+        "preflight_control_plane",
+        lambda *_args, **_kwargs: None,
+    )
     provision_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
     monkeypatch.setattr(
         tui_app,
