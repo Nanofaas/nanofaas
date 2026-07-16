@@ -847,6 +847,141 @@ def test_environment_selection_offers_only_available_executable_yaml_configs(
     assert all(".example" not in choice.value for choice in offered)
 
 
+def test_environment_selection_offers_provider_setup_when_templates_exist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    environment_dir = environment_path.parent
+    (environment_dir / "azure.yaml.example").write_text("example\n", encoding="utf-8")
+    (environment_dir / "proxmox.yaml.example").write_text(
+        "example\n", encoding="utf-8"
+    )
+    chooser = ScriptedChooser(iter([str(environment_path)]))
+
+    NanofaasTUI(choose=chooser)._select_environment()
+
+    offered = chooser.calls[0][1]["choices"]
+    assert [choice.value for choice in offered] == [
+        str(environment_path),
+        "setup:azure",
+        "setup:proxmox",
+    ]
+    assert [choice.title for choice in offered[1:]] == [
+        "Azure (setup required)",
+        "Proxmox (setup required)",
+    ]
+    assert all(".yaml.example" not in choice.value for choice in offered)
+
+
+def test_environment_selection_suppresses_provider_setup_for_executable_yaml(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    environment_dir = environment_path.parent
+    for provider in ("azure", "proxmox"):
+        (environment_dir / f"{provider}.yaml.example").write_text(
+            "example\n", encoding="utf-8"
+        )
+        (environment_dir / f"{provider}.yaml").write_text(
+            f"provider: {provider}\n", encoding="utf-8"
+        )
+    chooser = ScriptedChooser(iter([str(environment_path)]))
+
+    NanofaasTUI(choose=chooser)._select_environment()
+
+    offered = chooser.calls[0][1]["choices"]
+    assert [choice.value for choice in offered] == [
+        str(environment_dir / "azure.yaml"),
+        str(environment_path),
+        str(environment_dir / "proxmox.yaml"),
+    ]
+    assert all(not choice.value.startswith("setup:") for choice in offered)
+
+
+def test_provider_setup_guidance_returns_to_rebuilt_environment_picker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    environment_dir = environment_path.parent
+    (environment_dir / "azure.yaml.example").write_text("example\n", encoding="utf-8")
+    (environment_dir / "proxmox.yaml.example").write_text(
+        "example\n", encoding="utf-8"
+    )
+    chooser = ScriptedChooser(
+        iter(["setup:azure", "setup:proxmox", str(environment_path)])
+    )
+    screens: list[tuple[str, str, str]] = []
+    tui = NanofaasTUI(choose=chooser)
+    monkeypatch.setattr(
+        tui,
+        "_show_static",
+        lambda title, breadcrumb, body: screens.append((title, breadcrumb, body)),
+    )
+
+    selected = tui._select_environment()
+
+    assert selected == environment_path
+    assert len(chooser.calls) == 3
+    assert all(call[0] == "Environment" for call in chooser.calls)
+    assert [screen[1] for screen in screens] == [
+        "Main / Environment",
+        "Main / Environment",
+    ]
+    azure_body = screens[0][2]
+    assert (
+        "cp tools/controlplane/environments/azure.yaml.example "
+        "tools/controlplane/environments/azure.yaml" in azure_body
+    )
+    assert all(value in azure_body for value in ("provider", "ssh_key_path", "az login"))
+    proxmox_body = screens[1][2]
+    assert (
+        "cp tools/controlplane/environments/proxmox.yaml.example "
+        "tools/controlplane/environments/proxmox.yaml" in proxmox_body
+    )
+    assert all(
+        value in proxmox_body
+        for value in (
+            "host",
+            "node",
+            "template_id",
+            "ssh_key_path",
+            "password_env",
+            "PROXMOX_PASSWORD",
+        )
+    )
+
+
+def test_provider_setup_never_loads_template_as_executable_yaml(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment_path = _install_paths(monkeypatch, tmp_path)
+    (environment_path.parent / "azure.yaml.example").write_text(
+        "provider: azure\n", encoding="utf-8"
+    )
+    loaded_paths: list[Path] = []
+    workflow = FakeWorkflow()
+    _install_workflow_helpers(
+        monkeypatch,
+        environment_path=environment_path,
+        workflow=workflow,
+        calls=[],
+    )
+
+    def load_environment(path: Path) -> object:
+        loaded_paths.append(path)
+        return SimpleNamespace(provider="local")
+
+    monkeypatch.setattr(tui_app, "_environment", load_environment)
+    chooser = ScriptedChooser(iter(["setup:azure", str(environment_path), "plan"]))
+    tui = NanofaasTUI(choose=chooser)
+    monkeypatch.setattr(tui, "_show_static", lambda *args, **kwargs: None)
+
+    tui._workflow_menu("cli.yaml")
+
+    assert loaded_paths == [environment_path]
+    assert all(not path.name.endswith(".yaml.example") for path in loaded_paths)
+
+
 @pytest.mark.parametrize(
     ("provider", "answers", "expected_messages"),
     [
