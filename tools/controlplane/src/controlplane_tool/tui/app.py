@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import nullcontext
+import json
 from pathlib import Path
+import shutil
 import sys
 from typing import Any
 
@@ -154,6 +156,44 @@ class NanofaasTUI:
             scenario_file = self.SCENARIO_FILES.get((section, action))
             if scenario_file is not None:
                 self._dispatch_scenario(scenario_file)
+            elif section == "tools":
+                self._dispatch_tool(action)
+
+    def _dispatch_tool(self, action: str) -> None:
+        if action == "inspect":
+            scenario_names = list(dict.fromkeys(self.SCENARIO_FILES.values()))
+            selected = self._choose(
+                "Scenario",
+                choices=[
+                    Choice(Path(name).stem, name, f"Inspect {name}.")
+                    for name in scenario_names
+                ],
+                include_back=True,
+                title="Inspect scenario",
+                breadcrumb="Main / Tools / Inspect scenario",
+            )
+            if selected == "back":
+                return
+            try:
+                scenario = _scenario(
+                    default_tool_paths().tool_root / "scenarios-v2" / selected
+                )
+                body = json.dumps(scenario.model_dump(by_alias=True), indent=2)
+            except Exception as exc:
+                body = str(exc)
+            self._show_static(
+                title="Inspect scenario",
+                breadcrumb="Main / Tools / Inspect scenario",
+                body=body,
+            )
+        elif action == "doctor":
+            missing = [name for name in ("docker", "ssh") if shutil.which(name) is None]
+            body = f"missing executables: {', '.join(missing)}" if missing else "ok"
+            self._show_static(
+                title="Doctor",
+                breadcrumb="Main / Tools / Doctor",
+                body=body,
+            )
 
     def _select_environment(self) -> Path:
         environment_dir = default_tool_paths().tool_root / "environments"
@@ -187,15 +227,31 @@ class NanofaasTUI:
             title=title,
             breadcrumb=f"Main / {title}",
         )
-        scenario = _scenario(scenario_path)
-        environment = _environment(environment_path)
+        try:
+            scenario = _scenario(scenario_path)
+            environment = _environment(environment_path)
+        except Exception as exc:
+            self._show_static(
+                title="Configuration error",
+                breadcrumb=f"Main / {title}",
+                body=str(exc),
+            )
+            return
 
         if action == "plan":
-            workflow = self._build_workflow(
-                scenario,
-                environment,
-                dry_run=True,
-            )
+            try:
+                workflow = self._build_workflow(
+                    scenario,
+                    environment,
+                    dry_run=True,
+                )
+            except Exception as exc:
+                self._show_static(
+                    title="Preview error",
+                    breadcrumb=f"Main / {title}",
+                    body=str(exc),
+                )
+                return
             self._render_plan(title=title, workflow=workflow)
             return
 
@@ -220,7 +276,15 @@ class NanofaasTUI:
                 environment,
                 dry_run=True,
             )
+        except Exception as exc:
+            self._show_static(
+                title="Preview error",
+                breadcrumb=f"Main / {title}",
+                body=str(exc),
+            )
+            return
 
+        try:
             def run_current_workflow(_dashboard: Any, _sink: Any) -> Any:
                 provisioning = (
                     provision_environment(
@@ -285,18 +349,28 @@ class NanofaasTUI:
         for index, task in enumerate(workflow.tasks, start=1):
             table.add_row(f"{index:02d}", task.task_id, task.title)
 
-        input_is_tty = bool(
-            hasattr(self._input_stream, "isatty") and self._input_stream.isatty()
-        )
-        frame = render_screen_frame(
+        self._show_static(
             title=title,
             body=table,
             breadcrumb=f"Main / {title}",
-            footer_hint="Press Enter to continue" if input_is_tty else "Plan complete",
+        )
+
+    def _show_static(self, title: str, breadcrumb: str, body: Any) -> None:
+        input_is_tty = bool(
+            hasattr(self._input_stream, "isatty") and self._input_stream.isatty()
         )
         self._console.clear()
         try:
-            self._console.print(frame)
+            self._console.print(
+                render_screen_frame(
+                    title=title,
+                    body=body,
+                    breadcrumb=breadcrumb,
+                    footer_hint=(
+                        "Press Enter to continue" if input_is_tty else "View complete"
+                    ),
+                )
+            )
             if input_is_tty:
                 self._input_stream.read(1)
         finally:

@@ -91,7 +91,18 @@ Azure and Proxmox use the same workflow. Copy the matching example from
 `--provision`. The tool deletes managed VMs when the workflow exits; use `--keep`
 only when they must remain available for inspection. External VMs are never deleted.
 
-Use `scripts/controlplane.sh tui` for the interactive client.
+Start the interactive client with:
+
+```bash
+scripts/controlplane.sh tui
+```
+
+Its adapted navigation exposes **Validation**, **CLI**, **Load Testing**, and
+**Tools**. Workflow entries continue with environment and plan/run selection;
+non-local runs can provision the selected environment and choose their cleanup
+policy. A single invariant branded header stays at the top as menus and static
+views change. Running a workflow opens the live workflow dashboard, where phase
+progress and command logs remain visible; press `l` to toggle the log panel.
 
 For the complete command reference, provider configuration, VM cleanup rules,
 and load-test workflow, read the [control-plane tool guide](../tools/controlplane/README.md).
