@@ -205,3 +205,42 @@ def test_select_uses_theme_via_to_questionary_style(monkeypatch):
     rules = dict(captured["style"].style_rules)
     assert rules["selected"] == "fg:green"
     assert rules["pointer"] == "fg:green bold"
+
+
+def test_full_screen_ctrl_q_interrupts_when_escape_value_is_opted_in(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+    with create_pipe_input() as pipe_input:
+        app = _build_select_application(
+            "Pick one",
+            [Choice("Title", "value")],
+            default=None,
+            title=None,
+            breadcrumb=None,
+            footer_hint=None,
+            input=pipe_input,
+            output=DummyOutput(),
+        )
+        run_application = app.run
+
+        def run_with_ctrl_q():
+            def send_ctrl_q_after_start() -> None:
+                asyncio.get_running_loop().call_later(
+                    0.01, pipe_input.send_text, "\x11"
+                )
+
+            return run_application(pre_run=send_ctrl_q_after_start)
+
+        monkeypatch.setattr(app, "run", run_with_ctrl_q)
+        monkeypatch.setattr(
+            "tui_toolkit.pickers._build_select_application",
+            lambda *args, **kwargs: app,
+        )
+
+        with pytest.raises(KeyboardInterrupt):
+            select(
+                "Pick one",
+                choices=[Choice("Title", "value")],
+                escape_value="back",
+            )
