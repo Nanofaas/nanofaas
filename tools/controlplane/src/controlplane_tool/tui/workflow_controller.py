@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.live import Live
 
 from controlplane_tool.tui.event_aggregator import WorkflowEventAggregator
+from controlplane_tool.tui.models import TuiPhaseSnapshot
 from controlplane_tool.tui.workflow import TuiWorkflowSink, WorkflowDashboard, WorkflowKeyListener
 from tui_toolkit.console import console as default_console
 from workflow_tasks import bind_workflow_sink
@@ -44,7 +45,7 @@ class TuiWorkflowController:
         sink = TuiWorkflowSink(aggregator, refresh=refresh)
         listener = WorkflowKeyListener(dashboard, refresh)
         result: Any = None
-        error: Exception | None = None
+        error: BaseException | None = None
 
         self.console.clear()
         with Live(
@@ -64,25 +65,50 @@ class TuiWorkflowController:
                         error = exc
                         dashboard.error_detail = traceback.format_exc(limit=12)
                         snapshot = aggregator.snapshot()
-                        phase = next(
-                            (candidate for candidate in snapshot.phases if candidate.status == "running"),
-                            snapshot.phases[0] if snapshot.phases else None,
-                        )
-                        sink.emit(
-                            build_task_event(
-                                kind="task.failed",
-                                task_id=phase.task_id if phase else "workflow.failure",
-                                parent_task_id=phase.parent_task_id if phase else None,
-                                title=phase.label if phase else "Workflow failed",
-                                detail=str(exc),
+                        phases: list[TuiPhaseSnapshot] = []
+
+                        def collect(items: list[TuiPhaseSnapshot]) -> None:
+                            for item in items:
+                                phases.append(item)
+                                collect(item.children)
+
+                        collect(snapshot.phases)
+                        targets = [phase for phase in phases if phase.status == "running"]
+                        if not targets:
+                            pending = next(
+                                (phase for phase in phases if phase.status == "pending"),
+                                None,
                             )
-                        )
+                            targets = [pending] if pending is not None else []
+                        if not targets:
+                            targets = [TuiPhaseSnapshot(label="Workflow failed", task_id="workflow.failure")]
+                        for phase in targets:
+                            sink.emit(
+                                build_task_event(
+                                    kind="task.failed",
+                                    task_id=phase.task_id,
+                                    parent_task_id=phase.parent_task_id,
+                                    title=phase.label,
+                                    detail=str(exc),
+                                )
+                            )
                     dashboard.footer_hint = "Press any key to continue"
                     refresh()
                     if listener.input_is_tty:
                         listener.wait_for_acknowledgment()
+            except BaseException as exc:
+                if error is None:
+                    error = exc
+                else:
+                    error.add_note(f"Additional live workflow error: {exc}")
             finally:
-                listener.stop()
+                try:
+                    listener.stop()
+                except BaseException as cleanup_error:
+                    if error is None:
+                        error = cleanup_error
+                    else:
+                        error.add_note(f"Workflow listener cleanup failed: {cleanup_error}")
 
         if error is not None:
             raise error
