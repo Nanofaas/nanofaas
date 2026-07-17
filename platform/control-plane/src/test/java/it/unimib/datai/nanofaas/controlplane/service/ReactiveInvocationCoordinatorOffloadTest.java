@@ -26,7 +26,9 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,24 +53,29 @@ class ReactiveInvocationCoordinatorOffloadTest {
                 completionHandler, new InvocationResponseMapper());
     }
 
-    /** completeExecution stub that completes the shared record future like the real handler. */
-    private void wireCompletion(InvocationExecutionFactory.ExecutionLookup lookup) {
+    /** Stubs that mirror the real handler's offload completion paths. */
+    private void wireOffloadCompletion(InvocationExecutionFactory.ExecutionLookup lookup) {
         doAnswer(inv -> {
             InvocationResult result = inv.getArgument(1);
             lookup.record().completion().complete(result);
             return null;
-        }).when(completionHandler).completeExecution(anyString(), any(InvocationResult.class));
+        }).when(completionHandler).completeOffloadedExecution(anyString(), any(InvocationResult.class));
+        doAnswer(inv -> {
+            OffloadFailedException failure = inv.getArgument(1);
+            lookup.record().completion().completeExceptionally(failure);
+            return null;
+        }).when(completionHandler).failOffloadedExecution(anyString(), any(OffloadFailedException.class));
     }
 
     @Test
     void eagerPolicyOffloadsAndReturnsRemoteResult() {
         FunctionSpec spec = spec("fn-eager", new OffloadPolicy(null, null, "always"));
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
-        wireCompletion(lookup);
+        wireOffloadCompletion(lookup);
         when(offloadGateway.enabled()).thenReturn(true);
         when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(true);
         when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
-        when(offloadGateway.invokeRemote(any(), any(), any()))
+        when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
                 .thenReturn(Mono.just(InvocationResult.success("remote-out")));
 
         SyncInvocation invocation = coordinator(null).invoke(lookup, spec, 1000).block();
@@ -77,15 +84,31 @@ class ReactiveInvocationCoordinatorOffloadTest {
         assertThat(invocation.response().status()).isEqualTo("success");
         assertThat(invocation.response().output()).isEqualTo("remote-out");
         assertThat(invocation.offloadedTarget()).isEqualTo(TARGET);
-        // never dispatched locally
         verify(completionHandler, never()).dispatch(any(InvocationTask.class));
+    }
+
+    @Test
+    void timeoutOverrideIsForwardedAsRemoteBudget() {
+        FunctionSpec spec = spec("fn-budget", new OffloadPolicy(null, null, "always"));
+        InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
+        wireOffloadCompletion(lookup);
+        when(offloadGateway.enabled()).thenReturn(true);
+        when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(true);
+        when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
+        when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
+                .thenReturn(Mono.just(InvocationResult.success("ok")));
+
+        coordinator(null).invoke(lookup, spec, 250).block();
+
+        // spec.timeoutMs is 1000; the X-Timeout-Ms override must win
+        verify(offloadGateway).invokeRemote(any(), eq(OffloadTrigger.EAGER), any(), eq(250));
     }
 
     @Test
     void pressureRejectionOffloadsInsteadOf429() {
         FunctionSpec spec = spec("fn-pressure", null);
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
-        wireCompletion(lookup);
+        wireOffloadCompletion(lookup);
         when(syncQueueGateway.enabled()).thenReturn(true);
         doAnswer(inv -> {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 3);
@@ -94,7 +117,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
         when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(false);
         when(offloadGateway.shouldOffloadOnPressure(spec, SyncQueueRejectReason.DEPTH)).thenReturn(true);
         when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
-        when(offloadGateway.invokeRemote(any(), any(), any()))
+        when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
                 .thenReturn(Mono.just(InvocationResult.success("remote-out")));
 
         SyncInvocation invocation = coordinator(syncQueueGateway).invoke(lookup, spec, 1000).block();
@@ -102,7 +125,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
         assertThat(invocation).isNotNull();
         assertThat(invocation.response().status()).isEqualTo("success");
         assertThat(invocation.offloadedTarget()).isEqualTo(TARGET);
-        verify(offloadGateway).invokeRemote(any(), org.mockito.ArgumentMatchers.eq(OffloadTrigger.DEPTH), any());
+        verify(offloadGateway).invokeRemote(any(), eq(OffloadTrigger.DEPTH), any(), anyInt());
     }
 
     @Test
@@ -125,7 +148,6 @@ class ReactiveInvocationCoordinatorOffloadTest {
         FunctionSpec spec = spec("fn-hop", new OffloadPolicy(null, null, "always"));
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
         when(offloadGateway.enabled()).thenReturn(true);
-        // local inline dispatch path completes the record
         doAnswer(inv -> {
             lookup.record().completion().complete(InvocationResult.success("local-out"));
             return null;
@@ -138,35 +160,36 @@ class ReactiveInvocationCoordinatorOffloadTest {
         assertThat(invocation.response().output()).isEqualTo("local-out");
         assertThat(invocation.offloadedTarget()).isNull();
         verify(offloadGateway, never()).shouldOffloadEagerly(any());
-        verify(offloadGateway, never()).invokeRemote(any(), any(), any());
+        verify(offloadGateway, never()).invokeRemote(any(), any(), any(), anyInt());
     }
 
     @Test
     void offloadFailureSurfacesAsOffloadFailedException() {
         FunctionSpec spec = spec("fn-fail", new OffloadPolicy(null, null, "always"));
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
-        wireCompletion(lookup);
+        wireOffloadCompletion(lookup);
         when(offloadGateway.enabled()).thenReturn(true);
         when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(true);
         when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
-        when(offloadGateway.invokeRemote(any(), any(), any()))
-                .thenReturn(Mono.just(InvocationResult.error(OffloadGateway.OFFLOAD_FAILED_CODE, "unreachable")));
+        when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
+                .thenReturn(Mono.error(new OffloadFailedException(TARGET, false, "unreachable")));
 
         assertThatThrownBy(() -> coordinator(null).invoke(lookup, spec, 1000).block())
                 .isInstanceOf(OffloadFailedException.class)
-                .hasMessageContaining("unreachable");
+                .hasMessageContaining("unreachable")
+                .matches(ex -> TARGET.equals(((OffloadFailedException) ex).targetUrl()));
     }
 
     @Test
-    void offloadGatewayTimeoutSurfacesAs504Flavor() {
+    void offloadGatewayTimeoutKeepsGatewayTimeoutFlavor() {
         FunctionSpec spec = spec("fn-timeout", new OffloadPolicy(null, null, "always"));
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
-        wireCompletion(lookup);
+        wireOffloadCompletion(lookup);
         when(offloadGateway.enabled()).thenReturn(true);
         when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(true);
         when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
-        when(offloadGateway.invokeRemote(any(), any(), any()))
-                .thenReturn(Mono.just(InvocationResult.error(OffloadGateway.OFFLOAD_TIMEOUT_CODE, "too slow")));
+        when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
+                .thenReturn(Mono.error(new OffloadFailedException(TARGET, true, "too slow")));
 
         assertThatThrownBy(() -> coordinator(null).invoke(lookup, spec, 1000).block())
                 .isInstanceOf(OffloadFailedException.class)

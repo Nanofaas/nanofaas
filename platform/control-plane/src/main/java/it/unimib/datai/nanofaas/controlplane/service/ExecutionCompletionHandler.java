@@ -5,7 +5,9 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
@@ -43,10 +45,57 @@ public class ExecutionCompletionHandler {
         this.metrics = metrics;
     }
 
-    private static boolean isOffloadFailure(InvocationResult result) {
-        return result.error() != null
-                && (OffloadGateway.OFFLOAD_FAILED_CODE.equals(result.error().code())
-                || OffloadGateway.OFFLOAD_TIMEOUT_CODE.equals(result.error().code()));
+    /**
+     * Completion path for offloaded executions: no retry and no dispatch-slot
+     * release (offloaded calls never acquired one), just state + metrics + future.
+     */
+    public void completeOffloadedExecution(String executionId, InvocationResult result) {
+        ExecutionRecord record = executionStore.getOrNull(executionId);
+        if (record == null) {
+            return;
+        }
+        synchronized (record) {
+            if (isTerminal(record.state())) {
+                return;
+            }
+            if (result.success()) {
+                record.markSuccess(result.output());
+            } else {
+                record.markError(result.error());
+            }
+        }
+        String functionName = record.task().functionName();
+        if (result.success()) {
+            metrics.success(functionName);
+        } else {
+            metrics.error(functionName);
+        }
+        // Future published outside the record monitor (same invariant as
+        // publishFinalCompletion): synchronous waiters must not run under the lock.
+        record.completion().complete(result);
+    }
+
+    /**
+     * Infrastructure failure of an offloaded call: final by design (no local
+     * fallback). The record stores the error; the shared future completes
+     * exceptionally so every idempotent waiter surfaces the same 502/504.
+     */
+    public void failOffloadedExecution(String executionId, OffloadFailedException failure) {
+        ExecutionRecord record = executionStore.getOrNull(executionId);
+        if (record == null) {
+            return;
+        }
+        ErrorInfo error = new ErrorInfo(
+                failure.gatewayTimeout() ? OffloadGateway.OFFLOAD_TIMEOUT_CODE : OffloadGateway.OFFLOAD_FAILED_CODE,
+                failure.getMessage());
+        synchronized (record) {
+            if (isTerminal(record.state())) {
+                return;
+            }
+            record.markError(error);
+        }
+        metrics.error(record.task().functionName());
+        record.completion().completeExceptionally(failure);
     }
 
     public void dispatch(InvocationTask task) {
@@ -144,10 +193,7 @@ public class ExecutionCompletionHandler {
             return null;
         }
 
-        // Offload failures are final by design (no local fallback): they must
-        // surface as 502/504, never be masked by a local retry.
         boolean shouldRetry = !result.success()
-                && !isOffloadFailure(result)
                 && currentTask.attempt() <= currentTask.functionSpec().maxRetries();
 
         if (shouldRetry) {

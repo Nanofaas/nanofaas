@@ -8,7 +8,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.model.OffloadPolicy;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
-import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
@@ -26,8 +26,11 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DefaultOffloadGatewayTest {
+
+    private static final int BUDGET_MS = 5000;
 
     private MockWebServer server;
     private SimpleMeterRegistry meterRegistry;
@@ -67,6 +70,11 @@ class DefaultOffloadGatewayTest {
                 new InvocationRequest("payload", Map.of()), null, "trace-1", Instant.now(), 1);
     }
 
+    private static OffloadFailedException offloadFailure(Throwable ex) {
+        assertThat(ex).isInstanceOf(OffloadFailedException.class);
+        return (OffloadFailedException) ex;
+    }
+
     @Test
     void successResponseMapsToSuccessResultAndForwardsHeaders() throws InterruptedException {
         server.enqueue(new MockResponse()
@@ -75,7 +83,7 @@ class DefaultOffloadGatewayTest {
         FunctionSpec spec = spec("echo", null, 5000);
 
         InvocationResult result = gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, new OffloadContext(false, "00-abc-def-01", "vendor=1"))
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, new OffloadContext(false, "00-abc-def-01", "vendor=1"), BUDGET_MS)
                 .block();
 
         assertThat(result).isNotNull();
@@ -90,67 +98,75 @@ class DefaultOffloadGatewayTest {
         assertThat(recorded.getHeader("tracestate")).isEqualTo("vendor=1");
         assertThat(meterRegistry.counter("nanofaas.offload", "function", "echo", "trigger", "eager").count())
                 .isEqualTo(1.0);
+        assertThat(meterRegistry.counter("nanofaas.offload.failure", "function", "echo").count())
+                .isEqualTo(0.0);
     }
 
     @Test
-    void remote404MapsToOffloadFailedWithClearMessage() {
+    void remote404ErrorsWithOffloadFailedAndClearMessage() {
         server.enqueue(new MockResponse().setResponseCode(404));
         FunctionSpec spec = spec("ghost", null, 5000);
 
-        InvocationResult result = gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none())
-                .block();
-
-        assertThat(result).isNotNull();
-        assertThat(result.error().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);
-        assertThat(result.error().message()).contains("not registered on remote");
+        assertThatThrownBy(() -> gateway()
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .block())
+                .isInstanceOf(OffloadFailedException.class)
+                .hasMessageContaining("not registered on remote");
         assertThat(meterRegistry.counter("nanofaas.offload.failure", "function", "ghost").count())
                 .isEqualTo(1.0);
     }
 
     @Test
-    void remote5xxMapsToOffloadFailed() {
+    void remote5xxErrorsWithOffloadFailed() {
         server.enqueue(new MockResponse().setResponseCode(503).setBody("saturated"));
         FunctionSpec spec = spec("busy", null, 5000);
 
-        InvocationResult result = gateway()
-                .invokeRemote(task(spec), OffloadTrigger.DEPTH, OffloadContext.none())
-                .block();
-
-        assertThat(result).isNotNull();
-        assertThat(result.error().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);
-        assertThat(result.error().message()).contains("503");
+        assertThatThrownBy(() -> gateway()
+                .invokeRemote(task(spec), OffloadTrigger.DEPTH, OffloadContext.none(), BUDGET_MS)
+                .block())
+                .isInstanceOf(OffloadFailedException.class)
+                .hasMessageContaining("503");
     }
 
     @Test
-    void unreachableRemoteMapsToOffloadFailed() throws IOException {
+    void unreachableRemoteErrorsWithOffloadFailed() throws IOException {
         String url = serverUrl();
         server.shutdown();
         FunctionSpec spec = spec("down", null, 2000);
         DefaultOffloadGateway gateway = gateway(new OffloadProperties(true, url, true));
 
-        InvocationResult result = gateway
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none())
-                .block();
-
-        assertThat(result).isNotNull();
-        assertThat(result.error().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);
+        assertThatThrownBy(() -> gateway
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .block())
+                .isInstanceOf(OffloadFailedException.class)
+                .matches(ex -> !offloadFailure(ex).gatewayTimeout());
     }
 
     @Test
-    void slowRemoteMapsToOffloadTimeout() {
+    void slowRemoteErrorsWithGatewayTimeoutFlavor() {
         server.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"executionId\":\"r\",\"status\":\"success\",\"output\":null,\"error\":null}")
                 .setBodyDelay(2, java.util.concurrent.TimeUnit.SECONDS));
-        FunctionSpec spec = spec("slow", null, 300);
+        FunctionSpec spec = spec("slow", null, 5000);
 
-        InvocationResult result = gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none())
-                .block();
+        assertThatThrownBy(() -> gateway()
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), 300)
+                .block())
+                .isInstanceOf(OffloadFailedException.class)
+                .matches(ex -> offloadFailure(ex).gatewayTimeout());
+    }
 
-        assertThat(result).isNotNull();
-        assertThat(result.error().code()).isEqualTo(OffloadGateway.OFFLOAD_TIMEOUT_CODE);
+    @Test
+    void empty2xxBodyErrorsWithOffloadFailed() {
+        server.enqueue(new MockResponse().setResponseCode(200));
+        FunctionSpec spec = spec("mute", null, 5000);
+
+        assertThatThrownBy(() -> gateway()
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .block())
+                .isInstanceOf(OffloadFailedException.class)
+                .hasMessageContaining("empty response body");
     }
 
     @Test
@@ -161,7 +177,7 @@ class DefaultOffloadGatewayTest {
         FunctionSpec spec = spec("boom", null, 5000);
 
         InvocationResult result = gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none())
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
                 .block();
 
         assertThat(result).isNotNull();
@@ -177,7 +193,7 @@ class DefaultOffloadGatewayTest {
         FunctionSpec noPolicy = spec("a", null, 1000);
         FunctionSpec always = spec("b", new OffloadPolicy(null, null, "always"), 1000);
         FunctionSpec optedOut = spec("c", new OffloadPolicy(false, null, "always"), 1000);
-        FunctionSpec customTarget = spec("d", new OffloadPolicy(null, "http://other:9090", null), 1000);
+        FunctionSpec customTarget = spec("d", new OffloadPolicy(null, "http://other:9090/", null), 1000);
 
         assertThat(gateway.enabled()).isTrue();
         assertThat(gateway.shouldOffloadEagerly(noPolicy)).isFalse();
@@ -186,15 +202,27 @@ class DefaultOffloadGatewayTest {
         assertThat(gateway.shouldOffloadOnPressure(noPolicy, SyncQueueRejectReason.DEPTH)).isTrue();
         assertThat(gateway.shouldOffloadOnPressure(optedOut, SyncQueueRejectReason.DEPTH)).isFalse();
         assertThat(gateway.targetUrl(noPolicy)).isEqualTo("http://cloud:8080");
+        // trailing slash normalized, per-function override wins
         assertThat(gateway.targetUrl(customTarget)).isEqualTo("http://other:9090");
-
-        DefaultOffloadGateway noTarget = gateway(new OffloadProperties(true, null, true));
-        assertThat(noTarget.enabled()).isFalse();
 
         DefaultOffloadGateway disabled = gateway(new OffloadProperties(false, "http://cloud:8080", true));
         assertThat(disabled.enabled()).isFalse();
 
         DefaultOffloadGateway noPressure = gateway(new OffloadProperties(true, "http://cloud:8080", false));
         assertThat(noPressure.shouldOffloadOnPressure(noPolicy, SyncQueueRejectReason.DEPTH)).isFalse();
+    }
+
+    @Test
+    void perFunctionTargetAloneActivatesOffload() {
+        DefaultOffloadGateway noGlobalTarget = gateway(new OffloadProperties(true, null, true));
+        FunctionSpec withOwnTarget = spec("own", new OffloadPolicy(null, "http://edge2:8080", "always"), 1000);
+        FunctionSpec withoutTarget = spec("bare", new OffloadPolicy(null, null, "always"), 1000);
+
+        assertThat(noGlobalTarget.enabled()).isTrue();
+        assertThat(noGlobalTarget.shouldOffloadEagerly(withOwnTarget)).isTrue();
+        assertThat(noGlobalTarget.targetUrl(withOwnTarget)).isEqualTo("http://edge2:8080");
+        // no target anywhere: never offload, even under pressure
+        assertThat(noGlobalTarget.shouldOffloadEagerly(withoutTarget)).isFalse();
+        assertThat(noGlobalTarget.shouldOffloadOnPressure(withoutTarget, SyncQueueRejectReason.DEPTH)).isFalse();
     }
 }
