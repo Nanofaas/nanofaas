@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import shlex
 
@@ -30,8 +30,8 @@ from workflow_tasks.vm.models import vm_remote_home
 from workflow_tasks.vm.orchestrator import VmOrchestrator
 
 
-_ARCHITECTURES = frozenset(DEFAULT_ARCHITECTURES)
-_FLAVORS = frozenset(("jvm", "native", "default"))
+_ARCHITECTURES = DEFAULT_ARCHITECTURES
+_FLAVORS = ("jvm", "native", "default")
 _OFFICIAL_REGISTRY = "ghcr.io/miciav/nanofaas"
 
 
@@ -54,6 +54,7 @@ class ImageArchiveTransportTask:
     local_archive: Path
     builder_archive: str
     stack_archive: str
+    _owns_local_archive: bool = field(default=False, init=False, repr=False)
 
     def _exec(self, request: object, argv: tuple[str, ...]) -> object:
         result = self.provider.exec_argv(  # type: ignore[attr-defined]
@@ -89,13 +90,24 @@ class ImageArchiveTransportTask:
                 self._exec(request, ("rm", "-f", archive))
             except Exception as exc:
                 errors.append(str(exc))
-        try:
-            self.local_archive.unlink(missing_ok=True)
-        except OSError as exc:
-            errors.append(str(exc))
+        if self._owns_local_archive:
+            try:
+                self.local_archive.unlink(missing_ok=True)
+            except OSError as exc:
+                errors.append(str(exc))
+            finally:
+                self._owns_local_archive = False
         return errors
 
     def run(self) -> None:
+        self.local_archive.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.local_archive.touch(exist_ok=False)
+        except FileExistsError:
+            raise FileExistsError(
+                f"refusing to overwrite pre-existing archive: {self.local_archive}"
+            ) from None
+        self._owns_local_archive = True
         main_error: BaseException | None = None
         try:
             expected = self._inspect(self.builder_request)
@@ -103,7 +115,6 @@ class ImageArchiveTransportTask:
                 self.builder_request,
                 ("docker", "save", "--output", self.builder_archive, *self.images),
             )
-            self.local_archive.parent.mkdir(parents=True, exist_ok=True)
             result = self.provider.transfer_from(  # type: ignore[attr-defined]
                 self.builder_request,
                 source=self.builder_archive,
@@ -188,11 +199,12 @@ class _RemoteFileCleanupTask:
         _require_success(result, "clean remote Bake file")
 
 
-def _selected(values: Sequence[str], allowed: frozenset[str], name: str) -> tuple[str, ...]:
-    unknown = sorted(set(values) - allowed)
+def _selected(values: Sequence[str], allowed: Sequence[str], name: str) -> tuple[str, ...]:
+    requested = set(values)
+    unknown = sorted(requested - set(allowed))
     if unknown:
         raise typer.BadParameter(f"unknown image {name}: {', '.join(unknown)}")
-    return tuple(values) if values else tuple(sorted(allowed))
+    return tuple(value for value in allowed if not values or value in requested)
 
 
 def _validate_builder_role(environment: EnvironmentConfig, builder_role: str) -> None:

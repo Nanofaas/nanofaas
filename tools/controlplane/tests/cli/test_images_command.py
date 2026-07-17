@@ -243,6 +243,40 @@ def test_images_build_dry_run_renders_build_without_execution(tmp_path: Path) ->
     assert "--print" not in result.output
 
 
+def test_images_build_deduplicates_repeated_architecture_selection(
+    tmp_path: Path,
+) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "images",
+            "build",
+            "0.18.0",
+            "--run-dir",
+            str(tmp_path),
+            "--target",
+            "control-plane",
+            "--arch",
+            "amd64",
+            "--arch",
+            "amd64",
+            "--push",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    task_ids = [line.split(maxsplit=1)[0] for line in result.output.splitlines()]
+    assert len(task_ids) == len(set(task_ids))
+    assert task_ids.count("images.bake.amd64") == 1
+    assert task_ids.count("images.gradle.control-plane.amd64") == 1
+    assert sorted(task_id for task_id in task_ids if task_id.startswith("images.push.")) == [
+        "images.push.control-plane.amd64.jvm",
+        "images.push.control-plane.amd64.native",
+    ]
+    assert "arm64" not in result.output
+
+
 def test_images_build_loads_environment_and_runs_workflow(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -526,6 +560,21 @@ def test_image_archive_transport_cleans_after_transfer_from_raises(
     }
     assert cleanup_targets == {"/tmp/builder-images.tar", "/tmp/stack-images.tar"}
     assert not (tmp_path / "images.tar").exists()
+
+
+def test_image_archive_transport_preserves_preexisting_local_archive(
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "images.tar"
+    archive.write_bytes(b"user-owned archive")
+    provider = _RecordingProvider(fail_transfer_from=True)
+    task = _transport_task(tmp_path, provider)
+
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        task.run()
+
+    assert archive.read_bytes() == b"user-owned archive"
+    assert provider.actions == []
 
 
 def test_image_archive_transport_cleans_after_transfer_to_raises(
