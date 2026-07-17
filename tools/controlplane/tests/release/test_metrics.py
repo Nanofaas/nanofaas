@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -81,6 +82,33 @@ def test_aggregate_runs_uses_per_metric_median() -> None:
     }
 
 
+@pytest.mark.parametrize("invalid", (float("nan"), float("inf"), float("-inf"), -1.0))
+def test_aggregate_runs_rejects_invalid_source_numbers(invalid: float) -> None:
+    summary = cast(dict[str, Any], _summary(20))
+    summary["k6"]["http_reqs"]["values"]["rate"] = invalid
+
+    with pytest.raises(ValueError, match="finite nonnegative"):
+        aggregate_runs(PROFILE, (summary,) * 3)
+
+
+def test_aggregate_runs_rejects_error_rate_above_one() -> None:
+    summary = cast(dict[str, Any], _summary(20))
+    summary["k6"]["http_req_failed"]["values"]["rate"] = 1.01
+
+    with pytest.raises(ValueError, match="errorRate.*between 0 and 1"):
+        aggregate_runs(PROFILE, (summary,) * 3)
+
+
+def test_aggregate_runs_preserves_zero_queue_wait() -> None:
+    summary = cast(dict[str, Any], _summary(0))
+    summary["prometheus"]["function_queue_wait_count"]["delta"] = 0
+    summary["prometheus"]["function_queue_wait_sum"]["delta"] = 0
+
+    aggregate = aggregate_runs(PROFILE, (summary,) * 3)
+
+    assert aggregate.metrics["queueWaitSeconds"] == 0
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (
@@ -119,6 +147,61 @@ def test_first_passing_release_establishes_baseline() -> None:
 
     assert result.passed is True
     assert result.establishes_baseline is True
+    assert result.failures == ()
+
+
+@pytest.mark.parametrize("evidence", ("current", "baseline"))
+@pytest.mark.parametrize("invalid", (float("nan"), float("inf"), float("-inf"), -1.0))
+def test_regression_rejects_invalid_current_and_baseline_evidence(
+    evidence: str,
+    invalid: float,
+) -> None:
+    valid = aggregate_runs(PROFILE, (_summary(20),) * 3)
+    malformed = replace(
+        valid,
+        metrics={**valid.metrics, "throughputRps": invalid},
+    )
+    current, baseline = (malformed, valid) if evidence == "current" else (valid, malformed)
+
+    with pytest.raises(ValueError, match=f"{evidence}.*throughputRps.*finite nonnegative"):
+        evaluate_regression(
+            current,
+            baseline,
+            POLICY,
+            k6_passed=True,
+            autoscaling_passed=True,
+        )
+
+
+@pytest.mark.parametrize("evidence", ("current", "baseline"))
+def test_regression_rejects_out_of_domain_error_rate_evidence(evidence: str) -> None:
+    valid = aggregate_runs(PROFILE, (_summary(20),) * 3)
+    malformed = replace(valid, metrics={**valid.metrics, "errorRate": 1.01})
+    current, baseline = (malformed, valid) if evidence == "current" else (valid, malformed)
+
+    with pytest.raises(ValueError, match=f"{evidence}.*errorRate.*between 0 and 1"):
+        evaluate_regression(
+            current,
+            baseline,
+            POLICY,
+            k6_passed=True,
+            autoscaling_passed=True,
+        )
+
+
+def test_regression_preserves_valid_zero_evidence() -> None:
+    aggregate = aggregate_runs(PROFILE, (_summary(20),) * 3)
+    zero = replace(aggregate, metrics={name: 0.0 for name in aggregate.metrics})
+
+    result = evaluate_regression(
+        zero,
+        zero,
+        POLICY,
+        k6_passed=True,
+        autoscaling_passed=True,
+    )
+
+    assert result.passed is True
     assert result.failures == ()
 
 

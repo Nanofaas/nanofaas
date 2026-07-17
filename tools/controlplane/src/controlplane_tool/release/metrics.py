@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import statistics
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Mapping, Sequence
@@ -67,6 +68,9 @@ def evaluate_regression(
     autoscaling_passed: bool,
 ) -> RegressionDecision:
     """Evaluate fixed gates and, when present, an identical-profile baseline."""
+    _validate_metrics(current.metrics, "current")
+    if baseline is not None:
+        _validate_metrics(baseline.metrics, "baseline")
     failures: list[str] = []
     if not k6_passed:
         failures.append("k6 gate failed")
@@ -173,17 +177,16 @@ def _extract_metrics(summary: Mapping[str, Any]) -> dict[str, float]:
     prometheus = _mapping(summary, "prometheus")
     autoscaling = _mapping(summary, "autoscaling")
     queue_count = _prometheus_value(prometheus, "function_queue_wait_count", "delta")
-    if queue_count <= 0:
-        raise ValueError("function_queue_wait_count.delta must be greater than zero")
-    return {
+    queue_sum = _prometheus_value(prometheus, "function_queue_wait_sum", "delta")
+    if queue_count == 0 and queue_sum != 0:
+        raise ValueError("function_queue_wait_sum.delta must be zero when count is zero")
+    metrics = {
         "throughputRps": _k6_value(k6, "http_reqs", "rate"),
         "errorRate": _k6_value(k6, "http_req_failed", "rate", "value"),
         "latencyP50Ms": _k6_value(k6, "http_req_duration", "p(50)", "med"),
         "latencyP95Ms": _k6_value(k6, "http_req_duration", "p(95)"),
         "latencyP99Ms": _k6_value(k6, "http_req_duration", "p(99)"),
-        "queueWaitSeconds": (
-            _prometheus_value(prometheus, "function_queue_wait_sum", "delta") / queue_count
-        ),
+        "queueWaitSeconds": queue_sum / queue_count if queue_count else 0.0,
         "coldStarts": _prometheus_value(prometheus, "function_cold_start_total", "delta"),
         "controlPlaneCpuPeak": _prometheus_value(prometheus, "process_cpu_usage", "max"),
         "controlPlaneHeapPeakBytes": _prometheus_value(
@@ -191,6 +194,8 @@ def _extract_metrics(summary: Mapping[str, Any]) -> dict[str, float]:
         ),
         "peakReplicas": _number(autoscaling, "max_replicas_observed"),
     }
+    _validate_metrics(metrics, "summary")
+    return metrics
 
 
 def _k6_value(k6: Mapping[str, Any], metric: str, *names: str) -> float:
@@ -218,8 +223,25 @@ def _mapping(parent: Mapping[str, Any], name: str) -> Mapping[str, Any]:
 def _number(parent: Mapping[str, Any], name: str) -> float:
     value = parent.get(name)
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ValueError(f"{name} must be numeric")
-    return float(value)
+        raise ValueError(f"{name} must be a finite nonnegative number")
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"{name} must be a finite nonnegative number")
+    return number
+
+
+def _validate_metrics(metrics: Mapping[str, object], label: str) -> None:
+    for name, value in metrics.items():
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            or value < 0
+        ):
+            raise ValueError(f"{label} metric {name} must be a finite nonnegative number")
+    error_rate = metrics.get("errorRate")
+    if isinstance(error_rate, (int, float)) and error_rate > 1:
+        raise ValueError(f"{label} metric errorRate must be between 0 and 1")
 
 
 def _require_same_profile(current: PerformanceProfile, baseline: PerformanceProfile) -> None:
@@ -233,8 +255,10 @@ def _require_same_profile(current: PerformanceProfile, baseline: PerformanceProf
 
 
 def _percent_change(baseline: float, current: float, *, loss: bool = False) -> float:
-    if baseline <= 0:
-        raise ValueError("baseline metric must be greater than zero")
+    if baseline == 0:
+        if loss or current == 0:
+            return 0.0
+        raise ValueError("cannot calculate percent increase from a zero baseline")
     change = baseline - current if loss else current - baseline
     return max(0.0, change / baseline * 100)
 
