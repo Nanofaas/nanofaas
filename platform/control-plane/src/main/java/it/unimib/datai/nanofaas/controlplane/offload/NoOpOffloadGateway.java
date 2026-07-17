@@ -34,7 +34,7 @@ final class NoOpOffloadGateway implements OffloadGateway {
     }
 
     @Override
-    public Mono<InvocationResult> invokeRemote(InvocationTask task, OffloadTrigger trigger, OffloadContext context) {
-        return Mono.just(InvocationResult.error(OFFLOAD_FAILED_CODE, "offload module not installed"));
+    public Mono<InvocationResult> invokeRemote(InvocationTask task, OffloadTrigger trigger, OffloadContext context, int timeoutBudgetMs) {
+        return Mono.error(new OffloadFailedException(null, false, "offload module not installed"));
     }
 }

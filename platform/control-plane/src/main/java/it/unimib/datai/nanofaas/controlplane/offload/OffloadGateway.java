@@ -15,9 +15,9 @@ import reactor.core.publisher.Mono;
  */
 public interface OffloadGateway {
 
-    /** Reserved error code: remote call failed (unreachable, non-2xx, remote 404). */
+    /** Error code stored on the execution record when the remote call failed. */
     String OFFLOAD_FAILED_CODE = "OFFLOAD_FAILED";
-    /** Reserved error code: remote call timed out at the gateway level. */
+    /** Error code stored on the execution record when the remote call timed out. */
     String OFFLOAD_TIMEOUT_CODE = "OFFLOAD_TIMEOUT";
 
     boolean enabled();
@@ -28,15 +28,19 @@ public interface OffloadGateway {
     /** Strategies 1-2: the sync queue rejected admission (DEPTH/EST_WAIT); offload instead? */
     boolean shouldOffloadOnPressure(FunctionSpec spec, SyncQueueRejectReason reason);
 
-    /** Effective remote base URL for the function (per-function override or global default). */
+    /**
+     * Effective remote base URL for the function (per-function override or global
+     * default), normalized; null when no target is configured for this function.
+     */
     String targetUrl(FunctionSpec spec);
 
     /**
-     * Proxies the invocation to the remote {@code :invoke} endpoint.
-     * Never errors: infrastructure failures are mapped to error results with
-     * {@link #OFFLOAD_FAILED_CODE} or {@link #OFFLOAD_TIMEOUT_CODE}.
+     * Proxies the invocation to the remote {@code :invoke} endpoint within the
+     * given time budget. Emits the remote function result (including remote
+     * function-level errors) or errors with {@link OffloadFailedException} on
+     * infrastructure failure (unreachable, non-2xx, remote 404, budget exceeded).
      */
-    Mono<InvocationResult> invokeRemote(InvocationTask task, OffloadTrigger trigger, OffloadContext context);
+    Mono<InvocationResult> invokeRemote(InvocationTask task, OffloadTrigger trigger, OffloadContext context, int timeoutBudgetMs);
 
     static OffloadGateway noOp() {
         return NoOpOffloadGateway.INSTANCE;

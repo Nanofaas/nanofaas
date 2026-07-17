@@ -61,28 +61,26 @@ public final class ReactiveInvocationCoordinator {
             return Mono.just(SyncInvocation.local(replay));
         }
 
+        int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
         AtomicReference<String> offloadedTarget = new AtomicReference<>();
         try {
             InvocationEnqueueSupport.admitIfNew(lookup,
-                    () -> admit(record, spec, offloadContext, offloadedTarget));
+                    () -> admit(record, spec, offloadContext, timeoutMs, offloadedTarget));
         } catch (RuntimeException ex) {
             return Mono.error(ex);
         }
 
-        int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
         // suppressCancel=true: a single subscriber's timeout/disconnect must not cancel
         // the shared completion future other idempotent waiters depend on.
         return Mono.fromFuture(record.completion(), true)
+                // offload failures complete the future exceptionally; make sure the
+                // typed exception survives any CompletionException wrapping
+                .onErrorMap(java.util.concurrent.CompletionException.class,
+                        ex -> ex.getCause() != null ? ex.getCause() : ex)
                 .timeout(Duration.ofMillis(timeoutMs))
                 .map(result -> {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
                         throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueGateway.retryAfterSeconds());
-                    }
-                    if (result.error() != null && OffloadGateway.OFFLOAD_TIMEOUT_CODE.equals(result.error().code())) {
-                        throw new OffloadFailedException(offloadedTarget.get(), true, result.error().message());
-                    }
-                    if (result.error() != null && OffloadGateway.OFFLOAD_FAILED_CODE.equals(result.error().code())) {
-                        throw new OffloadFailedException(offloadedTarget.get(), false, result.error().message());
                     }
                     return new SyncInvocation(responseMapper.toResponse(record, result), offloadedTarget.get());
                 })
@@ -109,10 +107,11 @@ public final class ReactiveInvocationCoordinator {
     private void admit(ExecutionRecord record,
                        FunctionSpec spec,
                        OffloadContext context,
+                       int timeoutMs,
                        AtomicReference<String> offloadedTarget) {
         boolean offloadable = !context.offloadedHop() && offloadGateway.enabled();
         if (offloadable && offloadGateway.shouldOffloadEagerly(spec)) {
-            startOffload(record, spec, OffloadTrigger.EAGER, context, offloadedTarget);
+            startOffload(record, spec, OffloadTrigger.EAGER, context, timeoutMs, offloadedTarget);
             return;
         }
         try {
@@ -120,7 +119,7 @@ public final class ReactiveInvocationCoordinator {
         } catch (SyncQueueRejectedException ex) {
             OffloadTrigger trigger = pressureTrigger(ex.reason());
             if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec, ex.reason())) {
-                startOffload(record, spec, trigger, context, offloadedTarget);
+                startOffload(record, spec, trigger, context, timeoutMs, offloadedTarget);
                 return;
             }
             throw ex;
@@ -141,18 +140,21 @@ public final class ReactiveInvocationCoordinator {
                               FunctionSpec spec,
                               OffloadTrigger trigger,
                               OffloadContext context,
+                              int timeoutMs,
                               AtomicReference<String> offloadedTarget) {
-        offloadedTarget.set(offloadGateway.targetUrl(spec));
-        // Bypasses the local queue entirely: no local concurrency slots are consumed.
-        // The remote result completes the shared record like any dispatch would.
-        offloadGateway.invokeRemote(record.task(), trigger, context)
+        String target = offloadGateway.targetUrl(spec);
+        offloadedTarget.set(target);
+        // Bypasses the local queue entirely: no local concurrency slots are consumed,
+        // so completion goes through the offload-specific path (no slot release, no retry).
+        offloadGateway.invokeRemote(record.task(), trigger, context, timeoutMs)
                 .subscribe(
-                        result -> completionHandler.completeExecution(record.executionId(), result),
+                        result -> completionHandler.completeOffloadedExecution(record.executionId(), result),
                         ex -> {
-                            log.warn("Offload of execution {} failed unexpectedly", record.executionId(), ex);
-                            String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
-                            completionHandler.completeExecution(record.executionId(),
-                                    InvocationResult.error(OffloadGateway.OFFLOAD_FAILED_CODE, message));
+                            OffloadFailedException failure = ex instanceof OffloadFailedException ofe
+                                    ? ofe
+                                    : new OffloadFailedException(target, false,
+                                            ex.getMessage() != null ? ex.getMessage() : ex.toString());
+                            completionHandler.failOffloadedExecution(record.executionId(), failure);
                         });
     }
 

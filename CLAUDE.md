@@ -128,7 +128,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - `nanofaas.deployment.default-backend`
 - `nanofaas.k8s.namespace`, `callbackUrl`
 - `nanofaas.container-local.runtime-adapter`, `bind-host`, `readiness-timeout`, `readiness-poll-interval`
-- `nanofaas.offload.enabled` (true), `target-url` (required to activate), `pressure-enabled` (true)
+- `nanofaas.offload.enabled` (true), `target-url` (global default; a per-function `offload.targetUrl` also activates), `pressure-enabled` (true)
 
 ## Testing
 
