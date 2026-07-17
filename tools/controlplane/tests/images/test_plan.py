@@ -86,6 +86,14 @@ def test_candidate_tags_include_architecture_and_non_default_flavor() -> None:
     assert all(cell.image == f"{REGISTRY}/{cell.target.name}:{cell.tag}" for cell in plan.cells)
 
 
+def test_default_candidate_registry_is_stack_local_never_ghcr() -> None:
+    plan = build_image_plan(REPO_ROOT, "v0.18.0", selectors=("watchdog",))
+
+    assert plan.registry == "localhost:5000/nanofaas"
+    assert all(cell.image.startswith("localhost:5000/nanofaas/") for cell in plan.cells)
+    assert all("ghcr.io" not in cell.image for cell in plan.cells)
+
+
 def test_all_amd64_cells_precede_all_arm64_cells() -> None:
     architectures = [cell.architecture for cell in _plan().cells]
 
@@ -162,7 +170,32 @@ def test_spring_native_cells_expose_gradle_buildpack_specs() -> None:
         ":functions:java:roman-numeral:bootBuildImage",
         f"-PfunctionImage={roman_numeral.image}",
         "-PimagePlatform=linux/arm64",
+        "-PimageBuilder=dashaun/builder:tiny",
+        "-PimageRunImage=paketobuildpacks/run-jammy-tiny:latest",
     )
+
+
+def test_every_spring_native_arm64_cell_overrides_builder_and_run_image() -> None:
+    cells = [
+        cell
+        for cell in _plan().gradle_cells
+        if cell.architecture == "arm64"
+    ]
+
+    assert len(cells) == 5
+    assert {cell.target.name for cell in cells} == {
+        "control-plane",
+        "java-warm-echo",
+        "java-word-stats",
+        "java-json-transform",
+        "java-roman-numeral",
+    }
+    for cell in cells:
+        assert "-PimageBuilder=dashaun/builder:tiny" in cell.gradle_command
+        assert (
+            "-PimageRunImage=paketobuildpacks/run-jammy-tiny:latest"
+            in cell.gradle_command
+        )
 
 
 def test_spring_jvm_cells_require_boot_jar_before_bake() -> None:
