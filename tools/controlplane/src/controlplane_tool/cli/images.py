@@ -202,6 +202,13 @@ def _validate_builder_role(environment: EnvironmentConfig, builder_role: str) ->
         raise typer.BadParameter("loadgen builder requires a loadgen environment role")
 
 
+def _validate_portable_registry(registry: str) -> None:
+    if registry.rstrip("/") == _OFFICIAL_REGISTRY:
+        raise typer.BadParameter(
+            "official GHCR registry is reserved for release promotion"
+        )
+
+
 def _prepare_plan(
     version: str,
     *,
@@ -460,6 +467,7 @@ def install_image_commands(app: typer.Typer) -> None:
     ) -> None:
         environment_config = _environment(environment)
         _validate_builder_role(environment_config, builder_role)
+        _validate_portable_registry(registry)
         plan, bake_file = _prepare_plan(
             version,
             registry=registry,
@@ -485,10 +493,7 @@ def install_image_commands(app: typer.Typer) -> None:
     ) -> None:
         environment_config = _environment(environment)
         _validate_builder_role(environment_config, builder_role)
-        if registry.rstrip("/") == _OFFICIAL_REGISTRY:
-            raise typer.BadParameter(
-                "official GHCR registry is reserved for release promotion"
-            )
+        _validate_portable_registry(registry)
         if push and not registry.startswith(("localhost:", "127.0.0.1:")):
             raise typer.BadParameter("--push requires a stack-local registry")
         plan, bake_file = _prepare_plan(
