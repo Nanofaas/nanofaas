@@ -14,7 +14,7 @@ ImageFlavor = Literal["jvm", "native", "default"]
 BuildKind = Literal["bake", "gradle"]
 
 DEFAULT_ARCHITECTURES: tuple[ImageArchitecture, ...] = ("amd64", "arm64")
-DEFAULT_REGISTRY = "ghcr.io/miciav/nanofaas"
+DEFAULT_REGISTRY = "localhost:5000/nanofaas"
 
 
 @dataclass(frozen=True)
@@ -50,12 +50,21 @@ class ImageCell:
         image_property = self.target.native_image_property
         if task is None or image_property is None:
             raise ValueError(f"missing Gradle image metadata for {self.target.name}")
+        architecture_arguments = (
+            (
+                "-PimageBuilder=dashaun/builder:tiny",
+                "-PimageRunImage=paketobuildpacks/run-jammy-tiny:latest",
+            )
+            if self.architecture == "arm64"
+            else ()
+        )
         return (
             "./gradlew",
             task,
             f"-P{image_property}={self.image}",
             f"-PimagePlatform={self.platform}",
             *self.target.native_extra_arguments,
+            *architecture_arguments,
         )
 
     @property
