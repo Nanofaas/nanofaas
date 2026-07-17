@@ -106,6 +106,23 @@ def test_run_k6_passes_summary_export_flag(tmp_path: Path) -> None:
     assert str(config.summary_output_path) in argv
 
 
+def test_run_k6_requests_release_summary_trend_stats(tmp_path: Path) -> None:
+    runner = _RecordingVmRunner()
+    config = _make_k6_config(tmp_path)
+
+    RunK6(
+        task_id="loadgen.run_k6",
+        title="Run k6",
+        runner=runner,
+        config=config,
+        remote_dir="/home/ubuntu",
+    ).run()
+
+    argv = runner.commands[0][0]
+    index = argv.index("--summary-trend-stats")
+    assert argv[index + 1] == "avg,min,med,max,p(50),p(90),p(95),p(99)"
+
+
 def test_run_k6_injects_env_vars_as_e_flags(tmp_path: Path) -> None:
     runner = _RecordingVmRunner()
     config = _make_k6_config(tmp_path)
