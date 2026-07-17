@@ -173,7 +173,8 @@ public class FunctionService {
                 spec.runtimeMode(),
                 spec.runtimeCommand(),
                 spec.scalingConfig(),
-                spec.imagePullSecrets()
+                spec.imagePullSecrets(),
+                spec.offload()
         );
     }
 
