@@ -43,7 +43,7 @@ public interface OffloadGateway {
 }
 ```
 
-Più `OffloadFailedException` nel core (campo `gatewayTimeout` boolean per distinguere 502/504), mappata in `GlobalExceptionHandler` → 502 BAD_GATEWAY / 504 GATEWAY_TIMEOUT.
+Più `OffloadFailedException` nel core (campo `gatewayTimeout` boolean per distinguere 502/504), mappata → 502 BAD_GATEWAY / 504 GATEWAY_TIMEOUT direttamente in `InvocationController` (stesso posto dei 429 di `SyncQueueRejectedException`, non in `GlobalExceptionHandler`).
 
 ### 2. Aggancio in `ReactiveInvocationCoordinator.invoke`
 
@@ -81,7 +81,7 @@ Layout speculare a sync-queue:
 - `src/main/resources/META-INF/services/it.unimib.datai.nanofaas.common.controlplane.ControlPlaneModule` → `it.unimib.datai.nanofaas.modules.offload.OffloadModule`
 - `OffloadModule` (2 righe, come `SyncQueueModule`)
 - `OffloadConfiguration` — `@EnableConfigurationProperties(OffloadProperties)`, `@Bean @Primary OffloadGateway` (riusa il bean `WebClient` del core)
-- `OffloadProperties` (`nanofaas.offload.*`): `enabled` (default `true` quando il modulo è caricato), `target-url` (default globale, obbligatoria se enabled — validazione all'avvio), `pressure-enabled` (default `true`, interruttore per strategie 1-2)
+- `OffloadProperties` (`nanofaas.offload.*`): `enabled` (default `true` quando il modulo è caricato), `target-url` (default globale; se assente il gateway resta INERTE con warn all'avvio — niente fail-fast, così `--profile all` senza config non si rompe), `pressure-enabled` (default `true`, interruttore per strategie 1-2)
 - `DefaultOffloadGateway`:
   - `shouldOffloadEagerly`: `spec.offload() != null && enabled!=false && "always".equals(mode)`
   - `shouldOffloadOnPressure`: `pressure-enabled && (spec.offload() == null || enabled!=false)` (il reason DEPTH/EST_WAIT è già la strategia; nessuna soglia duplicata)
@@ -123,3 +123,10 @@ SERVER_PORT=9090 MANAGEMENT_SERVER_PORT=9091 ./scripts/controlplane.sh run --pro
 2. Policy eager: registrare sull'edge con `offload: {mode: "always"}` → invocare → risposta ok con header `X-NanoFaaS-Offloaded`, contatore `nanofaas_offload_total{trigger="eager"}` incrementato su :8081, esecuzione remota visibile sulle metriche del cloud; invocando con `curl -H 'X-Trace-Id: t-123'` lo stesso trace id compare nei log di entrambe le istanze.
 3. Pressione: saturare l'edge (concurrency 1 + burst) → verificare che le richieste che prima prendevano 429 ora completano via offload (`trigger="depth"|"est_wait"`).
 4. Fallimento: spegnere l'istanza cloud → invocare con policy eager → 502 col messaggio di offload; funzione non registrata sul cloud → 502 "not registered on remote".
+
+## Note post-implementazione (2026-07-17)
+
+- L'offload è implementato come **azione di ammissione alternativa dentro `admitIfNew`** (non una catena separata): il claim di idempotenza resta corretto, il gateway completa il record via `completionHandler.completeExecution`, e i codici riservati `OFFLOAD_FAILED`/`OFFLOAD_TIMEOUT` vengono tradotti in `OffloadFailedException` nella pipeline (stesso pattern di `QUEUE_TIMEOUT`).
+- `invokeSyncReactive`/`coordinator.invoke` ora restituiscono `SyncInvocation(response, offloadedTarget)` per l'header `X-NanoFaaS-Offloaded`.
+- `DefaultOffloadGateway` usa supplier lazy per `WebClient`/`MeterRegistry`: le slice `@WebFluxTest` caricano le config dei moduli via import selector e non hanno quei bean.
+- Budget remoto = `spec.timeoutMs - 50ms` così il 504 del gateway scatta prima del timeout d'attesa locale (che darebbe una risposta "timeout" 200).

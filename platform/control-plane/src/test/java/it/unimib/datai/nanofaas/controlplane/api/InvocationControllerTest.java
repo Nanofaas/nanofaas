@@ -8,8 +8,10 @@ import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
+import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.junit.jupiter.api.Test;
@@ -46,8 +48,8 @@ class InvocationControllerTest {
     void invokeSync_success_returnsExecutionHeaderAndBody() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         InvocationResponse response = new InvocationResponse("exec-1", "success", "out", null);
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
-                .thenReturn(Mono.just(response));
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
 
         webClient.post()
                 .uri("/v1/functions/echo:invoke")
@@ -65,7 +67,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_syncQueueRejectedFromMono_mapsTo429WithHeaders() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenReturn(Mono.error(new SyncQueueRejectedException(SyncQueueRejectReason.EST_WAIT, 7)));
 
         webClient.post()
@@ -81,7 +83,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_syncQueueRejectedThrownSynchronously_mapsTo429WithHeaders() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenThrow(new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 3));
 
         webClient.post()
@@ -97,7 +99,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_rateLimited_returns429() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenThrow(new RateLimitException());
 
         webClient.post()
@@ -111,7 +113,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_rateLimitedFromMono_returns429() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenReturn(Mono.error(new RateLimitException()));
 
         webClient.post()
@@ -125,7 +127,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_queueFull_returns429() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenThrow(new QueueFullException());
 
         webClient.post()
@@ -139,7 +141,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_queueFullFromReactiveCoordinator_returns429() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null)))
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenReturn(Mono.error(new QueueFullException()));
 
         webClient.post()
@@ -148,6 +150,53 @@ class InvocationControllerTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isEqualTo(429);
+    }
+
+    @Test
+    void invokeSync_offloaded_addsOffloadedHeader() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("exec-off", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(new SyncInvocation(response, "http://cloud:8080")));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("X-NanoFaaS-Offloaded", "http://cloud:8080")
+                .expectBody()
+                .jsonPath("$.executionId").isEqualTo("exec-off");
+    }
+
+    @Test
+    void invokeSync_offloadFailed_returns502WithTargetHeader() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new OffloadFailedException("http://cloud:8080", false, "unreachable")));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(502)
+                .expectHeader().valueEquals("X-NanoFaaS-Offloaded", "http://cloud:8080");
+    }
+
+    @Test
+    void invokeSync_offloadGatewayTimeout_returns504() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new OffloadFailedException("http://cloud:8080", true, "timed out")));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(504);
     }
 
     @Test
