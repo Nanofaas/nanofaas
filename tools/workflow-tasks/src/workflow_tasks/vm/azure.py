@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import re
 from pathlib import Path
 
 from azure_vm import AzureClient
@@ -62,6 +63,7 @@ class AzureVmProvider:
             image_urn=request.azure_image_urn,
             ssh_key_path=request.azure_ssh_key_path,
             open_ports=request.azure_open_ports,
+            disk_size_gb=_disk_size_gb(request.disk),
         )
         return _ok(["azure", "ensure_running", name])
 
@@ -120,3 +122,10 @@ class AzureVmProvider:
             stdout=proc.stdout,
             stderr=proc.stderr,
         )
+
+
+def _disk_size_gb(disk: str) -> int:
+    match = re.fullmatch(r"([1-9][0-9]*)G", disk)
+    if match is None:
+        raise ValueError(f"Azure disk must use whole gibibytes, got {disk!r}")
+    return int(match.group(1))

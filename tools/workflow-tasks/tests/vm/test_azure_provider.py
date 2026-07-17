@@ -146,6 +146,17 @@ def test_ensure_running(mock_client_cls) -> None:
 
 
 @patch("workflow_tasks.vm.azure.AzureClient")
+def test_ensure_running_forwards_request_disk_as_gibibytes(mock_client_cls) -> None:
+    client_mock = MagicMock()
+    mock_client_cls.return_value = client_mock
+    provider = _make_provider()
+
+    provider.ensure_running(_make_request(disk="128G"))
+
+    assert client_mock.ensure_running.call_args.kwargs["disk_size_gb"] == 128
+
+
+@patch("workflow_tasks.vm.azure.AzureClient")
 def test_exec_argv(mock_client_cls) -> None:
     client_mock, vm_mock = _make_azure_client_mock()
     exec_result = MagicMock()
@@ -206,4 +217,3 @@ def test_transfer_from_no_ssh_key(mock_client_cls, mock_subproc) -> None:
         result = provider.transfer_from(req, source="/remote/file", destination=Path("/local"))
     assert result.return_code == 0
     assert "-i" not in result.command
-
