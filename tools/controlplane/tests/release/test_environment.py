@@ -68,6 +68,8 @@ def test_release_environment_requires_stack_and_loadgen_roles(roles: dict[str, o
         "Canonical:ubuntu-24_04-lts:server:latest",
         "Canonical:ubuntu-24_04-lts:server:",
         "Canonical :ubuntu-24_04-lts:server:24.04.202505280",
+        "Canonical:ubuntu 24:server:24.04.202505280",
+        "Canonical:ubuntu-24_04-lts:ser\nver:24.04.202505280",
         "Canonical:ubuntu-24_04-lts:server:24.04.202505280 ",
     ),
 )

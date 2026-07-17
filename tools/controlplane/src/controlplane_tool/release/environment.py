@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from controlplane_tool.config import EnvironmentConfig
@@ -13,6 +14,7 @@ _LOADGEN_VM_SIZE = "Standard_D2s_v5"
 _LOCATION = "westeurope"
 _STACK_DISK = "128G"
 _LOADGEN_DISK = "30G"
+_URN_COMPONENT = re.compile(r"[A-Za-z0-9._-]+")
 
 
 def validate_release_environment(
@@ -50,7 +52,7 @@ def _validate_image_urn(urn: str | None) -> None:
     parts = urn.split(":") if urn is not None else ()
     if (
         len(parts) != 4
-        or any(not part or part.strip() != part for part in parts)
+        or any(_URN_COMPONENT.fullmatch(part) is None for part in parts)
         or parts[-1].lower() == "latest"
     ):
         raise ValueError("Azure image URN must be an exact, non-latest four-part URN")
