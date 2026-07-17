@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from pathlib import Path
+import traceback
 
 import pytest
 from workflow_tasks.tasks.models import CommandTaskSpec
@@ -332,6 +333,36 @@ def test_stage_ghcr_credentials_reports_cleanup_failure_without_leaking(tmp_path
     staged_source = provider.transfer_calls[0][0]
     assert not staged_source.exists()
     assert "fixture-secret-must-not-leak" not in str(error.value)
+
+
+def test_cleanup_failure_preserves_sanitized_context_body_failure(tmp_path: Path) -> None:
+    secret_value = "fixture-secret-must-not-leak"
+    token = tmp_path / "ghcr-token"
+    token.write_text(secret_value, encoding="utf-8")
+    token.chmod(0o600)
+    provider = _Provider(fail_cleanup=True)
+    module = importlib.import_module("controlplane_tool.release.secrets")
+
+    with pytest.raises(module.ReleaseCredentialCleanupError) as error:
+        with module.stage_ghcr_credentials(
+            provider,
+            object(),
+            username="release-user",
+            token_file=token,
+        ):
+            staged_source = provider.transfer_calls[0][0]
+            raise _BodyFailure(f"publication failed with {secret_value}")
+
+    assert error.value.operation_type == "_BodyFailure"
+    assert "cleanup failed" in str(error.value)
+    assert secret_value not in str(error.value)
+    assert error.value.__cause__ is None
+    assert error.value.__suppress_context__ is True
+    rendered_error = "".join(traceback.format_exception(error.value))
+    assert "_BodyFailure" in rendered_error
+    assert secret_value not in rendered_error
+    assert not staged_source.exists()
+    assert not staged_source.parent.exists()
 
 
 def test_stage_ghcr_credentials_cleans_when_context_body_fails(tmp_path: Path) -> None:
