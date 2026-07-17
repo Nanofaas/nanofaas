@@ -28,6 +28,14 @@ class RemoteCosignCredentials:
     password_file: str | None
 
 
+class ReleaseCredentialCleanupError(RuntimeError):
+    """A cleanup failure with safe information about the interrupted operation."""
+
+    def __init__(self, operation_type: str) -> None:
+        self.operation_type = operation_type
+        super().__init__(f"release credential cleanup failed after {operation_type}")
+
+
 def validate_secret_file(path: Path) -> Path:
     if not isinstance(path, Path):
         raise TypeError("release secret must be provided as a file path")
@@ -139,6 +147,8 @@ def _stage_remote_files(
         if _REMOTE_DIRECTORY.fullmatch(remote_dir) is None:
             raise RuntimeError("remote credential directory creation returned an invalid path")
 
+        operation_error: BaseException | None = None
+        cleanup_failed = False
         try:
             _run(provider, request, ("chmod", "700", remote_dir))
             remote_files: dict[str, str] = {}
@@ -148,16 +158,21 @@ def _stage_remote_files(
                 _run(provider, request, ("chmod", "600", destination))
                 remote_files[name] = destination
             yield remote_dir, remote_files
-        except BaseException:
+        except BaseException as error:
+            operation_error = error
             try:
                 _run(provider, request, ("rm", "-rf", "--", remote_dir))
             except RuntimeError:
-                raise RuntimeError(
-                    "release credential cleanup failed after operation failure"
-                ) from None
-            raise
+                cleanup_failed = True
         else:
             _run(provider, request, ("rm", "-rf", "--", remote_dir))
+
+        if operation_error is not None:
+            operation_type = type(operation_error).__name__
+            if cleanup_failed:
+                operation_error = None
+                raise ReleaseCredentialCleanupError(operation_type) from None
+            raise operation_error
 
 
 @contextmanager
