@@ -172,6 +172,25 @@ def test_images_build_rejects_official_ghcr_registry(tmp_path: Path) -> None:
     assert "official GHCR registry is reserved for release promotion" in result.output
 
 
+def test_images_plan_rejects_official_ghcr_registry(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "images",
+            "plan",
+            "0.18.0",
+            "--run-dir",
+            str(tmp_path),
+            "--registry",
+            "ghcr.io/miciav/nanofaas",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "official GHCR registry is reserved for release promotion" in result.output
+    assert not (tmp_path / "docker-bake.json").exists()
+
+
 def test_build_specs_use_one_bake_group_per_arch_and_verify_all_cells(
     tmp_path: Path,
 ) -> None:
@@ -387,10 +406,14 @@ class _RecordingProvider:
         builder_digests: str = "sha256:a\nsha256:b\n",
         stack_digests: str = "sha256:a\nsha256:b\n",
         fail_load: bool = False,
+        fail_transfer_from: bool = False,
+        fail_transfer_to: bool = False,
     ) -> None:
         self.builder_digests = builder_digests
         self.stack_digests = stack_digests
         self.fail_load = fail_load
+        self.fail_transfer_from = fail_transfer_from
+        self.fail_transfer_to = fail_transfer_to
         self.actions: list[tuple[object, ...]] = []
 
     def exec_argv(self, request, argv, *, env=None, cwd=None, dry_run=False):
@@ -409,11 +432,15 @@ class _RecordingProvider:
 
     def transfer_from(self, request, *, source, destination):
         self.actions.append(("transfer_from", request.name, source, destination))
+        if self.fail_transfer_from:
+            raise RuntimeError("download exploded")
         destination.write_bytes(b"archive")
         return SimpleNamespace(return_code=0, stdout="", stderr="")
 
     def transfer_to(self, request, *, source, destination):
         self.actions.append(("transfer_to", request.name, source, destination))
+        if self.fail_transfer_to:
+            raise RuntimeError("upload exploded")
         return SimpleNamespace(return_code=0, stdout="", stderr="")
 
 
@@ -478,6 +505,46 @@ def test_image_archive_transport_cleans_after_load_failure(tmp_path: Path) -> No
         action[0] == "exec" and action[2][:2] == ("rm", "-f")
         for action in provider.actions
     ) == 2
+    assert not (tmp_path / "images.tar").exists()
+
+
+def test_image_archive_transport_cleans_after_transfer_from_raises(
+    tmp_path: Path,
+) -> None:
+    provider = _RecordingProvider(fail_transfer_from=True)
+    task = _transport_task(tmp_path, provider)
+
+    with pytest.raises(RuntimeError, match="download exploded"):
+        task.run()
+
+    assert [action[0] for action in provider.actions].count("transfer_from") == 1
+    assert [action[0] for action in provider.actions].count("transfer_to") == 0
+    cleanup_targets = {
+        action[2][-1]
+        for action in provider.actions
+        if action[0] == "exec" and action[2][:2] == ("rm", "-f")
+    }
+    assert cleanup_targets == {"/tmp/builder-images.tar", "/tmp/stack-images.tar"}
+    assert not (tmp_path / "images.tar").exists()
+
+
+def test_image_archive_transport_cleans_after_transfer_to_raises(
+    tmp_path: Path,
+) -> None:
+    provider = _RecordingProvider(fail_transfer_to=True)
+    task = _transport_task(tmp_path, provider)
+
+    with pytest.raises(RuntimeError, match="upload exploded"):
+        task.run()
+
+    assert [action[0] for action in provider.actions].count("transfer_from") == 1
+    assert [action[0] for action in provider.actions].count("transfer_to") == 1
+    cleanup_targets = {
+        action[2][-1]
+        for action in provider.actions
+        if action[0] == "exec" and action[2][:2] == ("rm", "-f")
+    }
+    assert cleanup_targets == {"/tmp/builder-images.tar", "/tmp/stack-images.tar"}
     assert not (tmp_path / "images.tar").exists()
 
 
