@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Callable
 
@@ -166,8 +167,66 @@ def test_prepare_version_rejects_runner_changes_outside_curated_files(
 
     monkeypatch.setattr(versioning, "_run_command", run)
 
-    with pytest.raises(ValueError, match="outside curated"):
+    with pytest.raises(ValueError, match="outside curated") as error:
         prepare_version(source_tree, "0.18.0")
+
+    assert error.value.__cause__ is None
+
+
+def test_prepare_version_rejects_runner_scope_changes_when_runner_fails(
+    source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = source_tree / "docs" / "release-sentinel.txt"
+
+    def run(command: tuple[str, ...], cwd: Path) -> None:
+        sentinel.write_text("unexpected runner output\n", encoding="utf-8")
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(versioning, "_run_command", run)
+
+    with pytest.raises(ValueError, match="outside curated") as error:
+        prepare_version(source_tree, "0.18.0")
+
+    assert isinstance(error.value.__cause__, subprocess.CalledProcessError)
+
+
+def test_prepare_version_preserves_runner_error_without_scope_changes(
+    source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def run(command: tuple[str, ...], cwd: Path) -> None:
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(versioning, "_run_command", run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        prepare_version(source_tree, "0.18.0")
+
+
+def test_prepare_version_rejects_scope_changes_when_final_consistency_check_fails(
+    source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = source_tree / "docs" / "release-sentinel.txt"
+    checks = 0
+    original_verify = versioning.verify_version_consistency
+    install_lockfile_runner(monkeypatch, source_tree, [])
+
+    def verify(repo_root: Path) -> str:
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            return original_verify(repo_root)
+        sentinel.write_text("unexpected verification output\n", encoding="utf-8")
+        raise RuntimeError("simulated final consistency failure")
+
+    monkeypatch.setattr(versioning, "verify_version_consistency", verify)
+
+    with pytest.raises(ValueError, match="outside curated") as error:
+        prepare_version(source_tree, "0.18.0")
+
+    assert isinstance(error.value.__cause__, RuntimeError)
 
 
 def test_prepare_version_exposes_only_the_required_public_parameters() -> None:
