@@ -25,7 +25,7 @@ class ReactiveInvocationCoordinatorTest {
     private final Metrics metrics = new Metrics(new SimpleMeterRegistry());
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final ReactiveInvocationCoordinator coordinator =
-            new ReactiveInvocationCoordinator(null, metrics, null, completionHandler, new InvocationResponseMapper());
+            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper());
 
     @Test
     void clientTimeoutDoesNotCancelSharedCompletionFuture() {
@@ -33,9 +33,10 @@ class ReactiveInvocationCoordinatorTest {
         InvocationExecutionFactory.ExecutionLookup lookup =
                 factory.createOrReuseExecution("fn-cancel", spec, new InvocationRequest("payload", Map.of()), null, null);
 
-        InvocationResponse response = coordinator.invoke(lookup, spec, 50).block();
+        SyncInvocation invocation = coordinator.invoke(lookup, spec, 50).block();
 
-        assertThat(response).isNotNull();
+        assertThat(invocation).isNotNull();
+        InvocationResponse response = invocation.response();
         assertThat(response.status()).isEqualTo("timeout");
         // The shared future must survive a single client's timeout: other idempotent
         // waiters and the completion callback still depend on it.
@@ -49,9 +50,10 @@ class ReactiveInvocationCoordinatorTest {
                 factory.createOrReuseExecution("fn-boom", spec, new InvocationRequest("p", Map.of()), null, null);
         lookup.record().completion().completeExceptionally(new RuntimeException("boom"));
 
-        InvocationResponse response = coordinator.invoke(lookup, spec, 1000).block();
+        SyncInvocation invocation = coordinator.invoke(lookup, spec, 1000).block();
 
-        assertThat(response).isNotNull();
+        assertThat(invocation).isNotNull();
+        InvocationResponse response = invocation.response();
         assertThat(response.status()).isEqualTo("error");
         assertThat(response.error().code()).isEqualTo("EXECUTION_FAILED");
     }

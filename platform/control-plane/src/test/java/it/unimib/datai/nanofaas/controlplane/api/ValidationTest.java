@@ -203,7 +203,7 @@ class ValidationTest {
     void invoke_withValidRequest_callsService() {
         InvocationRequest request = new InvocationRequest("payload", null);
 
-        when(invocationService.invokeSyncReactive(any(), any(), any(), any(), any()))
+        when(invocationService.invokeSyncReactive(any(), any(), any(), any(), any(), any()))
                 .thenThrow(new FunctionNotFoundException("myfunc"));
 
         webClient.post()

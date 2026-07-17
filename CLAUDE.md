@@ -93,6 +93,7 @@ Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platfo
 - **build-metadata** - `/modules/build-metadata` diagnostics endpoint
 - **k8s-deployment-provider** - Kubernetes managed deployment backend for `DEPLOYMENT`
 - **container-deployment-provider** - Local managed deployment backend using a Docker-compatible runtime CLI
+- **offload** - Conditional transparent proxy of sync invocations to a remote nanofaas instance (eager per-function policy, or on sync-queue DEPTH/EST_WAIT rejection); single hop, no local fallback (remote failure → 502/504)
 
 Execution Modes:
 - **DEPLOYMENT** - Managed deployment intent resolved through a backend provider (`k8s`, `container-local`, ...)
@@ -127,6 +128,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - `nanofaas.deployment.default-backend`
 - `nanofaas.k8s.namespace`, `callbackUrl`
 - `nanofaas.container-local.runtime-adapter`, `bind-host`, `readiness-timeout`, `readiness-poll-interval`
+- `nanofaas.offload.enabled` (true), `target-url` (required to activate), `pressure-enabled` (true)
 
 ## Testing
 
@@ -146,7 +148,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **mcFaas** (13538 symbols, 34629 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mcFaas** (14167 symbols, 36288 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
