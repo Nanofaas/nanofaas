@@ -62,14 +62,23 @@ def test_release_environment_requires_stack_and_loadgen_roles(roles: dict[str, o
         validate_release_environment(environment, SOURCE_REPO, "0.17.0")
 
 
-def test_release_environment_rejects_latest_urn() -> None:
+@pytest.mark.parametrize(
+    "urn",
+    (
+        "Canonical:ubuntu-24_04-lts:server:latest",
+        "Canonical:ubuntu-24_04-lts:server:",
+        "Canonical :ubuntu-24_04-lts:server:24.04.202505280",
+        "Canonical:ubuntu-24_04-lts:server:24.04.202505280 ",
+    ),
+)
+def test_release_environment_rejects_unpinned_or_malformed_urn(urn: str) -> None:
     environment = _release_environment(
         azure={
             "resource_group": "nanofaas-rg",
             "location": "westeurope",
             "vm_size": "Standard_D4s_v5",
             "loadgen_vm_size": "Standard_D2s_v5",
-            "image_urn": "Canonical:ubuntu-24_04-lts:server:latest",
+            "image_urn": urn,
         }
     )
 

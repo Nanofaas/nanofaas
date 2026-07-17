@@ -47,5 +47,10 @@ def _require_exact(name: str, actual: str, expected: str) -> None:
 
 
 def _validate_image_urn(urn: str | None) -> None:
-    if urn is None or len(urn.split(":")) != 4 or urn.rsplit(":", 1)[1].lower() == "latest":
+    parts = urn.split(":") if urn is not None else ()
+    if (
+        len(parts) != 4
+        or any(not part or part.strip() != part for part in parts)
+        or parts[-1].lower() == "latest"
+    ):
         raise ValueError("Azure image URN must be an exact, non-latest four-part URN")
