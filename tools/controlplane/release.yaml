@@ -1,0 +1,11 @@
+schemaVersion: 1
+build:
+  maxParallelism: 2
+benchmark:
+  scenario: scenarios-v2/loadtest.yaml
+  runs: 3
+  profile: azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1
+  regression:
+    throughputMaxLossPercent: 10
+    p95MaxIncreasePercent: 15
+    errorRateMax: 0.30
