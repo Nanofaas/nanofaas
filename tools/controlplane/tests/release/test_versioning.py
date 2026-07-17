@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 import shutil
 from pathlib import Path
 from typing import Callable
 
 import pytest
 
+from controlplane_tool.release import versioning
 from controlplane_tool.release.versioning import (
     normalize_version,
     prepare_version,
@@ -68,6 +70,14 @@ def lockfile_runner(
     return run
 
 
+def install_lockfile_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    repo_root: Path,
+    calls: list[tuple[tuple[str, ...], Path]],
+) -> None:
+    monkeypatch.setattr(versioning, "_run_command", lockfile_runner(repo_root, calls))
+
+
 def test_normalize_version_returns_plain_and_image_tag() -> None:
     assert normalize_version("v0.18.0") == ("0.18.0", "v0.18.0")
     assert normalize_version("0.18.0") == ("0.18.0", "v0.18.0")
@@ -100,13 +110,15 @@ def test_verify_version_consistency_rejects_mismatched_source_tree(source_tree: 
 
 def test_prepare_version_updates_each_curated_location_without_reformatting(
     source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     before = {
         relative_path: (source_tree / relative_path).read_text(encoding="utf-8")
         for relative_path in CURATED_FILES
     }
 
-    changed = prepare_version(source_tree, "v0.18.0", runner=lockfile_runner(source_tree, []))
+    install_lockfile_runner(monkeypatch, source_tree, [])
+    changed = prepare_version(source_tree, "v0.18.0")
 
     assert changed == tuple(source_tree / relative_path for relative_path in CURATED_FILES)
     for relative_path, original in before.items():
@@ -115,22 +127,51 @@ def test_prepare_version_updates_each_curated_location_without_reformatting(
     assert verify_version_consistency(source_tree) == "0.18.0"
 
 
-def test_prepare_version_regenerates_lockfiles_after_primary_edits(source_tree: Path) -> None:
+def test_prepare_version_regenerates_lockfiles_after_primary_edits(
+    source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[tuple[tuple[str, ...], Path]] = []
-    runner = lockfile_runner(source_tree, calls)
+    install_lockfile_runner(monkeypatch, source_tree, calls)
 
-    prepare_version(source_tree, "0.18.0", runner=runner)
+    prepare_version(source_tree, "0.18.0")
 
     assert calls == [(command, cwd) for command, cwd, _ in LOCKFILE_COMMANDS]
 
 
-def test_prepare_version_leaves_non_curated_sentinel_unchanged(source_tree: Path) -> None:
+def test_prepare_version_leaves_non_curated_sentinel_unchanged(
+    source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     sentinel = source_tree / "docs" / "release-sentinel.txt"
     before = sentinel.read_bytes()
 
-    prepare_version(source_tree, "0.18.0", runner=lockfile_runner(source_tree, []))
+    install_lockfile_runner(monkeypatch, source_tree, [])
+    prepare_version(source_tree, "0.18.0")
 
     assert sentinel.read_bytes() == before
+
+
+def test_prepare_version_rejects_runner_changes_outside_curated_files(
+    source_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[str, ...], Path]] = []
+    runner = lockfile_runner(source_tree, calls)
+    sentinel = source_tree / "docs" / "release-sentinel.txt"
+
+    def run(command: tuple[str, ...], cwd: Path) -> None:
+        runner(command, cwd)
+        sentinel.write_text("unexpected runner output\n", encoding="utf-8")
+
+    monkeypatch.setattr(versioning, "_run_command", run)
+
+    with pytest.raises(ValueError, match="outside curated"):
+        prepare_version(source_tree, "0.18.0")
+
+
+def test_prepare_version_exposes_only_the_required_public_parameters() -> None:
+    assert tuple(inspect.signature(prepare_version).parameters) == ("repo_root", "requested")
 
 
 @pytest.mark.parametrize("requested", ("0.17.0", "v0.17.0", "0.16.9", "not-a-version"))
@@ -139,7 +180,7 @@ def test_prepare_version_rejects_invalid_or_nonincrementing_versions(
     requested: str,
 ) -> None:
     with pytest.raises(ValueError):
-        prepare_version(source_tree, requested, runner=lockfile_runner(source_tree, []))
+        prepare_version(source_tree, requested)
 
 
 def test_prepare_version_rejects_unexpected_replacement_count_without_writing(

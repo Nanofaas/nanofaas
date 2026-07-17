@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Callable
 
 
 _VERSION_PATTERN = re.compile(r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
@@ -38,7 +39,21 @@ _PRIMARY_COUNTS = {
     for relative_path, count in _CURATED_COUNTS.items()
     if relative_path not in _LOCKFILES
 }
-Runner = Callable[[tuple[str, ...], Path], None]
+_SNAPSHOT_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "build",
+        "node_modules",
+        "target",
+        "venv",
+    }
+)
 
 
 def normalize_version(value: str) -> tuple[str, str]:
@@ -66,25 +81,21 @@ def verify_version_consistency(repo_root: Path) -> str:
     return current
 
 
-def prepare_version(
-    repo_root: Path,
-    requested: str,
-    *,
-    runner: Runner | None = None,
-) -> tuple[Path, ...]:
+def prepare_version(repo_root: Path, requested: str) -> tuple[Path, ...]:
     """Prepare all curated release files for a strictly newer semantic version."""
     current = verify_version_consistency(repo_root)
     requested_plain, _ = normalize_version(requested)
     if _version_key(requested_plain) <= _version_key(current):
         raise ValueError(f"requested version {requested_plain} must be newer than {current}")
 
+    before = _snapshot_regular_files(repo_root)
     updates = _prepared_updates(repo_root, current, requested_plain, _PRIMARY_COUNTS)
     for path, content in updates:
         path.write_text(content, encoding="utf-8")
-    run = runner or _run_command
     for command, relative_cwd in _LOCKFILE_COMMANDS:
-        run(command, repo_root / relative_cwd)
+        _run_command(command, repo_root / relative_cwd)
     verify_version_consistency(repo_root)
+    _ensure_only_curated_files_changed(before, _snapshot_regular_files(repo_root))
     return tuple(repo_root / relative_path for relative_path in _CURATED_COUNTS)
 
 
@@ -118,6 +129,39 @@ def _prepared_updates(
 
 def _run_command(command: tuple[str, ...], cwd: Path) -> None:
     subprocess.run(command, cwd=cwd, check=True)
+
+
+def _snapshot_regular_files(repo_root: Path) -> dict[Path, str]:
+    snapshot: dict[Path, str] = {}
+    for directory, subdirectories, filenames in os.walk(repo_root):
+        subdirectories[:] = [name for name in subdirectories if name not in _SNAPSHOT_EXCLUDED_DIRS]
+        base = Path(directory)
+        for filename in filenames:
+            if filename in _SNAPSHOT_EXCLUDED_DIRS:
+                continue
+            path = base / filename
+            if path.is_file():
+                snapshot[path.relative_to(repo_root)] = _file_digest(path)
+    return snapshot
+
+
+def _ensure_only_curated_files_changed(before: dict[Path, str], after: dict[Path, str]) -> None:
+    changed = sorted(
+        path
+        for path in before.keys() | after.keys()
+        if before.get(path) != after.get(path) and path not in _CURATED_COUNTS
+    )
+    if changed:
+        paths = ", ".join(str(path) for path in changed)
+        raise ValueError(f"files outside curated locations changed: {paths}")
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _version_key(version: str) -> tuple[int, int, int]:
