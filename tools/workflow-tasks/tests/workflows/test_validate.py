@@ -1,3 +1,5 @@
+import pytest
+
 from workflow_tasks.workflows.validate import (
     ValidateFunction,
     ValidateWorkflowRequest,
@@ -140,6 +142,42 @@ def test_kubernetes_deployment_specs_can_expose_loadtest_node_ports() -> None:
     control_plane = specs[-1]
     assert "controlPlane.service.type=NodePort" in control_plane.argv
     assert "prometheus.create=true" in control_plane.argv
+
+
+def test_prebuilt_kubernetes_deployment_skips_builds_and_uses_exact_images() -> None:
+    function = replace(
+        FUNCTION,
+        image="localhost:5000/nanofaas/java-word-stats:v0.18.0-amd64-native",
+    )
+    request = ValidateWorkflowRequest(
+        backend="k8s",
+        functions=(function,),
+        build_images=False,
+        control_plane_image="localhost:5000/nanofaas/control-plane:v0.18.0-amd64-native",
+    )
+
+    specs = k8s_deployment_specs(request)
+
+    assert [spec.task_id for spec in specs] == [
+        "stack.preflight",
+        "helm.deploy.control-plane",
+    ]
+    assert "controlPlane.image.repository=localhost:5000/nanofaas/control-plane" in specs[-1].argv
+    assert "controlPlane.image.tag=v0.18.0-amd64-native" in specs[-1].argv
+    registration = registration_specs(request)[0]
+    assert function.image in registration.argv[-1]
+
+
+def test_prebuilt_kubernetes_deployment_requires_control_plane_image() -> None:
+    with pytest.raises(
+        ValueError,
+        match="control_plane_image is required when build_images is false",
+    ):
+        ValidateWorkflowRequest(
+            backend="k8s",
+            functions=(FUNCTION,),
+            build_images=False,
+        )
 
 
 def test_registration_specs_are_reusable_without_invocation() -> None:
