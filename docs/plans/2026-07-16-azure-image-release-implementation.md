@@ -4,9 +4,9 @@
 
 **Goal:** Build, benchmark, and publish every NanoFaaS AMD64/ARM64 image from a controlled Azure run, with an AMD64 performance gate before QEMU ARM64 builds and any GHCR release update.
 
-**Architecture:** Restore `controlplane-tool images` using the current `workflow-tasks` primitives and the existing function catalog. Add a small `controlplane-tool release` coordinator that provisions the established Azure stack/loadgen topology, keeps candidates in the stack-local registry, runs three AMD64 benchmarks, then builds ARM64 under QEMU and promotes the exact artifacts to GHCR. Local, Multipass, and Proxmox remain non-publishing experiment backends.
+**Architecture:** Restore `controlplane-tool images` using the current `workflow-tasks` primitives and the existing function catalog. Render Dockerfile cells to Docker Buildx Bake JSON while keeping Spring native builds on the existing Gradle buildpack path. Add a small `controlplane-tool release` coordinator that provisions the established Azure stack/loadgen topology, keeps candidates in the stack-local registry, runs three AMD64 benchmarks, then builds ARM64 under QEMU and promotes the exact artifacts to GHCR. Local, Multipass, and Proxmox remain non-publishing experiment backends.
 
-**Tech Stack:** Python 3.11+, Typer, Pydantic, `workflow-tasks`, Docker Buildx/BuildKit, QEMU/binfmt, Spring Boot Buildpacks, k3s, k6, Prometheus, Azure VMs, GHCR, skopeo, syft, cosign.
+**Tech Stack:** Python 3.11+, Typer, Pydantic, `workflow-tasks`, Docker Buildx Bake/BuildKit, QEMU/binfmt, Spring Boot Buildpacks, k3s, k6, Prometheus, Azure VMs, GHCR, skopeo, syft, cosign.
 
 ---
 
@@ -19,6 +19,7 @@ This revision replaces the first plan at commit `4f067158` and fixes these execu
 - release-only packages are installed by a release-builder playbook on the stack VM, not by the shared base provisioning used by loadgen and ordinary scenarios;
 - artifact promotion, SBOM generation, and signing are separate tasks with separately testable failure behavior;
 - source tests, AMD64 build, benchmark, ARM64 build, and publication are distinct gates;
+- Dockerfile build definitions are delegated to Buildx Bake instead of being reproduced as custom Python command builders;
 - a digest-verified phase journal permits safe resume without trusting stale or mismatched artifacts;
 - global atomicity across many registry tags is not claimed: immutable architecture tags are uploaded first, version manifests next, and mutable aliases last;
 - performance history is updated only after images, signatures, and attestations have all verified;
@@ -95,7 +96,9 @@ controlplane-tool release run v0.18.0 \
 **Files:**
 - Create: `tools/controlplane/src/controlplane_tool/images/__init__.py`
 - Create: `tools/controlplane/src/controlplane_tool/images/plan.py`
+- Create: `tools/controlplane/src/controlplane_tool/images/bake.py`
 - Create: `tools/controlplane/tests/images/test_plan.py`
+- Create: `tools/controlplane/tests/images/test_bake.py`
 - Modify: `functions/java/roman-numeral/build.gradle`
 - Test: `tools/controlplane/tests/test_function_catalog.py`
 
@@ -108,12 +111,15 @@ controlplane-tool release run v0.18.0 \
    - Spring Java targets have JVM/native, Java Lite has native, and other runtimes have default flavor;
    - tags are `v0.18.0-<arch>-<flavor>` or `v0.18.0-<arch>`;
    - AMD64 cells always precede ARM64 cells;
-   - every discovered function Dockerfile maps to exactly one target.
-3. Implement immutable `ImageTarget`, `ImageCell`, and `ImagePlan` dataclasses using `CommandTaskSpec`, not a new execution abstraction.
-4. Dockerfile cells use single-platform `docker buildx build --load`. Native Spring cells reuse existing `bootBuildImage` and `imagePlatform`; JVM Spring cells run `bootJar` then their Dockerfile.
-5. Add Roman Numeral's missing GraalVM/`bootBuildImage` configuration by matching word-stats/json-transform. Rerun impact first.
-6. Run focused tests and `./gradlew :functions:java:roman-numeral:tasks --all`; require `bootBuildImage` and `nativeCompile`.
-7. Run staged detection and commit `Restore portable image matrix planning`.
+   - every discovered function Dockerfile maps to exactly one target;
+   - the 52 cells partition into 42 Dockerfile/Bake cells and 10 Spring-native/Gradle cells.
+3. Implement immutable `ImageTarget`, `ImageCell`, and `ImagePlan` metadata. Do not create a Python abstraction mirroring Bake target properties.
+4. Render the 42 Dockerfile cells deterministically to Bake JSON from the catalog, with unique target names and `docker-amd64`, `docker-arm64`, and `docker-all` groups. Include context, Dockerfile, one platform, and immutable candidate tags; never duplicate the catalog in a committed HCL target list.
+5. Test stable JSON output, group membership, unique names/tags, selector filtering, and a round trip through `docker buildx bake --file <generated.json> --print` when Buildx is available.
+6. Keep the 10 Spring-native cells as existing `bootBuildImage`/`imagePlatform` Gradle task specs. JVM Spring cells run `bootJar` before their Bake group.
+7. Add Roman Numeral's missing GraalVM/`bootBuildImage` configuration by matching word-stats/json-transform. Rerun impact first.
+8. Run focused tests and `./gradlew :functions:java:roman-numeral:tasks --all`; require `bootBuildImage` and `nativeCompile`.
+9. Run staged detection and commit `Restore Bake-backed image matrix planning`.
 
 ### Task 3: Add the portable `images` command group and private transport
 
@@ -126,15 +132,16 @@ controlplane-tool release run v0.18.0 \
 
 **Steps:**
 
-1. Write CLI tests for `images plan` and `images build`, selectors, environment loading, dry-run rendering, unknown targets, and failure propagation.
+1. Write CLI tests for `images plan` and `images build`, selectors, environment loading, deterministic Bake-file placement, dry-run rendering, unknown targets, and failure propagation.
 2. Assert the portable command exposes no GHCR publication option and rejects a `ghcr.io/miciav/nanofaas` build registry.
 3. Register a Typer sub-app with only `plan` and `build`.
-4. Build role bindings with existing `build_role_bindings`; convert matrix commands with `workflow_from_specs`.
-5. Default the build role to stack. When an explicit builder role differs from the benchmark stack, use Docker image archives, relay them through existing provider `transfer_from`/`transfer_to`, load them on stack, and verify image IDs/digests. Do not add a format-conversion dependency or use an external registry for this transfer.
-6. Test archive and remote cleanup on success, transfer failure, load failure, and digest mismatch.
-7. Allow an explicit stack-local registry push because k3s needs candidates; never allow release tags on GHCR from this group.
-8. Run the new CLI tests plus `tests/cli/test_command_surface.py` and the full 303-test controlplane suite.
-9. Run staged detection and commit `Add image matrix commands`.
+4. Write the generated Bake JSON under the selected run directory. Build each requested Docker architecture with one Bake group task and compose those tasks plus the native Gradle specs through `workflow_from_specs` and existing role bindings.
+5. Make `images plan` show both `docker buildx bake --print` output and native Gradle tasks. Keep logical cell inventory and digest verification at 52 cells even though Bake groups reduce the number of executed commands.
+6. Default the build role to stack. When an explicit builder role differs from the benchmark stack, use Docker image archives, relay them through existing provider `transfer_from`/`transfer_to`, load them on stack, and verify image IDs/digests. Do not add a format-conversion dependency or use an external registry for this transfer.
+7. Test archive and remote cleanup on success, transfer failure, load failure, and digest mismatch.
+8. Allow an explicit stack-local registry push because k3s needs candidates; never allow release tags on GHCR from this group.
+9. Run the new CLI tests plus `tests/cli/test_command_surface.py` and the full 303-test controlplane suite.
+10. Run staged detection and commit `Add Bake-backed image commands`.
 
 ### Task 4: Let load testing deploy exact prebuilt images
 
@@ -185,6 +192,8 @@ controlplane-tool release run v0.18.0 \
 
    ```yaml
    schemaVersion: 1
+   build:
+     maxParallelism: 2
    benchmark:
      scenario: scenarios-v2/loadtest.yaml
      runs: 3
@@ -271,16 +280,17 @@ controlplane-tool release run v0.18.0 \
 1. Test `release prepare`, offline `release plan`, and `release run` command surfaces.
 2. Test the hard guard: clean Git tree, requested/prepared version match, Azure pinned profile, complete roles, and explicit credential files. Expose `--resume`; without it, reject an existing journal for the same version.
 3. After ordinary provisioning, invoke the Task 6 release-builder adapter against the stack role only.
-4. Compose sequential phases: source tests → full AMD64 matrix → local-registry push → benchmark 1/2/3 → aggregate → regression gate.
-5. Create the source bundle with `git archive` from the guarded commit and synchronize it to stack through the existing provider transfer API. This includes only tracked content and excludes `.git`, credentials, worktrees, build outputs, and prior run artifacts; verify its checksum before running tests.
-6. Run source tests on stack from that verified archive. Reuse Gradle/uv; run Go, Node, Rust, and Bash tests in digest-pinned Docker toolchain images rather than installing mutable host toolchains.
-7. Invoke `build_loadtest_plan` three times with the exact AMD64-native control-plane/function references and `runs/releases/<version>/run-{1,2,3}` directories.
-8. Let each existing load-test workflow clean Helm/functions before the next run. Never rebuild candidates during benchmark.
-9. Record and verify Task 8 journal evidence at each boundary. Test fresh execution, safe resume, invalidation after digest mismatch, and refusal to cross a failed gate.
-10. With recording executors, inject failures into every phase and assert no ARM or GHCR command appears.
-11. Validate local credential-file metadata at startup, but defer transfer to the publication/signing phases so secrets do not remain on the VM during builds and benchmarks.
-12. Run focused tests and both full Python suites. Request a correctness review of gate ordering and resume behavior.
-13. Run staged detection and commit `Add AMD64-gated Azure release workflow`.
+4. Before AMD64 builds, create the named `docker-container` Buildx builder with a generated BuildKit configuration using `build.maxParallelism`; require it in Bake commands so a 21-target group cannot exhaust the pinned stack VM.
+5. Compose sequential phases: source tests → full AMD64 matrix → local-registry push → benchmark 1/2/3 → aggregate → regression gate.
+6. Create the source bundle with `git archive` from the guarded commit and synchronize it to stack through the existing provider transfer API. This includes only tracked content and excludes `.git`, credentials, worktrees, build outputs, and prior run artifacts; verify its checksum before running tests.
+7. Run source tests on stack from that verified archive. Reuse Gradle/uv; run Go, Node, Rust, and Bash tests in digest-pinned Docker toolchain images rather than installing mutable host toolchains.
+8. Invoke `build_loadtest_plan` three times with the exact AMD64-native control-plane/function references and `runs/releases/<version>/run-{1,2,3}` directories.
+9. Let each existing load-test workflow clean Helm/functions before the next run. Never rebuild candidates during benchmark.
+10. Record and verify Task 8 journal evidence at each boundary. Test fresh execution, safe resume, invalidation after digest mismatch, and refusal to cross a failed gate.
+11. With recording executors, inject failures into every phase and assert no ARM or GHCR command appears.
+12. Validate local credential-file metadata at startup, but defer transfer to the publication/signing phases so secrets do not remain on the VM during builds and benchmarks.
+13. Run focused tests and both full Python suites. Request a correctness review of gate ordering and resume behavior.
+14. Run staged detection and commit `Add AMD64-gated Azure release workflow`.
 
 ### Task 10: Add QEMU ARM64 build and functional smoke gate
 
@@ -294,9 +304,9 @@ controlplane-tool release run v0.18.0 \
 **Steps:**
 
 1. Test that QEMU preparation and ARM tasks are unreachable before a passed aggregate gate.
-2. Register binfmt from a digest-pinned `tonistiigi/binfmt` image and create/reuse a named `docker-container` Buildx builder.
+2. Register binfmt from a digest-pinned `tonistiigi/binfmt` image and reuse the release's configured named Buildx builder.
 3. Require `linux/arm64` in `docker buildx inspect --bootstrap` before building.
-4. Build and locally push every ARM64 cell; fail on a missing matrix cell.
+4. Run the ARM64 Bake group plus the five Spring-native ARM64 Gradle specs, locally push all 26 artifacts, and fail unless every logical ARM64 cell has digest evidence.
 5. Inspect each architecture. Start server/function images with `--platform linux/arm64`, wait for their health endpoint, and always remove containers.
 6. For the watchdog scratch image, execute its binary and explicitly reject `exec format error`; document the expected missing-child exit.
 7. Assert no GHCR command runs after any ARM build/smoke failure.
@@ -372,7 +382,7 @@ controlplane-tool release run v0.18.0 \
    ```
 
 6. Run all Python suites from their own package directories, `./gradlew build -PcontrolPlaneModules=all`, `functions/contract-tests/run.sh`, watchdog tests, and `git diff --check`.
-7. Render the 52-cell plan and an Azure release plan. Confirm order: tests → AMD64 → three benchmarks → gate → QEMU/ARM64 → smoke → copy/manifests → attest → cleanup.
+7. Render the 52-cell plan, validate the generated definition with Bake `--print`, and render an Azure release plan. Confirm order: tests → AMD64 Bake/native builds → three benchmarks → gate → QEMU/ARM64 Bake/native builds → smoke → copy/manifests → attest → cleanup.
 8. Run a small Multipass AMD64 experiment and verify GHCR remains unchanged.
 9. Run `gitnexus_detect_changes(scope="compare", base_ref="main")`; inspect ordinary CLI/TUI load-test flows.
 10. Request final code review and use `superpowers:verification-before-completion` before claiming completion.
