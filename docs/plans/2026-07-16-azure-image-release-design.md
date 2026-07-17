@@ -12,8 +12,10 @@ GHCR only from an Azure release run.
 
 The existing `controlplane-tool images` implementation and tests should be
 restored and updated instead of recreating the image matrix in GitHub Actions
-or shell scripts. The command remains usable for experiments on the host,
-Multipass, and Proxmox, but those environments cannot promote official tags.
+or shell scripts. Dockerfile-based cells are rendered to Docker Buildx Bake,
+while Spring native cells keep using the existing Gradle buildpack tasks. The
+command remains usable for experiments on the host, Multipass, and Proxmox,
+but those environments cannot promote official tags.
 
 ## Execution environments
 
@@ -33,10 +35,10 @@ archive to the stack VM. A checksum and image digest are verified before and
 after transfer. The destination loads the archive and pushes it only to the
 stack VM's local registry. No external candidate registry is required.
 
-Host, Multipass, and Proxmox runs use the same image plan and build commands for
-development. They may build, test, export, and use their own local registry,
-but release promotion and stable-tag updates must fail outside a verified Azure
-release context.
+Host, Multipass, and Proxmox runs use the same image plan, generated Bake
+definition, and native buildpack commands for development. They may build,
+test, export, and use their own local registry, but release promotion and
+stable-tag updates must fail outside a verified Azure release context.
 
 ## Release flow
 
@@ -85,9 +87,12 @@ multi-architecture `v0.18.0` manifest. `latest` is not part of the correctness
 contract and, if retained, is updated only after the versioned release is
 complete.
 
-The matrix is owned by `controlplane-tool images`, not workflow YAML. It must
-discover the current platform, service, and function catalog and fail when an
-expected cell is missing. The command supports planning and dry runs so the
+The logical matrix is owned by `controlplane-tool images`, not workflow YAML or
+a second hand-maintained target list. It discovers the current platform,
+service, and function catalog and fails when an expected cell is missing. It
+renders the Dockerfile subset deterministically as Buildx Bake JSON with one
+group per architecture; native Spring cells remain ordinary Gradle task specs.
+The command supports planning and dry runs, including Bake `--print`, so the
 same matrix can be inspected without building or publishing.
 
 ## Release guard and versioning
@@ -130,8 +135,9 @@ than release implementation code.
 
 ## Validation and failure handling
 
-Unit tests cover matrix expansion, tag construction, provider restrictions,
-phase ordering, version validation, missing cells, and promotion refusal.
+Unit tests cover matrix expansion, deterministic Bake rendering, tag
+construction, provider restrictions, phase ordering, version validation,
+missing cells, and promotion refusal.
 Workflow tests prove that ARM64 build follows the AMD64 performance gate and
 that no external push occurs on earlier failure. Provider tests cover the
 optional archive transfer and digest verification path.
