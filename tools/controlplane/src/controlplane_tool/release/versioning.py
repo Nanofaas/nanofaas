@@ -89,13 +89,24 @@ def prepare_version(repo_root: Path, requested: str) -> tuple[Path, ...]:
         raise ValueError(f"requested version {requested_plain} must be newer than {current}")
 
     before = _snapshot_regular_files(repo_root)
-    updates = _prepared_updates(repo_root, current, requested_plain, _PRIMARY_COUNTS)
-    for path, content in updates:
-        path.write_text(content, encoding="utf-8")
-    for command, relative_cwd in _LOCKFILE_COMMANDS:
-        _run_command(command, repo_root / relative_cwd)
-    verify_version_consistency(repo_root)
-    _ensure_only_curated_files_changed(before, _snapshot_regular_files(repo_root))
+    operation_error: BaseException | None = None
+    try:
+        updates = _prepared_updates(repo_root, current, requested_plain, _PRIMARY_COUNTS)
+        for path, content in updates:
+            path.write_text(content, encoding="utf-8")
+        for command, relative_cwd in _LOCKFILE_COMMANDS:
+            _run_command(command, repo_root / relative_cwd)
+        verify_version_consistency(repo_root)
+    except BaseException as error:
+        operation_error = error
+        raise
+    finally:
+        try:
+            _ensure_only_curated_files_changed(before, _snapshot_regular_files(repo_root))
+        except ValueError as scope_error:
+            if operation_error is not None:
+                raise scope_error from operation_error
+            raise
     return tuple(repo_root / relative_path for relative_path in _CURATED_COUNTS)
 
 
