@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workflow_tasks.infra.ansible import AnsibleAdapter
+from workflow_tasks.infra.ansible import AnsibleAdapter, bundled_ansible_root
 from workflow_tasks.shell import RecordingShell, ShellBackend, ShellExecutionResult
 from workflow_tasks.vm.models import VmRequest
 
@@ -20,10 +20,35 @@ def test_provision_base_uses_bundled_ansible_root() -> None:
     assert "vm.example.test," in command
 
 
+def test_provision_release_builder_uses_its_dedicated_playbook() -> None:
+    shell = RecordingShell()
+    adapter = AnsibleAdapter(repo_root=Path("/repo"), shell=shell)
+    request = VmRequest(lifecycle="external", host="stack.example.test", user="azureuser")
+
+    adapter.provision_release_builder(request, dry_run=True)
+
+    rendered = " ".join(shell.commands[0])
+    assert "provision-release-builder.yml" in rendered
+    assert "vm_user=azureuser" in rendered
+
+
 def test_bundled_ansible_assets_exist_on_disk() -> None:
     adapter = AnsibleAdapter(repo_root=Path("/repo"))
     assert (adapter.ansible_root / "playbooks" / "provision-base.yml").is_file()
+    assert (adapter.ansible_root / "playbooks" / "provision-release-builder.yml").is_file()
     assert (adapter.ansible_root / "ansible.cfg").is_file()
+
+
+def test_release_builder_playbook_installs_transport_without_host_qemu() -> None:
+    playbook = (
+        bundled_ansible_root() / "playbooks" / "provision-release-builder.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "skopeo" in playbook
+    assert "rsync" in playbook
+    assert "tonistiigi/binfmt" in playbook
+    assert "qemu-user-static" not in playbook
+    assert "binfmt-support" not in playbook
 
 
 def test_ansible_root_override_is_respected(tmp_path: Path) -> None:
