@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from workflow_tasks.tasks.models import CommandTaskSpec
+from workflow_tasks.tasks.rendering import render_task_command
 
 from controlplane_tool.release.secrets import validate_secret_file
 
@@ -65,6 +67,25 @@ class _Provider:
         if self.fail_transfer:
             return _Result(return_code=1, stderr="fixture-secret-must-not-leak")
         return _Result()
+
+
+class _BodyFailure(RuntimeError):
+    pass
+
+
+def _rendered_commands(provider: _Provider) -> str:
+    return "\n".join(
+        render_task_command(
+            CommandTaskSpec(
+                task_id=f"release.credentials.{index}",
+                summary="Release credential operation",
+                argv=argv,
+                target="vm",
+                env=env or {},
+            )
+        )
+        for index, (argv, env) in enumerate(provider.exec_calls)
+    )
 
 
 def test_validate_secret_file_accepts_private_regular_file(tmp_path: Path) -> None:
@@ -313,6 +334,55 @@ def test_stage_ghcr_credentials_reports_cleanup_failure_without_leaking(tmp_path
     assert "fixture-secret-must-not-leak" not in str(error.value)
 
 
+def test_stage_ghcr_credentials_cleans_when_context_body_fails(tmp_path: Path) -> None:
+    token = tmp_path / "ghcr-token"
+    token.write_text("fixture-ghcr-token-must-not-leak", encoding="utf-8")
+    token.chmod(0o600)
+    provider = _Provider()
+    module = importlib.import_module("controlplane_tool.release.secrets")
+
+    with pytest.raises(_BodyFailure, match="publication failed"):
+        with module.stage_ghcr_credentials(
+            provider,
+            object(),
+            username="release-user",
+            token_file=token,
+        ):
+            staged_source = provider.transfer_calls[0][0]
+            assert staged_source.exists()
+            raise _BodyFailure("publication failed")
+
+    assert not staged_source.exists()
+    assert not staged_source.parent.exists()
+    assert provider.exec_calls[-1][0] == (
+        "rm",
+        "-rf",
+        "--",
+        "/tmp/nanofaas-release-credentials.ABC123",
+    )
+
+
+def test_ghcr_credential_commands_render_without_secret_values(tmp_path: Path) -> None:
+    secret_value = "fixture-ghcr-token-must-not-leak"
+    token = tmp_path / "ghcr-token"
+    token.write_text(secret_value, encoding="utf-8")
+    token.chmod(0o600)
+    provider = _Provider()
+    module = importlib.import_module("controlplane_tool.release.secrets")
+
+    with module.stage_ghcr_credentials(
+        provider,
+        object(),
+        username="release-user",
+        token_file=token,
+    ):
+        rendered_plan = _rendered_commands(provider)
+
+    assert "docker login" in rendered_plan
+    assert "--password-stdin" in rendered_plan
+    assert secret_value not in rendered_plan
+
+
 def test_stage_cosign_credentials_exposes_only_remote_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -347,6 +417,37 @@ def test_stage_cosign_credentials_exposes_only_remote_paths(
 
     assert all(not source.exists() for source in staged_sources)
     assert all(not source.parent.exists() for source in staged_sources)
-    rendered = repr((provider.exec_calls, provider.transfer_calls, credentials))
-    assert key_value not in rendered
-    assert password_value not in rendered
+    rendered_plan = _rendered_commands(provider)
+    assert key_value not in rendered_plan
+    assert password_value not in rendered_plan
+
+
+def test_stage_cosign_credentials_cleans_when_context_body_fails(tmp_path: Path) -> None:
+    key = tmp_path / "cosign.key"
+    password = tmp_path / "cosign.password"
+    key.write_text("fixture-cosign-key-must-not-leak", encoding="utf-8")
+    password.write_text("fixture-cosign-password-must-not-leak", encoding="utf-8")
+    key.chmod(0o600)
+    password.chmod(0o600)
+    provider = _Provider()
+    module = importlib.import_module("controlplane_tool.release.secrets")
+
+    with pytest.raises(_BodyFailure, match="signing failed"):
+        with module.stage_cosign_credentials(
+            provider,
+            object(),
+            key_file=key,
+            password_file=password,
+        ):
+            staged_sources = [source for source, _ in provider.transfer_calls]
+            assert all(source.exists() for source in staged_sources)
+            raise _BodyFailure("signing failed")
+
+    assert all(not source.exists() for source in staged_sources)
+    assert all(not source.parent.exists() for source in staged_sources)
+    assert provider.exec_calls[-1][0] == (
+        "rm",
+        "-rf",
+        "--",
+        "/tmp/nanofaas-release-credentials.ABC123",
+    )
