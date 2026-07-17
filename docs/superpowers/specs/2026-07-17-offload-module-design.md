@@ -130,3 +130,11 @@ SERVER_PORT=9090 MANAGEMENT_SERVER_PORT=9091 ./scripts/controlplane.sh run --pro
 - `invokeSyncReactive`/`coordinator.invoke` ora restituiscono `SyncInvocation(response, offloadedTarget)` per l'header `X-NanoFaaS-Offloaded`.
 - `DefaultOffloadGateway` usa supplier lazy per `WebClient`/`MeterRegistry`: le slice `@WebFluxTest` caricano le config dei moduli via import selector e non hanno quei bean.
 - Budget remoto = `spec.timeoutMs - 50ms` così il 504 del gateway scatta prima del timeout d'attesa locale (che darebbe una risposta "timeout" 200).
+
+## Smoke E2E a due istanze (2026-07-17) — ESEGUITO, verde
+
+Due istanze locali (edge :8080 con `offload.target-url`, cloud :9090), funzione `echo` LOCAL. Verificati: eager offload (200 + `X-NanoFaaS-Offloaded`, `nanofaas_offload_total{trigger=eager}` sull'edge, `function_dispatch/success_total` sul cloud), 404 remoto → 502 in ~13ms, cloud spento → 502 in ~20ms, `function_retry_total=0`, single-hop (header → esecuzione locale, contatore fermo). Non smoke-testato: trigger su pressione (coperto da unit test; saturare una LOCAL echo non è pratico).
+
+Due bug trovati dallo smoke e corretti:
+1. `FunctionSpecResolver.resolve` e `FunctionService.withEffectiveProvisioning` ricostruivano lo spec col costruttore convenience → `offload` perso a ogni registrazione (il costruttore delegante nasconde le omissioni: attenzione ai prossimi campi).
+2. Un risultato `OFFLOAD_FAILED/OFFLOAD_TIMEOUT` passava dalla logica di retry di `ExecutionCompletionHandler` → ri-esecuzione locale che mascherava il fallimento con un 200 (violazione del no-fallback). Ora i fallimenti d'offload bypassano il retry e completano col loro errore.

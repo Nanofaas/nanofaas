@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
@@ -40,6 +41,12 @@ public class ExecutionCompletionHandler {
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.dispatcherRouter = dispatcherRouter;
         this.metrics = metrics;
+    }
+
+    private static boolean isOffloadFailure(InvocationResult result) {
+        return result.error() != null
+                && (OffloadGateway.OFFLOAD_FAILED_CODE.equals(result.error().code())
+                || OffloadGateway.OFFLOAD_TIMEOUT_CODE.equals(result.error().code()));
     }
 
     public void dispatch(InvocationTask task) {
@@ -137,7 +144,10 @@ public class ExecutionCompletionHandler {
             return null;
         }
 
+        // Offload failures are final by design (no local fallback): they must
+        // surface as 502/504, never be masked by a local retry.
         boolean shouldRetry = !result.success()
+                && !isOffloadFailure(result)
                 && currentTask.attempt() <= currentTask.functionSpec().maxRetries();
 
         if (shouldRetry) {

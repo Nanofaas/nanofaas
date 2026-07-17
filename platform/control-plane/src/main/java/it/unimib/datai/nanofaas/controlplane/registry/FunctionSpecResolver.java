@@ -48,7 +48,8 @@ public class FunctionSpecResolver {
                 Optional.ofNullable(spec.runtimeMode()).orElse(RuntimeMode.HTTP),
                 spec.runtimeCommand(),
                 scaling,
-                spec.imagePullSecrets()
+                spec.imagePullSecrets(),
+                spec.offload()
         );
     }
 
