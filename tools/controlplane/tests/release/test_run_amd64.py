@@ -1,0 +1,1330 @@
+from __future__ import annotations
+
+from pathlib import Path
+from contextlib import contextmanager
+from dataclasses import asdict
+import hashlib
+import json
+import subprocess
+import tarfile
+
+import pytest
+import yaml
+
+from controlplane_tool.release import run as release_run
+from controlplane_tool.release.metrics import build_release_record
+from controlplane_tool.release.versioning import read_project_version
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+CURRENT_VERSION = read_project_version(REPO_ROOT)
+CURRENT_TAG = f"v{CURRENT_VERSION}"
+BUILDER_NAME = f"nanofaas-release-{CURRENT_TAG.replace('.', '-')}"
+_VERSION_PARTS = tuple(int(part) for part in CURRENT_VERSION.split("."))
+MISMATCH_VERSION = ".".join(str(part) for part in (*_VERSION_PARTS[:2], _VERSION_PARTS[2] + 1))
+
+
+def _secret(path: Path, value: str) -> Path:
+    path.write_text(value, encoding="utf-8")
+    path.chmod(0o600)
+    return path
+
+
+def _plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        release_run,
+        "git_state",
+        lambda _root: release_run.GitState(commit="a" * 40, clean=True),
+    )
+    credentials = release_run.CredentialFiles(
+        ghcr_token=_secret(tmp_path / "ghcr-token", "fixture-token"),
+        cosign_key=_secret(tmp_path / "cosign.key", "fixture-key"),
+        cosign_password=_secret(tmp_path / "cosign.password", "fixture-password"),
+    )
+    return release_run.build_amd64_release_plan(
+        repo_root=REPO_ROOT,
+        version=CURRENT_TAG,
+        environment_path=REPO_ROOT / "tools/controlplane/environments/azure-release.yaml.example",
+        release_config_path=REPO_ROOT / "tools/controlplane/release.yaml",
+        run_dir=tmp_path / "run",
+        credentials=credentials,
+    )
+
+
+def test_plan_is_amd64_only_and_uses_a_named_bounded_buildx_builder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+
+    assert plan.identity.source_commit == "a" * 40
+    assert plan.version == CURRENT_VERSION
+    assert len(plan.image_plan.cells) == 26
+    assert {cell.architecture for cell in plan.image_plan.cells} == {"amd64"}
+    assert plan.phase_names == (
+        "source-tests",
+        "amd64-build",
+        "local-registry-push",
+        "benchmark-1",
+        "benchmark-2",
+        "benchmark-3",
+        "aggregate",
+        "regression-gate",
+    )
+    assert plan.builder.name == BUILDER_NAME
+    assert plan.builder.max_parallelism == 2
+    assert "max-parallelism = 2" in plan.buildkit_config.read_text(encoding="utf-8")
+    rendered = plan.render()
+    assert "docker-container" in rendered
+    assert "docker-amd64" in rendered
+    assert "arm64" not in rendered.lower()
+    assert "ghcr.io" not in rendered
+    assert "fixture-token" not in repr(plan)
+    assert "fixture-key" not in repr(plan)
+    assert "fixture-password" not in repr(plan)
+
+
+def test_plan_rejects_dirty_source_before_creating_release_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        release_run,
+        "git_state",
+        lambda _root: release_run.GitState(commit="a" * 40, clean=False),
+    )
+    credentials = release_run.CredentialFiles(
+        ghcr_token=_secret(tmp_path / "ghcr-token", "token"),
+        cosign_key=_secret(tmp_path / "cosign.key", "key"),
+        cosign_password=_secret(tmp_path / "cosign.password", "password"),
+    )
+
+    with pytest.raises(ValueError, match="clean Git tree"):
+        release_run.build_amd64_release_plan(
+            repo_root=REPO_ROOT,
+            version=CURRENT_VERSION,
+            environment_path=REPO_ROOT
+            / "tools/controlplane/environments/azure-release.yaml.example",
+            release_config_path=REPO_ROOT / "tools/controlplane/release.yaml",
+            run_dir=tmp_path / "run",
+            credentials=credentials,
+        )
+
+    assert not (tmp_path / "run").exists()
+
+
+def test_plan_requires_all_private_credential_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        release_run,
+        "git_state",
+        lambda _root: release_run.GitState(commit="a" * 40, clean=True),
+    )
+    token = _secret(tmp_path / "ghcr-token", "token")
+    key = _secret(tmp_path / "cosign.key", "key")
+
+    with pytest.raises(ValueError, match="cosign password"):
+        release_run.CredentialFiles(
+            ghcr_token=token,
+            cosign_key=key,
+            cosign_password=None,
+        ).validate()
+
+
+def test_plan_rejects_requested_version_that_is_not_prepared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        release_run,
+        "git_state",
+        lambda _root: release_run.GitState(commit="a" * 40, clean=True),
+    )
+    credentials = release_run.CredentialFiles(
+        ghcr_token=_secret(tmp_path / "ghcr-token", "token"),
+        cosign_key=_secret(tmp_path / "cosign.key", "key"),
+        cosign_password=_secret(tmp_path / "cosign.password", "password"),
+    )
+
+    with pytest.raises(ValueError, match="prepared project version"):
+        release_run.build_amd64_release_plan(
+            repo_root=REPO_ROOT,
+            version=MISMATCH_VERSION,
+            environment_path=REPO_ROOT
+            / "tools/controlplane/environments/azure-release.yaml.example",
+            release_config_path=REPO_ROOT / "tools/controlplane/release.yaml",
+            run_dir=tmp_path / "run",
+            credentials=credentials,
+        )
+
+
+def test_plan_resolves_relative_release_inputs_against_the_working_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(
+        release_run,
+        "git_state",
+        lambda _root: release_run.GitState(commit="a" * 40, clean=True),
+    )
+    credentials = release_run.CredentialFiles(
+        ghcr_token=_secret(tmp_path / "ghcr-token", "token"),
+        cosign_key=_secret(tmp_path / "cosign.key", "key"),
+        cosign_password=_secret(tmp_path / "cosign.password", "password"),
+    )
+
+    plan = release_run.build_amd64_release_plan(
+        repo_root=REPO_ROOT,
+        version=CURRENT_VERSION,
+        environment_path=Path("tools/controlplane/environments/azure-release.yaml.example"),
+        release_config_path=Path("tools/controlplane/release.yaml"),
+        run_dir=tmp_path / "run",
+        credentials=credentials,
+    )
+
+    assert plan.settings.scenario == (REPO_ROOT / "tools/controlplane/scenarios-v2/loadtest.yaml")
+
+
+def _release_config(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("workflow: loadtest\nfunctions: [word-stats-java]\n")
+    config: dict[str, object] = {
+        "schemaVersion": 1,
+        "build": {"maxParallelism": 2},
+        "benchmark": {
+            "scenario": "scenario.yaml",
+            "runs": 3,
+            "profile": "test-profile",
+            "regression": {
+                "throughputMaxLossPercent": 10,
+                "p95MaxIncreasePercent": 15,
+                "errorRateMax": 0.3,
+            },
+        },
+    }
+    return tmp_path / "release.yaml", config
+
+
+@pytest.mark.parametrize("runs", (3.0, True, "3"))
+def test_release_settings_require_exact_integer_run_count(runs: object, tmp_path: Path) -> None:
+    path, config = _release_config(tmp_path)
+    config["benchmark"]["runs"] = runs  # type: ignore[index]
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="runs.*integer"):
+        release_run._release_settings(tmp_path, path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    (
+        ("throughputMaxLossPercent", float("nan"), "finite nonnegative"),
+        ("p95MaxIncreasePercent", float("inf"), "finite nonnegative"),
+        ("throughputMaxLossPercent", -1, "finite nonnegative"),
+        ("errorRateMax", float("nan"), "between 0 and 1"),
+        ("errorRateMax", -0.1, "between 0 and 1"),
+        ("errorRateMax", 1.1, "between 0 and 1"),
+    ),
+)
+def test_release_settings_reject_nonfinite_or_out_of_range_thresholds(
+    field: str, value: object, error: str, tmp_path: Path
+) -> None:
+    path, config = _release_config(tmp_path)
+    config["benchmark"]["regression"][field] = value  # type: ignore[index]
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error):
+        release_run._release_settings(tmp_path, path)
+
+
+def test_source_tests_reuse_gradle_and_uv_and_pin_container_toolchains() -> None:
+    commands = release_run.source_test_commands(Path("/srv/nanofaas-source"))
+
+    assert commands[0].argv == ("./gradlew", "test")
+    python_commands = [command for command in commands if command.argv[:2] == ("uv", "run")]
+    assert {command.task_id for command in python_commands} == {
+        "release.source.controlplane",
+        "release.source.workflow-tasks",
+        "release.source.python-sdk",
+    }
+    by_id = {command.task_id: command.argv for command in python_commands}
+    assert by_id["release.source.controlplane"] == (
+        "uv",
+        "run",
+        "--project",
+        ".",
+        "--locked",
+        "pytest",
+        "-q",
+        "tests",
+    )
+    assert by_id["release.source.workflow-tasks"] == (
+        "uv",
+        "run",
+        "--project",
+        ".",
+        "--locked",
+        "pytest",
+        "-q",
+        "tests",
+    )
+    assert by_id["release.source.python-sdk"][-4:] == (
+        "sdks/python/tests",
+        "functions/python/word-stats/tests",
+        "functions/python/json-transform/tests",
+        "functions/python/roman-numeral/tests",
+    )
+    by_task = {command.task_id: command for command in commands}
+    assert by_task["release.source.controlplane"].remote_dir == (
+        "/srv/nanofaas-source/tools/controlplane"
+    )
+    assert by_task["release.source.workflow-tasks"].remote_dir == (
+        "/srv/nanofaas-source/tools/workflow-tasks"
+    )
+    container_commands = [command for command in commands if command.argv[:2] == ("docker", "run")]
+    assert {command.task_id for command in container_commands} == {
+        "release.source.go",
+        "release.source.node",
+        "release.source.rust",
+        "release.source.bash",
+    }
+    for command in container_commands:
+        assert command.argv[:2] == ("docker", "run")
+        mount = command.argv[command.argv.index("-v") + 1]
+        assert mount == "/srv/nanofaas-source:/source:ro"
+        assert command.argv[command.argv.index("-w") + 1] == "/workspace"
+        assert command.argv[-1].startswith("set -eu; cp -a /source/. /workspace && ")
+        image = next(value for value in command.argv if "@sha256:" in value)
+        assert len(image.rsplit("@sha256:", 1)[1]) == 64
+        assert command.remote_dir == "/srv/nanofaas-source"
+
+
+def test_amd64_build_commands_bind_every_bake_to_the_named_builder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+
+    commands = release_run.amd64_build_commands(
+        plan,
+        remote_bake_file="/srv/release/docker-bake.json",
+        remote_buildkit_config="/srv/release/buildkitd.toml",
+        remote_source_dir="/srv/source",
+    )
+
+    create = next(command for command in commands if command.task_id == "release.buildx.create")
+    assert create.argv == (
+        "docker",
+        "buildx",
+        "create",
+        "--name",
+        BUILDER_NAME,
+        "--driver",
+        "docker-container",
+        "--buildkitd-config",
+        "/srv/release/buildkitd.toml",
+        "--use",
+    )
+    bake = next(command for command in commands if command.task_id == "release.images.bake.amd64")
+    assert bake.argv == (
+        "docker",
+        "buildx",
+        "bake",
+        "--builder",
+        BUILDER_NAME,
+        "--file",
+        "/srv/release/docker-bake.json",
+        "--load",
+        "docker-amd64",
+    )
+    assert sum(command.task_id.startswith("release.images.native.") for command in commands) == 5
+    assert all("arm64" not in " ".join(command.argv).lower() for command in commands)
+    assert all("ghcr.io" not in " ".join(command.argv) for command in commands)
+
+
+def test_source_archive_contains_only_the_exact_guarded_commit(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.email", "release@example.test"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.name", "Release Test"), cwd=repo, check=True)
+    (repo / "tracked.txt").write_text("tracked", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "source"), cwd=repo, check=True)
+    commit = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    archive = tmp_path / "source.tar"
+
+    evidence = release_run.create_source_archive(repo, commit, archive)
+
+    assert evidence.reference == str(archive)
+    assert evidence.digest == release_run.digest_path(archive)
+    with tarfile.open(archive) as source:
+        assert source.getnames() == ["tracked.txt"]
+
+
+def test_source_archive_rechecks_clean_commit_and_never_overwrites_on_guard_failure(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.email", "release@example.test"), cwd=repo, check=True)
+    subprocess.run(("git", "config", "user.name", "Release Test"), cwd=repo, check=True)
+    (repo / "tracked.txt").write_text("tracked", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "source"), cwd=repo, check=True)
+    archive = tmp_path / "source.tar"
+    archive.write_bytes(b"owned")
+    (repo / "untracked-secret").write_text("must-not-enter-archive", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="clean Git tree"):
+        release_run.create_source_archive(repo, "a" * 40, archive)
+
+    assert archive.read_bytes() == b"owned"
+
+
+class _TransferResult:
+    def __init__(self, *, stdout: str = "", return_code: int = 0) -> None:
+        self.stdout = stdout
+        self.stderr = ""
+        self.return_code = return_code
+
+
+class _ArchiveProvider:
+    def __init__(self, digest: str) -> None:
+        self.digest = digest
+        self.actions: list[tuple[object, ...]] = []
+
+    def transfer_to(self, request: object, *, source: Path, destination: str) -> _TransferResult:
+        self.actions.append(("transfer", request, source, destination))
+        return _TransferResult()
+
+    def exec_argv(
+        self,
+        request: object,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str] | None,
+        cwd: str | None,
+        dry_run: bool,
+    ) -> _TransferResult:
+        self.actions.append(("exec", request, argv, env, cwd, dry_run))
+        if argv[0] == "sha256sum":
+            return _TransferResult(stdout=f"{self.digest.removeprefix('sha256:')}  {argv[1]}\n")
+        return _TransferResult()
+
+
+def test_source_transfer_verifies_checksum_before_extracting(tmp_path: Path) -> None:
+    archive = tmp_path / "source.tar"
+    archive.write_bytes(b"source")
+    digest = release_run.digest_path(archive)
+    provider = _ArchiveProvider(digest)
+    request = object()
+
+    release_run.stage_source_archive(
+        provider,
+        request,
+        archive=archive,
+        remote_archive="/srv/release/source.tar",
+        remote_source_dir="/srv/release/source",
+    )
+
+    kinds = [action[0] for action in provider.actions]
+    assert kinds == ["exec", "exec", "transfer", "exec", "exec"]
+    assert provider.actions[-2][2] == ("sha256sum", "/srv/release/source.tar")
+    assert provider.actions[-1][2] == (
+        "tar",
+        "-xf",
+        "/srv/release/source.tar",
+        "-C",
+        "/srv/release/source",
+    )
+
+
+def test_source_transfer_rejects_checksum_mismatch_before_extracting(tmp_path: Path) -> None:
+    archive = tmp_path / "source.tar"
+    archive.write_bytes(b"source")
+    provider = _ArchiveProvider("sha256:" + "f" * 64)
+
+    with pytest.raises(RuntimeError, match="source archive checksum mismatch"):
+        release_run.stage_source_archive(
+            provider,
+            object(),
+            archive=archive,
+            remote_archive="/srv/release/source.tar",
+            remote_source_dir="/srv/release/source",
+        )
+
+    assert not any(
+        action[0] == "exec" and isinstance(action[2], tuple) and action[2][0] == "tar"
+        for action in provider.actions
+    )
+
+
+def _summary(value: float) -> dict[str, object]:
+    return {
+        "k6": {
+            "http_reqs": {"values": {"rate": value}},
+            "http_req_failed": {"values": {"rate": 0.0}},
+            "http_req_duration": {
+                "values": {"p(50)": value + 1, "p(95)": value + 2, "p(99)": value + 3}
+            },
+        },
+        "prometheus": {
+            "function_queue_wait_count": {"delta": 10},
+            "function_queue_wait_sum": {"delta": value * 10},
+            "function_cold_start_total": {"delta": value + 4},
+            "process_cpu_usage": {"max": value / 100},
+            "jvm_heap_used_bytes": {"max": value * 1024},
+        },
+        "autoscaling": {"max_replicas_observed": 5, "final_desired_replicas": 0},
+    }
+
+
+def _registry_digest(reference: str) -> str:
+    return "sha256:" + hashlib.sha256(f"registry:{reference}".encode()).hexdigest()
+
+
+class _ReleaseProvider(_ArchiveProvider):
+    def __init__(self, events: list[str]) -> None:
+        super().__init__("sha256:" + "0" * 64)
+        self.events = events
+        self.local_digests: dict[str, str] = {}
+        self.remote_source_mutated = False
+        self.remote_digests: dict[str, str] = {}
+        self.registry_digests: dict[str, str] = {}
+
+    def transfer_to(self, request: object, *, source: Path, destination: str) -> _TransferResult:
+        self.events.append(f"transfer:{source.name}")
+        if source.name == "source.tar":
+            self.remote_source_mutated = False
+        self.remote_digests[destination] = release_run.digest_path(source)
+        return super().transfer_to(request, source=source, destination=destination)
+
+    def exec_argv(
+        self,
+        request: object,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str] | None,
+        cwd: str | None,
+        dry_run: bool,
+    ) -> _TransferResult:
+        del request, env, dry_run
+        self.actions.append(("exec", object(), argv, None, cwd, False))
+        self.events.append("exec:" + " ".join(argv))
+        if argv[:3] == ("docker", "buildx", "create") and self.remote_source_mutated:
+            return _TransferResult(return_code=1)
+        if argv[0] == "sha256sum":
+            digest = self.remote_digests[argv[1]].removeprefix("sha256:")
+            return _TransferResult(stdout=f"{digest}  {argv[1]}\n")
+        if argv[:3] == ("docker", "image", "inspect"):
+            reference = argv[-1]
+            digest = self.local_digests.get(reference)
+            if digest is None:
+                digest = "sha256:" + hashlib.sha256(reference.encode()).hexdigest()
+            return _TransferResult(stdout=f"{digest}\n")
+        if argv[:2] == ("docker", "push"):
+            self.registry_digests[argv[-1]] = _registry_digest(argv[-1])
+            return _TransferResult()
+        if argv[:2] == ("skopeo", "inspect"):
+            reference = argv[-1].removeprefix("docker://")
+            digest = self.registry_digests.get(reference)
+            return (
+                _TransferResult(stdout=f"{digest}\n")
+                if digest is not None
+                else _TransferResult(return_code=1)
+            )
+        return _TransferResult()
+
+    def connection_host(self, request: object) -> str:
+        del request
+        return "203.0.113.10"
+
+
+class _RecreatedReleaseProvider(_ReleaseProvider):
+    def __init__(self, events: list[str]) -> None:
+        super().__init__(events)
+        self.images_available = False
+
+    def exec_argv(
+        self,
+        request: object,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str] | None,
+        cwd: str | None,
+        dry_run: bool,
+    ) -> _TransferResult:
+        if argv[:3] == ("docker", "image", "inspect") and not self.images_available:
+            self.events.append("exec:" + " ".join(argv))
+            return _TransferResult(return_code=1)
+        if argv[:3] == ("docker", "buildx", "bake"):
+            self.images_available = True
+        return super().exec_argv(
+            request,
+            argv,
+            env=env,
+            cwd=cwd,
+            dry_run=dry_run,
+        )
+
+
+class _RegistryMutatesAfterEvidenceProvider(_ReleaseProvider):
+    def __init__(self, events: list[str], target: str) -> None:
+        super().__init__(events)
+        self.target = target
+        self.mutated = False
+
+    def exec_argv(
+        self,
+        request: object,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str] | None,
+        cwd: str | None,
+        dry_run: bool,
+    ) -> _TransferResult:
+        result = super().exec_argv(
+            request,
+            argv,
+            env=env,
+            cwd=cwd,
+            dry_run=dry_run,
+        )
+        if (
+            argv[:2] == ("skopeo", "inspect")
+            and argv[-1] == f"docker://{self.target}"
+            and not self.mutated
+        ):
+            self.registry_digests[self.target] = "sha256:" + "f" * 64
+            self.mutated = True
+        return result
+
+
+class _LoadtestWorkflow:
+    def __init__(self, run_dir: Path, value: float, events: list[str]) -> None:
+        self.run_dir = run_dir
+        self.value = value
+        self.events = events
+
+    def run(self) -> None:
+        self.events.append(f"loadtest:{self.run_dir.name}")
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        (self.run_dir / "summary.json").write_text(
+            json.dumps(_summary(self.value)), encoding="utf-8"
+        )
+
+
+def _runtime_fakes(plan, events: list[str], provider=None):
+    provider = provider or _ReleaseProvider(events)
+
+    @contextmanager
+    def provisioner(*args, **kwargs):
+        del args, kwargs
+        provider.events.append("provision:enter")
+        try:
+            yield
+        finally:
+            provider.events.append("provision:exit")
+
+    def builder_provisioner(provider_arg, request, repo_root):
+        del request, repo_root
+        assert provider_arg is provider
+        provider.events.append("release-builder:stack")
+
+    loadtest_calls: list[dict[str, object]] = []
+
+    def loadtest_builder(*args, **kwargs):
+        del args
+        loadtest_calls.append(kwargs)
+        return _LoadtestWorkflow(kwargs["run_dir"], float(len(loadtest_calls) * 10), events)
+
+    def archive_builder(repo_root: Path, commit: str, destination: Path):
+        del repo_root, commit
+        destination.write_bytes(b"exact-source")
+        return release_run.ArtifactEvidence(
+            "local", str(destination), release_run.digest_path(destination)
+        )
+
+    return (
+        provider,
+        provisioner,
+        builder_provisioner,
+        loadtest_builder,
+        archive_builder,
+        loadtest_calls,
+    )
+
+
+def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, loadtest_calls = _runtime_fakes(plan, events)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert events[0:2] == ["provision:enter", "release-builder:stack"]
+    assert events[-1] == "provision:exit"
+    reset = events.index(f"exec:docker buildx rm --force {BUILDER_NAME}")
+    create = events.index(
+        f"exec:docker buildx create --name {BUILDER_NAME} --driver "
+        "docker-container --buildkitd-config "
+        f"/home/azureuser/nanofaas-release/{CURRENT_VERSION}/"
+        f"{plan.buildkit_config.name} --use"
+    )
+    source_test = events.index("exec:./gradlew test")
+    source_restages = [
+        index for index, event in enumerate(events) if event == "transfer:source.tar"
+    ]
+    assert len(source_restages) == 2
+    assert source_test < source_restages[1] < create
+    assert reset < create
+    assert [call["run_dir"] for call in loadtest_calls] == [
+        plan.run_dir / "run-1",
+        plan.run_dir / "run-2",
+        plan.run_dir / "run-3",
+    ]
+    for call in loadtest_calls:
+        control_plane_tag = f"localhost:5000/nanofaas/control-plane:{CURRENT_TAG}-amd64-native"
+        assert call["prebuilt_control_plane_image"] == (
+            f"localhost:5000/nanofaas/control-plane@{_registry_digest(control_plane_tag)}"
+        )
+        function_tag = f"localhost:5000/nanofaas/java-word-stats:{CURRENT_TAG}-amd64-native"
+        assert call["prebuilt_function_images"] == {
+            "word-stats-java": (
+                f"localhost:5000/nanofaas/java-word-stats@{_registry_digest(function_tag)}"
+            )
+        }
+    rendered = "\n".join(events).lower()
+    assert "arm64" not in rendered
+    assert "ghcr.io" not in rendered
+    assert plan.credentials is not None
+    secret_paths = {
+        plan.credentials.ghcr_token,
+        plan.credentials.cosign_key,
+        plan.credentials.cosign_password,
+    }
+    transferred = {action[2] for action in provider.actions if action[0] == "transfer"}
+    assert transferred.isdisjoint(secret_paths)
+    push_actions = [
+        action
+        for action in provider.actions
+        if action[0] == "exec"
+        and isinstance(action[2], tuple)
+        and action[2][:2] == ("docker", "push")
+    ]
+    assert push_actions
+    assert all(action[4] is None for action in push_actions)
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert [payload["phase"] for payload in payloads] == list(release_run.AMD64_PHASES)
+    assert all(payload["outcome"] == "passed" for payload in payloads)
+
+
+def test_real_regression_failure_stops_the_release_at_the_amd64_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    profile = release_run._performance_profile(plan)
+    baseline = release_run.aggregate_runs(
+        profile,
+        (_summary(100), _summary(100), _summary(100)),
+    )
+    baseline_record = build_release_record(
+        version="0.0.0",
+        source_commit="b" * 40,
+        image_digests={},
+        aggregate=baseline,
+        policy=release_run._regression_policy(plan),
+    )
+    monkeypatch.setattr(release_run, "_release_records", lambda _directory: (baseline_record,))
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    with pytest.raises(RuntimeError, match="throughput loss"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    decision = json.loads((plan.run_dir / "regression-decision.json").read_text(encoding="utf-8"))
+    assert decision["passed"] is False
+    journal = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert journal[-1]["phase"] == "regression-gate"
+    assert journal[-1]["outcome"] == "failed"
+    rendered = "\n".join(events).lower()
+    assert "arm64" not in rendered
+    assert "ghcr.io" not in rendered
+
+
+def test_mutated_benchmark_evidence_is_rejected_before_aggregation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def mutate(boundary: str) -> None:
+        if boundary == "benchmark-2:after-action":
+            (plan.run_dir / "run-2" / "summary.json").write_text(
+                json.dumps(_summary(200)), encoding="utf-8"
+            )
+
+    with pytest.raises(RuntimeError, match="benchmark-2 evidence changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=mutate,
+        )
+
+
+def test_mutated_source_archive_is_rejected_before_the_clean_build_restage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def mutate(boundary: str) -> None:
+        if boundary == "source-tests:after-action":
+            (plan.run_dir / "source.tar").write_bytes(b"mutated-source")
+
+    with pytest.raises(RuntimeError, match="source-tests evidence changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=mutate,
+        )
+
+    assert not any("docker buildx create" in event for event in events)
+
+
+def test_amd64_pre_action_remote_source_mutation_is_overwritten_by_clean_restage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def mutate(boundary: str) -> None:
+        if boundary == "amd64-build":
+            provider.remote_source_mutated = True
+
+    decision = release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+        failure_injector=mutate,
+    )
+
+    assert decision.passed is True
+    assert provider.remote_source_mutated is False
+
+
+def test_mutated_amd64_image_evidence_is_rejected_before_any_push(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+    mutated_image = plan.image_plan.cells[0].image
+
+    def mutate(boundary: str) -> None:
+        if boundary == "amd64-build:after-action":
+            provider.local_digests[mutated_image] = "sha256:" + "f" * 64
+
+    with pytest.raises(RuntimeError, match="amd64-build evidence changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=mutate,
+        )
+
+    assert not any(event.startswith("exec:docker push") for event in events)
+
+
+def test_mutated_aggregate_cannot_turn_a_real_regression_into_a_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    profile = release_run._performance_profile(plan)
+    baseline = release_run.aggregate_runs(
+        profile,
+        (_summary(100), _summary(100), _summary(100)),
+    )
+    baseline_record = build_release_record(
+        version="0.0.0",
+        source_commit="b" * 40,
+        image_digests={},
+        aggregate=baseline,
+        policy=release_run._regression_policy(plan),
+    )
+    monkeypatch.setattr(release_run, "_release_records", lambda _directory: (baseline_record,))
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def mutate(boundary: str) -> None:
+        if boundary == "aggregate:after-action":
+            (plan.run_dir / "aggregate.json").write_text(
+                json.dumps(asdict(baseline)), encoding="utf-8"
+            )
+
+    with pytest.raises(RuntimeError, match="aggregate evidence changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=mutate,
+        )
+
+
+def test_existing_journal_requires_explicit_resume_before_provisioning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+    kwargs = {
+        "provider_factory": lambda _environment, _root: provider,
+        "provisioner": provisioner,
+        "builder_provisioner": builder,
+        "loadtest_builder": loadtest,
+        "archive_builder": archive,
+    }
+    release_run.run_amd64_release(plan, **kwargs)
+    events.clear()
+
+    with pytest.raises(ValueError, match="--resume"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("must reject before provider creation")
+            ),
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    assert events == []
+
+
+def test_resume_requires_existing_journal_before_provider_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="--resume requires an existing"):
+        release_run.run_amd64_release(
+            plan,
+            resume=True,
+            provider_factory=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("must reject before provider creation")
+            ),
+        )
+
+
+def test_release_run_lock_rejects_a_second_coordinator_before_provider_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+
+    with release_run._release_run_lock(plan.state_directory):
+        with pytest.raises(RuntimeError, match="already in progress"):
+            release_run.run_amd64_release(
+                plan,
+                provider_factory=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("must reject before provider creation")
+                ),
+            )
+
+
+def test_run_rechecks_the_guarded_commit_before_provider_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        release_run,
+        "git_state",
+        lambda _root: release_run.GitState(commit="b" * 40, clean=True),
+    )
+
+    with pytest.raises(ValueError, match="source commit changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("must reject before provider creation")
+            ),
+        )
+
+
+def test_run_rechecks_the_guarded_commit_immediately_before_the_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    checks = 0
+
+    def moving_source(_root: Path) -> release_run.GitState:
+        nonlocal checks
+        checks += 1
+        commit = "a" * 40 if checks == 1 else "b" * 40
+        return release_run.GitState(commit=commit, clean=True)
+
+    monkeypatch.setattr(release_run, "git_state", moving_source)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    with pytest.raises(ValueError, match="source commit changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    journal = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert journal[-1]["phase"] == "regression-gate"
+    assert journal[-1]["outcome"] == "failed"
+
+
+@pytest.mark.parametrize("input_name", ("bake_file", "buildkit_config"))
+def test_amd64_build_rejects_mutated_generated_inputs_before_remote_actions(
+    input_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    generated_input = getattr(plan, input_name)
+    assert isinstance(generated_input, Path)
+    generated_input.write_text("mutated\n", encoding="utf-8")
+    provider = _ReleaseProvider([])
+
+    with pytest.raises(ValueError, match="generated build input changed"):
+        release_run._build_amd64_images(
+            plan,
+            provider,
+            object(),
+            "/srv/release/docker-bake.json",
+            "/srv/release/buildkitd.toml",
+            "/srv/release/source",
+        )
+
+    assert provider.actions == []
+
+
+def test_verified_resume_reuses_every_amd64_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, first_events)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    second_events: list[str] = []
+    provider.events = second_events
+    _, _, _, second_loadtest, _, calls = _runtime_fakes(plan, second_events)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=second_loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert calls == []
+    assert not any("buildx" in event or "docker push" in event for event in second_events)
+
+
+def test_resume_provisions_before_verification_and_invalidates_from_changed_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, first_events)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    (plan.run_dir / "run-2" / "summary.json").write_text(
+        json.dumps(_summary(999)), encoding="utf-8"
+    )
+    second_events: list[str] = []
+    provider.events = second_events
+    _, _, _, second_loadtest, _, calls = _runtime_fakes(plan, second_events)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=second_loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert second_events[:2] == ["provision:enter", "release-builder:stack"]
+    assert [call["run_dir"] for call in calls] == [
+        plan.run_dir / "run-2",
+        plan.run_dir / "run-3",
+    ]
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    invalidation = next(payload for payload in payloads if payload["kind"] == "invalidation")
+    assert invalidation["invalidateFrom"] == "benchmark-2"
+    assert invalidation["affectedPhases"] == [
+        "benchmark-2",
+        "benchmark-3",
+        "aggregate",
+        "regression-gate",
+    ]
+
+
+def test_resume_on_recreated_vm_restages_verified_source_before_rebuilding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, first_events)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    second_events: list[str] = []
+    recreated = _RecreatedReleaseProvider(second_events)
+    recreated, provisioner, builder, loadtest, archive, _ = _runtime_fakes(
+        plan, second_events, recreated
+    )
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: recreated,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    restage = second_events.index("transfer:source.tar")
+    rebuild = next(
+        index for index, event in enumerate(second_events) if "docker buildx create" in event
+    )
+    assert restage < rebuild
+    assert not any("./gradlew test" in event for event in second_events)
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    invalidation = next(payload for payload in payloads if payload["kind"] == "invalidation")
+    assert invalidation["invalidateFrom"] == "amd64-build"
+
+
+def test_registry_digest_change_invalidates_push_and_benchmarks_use_digest_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, first_events)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    control_plane = f"localhost:5000/nanofaas/control-plane:{CURRENT_TAG}-amd64-native"
+    provider.registry_digests[control_plane] = "sha256:" + "f" * 64
+    second_events: list[str] = []
+    provider.events = second_events
+    _, _, _, second_loadtest, _, calls = _runtime_fakes(plan, second_events)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=second_loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert len(calls) == 3
+    assert all("@sha256:" in str(call["prebuilt_control_plane_image"]) for call in calls)
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    invalidation = next(payload for payload in payloads if payload["kind"] == "invalidation")
+    assert invalidation["invalidateFrom"] == "local-registry-push"
+
+
+def test_registry_mutation_after_push_evidence_fails_before_any_benchmark(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    control_plane = f"localhost:5000/nanofaas/control-plane:{CURRENT_TAG}-amd64-native"
+    events: list[str] = []
+    provider = _RegistryMutatesAfterEvidenceProvider(events, control_plane)
+    provider, provisioner, builder, loadtest, archive, calls = _runtime_fakes(
+        plan, events, provider
+    )
+
+    with pytest.raises(RuntimeError, match="registry image changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    assert calls == []
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    push = next(payload for payload in payloads if payload.get("phase") == "local-registry-push")
+    benchmark = payloads[-1]
+    assert push["outcome"] == "passed"
+    assert benchmark["phase"] == "benchmark-1"
+    assert benchmark["outcome"] == "failed"
+
+
+@pytest.mark.parametrize("failed_phase", release_run.AMD64_PHASES)
+def test_each_phase_failure_stops_before_arm_or_publication_and_is_journaled(
+    failed_phase: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def fail(phase: str) -> None:
+        if phase == failed_phase:
+            raise RuntimeError(f"injected:{phase}")
+
+    with pytest.raises(RuntimeError, match=f"injected:{failed_phase}"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=fail,
+        )
+
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert payloads[-1]["phase"] == failed_phase
+    assert payloads[-1]["outcome"] == "failed"
+    rendered = "\n".join(events).lower()
+    assert "arm64" not in rendered
+    assert "ghcr.io" not in rendered
+
+
+@pytest.mark.parametrize("failed_phase", release_run.AMD64_PHASES)
+def test_each_post_action_failure_is_journaled_before_later_phases(
+    failed_phase: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def fail(boundary: str) -> None:
+        if boundary == f"{failed_phase}:after-action":
+            raise RuntimeError(f"injected-after:{failed_phase}")
+
+    with pytest.raises(RuntimeError, match=f"injected-after:{failed_phase}"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=fail,
+        )
+
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert payloads[-1]["phase"] == failed_phase
+    assert payloads[-1]["outcome"] == "failed"
+    later = release_run.AMD64_PHASES[release_run.AMD64_PHASES.index(failed_phase) + 1 :]
+    assert not any(payload.get("phase") in later for payload in payloads)
+    rendered = "\n".join(events).lower()
+    assert "arm64" not in rendered
+    assert "ghcr.io" not in rendered

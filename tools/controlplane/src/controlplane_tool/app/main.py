@@ -7,6 +7,7 @@ from rich.traceback import install as install_rich_tracebacks
 
 from controlplane_tool.cli.images import install_image_commands
 from controlplane_tool.cli.product import install_product_commands
+from controlplane_tool.cli.release import install_release_commands
 from controlplane_tool.tui.setup import setup_ui
 
 app = typer.Typer(
@@ -24,6 +25,7 @@ def tui() -> None:
 
 install_product_commands(app)
 install_image_commands(app)
+install_release_commands(app)
 
 
 def main() -> None:
