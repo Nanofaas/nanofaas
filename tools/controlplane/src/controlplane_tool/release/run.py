@@ -1,4 +1,4 @@
-"""Azure release planning and execution through the AMD64 performance gate."""
+"""Azure release planning and execution through the ARM64 functional gate."""
 
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from controlplane_tool.functions.catalog import resolve_function_definition
 from controlplane_tool.images.bake import render_bake_json
 from controlplane_tool.images.plan import DEFAULT_REGISTRY, ImagePlan, build_image_plan
 from controlplane_tool.plans.loadtest import build_loadtest_plan
+from controlplane_tool.release import arm
 from controlplane_tool.release.environment import validate_release_environment
 from controlplane_tool.release.metrics import (
     PerformanceAggregate,
@@ -64,6 +65,7 @@ AMD64_PHASES = (
     "aggregate",
     "regression-gate",
 )
+RELEASE_PHASES = AMD64_PHASES + arm.ARM64_PHASES
 _GO_TOOLCHAIN = (
     "golang:1.24-alpine@sha256:757779acac4af1b349a20f357c7296097b4a0b89da4ad0e370b339060077282a"
 )
@@ -138,7 +140,7 @@ class Amd64ReleasePlan:
 
     @property
     def phase_names(self) -> tuple[str, ...]:
-        return AMD64_PHASES
+        return RELEASE_PHASES
 
     @property
     def journal_root(self) -> Path:
@@ -159,7 +161,8 @@ class Amd64ReleasePlan:
                 f"buildx {self.builder.name}: docker-container, "
                 f"maxParallelism={self.builder.max_parallelism}"
             ),
-            f"images: {len(self.image_plan.cells)} cells via docker-amd64 + native",
+            f"images: {len(self.image_plan.cells)} AMD64 + 26 ARM64 via Bake + native",
+            "ARM64: digest-pinned QEMU after regression-gate",
             (
                 "credentials: 3 private files validated; transfer deferred"
                 if self.credentials is not None
@@ -607,7 +610,7 @@ def run_amd64_release(
     archive_builder: ArchiveBuilder | None = None,
     failure_injector: FailureInjector | None = None,
 ) -> RegressionDecision:
-    """Run only the AMD64 half of a release, stopping at its performance gate."""
+    """Run a release through the ARM64 functional gate, before publication."""
     with _release_run_lock(_release_lock_path(plan)):
         return _run_amd64_release_locked(
             plan,
@@ -661,7 +664,7 @@ def _run_amd64_release_locked(
     journal = ReleaseJournal(
         plan.journal_root,
         plan.identity,
-        phases=AMD64_PHASES,
+        phases=RELEASE_PHASES,
         artifact_digest=lambda location, reference: _remote_image_digest(
             provider, stack_request, location, reference
         ),
@@ -814,15 +817,70 @@ def _run_amd64_release_locked(
                 return (artifact,)
 
             _record_phase(journal, "regression-gate", gate, failure_injector)
-            return decision_box[0]
-
-        return _decision_from_payload(
-            _read_verified_local_json(
-                journal,
-                "regression-gate",
-                plan.run_dir / "regression-decision.json",
+            decision = decision_box[0]
+        else:
+            decision = _decision_from_payload(
+                _read_verified_local_json(
+                    journal,
+                    "regression-gate",
+                    plan.run_dir / "regression-decision.json",
+                )
             )
+        if not decision.passed:
+            raise RuntimeError("release regression gate evidence did not pass")
+
+        arm_plan = arm.build_arm64_image_plan(
+            plan.repo_root,
+            plan.version,
+            registry=plan.image_plan.registry,
         )
+        arm_bake = plan.run_dir / "docker-bake-arm64.json"
+        remote_arm_bake = f"{remote_root}/{arm_bake.name}"
+        if "arm64-build" not in reusable:
+            local_archive = plan.run_dir / "source.tar"
+            archive_evidence = _journal_artifact(
+                journal,
+                "source-tests",
+                location="local",
+                reference=str(local_archive),
+            )
+
+            def build_arm64() -> tuple[ArtifactEvidence, ...]:
+                _assert_guarded_source(plan)
+                stage_source_archive(
+                    provider,
+                    stack_request,
+                    archive=local_archive,
+                    remote_archive=source_archive,
+                    remote_source_dir=source_dir,
+                    expected_digest=archive_evidence.digest,
+                )
+                return _build_arm64_images(
+                    plan,
+                    arm_plan,
+                    arm_bake,
+                    provider,
+                    stack_request,
+                    remote_arm_bake,
+                    source_dir,
+                )
+
+            _record_phase(journal, "arm64-build", build_arm64, failure_injector)
+        if "arm64-smoke" not in reusable:
+            build_evidence = _journal_phase_artifacts(journal, "arm64-build")
+            _record_phase(
+                journal,
+                "arm64-smoke",
+                lambda: _smoke_arm64_images(
+                    plan,
+                    arm_plan,
+                    provider,
+                    stack_request,
+                    build_evidence,
+                ),
+                failure_injector,
+            )
+        return decision
 
 
 def _verify_release_vm_facts(
@@ -1014,6 +1072,223 @@ def _build_amd64_images(
     ):
         _provider_exec(provider, request, command.argv, cwd=command.remote_dir)
     return _local_image_evidence(plan, provider, request)
+
+
+def _build_arm64_images(
+    plan: Amd64ReleasePlan,
+    image_plan: ImagePlan,
+    bake_file: Path,
+    provider: object,
+    request: object,
+    remote_bake: str,
+    remote_source_dir: str,
+) -> tuple[ArtifactEvidence, ...]:
+    bake_file.write_text(render_bake_json(image_plan), encoding="utf-8")
+    _provider_exec(provider, request, ("mkdir", "-p", str(Path(remote_bake).parent)))
+    transfer = provider.transfer_to(  # type: ignore[attr-defined]
+        request,
+        source=bake_file,
+        destination=remote_bake,
+    )
+    _require_result(transfer, f"transfer {bake_file.name}")
+    for command in arm.arm64_build_commands(
+        image_plan,
+        builder_name=plan.builder.name,
+        remote_bake_file=remote_bake,
+        remote_source_dir=remote_source_dir,
+    ):
+        result = _provider_exec(
+            provider,
+            request,
+            command.argv,
+            cwd=command.remote_dir,
+        )
+        if command.task_id == "release.arm64.builder":
+            arm.require_arm64_builder(str(getattr(result, "stdout", "")))
+
+    for cell in image_plan.cells:
+        _require_image_architecture(provider, request, cell.image, "arm64")
+        _inspect_image_digest(provider, request, cell.image)
+    for cell in image_plan.cells:
+        _provider_exec(provider, request, ("docker", "push", cell.image))
+    evidence = tuple(
+        ArtifactEvidence(
+            "remote",
+            f"docker://{cell.image}",
+            _inspect_registry_digest(provider, request, cell.image),
+        )
+        for cell in image_plan.cells
+    )
+    arm.require_complete_arm64_evidence(image_plan, evidence)
+    return evidence
+
+
+def _smoke_arm64_images(
+    plan: Amd64ReleasePlan,
+    image_plan: ImagePlan,
+    provider: object,
+    request: object,
+    expected_build_evidence: Iterable[ArtifactEvidence],
+) -> tuple[ArtifactEvidence, ...]:
+    _assert_guarded_source(plan)
+    _provider_exec(provider, request, arm.BINFMT_COMMAND)
+    expected = tuple(expected_build_evidence)
+    arm.require_complete_arm64_evidence(image_plan, expected)
+    current = tuple(
+        ArtifactEvidence(
+            "remote",
+            f"docker://{cell.image}",
+            _inspect_registry_digest(provider, request, cell.image),
+        )
+        for cell in image_plan.cells
+    )
+    if _evidence_map(current) != _evidence_map(expected):
+        raise RuntimeError("arm64-build evidence changed before smoke")
+    digests = {artifact.reference: artifact.digest for artifact in expected}
+    checked_servers: list[str] = []
+    for smoke in arm.server_smoke_specs(image_plan):
+        digest = digests[f"docker://{smoke.cell.image}"]
+        _smoke_arm64_server(provider, request, smoke, _pinned_image(smoke.cell.image, digest))
+        checked_servers.append(smoke.cell.image)
+
+    watchdog = arm.watchdog_cell(image_plan)
+    watchdog_digest = digests[f"docker://{watchdog.image}"]
+    watchdog_result = provider.exec_argv(  # type: ignore[attr-defined]
+        request,
+        (
+            "docker",
+            "run",
+            "--rm",
+            "--platform",
+            arm.ARM64_PLATFORM,
+            "--env",
+            "WARM=true",
+            "--env",
+            "WATCHDOG_CMD=/nanofaas-arm64-smoke-missing-child",
+            _pinned_image(watchdog.image, watchdog_digest),
+        ),
+        env=None,
+        cwd=None,
+        dry_run=False,
+    )
+    arm.require_expected_watchdog_exit(
+        int(getattr(watchdog_result, "return_code", 0)),
+        str(getattr(watchdog_result, "stdout", "")),
+        str(getattr(watchdog_result, "stderr", "")),
+    )
+    marker = _write_json(
+        plan.run_dir / "arm64-smoke.json",
+        {
+            "architecture": arm.ARM64_PLATFORM,
+            "images": {
+                cell.image: digests[f"docker://{cell.image}"] for cell in image_plan.cells
+            },
+            "serverHealthChecks": checked_servers,
+            "watchdog": {
+                "image": watchdog.image,
+                "expectedExitCode": 1,
+                "expectedFailure": "missing child executable",
+            },
+        },
+    )
+    return (marker,)
+
+
+def _require_image_architecture(
+    provider: object,
+    request: object,
+    reference: str,
+    expected: str,
+) -> None:
+    result = _provider_exec(
+        provider,
+        request,
+        ("docker", "image", "inspect", "--format={{.Architecture}}", reference),
+    )
+    actual = str(getattr(result, "stdout", "")).strip()
+    if actual != expected:
+        raise RuntimeError(
+            f"image architecture mismatch for {reference}: expected {expected}, got {actual or 'empty'}"
+        )
+
+
+def _smoke_arm64_server(
+    provider: object,
+    request: object,
+    smoke: arm.ServerSmokeSpec,
+    image: str,
+) -> None:
+    try:
+        _provider_exec(
+            provider,
+            request,
+            (
+                "docker",
+                "run",
+                "--detach",
+                "--rm",
+                "--name",
+                smoke.container_name,
+                "--platform",
+                arm.ARM64_PLATFORM,
+                "--publish",
+                f"127.0.0.1::{smoke.container_port}",
+                image,
+            ),
+        )
+        port = _provider_exec(
+            provider,
+            request,
+            ("docker", "port", smoke.container_name, f"{smoke.container_port}/tcp"),
+        )
+        endpoint = str(getattr(port, "stdout", "")).strip()
+        host, separator, value = endpoint.rpartition(":")
+        if host != "127.0.0.1" or separator != ":" or not value.isdigit():
+            raise RuntimeError(f"invalid ARM64 smoke port mapping: {endpoint or 'empty'}")
+        _provider_exec(
+            provider,
+            request,
+            (
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--connect-timeout",
+                "2",
+                "--max-time",
+                "2",
+                "--retry",
+                "59",
+                "--retry-delay",
+                "2",
+                "--retry-all-errors",
+                "--retry-max-time",
+                "120",
+                f"http://{endpoint}{smoke.health_path}",
+            ),
+        )
+    except BaseException:
+        try:
+            provider.exec_argv(  # type: ignore[attr-defined]
+                request,
+                ("docker", "rm", "--force", smoke.container_name),
+                env=None,
+                cwd=None,
+                dry_run=False,
+            )
+        except BaseException:
+            pass
+        raise
+    _provider_exec(
+        provider,
+        request,
+        ("docker", "rm", "--force", smoke.container_name),
+    )
+
+
+def _pinned_image(tagged: str, digest: str) -> str:
+    repository, _ = tagged.rsplit(":", 1)
+    return f"{repository}@{digest}"
 
 
 def _verify_generated_build_inputs(plan: Amd64ReleasePlan) -> None:

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from controlplane_tool.release import arm
 from controlplane_tool.release import run as release_run
 from controlplane_tool.release.metrics import build_release_record
 from controlplane_tool.release.versioning import read_project_version
@@ -61,23 +62,14 @@ def test_plan_is_amd64_only_and_uses_a_named_bounded_buildx_builder(
     assert plan.version == CURRENT_VERSION
     assert len(plan.image_plan.cells) == 26
     assert {cell.architecture for cell in plan.image_plan.cells} == {"amd64"}
-    assert plan.phase_names == (
-        "source-tests",
-        "amd64-build",
-        "local-registry-push",
-        "benchmark-1",
-        "benchmark-2",
-        "benchmark-3",
-        "aggregate",
-        "regression-gate",
-    )
+    assert plan.phase_names == release_run.RELEASE_PHASES
     assert plan.builder.name == BUILDER_NAME
     assert plan.builder.max_parallelism == 2
     assert "max-parallelism = 2" in plan.buildkit_config.read_text(encoding="utf-8")
     rendered = plan.render()
     assert "docker-container" in rendered
-    assert "docker-amd64" in rendered
-    assert "arm64" not in rendered.lower()
+    assert "26 AMD64 + 26 ARM64" in rendered
+    assert "digest-pinned QEMU after regression-gate" in rendered
     assert "ghcr.io" not in rendered
     assert "fixture-token" not in repr(plan)
     assert "fixture-key" not in repr(plan)
@@ -424,9 +416,15 @@ def test_source_archive_rechecks_clean_commit_and_never_overwrites_on_guard_fail
 
 
 class _TransferResult:
-    def __init__(self, *, stdout: str = "", return_code: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        stdout: str = "",
+        stderr: str = "",
+        return_code: int = 0,
+    ) -> None:
         self.stdout = stdout
-        self.stderr = ""
+        self.stderr = stderr
         self.return_code = return_code
 
 
@@ -584,10 +582,14 @@ class _ReleaseProvider(_ArchiveProvider):
         self.events.append("exec:" + " ".join(argv))
         if argv[:3] == ("docker", "buildx", "create") and self.remote_source_mutated:
             return _TransferResult(return_code=1)
+        if argv[:3] == ("docker", "buildx", "inspect") and "--bootstrap" in argv:
+            return _TransferResult(stdout="Platforms: linux/amd64, linux/arm64\n")
         if argv[0] == "sha256sum":
             digest = self.remote_digests[argv[1]].removeprefix("sha256:")
             return _TransferResult(stdout=f"{digest}  {argv[1]}\n")
         if argv[:3] == ("docker", "image", "inspect"):
+            if argv[3] == "--format={{.Architecture}}":
+                return _TransferResult(stdout="arm64\n")
             reference = argv[-1]
             digest = self.local_digests.get(reference)
             if digest is None:
@@ -603,6 +605,16 @@ class _ReleaseProvider(_ArchiveProvider):
                 _TransferResult(stdout=f"{digest}\n")
                 if digest is not None
                 else _TransferResult(return_code=1)
+            )
+        if argv[:2] == ("docker", "port"):
+            return _TransferResult(stdout="127.0.0.1:32768\n")
+        if (
+            argv[:2] == ("docker", "run")
+            and "WATCHDOG_CMD=/nanofaas-arm64-smoke-missing-child" in argv
+        ):
+            return _TransferResult(
+                stderr="Failed to spawn runtime: No such file or directory (os error 2)",
+                return_code=1,
             )
         return _TransferResult()
 
@@ -668,6 +680,83 @@ class _RegistryMutatesAfterEvidenceProvider(_ReleaseProvider):
         ):
             self.registry_digests[self.target] = "sha256:" + "f" * 64
             self.mutated = True
+        return result
+
+
+class _ArmFailureProvider(_ReleaseProvider):
+    def __init__(self, events: list[str], failure: str) -> None:
+        super().__init__(events)
+        self.failure = failure
+
+    def exec_argv(
+        self,
+        request: object,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str] | None,
+        cwd: str | None,
+        dry_run: bool,
+    ) -> _TransferResult:
+        result = super().exec_argv(
+            request,
+            argv,
+            env=env,
+            cwd=cwd,
+            dry_run=dry_run,
+        )
+        if (
+            self.failure == "builder"
+            and argv[:3] == ("docker", "buildx", "inspect")
+            and "--bootstrap" in argv
+        ):
+            return _TransferResult(stdout="Platforms: linux/amd64\n")
+        if (
+            self.failure == "bake"
+            and argv[:3] == ("docker", "buildx", "bake")
+            and "docker-arm64" in argv
+        ):
+            return _TransferResult(stderr="arm bake failed", return_code=1)
+        if (
+            self.failure == "architecture"
+            and argv[:3] == ("docker", "image", "inspect")
+            and argv[3] == "--format={{.Architecture}}"
+        ):
+            return _TransferResult(stdout="amd64\n")
+        if (
+            self.failure == "digest"
+            and argv[:3] == ("docker", "image", "inspect")
+            and argv[3] == "--format={{.Id}}"
+            and "-arm64" in argv[-1]
+        ):
+            return _TransferResult(stdout="missing\n")
+        if self.failure == "push" and argv[:2] == ("docker", "push") and "-arm64" in argv[-1]:
+            return _TransferResult(stderr="arm push failed", return_code=1)
+        if (
+            self.failure == "registry"
+            and argv[:2] == ("skopeo", "inspect")
+            and "-arm64" in argv[-1]
+        ):
+            return _TransferResult(stdout="missing\n")
+        if self.failure == "start" and argv[:3] == ("docker", "run", "--detach"):
+            return _TransferResult(stderr="arm server failed", return_code=1)
+        if self.failure in {"health", "health-cleanup", "health-cleanup-raises"} and argv[0] == "curl":
+            return _TransferResult(stderr="arm health failed", return_code=1)
+        if (
+            self.failure == "health-cleanup"
+            and argv[:3] == ("docker", "rm", "--force")
+        ):
+            return _TransferResult(stderr="cleanup failed", return_code=1)
+        if (
+            self.failure == "health-cleanup-raises"
+            and argv[:3] == ("docker", "rm", "--force")
+        ):
+            raise RuntimeError("cleanup exploded")
+        if (
+            self.failure == "watchdog"
+            and argv[:2] == ("docker", "run")
+            and "WATCHDOG_CMD=/nanofaas-arm64-smoke-missing-child" in argv
+        ):
+            return _TransferResult(stderr="exec format error", return_code=1)
         return result
 
 
@@ -805,8 +894,12 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     source_restages = [
         index for index, event in enumerate(events) if event == "transfer:source.tar"
     ]
-    assert len(source_restages) == 2
+    assert len(source_restages) == 3
     assert source_test < source_restages[1] < create
+    qemu = events.index(
+        f"exec:docker run --privileged --rm {arm.BINFMT_IMAGE} --install arm64"
+    )
+    assert source_restages[2] < qemu
     assert reset < create
     assert [
         (getattr(request, "name"), ports, sources)
@@ -842,7 +935,7 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
             )
         }
     rendered = "\n".join(events).lower()
-    assert "arm64" not in rendered
+    assert "arm64" in rendered
     assert "ghcr.io" not in rendered
     assert plan.credentials is not None
     secret_paths = {
@@ -865,8 +958,207 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
         json.loads(path.read_text(encoding="utf-8"))
         for path in sorted(plan.state_directory.glob("*.json"))
     ]
-    assert [payload["phase"] for payload in payloads] == list(release_run.AMD64_PHASES)
+    assert [payload["phase"] for payload in payloads] == list(release_run.RELEASE_PHASES)
     assert all(payload["outcome"] == "passed" for payload in payloads)
+
+
+def test_release_runs_arm64_only_after_the_passed_amd64_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def record_boundary(boundary: str) -> None:
+        events.append(f"phase:{boundary}")
+
+    decision = release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+        failure_injector=record_boundary,
+    )
+
+    assert decision.passed is True
+    gate = events.index("phase:regression-gate:after-action")
+    qemu = next(
+        index
+        for index, event in enumerate(events)
+        if event.startswith(f"exec:docker run --privileged --rm {arm.BINFMT_IMAGE}")
+    )
+    assert gate < qemu
+    arm_pushes = [event for event in events if event.startswith("exec:docker push") and "-arm64" in event]
+    architecture_inspects = [
+        event
+        for event in events
+        if event.startswith("exec:docker image inspect --format={{.Architecture}}")
+    ]
+    server_runs = [
+        event
+        for event in events
+        if event.startswith("exec:docker run --detach --rm --name nanofaas-arm64-smoke-")
+    ]
+    server_removals = [
+        event
+        for event in events
+        if event.startswith("exec:docker rm --force nanofaas-arm64-smoke-")
+    ]
+    assert len(arm_pushes) == 26
+    assert len(architecture_inspects) == 26
+    assert len(server_runs) == 25
+    assert len(server_removals) == 25
+    assert all("--platform linux/arm64" in event for event in server_runs)
+    assert sum(event.startswith("exec:docker buildx create") for event in events) == 1
+    health_checks = [event for event in events if event.startswith("exec:curl")]
+    assert len(health_checks) == 25
+    assert all("--retry-max-time 120" in event for event in health_checks)
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert [payload["phase"] for payload in payloads] == list(release_run.RELEASE_PHASES)
+
+
+def _run_with_arm_failure(
+    plan: release_run.Amd64ReleasePlan,
+    events: list[str],
+    provider: _ArmFailureProvider,
+) -> None:
+    _, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events, provider)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+
+
+def test_failed_arm64_server_start_still_attempts_container_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider = _ArmFailureProvider(events, "start")
+
+    with pytest.raises(RuntimeError, match="arm server failed"):
+        _run_with_arm_failure(plan, events, provider)
+
+    assert "exec:docker rm --force nanofaas-arm64-smoke-1" in events
+
+
+@pytest.mark.parametrize(
+    ("failure", "error", "failed_phase"),
+    (
+        ("builder", "does not support linux/arm64", "arm64-build"),
+        ("bake", "arm bake failed", "arm64-build"),
+        ("architecture", "image architecture mismatch", "arm64-build"),
+        ("digest", "invalid image digest", "arm64-build"),
+        ("push", "arm push failed", "arm64-build"),
+        ("registry", "invalid registry digest", "arm64-build"),
+        ("health", "arm health failed", "arm64-smoke"),
+        ("watchdog", "exec format error", "arm64-smoke"),
+    ),
+)
+def test_arm64_failures_are_journaled_and_cannot_reach_publication(
+    failure: str,
+    error: str,
+    failed_phase: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider = _ArmFailureProvider(events, failure)
+
+    with pytest.raises(RuntimeError, match=error):
+        _run_with_arm_failure(plan, events, provider)
+
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert payloads[-1]["phase"] == failed_phase
+    assert payloads[-1]["outcome"] == "failed"
+    rendered = "\n".join(events).lower()
+    assert "ghcr.io" not in rendered
+    assert "docker login" not in rendered
+    assert "skopeo copy" not in rendered
+    assert "imagetools" not in rendered
+
+
+def test_arm64_health_failure_is_preserved_when_container_cleanup_also_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider = _ArmFailureProvider(events, "health-cleanup")
+
+    with pytest.raises(RuntimeError, match="arm health failed"):
+        _run_with_arm_failure(plan, events, provider)
+
+    assert "exec:docker rm --force nanofaas-arm64-smoke-1" in events
+
+
+def test_arm64_health_failure_is_preserved_when_cleanup_executor_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider = _ArmFailureProvider(events, "health-cleanup-raises")
+
+    with pytest.raises(RuntimeError, match="arm health failed"):
+        _run_with_arm_failure(plan, events, provider)
+
+    assert "exec:docker rm --force nanofaas-arm64-smoke-1" in events
+
+
+@pytest.mark.parametrize("failed_phase", arm.ARM64_PHASES)
+@pytest.mark.parametrize("boundary_suffix", ("", ":after-action"))
+def test_injected_arm64_phase_failure_never_reaches_publication(
+    failed_phase: str,
+    boundary_suffix: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def fail(boundary: str) -> None:
+        if boundary == f"{failed_phase}{boundary_suffix}":
+            raise RuntimeError(f"injected:{boundary}")
+
+    with pytest.raises(RuntimeError, match="injected"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=fail,
+        )
+
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert payloads[-1]["phase"] == failed_phase
+    assert payloads[-1]["outcome"] == "failed"
+    rendered = "\n".join(events).lower()
+    assert "ghcr.io" not in rendered
+    assert "docker login" not in rendered
+    assert "skopeo copy" not in rendered
+    assert "imagetools" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -1309,6 +1601,78 @@ def test_run_rechecks_the_guarded_commit_immediately_before_the_gate(
     assert journal[-1]["outcome"] == "failed"
 
 
+def test_run_rechecks_the_guarded_commit_immediately_before_arm64(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    checks = 0
+
+    def moving_source(_root: Path) -> release_run.GitState:
+        nonlocal checks
+        checks += 1
+        commit = "a" * 40 if checks < 3 else "b" * 40
+        return release_run.GitState(commit=commit, clean=True)
+
+    monkeypatch.setattr(release_run, "git_state", moving_source)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    with pytest.raises(ValueError, match="source commit changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    assert not any(arm.BINFMT_IMAGE in event for event in events)
+    journal = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert journal[-1]["phase"] == "arm64-build"
+    assert journal[-1]["outcome"] == "failed"
+
+
+def test_run_rechecks_the_guarded_commit_immediately_before_arm64_smoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    checks = 0
+
+    def moving_source(_root: Path) -> release_run.GitState:
+        nonlocal checks
+        checks += 1
+        commit = "a" * 40 if checks < 4 else "b" * 40
+        return release_run.GitState(commit=commit, clean=True)
+
+    monkeypatch.setattr(release_run, "git_state", moving_source)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    with pytest.raises(ValueError, match="source commit changed"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    assert not any("docker run --detach" in event for event in events)
+    journal = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert journal[-1]["phase"] == "arm64-smoke"
+    assert journal[-1]["outcome"] == "failed"
+
+
 @pytest.mark.parametrize("input_name", ("bake_file", "buildkit_config"))
 def test_amd64_build_rejects_mutated_generated_inputs_before_remote_actions(
     input_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1372,6 +1736,105 @@ def test_verified_resume_reuses_every_amd64_phase(
         "release-builder:stack",
     ]
     assert not any("buildx" in event or "docker push" in event for event in second_events)
+
+
+def test_resume_invalidates_arm_build_and_smoke_when_arm_digest_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, first_events)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    arm_plan = arm.build_arm64_image_plan(
+        plan.repo_root,
+        plan.version,
+        registry=plan.image_plan.registry,
+    )
+    provider.registry_digests[arm_plan.cells[0].image] = "sha256:" + "f" * 64
+    second_events: list[str] = []
+    provider.events = second_events
+    _, _, _, resumed_loadtest, _, calls = _runtime_fakes(plan, second_events)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=resumed_loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert calls == []
+    assert any(arm.BINFMT_IMAGE in event for event in second_events)
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    invalidation = next(
+        payload
+        for payload in payloads
+        if payload.get("kind") == "invalidation"
+        and payload.get("invalidateFrom") == "arm64-build"
+    )
+    assert invalidation["affectedPhases"] == ["arm64-build", "arm64-smoke"]
+
+
+def test_resume_repeats_only_arm_smoke_when_its_local_marker_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, first_events)
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    (plan.run_dir / "arm64-smoke.json").write_text("{}\n", encoding="utf-8")
+    second_events: list[str] = []
+    provider.events = second_events
+    _, _, _, resumed_loadtest, _, calls = _runtime_fakes(plan, second_events)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=resumed_loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert calls == []
+    assert any(arm.BINFMT_IMAGE in event for event in second_events)
+    assert not any("docker push" in event for event in second_events)
+    assert any("docker run --detach" in event for event in second_events)
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    invalidation = next(
+        payload
+        for payload in payloads
+        if payload.get("kind") == "invalidation"
+        and payload.get("invalidateFrom") == "arm64-smoke"
+    )
+    assert invalidation["affectedPhases"] == ["arm64-smoke"]
 
 
 def test_resume_restricts_legacy_wildcard_ingress_before_bootstrap_rsync(
@@ -1532,6 +1995,8 @@ def test_resume_provisions_before_verification_and_invalidates_from_changed_evid
         "benchmark-3",
         "aggregate",
         "regression-gate",
+        "arm64-build",
+        "arm64-smoke",
     ]
 
 
