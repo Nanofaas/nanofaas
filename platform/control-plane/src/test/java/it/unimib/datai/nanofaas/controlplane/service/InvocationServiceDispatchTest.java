@@ -132,7 +132,7 @@ class InvocationServiceDispatchTest {
                 "idem-1",
                 "trace-1",
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response.executionId()).isEqualTo("exec-replay-success");
         assertThat(response.status()).isEqualTo("success");
@@ -159,7 +159,7 @@ class InvocationServiceDispatchTest {
                 "idem-reactive-success",
                 "trace-1",
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response).isNotNull();
         assertThat(response.executionId()).isEqualTo("exec-reactive-replay-success");
@@ -187,7 +187,7 @@ class InvocationServiceDispatchTest {
                 "idem-sync-timeout",
                 "trace-1",
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response.executionId()).isEqualTo("exec-sync-replay-timeout");
         assertThat(response.status()).isEqualTo("timeout");
@@ -213,7 +213,7 @@ class InvocationServiceDispatchTest {
                 "idem-timeout",
                 "trace-1",
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response).isNotNull();
         assertThat(response.executionId()).isEqualTo("exec-replay-timeout");
@@ -293,7 +293,7 @@ class InvocationServiceDispatchTest {
                 null,
                 null,
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("inline-ok");
@@ -329,7 +329,7 @@ class InvocationServiceDispatchTest {
                 null,
                 null,
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("inline-ok");
@@ -359,7 +359,7 @@ class InvocationServiceDispatchTest {
                 null,
                 null,
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("queued-ok");
@@ -410,7 +410,7 @@ class InvocationServiceDispatchTest {
                 null,
                 null,
                 1_000
-        ).block();
+        ).block().response();
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.output()).isEqualTo("ok");
@@ -428,7 +428,7 @@ class InvocationServiceDispatchTest {
         doThrow(new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 3))
                 .when(syncQueueGateway).enqueueOrThrow(any());
 
-        AtomicReference<reactor.core.publisher.Mono<InvocationResponse>> monoRef = new AtomicReference<>();
+        AtomicReference<reactor.core.publisher.Mono<SyncInvocation>> monoRef = new AtomicReference<>();
         assertThatCode(() -> monoRef.set(invocationService.invokeSyncReactive(
                 "sync-reject-fn",
                 new InvocationRequest("payload", Map.of()),
@@ -494,7 +494,7 @@ class InvocationServiceDispatchTest {
                 "idem-timeout",
                 null,
                 10
-        ).block();
+        ).block().response();
 
         assertThat(first.status()).isEqualTo("timeout");
 
@@ -506,7 +506,7 @@ class InvocationServiceDispatchTest {
                 "idem-timeout",
                 null,
                 10
-        ).block();
+        ).block().response();
 
         assertThat(second.status()).isEqualTo("timeout");
         assertThat(invocationService.getStatus(first.executionId())).get()
@@ -529,7 +529,7 @@ class InvocationServiceDispatchTest {
                 "idem-timeout-reactive",
                 null,
                 10
-        ).block();
+        ).block().response();
 
         assertThat(first).isNotNull();
         assertThat(first.status()).isEqualTo("timeout");
@@ -542,7 +542,7 @@ class InvocationServiceDispatchTest {
                 "idem-timeout-reactive",
                 null,
                 10
-        ).block();
+        ).block().response();
 
         assertThat(second).isNotNull();
         assertThat(second.status()).isEqualTo("timeout");

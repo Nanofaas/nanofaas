@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.api;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.OffloadPolicy;
 import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
@@ -30,7 +31,8 @@ public record FunctionResponse(
         RuntimeMode runtimeMode,
         String runtimeCommand,
         ScalingConfig scalingConfig,
-        List<String> imagePullSecrets
+        List<String> imagePullSecrets,
+        OffloadPolicy offload
 ) {
     public static FunctionResponse from(FunctionSpec spec,
                                         ExecutionMode requestedExecutionMode,
@@ -56,7 +58,8 @@ public record FunctionResponse(
                 spec.runtimeMode(),
                 spec.runtimeCommand(),
                 spec.scalingConfig(),
-                spec.imagePullSecrets()
+                spec.imagePullSecrets(),
+                spec.offload()
         );
     }
 

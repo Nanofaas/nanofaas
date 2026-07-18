@@ -50,6 +50,17 @@ class FunctionSpecResolverTest {
     }
 
     @Test
+    void resolve_preservesOffloadPolicy() {
+        OffloadPolicy offload = new OffloadPolicy(true, "http://cloud:8080", "always");
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.LOCAL, null, null, null, null, offload);
+
+        FunctionSpec resolved = resolver.resolve(spec);
+
+        assertEquals(offload, resolved.offload());
+    }
+
+    @Test
     void resolve_deploymentMode_defaultScaling() {
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
