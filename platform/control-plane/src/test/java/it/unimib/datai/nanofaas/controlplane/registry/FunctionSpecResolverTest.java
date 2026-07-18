@@ -60,6 +60,46 @@ class FunctionSpecResolverTest {
         assertEquals(offload, resolved.offload());
     }
 
+    /**
+     * Guard against the field-loss trap: resolve() rebuilds the spec field by
+     * field, so a newly added record component that is not carried over gets
+     * silently dropped (it happened to {@code offload}). With every component
+     * populated and a non-DEPLOYMENT mode, resolve() must be the identity.
+     */
+    @Test
+    void resolve_carriesOverEveryRecordComponent() throws Exception {
+        FunctionSpec fullyPopulated = new FunctionSpec(
+                "fn",
+                "img:latest",
+                List.of("java"),
+                Map.of("K", "V"),
+                new ResourceSpec(null, null),
+                5000,
+                2,
+                50,
+                1,
+                "http://svc",
+                ExecutionMode.POOL,
+                RuntimeMode.STDIO,
+                "cmd",
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10, List.of(), null),
+                List.of("pull-secret"),
+                new OffloadPolicy(true, "http://cloud:8080", "always"));
+
+        FunctionSpec resolved = resolver.resolve(fullyPopulated);
+
+        for (var component : FunctionSpec.class.getRecordComponents()) {
+            Object expected = component.getAccessor().invoke(fullyPopulated);
+            Object actual = component.getAccessor().invoke(resolved);
+            assertNotNull(expected,
+                    "test must populate every FunctionSpec component; missing: " + component.getName());
+            assertEquals(expected, actual,
+                    "resolve() dropped or altered FunctionSpec." + component.getName()
+                            + " — carry the new field over in FunctionSpecResolver.resolve"
+                            + " (and check FunctionService.withEffectiveProvisioning too)");
+        }
+    }
+
     @Test
     void resolve_deploymentMode_defaultScaling() {
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
