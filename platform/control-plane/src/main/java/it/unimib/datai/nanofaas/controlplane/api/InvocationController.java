@@ -4,6 +4,8 @@ import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
@@ -35,12 +37,21 @@ public class InvocationController {
             @RequestBody @Valid InvocationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
-            @RequestHeader(value = "X-Timeout-Ms", required = false) Integer timeoutMs) {
+            @RequestHeader(value = "X-Timeout-Ms", required = false) Integer timeoutMs,
+            @RequestHeader(value = "X-NanoFaaS-Offload-Hop", required = false) String offloadHop,
+            @RequestHeader(value = "traceparent", required = false) String traceparent,
+            @RequestHeader(value = "tracestate", required = false) String tracestate) {
+        OffloadContext offloadContext = new OffloadContext(offloadHop != null, traceparent, tracestate);
         // defer: a synchronously thrown service exception must flow through onErrorResume
-        return Mono.defer(() -> invocationService.invokeSyncReactive(name, request, idempotencyKey, traceId, timeoutMs))
-                .map(response -> ResponseEntity.ok()
-                        .header("X-Execution-Id", response.executionId())
-                        .body(response))
+        return Mono.defer(() -> invocationService.invokeSyncReactive(name, request, idempotencyKey, traceId, timeoutMs, offloadContext))
+                .map(invocation -> {
+                    ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
+                            .header("X-Execution-Id", invocation.response().executionId());
+                    if (invocation.offloadedTarget() != null) {
+                        builder.header("X-NanoFaaS-Offloaded", invocation.offloadedTarget());
+                    }
+                    return builder.body(invocation.response());
+                })
                 .onErrorResume(FunctionNotFoundException.class, ex ->
                         Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
                 .onErrorResume(SyncQueueRejectedException.class, ex ->
@@ -48,7 +59,9 @@ public class InvocationController {
                 .onErrorResume(RateLimitException.class, ex ->
                         Mono.just(tooManyRequests()))
                 .onErrorResume(QueueFullException.class, ex ->
-                        Mono.just(tooManyRequests()));
+                        Mono.just(tooManyRequests()))
+                .onErrorResume(OffloadFailedException.class, ex ->
+                        Mono.just(offloadFailed(ex)));
     }
 
     @PostMapping("/functions/{name}:enqueue")
@@ -113,5 +126,14 @@ public class InvocationController {
                 .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
                 .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
                 .build();
+    }
+
+    private static ResponseEntity<InvocationResponse> offloadFailed(OffloadFailedException ex) {
+        HttpStatus status = ex.gatewayTimeout() ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY;
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
+        if (ex.targetUrl() != null) {
+            builder.header("X-NanoFaaS-Offloaded", ex.targetUrl());
+        }
+        return builder.build();
     }
 }

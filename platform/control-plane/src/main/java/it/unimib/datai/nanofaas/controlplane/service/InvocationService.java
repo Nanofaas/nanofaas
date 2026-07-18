@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,7 +52,7 @@ public class InvocationService {
                 completionHandler,
                 new InvocationExecutionFactory(executionStore, idempotencyStore),
                 new InvocationResponseMapper(),
-                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, completionHandler, new InvocationResponseMapper())
+                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper())
         );
     }
 
@@ -76,11 +77,20 @@ public class InvocationService {
         this.reactiveCoordinator = reactiveCoordinator;
     }
 
-    public Mono<InvocationResponse> invokeSyncReactive(String functionName,
-                                                        InvocationRequest request,
-                                                        String idempotencyKey,
-                                                        String traceId,
-                                                        Integer timeoutOverrideMs) {
+    public Mono<SyncInvocation> invokeSyncReactive(String functionName,
+                                                   InvocationRequest request,
+                                                   String idempotencyKey,
+                                                   String traceId,
+                                                   Integer timeoutOverrideMs) {
+        return invokeSyncReactive(functionName, request, idempotencyKey, traceId, timeoutOverrideMs, OffloadContext.none());
+    }
+
+    public Mono<SyncInvocation> invokeSyncReactive(String functionName,
+                                                   InvocationRequest request,
+                                                   String idempotencyKey,
+                                                   String traceId,
+                                                   Integer timeoutOverrideMs,
+                                                   OffloadContext offloadContext) {
         record Prepared(FunctionSpec spec, InvocationExecutionFactory.ExecutionLookup lookup) {}
         return Mono.fromCallable(() -> {
                     enforceRateLimit();
@@ -91,7 +101,7 @@ public class InvocationService {
                             executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId));
                 })
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(prepared -> reactiveCoordinator.invoke(prepared.lookup(), prepared.spec(), timeoutOverrideMs));
+                .flatMap(prepared -> reactiveCoordinator.invoke(prepared.lookup(), prepared.spec(), timeoutOverrideMs, offloadContext));
     }
 
     public InvocationResponse invokeAsync(String functionName,
