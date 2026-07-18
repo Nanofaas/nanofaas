@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.cli.http;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.OffloadPolicy;
 import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
@@ -30,7 +31,8 @@ public record FunctionDetails(
         RuntimeMode runtimeMode,
         String runtimeCommand,
         ScalingConfig scalingConfig,
-        List<String> imagePullSecrets
+        List<String> imagePullSecrets,
+        OffloadPolicy offload
 ) {
     public boolean matches(FunctionSpec requested) {
         ExecutionMode requestedMode = requested.executionMode() == null
@@ -55,7 +57,8 @@ public record FunctionDetails(
                 && runtimeMode == requestedRuntime
                 && matchesIfSpecified(runtimeCommand, requested.runtimeCommand())
                 && matchesIfSpecified(scalingConfig, requested.scalingConfig())
-                && matchesIfSpecified(imagePullSecrets, requested.imagePullSecrets());
+                && matchesIfSpecified(imagePullSecrets, requested.imagePullSecrets())
+                && matchesIfSpecified(offload, requested.offload());
     }
 
     private static boolean matchesIfSpecified(Object actual, Object requested) {

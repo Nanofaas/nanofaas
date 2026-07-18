@@ -7,6 +7,17 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
+# These tests pass repo-relative paths (scenarios-v2/..., environments/...) to the
+# CLI, so they must run from the project root regardless of pytest's cwd.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def _run_from_project_root(monkeypatch):
+    monkeypatch.chdir(_PROJECT_ROOT)
+
 from controlplane_tool.app.main import app
 from controlplane_tool.cli.preflight import PreflightError
 from controlplane_tool.cli.product import _git_provenance, _slice, _workflow
