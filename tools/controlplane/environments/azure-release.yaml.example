@@ -15,4 +15,6 @@ azure:
   vm_size: Standard_D4s_v5
   loadgen_vm_size: Standard_D2s_v5
   image_urn: Canonical:ubuntu-24_04-lts:server:24.04.202505280
+  # Replace with the bounded operator/VPN CIDR allowed to query API/Prometheus.
+  operator_source_cidr: 203.0.113.0/24
   ssh_key_path: /home/you/.ssh/id_ed25519

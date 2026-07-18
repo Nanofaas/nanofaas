@@ -61,7 +61,11 @@ def vm_request_for_role(
             azure_location=azure.location,
             azure_image_urn=azure.image_urn,
             azure_ssh_key_path=azure.ssh_key_path,
-            azure_open_ports=(30080, 30081, 30090) if loadtest and role == "stack" else None,
+            azure_open_ports=(
+                (30080, 30081, 30090)
+                if loadtest and role == "stack" and azure.operator_source_cidr is None
+                else None
+            ),
         )
     if provider == "proxmox":
         proxmox = environment.proxmox

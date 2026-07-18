@@ -28,6 +28,7 @@ def _release_environment(**changes: object) -> EnvironmentConfig:
             "vm_size": "Standard_D4s_v5",
             "loadgen_vm_size": "Standard_D2s_v5",
             "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202505280",
+            "operator_source_cidr": "203.0.113.0/24",
         },
     }
     data.update(changes)
@@ -41,6 +42,8 @@ def test_release_environment_example_is_pinned_and_comparable() -> None:
     validate_release_environment(environment, SOURCE_REPO, "0.17.0")
     assert environment.roles["stack"].disk == "128G"
     assert environment.roles["loadgen"].disk == "30G"
+    assert environment.azure is not None
+    assert environment.azure.operator_source_cidr == "203.0.113.0/24"
 
 
 @pytest.mark.parametrize("provider", ("local", "multipass", "proxmox"))
@@ -59,6 +62,36 @@ def test_release_environment_requires_stack_and_loadgen_roles(roles: dict[str, o
     environment = _release_environment(roles=roles)
 
     with pytest.raises(ValueError, match="stack and loadgen"):
+        validate_release_environment(environment, SOURCE_REPO, "0.17.0")
+
+
+@pytest.mark.parametrize(
+    ("role", "name"),
+    (
+        ("stack", "shared-stack"),
+        ("loadgen", "shared-loadgen"),
+    ),
+)
+def test_release_environment_requires_dedicated_vm_names(role: str, name: str) -> None:
+    environment = _release_environment()
+    environment.roles[role].name = name  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="dedicated release VM"):
+        validate_release_environment(environment, SOURCE_REPO, "0.17.0")
+
+
+@pytest.mark.parametrize(
+    "source",
+    (None, "*", "0.0.0.0/0", "::/0", "not-a-cidr"),
+)
+def test_release_environment_requires_restricted_operator_source(
+    source: str | None,
+) -> None:
+    environment = _release_environment()
+    assert environment.azure is not None
+    environment.azure.operator_source_cidr = source
+
+    with pytest.raises(ValueError, match="operator source CIDR"):
         validate_release_environment(environment, SOURCE_REPO, "0.17.0")
 
 

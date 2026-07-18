@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from pathlib import Path
 
@@ -14,6 +15,8 @@ _LOADGEN_VM_SIZE = "Standard_D2s_v5"
 _LOCATION = "westeurope"
 _STACK_DISK = "128G"
 _LOADGEN_DISK = "30G"
+_STACK_NAME = "nanofaas-azure-release"
+_LOADGEN_NAME = "nanofaas-azure-release-loadgen"
 _URN_COMPONENT = re.compile(r"[A-Za-z0-9._-]+")
 
 
@@ -34,7 +37,18 @@ def validate_release_environment(
     _require_exact("loadgen VM size", azure.loadgen_vm_size, _LOADGEN_VM_SIZE)
     _require_exact("stack disk", environment.roles["stack"].disk, _STACK_DISK)
     _require_exact("loadgen disk", environment.roles["loadgen"].disk, _LOADGEN_DISK)
+    _require_exact(
+        "stack dedicated release VM name",
+        environment.roles["stack"].name or "",
+        _STACK_NAME,
+    )
+    _require_exact(
+        "loadgen dedicated release VM name",
+        environment.roles["loadgen"].name or "",
+        _LOADGEN_NAME,
+    )
     _validate_image_urn(azure.image_urn)
+    _validate_operator_source(azure.operator_source_cidr)
 
     requested_plain, _ = normalize_version(requested_version)
     if verify_version_consistency(repo_root) != requested_plain:
@@ -56,3 +70,12 @@ def _validate_image_urn(urn: str | None) -> None:
         or parts[-1].lower() == "latest"
     ):
         raise ValueError("Azure image URN must be an exact, non-latest four-part URN")
+
+
+def _validate_operator_source(source: str | None) -> None:
+    try:
+        network = ipaddress.ip_network(source, strict=True) if source is not None else None
+    except ValueError:
+        network = None
+    if network is None or network.prefixlen == 0:
+        raise ValueError("Azure operator source CIDR must be a restricted network")

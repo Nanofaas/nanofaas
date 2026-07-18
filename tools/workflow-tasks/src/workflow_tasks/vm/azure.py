@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-import subprocess
-import re
+from dataclasses import dataclass
+import ipaddress
+import json
 from pathlib import Path
+import re
+import subprocess
+from typing import Any
 
 from azure_vm import AzureClient
 from azure_vm.exceptions import VmNotFoundError
@@ -10,6 +14,14 @@ from shellcraft.backend import ShellExecutionResult
 
 from workflow_tasks.vm.models import VmRequest, vm_remote_home
 from workflow_tasks.vm.multipass import _find_ssh_private_key_path, _ok
+
+
+@dataclass(frozen=True, slots=True)
+class AzureVmFacts:
+    location: str
+    vm_size: str
+    disk_size_gb: int
+    image_urn: str
 
 
 class AzureVmProvider:
@@ -66,6 +78,111 @@ class AzureVmProvider:
             disk_size_gb=_disk_size_gb(request.disk),
         )
         return _ok(["azure", "ensure_running", name])
+
+    def release_vm_facts(self, request: VmRequest) -> AzureVmFacts:
+        resource_group = request.azure_resource_group
+        if not resource_group:
+            raise ValueError("Azure resource group is required")
+        payload = self._az_json(
+            [
+                "az",
+                "vm",
+                "show",
+                "--resource-group",
+                resource_group,
+                "--name",
+                self._vm_name(request),
+                "--query",
+                (
+                    "{location:location,vmSize:hardwareProfile.vmSize,"
+                    "diskSizeGb:storageProfile.osDisk.diskSizeGb,"
+                    "imagePublisher:storageProfile.imageReference.publisher,"
+                    "imageOffer:storageProfile.imageReference.offer,"
+                    "imageSku:storageProfile.imageReference.sku,"
+                    "imageVersion:storageProfile.imageReference.version}"
+                ),
+                "--output",
+                "json",
+            ]
+        )
+        if not isinstance(payload, dict):
+            raise RuntimeError("Azure VM facts response is invalid")
+        try:
+            image_urn = ":".join(
+                str(payload[key])
+                for key in ("imagePublisher", "imageOffer", "imageSku", "imageVersion")
+            )
+            return AzureVmFacts(
+                location=str(payload["location"]),
+                vm_size=str(payload["vmSize"]),
+                disk_size_gb=int(payload["diskSizeGb"]),
+                image_urn=image_urn,
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise RuntimeError("Azure VM facts response is invalid") from error
+
+    def restrict_inbound_sources(
+        self,
+        request: VmRequest,
+        *,
+        ports: tuple[int, ...],
+        source_cidrs: tuple[str, ...],
+    ) -> None:
+        resource_group = request.azure_resource_group
+        if not resource_group:
+            raise ValueError("Azure resource group is required")
+        networks = tuple(ipaddress.ip_network(source, strict=False) for source in source_cidrs)
+        if any(network.prefixlen == 0 for network in networks):
+            raise ValueError("Azure NSG source CIDRs must be bounded")
+        sources = tuple(dict.fromkeys(map(str, networks)))
+        if not sources:
+            raise ValueError("at least one Azure NSG source CIDR is required")
+        for index, port in enumerate(sorted(set(ports))):
+            if not 1 <= port <= 65535:
+                raise ValueError(f"invalid Azure NSG port: {port}")
+            payload = self._az_json(
+                [
+                    "az",
+                    "network",
+                    "nsg",
+                    "rule",
+                    "create",
+                    "--resource-group",
+                    resource_group,
+                    "--nsg-name",
+                    f"{self._vm_name(request)}-nsg",
+                    "--name",
+                    f"Port{port}",
+                    "--priority",
+                    str(1010 + index),
+                    "--direction",
+                    "Inbound",
+                    "--access",
+                    "Allow",
+                    "--protocol",
+                    "Tcp",
+                    "--destination-port-ranges",
+                    str(port),
+                    "--source-address-prefixes",
+                    *sources,
+                    "--query",
+                    "sourceAddressPrefixes",
+                    "--output",
+                    "json",
+                ]
+            )
+            if not isinstance(payload, list) or set(map(str, payload)) != set(sources):
+                raise RuntimeError("Azure NSG source restriction mismatch")
+
+    @staticmethod
+    def _az_json(argv: list[str]) -> Any:
+        process = subprocess.run(argv, capture_output=True, text=True)
+        if process.returncode != 0:
+            raise RuntimeError(process.stderr or "Azure CLI command failed")
+        try:
+            return json.loads(process.stdout)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Azure CLI returned invalid JSON") from error
 
     def exec_argv(
         self,

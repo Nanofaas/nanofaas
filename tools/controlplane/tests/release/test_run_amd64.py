@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import hashlib
 import json
 import subprocess
 import tarfile
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -128,6 +129,41 @@ def test_plan_requires_all_private_credential_files(
             cosign_key=key,
             cosign_password=None,
         ).validate()
+
+
+def test_credentials_reject_path_traversal_into_repository(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    ignored = repo / "build" / "release-secrets"
+    ignored.mkdir(parents=True)
+    credentials = release_run.CredentialFiles(
+        ghcr_token=_secret(ignored / "ghcr-token", "token"),
+        cosign_key=_secret(tmp_path / "cosign.key", "key"),
+        cosign_password=_secret(tmp_path / "cosign.password", "password"),
+    )
+    credentials = replace(
+        credentials,
+        ghcr_token=repo / "build" / ".." / "build" / "release-secrets" / "ghcr-token",
+    )
+
+    with pytest.raises(ValueError, match="outside the repository"):
+        credentials.validate(repo_root=repo)
+
+
+def test_credentials_reject_parent_symlink_into_repository(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    ignored = repo / "build" / "release-secrets"
+    ignored.mkdir(parents=True)
+    _secret(ignored / "ghcr-token", "token")
+    alias = tmp_path / "outside-looking-alias"
+    alias.symlink_to(ignored, target_is_directory=True)
+    credentials = release_run.CredentialFiles(
+        ghcr_token=alias / "ghcr-token",
+        cosign_key=_secret(tmp_path / "cosign.key", "key"),
+        cosign_password=_secret(tmp_path / "cosign.password", "password"),
+    )
+
+    with pytest.raises(ValueError, match="outside the repository"):
+        credentials.validate(repo_root=repo)
 
 
 def test_plan_rejects_requested_version_that_is_not_prepared(
@@ -497,6 +533,35 @@ class _ReleaseProvider(_ArchiveProvider):
         self.remote_source_mutated = False
         self.remote_digests: dict[str, str] = {}
         self.registry_digests: dict[str, str] = {}
+        self.fact_overrides: dict[str, dict[str, object]] = {}
+        self.restrictions: list[tuple[object, tuple[int, ...], tuple[str, ...]]] = []
+
+    def teardown(self, request: object) -> _TransferResult:
+        self.events.append(f"teardown:{getattr(request, 'name', None)}")
+        return _TransferResult()
+
+    def release_vm_facts(self, request: object) -> SimpleNamespace:
+        name = str(getattr(request, "name", ""))
+        loadgen = name.endswith("-loadgen")
+        values: dict[str, object] = {
+            "location": "westeurope",
+            "vm_size": "Standard_D2s_v5" if loadgen else "Standard_D4s_v5",
+            "disk_size_gb": 30 if loadgen else 128,
+            "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202505280",
+        }
+        values.update(self.fact_overrides.get(name, {}))
+        self.events.append(f"facts:{name}")
+        return SimpleNamespace(**values)
+
+    def restrict_inbound_sources(
+        self,
+        request: object,
+        *,
+        ports: tuple[int, ...],
+        source_cidrs: tuple[str, ...],
+    ) -> None:
+        self.events.append(f"restrict:{getattr(request, 'name', None)}")
+        self.restrictions.append((request, ports, source_cidrs))
 
     def transfer_to(self, request: object, *, source: Path, destination: str) -> _TransferResult:
         self.events.append(f"transfer:{source.name}")
@@ -542,8 +607,8 @@ class _ReleaseProvider(_ArchiveProvider):
         return _TransferResult()
 
     def connection_host(self, request: object) -> str:
-        del request
-        return "203.0.113.10"
+        name = str(getattr(request, "name", ""))
+        return "198.51.100.42" if name.endswith("-loadgen") else "203.0.113.10"
 
 
 class _RecreatedReleaseProvider(_ReleaseProvider):
@@ -625,9 +690,24 @@ def _runtime_fakes(plan, events: list[str], provider=None):
 
     @contextmanager
     def provisioner(*args, **kwargs):
-        del args, kwargs
+        del args
+        verifier = kwargs.pop("post_ensure_verifier", None)
+        assert not kwargs.keys() - {"repo_root", "orchestrator_factory", "keep"}
         provider.events.append("provision:enter")
         try:
+            if verifier is not None:
+                verifier(
+                    "stack",
+                    release_run.vm_request_for_role(
+                        plan.environment, "stack", loadtest=True
+                    ),
+                )
+                verifier(
+                    "loadgen",
+                    release_run.vm_request_for_role(
+                        plan.environment, "loadgen", loadtest=True
+                    ),
+                )
             yield
         finally:
             provider.events.append("provision:exit")
@@ -678,7 +758,15 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     )
 
     assert decision.passed is True
-    assert events[0:2] == ["provision:enter", "release-builder:stack"]
+    assert events[:7] == [
+        "teardown:nanofaas-azure-release",
+        "teardown:nanofaas-azure-release-loadgen",
+        "provision:enter",
+        "facts:nanofaas-azure-release",
+        "facts:nanofaas-azure-release-loadgen",
+        "restrict:nanofaas-azure-release",
+        "release-builder:stack",
+    ]
     assert events[-1] == "provision:exit"
     reset = events.index(f"exec:docker buildx rm --force {BUILDER_NAME}")
     create = events.index(
@@ -694,12 +782,18 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     assert len(source_restages) == 2
     assert source_test < source_restages[1] < create
     assert reset < create
+    request, ports, sources = provider.restrictions[0]
+    assert getattr(request, "name") == "nanofaas-azure-release"
+    assert ports == (30080, 30081, 30090)
+    assert sources == ("198.51.100.42/32", "203.0.113.0/24")
     assert [call["run_dir"] for call in loadtest_calls] == [
         plan.run_dir / "run-1",
         plan.run_dir / "run-2",
         plan.run_dir / "run-3",
     ]
     for call in loadtest_calls:
+        assert call["control_plane_url"] == "http://203.0.113.10:30080"
+        assert getattr(call["prometheus_client"], "_url") == "http://203.0.113.10:30090"
         control_plane_tag = f"localhost:5000/nanofaas/control-plane:{CURRENT_TAG}-amd64-native"
         assert call["prebuilt_control_plane_image"] == (
             f"localhost:5000/nanofaas/control-plane@{_registry_digest(control_plane_tag)}"
@@ -736,6 +830,51 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     ]
     assert [payload["phase"] for payload in payloads] == list(release_run.AMD64_PHASES)
     assert all(payload["outcome"] == "passed" for payload in payloads)
+
+
+@pytest.mark.parametrize(
+    ("vm_name", "field", "actual"),
+    (
+        ("nanofaas-azure-release", "location", "eastus"),
+        ("nanofaas-azure-release", "vm_size", "Standard_D8s_v5"),
+        ("nanofaas-azure-release", "disk_size_gb", 64),
+        (
+            "nanofaas-azure-release",
+            "image_urn",
+            "Canonical:ubuntu-24_04-lts:server:24.04.202505281",
+        ),
+        ("nanofaas-azure-release-loadgen", "vm_size", "Standard_B2s"),
+    ),
+)
+def test_post_provision_vm_fact_mismatch_stops_before_source_tests_or_builds(
+    vm_name: str,
+    field: str,
+    actual: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+    provider.fact_overrides[vm_name] = {field: actual}
+
+    with pytest.raises(RuntimeError, match="Azure release VM facts mismatch"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    assert events.index("provision:enter") < events.index(f"facts:{vm_name}")
+    assert not any(
+        event == "release-builder:stack"
+        or "./gradlew test" in event
+        or "docker buildx" in event
+        for event in events
+    )
 
 
 def test_real_regression_failure_stops_the_release_at_the_amd64_gate(
@@ -966,15 +1105,65 @@ def test_resume_requires_existing_journal_before_provider_creation(
         )
 
 
+def test_run_rejects_repository_credentials_before_provider_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    repo = tmp_path / "source-repo"
+    secret_dir = repo / "build" / "release-secrets"
+    secret_dir.mkdir(parents=True)
+    assert plan.credentials is not None
+    unsafe = replace(
+        plan,
+        repo_root=repo,
+        credentials=replace(
+            plan.credentials,
+            ghcr_token=_secret(secret_dir / "ghcr-token", "token"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="outside the repository"):
+        release_run.run_amd64_release(
+            unsafe,
+            provider_factory=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("must reject before provider creation")
+            ),
+        )
+
+
 def test_release_run_lock_rejects_a_second_coordinator_before_provider_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     plan = _plan(tmp_path, monkeypatch)
 
-    with release_run._release_run_lock(plan.state_directory):
+    with release_run._release_run_lock(release_run._release_lock_path(plan)):
         with pytest.raises(RuntimeError, match="already in progress"):
             release_run.run_amd64_release(
                 plan,
+                provider_factory=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("must reject before provider creation")
+                ),
+            )
+
+
+def test_release_lock_collides_across_different_run_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    first = _plan(first_root, monkeypatch)
+    second = _plan(second_root, monkeypatch)
+    assert first.run_dir != second.run_dir
+    assert release_run._release_lock_path(first) == release_run._release_lock_path(second)
+    assert not release_run._release_lock_path(first).is_relative_to(first.run_dir)
+    assert not release_run._release_lock_path(second).is_relative_to(second.run_dir)
+
+    with release_run._release_run_lock(release_run._release_lock_path(first)):
+        with pytest.raises(RuntimeError, match="already in progress"):
+            release_run.run_amd64_release(
+                second,
                 provider_factory=lambda *_args: (_ for _ in ()).throw(
                     AssertionError("must reject before provider creation")
                 ),
@@ -1087,6 +1276,14 @@ def test_verified_resume_reuses_every_amd64_phase(
 
     assert decision.passed is True
     assert calls == []
+    assert not any(event.startswith("teardown:") for event in second_events)
+    assert second_events[:5] == [
+        "provision:enter",
+        "facts:nanofaas-azure-release",
+        "facts:nanofaas-azure-release-loadgen",
+        "restrict:nanofaas-azure-release",
+        "release-builder:stack",
+    ]
     assert not any("buildx" in event or "docker push" in event for event in second_events)
 
 
@@ -1122,7 +1319,13 @@ def test_resume_provisions_before_verification_and_invalidates_from_changed_evid
     )
 
     assert decision.passed is True
-    assert second_events[:2] == ["provision:enter", "release-builder:stack"]
+    assert second_events[:5] == [
+        "provision:enter",
+        "facts:nanofaas-azure-release",
+        "facts:nanofaas-azure-release-loadgen",
+        "restrict:nanofaas-azure-release",
+        "release-builder:stack",
+    ]
     assert [call["run_dir"] for call in calls] == [
         plan.run_dir / "run-2",
         plan.run_dir / "run-3",
