@@ -755,6 +755,7 @@ def _provisioner_with_recorded_rsync(plan, provider, wildcard_present):
                         plan.environment, role, loadtest=True
                     ),
                 )
+            for role in ("stack", "loadgen"):
                 provider.events.append(
                     f"rsync:{role}:wildcard={wildcard_present()}"
                 )
@@ -1227,6 +1228,34 @@ def test_release_lock_differs_for_distinct_azure_resource_groups(
     assert release_run._release_lock_path(first) != release_run._release_lock_path(second)
 
 
+def test_release_lock_normalizes_case_insensitive_azure_resource_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = _plan(tmp_path, monkeypatch)
+    case_variant_environment = first.environment.model_copy(deep=True)
+    assert case_variant_environment.azure is not None
+    case_variant_environment.azure.resource_group = "NANOFAAS-RG"
+    case_variant_environment.roles["stack"].name = "NANOFAAS-AZURE-RELEASE"
+    case_variant_environment.roles["loadgen"].name = (
+        "NANOFAAS-AZURE-RELEASE-LOADGEN"
+    )
+    second = replace(first, environment=case_variant_environment)
+
+    assert release_run._release_lock_path(first) == release_run._release_lock_path(second)
+
+
+def test_release_lock_ignores_location_for_the_same_azure_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = _plan(tmp_path, monkeypatch)
+    other_location_environment = first.environment.model_copy(deep=True)
+    assert other_location_environment.azure is not None
+    other_location_environment.azure.location = "eastus"
+    second = replace(first, environment=other_location_environment)
+
+    assert release_run._release_lock_path(first) == release_run._release_lock_path(second)
+
+
 def test_run_rechecks_the_guarded_commit_before_provider_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1412,14 +1441,24 @@ def test_resume_nsg_restriction_failure_stops_before_any_bootstrap_rsync(
     )
     events: list[str] = []
     provider.events = events
+    provider.actions.clear()
+    provider.restrictions.clear()
+    restriction_calls = 0
+    original_restrict = provider.restrict_inbound_sources
 
-    def fail_restriction(*_args, **_kwargs):
-        events.append("restrict:failed")
-        raise RuntimeError("cannot restrict benchmark ingress")
+    def fail_final_restriction(request, *, ports, source_cidrs):
+        nonlocal restriction_calls
+        restriction_calls += 1
+        events.append(f"restrict:attempt:{restriction_calls}")
+        if restriction_calls == 2:
+            raise RuntimeError("cannot apply final benchmark ingress")
+        original_restrict(request, ports=ports, source_cidrs=source_cidrs)
 
-    monkeypatch.setattr(provider, "restrict_inbound_sources", fail_restriction)
+    monkeypatch.setattr(
+        provider, "restrict_inbound_sources", fail_final_restriction
+    )
 
-    with pytest.raises(RuntimeError, match="cannot restrict benchmark ingress"):
+    with pytest.raises(RuntimeError, match="cannot apply final benchmark ingress"):
         release_run.run_amd64_release(
             plan,
             resume=True,
@@ -1432,8 +1471,9 @@ def test_resume_nsg_restriction_failure_stops_before_any_bootstrap_rsync(
             archive_builder=archive,
         )
 
-    assert "restrict:failed" in events
+    assert restriction_calls == 2
     assert not any(event.startswith("rsync:") for event in events)
+    assert provider.actions == []
     assert "release-builder:stack" not in events
 
 
