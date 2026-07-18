@@ -741,6 +741,30 @@ def _runtime_fakes(plan, events: list[str], provider=None):
     )
 
 
+def _provisioner_with_recorded_rsync(plan, provider, wildcard_present):
+    @contextmanager
+    def provisioner(*args, **kwargs):
+        del args
+        verifier = kwargs["post_ensure_verifier"]
+        provider.events.append("provision:enter")
+        try:
+            for role in ("stack", "loadgen"):
+                verifier(
+                    role,
+                    release_run.vm_request_for_role(
+                        plan.environment, role, loadtest=True
+                    ),
+                )
+                provider.events.append(
+                    f"rsync:{role}:wildcard={wildcard_present()}"
+                )
+            yield
+        finally:
+            provider.events.append("provision:exit")
+
+    return provisioner
+
+
 def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -758,11 +782,12 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     )
 
     assert decision.passed is True
-    assert events[:7] == [
+    assert events[:8] == [
         "teardown:nanofaas-azure-release",
         "teardown:nanofaas-azure-release-loadgen",
         "provision:enter",
         "facts:nanofaas-azure-release",
+        "restrict:nanofaas-azure-release",
         "facts:nanofaas-azure-release-loadgen",
         "restrict:nanofaas-azure-release",
         "release-builder:stack",
@@ -782,10 +807,21 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     assert len(source_restages) == 2
     assert source_test < source_restages[1] < create
     assert reset < create
-    request, ports, sources = provider.restrictions[0]
-    assert getattr(request, "name") == "nanofaas-azure-release"
-    assert ports == (30080, 30081, 30090)
-    assert sources == ("198.51.100.42/32", "203.0.113.0/24")
+    assert [
+        (getattr(request, "name"), ports, sources)
+        for request, ports, sources in provider.restrictions
+    ] == [
+        (
+            "nanofaas-azure-release",
+            (30080, 30081, 30090),
+            ("203.0.113.0/24",),
+        ),
+        (
+            "nanofaas-azure-release",
+            (30080, 30081, 30090),
+            ("198.51.100.42/32", "203.0.113.0/24"),
+        ),
+    ]
     assert [call["run_dir"] for call in loadtest_calls] == [
         plan.run_dir / "run-1",
         plan.run_dir / "run-2",
@@ -1170,6 +1206,27 @@ def test_release_lock_collides_across_different_run_directories(
             )
 
 
+def test_release_lock_collides_across_versions_for_shared_azure_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = replace(_plan(tmp_path, monkeypatch), version="0.18.0")
+    second = replace(first, version="0.19.0")
+
+    assert release_run._release_lock_path(first) == release_run._release_lock_path(second)
+
+
+def test_release_lock_differs_for_distinct_azure_resource_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = _plan(tmp_path, monkeypatch)
+    other_environment = first.environment.model_copy(deep=True)
+    assert other_environment.azure is not None
+    other_environment.azure.resource_group = "other-release-rg"
+    second = replace(first, environment=other_environment)
+
+    assert release_run._release_lock_path(first) != release_run._release_lock_path(second)
+
+
 def test_run_rechecks_the_guarded_commit_before_provider_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1277,14 +1334,107 @@ def test_verified_resume_reuses_every_amd64_phase(
     assert decision.passed is True
     assert calls == []
     assert not any(event.startswith("teardown:") for event in second_events)
-    assert second_events[:5] == [
+    assert second_events[:6] == [
         "provision:enter",
         "facts:nanofaas-azure-release",
+        "restrict:nanofaas-azure-release",
         "facts:nanofaas-azure-release-loadgen",
         "restrict:nanofaas-azure-release",
         "release-builder:stack",
     ]
     assert not any("buildx" in event or "docker push" in event for event in second_events)
+
+
+def test_resume_restricts_legacy_wildcard_ingress_before_bootstrap_rsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(
+        plan, first_events
+    )
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    events: list[str] = []
+    provider.events = events
+    provider.restrictions.clear()
+    legacy = {"wildcard": True}
+    original_restrict = provider.restrict_inbound_sources
+
+    def restrict(request, *, ports, source_cidrs):
+        original_restrict(request, ports=ports, source_cidrs=source_cidrs)
+        legacy["wildcard"] = False
+
+    monkeypatch.setattr(provider, "restrict_inbound_sources", restrict)
+
+    decision = release_run.run_amd64_release(
+        plan,
+        resume=True,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=_provisioner_with_recorded_rsync(
+            plan, provider, lambda: legacy["wildcard"]
+        ),
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+
+    assert decision.passed is True
+    assert "rsync:stack:wildcard=False" in events
+    assert "rsync:loadgen:wildcard=False" in events
+    assert [sources for _request, _ports, sources in provider.restrictions] == [
+        ("203.0.113.0/24",),
+        ("198.51.100.42/32", "203.0.113.0/24"),
+    ]
+
+
+def test_resume_nsg_restriction_failure_stops_before_any_bootstrap_rsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    first_events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(
+        plan, first_events
+    )
+    release_run.run_amd64_release(
+        plan,
+        provider_factory=lambda _environment, _root: provider,
+        provisioner=provisioner,
+        builder_provisioner=builder,
+        loadtest_builder=loadtest,
+        archive_builder=archive,
+    )
+    events: list[str] = []
+    provider.events = events
+
+    def fail_restriction(*_args, **_kwargs):
+        events.append("restrict:failed")
+        raise RuntimeError("cannot restrict benchmark ingress")
+
+    monkeypatch.setattr(provider, "restrict_inbound_sources", fail_restriction)
+
+    with pytest.raises(RuntimeError, match="cannot restrict benchmark ingress"):
+        release_run.run_amd64_release(
+            plan,
+            resume=True,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=_provisioner_with_recorded_rsync(
+                plan, provider, lambda: True
+            ),
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+        )
+
+    assert "restrict:failed" in events
+    assert not any(event.startswith("rsync:") for event in events)
+    assert "release-builder:stack" not in events
 
 
 def test_resume_provisions_before_verification_and_invalidates_from_changed_evidence(
@@ -1319,9 +1469,10 @@ def test_resume_provisions_before_verification_and_invalidates_from_changed_evid
     )
 
     assert decision.passed is True
-    assert second_events[:5] == [
+    assert second_events[:6] == [
         "provision:enter",
         "facts:nanofaas-azure-release",
+        "restrict:nanofaas-azure-release",
         "facts:nanofaas-azure-release-loadgen",
         "restrict:nanofaas-azure-release",
         "release-builder:stack",
