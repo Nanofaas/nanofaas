@@ -240,6 +240,39 @@ def test_disk_journal_rejects_an_arbitrary_metadata_field(tmp_path: Path) -> Non
         journal.entries()
 
 
+def test_disk_journal_rejects_extra_artifact_key_on_entries_and_resume(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    entry = journal.record("source-tests", artifacts=(_marker(tmp_path, "source"),))
+    payload = _payload(entry)
+    payload["artifacts"][0]["token"] = "ghp_realisticTokenValueThatMustNotPersist"
+    entry.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(JournalCorruptionError, match="invalid evidence"):
+        journal.entries()
+    with pytest.raises(JournalCorruptionError, match="invalid evidence"):
+        journal.resume()
+
+
+def test_disk_journal_rejects_extra_nested_release_key(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    entry = journal.record("source-tests", artifacts=(_marker(tmp_path, "source"),))
+    payload = _payload(entry)
+    payload["release"]["token"] = "ghp_realisticTokenValueThatMustNotPersist"
+    entry.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(JournalCorruptionError, match="invalid evidence"):
+        journal.entries()
+
+
+def test_artifact_reference_rejects_known_fixture_secret() -> None:
+    with pytest.raises(ValueError, match="fixture secrets"):
+        ArtifactEvidence(
+            "remote",
+            "registry.local/fixture-ghcr-token-must-not-leak",
+            "sha256:" + "d" * 64,
+        )
+
+
 def test_failed_phase_is_not_reusable_and_retries_same_phase(tmp_path: Path) -> None:
     journal = _journal(tmp_path)
     journal.record("source-tests", outcome="failed")
