@@ -7,6 +7,7 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass, field
 import fcntl
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -18,7 +19,8 @@ from typing import Any
 import yaml
 
 from controlplane_tool.config import EnvironmentConfig, ScenarioConfig
-from controlplane_tool.cli.execution import build_role_bindings, resolve_loadtest_urls
+from controlplane_tool.config.environment import ExecutionRole
+from controlplane_tool.cli.execution import build_role_bindings
 from controlplane_tool.cli.provisioning import provision_environment
 from controlplane_tool.cli.vm_provider import (
     vm_provider_for_environment,
@@ -49,7 +51,7 @@ from controlplane_tool.release.versioning import normalize_version
 from workflow_tasks.infra.ansible import AnsibleAdapter
 from workflow_tasks.loadtest.adapters import HttpPrometheusClient
 from workflow_tasks.tasks.models import CommandTaskSpec
-from workflow_tasks.vm.models import vm_remote_home
+from workflow_tasks.vm.models import VmRequest, vm_remote_home
 
 
 AMD64_PHASES = (
@@ -85,12 +87,20 @@ class CredentialFiles:
     cosign_key: Path = field(repr=False)
     cosign_password: Path | None = field(repr=False)
 
-    def validate(self) -> "CredentialFiles":
+    def validate(self, *, repo_root: Path | None = None) -> "CredentialFiles":
         if self.cosign_password is None:
             raise ValueError("cosign password file is required")
-        validate_secret_file(self.ghcr_token)
-        validate_secret_file(self.cosign_key)
-        validate_secret_file(self.cosign_password)
+        paths = (self.ghcr_token, self.cosign_key, self.cosign_password)
+        for path in paths:
+            validate_secret_file(path)
+        if repo_root is not None:
+            root = Path(repo_root).resolve(strict=True)
+            for path in paths:
+                try:
+                    path.resolve(strict=True).relative_to(root)
+                except ValueError:
+                    continue
+                raise ValueError("release credential files must be outside the repository")
         return self
 
 
@@ -194,7 +204,7 @@ def build_amd64_release_plan(
     if not source.clean:
         raise ValueError("release requires a clean Git tree")
     if credentials is not None:
-        credentials.validate()
+        credentials.validate(repo_root=root)
     plain_version, version_tag = normalize_version(version)
     environment = EnvironmentConfig.model_validate(_read_yaml(environment_file))
     validate_release_environment(environment, root, plain_version)
@@ -536,10 +546,38 @@ ArchiveBuilder = Callable[[Path, str, Path], ArtifactEvidence]
 FailureInjector = Callable[[str], None]
 
 
+def _release_lock_path(plan: Amd64ReleasePlan) -> Path:
+    azure = plan.environment.azure
+    assert azure is not None
+    identity = json.dumps(
+        (
+            azure.resource_group,
+            azure.location,
+            plan.environment.target("stack").name,
+            plan.environment.target("loadgen").name,
+            plan.version,
+        ),
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return (
+        Path(tempfile.gettempdir())
+        / f"nanofaas-release-locks-{os.getuid()}"
+        / f"{digest}.lock"
+    )
+
+
 @contextmanager
-def _release_run_lock(state_directory: Path) -> Iterator[None]:
-    state_directory.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(state_directory / ".run.lock", os.O_CREAT | os.O_RDWR, 0o600)
+def _release_run_lock(lock_path: Path) -> Iterator[None]:
+    lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(
+        lock_path,
+        os.O_CREAT
+        | os.O_RDWR
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
     try:
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -572,7 +610,7 @@ def run_amd64_release(
     failure_injector: FailureInjector | None = None,
 ) -> RegressionDecision:
     """Run only the AMD64 half of a release, stopping at its performance gate."""
-    with _release_run_lock(plan.state_directory):
+    with _release_run_lock(_release_lock_path(plan)):
         return _run_amd64_release_locked(
             plan,
             resume=resume,
@@ -600,7 +638,7 @@ def _run_amd64_release_locked(
 ) -> RegressionDecision:
     if plan.credentials is None:
         raise ValueError("release run requires explicit credential files")
-    plan.credentials.validate()
+    plan.credentials.validate(repo_root=plan.repo_root)
     _assert_guarded_source(plan)
     existing_entries = tuple(plan.state_directory.glob("*.json"))
     if existing_entries and not resume:
@@ -615,6 +653,13 @@ def _run_amd64_release_locked(
     make_archive = archive_builder or create_source_archive
     provider = make_provider(plan.environment, plan.repo_root)
     stack_request = vm_request_for_role(plan.environment, "stack", loadtest=True)
+    loadgen_request = vm_request_for_role(plan.environment, "loadgen", loadtest=True)
+    if not resume:
+        for role, request in (("stack", stack_request), ("loadgen", loadgen_request)):
+            _require_result(
+                provider.teardown(request),  # type: ignore[attr-defined]
+                f"recreate dedicated release {role} VM",
+            )
     journal = ReleaseJournal(
         plan.journal_root,
         plan.identity,
@@ -629,8 +674,17 @@ def _run_amd64_release_locked(
         plan.environment,
         repo_root=plan.repo_root,
         orchestrator_factory=lambda _root: provider,
+        post_ensure_verifier=lambda role, request: _verify_release_vm_facts(
+            plan, provider, role, request
+        ),
         keep=keep,
     ):
+        control_plane_url, prometheus_url = _secure_release_endpoints(
+            plan,
+            provider,
+            stack_request,
+            loadgen_request,
+        )
         provision_builder(provider, stack_request, plan.repo_root)
         reusable = frozenset(journal.resume().reusable_phases) if resume else frozenset()
         remote_root = f"{vm_remote_home(stack_request)}/nanofaas-release/{plan.version}"
@@ -713,10 +767,6 @@ def _run_amd64_release_locked(
                 vm_provider=provider,
                 repo_root=plan.repo_root,
             )
-            control_plane_url, prometheus_url = resolve_loadtest_urls(
-                plan.environment,
-                vm_provider=provider,
-            )
         for index in range(1, plan.settings.benchmark_runs + 1):
             phase = f"benchmark-{index}"
             if phase in reusable:
@@ -769,6 +819,52 @@ def _run_amd64_release_locked(
                 plan.run_dir / "regression-decision.json",
             )
         )
+
+
+def _verify_release_vm_facts(
+    plan: Amd64ReleasePlan,
+    provider: object,
+    role: ExecutionRole,
+    request: VmRequest,
+) -> None:
+    azure = plan.environment.azure
+    assert azure is not None
+    facts = provider.release_vm_facts(request)  # type: ignore[attr-defined]
+    target = plan.environment.target(role)
+    expected = {
+        "location": azure.location,
+        "vm_size": azure.loadgen_vm_size if role == "loadgen" else azure.vm_size,
+        "disk_size_gb": int(target.disk.removesuffix("G")),
+        "image_urn": azure.image_urn,
+    }
+    mismatches = tuple(
+        name for name, value in expected.items() if getattr(facts, name, None) != value
+    )
+    if mismatches:
+        raise RuntimeError(
+            f"Azure release VM facts mismatch for {role}: {', '.join(mismatches)}"
+        )
+
+
+def _secure_release_endpoints(
+    plan: Amd64ReleasePlan,
+    provider: object,
+    stack_request: VmRequest,
+    loadgen_request: VmRequest,
+) -> tuple[str, str]:
+    azure = plan.environment.azure
+    assert azure is not None and azure.operator_source_cidr is not None
+    stack_host = provider.connection_host(stack_request)  # type: ignore[attr-defined]
+    loadgen_host = provider.connection_host(loadgen_request)  # type: ignore[attr-defined]
+    loadgen_address = ipaddress.ip_address(loadgen_host)
+    loadgen_cidr = f"{loadgen_address}/{loadgen_address.max_prefixlen}"
+    sources = tuple(dict.fromkeys((loadgen_cidr, azure.operator_source_cidr)))
+    provider.restrict_inbound_sources(  # type: ignore[attr-defined]
+        stack_request,
+        ports=(30080, 30081, 30090),
+        source_cidrs=sources,
+    )
+    return f"http://{stack_host}:30080", f"http://{stack_host}:30090"
 
 
 def _record_phase(

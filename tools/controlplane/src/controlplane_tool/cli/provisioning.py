@@ -193,6 +193,7 @@ def provision_environment(
     *,
     repo_root: Path,
     orchestrator_factory: Callable[[Path], Any] | None = None,
+    post_ensure_verifier: Callable[[ExecutionRole, VmRequest], None] | None = None,
     keep: bool = False,
 ) -> Generator[None, None, None]:
     if environment.provider == "local":
@@ -218,6 +219,8 @@ def provision_environment(
             stack_request,
             role="stack",
         )
+        if post_ensure_verifier is not None:
+            post_ensure_verifier("stack", stack_request)
         stack_context = _context(repo_root, stack)
         _run_operations(
             orchestrator,
@@ -244,6 +247,8 @@ def provision_environment(
                 loadgen_request,
                 role="loadgen",
             )
+            if post_ensure_verifier is not None:
+                post_ensure_verifier("loadgen", loadgen_request)
             context = _context(repo_root, loadgen)
             _run_operations(
                 orchestrator,

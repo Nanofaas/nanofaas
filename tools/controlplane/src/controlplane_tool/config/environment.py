@@ -28,6 +28,7 @@ class AzureEnvironment(BaseModel):
     location: str
     image_urn: str | None = None
     ssh_key_path: str | None = None
+    operator_source_cidr: str | None = None
     vm_size: str = "Standard_D4s_v5"
     loadgen_vm_size: str = "Standard_B1s"
 

@@ -53,6 +53,27 @@ def test_azure_loadgen_request_uses_separate_size_and_no_node_ports() -> None:
     assert loadgen.azure_open_ports is None
 
 
+def test_azure_release_stack_does_not_render_wildcard_nodeport_rules() -> None:
+    environment = EnvironmentConfig.model_validate(
+        {
+            "provider": "azure",
+            "roles": {
+                "stack": {"name": "nanofaas-azure-release"},
+                "loadgen": {"name": "nanofaas-azure-release-loadgen"},
+            },
+            "azure": {
+                "resource_group": "nanofaas-rg",
+                "location": "westeurope",
+                "operator_source_cidr": "203.0.113.0/24",
+            },
+        }
+    )
+
+    request = vm_request_for_role(environment, "stack", loadtest=True)
+
+    assert request.azure_open_ports is None
+
+
 def test_proxmox_request_reads_secret_from_named_environment_variable(monkeypatch) -> None:
     monkeypatch.setenv("NANOFAAS_PVE_PASSWORD", "secret")
     environment = EnvironmentConfig.model_validate(

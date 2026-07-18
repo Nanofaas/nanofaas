@@ -136,6 +136,43 @@ def test_loadtest_provisions_dedicated_load_generator_with_k6(tmp_path: Path) ->
     assert teardowns == ["loadgen", "stack"]
 
 
+def test_post_ensure_verifier_runs_before_each_vm_bootstrap(tmp_path: Path) -> None:
+    orchestrator = RecordingOrchestrator()
+
+    def verify(role, request) -> None:
+        orchestrator.events.append(("verify", (role, request.lifecycle, request.name)))
+
+    with provision_environment(
+        ScenarioConfig(workflow="loadtest", functions=["word-stats-java"]),
+        EnvironmentConfig.model_validate(
+            {
+                "provider": "multipass",
+                "roles": {
+                    "stack": {"name": "stack"},
+                    "loadgen": {"name": "loadgen"},
+                },
+            }
+        ),
+        repo_root=tmp_path,
+        orchestrator_factory=lambda _: orchestrator,
+        post_ensure_verifier=verify,
+    ):
+        pass
+
+    stack_ensure = orchestrator.events.index(("ensure", ("multipass", "stack")))
+    stack_verify = orchestrator.events.index(
+        ("verify", ("stack", "multipass", "stack"))
+    )
+    first_command = next(
+        index for index, event in enumerate(orchestrator.events) if event[0] == "command"
+    )
+    loadgen_ensure = orchestrator.events.index(("ensure", ("multipass", "loadgen")))
+    loadgen_verify = orchestrator.events.index(
+        ("verify", ("loadgen", "multipass", "loadgen"))
+    )
+    assert stack_ensure < stack_verify < first_command < loadgen_ensure < loadgen_verify
+
+
 def test_provisioning_stops_on_first_failed_bootstrap_task(tmp_path: Path) -> None:
     orchestrator = RecordingOrchestrator()
     orchestrator.shell.fail_playbook = "provision-k3s.yml"
