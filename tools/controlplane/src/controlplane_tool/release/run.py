@@ -555,7 +555,6 @@ def _release_lock_path(plan: Amd64ReleasePlan) -> Path:
             azure.location,
             plan.environment.target("stack").name,
             plan.environment.target("loadgen").name,
-            plan.version,
         ),
         separators=(",", ":"),
     )
@@ -668,23 +667,29 @@ def _run_amd64_release_locked(
             provider, stack_request, location, reference
         ),
     )
+    endpoints: tuple[str, str] | None = None
+
+    def verify_and_secure(role: ExecutionRole, request: VmRequest) -> None:
+        nonlocal endpoints
+        _verify_release_vm_facts(plan, provider, role, request)
+        if role == "stack":
+            _secure_release_endpoints(plan, provider, stack_request, None)
+        else:
+            endpoints = _secure_release_endpoints(
+                plan, provider, stack_request, loadgen_request
+            )
 
     with provision(
         plan.scenario,
         plan.environment,
         repo_root=plan.repo_root,
         orchestrator_factory=lambda _root: provider,
-        post_ensure_verifier=lambda role, request: _verify_release_vm_facts(
-            plan, provider, role, request
-        ),
+        post_ensure_verifier=verify_and_secure,
         keep=keep,
     ):
-        control_plane_url, prometheus_url = _secure_release_endpoints(
-            plan,
-            provider,
-            stack_request,
-            loadgen_request,
-        )
+        if endpoints is None:
+            raise RuntimeError("release loadgen ingress was not verified before bootstrap")
+        control_plane_url, prometheus_url = endpoints
         provision_builder(provider, stack_request, plan.repo_root)
         reusable = frozenset(journal.resume().reusable_phases) if resume else frozenset()
         remote_root = f"{vm_remote_home(stack_request)}/nanofaas-release/{plan.version}"
@@ -850,15 +855,17 @@ def _secure_release_endpoints(
     plan: Amd64ReleasePlan,
     provider: object,
     stack_request: VmRequest,
-    loadgen_request: VmRequest,
+    loadgen_request: VmRequest | None,
 ) -> tuple[str, str]:
     azure = plan.environment.azure
     assert azure is not None and azure.operator_source_cidr is not None
     stack_host = provider.connection_host(stack_request)  # type: ignore[attr-defined]
-    loadgen_host = provider.connection_host(loadgen_request)  # type: ignore[attr-defined]
-    loadgen_address = ipaddress.ip_address(loadgen_host)
-    loadgen_cidr = f"{loadgen_address}/{loadgen_address.max_prefixlen}"
-    sources = tuple(dict.fromkeys((loadgen_cidr, azure.operator_source_cidr)))
+    sources = (azure.operator_source_cidr,)
+    if loadgen_request is not None:
+        loadgen_host = provider.connection_host(loadgen_request)  # type: ignore[attr-defined]
+        loadgen_address = ipaddress.ip_address(loadgen_host)
+        loadgen_cidr = f"{loadgen_address}/{loadgen_address.max_prefixlen}"
+        sources = tuple(dict.fromkeys((loadgen_cidr, *sources)))
     provider.restrict_inbound_sources(  # type: ignore[attr-defined]
         stack_request,
         ports=(30080, 30081, 30090),
