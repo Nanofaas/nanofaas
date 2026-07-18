@@ -207,7 +207,17 @@ def test_resume_rejects_identity_change_and_does_not_trust_success_flag(tmp_path
     assert resume.invalidated_phases == ("source-tests",)
 
 
-def test_journal_rejects_credentials_and_known_fixture_secret_content(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "secret",
+    (
+        "fixture-ghcr-token-must-not-leak",
+        "fixture-cosign-key-must-not-leak",
+        "fixture-cosign-password-must-not-leak",
+    ),
+)
+def test_journal_rejects_credentials_and_known_fixture_secret_content(
+    tmp_path: Path, secret: str
+) -> None:
     journal = _journal(tmp_path)
 
     with pytest.raises(ValueError, match="sensitive"):
@@ -215,7 +225,7 @@ def test_journal_rejects_credentials_and_known_fixture_secret_content(tmp_path: 
     with pytest.raises(ValueError, match="sensitive"):
         journal.record(
             "source-tests",
-            metadata={"evidence": "fixture-ghcr-token-must-not-leak"},
+            metadata={"evidence": secret},
         )
 
     assert not tuple(journal.state_directory.glob("*.json"))

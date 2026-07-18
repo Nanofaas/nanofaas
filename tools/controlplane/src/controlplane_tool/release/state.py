@@ -36,6 +36,8 @@ _SENSITIVE_KEY = re.compile(r"(?:credential|password|secret|token|authorization|
 _KNOWN_FIXTURE_SECRETS = (
     "fixture-secret-must-not-leak",
     "fixture-ghcr-token-must-not-leak",
+    "fixture-cosign-key-must-not-leak",
+    "fixture-cosign-password-must-not-leak",
 )
 
 
