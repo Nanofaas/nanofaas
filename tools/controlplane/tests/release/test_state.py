@@ -210,6 +210,7 @@ def test_resume_rejects_identity_change_and_does_not_trust_success_flag(tmp_path
 @pytest.mark.parametrize(
     "secret",
     (
+        "fixture-secret-must-not-leak",
         "fixture-ghcr-token-must-not-leak",
         "fixture-cosign-key-must-not-leak",
         "fixture-cosign-password-must-not-leak",
