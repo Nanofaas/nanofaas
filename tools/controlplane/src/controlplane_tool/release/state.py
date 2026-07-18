@@ -37,6 +37,12 @@ DEFAULT_RELEASE_PHASES = (
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ENTRY_NAME = re.compile(r"(?P<sequence>[0-9]{3})-(?P<label>[a-z0-9-]+)\.json\Z")
 _INVALIDATION_REASON = "resume-evidence-mismatch"
+_KNOWN_FIXTURE_SECRETS = (
+    "fixture-secret-must-not-leak",
+    "fixture-ghcr-token-must-not-leak",
+    "fixture-cosign-key-must-not-leak",
+    "fixture-cosign-password-must-not-leak",
+)
 
 
 class JournalCorruptionError(ValueError):
@@ -57,6 +63,10 @@ class ReleaseIdentity:
     environment_digest: str
 
     def __post_init__(self) -> None:
+        _reject_fixture_secret(self.source_commit)
+        _reject_fixture_secret(self.prepared_version)
+        _reject_fixture_secret(self.release_config_digest)
+        _reject_fixture_secret(self.environment_digest)
         if not re.fullmatch(r"[0-9a-f]{40}", self.source_commit):
             raise ResumeValidationError("source commit must be a 40-character lowercase SHA")
         try:
@@ -87,6 +97,9 @@ class ArtifactEvidence:
     digest: str
 
     def __post_init__(self) -> None:
+        _reject_fixture_secret(self.location)
+        _reject_fixture_secret(self.reference)
+        _reject_fixture_secret(self.digest)
         if self.location not in {"local", "remote"}:
             raise ResumeValidationError("artifact location must be local or remote")
         if not self.reference:
@@ -360,7 +373,12 @@ def _validate_release_and_artifacts(
 ) -> None:
     try:
         release = payload["release"]
-        if not isinstance(release, Mapping):
+        if not isinstance(release, Mapping) or set(release) != {
+            "sourceCommit",
+            "preparedVersion",
+            "releaseConfigDigest",
+            "environmentDigest",
+        }:
             raise TypeError
         ReleaseIdentity(
             str(release["sourceCommit"]),
@@ -372,7 +390,11 @@ def _validate_release_and_artifacts(
         if not isinstance(artifacts, list) or (require_artifacts and not artifacts):
             raise TypeError
         for artifact in artifacts:
-            if not isinstance(artifact, Mapping):
+            if not isinstance(artifact, Mapping) or set(artifact) != {
+                "location",
+                "reference",
+                "digest",
+            }:
                 raise TypeError
             ArtifactEvidence(str(artifact["location"]), str(artifact["reference"]), str(artifact["digest"]))
     except (KeyError, TypeError, ValueError) as error:
@@ -422,3 +444,8 @@ def _next_phase_from_latest(
     latest: Mapping[str, Mapping[str, Any]], phases: Sequence[str]
 ) -> str | None:
     return next((phase for phase in phases if latest.get(phase, {}).get("outcome") != "passed"), None)
+
+
+def _reject_fixture_secret(value: str) -> None:
+    if any(secret in value for secret in _KNOWN_FIXTURE_SECRETS):
+        raise ValueError("release journal values must not contain fixture secrets")
