@@ -551,10 +551,9 @@ def _release_lock_path(plan: Amd64ReleasePlan) -> Path:
     assert azure is not None
     identity = json.dumps(
         (
-            azure.resource_group,
-            azure.location,
-            plan.environment.target("stack").name,
-            plan.environment.target("loadgen").name,
+            azure.resource_group.casefold(),
+            (plan.environment.target("stack").name or "").casefold(),
+            (plan.environment.target("loadgen").name or "").casefold(),
         ),
         separators=(",", ":"),
     )

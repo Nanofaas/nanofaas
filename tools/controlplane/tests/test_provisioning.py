@@ -170,7 +170,46 @@ def test_post_ensure_verifier_runs_before_each_vm_bootstrap(tmp_path: Path) -> N
     loadgen_verify = orchestrator.events.index(
         ("verify", ("loadgen", "multipass", "loadgen"))
     )
-    assert stack_ensure < stack_verify < first_command < loadgen_ensure < loadgen_verify
+    assert stack_ensure < loadgen_ensure < stack_verify < loadgen_verify < first_command
+
+
+def test_second_pre_bootstrap_verifier_failure_cleans_up_without_commands(
+    tmp_path: Path,
+) -> None:
+    orchestrator = RecordingOrchestrator()
+
+    def verify(role, request) -> None:
+        orchestrator.events.append(("verify", (role, request.name)))
+        if role == "loadgen":
+            raise RuntimeError("final ingress verification failed")
+
+    with pytest.raises(RuntimeError, match="final ingress verification failed"):
+        with provision_environment(
+            ScenarioConfig(workflow="loadtest", functions=["word-stats-java"]),
+            EnvironmentConfig.model_validate(
+                {
+                    "provider": "multipass",
+                    "roles": {
+                        "stack": {"name": "stack"},
+                        "loadgen": {"name": "loadgen"},
+                    },
+                }
+            ),
+            repo_root=tmp_path,
+            orchestrator_factory=lambda _: orchestrator,
+            post_ensure_verifier=verify,
+        ):
+            pass
+
+    assert _commands(orchestrator) == []
+    assert [value for kind, value in orchestrator.events if kind == "ensure"] == [
+        ("multipass", "stack"),
+        ("multipass", "loadgen"),
+    ]
+    assert [value for kind, value in orchestrator.events if kind == "teardown"] == [
+        "loadgen",
+        "stack",
+    ]
 
 
 def test_provisioning_stops_on_first_failed_bootstrap_task(tmp_path: Path) -> None:
