@@ -46,6 +46,7 @@ def test_release_builder_playbook_installs_transport_without_host_qemu() -> None
 
     assert "skopeo" in playbook
     assert "rsync" in playbook
+    assert "docker-buildx" in playbook
     assert "tonistiigi/binfmt" in playbook
     assert "qemu-user-static" not in playbook
     assert "binfmt-support" not in playbook
