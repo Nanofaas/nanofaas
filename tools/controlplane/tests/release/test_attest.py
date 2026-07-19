@@ -162,10 +162,6 @@ def test_sbom_sign_attest_and_verify_never_expose_the_password() -> None:
         assert "--env COSIGN_PASSWORD " in joined + " "
         assert "COSIGN_PASSWORD=" + FIXTURE_PASSWORD not in joined
     # every reference is signed by digest, not by mutable tag
-    for command in cosign_runs:
-        joined = " ".join(command)
-        if " sign " in joined or joined.rstrip().endswith("sign"):
-            continue
     signs = [c for c in cosign_runs if "sign" in c]
     assert signs
     for command in signs:

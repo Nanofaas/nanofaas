@@ -9,6 +9,7 @@ import typer
 from workflow_tasks.tasks.models import CommandTaskSpec
 from workflow_tasks.workflow.context import bind_workflow_sink
 
+from controlplane_tool.release.publish import GHCR_REPOSITORY
 from controlplane_tool.cli.execution import build_role_bindings
 from controlplane_tool.cli.progress import ConsoleProgressSink
 from controlplane_tool.cli.product import _environment
@@ -32,7 +33,7 @@ from workflow_tasks.vm.orchestrator import VmOrchestrator
 
 _ARCHITECTURES = DEFAULT_ARCHITECTURES
 _FLAVORS = ("jvm", "native", "default")
-_OFFICIAL_REGISTRY = "ghcr.io/miciav/nanofaas"
+_OFFICIAL_REGISTRY = GHCR_REPOSITORY
 
 
 def _require_success(result: object, action: str) -> object:

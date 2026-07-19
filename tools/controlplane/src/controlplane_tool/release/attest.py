@@ -79,14 +79,16 @@ def attest_release_images(
     if cosign.password_file is None:
         raise ValueError("cosign attestation requires a staged password file")
     _exec(provider, request, ("mkdir", "-p", sbom_dir_remote))
-    pinned = {
-        reference: f"{reference.rsplit(':', 1)[0]}@{digest}"
-        for reference, digest in images.items()
-    }
+    # aliases pin to the same digest as their native manifests: work on the
+    # unique pinned set so no digest is SBOM'd or signed twice
+    pinned: dict[str, str] = {}
+    for reference, digest in sorted(images.items()):
+        image = f"{reference.rsplit(':', 1)[0]}@{digest}"
+        pinned.setdefault(image, reference)
     sboms: dict[str, str] = {}
-    for reference, image in sorted(pinned.items()):
+    for image, reference in sorted(pinned.items()):
         sbom_file = f"{sbom_dir_remote}/{_artifact_slug(reference)}.spdx.json"
-        sboms[reference] = sbom_file
+        sboms[image] = sbom_file
         _exec(
             provider,
             request,
@@ -106,7 +108,7 @@ def attest_release_images(
                 f"spdx-json=/out/{Path(sbom_file).name}",
             ),
         )
-    for reference, image in sorted(pinned.items()):
+    for image in sorted(pinned):
         _cosign(
             provider,
             request,
@@ -146,9 +148,9 @@ def attest_release_images(
                 "spdx",
                 image,
             ),
-            extra_mounts=((sboms[reference], "/work/sbom.spdx.json"),),
+            extra_mounts=((sboms[image], "/work/sbom.spdx.json"),),
         )
-    for _, image in sorted(pinned.items()):
+    for image in sorted(pinned):
         _cosign(
             provider,
             request,

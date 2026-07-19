@@ -11,7 +11,7 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 def _workflow_texts() -> dict[str, str]:
     return {
         path.name: path.read_text(encoding="utf-8")
-        for path in sorted(WORKFLOWS.glob("*.yml"))
+        for path in sorted((*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")))
     }
 
 

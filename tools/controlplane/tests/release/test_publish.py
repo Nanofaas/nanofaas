@@ -48,6 +48,7 @@ class _PublishProvider:
     commands: list[tuple[str, ...]] = field(default_factory=list)
     ghcr_digests: dict[str, str] = field(default_factory=dict)
     copy_corruptions: set[str] = field(default_factory=set)
+    retag_corruptions: set[str] = field(default_factory=set)
     fail_on_prefix: tuple[str, ...] | None = None
     inspect_platform_overrides: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
@@ -81,9 +82,12 @@ class _PublishProvider:
         if argv[:4] == ("docker", "buildx", "imagetools", "create"):
             tag = argv[argv.index("--tag") + 1]
             sources = argv[argv.index("--tag") + 2 :]
-            if len(sources) == 1 and sources[0] in self.ghcr_digests:
-                # re-tagging an existing manifest preserves its digest
-                self.ghcr_digests[tag] = self.ghcr_digests[sources[0]]
+            if len(sources) == 1 and "@sha256:" in sources[0]:
+                # re-tagging a digest-pinned manifest preserves its digest
+                digest = "sha256:" + sources[0].rsplit("@sha256:", 1)[1]
+                if tag in self.retag_corruptions:
+                    digest = "sha256:" + "e" * 64
+                self.ghcr_digests[tag] = digest
             else:
                 payload = ",".join(sorted(sources))
                 self.ghcr_digests[tag] = (
@@ -268,25 +272,29 @@ def test_copy_command_failure_stops_the_phase() -> None:
 
 def _published(provider: _PublishProvider, plan: publish.PublishPlan) -> dict[str, str]:
     digests = publish.require_publication_evidence(plan, _evidence(plan))
-    publish.publish_architecture_images(
+    evidence = publish.publish_architecture_images(
         provider,
         object(),
         plan,
         digests,
         authfile="/tmp/creds/docker/config.json",
     )
-    return digests
+    return {
+        artifact.reference.removeprefix("docker://"): artifact.digest
+        for artifact in evidence
+    }
 
 
 def test_manifests_require_exactly_amd64_and_arm64() -> None:
     plan = _plan()
     provider = _PublishProvider()
-    _published(provider, plan)
+    architecture_digests = _published(provider, plan)
 
     evidence = publish.publish_manifests(
         provider,
         object(),
         plan,
+        architecture_digests,
         docker_config="/tmp/creds/docker",
     )
 
@@ -302,7 +310,7 @@ def test_manifests_require_exactly_amd64_and_arm64() -> None:
 def test_attestation_manifest_rows_are_tolerated_but_missing_arm64_is_not() -> None:
     plan = _plan()
     provider = _PublishProvider()
-    _published(provider, plan)
+    architecture_digests = _published(provider, plan)
     first = plan.manifests[0].reference
     provider.inspect_platform_overrides[first] = ("linux/amd64", "unknown/unknown")
 
@@ -311,6 +319,7 @@ def test_attestation_manifest_rows_are_tolerated_but_missing_arm64_is_not() -> N
             provider,
             object(),
             plan,
+            architecture_digests,
             docker_config="/tmp/creds/docker",
         )
 
@@ -318,13 +327,14 @@ def test_attestation_manifest_rows_are_tolerated_but_missing_arm64_is_not() -> N
 def test_manifest_failure_prevents_every_alias() -> None:
     plan = _plan()
     provider = _PublishProvider(fail_on_prefix=("docker", "buildx", "imagetools", "create"))
-    _published(provider, plan)
+    architecture_digests = _published(provider, plan)
 
     with pytest.raises(RuntimeError):
         publish.publish_manifests(
             provider,
             object(),
             plan,
+            architecture_digests,
             docker_config="/tmp/creds/docker",
         )
 
@@ -344,11 +354,12 @@ def test_manifest_failure_prevents_every_alias() -> None:
 def test_aliases_are_created_last_and_verified_against_their_manifest() -> None:
     plan = _plan()
     provider = _PublishProvider()
-    _published(provider, plan)
+    architecture_digests = _published(provider, plan)
     manifest_evidence = publish.publish_manifests(
         provider,
         object(),
         plan,
+        architecture_digests,
         docker_config="/tmp/creds/docker",
     )
     manifest_digests = {
@@ -372,19 +383,20 @@ def test_aliases_are_created_last_and_verified_against_their_manifest() -> None:
 def test_alias_digest_mismatch_fails_the_release() -> None:
     plan = _plan()
     provider = _PublishProvider()
-    _published(provider, plan)
+    architecture_digests = _published(provider, plan)
     manifest_evidence = publish.publish_manifests(
         provider,
         object(),
         plan,
+        architecture_digests,
         docker_config="/tmp/creds/docker",
     )
     manifest_digests = {
         artifact.reference.removeprefix("docker://"): artifact.digest
         for artifact in manifest_evidence
     }
-    victim = plan.aliases[0].source
-    manifest_digests[victim] = "sha256:" + "e" * 64
+    # the registry misbehaves: the created alias does not match its source
+    provider.retag_corruptions.add(plan.aliases[0].reference)
 
     with pytest.raises(RuntimeError, match="alias"):
         publish.publish_aliases(
