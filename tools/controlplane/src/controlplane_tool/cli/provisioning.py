@@ -193,6 +193,7 @@ def provision_environment(
     *,
     repo_root: Path,
     orchestrator_factory: Callable[[Path], Any] | None = None,
+    post_ensure_verifier: Callable[[ExecutionRole, VmRequest], None] | None = None,
     keep: bool = False,
 ) -> Generator[None, None, None]:
     if environment.provider == "local":
@@ -218,6 +219,24 @@ def provision_environment(
             stack_request,
             role="stack",
         )
+        loadgen_request: VmRequest | None = None
+        loadgen: VmRequest | None = None
+        if dedicated_loadgen:
+            loadgen_request = _request(environment, "loadgen", loadtest=True)
+            loadgen_cleanup = _destroy_task(orchestrator, loadgen_request, role="loadgen")
+            if loadgen_cleanup is not None:
+                cleanup_tasks.append(loadgen_cleanup)
+            loadgen = _ensure_vm(
+                orchestrator,
+                loadgen_request,
+                role="loadgen",
+            )
+
+        if post_ensure_verifier is not None:
+            post_ensure_verifier("stack", stack_request)
+            if loadgen_request is not None:
+                post_ensure_verifier("loadgen", loadgen_request)
+
         stack_context = _context(repo_root, stack)
         _run_operations(
             orchestrator,
@@ -234,16 +253,7 @@ def provision_environment(
             role="stack",
         )
 
-        if dedicated_loadgen:
-            loadgen_request = _request(environment, "loadgen", loadtest=True)
-            loadgen_cleanup = _destroy_task(orchestrator, loadgen_request, role="loadgen")
-            if loadgen_cleanup is not None:
-                cleanup_tasks.append(loadgen_cleanup)
-            loadgen = _ensure_vm(
-                orchestrator,
-                loadgen_request,
-                role="loadgen",
-            )
+        if loadgen is not None:
             context = _context(repo_root, loadgen)
             _run_operations(
                 orchestrator,

@@ -128,6 +128,20 @@ class AnsibleAdapter:
             dry_run=dry_run,
         )
 
+    def provision_release_builder(
+        self,
+        request: VmRequest,
+        *,
+        dry_run: bool = False,
+    ) -> ShellExecutionResult:
+        """Install release-only image transport tools on the stack VM."""
+        return self.run_playbook(
+            "provision-release-builder.yml",
+            request,
+            extra_vars={"vm_user": request.user},
+            dry_run=dry_run,
+        )
+
     def provision_k3s(
         self,
         request: VmRequest,

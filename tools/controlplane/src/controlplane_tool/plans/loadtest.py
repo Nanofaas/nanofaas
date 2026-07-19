@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -40,6 +41,8 @@ def build_loadtest_plan(
     fetcher: RemoteFileFetcher | object | None = None,
     repo_root: Path | None = None,
     stages: tuple[tuple[str, int], ...] | None = None,
+    prebuilt_control_plane_image: str | None = None,
+    prebuilt_function_images: Mapping[str, str] | None = None,
 ) -> Workflow:
     if config.workflow != "loadtest":
         raise ValueError("load-test plan requires a loadtest scenario")
@@ -52,6 +55,19 @@ def build_loadtest_plan(
             "metrics": [{"type": "in_flight", "target": "2"}],
         }
     functions = tuple(_resolve_function(config, key) for key in config.functions)
+    prebuilt = prebuilt_control_plane_image is not None or prebuilt_function_images is not None
+    if prebuilt:
+        if prebuilt_function_images is None:
+            raise ValueError("prebuilt function images are required in prebuilt mode")
+        missing = [
+            function.key for function in functions if not prebuilt_function_images.get(function.key)
+        ]
+        if missing:
+            raise ValueError("missing prebuilt function images: " + ", ".join(missing))
+        functions = tuple(
+            replace(function, image=prebuilt_function_images[function.key])
+            for function in functions
+        )
     if scaling_config is not None:
         functions = tuple(
             replace(
@@ -84,6 +100,8 @@ def build_loadtest_plan(
         additional_modules=("autoscaler", "async-queue", "sync-queue")
         if config.autoscaling
         else (),
+        build_images=not prebuilt,
+        control_plane_image=prebuilt_control_plane_image,
     )
     stack = workflow_from_specs(
         k8s_deployment_specs(
