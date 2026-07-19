@@ -37,7 +37,14 @@ _K6_INSTALL_CMD: tuple[str, ...] = (
 
 
 def _build_k6_argv(config: "K6Config") -> tuple[str, ...]:
-    args: list[str] = ["k6", "run", "--summary-export", str(config.summary_output_path)]
+    args: list[str] = [
+        "k6",
+        "run",
+        "--summary-export",
+        str(config.summary_output_path),
+        "--summary-trend-stats",
+        "avg,min,med,max,p(50),p(90),p(95),p(99)",
+    ]
     if config.vus is not None:
         args.extend(["--vus", str(config.vus)])
     if config.duration is not None:

@@ -26,6 +26,28 @@ class NoopPrometheus:
 
 SCENARIO = ScenarioConfig(workflow="loadtest", functions=["word-stats-java"])
 
+DEFAULT_TASK_IDS = [
+    "stack.preflight",
+    "build.jvm",
+    "images.build.control-plane",
+    "images.push.control-plane",
+    "images.build.warm-echo",
+    "images.push.warm-echo",
+    "images.build.word-stats-java",
+    "images.push.word-stats-java",
+    "helm.deploy.control-plane",
+    "functions.register.word-stats-java",
+    "loadgen.preflight",
+    "loadgen.prepare",
+    "loadgen.run_k6",
+    "metrics.prometheus_snapshot",
+    "loadtest.write_report",
+    "loadtest.write_summary",
+    "metrics.evaluate_gate",
+    "functions.delete.word-stats-java",
+    "helm.uninstall.control-plane",
+]
+
 
 @pytest.mark.parametrize(
     ("environment", "expected_role", "fetches"),
@@ -95,6 +117,87 @@ def test_provider_contract_selects_role_and_result_transport(
     preflight = next(task for task in workflow.tasks if task.task_id == "loadgen.preflight")
     assert preflight.spec.role == expected_role
     assert ("loadgen.fetch_results" in workflow.task_ids) is fetches
+
+
+def test_loadtest_defaults_preserve_task_ids_byte_for_byte(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+
+    workflow = build_loadtest_plan(
+        SCENARIO,
+        EnvironmentConfig(provider="local"),
+        RoleBindings(host=executor, stack=executor),
+        control_plane_url="http://stack:30080",
+        prometheus_client=NoopPrometheus(),
+        run_dir=tmp_path,
+    )
+
+    assert workflow.task_ids == DEFAULT_TASK_IDS
+
+
+def test_loadtest_plan_deploys_exact_prebuilt_images(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+    control_plane_image = "localhost:5000/nanofaas/control-plane:v0.18.0-amd64-native"
+    function_image = "localhost:5000/nanofaas/java-word-stats:v0.18.0-amd64-native"
+
+    workflow = build_loadtest_plan(
+        SCENARIO,
+        EnvironmentConfig(provider="local"),
+        RoleBindings(host=executor, stack=executor),
+        control_plane_url="http://stack:30080",
+        prometheus_client=NoopPrometheus(),
+        run_dir=tmp_path,
+        prebuilt_control_plane_image=control_plane_image,
+        prebuilt_function_images={"word-stats-java": function_image},
+    )
+
+    assert "build.jvm" not in workflow.task_ids
+    assert not any(task_id.startswith("images.") for task_id in workflow.task_ids)
+    deploy = next(task for task in workflow.tasks if task.task_id == "helm.deploy.control-plane")
+    assert "controlPlane.image.repository=localhost:5000/nanofaas/control-plane" in deploy.spec.argv
+    assert "controlPlane.image.tag=v0.18.0-amd64-native" in deploy.spec.argv
+    register = next(
+        task for task in workflow.tasks if task.task_id == "functions.register.word-stats-java"
+    )
+    assert function_image in register.spec.argv[-1]
+
+
+def test_prebuilt_loadtest_requires_function_images(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+
+    with pytest.raises(
+        ValueError,
+        match="prebuilt function images are required in prebuilt mode",
+    ):
+        build_loadtest_plan(
+            SCENARIO,
+            EnvironmentConfig(provider="local"),
+            RoleBindings(host=executor, stack=executor),
+            control_plane_url="http://stack:30080",
+            prometheus_client=NoopPrometheus(),
+            run_dir=tmp_path,
+            prebuilt_control_plane_image="localhost:5000/control-plane:v0.18.0",
+        )
+
+
+def test_prebuilt_loadtest_reports_missing_selected_function_images(
+    tmp_path: Path,
+) -> None:
+    executor = RecordingExecutor()
+
+    with pytest.raises(
+        ValueError,
+        match="missing prebuilt function images: word-stats-java",
+    ):
+        build_loadtest_plan(
+            SCENARIO,
+            EnvironmentConfig(provider="local"),
+            RoleBindings(host=executor, stack=executor),
+            control_plane_url="http://stack:30080",
+            prometheus_client=NoopPrometheus(),
+            run_dir=tmp_path,
+            prebuilt_control_plane_image="localhost:5000/control-plane:v0.18.0",
+            prebuilt_function_images={},
+        )
 
 
 def test_loadtest_plan_owns_stack_registration_and_cleanup(tmp_path: Path) -> None:

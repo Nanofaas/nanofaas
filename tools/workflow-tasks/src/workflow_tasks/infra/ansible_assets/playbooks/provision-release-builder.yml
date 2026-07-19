@@ -1,0 +1,17 @@
+---
+- name: Prepare Azure release builder transport tools
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Install release image transport tools
+      ansible.builtin.apt:
+        name:
+          - docker-buildx
+          - skopeo
+          - rsync
+        state: present
+        update_cache: true
+
+    # QEMU/binfmt is intentionally installed later by the digest-pinned
+    # tonistiigi/binfmt container, not through mutable host packages.

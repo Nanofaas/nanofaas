@@ -35,10 +35,14 @@ class ValidateWorkflowRequest:
     namespace: str = "nanofaas-e2e"
     registry: str = "localhost:5000"
     additional_modules: tuple[str, ...] = ()
+    build_images: bool = True
+    control_plane_image: str | None = None
 
     def __post_init__(self) -> None:
         if not self.functions:
             raise ValueError("validate workflow requires at least one function")
+        if not self.build_images and not self.control_plane_image:
+            raise ValueError("control_plane_image is required when build_images is false")
 
 
 def _task(task_id: str, *argv: str, role: Literal["host", "stack"] = "host") -> CommandTaskSpec:
@@ -186,53 +190,55 @@ def k8s_deployment_specs(
         raise ValueError("Kubernetes deployment specs require the k8s backend")
 
     tasks = [_task("stack.preflight", "kubectl", "version", "--client", role="stack")]
-    tasks.append(_build(request, "stack"))
-    for name, image, dockerfile, context in (
-        (
-            "control-plane",
-            f"{request.registry}/nanofaas/control-plane:e2e",
-            "platform/control-plane/Dockerfile",
-            "platform/control-plane",
-        ),
-        (
-            "warm-echo",
-            f"{request.registry}/nanofaas/java-warm-echo:e2e",
-            "services/java/warm-echo/Dockerfile",
-            "services/java/warm-echo",
-        ),
-    ):
-        tasks.append(
-            _task(
-                f"images.build.{name}",
-                "docker",
-                "build",
-                "-f",
-                dockerfile,
-                "-t",
-                image,
-                context,
-                role="stack",
+    if request.build_images:
+        tasks.append(_build(request, "stack"))
+        for name, image, dockerfile, context in (
+            (
+                "control-plane",
+                f"{request.registry}/nanofaas/control-plane:e2e",
+                "platform/control-plane/Dockerfile",
+                "platform/control-plane",
+            ),
+            (
+                "warm-echo",
+                f"{request.registry}/nanofaas/java-warm-echo:e2e",
+                "services/java/warm-echo/Dockerfile",
+                "services/java/warm-echo",
+            ),
+        ):
+            tasks.append(
+                _task(
+                    f"images.build.{name}",
+                    "docker",
+                    "build",
+                    "-f",
+                    dockerfile,
+                    "-t",
+                    image,
+                    context,
+                    role="stack",
+                )
             )
-        )
-        tasks.append(_task(f"images.push.{name}", "docker", "push", image, role="stack"))
+            tasks.append(_task(f"images.push.{name}", "docker", "push", image, role="stack"))
 
-    for function in request.functions:
-        tasks.append(
-            _task(f"images.build.{function.key}", *function.build_argv, role="stack")
-        )
-        tasks.append(
-            _task(
-                f"images.push.{function.key}",
-                "docker",
-                "push",
-                function.image,
-                role="stack",
+        for function in request.functions:
+            tasks.append(_task(f"images.build.{function.key}", *function.build_argv, role="stack"))
+            tasks.append(
+                _task(
+                    f"images.push.{function.key}",
+                    "docker",
+                    "push",
+                    function.image,
+                    role="stack",
+                )
             )
-        )
 
+    control_plane_image = request.control_plane_image or (
+        f"{request.registry}/nanofaas/control-plane:e2e"
+    )
     control_values = control_plane_helm_values(
         namespace=request.namespace,
-        control_plane_image=f"{request.registry}/nanofaas/control-plane:e2e",
+        control_plane_image=control_plane_image,
         expose_node_port=expose_node_ports,
         metrics_profile=metrics_profile,
         sync_queue_admission_enabled=sync_queue_admission_enabled,

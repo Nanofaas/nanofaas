@@ -149,3 +149,12 @@ uv run pydeps controlplane_tool
 - [Control-plane operation](../../docs/control-plane.md)
 - [E2E tutorial](../../docs/e2e-tutorial.md)
 - [NanoFaaS CLI guide](../../docs/nanofaas-cli.md)
+
+## Image releases
+
+`controlplane-tool images` renders and builds the 52-cell image matrix
+anywhere without publishing. Official releases run only through
+`controlplane-tool release` on the pinned Azure profile; see
+[docs/operations/image-releases.md](../../docs/operations/image-releases.md).
+GitHub Actions never publishes images, and local/Multipass/Proxmox builds
+cannot promote to GHCR.
