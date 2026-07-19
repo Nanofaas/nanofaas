@@ -51,22 +51,28 @@ offload:
   (`X-Timeout-Ms` override included), minus a small margin so a gateway 504
   beats the local wait timeout.
 
+## Testing
+
+`OffloadPressureE2eTest` boots two full control planes in one JVM: a saturated
+"edge" (sync queue `max-depth=1`, one concurrency slot against a deliberately
+slow POOL endpoint) and a "cloud" running the same function as LOCAL. It
+proves the `depth` pressure trigger end-to-end: overflow requests return 200
+with `X-NanoFaaS-Offloaded` instead of 429, queued local work still completes,
+no retries, offload metrics recorded. Runs in `./gradlew test`.
+
 ## Limitations & follow-ups
 
 Deliberately out of scope in v1 — pick up here when needed:
 
-1. **Pressure-trigger E2E validation** — `depth`/`est_wait` offload is covered
-   by unit tests only; the two-instance smoke validated the eager path.
-   Needs a slow/saturable function (the LOCAL echo completes too fast).
-2. **Async offload** (`:enqueue`) — sync-only by design. If added: the queue
+1. **Async offload** (`:enqueue`) — sync-only by design. If added: the queue
    worker should call the remote `:invoke` synchronously and complete the
    local record (no remote `:enqueue`, no cross-instance execution-id mapping).
-3. **Full W3C Trace Context / OTel** — today only pass-through. Real adoption
+2. **Full W3C Trace Context / OTel** — today only pass-through. Real adoption
    is micrometer-tracing at the platform level (controllers, dispatchers,
    SDKs), not a module concern.
-4. **Multi-target / round-robin, and automatic `FunctionSpec` propagation to
+3. **Multi-target / round-robin, and automatic `FunctionSpec` propagation to
    the remote** — federation features; v1 assumes one target per function and
    out-of-band registration.
-5. **Post-terminal idempotent replays** of a failed offload return the stored
+4. **Post-terminal idempotent replays** of a failed offload return the stored
    record state (200 with an `OFFLOAD_*` error body) rather than 502 — chosen
    behavior, documented here for the next reader.
