@@ -13,6 +13,7 @@ Choose the tool that owns the operation:
 |---|---|
 | Build, register, invoke, or inspect a function | `nanofaas` CLI |
 | Provision a VM, install k3s/Helm, distribute images, or run E2E | Python control-plane tool |
+| Build the image matrix or publish an official release | `controlplane-tool images` / `release` ([guide](docs/operations/image-releases.md)) |
 | Run the control plane during development | Gradle / Spring Boot |
 
 For a complete local path—including JVM and GraalVM CLI builds—read the
