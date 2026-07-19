@@ -38,6 +38,12 @@ def _plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "git_state",
         lambda _root: release_run.GitState(commit="a" * 40, clean=True),
     )
+    # finalization must never write into the real repository docs during tests
+    monkeypatch.setattr(
+        release_run.attest,
+        "performance_root",
+        lambda _root: tmp_path / "performance-docs",
+    )
     credentials = release_run.CredentialFiles(
         ghcr_token=_secret(tmp_path / "ghcr-token", "fixture-token"),
         cosign_key=_secret(tmp_path / "cosign.key", "fixture-key"),
@@ -1903,6 +1909,8 @@ def test_resume_invalidates_arm_build_and_smoke_when_arm_digest_changes(
         "publish-architectures",
         "publish-manifests",
         "publish-aliases",
+        "attest",
+        "finalize",
     ]
 
 
@@ -1956,6 +1964,8 @@ def test_resume_repeats_only_arm_smoke_when_its_local_marker_changes(
         "publish-architectures",
         "publish-manifests",
         "publish-aliases",
+        "attest",
+        "finalize",
     ]
 
 
@@ -2122,6 +2132,8 @@ def test_resume_provisions_before_verification_and_invalidates_from_changed_evid
         "publish-architectures",
         "publish-manifests",
         "publish-aliases",
+        "attest",
+        "finalize",
     ]
 
 

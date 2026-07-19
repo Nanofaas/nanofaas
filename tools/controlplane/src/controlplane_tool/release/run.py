@@ -38,11 +38,16 @@ from controlplane_tool.release.metrics import (
     RegressionDecision,
     RegressionPolicy,
     aggregate_runs,
+    build_release_record,
     evaluate_regression,
     newest_comparable_record,
 )
-from controlplane_tool.release import publish
-from controlplane_tool.release.secrets import stage_ghcr_credentials, validate_secret_file
+from controlplane_tool.release import attest, publish
+from controlplane_tool.release.secrets import (
+    stage_cosign_credentials,
+    stage_ghcr_credentials,
+    validate_secret_file,
+)
 from controlplane_tool.release.state import (
     ArtifactEvidence,
     ReleaseIdentity,
@@ -66,7 +71,7 @@ AMD64_PHASES = (
     "aggregate",
     "regression-gate",
 )
-RELEASE_PHASES = AMD64_PHASES + arm.ARM64_PHASES + publish.PUBLISH_PHASES
+RELEASE_PHASES = AMD64_PHASES + arm.ARM64_PHASES + publish.PUBLISH_PHASES + attest.ATTEST_PHASES
 _GO_TOOLCHAIN = (
     "golang:1.24-alpine@sha256:757779acac4af1b349a20f357c7296097b4a0b89da4ad0e370b339060077282a"
 )
@@ -890,6 +895,15 @@ def _run_amd64_release_locked(
             reusable,
             failure_injector,
         )
+        _attest_release(
+            plan,
+            journal,
+            provider,
+            stack_request,
+            remote_root,
+            reusable,
+            failure_injector,
+        )
         return decision
 
 
@@ -973,6 +987,102 @@ def _publish_release(
                 ),
                 failure_injector,
             )
+
+
+def _attest_release(
+    plan: Amd64ReleasePlan,
+    journal: ReleaseJournal,
+    provider: object,
+    stack_request: VmRequest,
+    remote_root: str,
+    reusable: frozenset[str],
+    failure_injector: FailureInjector | None,
+) -> None:
+    """SBOM, sign, and verify the published digests, then finalize records.
+
+    Signing material reaches the VM only for this window. Published
+    performance history changes only after verification succeeds; a
+    documentation failure appends no final journal record so --resume can
+    retry finalization without rebuilding verified images."""
+    pending = tuple(phase for phase in attest.ATTEST_PHASES if phase not in reusable)
+    if not pending:
+        return
+    credentials = plan.credentials
+    assert credentials is not None
+    _assert_guarded_source(plan)
+    published = (
+        _journal_phase_artifacts(journal, "publish-architectures")
+        + _journal_phase_artifacts(journal, "publish-manifests")
+        + _journal_phase_artifacts(journal, "publish-aliases")
+    )
+    images = {
+        artifact.reference.removeprefix("docker://"): artifact.digest
+        for artifact in published
+    }
+    benchmark_digest = _journal_phase_artifacts(journal, "aggregate")[0].digest
+    record = build_release_record(
+        version=plan.version,
+        source_commit=plan.identity.source_commit,
+        image_digests=images,
+        aggregate=_aggregate_from_payload(
+            _read_verified_local_json(journal, "aggregate", plan.run_dir / "aggregate.json")
+        ),
+        policy=_regression_policy(plan),
+    )
+    if "attest" not in reusable:
+        predicate = attest.build_release_predicate(
+            version=plan.version,
+            source_commit=plan.identity.source_commit,
+            azure_profile=plan.settings.profile,
+            benchmark_record_digest=benchmark_digest,
+            image_digests=images,
+        )
+        predicate_file = plan.run_dir / "predicate.json"
+        predicate_file.write_text(attest.render_predicate(predicate), encoding="utf-8")
+        remote_predicate = f"{remote_root}/predicate.json"
+
+        def sign() -> tuple[ArtifactEvidence, ...]:
+            transfer = provider.transfer_to(  # type: ignore[attr-defined]
+                stack_request,
+                source=predicate_file,
+                destination=remote_predicate,
+            )
+            _require_result(transfer, "transfer release predicate")
+            with stage_ghcr_credentials(
+                provider,
+                stack_request,
+                username=publish.ghcr_username(),
+                token_file=credentials.ghcr_token,
+            ) as docker, stage_cosign_credentials(
+                provider,
+                stack_request,
+                key_file=credentials.cosign_key,
+                password_file=credentials.cosign_password,
+            ) as cosign_files:
+                attest.attest_release_images(
+                    provider,
+                    stack_request,
+                    images=images,
+                    predicate_remote=remote_predicate,
+                    sbom_dir_remote=f"{remote_root}/sboms",
+                    cosign=cosign_files,
+                    docker_config=docker.docker_config,
+                )
+            return (
+                ArtifactEvidence("local", str(predicate_file), digest_path(predicate_file)),
+            )
+
+        _record_phase(journal, "attest", sign, failure_injector)
+    if "finalize" not in reusable:
+        # deliberately outside _record_phase: a documentation failure must
+        # leave the journal without any finalize entry, not a failed one
+        if failure_injector is not None:
+            failure_injector("finalize")
+        attest.finalize_release(
+            journal,
+            record=record,
+            performance_root=attest.performance_root(plan.repo_root),
+        )
 
 
 def _verify_release_vm_facts(
