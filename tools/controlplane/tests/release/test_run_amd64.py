@@ -606,6 +606,31 @@ class _ReleaseProvider(_ArchiveProvider):
                 if digest is not None
                 else _TransferResult(return_code=1)
             )
+        if argv[:2] == ("mktemp", "-d"):
+            return _TransferResult(stdout="/tmp/nanofaas-release-credentials.fake01\n")
+        if argv[:2] == ("skopeo", "copy"):
+            source = argv[-2].removeprefix("docker://")
+            destination = argv[-1].removeprefix("docker://")
+            self.registry_digests[destination] = self.registry_digests[source]
+            return _TransferResult()
+        if argv[:4] == ("docker", "buildx", "imagetools", "create"):
+            tag = argv[argv.index("--tag") + 1]
+            sources = argv[argv.index("--tag") + 2 :]
+            if len(sources) == 1 and sources[0] in self.registry_digests:
+                self.registry_digests[tag] = self.registry_digests[sources[0]]
+            else:
+                self.registry_digests[tag] = _registry_digest(",".join(sorted(sources)))
+            return _TransferResult()
+        if argv[:4] == ("docker", "buildx", "imagetools", "inspect"):
+            if argv[-1] not in self.registry_digests:
+                return _TransferResult(return_code=1)
+            return _TransferResult(
+                stdout=(
+                    "Manifests:\n"
+                    "  Platform:    linux/amd64\n"
+                    "  Platform:    linux/arm64\n"
+                )
+            )
         if argv[:2] == ("docker", "port"):
             return _TransferResult(stdout="127.0.0.1:32768\n")
         if (
@@ -936,7 +961,35 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
         }
     rendered = "\n".join(events).lower()
     assert "arm64" in rendered
-    assert "ghcr.io" not in rendered
+    first_ghcr = next(index for index, event in enumerate(events) if "ghcr.io" in event.lower())
+    last_smoke_cleanup = max(
+        index
+        for index, event in enumerate(events)
+        if event.startswith("exec:docker rm --force nanofaas-arm64-smoke")
+    )
+    assert last_smoke_cleanup < first_ghcr
+    login = events.index(
+        'exec:sh -c exec docker login "$1" --username "$2" --password-stdin < "$3" '
+        "nanofaas-release-login ghcr.io miciav "
+        "/tmp/nanofaas-release-credentials.fake01/ghcr-token"
+    )
+    assert last_smoke_cleanup < login < first_ghcr or login == first_ghcr
+    assert "exec:rm -rf -- /tmp/nanofaas-release-credentials.fake01" in events
+    aliases = [
+        index
+        for index, event in enumerate(events)
+        if "imagetools create" in event and event.rstrip().endswith("-native")
+        and event.split("--tag ", 1)[1].split(" ", 1)[0].count(":") == 1
+        and not any(
+            suffix in event.split("--tag ", 1)[1].split(" ", 1)[0]
+            for suffix in ("-jvm", "-native", "-amd64", "-arm64")
+        )
+    ]
+    manifest_creates = [
+        index for index, event in enumerate(events) if "imagetools create" in event
+    ]
+    assert aliases
+    assert max(manifest_creates) >= max(aliases)
     assert plan.credentials is not None
     secret_paths = {
         plan.credentials.ghcr_token,
@@ -1159,6 +1212,64 @@ def test_injected_arm64_phase_failure_never_reaches_publication(
     assert "docker login" not in rendered
     assert "skopeo copy" not in rendered
     assert "imagetools" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("failed_phase", "expect_manifests"),
+    (
+        ("publish-architectures", False),
+        ("publish-manifests", False),
+        ("publish-aliases", True),
+    ),
+)
+def test_injected_publish_phase_failures_stop_downstream_publication(
+    failed_phase: str,
+    expect_manifests: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(tmp_path, monkeypatch)
+    events: list[str] = []
+    provider, provisioner, builder, loadtest, archive, _ = _runtime_fakes(plan, events)
+
+    def fail(boundary: str) -> None:
+        if boundary == failed_phase:
+            raise RuntimeError(f"injected:{boundary}")
+
+    with pytest.raises(RuntimeError, match="injected"):
+        release_run.run_amd64_release(
+            plan,
+            provider_factory=lambda _environment, _root: provider,
+            provisioner=provisioner,
+            builder_provisioner=builder,
+            loadtest_builder=loadtest,
+            archive_builder=archive,
+            failure_injector=fail,
+        )
+
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(plan.state_directory.glob("*.json"))
+    ]
+    assert payloads[-1]["phase"] == failed_phase
+    assert payloads[-1]["outcome"] == "failed"
+    creates = [event for event in events if "imagetools create" in event]
+    if failed_phase == "publish-architectures":
+        assert not any("skopeo copy" in event for event in events)
+        assert not creates
+    if failed_phase == "publish-manifests":
+        assert any("skopeo copy" in event for event in events)
+        assert not creates
+    if failed_phase == "publish-aliases":
+        assert creates
+        version_aliases = [
+            event
+            for event in creates
+            if event.split("--tag ", 1)[1].split(" ", 1)[0].endswith(f":{CURRENT_TAG}")
+        ]
+        assert not version_aliases
+    # credentials directory is always cleaned, even on failure
+    assert "exec:rm -rf -- /tmp/nanofaas-release-credentials.fake01" in events
 
 
 @pytest.mark.parametrize(
@@ -1786,7 +1897,13 @@ def test_resume_invalidates_arm_build_and_smoke_when_arm_digest_changes(
         if payload.get("kind") == "invalidation"
         and payload.get("invalidateFrom") == "arm64-build"
     )
-    assert invalidation["affectedPhases"] == ["arm64-build", "arm64-smoke"]
+    assert invalidation["affectedPhases"] == [
+        "arm64-build",
+        "arm64-smoke",
+        "publish-architectures",
+        "publish-manifests",
+        "publish-aliases",
+    ]
 
 
 def test_resume_repeats_only_arm_smoke_when_its_local_marker_changes(
@@ -1834,7 +1951,12 @@ def test_resume_repeats_only_arm_smoke_when_its_local_marker_changes(
         if payload.get("kind") == "invalidation"
         and payload.get("invalidateFrom") == "arm64-smoke"
     )
-    assert invalidation["affectedPhases"] == ["arm64-smoke"]
+    assert invalidation["affectedPhases"] == [
+        "arm64-smoke",
+        "publish-architectures",
+        "publish-manifests",
+        "publish-aliases",
+    ]
 
 
 def test_resume_restricts_legacy_wildcard_ingress_before_bootstrap_rsync(
@@ -1997,6 +2119,9 @@ def test_resume_provisions_before_verification_and_invalidates_from_changed_evid
         "regression-gate",
         "arm64-build",
         "arm64-smoke",
+        "publish-architectures",
+        "publish-manifests",
+        "publish-aliases",
     ]
 
 

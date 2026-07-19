@@ -41,7 +41,8 @@ from controlplane_tool.release.metrics import (
     evaluate_regression,
     newest_comparable_record,
 )
-from controlplane_tool.release.secrets import validate_secret_file
+from controlplane_tool.release import publish
+from controlplane_tool.release.secrets import stage_ghcr_credentials, validate_secret_file
 from controlplane_tool.release.state import (
     ArtifactEvidence,
     ReleaseIdentity,
@@ -65,7 +66,7 @@ AMD64_PHASES = (
     "aggregate",
     "regression-gate",
 )
-RELEASE_PHASES = AMD64_PHASES + arm.ARM64_PHASES
+RELEASE_PHASES = AMD64_PHASES + arm.ARM64_PHASES + publish.PUBLISH_PHASES
 _GO_TOOLCHAIN = (
     "golang:1.24-alpine@sha256:757779acac4af1b349a20f357c7296097b4a0b89da4ad0e370b339060077282a"
 )
@@ -880,7 +881,98 @@ def _run_amd64_release_locked(
                 ),
                 failure_injector,
             )
+
+        _publish_release(
+            plan,
+            journal,
+            provider,
+            stack_request,
+            reusable,
+            failure_injector,
+        )
         return decision
+
+
+def _publish_release(
+    plan: Amd64ReleasePlan,
+    journal: ReleaseJournal,
+    provider: object,
+    stack_request: VmRequest,
+    reusable: frozenset[str],
+    failure_injector: FailureInjector | None,
+) -> None:
+    """Promote the verified 52-cell matrix to GHCR: immutable architecture
+    tags first, verified version manifests next, mutable aliases last. The
+    GHCR token is transferred only for this window and always cleaned up."""
+    pending = tuple(phase for phase in publish.PUBLISH_PHASES if phase not in reusable)
+    if not pending:
+        return
+    assert plan.credentials is not None
+    _assert_guarded_source(plan)
+    # both gates must hold verified evidence before any publication is planned
+    _journal_phase_artifacts(journal, "regression-gate")
+    _journal_phase_artifacts(journal, "arm64-smoke")
+    publish_plan = publish.build_publish_plan(
+        plan.repo_root,
+        plan.version,
+        local_registry=plan.image_plan.registry,
+    )
+    source_digests = publish.require_publication_evidence(
+        publish_plan,
+        _journal_phase_artifacts(journal, "local-registry-push")
+        + _journal_phase_artifacts(journal, "arm64-build"),
+    )
+    with stage_ghcr_credentials(
+        provider,
+        stack_request,
+        username=publish.ghcr_username(),
+        token_file=plan.credentials.ghcr_token,
+    ) as docker:
+        authfile = f"{docker.docker_config}/config.json"
+        if "publish-architectures" not in reusable:
+            _record_phase(
+                journal,
+                "publish-architectures",
+                lambda: publish.publish_architecture_images(
+                    provider,
+                    stack_request,
+                    publish_plan,
+                    source_digests,
+                    authfile=authfile,
+                ),
+                failure_injector,
+            )
+        if "publish-manifests" not in reusable:
+            manifest_evidence = _record_phase(
+                journal,
+                "publish-manifests",
+                lambda: publish.publish_manifests(
+                    provider,
+                    stack_request,
+                    publish_plan,
+                    docker_config=docker.docker_config,
+                ),
+                failure_injector,
+            )
+        else:
+            manifest_evidence = _journal_phase_artifacts(journal, "publish-manifests")
+        if "publish-aliases" not in reusable:
+            manifest_digests = {
+                artifact.reference.removeprefix("docker://"): artifact.digest
+                for artifact in manifest_evidence
+            }
+            _record_phase(
+                journal,
+                "publish-aliases",
+                lambda: publish.publish_aliases(
+                    provider,
+                    stack_request,
+                    publish_plan,
+                    manifest_digests,
+                    docker_config=docker.docker_config,
+                ),
+                failure_injector,
+            )
 
 
 def _verify_release_vm_facts(
