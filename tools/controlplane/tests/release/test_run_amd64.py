@@ -38,12 +38,6 @@ def _plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "git_state",
         lambda _root: release_run.GitState(commit="a" * 40, clean=True),
     )
-    # finalization must never write into the real repository docs during tests
-    monkeypatch.setattr(
-        release_run.attest,
-        "performance_root",
-        lambda _root: tmp_path / "performance-docs",
-    )
     credentials = release_run.CredentialFiles(
         ghcr_token=_secret(tmp_path / "ghcr-token", "fixture-token"),
         cosign_key=_secret(tmp_path / "cosign.key", "fixture-key"),
@@ -56,6 +50,8 @@ def _plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         release_config_path=REPO_ROOT / "tools/controlplane/release.yaml",
         run_dir=tmp_path / "run",
         credentials=credentials,
+        # finalization must never write into the real repository docs in tests
+        performance_root=tmp_path / "performance-docs",
     )
 
 
@@ -213,6 +209,8 @@ def test_plan_resolves_relative_release_inputs_against_the_working_directory(
         release_config_path=Path("tools/controlplane/release.yaml"),
         run_dir=tmp_path / "run",
         credentials=credentials,
+        # finalization must never write into the real repository docs in tests
+        performance_root=tmp_path / "performance-docs",
     )
 
     assert plan.settings.scenario == (REPO_ROOT / "tools/controlplane/scenarios-v2/loadtest.yaml")
@@ -622,7 +620,9 @@ class _ReleaseProvider(_ArchiveProvider):
         if argv[:4] == ("docker", "buildx", "imagetools", "create"):
             tag = argv[argv.index("--tag") + 1]
             sources = argv[argv.index("--tag") + 2 :]
-            if len(sources) == 1 and sources[0] in self.registry_digests:
+            if len(sources) == 1 and "@sha256:" in sources[0]:
+                self.registry_digests[tag] = "sha256:" + sources[0].rsplit("@sha256:", 1)[1]
+            elif len(sources) == 1 and sources[0] in self.registry_digests:
                 self.registry_digests[tag] = self.registry_digests[sources[0]]
             else:
                 self.registry_digests[tag] = _registry_digest(",".join(sorted(sources)))
@@ -981,21 +981,18 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     )
     assert last_smoke_cleanup < login < first_ghcr or login == first_ghcr
     assert "exec:rm -rf -- /tmp/nanofaas-release-credentials.fake01" in events
-    aliases = [
-        index
+    creates = [
+        (index, event.split("--tag ", 1)[1].split(" ")[1:])
         for index, event in enumerate(events)
-        if "imagetools create" in event and event.rstrip().endswith("-native")
-        and event.split("--tag ", 1)[1].split(" ", 1)[0].count(":") == 1
-        and not any(
-            suffix in event.split("--tag ", 1)[1].split(" ", 1)[0]
-            for suffix in ("-jvm", "-native", "-amd64", "-arm64")
-        )
+        if "imagetools create" in event
     ]
-    manifest_creates = [
-        index for index, event in enumerate(events) if "imagetools create" in event
-    ]
-    assert aliases
-    assert max(manifest_creates) >= max(aliases)
+    # manifests merge two pinned architecture sources; aliases retag one manifest
+    manifests = [index for index, sources in creates if len(sources) == 2]
+    aliases = [index for index, sources in creates if len(sources) == 1]
+    assert aliases and manifests
+    assert max(manifests) < min(aliases)
+    for index, sources in creates:
+        assert all("@sha256:" in source for source in sources)
     assert plan.credentials is not None
     secret_paths = {
         plan.credentials.ghcr_token,
@@ -1268,12 +1265,10 @@ def test_injected_publish_phase_failures_stop_downstream_publication(
         assert not creates
     if failed_phase == "publish-aliases":
         assert creates
-        version_aliases = [
-            event
-            for event in creates
-            if event.split("--tag ", 1)[1].split(" ", 1)[0].endswith(f":{CURRENT_TAG}")
+        alias_creates = [
+            event for event in creates if len(event.split("--tag ", 1)[1].split(" ")) == 2
         ]
-        assert not version_aliases
+        assert not alias_creates
     # credentials directory is always cleaned, even on failure
     assert "exec:rm -rf -- /tmp/nanofaas-release-credentials.fake01" in events
 

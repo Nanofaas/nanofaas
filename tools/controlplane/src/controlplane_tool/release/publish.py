@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from controlplane_tool.images.plan import ImageCell, build_image_plan
+from controlplane_tool.release.versioning import normalize_version
 from controlplane_tool.release.state import ArtifactEvidence
 
 
@@ -67,9 +68,12 @@ def build_publish_plan(
     local_registry: str,
     repository: str = GHCR_REPOSITORY,
 ) -> PublishPlan:
+    # architecture cells are v-prefixed by build_image_plan: manifests and
+    # aliases must use the same normalized tag scheme
+    _, version_tag = normalize_version(version)
     full = build_image_plan(
         repo_root,
-        version,
+        version_tag,
         registry=local_registry,
         architectures=("amd64", "arm64"),
     )
@@ -101,7 +105,7 @@ def build_publish_plan(
             raise ValueError(
                 f"publication requires both architectures for {target_name} ({flavor})"
             )
-        manifest_tag = version if flavor == "default" else f"{version}-{flavor}"
+        manifest_tag = version_tag if flavor == "default" else f"{version_tag}-{flavor}"
         manifests.append(
             ManifestSpec(
                 target=target_name,
@@ -113,12 +117,12 @@ def build_publish_plan(
             aliases.append(
                 AliasSpec(
                     target=target_name,
-                    reference=f"{repository}/{target_name}:{version}",
+                    reference=f"{repository}/{target_name}:{version_tag}",
                     source=f"{repository}/{target_name}:{manifest_tag}",
                 )
             )
     return PublishPlan(
-        version=version,
+        version=version_tag,
         repository=repository,
         copies=copies,
         manifests=tuple(manifests),
@@ -184,12 +188,20 @@ def publish_manifests(
     provider: object,
     request: object,
     plan: PublishPlan,
+    architecture_digests: Mapping[str, str],
     *,
     docker_config: str,
 ) -> tuple[ArtifactEvidence, ...]:
-    """Create and verify multi-architecture version manifests."""
+    """Create and verify multi-architecture version manifests.
+
+    Sources are digest-pinned from the verified architecture uploads, never
+    mutable tags: a repointed tag between phases cannot reach a manifest.
+    """
     evidence: list[ArtifactEvidence] = []
     for manifest in plan.manifests:
+        pinned_sources = tuple(
+            _pin(source, architecture_digests) for source in manifest.sources
+        )
         _exec(
             provider,
             request,
@@ -200,7 +212,7 @@ def publish_manifests(
                 "create",
                 "--tag",
                 manifest.reference,
-                *manifest.sources,
+                *pinned_sources,
             ),
             env={"DOCKER_CONFIG": docker_config},
         )
@@ -245,7 +257,7 @@ def publish_aliases(
                 "create",
                 "--tag",
                 alias.reference,
-                alias.source,
+                _pin(alias.source, manifest_digests),
             ),
             env={"DOCKER_CONFIG": docker_config},
         )
@@ -262,6 +274,13 @@ def publish_aliases(
             )
         evidence.append(ArtifactEvidence("remote", f"docker://{alias.reference}", published))
     return tuple(evidence)
+
+
+def _pin(reference: str, digests: Mapping[str, str]) -> str:
+    digest = digests.get(reference)
+    if digest is None:
+        raise RuntimeError(f"no verified digest for publication source: {reference}")
+    return f"{reference.rsplit(':', 1)[0]}@{digest}"
 
 
 def require_dual_architecture(output: str, reference: str) -> None:

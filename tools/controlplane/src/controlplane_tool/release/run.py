@@ -142,6 +142,7 @@ class Amd64ReleasePlan:
     builder: BuilderConfiguration
     bake_file: Path
     buildkit_config: Path
+    performance_root: Path
     credentials: CredentialFiles | None = field(repr=False)
 
     @property
@@ -205,6 +206,7 @@ def build_amd64_release_plan(
     release_config_path: Path,
     run_dir: Path,
     credentials: CredentialFiles | None,
+    performance_root: Path | None = None,
 ) -> Amd64ReleasePlan:
     root = Path(repo_root).resolve()
     environment_file = Path(environment_path).resolve()
@@ -258,6 +260,11 @@ def build_amd64_release_plan(
         ),
         bake_file=bake_file,
         buildkit_config=buildkit_config,
+        performance_root=(
+            Path(performance_root).resolve()
+            if performance_root is not None
+            else attest.performance_root(root)
+        ),
         credentials=credentials,
     )
 
@@ -667,12 +674,17 @@ def _run_amd64_release_locked(
                 provider.teardown(request),  # type: ignore[attr-defined]
                 f"recreate dedicated release {role} VM",
             )
+    ghcr_auth: dict[str, str] = {}
     journal = ReleaseJournal(
         plan.journal_root,
         plan.identity,
         phases=RELEASE_PHASES,
         artifact_digest=lambda location, reference: _remote_image_digest(
-            provider, stack_request, location, reference
+            provider,
+            stack_request,
+            location,
+            reference,
+            ghcr_authfile=ghcr_auth.get("authfile"),
         ),
     )
     endpoints: tuple[str, str] | None = None
@@ -699,7 +711,24 @@ def _run_amd64_release_locked(
             raise RuntimeError("release loadgen ingress was not verified before bootstrap")
         control_plane_url, prometheus_url = endpoints
         provision_builder(provider, stack_request, plan.repo_root)
-        reusable = frozenset(journal.resume().reusable_phases) if resume else frozenset()
+        if resume:
+            credentials = plan.credentials
+            assert credentials is not None
+            # published evidence lives on GHCR: verify it authenticated, then
+            # drop the staged token again before any build phase runs
+            with stage_ghcr_credentials(
+                provider,
+                stack_request,
+                username=publish.ghcr_username(),
+                token_file=credentials.ghcr_token,
+            ) as resume_auth:
+                ghcr_auth["authfile"] = f"{resume_auth.docker_config}/config.json"
+                try:
+                    reusable = frozenset(journal.resume().reusable_phases)
+                finally:
+                    ghcr_auth.pop("authfile", None)
+        else:
+            reusable = frozenset()
         remote_root = f"{vm_remote_home(stack_request)}/nanofaas-release/{plan.version}"
         source_dir = f"{remote_root}/source"
         source_archive = f"{remote_root}/source.tar"
@@ -957,6 +986,10 @@ def _publish_release(
                 failure_injector,
             )
         if "publish-manifests" not in reusable:
+            architecture_digests = {
+                artifact.reference.removeprefix("docker://"): artifact.digest
+                for artifact in _journal_phase_artifacts(journal, "publish-architectures")
+            }
             manifest_evidence = _record_phase(
                 journal,
                 "publish-manifests",
@@ -964,6 +997,7 @@ def _publish_release(
                     provider,
                     stack_request,
                     publish_plan,
+                    architecture_digests,
                     docker_config=docker.docker_config,
                 ),
                 failure_injector,
@@ -1042,6 +1076,7 @@ def _attest_release(
         remote_predicate = f"{remote_root}/predicate.json"
 
         def sign() -> tuple[ArtifactEvidence, ...]:
+            _provider_exec(provider, stack_request, ("mkdir", "-p", remote_root))
             transfer = provider.transfer_to(  # type: ignore[attr-defined]
                 stack_request,
                 source=predicate_file,
@@ -1081,7 +1116,7 @@ def _attest_release(
         attest.finalize_release(
             journal,
             record=record,
-            performance_root=attest.performance_root(plan.repo_root),
+            performance_root=plan.performance_root,
         )
 
 
@@ -1602,6 +1637,8 @@ def _remote_image_digest(
     request: object,
     location: str,
     reference: str,
+    *,
+    ghcr_authfile: str | None = None,
 ) -> str | None:
     if location != "remote":
         return None
@@ -1611,10 +1648,42 @@ def _remote_image_digest(
                 provider, request, reference.removeprefix("docker-daemon:")
             )
         if reference.startswith("docker://"):
-            return _inspect_registry_digest(provider, request, reference.removeprefix("docker://"))
+            registry_reference = reference.removeprefix("docker://")
+            if registry_reference.startswith("ghcr.io/"):
+                if ghcr_authfile is None:
+                    # fail closed: unverifiable GHCR evidence is never reused
+                    return None
+                return _inspect_ghcr_digest(
+                    provider, request, registry_reference, authfile=ghcr_authfile
+                )
+            return _inspect_registry_digest(provider, request, registry_reference)
         return None
     except Exception:
         return None
+
+
+def _inspect_ghcr_digest(
+    provider: object,
+    request: object,
+    reference: str,
+    *,
+    authfile: str,
+) -> str:
+    result = _provider_exec(
+        provider,
+        request,
+        (
+            "skopeo",
+            "inspect",
+            f"--authfile={authfile}",
+            "--format={{.Digest}}",
+            f"docker://{reference}",
+        ),
+    )
+    digest = str(getattr(result, "stdout", "")).strip()
+    if not digest.startswith("sha256:") or len(digest) != 71:
+        raise RuntimeError(f"invalid registry digest for {reference}")
+    return digest
 
 
 def _inspect_registry_digest(provider: object, request: object, reference: str) -> str:
@@ -1750,7 +1819,12 @@ def _evaluate_gate(
         )
     )
     baseline_record = newest_comparable_record(
-        _release_records(plan.repo_root / "docs/performance/releases"),
+        tuple(
+            record
+            for record in _release_records(plan.performance_root / "releases")
+            # a re-release of this version must not use itself as baseline
+            if str(record.get("version")) != plan.version
+        ),
         aggregate.profile,
     )
     baseline = _aggregate_from_record(baseline_record) if baseline_record is not None else None

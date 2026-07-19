@@ -30,7 +30,9 @@ DEFAULT_RELEASE_PHASES = (
     "regression-gate",
     "arm64-build",
     "arm64-smoke",
-    "publish",
+    "publish-architectures",
+    "publish-manifests",
+    "publish-aliases",
     "attest",
     "finalize",
 )
