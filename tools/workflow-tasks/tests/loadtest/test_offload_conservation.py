@@ -35,11 +35,15 @@ def _cloud_metrics(*, success_offloadable: float = 598, leak_control: bool = Fal
     return "\n".join(lines) + "\n"
 
 
-def _k6_summary(*, http_reqs: float = 1200, offloaded: float = 600) -> dict:
+def _k6_summary(*, offloadable_requests: float = 1200, offloaded: float = 600) -> dict:
+    # k6's real --summary-export shape: counter fields are flat (no "values"
+    # wrapper), and it only emits a per-tag submetric key for tag combinations
+    # referenced by a threshold — neither of these counters qualifies, so both
+    # only ever appear untagged.
     return {
         "metrics": {
-            f"http_reqs{{function:{OFFLOADABLE}}}": {"values": {"count": http_reqs}},
-            f"offloaded_requests{{function:{OFFLOADABLE}}}": {"values": {"count": offloaded}},
+            "offloadable_requests": {"count": offloadable_requests},
+            "offloaded_requests": {"count": offloaded},
         }
     }
 

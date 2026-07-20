@@ -143,12 +143,17 @@ def _register_task(
 
 
 def offload_registration_specs(request: OffloadLoadtestRequest) -> tuple[CommandTaskSpec, ...]:
+    # The cloud copy must absorb whatever the edge sheds, not reproduce the edge's
+    # own admission pressure — registering it with the edge's tight concurrency
+    # made cloud itself reject most offloaded calls (429), which the edge then
+    # counts as nanofaas_offload_failure_total.
+    cloud_offloadable = replace(request.offloadable, concurrency=20, queue_size=100)
     return (
         _register_task("edge", request.offloadable, _EDGE_ENDPOINT, None, role="stack"),
         _register_task(
             "edge", request.control, _EDGE_ENDPOINT, {"enabled": False}, role="stack"
         ),
-        _register_task("cloud", request.offloadable, _CLOUD_ENDPOINT, None, role="cloud"),
+        _register_task("cloud", cloud_offloadable, _CLOUD_ENDPOINT, None, role="cloud"),
     )
 
 

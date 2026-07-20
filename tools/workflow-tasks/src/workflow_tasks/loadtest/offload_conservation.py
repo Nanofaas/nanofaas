@@ -18,27 +18,34 @@ class ConservationReport:
     numbers: dict[str, float]
 
 
-def _k6_counter_value(k6_summary: Mapping[str, Any], name: str, tags: Mapping[str, str]) -> float:
+def _k6_counter_value(
+    k6_summary: Mapping[str, Any], name: str, tags: Mapping[str, str] | None = None
+) -> float:
+    """Read a k6 --summary-export counter's count.
+
+    k6's JSON summary stores counter fields flat on the metric object (e.g.
+    ``{"count": 4, "rate": 0.06}``), not nested under a "values" key. It also
+    only emits a per-tag submetric (key ``"name{tag:value}"``) for tag
+    combinations referenced by a threshold; untagged custom counters are the
+    reliable source for anything else.
+    """
     metrics = k6_summary.get("metrics")
     if not isinstance(metrics, Mapping):
         return 0.0
-    tag_str = ",".join(f"{key}:{value}" for key, value in tags.items())
-    submetric = metrics.get(f"{name}{{{tag_str}}}")
-    if isinstance(submetric, Mapping):
-        values = submetric.get("values")
-        if isinstance(values, Mapping) and "count" in values:
+    if tags:
+        tag_str = ",".join(f"{key}:{value}" for key, value in tags.items())
+        submetric = metrics.get(f"{name}{{{tag_str}}}")
+        if isinstance(submetric, Mapping) and "count" in submetric:
             try:
-                return float(values["count"])
+                return float(submetric["count"])
             except (TypeError, ValueError):
                 pass
     aggregate = metrics.get(name)
-    if isinstance(aggregate, Mapping):
-        values = aggregate.get("values")
-        if isinstance(values, Mapping) and "count" in values:
-            try:
-                return float(values["count"])
-            except (TypeError, ValueError):
-                pass
+    if isinstance(aggregate, Mapping) and "count" in aggregate:
+        try:
+            return float(aggregate["count"])
+        except (TypeError, ValueError):
+            pass
     return 0.0
 
 
@@ -75,17 +82,17 @@ def evaluate_conservation(
                 f"{a_label} ({a}) diverges from {b_label} ({b}) beyond tolerance {tolerance}"
             )
 
-    # 1. k6 http_reqs for the offloadable function vs edge function_success_total.
+    # 1. k6 requests for the offloadable function vs edge function_success_total.
     k6_offloadable_reqs = record(
-        "k6_http_reqs_offloadable",
-        _k6_counter_value(k6_summary, "http_reqs", {"function": offloadable}),
+        "k6_offloadable_requests",
+        _k6_counter_value(k6_summary, "offloadable_requests"),
     )
     edge_success_offloadable = record(
         "edge_function_success_offloadable",
         _sum_metric(edge_metrics, f'function_success_total{{function="{offloadable}"}}'),
     )
     check_close(
-        "k6 http_reqs for offloadable",
+        "k6 requests for offloadable",
         k6_offloadable_reqs,
         "edge function_success_total for offloadable",
         edge_success_offloadable,

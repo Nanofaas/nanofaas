@@ -82,3 +82,68 @@ Autoscaling during the experiment; eager-mode functions under load; Azure and
 Proxmox runs (environment files later); more than two functions; performance
 regression gating (this experiment validates correctness of the strategy and
 of the metrics, not a performance baseline).
+
+## Results (v1)
+
+Ran end-to-end on real Multipass infrastructure (3 VMs: `nanofaas-edge`
+2cpu/6G, `nanofaas-cloud` 4cpu/6G, `nanofaas-loadgen` 2cpu/2G — sized down
+from the role defaults to fit an 18G/11-core host) 10 times while
+implementing and tuning this experiment. The full pipeline — provision,
+build+push images to each VM's own registry, deploy k3s+Helm on both
+clusters, register the mixed-policy functions, run k6, fetch results,
+evaluate — completes reliably. **`passed: false` on every run**; documented
+here as a known v1 limitation rather than pushed further.
+
+**What's confirmed working:** offloading genuinely happens and the three
+observers agree on it. Best runs:
+
+- k6 200s for `word-stats-java` (599) vs edge `function_success_total` (597) —
+  within tolerance.
+- k6 `offloaded_requests` (14) vs edge `nanofaas_offload_total` (16) vs cloud
+  `function_success_total` for the offloaded function (12) — all within
+  tolerance; one run matched exactly (25 vs 25).
+- Control function (`json-transform-java`) never leaked to the cloud, and
+  edge never offloaded it — check #3 always passed.
+
+**What doesn't pass:** check #4, `nanofaas_offload_failure_total` must be
+absent on the edge. It's never absent — every run showed a nonzero share of
+offload attempts failing (best run: 4/16 ≈ 25%; worst: 18/43 ≈ 42%; no
+downward trend despite retuning).
+
+**Root cause (best-supported hypothesis, not proven with tracing):** the
+pressure trigger doesn't spread offload decisions smoothly across the test
+duration — it correlates with the control plane's `SYNC_QUEUE_THROUGHPUT_WINDOW`
+(hardcoded 10s), so it fires in bursts. A direct 40-way concurrent curl burst
+from edge to cloud's NodePort succeeded at 92% (37/40, 3× 429) — noticeably
+better than the in-experiment ratio — meaning the gap isn't raw network
+reachability or a fixed capacity shortfall; it's burst timing coinciding with
+momentary admission pressure on the cloud side, which by design also runs
+its own sync-queue.
+
+**Fixes applied during this validation** (beyond the plan's original code):
+correcting a Helm `extraEnv[]` index collision that would have silently
+overwritten `NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND`; widening
+`provision_environment`'s `dedicated_loadgen` check (was hardcoded to the
+`loadtest` workflow, so the loadgen VM — and k6 — would never have been
+provisioned for `offload-loadtest`); correcting the k6 `--summary-export`
+parser (counters are flat `{"count": N}`, not `{"values": {"count": N}}`, and
+k6 only emits a tag submetric for combinations referenced by a threshold —
+added an explicit `offloadable_requests` counter instead of relying on a
+`http_reqs{function:...}` submetric that never materializes); registering the
+cloud copy of the offloadable function with generous capacity
+(`concurrency=20`, `queueSize=100`) instead of inheriting the edge's
+pressure-inducing tight settings; raising the offloadable function's
+`timeoutMs` to 15000 (it doubles as the offload gateway's remote-call
+budget); lowering `OFFLOADABLE_RATE` to 10 (from 20) to shrink burst size.
+
+**Follow-ups, not done:** trace/log the specific `OffloadFailedException`
+reason (timeout vs 429 vs other) per failure — today
+`nanofaas_offload_failure_total` has no reason label and
+`DefaultOffloadGateway` only logs the *unclassified* error branch, so the
+common cases are silently counted with no diagnostic trail; consider a
+token-bucket or jitter on the pressure trigger so decisions spread instead of
+bursting on the throughput-window boundary; the redundant control-plane/
+warm-echo image builds (each built once per VM, twice per run, though
+identical) could be built once and pushed to both registries instead of
+rebuilt — orthogonal to the conservation gap but was noticed while iterating.
+Azure/Proxmox environment files for this scenario are still out of scope.
