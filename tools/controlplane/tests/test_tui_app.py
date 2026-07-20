@@ -236,6 +236,7 @@ def test_tools_inspect_selects_only_stable_scenarios_and_renders_validated_json(
     assert [choice.value for choice in scenario_choices] == [
         "validate-container.yaml",
         "validate-k8s.yaml",
+        "validate-offload.yaml",
         "cli.yaml",
         "loadtest.yaml",
     ]
