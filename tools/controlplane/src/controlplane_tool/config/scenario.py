@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-WorkflowName = Literal["validate", "cli", "loadtest"]
+WorkflowName = Literal["validate", "cli", "loadtest", "offload"]
 BackendName = Literal["pool", "container", "k8s"]
 BuildStrategy = Literal["docker", "buildpack"]
 
@@ -48,6 +48,8 @@ class ScenarioConfig(BaseModel):
     def validate_workflow(self) -> "ScenarioConfig":
         if self.workflow == "validate" and self.backend is None:
             raise ValueError("backend is required for validate workflow")
+        if self.workflow == "offload" and self.backend is not None:
+            raise ValueError("offload workflow does not take a backend")
         if set(self.resources) - set(self.functions):
             raise ValueError("resources must refer to selected functions")
         if self.autoscaling and self.workflow != "loadtest":
