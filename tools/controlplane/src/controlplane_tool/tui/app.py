@@ -55,6 +55,11 @@ CLI_MENU = [
 ]
 LOADTEST_MENU = [
     Choice("Run load test", "run", "Run the current k6 and autoscaling workflow."),
+    Choice(
+        "Offload load test",
+        "offload",
+        "Run mixed-policy k6 traffic against edge and cloud control planes.",
+    ),
 ]
 TOOLS_MENU = [
     Choice("Inspect scenario", "inspect", "Inspect a supported scenario."),
@@ -79,6 +84,7 @@ _SCENARIO_FILES = {
     ("validation", "offload"): "validate-offload.yaml",
     ("cli", "validate"): "cli.yaml",
     ("loadtest", "run"): "loadtest.yaml",
+    ("loadtest", "offload"): "offload-loadtest.yaml",
 }
 _SCENARIO_TITLES = {
     scenario_name: _SECTION_TITLES[section]
@@ -443,6 +449,8 @@ class NanofaasTUI:
                 control_plane_url=control_plane_url,
                 prometheus_url=prometheus_url,
             )
+        if scenario.workflow == "offload-loadtest":
+            return _workflow(scenario, environment, dry_run=dry_run)
         return _workflow(scenario, environment)
 
     def _render_plan(self, *, title: str, workflow: Any) -> None:
