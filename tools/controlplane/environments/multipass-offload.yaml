@@ -1,0 +1,11 @@
+provider: multipass
+roles:
+  stack:
+    name: nanofaas-edge
+  cloud:
+    name: nanofaas-cloud
+  loadgen:
+    name: nanofaas-loadgen
+    cpus: 2
+    memory: 2G
+    disk: 10G
