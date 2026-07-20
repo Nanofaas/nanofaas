@@ -21,6 +21,7 @@ from workflow_tasks.workflows.validate import (
     ValidateFunction,
     ValidateWorkflowRequest,
     k8s_deployment_specs,
+    validate_cleanup_specs,
 )
 
 _ADDITIONAL_MODULES = ("offload", "async-queue", "sync-queue")
@@ -149,3 +150,12 @@ def offload_registration_specs(request: OffloadLoadtestRequest) -> tuple[Command
         ),
         _register_task("cloud", request.offloadable, _CLOUD_ENDPOINT, None, role="cloud"),
     )
+
+
+def offload_cleanup_specs(request: OffloadLoadtestRequest) -> tuple[CommandTaskSpec, ...]:
+    edge = validate_cleanup_specs(_workflow_request(request, (request.offloadable, request.control)))
+    cloud = tuple(
+        replace(spec, role="cloud", task_id=f"cloud.{spec.task_id}")
+        for spec in validate_cleanup_specs(_workflow_request(request, (request.offloadable,)))
+    )
+    return edge + cloud

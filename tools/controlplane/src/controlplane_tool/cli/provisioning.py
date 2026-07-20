@@ -209,8 +209,9 @@ def provision_environment(
     main_error: BaseException | None = None
     cleanup_error: Exception | None = None
     try:
-        dedicated_loadgen = scenario.workflow == "loadtest" and "loadgen" in environment.roles
-        stack_request = _request(environment, "stack", loadtest=scenario.workflow == "loadtest")
+        loadtest_workflow = scenario.workflow in ("loadtest", "offload-loadtest")
+        dedicated_loadgen = loadtest_workflow and "loadgen" in environment.roles
+        stack_request = _request(environment, "stack", loadtest=loadtest_workflow)
         stack_cleanup = _destroy_task(orchestrator, stack_request, role="stack")
         if stack_cleanup is not None:
             cleanup_tasks.append(stack_cleanup)

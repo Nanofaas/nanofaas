@@ -2,6 +2,7 @@ from workflow_tasks.workflows.offload_loadtest import (
     OffloadLoadtestRequest,
     cloud_deployment_specs,
     edge_deployment_specs,
+    offload_cleanup_specs,
     offload_registration_specs,
 )
 from workflow_tasks.workflows.validate import ValidateFunction
@@ -75,3 +76,19 @@ def test_registrations_encode_the_two_policies() -> None:
     assert "offload-loadtest.register.cloud.json-transform-java" not in by_id
     cloud = by_id["offload-loadtest.register.cloud.word-stats-java"]
     assert cloud.role == "cloud"
+
+
+def test_cleanup_deletes_both_functions_on_edge_and_only_offloadable_on_cloud() -> None:
+    specs = offload_cleanup_specs(_request())
+    edge = [s for s in specs if s.role == "stack"]
+    cloud = [s for s in specs if s.role == "cloud"]
+
+    assert {s.task_id for s in edge} >= {
+        "functions.delete.word-stats-java",
+        "functions.delete.json-transform-java",
+        "helm.uninstall.control-plane",
+    }
+    assert {s.task_id for s in cloud} == {
+        "cloud.functions.delete.word-stats-java",
+        "cloud.helm.uninstall.control-plane",
+    }
