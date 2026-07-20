@@ -48,6 +48,7 @@ MAIN_MENU = [
 VALIDATION_MENU = [
     Choice("Container", "container", "Validate the local container execution path."),
     Choice("Kubernetes", "kubernetes", "Validate the Kubernetes execution path."),
+    Choice("Offload", "offload", "Validate edge-to-cloud offload with two local instances."),
 ]
 CLI_MENU = [
     Choice("Validate CLI", "validate", "Validate the nanofaas CLI workflow."),
@@ -75,6 +76,7 @@ _SECTION_TITLES = {
 _SCENARIO_FILES = {
     ("validation", "container"): "validate-container.yaml",
     ("validation", "kubernetes"): "validate-k8s.yaml",
+    ("validation", "offload"): "validate-offload.yaml",
     ("cli", "validate"): "cli.yaml",
     ("loadtest", "run"): "loadtest.yaml",
 }
