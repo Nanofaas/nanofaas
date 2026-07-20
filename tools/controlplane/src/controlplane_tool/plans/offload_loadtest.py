@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 import urllib.request
 
 from multipass import MultipassClient
@@ -58,9 +58,16 @@ class _RoleRunner:
 
     def __init__(self, bindings: RoleBindings, role: Literal["stack", "loadgen"]) -> None:
         self._executor = bindings.executor_for(role)
-        self._role = role
+        self._role: Literal["stack", "loadgen"] = role
 
-    def run_vm_command(self, argv, *, env, remote_dir, dry_run):  # noqa: ANN001, ANN201
+    def run_vm_command(
+        self,
+        argv: tuple[str, ...],
+        *,
+        env: dict[str, str],
+        remote_dir: str | None,
+        dry_run: bool,
+    ) -> Any:
         return self._executor.run(
             CommandTaskSpec(
                 task_id="offload-loadtest.run_k6.inner",
@@ -180,7 +187,7 @@ def build_offload_loadtest_plan(
         argv=("mkdir", "-p", str(summary_path.parent)),
         role=k6_role,
     )
-    executor = bindings.executor_for(k6_role)
+    executor = cast(Any, bindings.executor_for(k6_role))
     workflow.tasks.extend(
         (
             CommandTask(

@@ -14,6 +14,7 @@ EXPECTED_SCENARIOS = {
     ("validation", "offload"): "validate-offload.yaml",
     ("cli", "validate"): "cli.yaml",
     ("loadtest", "run"): "loadtest.yaml",
+    ("loadtest", "offload"): "offload-loadtest.yaml",
 }
 
 

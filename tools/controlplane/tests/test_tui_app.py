@@ -239,6 +239,7 @@ def test_tools_inspect_selects_only_stable_scenarios_and_renders_validated_json(
         "validate-offload.yaml",
         "cli.yaml",
         "loadtest.yaml",
+        "offload-loadtest.yaml",
     ]
     assert loaded_paths == [tmp_path / "scenarios-v2" / "validate-container.yaml"]
     assert json.loads(str(frame_calls[0]["body"])) == {
