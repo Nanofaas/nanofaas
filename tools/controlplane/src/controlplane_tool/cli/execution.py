@@ -195,7 +195,7 @@ def build_role_bindings(
     command_runner = runner or ShellCommandTaskRunner()
     host = HostCommandTaskExecutor(command_runner)
     if environment.provider == "local":
-        return RoleBindings(host=host, stack=host, loadgen=host), None
+        return RoleBindings(host=host, stack=host, loadgen=host, cloud=host), None
 
     if environment.provider in {"azure", "proxmox"}:
         provider = vm_provider or vm_provider_for_environment(
@@ -206,10 +206,10 @@ def build_role_bindings(
             request = vm_request_for_role(environment, role)  # type: ignore[arg-type]
             default_env = (
                 {
-                    "KUBECONFIG": environment.target("stack").kubeconfig
+                    "KUBECONFIG": environment.target(role).kubeconfig
                     or f"{vm_remote_home(request)}/.kube/config"
                 }
-                if role == "stack"
+                if role in ("stack", "cloud")
                 else {}
             )
             executor = VmCommandTaskExecutor(
@@ -224,9 +224,11 @@ def build_role_bindings(
         stack, stack_request = provider_remote("stack")
         loadgen_result = provider_remote("loadgen") if "loadgen" in environment.roles else None
         loadgen = loadgen_result[0] if loadgen_result else None
+        cloud_result = provider_remote("cloud") if "cloud" in environment.roles else None
+        cloud = cloud_result[0] if cloud_result else None
         fetch_request = loadgen_result[1] if loadgen_result else stack_request
         return (
-            RoleBindings(host=host, stack=stack, loadgen=loadgen),
+            RoleBindings(host=host, stack=stack, loadgen=loadgen, cloud=cloud),
             VmFileFetcher(provider, fetch_request),
         )
 
@@ -234,7 +236,7 @@ def build_role_bindings(
         target = environment.target(role)  # type: ignore[arg-type]
         default_env = (
             {"KUBECONFIG": target.kubeconfig or f"{_home(target)}/.kube/config"}
-            if role == "stack"
+            if role in ("stack", "cloud")
             else None
         )
         executor = VmCommandTaskExecutor(
@@ -244,8 +246,9 @@ def build_role_bindings(
 
     stack = remote("stack")
     loadgen = remote("loadgen") if "loadgen" in environment.roles else None
+    cloud = remote("cloud") if "cloud" in environment.roles else None
     fetch_target = environment.target("loadgen" if loadgen is not None else "stack")
     return (
-        RoleBindings(host=host, stack=stack, loadgen=loadgen),
+        RoleBindings(host=host, stack=stack, loadgen=loadgen, cloud=cloud),
         _RemoteFetcher(command_runner, fetch_target, environment.provider),
     )

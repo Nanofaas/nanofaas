@@ -102,3 +102,17 @@ def test_retargeting_adapter_preserves_role_and_changes_only_legacy_target() -> 
 
     assert delegate.calls[0].target == "vm"
     assert delegate.calls[0].role == "stack"
+
+
+def test_role_bindings_resolve_the_cloud_role() -> None:
+    host = object()
+    cloud = object()
+    bindings = RoleBindings(host=host, stack=host, cloud=cloud)  # type: ignore[arg-type]
+    assert bindings.executor_for("cloud") is cloud
+
+
+def test_missing_cloud_binding_raises() -> None:
+    host = object()
+    bindings = RoleBindings(host=host, stack=host)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="cloud"):
+        bindings.executor_for("cloud")

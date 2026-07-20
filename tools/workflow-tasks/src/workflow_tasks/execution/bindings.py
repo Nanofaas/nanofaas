@@ -16,6 +16,7 @@ class RoleBindings:
     host: CommandTaskExecutor
     stack: CommandTaskExecutor
     loadgen: CommandTaskExecutor | None = None
+    cloud: CommandTaskExecutor | None = None
 
     def executor_for(self, role: ExecutionRole) -> CommandTaskExecutor:
         executor = getattr(self, role)

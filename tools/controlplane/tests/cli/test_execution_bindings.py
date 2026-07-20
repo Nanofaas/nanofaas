@@ -120,6 +120,30 @@ def test_distinct_external_loadgen_gets_distinct_executor_and_fetcher() -> None:
     assert fetcher is not None
 
 
+def test_multipass_three_role_environment_binds_cloud_like_stack() -> None:
+    runner = RecordingRunner()
+    environment = EnvironmentConfig.model_validate(
+        {
+            "provider": "multipass",
+            "roles": {
+                "stack": {"name": "nanofaas-edge"},
+                "cloud": {"name": "nanofaas-cloud"},
+                "loadgen": {"name": "nanofaas-loadgen"},
+            },
+        }
+    )
+
+    bindings, _ = build_role_bindings(environment, runner=runner)
+
+    assert bindings.cloud is not None
+    bindings.cloud.run(
+        CommandTaskSpec(task_id="check", summary="check", argv=("kubectl", "version"), role="cloud")
+    )
+
+    assert runner.calls[0][0][:4] == ["multipass", "exec", "nanofaas-cloud", "--"]
+    assert "env KUBECONFIG=/home/ubuntu/.kube/config kubectl version" in runner.calls[0][0][-1]
+
+
 def test_external_loadtest_urls_use_stack_node_ports() -> None:
     environment = EnvironmentConfig.model_validate(
         {"provider": "external", "roles": {"stack": {"host": "stack.example"}}}
