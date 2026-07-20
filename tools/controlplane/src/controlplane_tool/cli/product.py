@@ -19,6 +19,7 @@ from controlplane_tool.cli.preflight import PreflightError, preflight_control_pl
 from controlplane_tool.cli.progress import ConsoleProgressSink
 from controlplane_tool.cli.provisioning import provision_environment
 from controlplane_tool.plans.offload import build_offload_plan
+from controlplane_tool.plans.offload_loadtest import build_offload_loadtest_plan
 from controlplane_tool.plans.cli import build_cli_plan
 from controlplane_tool.plans.loadtest import build_loadtest_plan
 from controlplane_tool.plans.validate import build_validate_plan
@@ -51,6 +52,7 @@ def _workflow(
     control_plane_url: str = "http://127.0.0.1:8080",
     prometheus_url: str = "http://127.0.0.1:9090",
     run_dir: Path | None = None,
+    dry_run: bool = False,
 ):
     bindings, fetcher = build_role_bindings(environment)
     paths = default_tool_paths()
@@ -58,6 +60,16 @@ def _workflow(
         return build_validate_plan(scenario, bindings, repo_root=paths.workspace_root)
     if scenario.workflow == "offload":
         return build_offload_plan(scenario, bindings, repo_root=paths.workspace_root)
+    if scenario.workflow == "offload-loadtest":
+        return build_offload_loadtest_plan(
+            scenario,
+            environment,
+            bindings,
+            run_dir=run_dir or paths.runs_dir / "latest",
+            repo_root=paths.workspace_root,
+            fetcher=fetcher,
+            dry_run=dry_run,
+        )
     if scenario.workflow == "cli":
         return build_cli_plan(
             scenario,
@@ -229,7 +241,10 @@ def install_product_commands(app: typer.Typer) -> None:
             raise typer.BadParameter("--provision requires a non-local environment")
         paths = default_tool_paths()
         effective_run_dir = run_dir
-        if scenario_config.workflow == "loadtest" and effective_run_dir is None:
+        if (
+            scenario_config.workflow in ("loadtest", "offload-loadtest")
+            and effective_run_dir is None
+        ):
             effective_run_dir = paths.runs_dir / "latest"
         sink = ConsoleProgressSink()
         started_at = datetime.now(UTC)
@@ -340,6 +355,7 @@ def install_product_commands(app: typer.Typer) -> None:
                     control_plane_url=control_plane_url or "http://127.0.0.1:8080",
                     prometheus_url=prometheus_url or "http://127.0.0.1:9090",
                     run_dir=run_dir,
+                    dry_run=True,
                 ),
                 only=only,
                 start=start,
