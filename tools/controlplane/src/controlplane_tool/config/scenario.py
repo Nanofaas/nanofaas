@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-WorkflowName = Literal["validate", "cli", "loadtest", "offload"]
+WorkflowName = Literal["validate", "cli", "loadtest", "offload", "offload-loadtest"]
 BackendName = Literal["pool", "container", "k8s"]
 BuildStrategy = Literal["docker", "buildpack"]
 
