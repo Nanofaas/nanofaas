@@ -60,6 +60,12 @@ proves the `depth` pressure trigger end-to-end: overflow requests return 200
 with `X-NanoFaaS-Offloaded` instead of 429, queued local work still completes,
 no retries, offload metrics recorded. Runs in `./gradlew test`.
 
+The `offload` scenario (`controlplane-tool run scenarios-v2/validate-offload.yaml`)
+exercises the eager path against two real JVM instances and a real function
+container: build, dual registration (cloud `DEPLOYMENT`/container-local, edge
+`LOCAL` + `offload.mode=always`), offloaded invocation with header check,
+metrics, and the no-fallback 502 after deleting the remote function.
+
 ## Limitations & follow-ups
 
 Deliberately out of scope in v1 — pick up here when needed:

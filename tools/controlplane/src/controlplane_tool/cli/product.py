@@ -18,6 +18,7 @@ from controlplane_tool.cli.execution import build_role_bindings, resolve_loadtes
 from controlplane_tool.cli.preflight import PreflightError, preflight_control_plane
 from controlplane_tool.cli.progress import ConsoleProgressSink
 from controlplane_tool.cli.provisioning import provision_environment
+from controlplane_tool.plans.offload import build_offload_plan
 from controlplane_tool.plans.cli import build_cli_plan
 from controlplane_tool.plans.loadtest import build_loadtest_plan
 from controlplane_tool.plans.validate import build_validate_plan
@@ -55,6 +56,8 @@ def _workflow(
     paths = default_tool_paths()
     if scenario.workflow == "validate":
         return build_validate_plan(scenario, bindings, repo_root=paths.workspace_root)
+    if scenario.workflow == "offload":
+        return build_offload_plan(scenario, bindings, repo_root=paths.workspace_root)
     if scenario.workflow == "cli":
         return build_cli_plan(
             scenario,
