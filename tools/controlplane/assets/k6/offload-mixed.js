@@ -9,6 +9,10 @@ const DURATION = __ENV.DURATION || '60s';
 
 const offloadedRequests = new Counter('offloaded_requests');
 const control429 = new Counter('control_429');
+// k6 only emits per-tag submetrics for tag combinations referenced in a
+// threshold, so http_reqs{function:...} never appears in the summary. Count
+// successful offloadable responses explicitly instead of relying on submetrics.
+const offloadableSuccesses = new Counter('offloadable_requests');
 
 export const options = {
     scenarios: {
@@ -47,6 +51,9 @@ export default function () {
             tags: { function: fn, kind: kind },
         },
     );
+    if (kind === 'offloadable' && res.status === 200) {
+        offloadableSuccesses.add(1);
+    }
     const offloaded = res.headers['X-Nanofaas-Offloaded'] !== undefined
         || res.headers['X-NanoFaaS-Offloaded'] !== undefined;
     if (res.status === 200 && offloaded) {

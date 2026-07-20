@@ -32,7 +32,11 @@ from controlplane_tool.plans.validate import _resolve_function
 
 _ACTUATOR_PORT = 30081
 _CONTROL_PLANE_PORT = 30080
-_K6_RATE = "20"
+# The pressure-offload trigger fires in bursts correlated with the control
+# plane's 10s throughput window, not smoothly — a lower offloadable rate keeps
+# each burst small enough for the cloud's own admission control to absorb.
+_OFFLOADABLE_RATE = "10"
+_CONTROL_RATE = "20"
 _K6_DURATION = "60s"
 
 Role = Literal["stack", "cloud"]
@@ -144,7 +148,15 @@ def build_offload_loadtest_plan(
             "offload-loadtest requires exactly two functions: [offloadable, control]"
         )
     offloadable_key, control_key = config.functions
-    offloadable = replace(_resolve_function(config, offloadable_key), concurrency=2, queue_size=8)
+    # timeout_ms is also the offload gateway's remote-call budget (edge gives up
+    # locally once it elapses) — the default 5s is too tight for a cross-VM hop
+    # to a function pod that may still be warming up under real load.
+    offloadable = replace(
+        _resolve_function(config, offloadable_key),
+        concurrency=2,
+        queue_size=8,
+        timeout_ms=15000,
+    )
     control = replace(_resolve_function(config, control_key), concurrency=2, queue_size=8)
     request = OffloadLoadtestRequest(offloadable=offloadable, control=control, build=config.build)
 
@@ -214,8 +226,8 @@ def build_offload_loadtest_plan(
                         "NANOFAAS_URL": edge_url,
                         "OFFLOADABLE_FUNCTION": offloadable.name,
                         "CONTROL_FUNCTION": control.name,
-                        "OFFLOADABLE_RATE": _K6_RATE,
-                        "CONTROL_RATE": _K6_RATE,
+                        "OFFLOADABLE_RATE": _OFFLOADABLE_RATE,
+                        "CONTROL_RATE": _CONTROL_RATE,
                         "DURATION": _K6_DURATION,
                     },
                 ),
