@@ -232,10 +232,26 @@ def provision_environment(
                 role="loadgen",
             )
 
+        dedicated_cloud = scenario.workflow == "offload-loadtest" and "cloud" in environment.roles
+        cloud_request: VmRequest | None = None
+        cloud: VmRequest | None = None
+        if dedicated_cloud:
+            cloud_request = _request(environment, "cloud", loadtest=True)
+            cloud_cleanup = _destroy_task(orchestrator, cloud_request, role="cloud")
+            if cloud_cleanup is not None:
+                cleanup_tasks.append(cloud_cleanup)
+            cloud = _ensure_vm(
+                orchestrator,
+                cloud_request,
+                role="cloud",
+            )
+
         if post_ensure_verifier is not None:
             post_ensure_verifier("stack", stack_request)
             if loadgen_request is not None:
                 post_ensure_verifier("loadgen", loadgen_request)
+            if cloud_request is not None:
+                post_ensure_verifier("cloud", cloud_request)
 
         stack_context = _context(repo_root, stack)
         _run_operations(
@@ -266,6 +282,23 @@ def provision_environment(
                     ),
                 ),
                 role="loadgen",
+            )
+
+        if cloud is not None:
+            cloud_context = _context(repo_root, cloud)
+            _run_operations(
+                orchestrator,
+                _retarget_cloud_operations(
+                    environment,
+                    orchestrator,
+                    cloud_context,
+                    _stack_operations(
+                        scenario,
+                        cloud_context,
+                        dedicated_loadgen=True,
+                    ),
+                ),
+                role="cloud",
             )
         yield
     except BaseException as exc:

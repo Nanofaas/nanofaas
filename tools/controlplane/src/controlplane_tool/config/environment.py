@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ProviderName = Literal["local", "multipass", "external", "azure", "proxmox"]
-ExecutionRole = Literal["host", "stack", "loadgen"]
+ExecutionRole = Literal["host", "stack", "loadgen", "cloud"]
 
 
 class RoleTarget(BaseModel):
@@ -76,4 +76,6 @@ class EnvironmentConfig(BaseModel):
             return self.roles.get("host", RoleTarget())
         if role == "stack":
             return self.roles.get("stack", self.target("host"))
+        if role == "cloud":
+            return self.roles.get("cloud", self.target("stack"))
         return self.roles.get("loadgen", self.target("stack"))
