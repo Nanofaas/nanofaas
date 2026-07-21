@@ -163,7 +163,7 @@ def nativeBuildRequested = gradle.startParameter.taskNames.any {
     (taskName.contains('nativecompile') ||
             taskName.contains('nativetest') ||
             taskName.endsWith('bootbuildimage')) &&
-            !taskName.endsWith('jvmbootbuildimage')
+            !taskName.endsWith('bootjvmbuildimage')
 }
 
 if (!nativeBuildRequested) {
@@ -178,6 +178,14 @@ tasks.named('processTestAot') { enabled = false }
 tasks.named('compileAotTestJava') { enabled = false }
 tasks.named('processAotTestResources') { enabled = false }
 tasks.named('aotTestClasses') { enabled = false }
+
+tasks.named('bootJar') {
+    doFirst {
+        if (!nativeBuildRequested) {
+            manifest.attributes.remove('Spring-Boot-Native-Processed')
+        }
+    }
+}
 
 // Common OCI image configuration for the control plane.
 def configureControlPlaneImage = { BootBuildImage task, String stack ->
@@ -248,6 +256,9 @@ tasks.register('bootJvmBuildImage', BootBuildImage) {
 
     dependsOn tasks.named('bootJar')
 
+    // Required by BootBuildImage, it's the input JAR file to put in the
+    // container image. On the 'bootBuildImage' task is automatically wired by
+    // Spring Boot plugin, but here we are writing a custom task.
     archiveFile = tasks.named('bootJar').flatMap { it.archiveFile }
 
     imageName = project.findProperty('controlPlaneJvmImage') ?: 'nanofaas/control-plane:jvm'
@@ -255,6 +266,16 @@ tasks.register('bootJvmBuildImage', BootBuildImage) {
     configureControlPlaneImage(delegate, 'base')
 
     environment = [
-            'BP_NATIVE_IMAGE': 'false'
+            'BP_NATIVE_IMAGE': 'false',
+            'BP_SPRING_AOT_ENABLED': 'false',
+            'BP_JVM_VERSION': '21'
+    ]
+
+    buildpacks = [
+        'paketo-buildpacks/ca-certificates',
+        'paketo-buildpacks/bellsoft-liberica',
+        'paketo-buildpacks/syft',
+        'paketo-buildpacks/executable-jar',
+        'paketo-buildpacks/spring-boot'
     ]
 }
