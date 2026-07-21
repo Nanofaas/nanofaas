@@ -180,19 +180,32 @@ tasks.named('processAotTestResources') { enabled = false }
 tasks.named('aotTestClasses') { enabled = false }
 
 // Common OCI image configuration for the control plane.
-def configureControlPlaneImage = { BootBuildImage task ->
+def configureControlPlaneImage = { BootBuildImage task, String stack ->
+    // See: https://paketo.io/docs/concepts/stacks
+    if (!(stack in ['tiny', 'base', 'full'])) {
+        throw new GradleException("Unsupported Paketo stack '${stack}'. Use: tiny, base, full")
+    }
+
     // Builder/run image are overrideable to support multi-arch builds (e.g., ARM64 on Apple Silicon).
     // On arm64 hosts the official paketobuildpacks/*-jammy-tiny images lack an arm64
     // manifest; fall back to dashaun's multi-arch mirror so the build works everywhere.
     def isArm = System.getProperty('os.arch') in ['aarch64', 'arm64']
-    def defaultBuilder = isArm ? 'dashaun/builder:tiny' : 'paketobuildpacks/builder-jammy-tiny:latest'
-    def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
+
+    def defaultBuilder
+    if (isArm) {
+        defaultBuilder = "dashaun/builder:${stack}"
+    } else {
+        defaultBuilder = "paketobuildpacks/builder-jammy-${stack}:latest"
+    }
+
+    def builderImage = (project.findProperty('imageBuilder')
+            ?: System.getenv('IMAGE_BUILDER')
             ?: defaultBuilder).toString()
 
     // On arm64 let the builder use its embedded run image default; on amd64 pin the Paketo run image.
     def runImageName = project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
     if (!runImageName && !isArm) {
-        runImageName = 'paketobuildpacks/run-jammy-tiny:latest'
+        runImageName = "paketobuildpacks/run-jammy-${stack}:latest"
     }
 
     task.builder = builderImage
@@ -217,7 +230,7 @@ tasks.named('bootBuildImage') {
 
     imageName = project.findProperty('controlPlaneImage') ?: (System.getenv('CONTROL_PLANE_IMAGE') ?: 'nanofaas/control-plane:native')
 
-    configureControlPlaneImage(delegate)
+    configureControlPlaneImage(delegate, 'tiny')
 
     def nativeImageBuildArguments = (project.findProperty('nativeImageBuildArgs')
             ?: System.getenv('NATIVE_IMAGE_BUILD_ARGS')
@@ -229,7 +242,7 @@ tasks.named('bootBuildImage') {
     ]
 }
 
-tasks.register('jvmBootBuildImage', BootBuildImage) {
+tasks.register('bootJvmBuildImage', BootBuildImage) {
     group = 'build'
     description = 'Build JVM-based OCI image (Spring Boot jar + JVM runtime).'
 
@@ -239,7 +252,7 @@ tasks.register('jvmBootBuildImage', BootBuildImage) {
 
     imageName = project.findProperty('controlPlaneJvmImage') ?: 'nanofaas/control-plane:jvm'
 
-    configureControlPlaneImage(delegate)
+    configureControlPlaneImage(delegate, 'base')
 
     environment = [
             'BP_NATIVE_IMAGE': 'false'
