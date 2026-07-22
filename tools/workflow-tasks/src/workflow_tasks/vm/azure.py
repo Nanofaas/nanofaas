@@ -47,7 +47,14 @@ class AzureVmProvider:
         return _find_ssh_private_key_path()
 
     def ssh_private_key_path(self, request: VmRequest) -> Path | None:
-        return self._ssh_key(request)
+        key = self._ssh_key(request)
+        if key is None:
+            return None
+        # ssh_key_path configures the tofu PUBLIC key (SDK default
+        # ~/.ssh/id_rsa.pub); the matching private key sits next to it.
+        if key.suffix == ".pub":
+            return key.with_suffix("")
+        return key
 
     def remote_home(self, request: VmRequest) -> str:
         return vm_remote_home(request)
@@ -226,7 +233,7 @@ class AzureVmProvider:
         destination: Path,
     ) -> ShellExecutionResult:
         ip = self._client(request).get_vm(self._vm_name(request)).wait_for_ip()
-        key = self._ssh_key(request)
+        key = self.ssh_private_key_path(request)
         cmd: list[str] = ["scp"]
         if key:
             cmd.extend(["-i", str(key)])
