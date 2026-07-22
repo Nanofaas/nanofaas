@@ -9,6 +9,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportRuntimeHints;
+import it.unimib.datai.nanofaas.controlplane.config.CaffeineRuntimeHints;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionDefaults;
 
 import java.util.ArrayList;
@@ -19,6 +21,7 @@ import java.util.ServiceLoader;
 @ConfigurationPropertiesScan
 @EnableConfigurationProperties(FunctionDefaults.class)
 @Import(ControlPlaneModuleImportSelector.class)
+@ImportRuntimeHints(CaffeineRuntimeHints.class)
 public class ControlPlaneApplication {
 
     private static final Logger log = LoggerFactory.getLogger(ControlPlaneApplication.class);
