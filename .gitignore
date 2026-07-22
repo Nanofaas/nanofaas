@@ -38,3 +38,4 @@ recovery/
 
 # stray test artifact (mistaken MagicMock filesystem writes)
 MagicMock/
+tools/controlplane/environments/azure*.yaml
