@@ -11,6 +11,7 @@ import ipaddress
 import json
 import math
 import os
+import shlex
 import subprocess
 from pathlib import Path
 import tempfile
@@ -1273,6 +1274,7 @@ def _run_source_tests(
             request,
             command.argv,
             cwd=command.remote_dir,
+            bounded=True,
         )
     marker = _write_json(
         plan.run_dir / "source-tests.json",
@@ -1308,7 +1310,7 @@ def _build_amd64_images(
         remote_buildkit_config=remote_buildkit,
         remote_source_dir=remote_source_dir,
     ):
-        _provider_exec(provider, request, command.argv, cwd=command.remote_dir)
+        _provider_exec(provider, request, command.argv, cwd=command.remote_dir, bounded=True)
     return _local_image_evidence(plan, provider, request)
 
 
@@ -1340,6 +1342,8 @@ def _build_arm64_images(
             request,
             command.argv,
             cwd=command.remote_dir,
+            # The builder task's stdout is parsed below — keep it clean.
+            bounded=command.task_id != "release.arm64.builder",
         )
         if command.task_id == "release.arm64.builder":
             arm.require_arm64_builder(str(getattr(result, "stdout", "")))
@@ -1348,7 +1352,7 @@ def _build_arm64_images(
         _require_image_architecture(provider, request, cell.image, "arm64")
         _inspect_image_digest(provider, request, cell.image)
     for cell in image_plan.cells:
-        _provider_exec(provider, request, ("docker", "push", cell.image))
+        _provider_exec(provider, request, ("docker", "push", cell.image), bounded=True)
     evidence = tuple(
         ArtifactEvidence(
             "remote",
@@ -1581,6 +1585,7 @@ def _push_local_images(
             provider,
             request,
             ("docker", "push", cell.image),
+            bounded=True,
         )
     return _registry_image_evidence(plan, provider, request)
 
@@ -1956,7 +1961,23 @@ def _provider_exec(
     *,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    bounded: bool = False,
 ) -> object:
+    if bounded:
+        # The SSH executor waits for the exit status before draining output,
+        # so a command whose output exceeds the channel window (~2MB)
+        # deadlocks: the remote writer blocks and the command never exits.
+        # Bulk commands (tests, image builds, pushes) buffer output remotely
+        # and return only a 64KB tail — plenty for diagnosis, and stderr is
+        # folded into stdout. Commands whose stdout gets parsed must NOT be
+        # bounded.
+        script = shlex.join(argv)
+        argv = (
+            "sh",
+            "-c",
+            "{ " + script + " ; } >/tmp/release-cmd.log 2>&1; "
+            "ec=$?; tail -c 65536 /tmp/release-cmd.log; exit $ec",
+        )
     result = provider.exec_argv(  # type: ignore[attr-defined]
         request,
         argv,

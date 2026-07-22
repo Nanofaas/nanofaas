@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, replace
 import hashlib
 import json
+import shlex
 import subprocess
 import tarfile
 from types import SimpleNamespace
@@ -527,6 +528,16 @@ def _registry_digest(reference: str) -> str:
     return "sha256:" + hashlib.sha256(f"registry:{reference}".encode()).hexdigest()
 
 
+def _unwrap_bounded(argv: tuple[str, ...]) -> tuple[str, ...]:
+    # _provider_exec(bounded=True) wraps bulk commands in a bounded-output
+    # shell; recover the original argv so dispatch and event strings stay
+    # stable.
+    if len(argv) == 3 and argv[:2] == ("sh", "-c") and "/tmp/release-cmd.log" in argv[2]:
+        inner = argv[2].split("{ ", 1)[1].rsplit(" ; }", 1)[0]
+        return tuple(shlex.split(inner))
+    return argv
+
+
 class _ReleaseProvider(_ArchiveProvider):
     def __init__(self, events: list[str]) -> None:
         super().__init__("sha256:" + "0" * 64)
@@ -582,6 +593,7 @@ class _ReleaseProvider(_ArchiveProvider):
         dry_run: bool,
     ) -> _TransferResult:
         del request, env, dry_run
+        argv = _unwrap_bounded(argv)
         self.actions.append(("exec", object(), argv, None, cwd, False))
         self.events.append("exec:" + " ".join(argv))
         if argv[:3] == ("docker", "buildx", "create") and self.remote_source_mutated:
@@ -668,6 +680,7 @@ class _RecreatedReleaseProvider(_ReleaseProvider):
         cwd: str | None,
         dry_run: bool,
     ) -> _TransferResult:
+        argv = _unwrap_bounded(argv)
         if argv[:3] == ("docker", "image", "inspect") and not self.images_available:
             self.events.append("exec:" + " ".join(argv))
             return _TransferResult(return_code=1)
@@ -728,6 +741,7 @@ class _ArmFailureProvider(_ReleaseProvider):
         cwd: str | None,
         dry_run: bool,
     ) -> _TransferResult:
+        argv = _unwrap_bounded(argv)
         result = super().exec_argv(
             request,
             argv,
