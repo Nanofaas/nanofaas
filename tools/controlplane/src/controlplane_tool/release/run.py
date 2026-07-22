@@ -349,7 +349,7 @@ def source_test_commands(remote_source_dir: Path) -> tuple[CommandTaskSpec, ...]
                 *container_prefix,
                 _GO_TOOLCHAIN,
                 "sh",
-                "-lc",
+                "-c",
                 copy_source
                 + "for d in sdks/go functions/go/word-stats functions/go/json-transform "
                 'functions/go/roman-numeral; do (cd "$d" && go test ./...); done',
@@ -364,7 +364,7 @@ def source_test_commands(remote_source_dir: Path) -> tuple[CommandTaskSpec, ...]
                 *container_prefix,
                 _NODE_TOOLCHAIN,
                 "sh",
-                "-lc",
+                "-c",
                 copy_source
                 + "npm --prefix sdks/javascript ci && npm --prefix sdks/javascript test && "
                 "for d in functions/javascript/word-stats functions/javascript/json-transform "
@@ -380,7 +380,7 @@ def source_test_commands(remote_source_dir: Path) -> tuple[CommandTaskSpec, ...]
                 *container_prefix,
                 _RUST_TOOLCHAIN,
                 "sh",
-                "-lc",
+                "-c",
                 copy_source
                 + "apk add --no-cache bash curl jq netcat-openbsd python3 >/dev/null && "
                 "cargo test --manifest-path runtimes/watchdog/Cargo.toml && "
@@ -396,7 +396,7 @@ def source_test_commands(remote_source_dir: Path) -> tuple[CommandTaskSpec, ...]
                 *container_prefix,
                 _NODE_TOOLCHAIN,
                 "sh",
-                "-lc",
+                "-c",
                 copy_source + "apk add --no-cache bash jq >/dev/null && "
                 "bash functions/bash/roman-numeral/tests/test_handler.sh",
             ),
