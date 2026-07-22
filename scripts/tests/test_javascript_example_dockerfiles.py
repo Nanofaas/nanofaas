@@ -11,7 +11,7 @@ def _read(rel_path: str) -> str:
 def test_word_stats_dockerfile_builds_sdk_before_app_install() -> None:
     dockerfile = _read("functions/javascript/word-stats/Dockerfile")
     package_json = _read("functions/javascript/word-stats/package.json")
-    assert "WORKDIR /src/function-sdk-javascript" in dockerfile
+    assert "WORKDIR /src/sdks/javascript" in dockerfile
     assert dockerfile.count("RUN npm ci") == 2
     assert "RUN npm install" not in dockerfile
     assert "RUN npm run build" in dockerfile
@@ -23,7 +23,7 @@ def test_word_stats_dockerfile_builds_sdk_before_app_install() -> None:
 def test_json_transform_dockerfile_builds_sdk_before_app_install() -> None:
     dockerfile = _read("functions/javascript/json-transform/Dockerfile")
     package_json = _read("functions/javascript/json-transform/package.json")
-    assert "WORKDIR /src/function-sdk-javascript" in dockerfile
+    assert "WORKDIR /src/sdks/javascript" in dockerfile
     assert dockerfile.count("RUN npm ci") == 2
     assert "RUN npm install" not in dockerfile
     assert "RUN npm run build" in dockerfile

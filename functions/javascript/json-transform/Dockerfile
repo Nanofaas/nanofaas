@@ -1,12 +1,13 @@
-FROM node:20-alpine AS building
+FROM node:20-alpine AS build
 WORKDIR /src
 
-COPY sdks/javascript ./function-sdk-javascript
-WORKDIR /src/function-sdk-javascript
+COPY sdks/javascript ./sdks/javascript
+COPY functions/javascript/json-transform /src/functions/javascript/json-transform
+
+WORKDIR /src/sdks/javascript
 RUN npm ci
 RUN npm run build
 
-COPY functions/javascript/json-transform /src/functions/javascript/json-transform
 
 WORKDIR /src/functions/javascript/json-transform
 RUN npm ci
@@ -16,10 +17,10 @@ RUN npm prune --omit=dev
 FROM node:20-alpine
 WORKDIR /app
 
-COPY --from=building /src/function-sdk-javascript /function-sdk-javascript
-COPY --from=building /src/functions/javascript/json-transform/package.json ./package.json
-COPY --from=building /src/functions/javascript/json-transform/node_modules ./node_modules
-COPY --from=building /src/functions/javascript/json-transform/dist ./dist
+COPY --from=build /src/sdks/javascript /sdks/javascript
+COPY --from=build /src/functions/javascript/json-transform/package.json ./package.json
+COPY --from=build /src/functions/javascript/json-transform/node_modules ./node_modules
+COPY --from=build /src/functions/javascript/json-transform/dist ./dist
 
 EXPOSE 8080
 CMD ["node", "dist/src/index.js"]
