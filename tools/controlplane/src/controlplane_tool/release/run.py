@@ -13,8 +13,10 @@ import math
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
+import time
 from typing import Any
 
 import yaml
@@ -654,6 +656,8 @@ def _run_amd64_release_locked(
 ) -> RegressionDecision:
     if plan.credentials is None:
         raise ValueError("release run requires explicit credential files")
+    global _RUN_STARTED
+    _RUN_STARTED = time.monotonic()
     plan.credentials.validate(repo_root=plan.repo_root)
     _assert_guarded_source(plan)
     existing_entries = tuple(plan.state_directory.glob("*.json"))
@@ -671,6 +675,7 @@ def _run_amd64_release_locked(
     stack_request = vm_request_for_role(plan.environment, "stack", loadtest=True)
     loadgen_request = vm_request_for_role(plan.environment, "loadgen", loadtest=True)
     if not resume:
+        _progress("→ tearing down any previous release VMs")
         for role, request in (("stack", stack_request), ("loadgen", loadgen_request)):
             _require_result(
                 provider.teardown(request),  # type: ignore[attr-defined]
@@ -701,6 +706,7 @@ def _run_amd64_release_locked(
                 plan, provider, stack_request, loadgen_request
             )
 
+    _progress("→ provisioning stack + loadgen VMs (this can take several minutes)")
     with provision(
         plan.scenario,
         plan.environment,
@@ -712,8 +718,10 @@ def _run_amd64_release_locked(
         if endpoints is None:
             raise RuntimeError("release loadgen ingress was not verified before bootstrap")
         control_plane_url, prometheus_url = endpoints
+        _progress("→ provisioning buildx release builder")
         provision_builder(provider, stack_request, plan.repo_root)
         if resume:
+            _progress("→ resume: verifying journal evidence against GHCR")
             credentials = plan.credentials
             assert credentials is not None
             # published evidence lives on GHCR: verify it authenticated, then
@@ -731,6 +739,8 @@ def _run_amd64_release_locked(
                     ghcr_auth.pop("authfile", None)
         else:
             reusable = frozenset()
+        if reusable:
+            _progress(f"↷ reusing verified phases: {', '.join(p for p in RELEASE_PHASES if p in reusable)}")
         remote_root = f"{vm_remote_home(stack_request)}/nanofaas-release/{plan.version}"
         source_dir = f"{remote_root}/source"
         source_archive = f"{remote_root}/source.tar"
@@ -1170,12 +1180,37 @@ def _secure_release_endpoints(
     return f"http://{stack_host}:30080", f"http://{stack_host}:30090"
 
 
+_RUN_STARTED: float | None = None
+
+
+def _elapsed_total() -> str:
+    if _RUN_STARTED is None:
+        return ""
+    total = int(time.monotonic() - _RUN_STARTED)
+    return f" [tot {total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}]"
+
+
+def _progress(message: str) -> None:
+    print(f"{message}{_elapsed_total()}", file=sys.stderr, flush=True)
+
+
+def _phase_banner(phase: str) -> str:
+    if phase not in RELEASE_PHASES:
+        return phase
+    index = RELEASE_PHASES.index(phase) + 1
+    total = len(RELEASE_PHASES)
+    filled = round(20 * index / total)
+    return f"[{index:2d}/{total}] {'█' * filled}{'░' * (20 - filled)} {phase}"
+
+
 def _record_phase(
     journal: ReleaseJournal,
     phase: str,
     action: Callable[[], Iterable[ArtifactEvidence]],
     failure_injector: FailureInjector | None,
 ) -> tuple[ArtifactEvidence, ...]:
+    _progress(f"→ {_phase_banner(phase)} ...")
+    started = time.monotonic()
     try:
         if failure_injector is not None:
             failure_injector(phase)
@@ -1184,8 +1219,10 @@ def _record_phase(
             failure_injector(f"{phase}:after-action")
     except BaseException:
         journal.record(phase, outcome="failed")
+        _progress(f"✗ {phase} failed after {int(time.monotonic() - started)}s")
         raise
     journal.record(phase, artifacts=artifacts)
+    _progress(f"✓ {phase} done in {int(time.monotonic() - started)}s")
     return artifacts
 
 
