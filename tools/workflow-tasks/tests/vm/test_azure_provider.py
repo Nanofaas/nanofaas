@@ -237,6 +237,11 @@ def test_release_nsg_rules_are_restricted_to_explicit_sources(mock_run) -> None:
         source_index = command.index("--source-address-prefixes")
         assert tuple(command[source_index + 1 : source_index + 3]) == sources
         assert "*" not in command
+        # Single-source rules echo back via the singular field: the query
+        # must carry the fallback or the verification always fails.
+        assert command[command.index("--query") + 1] == (
+            "sourceAddressPrefixes || [sourceAddressPrefix]"
+        )
 
 
 @patch("workflow_tasks.vm.azure.subprocess.run")

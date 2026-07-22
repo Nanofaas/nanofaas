@@ -168,7 +168,9 @@ class AzureVmProvider:
                     "--source-address-prefixes",
                     *sources,
                     "--query",
-                    "sourceAddressPrefixes",
+                    # A single source lands in the singular sourceAddressPrefix
+                    # field and leaves the plural empty ([] is falsy in JMESPath).
+                    "sourceAddressPrefixes || [sourceAddressPrefix]",
                     "--output",
                     "json",
                 ]
