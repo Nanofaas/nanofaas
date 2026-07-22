@@ -95,7 +95,9 @@ class AzureVmProvider:
                 "--query",
                 (
                     "{location:location,vmSize:hardwareProfile.vmSize,"
-                    "diskSizeGb:storageProfile.osDisk.diskSizeGb,"
+                    # az >= 2.88 returns the raw ARM casing (diskSizeGB); older
+                    # versions normalized it to diskSizeGb. Accept both.
+                    "diskSizeGb:storageProfile.osDisk.diskSizeGB || storageProfile.osDisk.diskSizeGb,"
                     "imagePublisher:storageProfile.imageReference.publisher,"
                     "imageOffer:storageProfile.imageReference.offer,"
                     "imageSku:storageProfile.imageReference.sku,"
