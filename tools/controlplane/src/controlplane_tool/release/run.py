@@ -76,7 +76,8 @@ _GO_TOOLCHAIN = (
     "golang:1.24-alpine@sha256:757779acac4af1b349a20f357c7296097b4a0b89da4ad0e370b339060077282a"
 )
 _NODE_TOOLCHAIN = (
-    "node:20-alpine@sha256:afdf98210b07b586eb71fa22ba2e432e058e4cd1304d31ed60888755b8c865fb"
+    # >= 22: the JS SDK test script relies on node --test native globs (node >= 21).
+    "node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2"
 )
 _RUST_TOOLCHAIN = (
     "rust:1.97.1-alpine3.21@sha256:e5c73e7a712b368eb90b1190c6e1c4a01a3ebb0fe0abfff68c3bcd2df26ecc41"
