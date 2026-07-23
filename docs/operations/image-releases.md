@@ -83,9 +83,11 @@ unless `--keep` is passed.
 5. `aggregate` + `regression-gate` — per-metric medians compared against the
    newest identical-profile record in `docs/performance/releases/`
    (thresholds in `tools/controlplane/release.yaml`).
-6. `arm64-build` + `arm64-smoke` — QEMU (digest-pinned binfmt) ARM64 builds
-   plus functional smoke; QEMU results are functional evidence only, never
-   performance data.
+6. `arm64-build` + `arm64-smoke` — native ARM64 builds and functional smoke on
+   a dedicated `Standard_D8ps_v5` builder VM; images push through a
+   `localhost:5000` tunnel into the stack registry so references and digests
+   stay identical across architectures. ARM64 results are functional evidence
+   only, never performance data.
 7. `publish-architectures` → `publish-manifests` → `publish-aliases` —
    `skopeo copy --preserve-digests` to GHCR, digest-verified, then manifests
    (exactly AMD64+ARM64), then aliases.
@@ -128,5 +130,5 @@ local journal and run reports remain.
 
 Published performance records describe only the pinned Azure AMD64-native
 profile (`azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1`). ARM64 images are
-functionally smoke-tested under QEMU; no ARM64 performance is measured or
+functionally smoke-tested on native ARM hardware; no ARM64 performance is measured or
 claimed.
