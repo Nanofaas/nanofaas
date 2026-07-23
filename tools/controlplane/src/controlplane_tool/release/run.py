@@ -714,6 +714,9 @@ def _run_amd64_release_locked(
                 stack_request,
                 ports=(5000,),
                 source_cidrs=(f"{arm_host}/32",),
+                # Separate priority band from the 30080/81/90 endpoint rules
+                # (1010-1012) so the registry rule never collides.
+                priority_base=1020,
             )
         else:
             endpoints = _secure_release_endpoints(

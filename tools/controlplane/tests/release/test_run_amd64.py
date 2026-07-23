@@ -583,9 +583,11 @@ class _ReleaseProvider(_ArchiveProvider):
         *,
         ports: tuple[int, ...],
         source_cidrs: tuple[str, ...],
+        priority_base: int = 1010,
     ) -> None:
         self.events.append(f"restrict:{getattr(request, 'name', None)}")
         self.restrictions.append((request, ports, source_cidrs))
+        assert 100 <= priority_base + len(ports) - 1 <= 4096
 
     def transfer_to(self, request: object, *, source: Path, destination: str) -> _TransferResult:
         self.events.append(f"transfer:{source.name}")
@@ -2028,8 +2030,10 @@ def test_resume_restricts_legacy_wildcard_ingress_before_bootstrap_rsync(
     legacy = {"wildcard": True}
     original_restrict = provider.restrict_inbound_sources
 
-    def restrict(request, *, ports, source_cidrs):
-        original_restrict(request, ports=ports, source_cidrs=source_cidrs)
+    def restrict(request, *, ports, source_cidrs, priority_base=1010):
+        original_restrict(
+            request, ports=ports, source_cidrs=source_cidrs, priority_base=priority_base
+        )
         legacy["wildcard"] = False
 
     monkeypatch.setattr(provider, "restrict_inbound_sources", restrict)
@@ -2079,13 +2083,15 @@ def test_resume_nsg_restriction_failure_stops_before_any_bootstrap_rsync(
     restriction_calls = 0
     original_restrict = provider.restrict_inbound_sources
 
-    def fail_final_restriction(request, *, ports, source_cidrs):
+    def fail_final_restriction(request, *, ports, source_cidrs, priority_base=1010):
         nonlocal restriction_calls
         restriction_calls += 1
         events.append(f"restrict:attempt:{restriction_calls}")
         if restriction_calls == 2:
             raise RuntimeError("cannot apply final benchmark ingress")
-        original_restrict(request, ports=ports, source_cidrs=source_cidrs)
+        original_restrict(
+            request, ports=ports, source_cidrs=source_cidrs, priority_base=priority_base
+        )
 
     monkeypatch.setattr(
         provider, "restrict_inbound_sources", fail_final_restriction

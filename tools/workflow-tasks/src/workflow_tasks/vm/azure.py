@@ -136,6 +136,7 @@ class AzureVmProvider:
         *,
         ports: tuple[int, ...],
         source_cidrs: tuple[str, ...],
+        priority_base: int = 1010,
     ) -> None:
         resource_group = request.azure_resource_group
         if not resource_group:
@@ -163,7 +164,7 @@ class AzureVmProvider:
                     "--name",
                     f"Port{port}",
                     "--priority",
-                    str(1010 + index),
+                    str(priority_base + index),
                     "--direction",
                     "Inbound",
                     "--access",
