@@ -251,7 +251,7 @@ def provision_environment(
         arm_builder_request: VmRequest | None = None
         arm_builder: VmRequest | None = None
         if dedicated_arm:
-            arm_builder_request = _request(environment, "arm-builder")
+            arm_builder_request = _request(environment, "arm-builder", loadtest=False)
             arm_cleanup = _destroy_task(
                 orchestrator, arm_builder_request, role="arm-builder"
             )

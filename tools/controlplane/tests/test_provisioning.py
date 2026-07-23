@@ -136,6 +136,43 @@ def test_loadtest_provisions_dedicated_load_generator_with_k6(tmp_path: Path) ->
     assert teardowns == ["loadgen", "stack"]
 
 
+def test_arm_builder_role_is_ensured_torn_down_and_base_provisioned(tmp_path: Path) -> None:
+    orchestrator = RecordingOrchestrator()
+
+    with provision_environment(
+        ScenarioConfig(workflow="loadtest", functions=["word-stats-java"]),
+        EnvironmentConfig.model_validate(
+            {
+                "provider": "azure",
+                "roles": {
+                    "stack": {"name": "stack", "disk": "128G"},
+                    "loadgen": {"name": "loadgen", "disk": "30G"},
+                    "arm-builder": {"name": "arm", "disk": "64G"},
+                },
+                "azure": {"resource_group": "rg", "location": "westeurope"},
+            }
+        ),
+        repo_root=tmp_path,
+        orchestrator_factory=lambda _: orchestrator,
+    ):
+        pass
+
+    ensures = [value for kind, value in orchestrator.events if kind == "ensure"]
+    assert ("azure", "arm") in ensures
+    teardowns = [value for kind, value in orchestrator.events if kind == "teardown"]
+    assert "arm" in teardowns
+    # the arm builder gets base packages (docker + socat) but no k3s/registry
+    arm_playbooks = [
+        Path(command[-1]).name
+        for kind, command in orchestrator.events
+        if kind == "command"
+        and command[0] == "ansible-playbook"
+        and "arm" in " ".join(command)
+    ]
+    assert "provision-base.yml" in arm_playbooks
+    assert "provision-k3s.yml" not in arm_playbooks
+
+
 def test_post_ensure_verifier_runs_before_each_vm_bootstrap(tmp_path: Path) -> None:
     orchestrator = RecordingOrchestrator()
 
