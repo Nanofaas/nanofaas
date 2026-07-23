@@ -10,7 +10,7 @@ from controlplane_tool.config import EnvironmentConfig
 from controlplane_tool.release.versioning import normalize_version, verify_version_consistency
 
 
-_STACK_VM_SIZE = "Standard_D4s_v5"
+_STACK_VM_SIZE = "Standard_D8s_v5"
 _LOADGEN_VM_SIZE = "Standard_D2s_v5"
 _LOCATION = "westeurope"
 _STACK_DISK = "128G"

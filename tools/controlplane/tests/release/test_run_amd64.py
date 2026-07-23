@@ -67,8 +67,8 @@ def test_plan_is_amd64_only_and_uses_a_named_bounded_buildx_builder(
     assert {cell.architecture for cell in plan.image_plan.cells} == {"amd64"}
     assert plan.phase_names == release_run.RELEASE_PHASES
     assert plan.builder.name == BUILDER_NAME
-    assert plan.builder.max_parallelism == 2
-    assert "max-parallelism = 2" in plan.buildkit_config.read_text(encoding="utf-8")
+    assert plan.builder.max_parallelism == 4
+    assert "max-parallelism = 4" in plan.buildkit_config.read_text(encoding="utf-8")
     rendered = plan.render()
     assert "docker-container" in rendered
     assert "26 AMD64 + 26 ARM64" in rendered
@@ -558,9 +558,9 @@ class _ReleaseProvider(_ArchiveProvider):
         loadgen = name.endswith("-loadgen")
         values: dict[str, object] = {
             "location": "westeurope",
-            "vm_size": "Standard_D2s_v5" if loadgen else "Standard_D4s_v5",
+            "vm_size": "Standard_D2s_v5" if loadgen else "Standard_D8s_v5",
             "disk_size_gb": 30 if loadgen else 128,
-            "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202505280",
+            "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202607140",
         }
         values.update(self.fact_overrides.get(name, {}))
         self.events.append(f"facts:{name}")
@@ -1291,7 +1291,7 @@ def test_injected_publish_phase_failures_stop_downstream_publication(
     ("vm_name", "field", "actual"),
     (
         ("nanofaas-azure-release", "location", "eastus"),
-        ("nanofaas-azure-release", "vm_size", "Standard_D8s_v5"),
+        ("nanofaas-azure-release", "vm_size", "Standard_D4s_v5"),
         ("nanofaas-azure-release", "disk_size_gb", 64),
         (
             "nanofaas-azure-release",

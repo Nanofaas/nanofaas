@@ -22,9 +22,9 @@ from controlplane_tool.release.metrics import (
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PROFILE = PerformanceProfile(
-    name="azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1",
+    name="azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1",
     provider="azure",
-    stack_vm="Standard_D4s_v5",
+    stack_vm="Standard_D8s_v5",
     loadgen_vm="Standard_D2s_v5",
     architecture="amd64",
     flavor="native",
@@ -113,7 +113,7 @@ def test_aggregate_runs_preserves_zero_queue_wait() -> None:
     ("field", "value"),
     (
         ("provider", "multipass"),
-        ("stack_vm", "Standard_D8s_v5"),
+        ("stack_vm", "Standard_D4s_v5"),
         ("loadgen_vm", "Standard_D4s_v5"),
         ("architecture", "arm64"),
         ("flavor", "jvm"),
@@ -275,11 +275,11 @@ def test_release_configuration_owns_the_versioned_policy() -> None:
 
     assert config == {
         "schemaVersion": 1,
-        "build": {"maxParallelism": 2},
+        "build": {"maxParallelism": 4},
         "benchmark": {
             "scenario": "scenarios-v2/loadtest.yaml",
             "runs": 3,
-            "profile": "azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1",
+            "profile": "azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1",
             "regression": {
                 "throughputMaxLossPercent": 10,
                 "p95MaxIncreasePercent": 15,

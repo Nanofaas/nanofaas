@@ -12,7 +12,7 @@ from controlplane_tool.release.state import ReleaseIdentity, ReleaseJournal
 
 
 FIXTURE_PASSWORD = "fixture-cosign-password"
-PROFILE = "azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1"
+PROFILE = "azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1"
 
 
 def _record() -> dict[str, object]:

@@ -66,7 +66,7 @@ controlplane-tool release run v0.18.0 \
   --provision
 ```
 
-The pinned profile is `Standard_D4s_v5` (stack, 128 GB) plus `Standard_D2s_v5`
+The pinned profile is `Standard_D8s_v5` (stack, 128 GB) plus `Standard_D2s_v5`
 (loadgen, 30 GB) in West Europe with an exact Ubuntu URN. Expect several hours
 of VM time; the two VMs are dedicated to the release and torn down at the end
 unless `--keep` is passed.
@@ -127,6 +127,6 @@ local journal and run reports remain.
 ## Performance claims
 
 Published performance records describe only the pinned Azure AMD64-native
-profile (`azure-d4s-v5+d2s-v5-amd64-native-loadtest-v1`). ARM64 images are
+profile (`azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1`). ARM64 images are
 functionally smoke-tested under QEMU; no ARM64 performance is measured or
 claimed.

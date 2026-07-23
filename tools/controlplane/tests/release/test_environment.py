@@ -25,9 +25,9 @@ def _release_environment(**changes: object) -> EnvironmentConfig:
         "azure": {
             "resource_group": "nanofaas-rg",
             "location": "westeurope",
-            "vm_size": "Standard_D4s_v5",
+            "vm_size": "Standard_D8s_v5",
             "loadgen_vm_size": "Standard_D2s_v5",
-            "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202505280",
+            "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202607140",
             "operator_source_cidr": "203.0.113.0/24",
         },
     }
@@ -111,7 +111,7 @@ def test_release_environment_rejects_unpinned_or_malformed_urn(urn: str) -> None
         azure={
             "resource_group": "nanofaas-rg",
             "location": "westeurope",
-            "vm_size": "Standard_D4s_v5",
+            "vm_size": "Standard_D8s_v5",
             "loadgen_vm_size": "Standard_D2s_v5",
             "image_urn": urn,
         }
@@ -126,7 +126,7 @@ def test_release_environment_rejects_burstable_vm_size(field: str) -> None:
     azure = {
         "resource_group": "nanofaas-rg",
         "location": "westeurope",
-        "vm_size": "Standard_D4s_v5",
+        "vm_size": "Standard_D8s_v5",
         "loadgen_vm_size": "Standard_D2s_v5",
         "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202505280",
     }
