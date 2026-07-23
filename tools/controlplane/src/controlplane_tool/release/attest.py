@@ -231,6 +231,11 @@ def _cosign(
         "docker",
         "run",
         "--rm",
+        # The pinned cosign image runs as a non-root user which cannot read
+        # the 0600 azureuser-owned key/auth mounts; root inside the container
+        # can, and the files stay private on the host.
+        "--user",
+        "0",
         "--env",
         "DOCKER_CONFIG=/auth",
         "--env",
