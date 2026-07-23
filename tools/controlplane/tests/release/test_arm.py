@@ -30,7 +30,7 @@ def test_arm64_plan_contains_all_26_logical_cells() -> None:
     assert {cell.architecture for cell in plan.cells} == {"arm64"}
 
 
-def test_arm64_commands_pin_binfmt_and_reuse_the_named_builder() -> None:
+def test_arm64_commands_tunnel_the_registry_and_reuse_the_named_builder() -> None:
     plan = _plan()
 
     commands = arm.arm64_build_commands(
@@ -38,21 +38,15 @@ def test_arm64_commands_pin_binfmt_and_reuse_the_named_builder() -> None:
         builder_name="nanofaas-release-v0-18-0",
         remote_bake_file="/srv/release/docker-bake-arm64.json",
         remote_source_dir="/srv/source",
+        registry_upstream="203.0.113.10",
     )
 
-    binfmt = commands[0]
-    assert binfmt.argv == (
-        "docker",
-        "run",
-        "--privileged",
-        "--rm",
-        arm.BINFMT_IMAGE,
-        "--install",
-        "arm64",
-    )
-    assert arm.BINFMT_IMAGE.startswith("tonistiigi/binfmt@sha256:")
-    assert len(arm.BINFMT_IMAGE.rsplit("@sha256:", 1)[1]) == 64
-    assert ":latest" not in arm.BINFMT_IMAGE
+    tunnel = commands[0]
+    assert tunnel.task_id == "release.arm64.registry-tunnel"
+    assert tunnel.argv[:2] == ("sh", "-c")
+    assert "TCP-LISTEN:5000" in tunnel.argv[2]
+    assert "TCP:203.0.113.10:5000" in tunnel.argv[2]
+    assert all(command.role == "arm-builder" for command in commands)
     assert commands[1].argv == (
         "docker",
         "buildx",

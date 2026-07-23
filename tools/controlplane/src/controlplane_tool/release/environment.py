@@ -12,11 +12,14 @@ from controlplane_tool.release.versioning import normalize_version, verify_versi
 
 _STACK_VM_SIZE = "Standard_D8s_v5"
 _LOADGEN_VM_SIZE = "Standard_D2s_v5"
+_ARM_VM_SIZE = "Standard_D8ps_v5"
 _LOCATION = "westeurope"
 _STACK_DISK = "128G"
 _LOADGEN_DISK = "30G"
+_ARM_DISK = "64G"
 _STACK_NAME = "nanofaas-azure-release"
 _LOADGEN_NAME = "nanofaas-azure-release-loadgen"
+_ARM_NAME = "nanofaas-azure-release-arm"
 _URN_COMPONENT = re.compile(r"[A-Za-z0-9._-]+")
 
 
@@ -28,15 +31,17 @@ def validate_release_environment(
     """Reject any environment that cannot produce comparable Azure evidence."""
     if environment.provider != "azure" or environment.azure is None:
         raise ValueError("release requires an Azure environment")
-    if not {"stack", "loadgen"}.issubset(environment.roles):
-        raise ValueError("release environment requires stack and loadgen roles")
+    if not {"stack", "loadgen", "arm-builder"}.issubset(environment.roles):
+        raise ValueError("release environment requires stack, loadgen and arm-builder roles")
 
     azure = environment.azure
     _require_exact("Azure location", azure.location, _LOCATION)
     _require_exact("stack VM size", azure.vm_size, _STACK_VM_SIZE)
     _require_exact("loadgen VM size", azure.loadgen_vm_size, _LOADGEN_VM_SIZE)
+    _require_exact("arm-builder VM size", azure.arm_vm_size, _ARM_VM_SIZE)
     _require_exact("stack disk", environment.roles["stack"].disk, _STACK_DISK)
     _require_exact("loadgen disk", environment.roles["loadgen"].disk, _LOADGEN_DISK)
+    _require_exact("arm-builder disk", environment.roles["arm-builder"].disk, _ARM_DISK)
     _require_exact(
         "stack dedicated release VM name",
         environment.roles["stack"].name or "",
@@ -47,7 +52,13 @@ def validate_release_environment(
         environment.roles["loadgen"].name or "",
         _LOADGEN_NAME,
     )
+    _require_exact(
+        "arm-builder dedicated release VM name",
+        environment.roles["arm-builder"].name or "",
+        _ARM_NAME,
+    )
     _validate_image_urn(azure.image_urn)
+    _validate_image_urn(azure.arm_image_urn)
     _validate_operator_source(azure.operator_source_cidr)
 
     requested_plain, _ = normalize_version(requested_version)

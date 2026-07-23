@@ -247,12 +247,30 @@ def provision_environment(
                 role="cloud",
             )
 
+        dedicated_arm = "arm-builder" in environment.roles
+        arm_builder_request: VmRequest | None = None
+        arm_builder: VmRequest | None = None
+        if dedicated_arm:
+            arm_builder_request = _request(environment, "arm-builder")
+            arm_cleanup = _destroy_task(
+                orchestrator, arm_builder_request, role="arm-builder"
+            )
+            if arm_cleanup is not None:
+                cleanup_tasks.append(arm_cleanup)
+            arm_builder = _ensure_vm(
+                orchestrator,
+                arm_builder_request,
+                role="arm-builder",
+            )
+
         if post_ensure_verifier is not None:
             post_ensure_verifier("stack", stack_request)
             if loadgen_request is not None:
                 post_ensure_verifier("loadgen", loadgen_request)
             if cloud_request is not None:
                 post_ensure_verifier("cloud", cloud_request)
+            if arm_builder_request is not None:
+                post_ensure_verifier("arm-builder", arm_builder_request)
 
         stack_context = _context(repo_root, stack)
         _run_operations(
@@ -269,6 +287,14 @@ def provision_environment(
             ),
             role="stack",
         )
+
+        if arm_builder is not None:
+            arm_context = _context(repo_root, arm_builder)
+            _run_operations(
+                orchestrator,
+                _remote_operations(plan_vm_provision_base(arm_context)),
+                role="arm-builder",
+            )
 
         if loadgen is not None:
             context = _context(repo_root, loadgen)

@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ProviderName = Literal["local", "multipass", "external", "azure", "proxmox"]
-ExecutionRole = Literal["host", "stack", "loadgen", "cloud"]
+ExecutionRole = Literal["host", "stack", "loadgen", "cloud", "arm-builder"]
 
 
 class RoleTarget(BaseModel):
@@ -31,6 +31,9 @@ class AzureEnvironment(BaseModel):
     operator_source_cidr: str | None = None
     vm_size: str = "Standard_D4s_v5"
     loadgen_vm_size: str = "Standard_B1s"
+    # Native ARM64 builder (Ampere): used by the release arm64 phases.
+    arm_vm_size: str = "Standard_D8ps_v5"
+    arm_image_urn: str | None = None
 
 
 class ProxmoxEnvironment(BaseModel):
@@ -78,4 +81,6 @@ class EnvironmentConfig(BaseModel):
             return self.roles.get("stack", self.target("host"))
         if role == "cloud":
             return self.roles.get("cloud", self.target("stack"))
+        if role == "arm-builder":
+            return self.roles.get("arm-builder", self.target("stack"))
         return self.roles.get("loadgen", self.target("stack"))

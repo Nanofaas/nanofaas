@@ -556,11 +556,22 @@ class _ReleaseProvider(_ArchiveProvider):
     def release_vm_facts(self, request: object) -> SimpleNamespace:
         name = str(getattr(request, "name", ""))
         loadgen = name.endswith("-loadgen")
+        arm_builder = name.endswith("-arm")
+        if loadgen:
+            size, disk = "Standard_D2s_v5", 30
+        elif arm_builder:
+            size, disk = "Standard_D8ps_v5", 64
+        else:
+            size, disk = "Standard_D8s_v5", 128
         values: dict[str, object] = {
             "location": "westeurope",
-            "vm_size": "Standard_D2s_v5" if loadgen else "Standard_D8s_v5",
-            "disk_size_gb": 30 if loadgen else 128,
-            "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202607140",
+            "vm_size": size,
+            "disk_size_gb": disk,
+            "image_urn": (
+                "Canonical:ubuntu-24_04-lts:server-arm64:24.04.202607140"
+                if arm_builder
+                else "Canonical:ubuntu-24_04-lts:server:24.04.202607140"
+            ),
         }
         values.update(self.fact_overrides.get(name, {}))
         self.events.append(f"facts:{name}")
@@ -842,14 +853,18 @@ def _runtime_fakes(plan, events: list[str], provider=None):
                         plan.environment, "loadgen", loadtest=True
                     ),
                 )
+                verifier(
+                    "arm-builder",
+                    release_run.vm_request_for_role(plan.environment, "arm-builder"),
+                )
             yield
         finally:
             provider.events.append("provision:exit")
 
     def builder_provisioner(provider_arg, request, repo_root):
-        del request, repo_root
+        del repo_root
         assert provider_arg is provider
-        provider.events.append("release-builder:stack")
+        provider.events.append(f"release-builder:{getattr(request, 'name', '?')}")
 
     loadtest_calls: list[dict[str, object]] = []
 
@@ -889,6 +904,10 @@ def _provisioner_with_recorded_rsync(plan, provider, wildcard_present):
                         plan.environment, role, loadtest=True
                     ),
                 )
+            verifier(
+                "arm-builder",
+                release_run.vm_request_for_role(plan.environment, "arm-builder"),
+            )
             for role in ("stack", "loadgen"):
                 provider.events.append(
                     f"rsync:{role}:wildcard={wildcard_present()}"
@@ -917,15 +936,18 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     )
 
     assert decision.passed is True
-    assert events[:8] == [
+    assert events[:11] == [
         "teardown:nanofaas-azure-release",
         "teardown:nanofaas-azure-release-loadgen",
+        "teardown:nanofaas-azure-release-arm",
         "provision:enter",
         "facts:nanofaas-azure-release",
         "restrict:nanofaas-azure-release",
         "facts:nanofaas-azure-release-loadgen",
         "restrict:nanofaas-azure-release",
-        "release-builder:stack",
+        "facts:nanofaas-azure-release-arm",
+        "restrict:nanofaas-azure-release",
+        "release-builder:nanofaas-azure-release",
     ]
     assert events[-1] == "provision:exit"
     reset = events.index(f"exec:docker buildx rm --force {BUILDER_NAME}")
@@ -941,10 +963,10 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
     ]
     assert len(source_restages) == 3
     assert source_test < source_restages[1] < create
-    qemu = events.index(
-        f"exec:docker run --privileged --rm {arm.BINFMT_IMAGE} --install arm64"
+    tunnel = next(
+        index for index, event in enumerate(events) if "TCP-LISTEN:5000" in event
     )
-    assert source_restages[2] < qemu
+    assert source_restages[2] < tunnel
     assert reset < create
     assert [
         (getattr(request, "name"), ports, sources)
@@ -959,6 +981,11 @@ def test_run_composes_amd64_gate_and_defers_all_credentials_and_publication(
             "nanofaas-azure-release",
             (30080, 30081, 30090),
             ("198.51.100.42/32", "203.0.113.0/24"),
+        ),
+        (
+            "nanofaas-azure-release",
+            (5000,),
+            ("203.0.113.10/32",),
         ),
     ]
     assert [call["run_dir"] for call in loadtest_calls] == [
@@ -1055,12 +1082,10 @@ def test_release_runs_arm64_only_after_the_passed_amd64_gate(
 
     assert decision.passed is True
     gate = events.index("phase:regression-gate:after-action")
-    qemu = next(
-        index
-        for index, event in enumerate(events)
-        if event.startswith(f"exec:docker run --privileged --rm {arm.BINFMT_IMAGE}")
+    tunnel = next(
+        index for index, event in enumerate(events) if "TCP-LISTEN:5000" in event
     )
-    assert gate < qemu
+    assert gate < tunnel
     arm_pushes = [event for event in events if event.startswith("exec:docker push") and "-arm64" in event]
     architecture_inspects = [
         event
@@ -1325,7 +1350,7 @@ def test_post_provision_vm_fact_mismatch_stops_before_source_tests_or_builds(
 
     assert events.index("provision:enter") < events.index(f"facts:{vm_name}")
     assert not any(
-        event == "release-builder:stack"
+        event.startswith("release-builder:")
         or "./gradlew test" in event
         or "docker buildx" in event
         for event in events
@@ -1754,7 +1779,7 @@ def test_run_rechecks_the_guarded_commit_immediately_before_arm64(
             archive_builder=archive,
         )
 
-    assert not any(arm.BINFMT_IMAGE in event for event in events)
+    assert not any("TCP-LISTEN:5000" in event for event in events)
     journal = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in sorted(plan.state_directory.glob("*.json"))
@@ -1853,13 +1878,16 @@ def test_verified_resume_reuses_every_amd64_phase(
     assert decision.passed is True
     assert calls == []
     assert not any(event.startswith("teardown:") for event in second_events)
-    assert second_events[:6] == [
+    assert second_events[:9] == [
         "provision:enter",
         "facts:nanofaas-azure-release",
         "restrict:nanofaas-azure-release",
         "facts:nanofaas-azure-release-loadgen",
         "restrict:nanofaas-azure-release",
-        "release-builder:stack",
+        "facts:nanofaas-azure-release-arm",
+        "restrict:nanofaas-azure-release",
+        "release-builder:nanofaas-azure-release",
+        "release-builder:nanofaas-azure-release-arm",
     ]
     assert not any("buildx" in event or "docker push" in event for event in second_events)
 
@@ -1901,7 +1929,7 @@ def test_resume_invalidates_arm_build_and_smoke_when_arm_digest_changes(
 
     assert decision.passed is True
     assert calls == []
-    assert any(arm.BINFMT_IMAGE in event for event in second_events)
+    assert any("TCP-LISTEN:5000" in event for event in second_events)
     payloads = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in sorted(plan.state_directory.glob("*.json"))
@@ -1955,7 +1983,7 @@ def test_resume_repeats_only_arm_smoke_when_its_local_marker_changes(
 
     assert decision.passed is True
     assert calls == []
-    assert any(arm.BINFMT_IMAGE in event for event in second_events)
+    assert any("TCP-LISTEN:5000" in event for event in second_events)
     assert not any("docker push" in event for event in second_events)
     assert any("docker run --detach" in event for event in second_events)
     payloads = [
@@ -2024,6 +2052,7 @@ def test_resume_restricts_legacy_wildcard_ingress_before_bootstrap_rsync(
     assert [sources for _request, _ports, sources in provider.restrictions] == [
         ("203.0.113.0/24",),
         ("198.51.100.42/32", "203.0.113.0/24"),
+        ("203.0.113.10/32",),
     ]
 
 
@@ -2078,7 +2107,7 @@ def test_resume_nsg_restriction_failure_stops_before_any_bootstrap_rsync(
     assert restriction_calls == 2
     assert not any(event.startswith("rsync:") for event in events)
     assert provider.actions == []
-    assert "release-builder:stack" not in events
+    assert not any(event.startswith("release-builder:") for event in events)
 
 
 def test_resume_provisions_before_verification_and_invalidates_from_changed_evidence(
@@ -2113,13 +2142,16 @@ def test_resume_provisions_before_verification_and_invalidates_from_changed_evid
     )
 
     assert decision.passed is True
-    assert second_events[:6] == [
+    assert second_events[:9] == [
         "provision:enter",
         "facts:nanofaas-azure-release",
         "restrict:nanofaas-azure-release",
         "facts:nanofaas-azure-release-loadgen",
         "restrict:nanofaas-azure-release",
-        "release-builder:stack",
+        "facts:nanofaas-azure-release-arm",
+        "restrict:nanofaas-azure-release",
+        "release-builder:nanofaas-azure-release",
+        "release-builder:nanofaas-azure-release-arm",
     ]
     assert [call["run_dir"] for call in calls] == [
         plan.run_dir / "run-2",

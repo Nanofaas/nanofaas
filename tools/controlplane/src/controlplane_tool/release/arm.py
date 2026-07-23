@@ -13,19 +13,23 @@ from workflow_tasks.tasks.models import CommandTaskSpec
 
 ARM64_PHASES = ("arm64-build", "arm64-smoke")
 ARM64_PLATFORM = "linux/arm64"
-BINFMT_IMAGE = (
-    "tonistiigi/binfmt@sha256:"
-    "465d3fdd28d0f2b871ba4b4ec98bd183292e96167f00d9fd40bd249f8632d705"
-)
-BINFMT_COMMAND = (
-    "docker",
-    "run",
-    "--privileged",
-    "--rm",
-    BINFMT_IMAGE,
-    "--install",
-    "arm64",
-)
+
+
+def registry_tunnel_command(registry_upstream: str) -> tuple[str, ...]:
+    """Forward localhost:5000 on the ARM builder to the stack registry.
+
+    Keeps every image reference `localhost:5000/...` valid on the builder, so
+    tags, pushes, and digest evidence stay identical across architectures. The
+    unit restart makes the command idempotent across resumes and reboots.
+    """
+    return (
+        "sh",
+        "-c",
+        "sudo systemctl stop nanofaas-registry-tunnel 2>/dev/null || true; "
+        "sudo systemctl reset-failed nanofaas-registry-tunnel 2>/dev/null || true; "
+        "sudo systemd-run --unit nanofaas-registry-tunnel "
+        f"socat TCP-LISTEN:5000,fork,reuseaddr TCP:{registry_upstream}:5000",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,20 +60,21 @@ def arm64_build_commands(
     builder_name: str,
     remote_bake_file: str,
     remote_source_dir: str,
+    registry_upstream: str,
 ) -> tuple[CommandTaskSpec, ...]:
     commands = [
         CommandTaskSpec(
-            task_id="release.arm64.binfmt",
-            summary="Register pinned ARM64 binfmt handler",
-            argv=BINFMT_COMMAND,
-            role="stack",
+            task_id="release.arm64.registry-tunnel",
+            summary="Tunnel localhost:5000 to the stack registry",
+            argv=registry_tunnel_command(registry_upstream),
+            role="arm-builder",
             remote_dir=remote_source_dir,
         ),
         CommandTaskSpec(
             task_id="release.arm64.builder",
             summary="Require ARM64 support from the release builder",
             argv=("docker", "buildx", "inspect", builder_name, "--bootstrap"),
-            role="stack",
+            role="arm-builder",
             remote_dir=remote_source_dir,
         ),
     ]
@@ -84,7 +89,7 @@ def arm64_build_commands(
                 task_id=f"release.arm64.prepare.{cell.target.name}",
                 summary=f"Prepare {cell.target.name} ARM64 JVM image",
                 argv=prerequisite,
-                role="stack",
+                role="arm-builder",
                 remote_dir=remote_source_dir,
             )
         )
@@ -103,7 +108,7 @@ def arm64_build_commands(
                 "--load",
                 "docker-arm64",
             ),
-            role="stack",
+            role="arm-builder",
             remote_dir=remote_source_dir,
         )
     )
@@ -112,7 +117,7 @@ def arm64_build_commands(
             task_id=f"release.arm64.native.{cell.target.name}",
             summary=f"Build {cell.target.name} ARM64 native image",
             argv=cell.gradle_command or (),
-            role="stack",
+            role="arm-builder",
             remote_dir=remote_source_dir,
         )
         for cell in plan.gradle_cells

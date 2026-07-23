@@ -21,13 +21,19 @@ def _release_environment(**changes: object) -> EnvironmentConfig:
                 "name": "nanofaas-azure-release-loadgen",
                 "disk": "30G",
             },
+            "arm-builder": {
+                "name": "nanofaas-azure-release-arm",
+                "disk": "64G",
+            },
         },
         "azure": {
             "resource_group": "nanofaas-rg",
             "location": "westeurope",
             "vm_size": "Standard_D8s_v5",
             "loadgen_vm_size": "Standard_D2s_v5",
+            "arm_vm_size": "Standard_D8ps_v5",
             "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202607140",
+            "arm_image_urn": "Canonical:ubuntu-24_04-lts:server-arm64:24.04.202607140",
             "operator_source_cidr": "203.0.113.0/24",
         },
     }
@@ -42,6 +48,7 @@ def test_release_environment_example_is_pinned_and_comparable() -> None:
     validate_release_environment(environment, SOURCE_REPO, "0.17.0")
     assert environment.roles["stack"].disk == "128G"
     assert environment.roles["loadgen"].disk == "30G"
+    assert environment.roles["arm-builder"].disk == "64G"
     assert environment.azure is not None
     assert environment.azure.operator_source_cidr == "203.0.113.0/24"
 
@@ -57,11 +64,18 @@ def test_release_environment_rejects_non_azure_provider(provider: str) -> None:
         validate_release_environment(environment, SOURCE_REPO, "0.17.0")
 
 
-@pytest.mark.parametrize("roles", ({"stack": {"disk": "128G"}}, {"loadgen": {"disk": "30G"}}))
+@pytest.mark.parametrize(
+    "roles",
+    (
+        {"stack": {"disk": "128G"}},
+        {"loadgen": {"disk": "30G"}},
+        {"stack": {"disk": "128G"}, "loadgen": {"disk": "30G"}},
+    ),
+)
 def test_release_environment_requires_stack_and_loadgen_roles(roles: dict[str, object]) -> None:
     environment = _release_environment(roles=roles)
 
-    with pytest.raises(ValueError, match="stack and loadgen"):
+    with pytest.raises(ValueError, match="stack, loadgen and arm-builder"):
         validate_release_environment(environment, SOURCE_REPO, "0.17.0")
 
 
@@ -70,6 +84,7 @@ def test_release_environment_requires_stack_and_loadgen_roles(roles: dict[str, o
     (
         ("stack", "shared-stack"),
         ("loadgen", "shared-loadgen"),
+        ("arm-builder", "shared-arm"),
     ),
 )
 def test_release_environment_requires_dedicated_vm_names(role: str, name: str) -> None:
@@ -113,7 +128,9 @@ def test_release_environment_rejects_unpinned_or_malformed_urn(urn: str) -> None
             "location": "westeurope",
             "vm_size": "Standard_D8s_v5",
             "loadgen_vm_size": "Standard_D2s_v5",
+            "arm_vm_size": "Standard_D8ps_v5",
             "image_urn": urn,
+            "arm_image_urn": "Canonical:ubuntu-24_04-lts:server-arm64:24.04.202607140",
         }
     )
 
@@ -121,14 +138,16 @@ def test_release_environment_rejects_unpinned_or_malformed_urn(urn: str) -> None
         validate_release_environment(environment, SOURCE_REPO, "0.17.0")
 
 
-@pytest.mark.parametrize("field", ("vm_size", "loadgen_vm_size"))
+@pytest.mark.parametrize("field", ("vm_size", "loadgen_vm_size", "arm_vm_size"))
 def test_release_environment_rejects_burstable_vm_size(field: str) -> None:
     azure = {
         "resource_group": "nanofaas-rg",
         "location": "westeurope",
         "vm_size": "Standard_D8s_v5",
         "loadgen_vm_size": "Standard_D2s_v5",
+        "arm_vm_size": "Standard_D8ps_v5",
         "image_urn": "Canonical:ubuntu-24_04-lts:server:24.04.202505280",
+        "arm_image_urn": "Canonical:ubuntu-24_04-lts:server-arm64:24.04.202505280",
     }
     azure[field] = "Standard_B2s"
     environment = _release_environment(azure=azure)

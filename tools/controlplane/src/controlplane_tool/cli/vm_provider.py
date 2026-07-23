@@ -13,6 +13,7 @@ from controlplane_tool.config.environment import EnvironmentConfig, ExecutionRol
 _DEFAULT_NAMES = {
     ("azure", "stack"): "nanofaas-azure",
     ("azure", "loadgen"): "nanofaas-azure-loadgen",
+    ("azure", "arm-builder"): "nanofaas-azure-arm",
     ("proxmox", "stack"): "nanofaas-proxmox",
     ("proxmox", "loadgen"): "nanofaas-proxmox-loadgen",
 }
@@ -54,12 +55,20 @@ def vm_request_for_role(
     if provider == "azure":
         azure = environment.azure
         assert azure is not None
+        if role == "loadgen":
+            vm_size = azure.loadgen_vm_size
+        elif role == "arm-builder":
+            vm_size = azure.arm_vm_size
+        else:
+            vm_size = azure.vm_size
         return VmRequest(
             **common,
-            azure_vm_size=(azure.loadgen_vm_size if role == "loadgen" else azure.vm_size),
+            azure_vm_size=vm_size,
             azure_resource_group=azure.resource_group,
             azure_location=azure.location,
-            azure_image_urn=azure.image_urn,
+            azure_image_urn=(
+                azure.arm_image_urn if role == "arm-builder" else azure.image_urn
+            ),
             azure_ssh_key_path=azure.ssh_key_path,
             azure_open_ports=(
                 (30080, 30081, 30090)

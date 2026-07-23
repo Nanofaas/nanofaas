@@ -674,9 +674,14 @@ def _run_amd64_release_locked(
     provider = make_provider(plan.environment, plan.repo_root)
     stack_request = vm_request_for_role(plan.environment, "stack", loadtest=True)
     loadgen_request = vm_request_for_role(plan.environment, "loadgen", loadtest=True)
+    arm_request = vm_request_for_role(plan.environment, "arm-builder")
     if not resume:
         _progress("→ tearing down any previous release VMs")
-        for role, request in (("stack", stack_request), ("loadgen", loadgen_request)):
+        for role, request in (
+            ("stack", stack_request),
+            ("loadgen", loadgen_request),
+            ("arm-builder", arm_request),
+        ):
             _require_result(
                 provider.teardown(request),  # type: ignore[attr-defined]
                 f"recreate dedicated release {role} VM",
@@ -701,6 +706,15 @@ def _run_amd64_release_locked(
         _verify_release_vm_facts(plan, provider, role, request)
         if role == "stack":
             _secure_release_endpoints(plan, provider, stack_request, None)
+        elif role == "arm-builder":
+            # The ARM builder pushes through a localhost:5000 tunnel into the
+            # stack registry: allow only its address on the registry port.
+            arm_host = provider.connection_host(request)  # type: ignore[attr-defined]
+            provider.restrict_inbound_sources(  # type: ignore[attr-defined]
+                stack_request,
+                ports=(5000,),
+                source_cidrs=(f"{arm_host}/32",),
+            )
         else:
             endpoints = _secure_release_endpoints(
                 plan, provider, stack_request, loadgen_request
@@ -720,6 +734,7 @@ def _run_amd64_release_locked(
         control_plane_url, prometheus_url = endpoints
         _progress("→ provisioning buildx release builder")
         provision_builder(provider, stack_request, plan.repo_root)
+        provision_builder(provider, arm_request, plan.repo_root)
         if resume:
             _progress("→ resume: verifying journal evidence against GHCR")
             credentials = plan.credentials
@@ -896,7 +911,7 @@ def _run_amd64_release_locked(
                 _assert_guarded_source(plan)
                 stage_source_archive(
                     provider,
-                    stack_request,
+                    arm_request,
                     archive=local_archive,
                     remote_archive=source_archive,
                     remote_source_dir=source_dir,
@@ -907,9 +922,10 @@ def _run_amd64_release_locked(
                     arm_plan,
                     arm_bake,
                     provider,
-                    stack_request,
+                    arm_request,
                     remote_arm_bake,
                     source_dir,
+                    registry_upstream=provider.connection_host(stack_request),  # type: ignore[attr-defined]
                 )
 
             _record_phase(journal, "arm64-build", build_arm64, failure_injector)
@@ -922,8 +938,9 @@ def _run_amd64_release_locked(
                     plan,
                     arm_plan,
                     provider,
-                    stack_request,
+                    arm_request,
                     build_evidence,
+                    registry_upstream=provider.connection_host(stack_request),  # type: ignore[attr-defined]
                 ),
                 failure_injector,
             )
@@ -1142,11 +1159,17 @@ def _verify_release_vm_facts(
     assert azure is not None
     facts = provider.release_vm_facts(request)  # type: ignore[attr-defined]
     target = plan.environment.target(role)
+    if role == "loadgen":
+        expected_size = azure.loadgen_vm_size
+    elif role == "arm-builder":
+        expected_size = azure.arm_vm_size
+    else:
+        expected_size = azure.vm_size
     expected = {
         "location": azure.location,
-        "vm_size": azure.loadgen_vm_size if role == "loadgen" else azure.vm_size,
+        "vm_size": expected_size,
         "disk_size_gb": int(target.disk.removesuffix("G")),
-        "image_urn": azure.image_urn,
+        "image_urn": azure.arm_image_urn if role == "arm-builder" else azure.image_urn,
     }
     mismatches = tuple(
         name for name, value in expected.items() if getattr(facts, name, None) != value
@@ -1359,6 +1382,8 @@ def _build_arm64_images(
     request: object,
     remote_bake: str,
     remote_source_dir: str,
+    *,
+    registry_upstream: str,
 ) -> tuple[ArtifactEvidence, ...]:
     bake_file.write_text(render_bake_json(image_plan), encoding="utf-8")
     _provider_exec(provider, request, ("mkdir", "-p", str(Path(remote_bake).parent)))
@@ -1373,6 +1398,7 @@ def _build_arm64_images(
         builder_name=plan.builder.name,
         remote_bake_file=remote_bake,
         remote_source_dir=remote_source_dir,
+        registry_upstream=registry_upstream,
     ):
         result = _provider_exec(
             provider,
@@ -1408,9 +1434,11 @@ def _smoke_arm64_images(
     provider: object,
     request: object,
     expected_build_evidence: Iterable[ArtifactEvidence],
+    *,
+    registry_upstream: str,
 ) -> tuple[ArtifactEvidence, ...]:
     _assert_guarded_source(plan)
-    _provider_exec(provider, request, arm.BINFMT_COMMAND)
+    _provider_exec(provider, request, arm.registry_tunnel_command(registry_upstream))
     expected = tuple(expected_build_evidence)
     arm.require_complete_arm64_evidence(image_plan, expected)
     current = tuple(
