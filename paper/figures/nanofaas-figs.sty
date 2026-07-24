@@ -1,0 +1,68 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{nanofaas-figs}[2026/07/20 nanofaas paper figure styles]
+
+% Shared palette + TikZ styles for the nanofaas paper figures.
+% Each figure is a \documentclass{standalone} that \usepackage{nanofaas-figs}.
+% Fonts are sans-serif for a modern look; switch to \rmfamily in the styles
+% below if you want them to match a serif paper body.
+
+\RequirePackage{tikz}
+\RequirePackage{fontawesome5}
+\RequirePackage{graphicx}
+\usetikzlibrary{positioning, arrows.meta, calc, fit, backgrounds,
+  shadows.blur, shapes.geometric, matrix, decorations.pathreplacing}
+
+% icon helper: \ic{book}, \ic{sync-alt}, \ic{dharmachakra}, ... (FA5 slugs).
+% Scaled 2x (relative to the surrounding font) and vertically re-centred so the
+% enlarged glyph sits level with adjacent text instead of poking above it.
+\providecommand{\ic}[1]{\raisebox{-0.30\height}{\scalebox{2}{\faIcon{#1}}}}
+
+% ---- palette (chosen to stay distinguishable in grayscale print) ----
+\definecolor{nfink}{HTML}{1F2933}   % near-black text / borders
+\definecolor{nfblue}{HTML}{2F6DB5}  \definecolor{nfbluebg}{HTML}{E7F0FA}
+\definecolor{nfgreen}{HTML}{2E8B6F} \definecolor{nfgreenbg}{HTML}{E6F4EE}
+\definecolor{nfamber}{HTML}{C08417} \definecolor{nfamberbg}{HTML}{FAF0DF}
+\definecolor{nfpurple}{HTML}{6C4BB6}\definecolor{nfpurplebg}{HTML}{EFEAF8}
+\definecolor{nfslate}{HTML}{55606E} \definecolor{nfslatebg}{HTML}{EDEFF2}
+\definecolor{nfred}{HTML}{C0392B}   \definecolor{nfredbg}{HTML}{FBEBE9}
+\definecolor{nfnavy}{HTML}{27488B}  % control-plane banner
+
+% ---- node + edge styles ----
+\tikzset{
+  nf/.style={>={Stealth[round]}, line width=0.6pt, font=\sffamily,
+             every node/.append style={font=\sffamily}},
+  nfbox/.style={draw, rounded corners=3pt, line width=0.7pt, align=center,
+    inner sep=5pt, minimum height=9mm, font=\sffamily\small, text=nfink,
+    blur shadow={shadow blur steps=4, shadow xshift=0.4pt,
+                 shadow yshift=-0.7pt, shadow opacity=22}},
+  core/.style={nfbox, fill=nfbluebg, draw=nfblue},
+  module/.style={nfbox, fill=nfgreenbg, draw=nfgreen,
+                 font=\sffamily\footnotesize, minimum height=7mm},
+  backend/.style={nfbox, fill=nfamberbg, draw=nfamber},
+  client/.style={nfbox, fill=nfpurplebg, draw=nfpurple},
+  edgebox/.style={nfbox, fill=nfbluebg, draw=nfblue},
+  cloudbox/.style={nfbox, fill=nfgreenbg, draw=nfgreen},
+  neutral/.style={nfbox, fill=nfslatebg, draw=nfslate},
+  danger/.style={nfbox, fill=nfredbg, draw=nfred, text=nfred},
+  % white "card" boxes with an icon (reference-style architecture figure).
+  % No blur shadow here: shadows.blur is fragile inside matrices / on the
+  % background-layer path, so these cards are flat with a crisp coloured border.
+  iconbase/.style={draw, rounded corners=3pt, align=center, inner sep=6pt,
+                   minimum height=9mm, font=\sffamily\small, text=nfink, fill=white},
+  iconcore/.style={iconbase, draw=nfblue, line width=0.9pt},
+  iconmod/.style={iconbase, draw=nfgreen, line width=0.8pt, minimum height=13mm},
+  iconback/.style={iconbase, draw=nfamber, line width=0.9pt},
+  banner/.style={rounded corners=3pt, fill=nfnavy, text=white, inner sep=5pt,
+                 font=\sffamily\large\bfseries},
+  % translucent grouping container drawn on the background layer
+  container/.style={draw, rounded corners=6pt, line width=1pt, inner sep=8pt},
+  clabel/.style={font=\sffamily\small\bfseries, text=nfink},
+  % edges
+  flow/.style={nf, -{Stealth[round]}, draw=nfink},
+  flowc/.style={nf, -{Stealth[round]}, draw=nfslate},
+  ret/.style={nf, -{Stealth[round]}, dashed, draw=nfslate},
+  offloadarr/.style={nf, -{Stealth[round]}, line width=1.4pt, draw=nfamber},
+  lifeline/.style={dashed, draw=nfslate, line width=0.5pt},
+  tag/.style={font=\sffamily\scriptsize, text=nfink, inner sep=1pt},
+  tagc/.style={font=\sffamily\scriptsize, text=nfslate, inner sep=1pt},
+}

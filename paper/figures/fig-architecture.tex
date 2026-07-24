@@ -1,0 +1,95 @@
+% nanofaas system architecture (icon / "card" style).
+% Grouping containers live on the background layer and are declared AFTER every
+% blur-shadow node (shadows.blur manipulates layers; a shadowed node emitted
+% after background content suppresses it). Keep that ordering when editing.
+\documentclass[border=8pt]{standalone}
+\usepackage{nanofaas-figs}
+\begin{document}
+\begin{tikzpicture}[nf]
+
+  % ================= core components (shadowed cards) =================
+  \node[iconcore, minimum width=44mm, minimum height=27mm] (registry)
+    {{\color{nfnavy}\large\ic{book}}\ \ \textbf{Function Registry}\\[5pt]
+     {\footnotesize\color{nfslate}in-memory}};
+  \node[iconcore, right=6mm of registry, minimum width=48mm, minimum height=27mm] (invoc)
+    {{\color{nfnavy}\large\ic{server}}\ \ \textbf{Invocation Service}\\[5pt]
+     {\footnotesize\color{nfslate}sync/async $\cdot$ retries}\\
+     {\footnotesize\color{nfslate}idempotency $\cdot$ rate limit}};
+  \node[iconcore, right=6mm of invoc, minimum width=46mm, minimum height=27mm] (dispatch)
+    {{\color{nfnavy}\large\ic{sitemap}}\ \ \textbf{Pool Dispatcher}\\[5pt]
+     {\footnotesize\color{nfslate}LOCAL / POOL /}\\
+     {\footnotesize\color{nfslate}DEPLOYMENT}};
+  \node[iconcore, right=6mm of dispatch, minimum width=44mm, minimum height=27mm] (store)
+    {{\color{nfnavy}\large\ic{database}}\ \ \textbf{Execution Store}\\[5pt]
+     {\footnotesize\color{nfslate}lifecycle $\cdot$ TTL eviction}};
+
+  % ================= optional modules (shadowed cards in a grid) =================
+  \matrix (mods) [matrix of nodes, anchor=north,
+      nodes={iconmod, minimum width=59mm, anchor=center},
+      column sep=5mm, row sep=3mm]
+      at ($(registry.south)!0.5!(store.south)+(0,-17mm)$) {
+    |[iconmod]| {\color{nfgreen}\ic{envelope}}~~async-queue &
+    |[iconmod]| {\color{nfgreen}\ic{sync-alt}}~~sync-queue &
+    |[iconmod]| {\color{nfgreen}\ic{chart-bar}}~~autoscaler \\
+    |[iconmod]| {\color{nfgreen}\ic{cloud-upload-alt}}~~offload &
+    |[iconmod]| {\color{nfgreen}\ic{cog}}~~runtime-config &
+    |[iconmod]| {\color{nfgreen}\ic{shield-alt}}~~image-validator \\
+    |[iconmod]| {\color{nfgreen}\ic{dharmachakra}}~~k8s-deployment-provider &
+    |[iconmod]| {\color{nfgreen}\ic{docker}}~~container-deployment-provider &
+    |[iconmod]| {\color{nfgreen}\ic{tag}}~~build-metadata \\
+  };
+
+  % ================= execution targets (shadowed cards) =================
+  \node[iconback, minimum width=50mm, minimum height=21mm] (clocal)
+    at ($(mods.south)+(0,-22mm)$)
+    {{\color{nfamber}\large\ic{docker}}\ \ \textbf{Local containers}\\[4pt]
+     {\footnotesize\color{nfslate}container-local $\cdot$ Docker CLI}};
+  \node[iconback, left=9mm of clocal, minimum width=48mm, minimum height=21mm] (k8s)
+    {{\color{nfamber}\large\ic{dharmachakra}}\ \ \textbf{Kubernetes}\\[4pt]
+     {\footnotesize\color{nfslate}Deployment + Service}};
+  \node[iconback, right=9mm of clocal, minimum width=42mm, minimum height=21mm] (pool)
+    {{\color{nfamber}\large\ic{fire}}\ \ \textbf{Warm pod pool}\\[4pt]
+     {\footnotesize\color{nfslate}OpenWhisk-style}};
+
+  % ================= client =================
+  \node[iconcore, minimum width=104mm, minimum height=23mm] (client)
+    at ($(registry.north)!0.5!(store.north)+(0,44mm)$)
+    {{\color{nfnavy}\LARGE\ic{users}}\ \ \textbf{\large Client / SDK}\quad
+     \begin{tabular}[c]{@{}l@{}}
+       {\footnotesize\ttfamily POST /v1/functions/\{name\}:invoke~(sync)}\\
+       {\footnotesize\ttfamily POST /v1/functions/\{name\}:enqueue~(async)}
+     \end{tabular}};
+
+  % strip reserving room for the banner at the top of the control plane
+  \node[inner sep=0, minimum height=10mm, anchor=south] (topstrip)
+    at ($(registry.north)!0.5!(store.north)+(0,3mm)$) {};
+
+  % ================= grouping containers (background, AFTER all shadowed nodes) ===
+  \begin{scope}[on background layer]
+    \node[container, draw=nfblue, line width=1.6pt, fill=nfblue!4,
+      fit=(topstrip)(registry)(store)(mods)] (cp) {};
+    \node[container, draw=nfgreen, line width=1.1pt, dash pattern=on 3pt off 2.4pt,
+      fill=nfgreen!7, fit=(mods)] (modbox) {};
+  \end{scope}
+
+  % ================= banner + labels (no shadow) =================
+  \node[banner, anchor=west] at ($(registry.north west)+(-1mm,8mm)$)
+    {NanoFaaS Control Plane\, {\normalsize\mdseries(Java / Spring Boot)}};
+  \node[font=\sffamily\small, text=nfnavy, anchor=east]
+    at ($(store.north east)+(1mm,8mm)$) {\texttt{:8080} API \; $\cdot$ \; \texttt{:8081} metrics};
+  \node[clabel, text=nfgreen, anchor=south west] at ($(mods.north west)+(-1mm,4mm)$)
+    {\textbf{Optional modules}\, {\mdseries\footnotesize(loaded via \texttt{ControlPlaneModule} SPI)}};
+
+  % ================= edges =================
+  \draw[flow] (client.south -| invoc) -- (invoc |- cp.north);
+
+  \coordinate (hub) at ($(cp.south)+(0,-9mm)$);
+  \draw[flowc] (cp.south) -- (hub)
+    node[tag, midway, right=1mm, fill=white, inner sep=1.5pt]
+      {Dispatch to execution targets $\cdot$ LOCAL / POOL / DEPLOYMENT};
+  \draw[flowc] (hub) -| (k8s.north);
+  \draw[flowc] (hub) -- (clocal.north);
+  \draw[flowc] (hub) -| (pool.north);
+
+\end{tikzpicture}
+\end{document}

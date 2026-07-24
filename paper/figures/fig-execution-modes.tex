@@ -1,0 +1,75 @@
+% nanofaas execution modes (LOCAL / POOL / DEPLOYMENT) and the cold-start vs
+% warm-start latency contrast that motivates warm pools.
+\documentclass[border=8pt]{standalone}
+\usepackage{nanofaas-figs}
+\begin{document}
+\begin{tikzpicture}[nf]
+
+  % ============ (a) dispatch targets per mode ============
+  \node[core, minimum width=30mm] (disp) {PoolDispatcher};
+
+  \node[neutral, below=13mm of disp, xshift=-52mm, minimum width=30mm] (local)
+    {\textbf{LOCAL}\\{\scriptsize in-process}};
+  \node[neutral, below=13mm of disp, minimum width=30mm] (pool)
+    {\textbf{POOL}\\{\scriptsize warm pod pool}};
+  \node[neutral, below=13mm of disp, xshift=52mm, minimum width=34mm] (dep)
+    {\textbf{DEPLOYMENT}\\{\scriptsize backend provider}};
+
+  \draw[flowc] (disp) -- (local) node[tag,midway,left=0.5mm]{test};
+  \draw[flowc] (disp) -- (pool);
+  \draw[flowc] (disp) -- (dep);
+
+  % targets
+  \node[backend, below=9mm of local, minimum width=30mm] (localt)
+    {handler in JVM\\{\scriptsize no container}};
+  \node[backend, below=9mm of pool, minimum width=34mm] (poolt)
+    {pre-warmed pods\\{\scriptsize OpenWhisk-style}};
+  \node[backend, below=9mm of dep, xshift=-11mm, minimum width=26mm] (k8s)
+    {Kubernetes\\{\scriptsize Deploy+Svc}};
+  \node[backend, below=9mm of dep, xshift=19mm, minimum width=26mm] (clocal)
+    {container-local\\{\scriptsize Docker CLI}};
+
+  \draw[flowc] (local) -- (localt);
+  \draw[flowc] (pool) -- (poolt);
+  \draw[flowc] (dep.south) -- (k8s.north);
+  \draw[flowc] (dep.south) -- (clocal.north);
+
+  % ============ (b) cold-start vs warm-start timeline ============
+  \newcommand{\phase}[6]{% x1,x2,y,fill,draw,label
+    \draw[fill=#4, draw=#5, line width=0.5pt, rounded corners=1pt]
+      (#1,#3-0.3) rectangle (#2,#3+0.3);
+    \node[font=\sffamily\scriptsize, text=nfink] at ({(#1+#2)/2},#3) {#6};}
+
+  \coordinate (t0) at (-5.2,-7.9);   % origin of the timeline block
+  \begin{scope}[shift={(t0)}]
+    \node[clabel, anchor=west] at (-0.2,1.95)
+      {Cold start vs.\ warm start \textnormal{\footnotesize— first request latency}};
+
+    % axis
+    \draw[flowc] (0,-1.5) -- (11.2,-1.5) node[tag, right]{time};
+
+    % cold track (DEPLOYMENT, first hit)
+    \node[tag, anchor=east, align=right] at (-0.15,0.35)
+      {DEPLOYMENT\\(cold)};
+    \phase{0}{1.4}{0.35}{nfslatebg}{nfslate}{schedule}
+    \phase{1.4}{5.0}{0.35}{nfamberbg}{nfamber}{pull image}
+    \phase{5.0}{6.8}{0.35}{nfgreenbg}{nfgreen}{start ctr}
+    \phase{6.8}{9.0}{0.35}{nfpurplebg}{nfpurple}{app ready}
+    \phase{9.0}{10.6}{0.35}{nfbluebg}{nfblue}{serve}
+
+    % warm track (POOL / warm pool)
+    \node[tag, anchor=east, align=right] at (-0.15,-0.65)
+      {POOL /\\warm pool};
+    \phase{0}{0.7}{-0.65}{nfgreenbg}{nfgreen}{ready}
+    \phase{0.7}{2.3}{-0.65}{nfbluebg}{nfblue}{serve}
+
+    % cold-start penalty bracket
+    \draw[decorate, decoration={brace, amplitude=4pt, raise=1pt}, draw=nfred]
+      (9.0,0.72) -- (0.0,0.72);
+    \node[tag, text=nfred] at (4.5,1.15) {cold-start penalty};
+    \draw[dashed, draw=nfslate] (0.7,-1.0) -- (0.7,-1.5);
+    \draw[dashed, draw=nfslate] (9.0,0.0) -- (9.0,-1.5);
+  \end{scope}
+
+\end{tikzpicture}
+\end{document}

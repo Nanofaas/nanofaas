@@ -1,0 +1,70 @@
+% nanofaas offload: an edge control plane transparently proxies sync invocations
+% to a cloud control plane under pressure (or by eager per-function policy).
+% Background-layer containers are declared AFTER all blur-shadow nodes (see the
+% ordering note in fig-architecture.tex).
+\documentclass[border=8pt]{standalone}
+\usepackage{nanofaas-figs}
+\begin{document}
+\begin{tikzpicture}[nf, node distance=6mm]
+
+  % ---------- client ----------
+  \node[client, minimum width=20mm, minimum height=16mm] (client) {Client};
+
+  % ---------- edge control plane (inner nodes) ----------
+  \node[edgebox, right=24mm of client, minimum width=34mm] (sq)
+    {sync-queue admission\\{\scriptsize DEPTH $\cdot$ EST\_WAIT}};
+  \node[edgebox, below=13mm of sq, minimum width=34mm] (epods)
+    {warm pods\\{\scriptsize local dispatch}};
+  \node[edgebox, right=13mm of sq, minimum width=24mm] (proxy)
+    {offload\\proxy};
+
+  % ---------- cloud control plane (inner nodes) ----------
+  \node[cloudbox, right=54mm of proxy, minimum width=30mm] (cpods)
+    {warm pods\\{\scriptsize cloud dispatch}};
+
+  % ---------- failure semantics (shadowed; before the containers) ----------
+  \node[danger, above=8mm of proxy, minimum width=40mm, font=\sffamily\scriptsize] (fail)
+    {no local fallback\\remote failure $\Rightarrow$ \texttt{502 / 504}};
+
+  % ---------- trigger legend (shadowed; before the containers) ----------
+  \node[neutral, anchor=north west, align=left, font=\sffamily\scriptsize,
+        minimum height=0mm, text width=88mm] (leg)
+    at ($(epods.south west)+(-2mm,-15mm)$)
+    {\textbf{Offload trigger} (single hop, no fan-out):\\
+     \;$\bullet$\; \texttt{EAGER} — per-function policy (\texttt{offload.enabled=true})\\
+     \;$\bullet$\; \texttt{DEPTH} / \texttt{EST\_WAIT} — sync-queue backpressure rejection\\
+     Counters: \texttt{nanofaas\_offload\_total\{function,trigger\}},
+     \texttt{nanofaas\_offload\_failure\_total}};
+
+  % ---------- grouping containers (background layer, AFTER all shadowed nodes) ----------
+  \begin{scope}[on background layer]
+    \node[container, draw=nfblue, line width=1.5pt, fill=nfblue!9, fit=(sq)(epods)(proxy)] (edge) {};
+    \node[container, draw=nfgreen, line width=1.5pt, fill=nfgreen!12, fit=(cpods)] (cloud) {};
+  \end{scope}
+  \node[clabel, text=nfblue, anchor=south west] at ($(edge.north west)+(1mm,0.8mm)$)
+    {Edge control plane};
+  \node[clabel, text=nfgreen, anchor=south west] at ($(cloud.north west)+(1mm,0.8mm)$)
+    {Cloud control plane};
+
+  % ---------- request flow ----------
+  \draw[flow] (client.east) -- (client.east-|edge.west)
+    node[tag, midway, above] {\texttt{:invoke}};
+  \draw[flow] (sq.south) -- (epods.north)
+    node[tag, midway, right=0.5mm, fill=white, inner sep=1pt] {admit};
+  \draw[flow] (sq.east) -- (proxy.west)
+    node[tag, midway, above, align=center] {reject /\\eager};
+
+  % the offload hop, highlighted
+  \draw[offloadarr] (proxy.east) -- (proxy.east-|cloud.west)
+    node[text=nfamber, font=\sffamily\scriptsize, midway, above=0.6mm, align=center]
+      {transparent proxy $\cdot$ single hop\\\texttt{X-NanoFaaS-Offloaded}};
+
+  % ---------- responses ----------
+  \draw[ret] (cpods.south) to[out=-90,in=-90,looseness=0.55]
+    node[tagc, pos=0.5, below] {response — transparent to the client} (client.south);
+
+  % ---------- failure link ----------
+  \draw[flowc, draw=nfred, dashed] (fail.south) -- (proxy.north);
+
+\end{tikzpicture}
+\end{document}

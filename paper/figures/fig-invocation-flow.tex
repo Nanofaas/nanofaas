@@ -1,0 +1,73 @@
+% nanofaas invocation flow: synchronous (:invoke) and asynchronous (:enqueue)
+% paths as a UML-style sequence diagram with an alt combined fragment.
+\documentclass[border=8pt]{standalone}
+\usepackage{nanofaas-figs}
+\begin{document}
+\begin{tikzpicture}[nf]
+
+  % ---- lifeline x-coordinates (cm) ----
+  \def\cx{0}\def\px{4.0}\def\qx{8.2}\def\dx{11.5}\def\rx{15.2}
+  \def\ybot{-10.6}
+
+  % ---- participant heads ----
+  \node[client, minimum width=22mm] (cH) at (\cx,0) {Client / SDK};
+  \node[core,   minimum width=34mm] (pH) at (\px,0)
+    {Control Plane\\{\scriptsize validate $\cdot$ rate limit $\cdot$ ExecutionStore}};
+  \node[module, minimum width=30mm] (qH) at (\qx,0)
+    {Admission queue\\{\scriptsize sync-queue / async-queue}};
+  \node[core,   minimum width=24mm] (dH) at (\dx,0) {PoolDispatcher};
+  \node[backend,minimum width=26mm] (rH) at (\rx,0)
+    {Function runtime\\{\scriptsize LOCAL $\cdot$ POOL $\cdot$ DEPLOYMENT}};
+
+  % ---- lifelines ----
+  \foreach \n in {cH,pH,qH,dH,rH}{\draw[lifeline] (\n.south) -- ($(\n.south)-(0,10.1)$);}
+
+  % ---- message helpers ----
+  \newcommand{\msg}[4]{\draw[flow] (#1,#3) -- (#2,#3)
+      node[tag, midway, above=0.2mm]{#4};}
+  \newcommand{\rmsg}[4]{\draw[ret] (#1,#3) -- (#2,#3)
+      node[tagc, midway, above=0.2mm]{#4};}
+
+  % ================= alt combined fragment frame =================
+  \coordinate (fnw) at (-1.35,-0.7);
+  \coordinate (fse) at (16.15,\ybot+0.35);
+  \draw[draw=nfslate, line width=0.7pt] (fnw) rectangle (fse);
+  \node[anchor=north west, fill=nfslatebg, draw=nfslate, line width=0.5pt,
+        font=\sffamily\scriptsize\bfseries, inner sep=2pt, text=nfink] at (fnw) {alt};
+  \node[anchor=west, tagc, font=\sffamily\scriptsize\itshape]
+    at ($(fnw)+(0.95,-0.16)$) {[\,synchronous $\cdot$ \texttt{:invoke}\,]};
+
+  % ---------- synchronous operand ----------
+  \msg{\cx}{\px}{-1.35}{\texttt{POST \dots:invoke}}
+  % self-activity on the control plane
+  \draw[flow] ($(\px,-1.95)$) -- ++(0.9,0) -- ++(0,-0.5) -- ++(-0.9,0);
+  \node[tag, anchor=west] at ($(\px+0.95,-2.2)$) {validate $\cdot$ rate limit $\cdot$ create exec state};
+  \msg{\px}{\qx}{-2.9}{admit \scriptsize(else \texttt{429})}
+  \msg{\qx}{\dx}{-3.5}{dispatch}
+  \msg{\dx}{\rx}{-4.1}{forward \texttt{/invoke}}
+  \rmsg{\rx}{\dx}{-4.6}{result}
+  \rmsg{\dx}{\px}{-5.0}{update store}
+  \rmsg{\px}{\cx}{-5.4}{\texttt{200} + body}
+
+  % ---------- operand divider ----------
+  \draw[dashed, draw=nfslate] (-1.35,-5.9) -- (16.15,-5.9);
+  \node[anchor=west, tagc, font=\sffamily\scriptsize\itshape]
+    at (-1.30,-6.06) {[\,asynchronous $\cdot$ \texttt{:enqueue}\,]};
+
+  % ---------- asynchronous operand ----------
+  \msg{\cx}{\px}{-6.6}{\texttt{POST \dots:enqueue}}
+  \msg{\px}{\qx}{-7.15}{enqueue \scriptsize(needs async-queue; else \texttt{501})}
+  \rmsg{\px}{\cx}{-7.6}{\texttt{202} + execution id}
+
+  \draw[dotted, draw=nfslate] (-1.0,-8.0) -- (15.2,-8.0);
+  \node[fill=white, tagc, font=\sffamily\scriptsize\itshape] at (7.1,-8.0)
+    {scheduler drains the queue asynchronously};
+
+  \msg{\qx}{\dx}{-8.55}{dispatch}
+  \msg{\dx}{\rx}{-9.1}{forward \texttt{/invoke}}
+  \rmsg{\rx}{\dx}{-9.55}{result}
+  \rmsg{\dx}{\px}{-9.95}{update store}
+  \msg{\px}{\cx}{-10.35}{callback \scriptsize POST \texttt{callbackUrl}}
+
+\end{tikzpicture}
+\end{document}
