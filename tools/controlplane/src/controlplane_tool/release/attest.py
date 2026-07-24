@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from controlplane_tool.release.remote_retry import retry_on_connection_death
 from controlplane_tool.release.metrics import render_history, render_release_record
 from controlplane_tool.release.secrets import RemoteCosignCredentials
 from controlplane_tool.release.state import ArtifactEvidence, ReleaseJournal, digest_path
@@ -258,12 +259,11 @@ def _cosign(
 
 
 def _exec(provider: object, request: object, argv: tuple[str, ...]) -> object:
-    result = provider.exec_argv(  # type: ignore[attr-defined]
-        request,
-        argv,
-        env=None,
-        cwd=None,
-        dry_run=False,
+    result = retry_on_connection_death(
+        lambda: provider.exec_argv(  # type: ignore[attr-defined]
+            request, argv, env=None, cwd=None, dry_run=False
+        ),
+        describe=f"attestation {argv[0]}",
     )
     if int(getattr(result, "return_code", 0)) != 0:
         raise RuntimeError(f"release attestation command failed: {argv[0]}")

@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from controlplane_tool.release.remote_retry import retry_on_connection_death
 from controlplane_tool.images.plan import ImageCell, build_image_plan
 from controlplane_tool.release.versioning import normalize_version
 from controlplane_tool.release.state import ArtifactEvidence
@@ -328,12 +329,11 @@ def _exec(
     *,
     env: dict[str, str] | None = None,
 ) -> object:
-    result = provider.exec_argv(  # type: ignore[attr-defined]
-        request,
-        argv,
-        env=env,
-        cwd=None,
-        dry_run=False,
+    result = retry_on_connection_death(
+        lambda: provider.exec_argv(  # type: ignore[attr-defined]
+            request, argv, env=env, cwd=None, dry_run=False
+        ),
+        describe=f"publication {argv[0]}",
     )
     if int(getattr(result, "return_code", 0)) != 0:
         raise RuntimeError(f"release publication command failed: {argv[0]} {argv[1]}")
