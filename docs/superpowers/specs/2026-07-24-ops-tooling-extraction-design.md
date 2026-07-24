@@ -16,8 +16,10 @@ The three co-dependent Python packages move together:
 - `workflow-tasks` — the Workflow-of-Tasks execution engine (reusable library;
   a new version is already in progress).
 - `tui-toolkit` — Rich-based TUI components.
-- `controlplane-tool` — the nanofaas orchestration CLI + TUI (to be
-  **renamed** — see Open Decisions).
+- `controlplane-tool` — the nanofaas orchestration CLI + TUI, **renamed to
+  `nanolab`** (repo `miciav/nanolab`, CLI command `nanolab`, package
+  `controlplane_tool` → `nanolab`). The name captures the VM-provisioning +
+  e2e/loadtest/release role and avoids collision with the Java *control-plane*.
 
 ## Current state
 
@@ -50,22 +52,23 @@ standalone**. Rename `controlplane-tool`. `nanofaas` stays untouched and fully
 functional — nothing is removed from it yet, so no tooling breaks.
 
 **Tasks:**
-1. Decide the new name + repo name (see Open Decisions) — blocks the rest.
-2. `git filter-repo` a copy of `tools/{controlplane, workflow-tasks,
+1. `git filter-repo` a copy of `tools/{controlplane, workflow-tasks,
    tui-toolkit}` (history for those paths only) into a new repo working tree.
-3. Lay out the new repo as a uv workspace: root `pyproject`/`uv.workspace` with
-   the three members; internal path deps (`controlplane → workflow-tasks,
+2. Lay out the new repo as a uv workspace: root `pyproject`/`uv.workspace` with
+   the three members; internal path deps (`nanolab → workflow-tasks,
    tui-toolkit`) stay path deps within the workspace; `workflow-tasks` keeps
    its `git+https` VM-SDK deps unchanged.
-4. Apply the rename to `controlplane-tool` (package `controlplane_tool` →
-   new name, `[project.scripts]` entry points, imports, the
-   import-linter contract, `scripts/controlplane.sh`-style launchers that come
-   along, test references).
-5. Make the full gate green standalone: `uv run pytest` for all three members
-   (controlplane ≈ 624 tests, workflow-tasks ≈ its suite, tui-toolkit),
+3. Rename `controlplane-tool` → `nanolab`: package dir `controlplane_tool` →
+   `nanolab`, all `import controlplane_tool` → `import nanolab`, the
+   `[project.scripts]` entry points (`controlplane-tool`, `controlplane-quality`,
+   `controlplane-package-report` → `nanolab*`), the import-linter contract, any
+   `scripts/controlplane.sh`-style launchers that come along, and test
+   references. Keep `workflow_tasks` and `tui_toolkit` package names as-is.
+4. Make the full gate green standalone: `uv run pytest` for all three members
+   (nanolab ≈ 624 tests, workflow-tasks ≈ its suite, tui-toolkit),
    `ruff`, `basedpyright`, the import-linter contracts.
-6. Add minimal CI to the new repo (GitHub Actions running the gate).
-7. Create the GitHub repo (private), push with preserved history.
+5. Add minimal CI to the new repo (GitHub Actions running the gate).
+6. Create the GitHub repo (private), push with preserved history.
 
 **Explicitly deferred to later phases:** any change to `nanofaas` itself; the
 tool learning to operate on an external nanofaas checkout; consuming the new
@@ -89,13 +92,9 @@ points to consume the new repo (git dep or installed CLI). The final cut.
 
 ## Open decisions
 
-1. **The new name** for `controlplane-tool` and the repo. "controlplane-tool"
-   is misleading — nanofaas already has a *control-plane* (the Java pod); the
-   tool is the ops/release orchestrator, not that. To brainstorm together.
-   Candidate directions: orchestration (maestro/conductor/orchestryx),
-   provisioning/ops (opsforge/opsmith/flightdeck), or Workflow-of-Tasks-derived.
-2. **Repo shape:** single uv workspace with three members (recommended, keeps
-   the internal path deps working) vs. later splitting `workflow-tasks` /
+1. **Name — DECIDED: `nanolab`** (repo `miciav/nanolab`, CLI `nanolab`).
+2. **Repo shape:** single uv workspace with three members (chosen — keeps the
+   internal path deps working) vs. later splitting `workflow-tasks` /
    `tui-toolkit` into their own repos too. Phase 1 keeps them co-located.
 3. **Phase 2 source-access mechanism** — deferred, designed in its own spec.
 
