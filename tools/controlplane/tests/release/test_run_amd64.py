@@ -457,6 +457,56 @@ class _ArchiveProvider:
         return _TransferResult()
 
 
+class _FlakyProvider:
+    """Records exec attempts; each entry is a (return_code|exception) script."""
+
+    def __init__(self, outcomes: list[object]) -> None:
+        self._outcomes = outcomes
+        self.calls = 0
+
+    def exec_argv(self, request, argv, *, env, cwd, dry_run):
+        outcome = self._outcomes[self.calls]
+        self.calls += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return SimpleNamespace(return_code=outcome, stdout="", stderr="")
+
+
+def test_provider_exec_retries_on_dropped_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release_run.time, "sleep", lambda _s: None)
+    # dropped mid-command (-1), then a connect-time exception, then success
+    provider = _FlakyProvider([-1, ConnectionError("reset"), 0])
+
+    release_run._provider_exec(provider, object(), ("docker", "push", "img"))
+
+    assert provider.calls == 3
+
+
+def test_provider_exec_does_not_retry_a_real_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(release_run.time, "sleep", lambda _s: None)
+    # a genuine command failure (exit 1) must surface immediately, no retry
+    provider = _FlakyProvider([1, 0])
+
+    with pytest.raises(RuntimeError):
+        release_run._provider_exec(provider, object(), ("false",))
+
+    assert provider.calls == 1
+
+
+def test_provider_exec_gives_up_after_exhausting_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(release_run.time, "sleep", lambda _s: None)
+    provider = _FlakyProvider([-1, -1, -1, -1])
+
+    with pytest.raises(RuntimeError):
+        release_run._provider_exec(provider, object(), ("docker", "push", "img"))
+
+    assert provider.calls == 4
+
+
 def test_source_transfer_verifies_checksum_before_extracting(tmp_path: Path) -> None:
     archive = tmp_path / "source.tar"
     archive.write_bytes(b"source")

@@ -2046,14 +2046,32 @@ def _provider_exec(
             "{ " + script + " ; } >/tmp/release-cmd.log 2>&1; "
             "ec=$?; tail -c 65536 /tmp/release-cmd.log; exit $ec",
         )
-    result = provider.exec_argv(  # type: ignore[attr-defined]
-        request,
-        argv,
-        env=env,
-        cwd=cwd,
-        dry_run=False,
-    )
-    return _require_result(result, "remote release command")
+    # Retry on connection death only. Every release remote command is
+    # idempotent (tests, digest-pinned builds/pushes, mkdir -p), so a dropped
+    # connection mid-command is safe to re-run. A return_code of -1 is
+    # paramiko's "channel closed without an exit status" sentinel — never a
+    # real shell exit code — and a raised exception is a connect-time failure;
+    # both mean the connection failed, not the command. Real non-zero exits
+    # are NOT retried.
+    attempts = 4
+    for attempt in range(1, attempts + 1):
+        last = attempt == attempts
+        try:
+            result = provider.exec_argv(  # type: ignore[attr-defined]
+                request, argv, env=env, cwd=cwd, dry_run=False
+            )
+        except Exception as error:  # noqa: BLE001 - reconnect on any transport error
+            if last:
+                raise
+            _progress(f"  ⟳ remote connection error ({error}); retry {attempt}/{attempts - 1}")
+            time.sleep(min(5 * attempt, 30))
+            continue
+        if int(getattr(result, "return_code", 0)) == -1 and not last:
+            _progress(f"  ⟳ remote connection dropped mid-command; retry {attempt}/{attempts - 1}")
+            time.sleep(min(5 * attempt, 30))
+            continue
+        return _require_result(result, "remote release command")
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def _require_result(result: object, action: str) -> object:
