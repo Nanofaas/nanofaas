@@ -507,6 +507,32 @@ def test_provider_exec_gives_up_after_exhausting_retries(
     assert provider.calls == 4
 
 
+class _FlakyTransferProvider:
+    def __init__(self, outcomes: list[int]) -> None:
+        self._outcomes = outcomes
+        self.calls = 0
+
+    def transfer_to(self, request, *, source, destination):
+        outcome = self._outcomes[self.calls]
+        self.calls += 1
+        return SimpleNamespace(return_code=outcome, stdout="", stderr="")
+
+
+def test_provider_transfer_to_retries_on_dropped_connection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(release_run.time, "sleep", lambda _s: None)
+    provider = _FlakyTransferProvider([-1, 0])
+    source = tmp_path / "source.tar"
+    source.write_bytes(b"x")
+
+    release_run._provider_transfer_to(
+        provider, object(), source=source, destination="/srv/source.tar", action="upload"
+    )
+
+    assert provider.calls == 2
+
+
 def test_source_transfer_verifies_checksum_before_extracting(tmp_path: Path) -> None:
     archive = tmp_path / "source.tar"
     archive.write_bytes(b"source")

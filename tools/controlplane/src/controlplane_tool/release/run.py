@@ -540,12 +540,13 @@ def stage_source_archive(
         raise RuntimeError("source-tests evidence changed before consumption")
     _provider_exec(provider, request, ("rm", "-rf", "--", remote_source_dir))
     _provider_exec(provider, request, ("mkdir", "-p", remote_source_dir))
-    transfer = provider.transfer_to(  # type: ignore[attr-defined]
+    _provider_transfer_to(
+        provider,
         request,
         source=archive,
         destination=remote_archive,
+        action="source archive transfer",
     )
-    _require_result(transfer, "source archive transfer")
     checksum = _provider_exec(provider, request, ("sha256sum", remote_archive))
     actual = str(getattr(checksum, "stdout", "")).split(maxsplit=1)[0]
     expected = (expected_digest or local_digest).removeprefix("sha256:")
@@ -1109,12 +1110,13 @@ def _attest_release(
 
         def sign() -> tuple[ArtifactEvidence, ...]:
             _provider_exec(provider, stack_request, ("mkdir", "-p", remote_root))
-            transfer = provider.transfer_to(  # type: ignore[attr-defined]
+            _provider_transfer_to(
+                provider,
                 stack_request,
                 source=predicate_file,
                 destination=remote_predicate,
+                action="transfer release predicate",
             )
-            _require_result(transfer, "transfer release predicate")
             with stage_ghcr_credentials(
                 provider,
                 stack_request,
@@ -1360,12 +1362,13 @@ def _build_amd64_images(
         (plan.bake_file, remote_bake),
         (plan.buildkit_config, remote_buildkit),
     ):
-        result = provider.transfer_to(  # type: ignore[attr-defined]
+        _provider_transfer_to(
+            provider,
             request,
             source=source,
             destination=destination,
+            action=f"transfer {source.name}",
         )
-        _require_result(result, f"transfer {source.name}")
     _reset_named_builder(plan, provider, request)
     for command in amd64_build_commands(
         plan,
@@ -1390,12 +1393,13 @@ def _build_arm64_images(
 ) -> tuple[ArtifactEvidence, ...]:
     bake_file.write_text(render_bake_json(image_plan), encoding="utf-8")
     _provider_exec(provider, request, ("mkdir", "-p", str(Path(remote_bake).parent)))
-    transfer = provider.transfer_to(  # type: ignore[attr-defined]
+    _provider_transfer_to(
+        provider,
         request,
         source=bake_file,
         destination=remote_bake,
+        action=f"transfer {bake_file.name}",
     )
-    _require_result(transfer, f"transfer {bake_file.name}")
     for command in arm.arm64_build_commands(
         image_plan,
         builder_name=plan.builder.name,
@@ -2046,31 +2050,58 @@ def _provider_exec(
             "{ " + script + " ; } >/tmp/release-cmd.log 2>&1; "
             "ec=$?; tail -c 65536 /tmp/release-cmd.log; exit $ec",
         )
-    # Retry on connection death only. Every release remote command is
-    # idempotent (tests, digest-pinned builds/pushes, mkdir -p), so a dropped
-    # connection mid-command is safe to re-run. A return_code of -1 is
-    # paramiko's "channel closed without an exit status" sentinel — never a
-    # real shell exit code — and a raised exception is a connect-time failure;
-    # both mean the connection failed, not the command. Real non-zero exits
-    # are NOT retried.
+    result = _retry_on_connection_death(
+        lambda: provider.exec_argv(  # type: ignore[attr-defined]
+            request, argv, env=env, cwd=cwd, dry_run=False
+        ),
+        describe="remote command",
+    )
+    return _require_result(result, "remote release command")
+
+
+def _provider_transfer_to(
+    provider: object,
+    request: object,
+    *,
+    source: Path,
+    destination: str,
+    action: str,
+) -> object:
+    result = _retry_on_connection_death(
+        lambda: provider.transfer_to(  # type: ignore[attr-defined]
+            request, source=source, destination=destination
+        ),
+        describe=f"transfer {source.name}",
+    )
+    return _require_result(result, action)
+
+
+def _retry_on_connection_death(operation: Callable[[], object], *, describe: str) -> object:
+    """Run a remote operation, retrying only when the connection dies.
+
+    Every release remote operation is idempotent (tests, digest-pinned
+    builds/pushes/transfers, mkdir -p), so a dropped connection mid-operation
+    is safe to re-run. A return_code of -1 is paramiko's "channel closed
+    without an exit status" sentinel — never a real shell exit code — and a
+    raised exception is a connect-time failure; both mean the connection
+    failed, not the operation. Real non-zero exits are NOT retried.
+    """
     attempts = 4
     for attempt in range(1, attempts + 1):
         last = attempt == attempts
         try:
-            result = provider.exec_argv(  # type: ignore[attr-defined]
-                request, argv, env=env, cwd=cwd, dry_run=False
-            )
+            result = operation()
         except Exception as error:  # noqa: BLE001 - reconnect on any transport error
             if last:
                 raise
-            _progress(f"  ⟳ remote connection error ({error}); retry {attempt}/{attempts - 1}")
+            _progress(f"  ⟳ {describe} connection error ({error}); retry {attempt}/{attempts - 1}")
             time.sleep(min(5 * attempt, 30))
             continue
         if int(getattr(result, "return_code", 0)) == -1 and not last:
-            _progress(f"  ⟳ remote connection dropped mid-command; retry {attempt}/{attempts - 1}")
+            _progress(f"  ⟳ {describe} connection dropped; retry {attempt}/{attempts - 1}")
             time.sleep(min(5 * attempt, 30))
             continue
-        return _require_result(result, "remote release command")
+        return result
     raise AssertionError("unreachable")  # pragma: no cover
 
 
