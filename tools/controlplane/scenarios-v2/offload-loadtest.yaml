@@ -1,5 +1,0 @@
-workflow: offload-loadtest
-backend: k8s
-functions:
-  - word-stats-java
-  - json-transform-java

@@ -1,4 +1,0 @@
-workflow: loadtest
-autoscaling: true
-functions:
-  - word-stats-java

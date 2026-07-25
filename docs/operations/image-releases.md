@@ -55,11 +55,14 @@ Credentials are file-based and must be private (mode `0600`, outside the
 repository); secret values never appear on the command line or in logs.
 
 ```bash
-controlplane-tool release plan v0.18.0 \
-  --environment tools/controlplane/environments/azure-release.yaml
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
 
-controlplane-tool release run v0.18.0 \
-  --environment tools/controlplane/environments/azure-release.yaml \
+./nanolab.sh release plan v0.18.0 \
+  --environment packages/nanolab/environments/azure-release.yaml
+
+./nanolab.sh release run v0.18.0 \
+  --environment packages/nanolab/environments/azure-release.yaml \
   --ghcr-token-file /secure/ghcr-token \
   --cosign-key-file /secure/cosign.key \
   --cosign-password-file /secure/cosign-password \
@@ -82,7 +85,7 @@ unless `--keep` is passed.
    candidates by digest.
 5. `aggregate` + `regression-gate` — per-metric medians compared against the
    newest identical-profile record in `docs/performance/releases/`
-   (thresholds in `tools/controlplane/release.yaml`).
+   (thresholds in `packages/nanolab/release.yaml` in the nanolab checkout).
 6. `arm64-build` + `arm64-smoke` — native ARM64 builds and functional smoke on
    a dedicated `Standard_D8ps_v5` builder VM; images push through a
    `localhost:5000` tunnel into the stack registry so references and digests

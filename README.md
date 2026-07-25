@@ -88,8 +88,10 @@ the [quickstart](docs/quickstart.md).
 - `sdks/java/`: reusable Java invocation SDK.
 - `services/java/warm-echo/`: long-running warm-service example.
 - `functions/`: example functions and their manifests.
-- `tools/controlplane/`: VM provisioning and scenario orchestration.
 - `docs/`: operational and architectural documentation.
+
+VM provisioning and scenario orchestration now live in the separate
+[nanolab](https://github.com/miciav/nanolab) repository.
 
 ## Documentation
 

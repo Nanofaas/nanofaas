@@ -1,3 +1,0 @@
-workflow: offload
-functions:
-  - word-stats-java
