@@ -5,53 +5,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
+# The ops/provisioning tool now lives in a separate checkout: https://github.com/miciav/nanolab
+export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source from here
+
 # Canonical control-plane orchestration wrapper
-./scripts/controlplane.sh --help
-./scripts/controlplane.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run
-./scripts/controlplane.sh e2e run validate-k3s --lifecycle multipass --dry-run
-./scripts/controlplane.sh e2e all --only validate-k3s --dry-run
+(cd ../nanolab && ./nanolab.sh --help)
+(cd ../nanolab && ./nanolab.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run)
+(cd ../nanolab && ./nanolab.sh e2e run validate-k3s --lifecycle multipass --dry-run)
+(cd ../nanolab && ./nanolab.sh e2e all --only validate-k3s --dry-run)
 
 # Build all modules
 ./gradlew build
 
 # Run locally
-./scripts/controlplane.sh run --profile core # API on :8080, metrics on :8081
+(cd ../nanolab && ./nanolab.sh run --profile core) # API on :8080, metrics on :8081
 ./gradlew :services:java:warm-echo:bootRun # Example service on :8080
 
 # Run all tests
 ./gradlew test
 
 # Run a single test class
-./scripts/controlplane.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest
+(cd ../nanolab && ./nanolab.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest)
 
 # E2E tests (requires Docker)
-./scripts/controlplane.sh e2e run validate-docker-pool
-./scripts/controlplane.sh e2e run validate-buildpack-pool
+(cd ../nanolab && ./nanolab.sh e2e run validate-docker-pool)
+(cd ../nanolab && ./nanolab.sh e2e run validate-buildpack-pool)
 
 # CLI E2E (full CLI against k3s, 47 tests)
-./scripts/controlplane.sh cli-test run vm
-./scripts/controlplane.sh cli-test run vm --no-cleanup-vm
+(cd ../nanolab && ./nanolab.sh cli-test run vm)
+(cd ../nanolab && ./nanolab.sh cli-test run vm --no-cleanup-vm)
 
 # K3s E2E with Curl (self-contained Multipass VM)
-./scripts/controlplane.sh e2e run validate-k3s
-./scripts/controlplane.sh e2e run validate-k3s --no-cleanup-vm
+(cd ../nanolab && ./nanolab.sh e2e run validate-k3s)
+(cd ../nanolab && ./nanolab.sh e2e run validate-k3s --no-cleanup-vm)
 
 # Kubernetes E2E (k3s in Multipass)
-./scripts/controlplane.sh e2e run validate-k3s
+(cd ../nanolab && ./nanolab.sh e2e run validate-k3s)
 # or:
 ./gradlew k8sE2e
 
 # Build OCI images
-./scripts/controlplane.sh image --profile all
+(cd ../nanolab && ./nanolab.sh image --profile all)
 ./gradlew :services:java:warm-echo:bootBuildImage
 
 # Control-plane optional module selection
-./scripts/controlplane.sh run --profile all
-./scripts/controlplane.sh test --profile all
-./scripts/controlplane.sh jar --profile core
-./scripts/controlplane.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run
+(cd ../nanolab && ./nanolab.sh run --profile all)
+(cd ../nanolab && ./nanolab.sh test --profile all)
+(cd ../nanolab && ./nanolab.sh jar --profile core)
+(cd ../nanolab && ./nanolab.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run)
 # No-K8s managed deployment profile
-./scripts/controlplane.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local'
+(cd ../nanolab && ./nanolab.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local')
 # Use --modules <csv|none|all> only for advanced overrides.
 
 # Native build (GraalVM via SDKMAN)
@@ -65,7 +68,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cd experiments && python -m pytest tests/ -v
 ```
 
-VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library (`tools/workflow-tasks/src/workflow_tasks/infra/ansible_assets/`).
+VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library in the `nanolab` repo (`packages/workflow-tasks/src/workflow_tasks/infra/ansible_assets/`).
 
 ## Architecture Overview
 

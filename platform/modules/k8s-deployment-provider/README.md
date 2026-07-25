@@ -33,4 +33,4 @@ when more than one is on the classpath.
 
 - Requires cluster access (`KUBECONFIG` for E2E; fabric8 mock server in unit
   tests).
-- E2E: `./scripts/controlplane.sh e2e run validate-k3s`.
+- E2E: `./nanolab.sh e2e run validate-k3s` (from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo).

@@ -18,8 +18,8 @@
 - `./gradlew :services:java:warm-echo:bootRun` — run the warm-echo example service locally.
 - `./gradlew :control-plane:bootBuildImage` and `:services:java:warm-echo:bootBuildImage` — create buildpack images.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
-- `scripts/controlplane.sh e2e run docker` and `scripts/controlplane.sh e2e run buildpack` — run local E2E suites.
-- `scripts/controlplane.sh e2e run k3s-junit-curl` — provision a Multipass VM with k3s, deploy via Helm, run curl checks, and then run `K8sE2eTest`.
+- `nanolab.sh e2e run docker` and `nanolab.sh e2e run buildpack` (run from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo) — run local E2E suites.
+- `nanolab.sh e2e run k3s-junit-curl` — provision a Multipass VM with k3s, deploy via Helm, run curl checks, and then run `K8sE2eTest`.
 
 ## Coding Style & Naming Conventions
 
@@ -31,7 +31,7 @@
 
 - JUnit 5 is the primary framework; tests are named `*Test.java`.
 - E2E tests use Testcontainers, RestAssured, and Fabric8; ensure Docker/compatible runtime is available.
-- K8s E2E (`K8sE2eTest`) runs via `scripts/controlplane.sh e2e run k3s-junit-curl` on a real k3s cluster in Multipass.
+- K8s E2E (`K8sE2eTest`) runs via `nanolab.sh e2e run k3s-junit-curl` on a real k3s cluster in Multipass.
 
 ## Project Constraints & Requirements (FaaS MVP)
 

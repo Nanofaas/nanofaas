@@ -67,17 +67,19 @@ deployment is performed through the Helm chart in `deploy/helm/nanofaas`.
 The Python control-plane tool reads versioned YAML scenarios and environment bindings. Its only commands are `run`, `plan`, `list`, `inspect`, `doctor`, and `tui`.
 
 ```bash
-scripts/controlplane.sh list
-scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/multipass.yaml
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/external.yaml.example
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh list
+./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+  --environment packages/nanolab/environments/multipass.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+  --environment packages/nanolab/environments/external.yaml.example
 ```
 
 The external environment is suitable for a remote VM reachable through SSH and
 provisioned separately with Ansible. Azure and Proxmox use the same workflow
-model. See [the control-plane tool guide](tools/controlplane/README.md) and the
-[quickstart](docs/quickstart.md).
+model. See [the nanolab guide](https://github.com/miciav/nanolab#readme) and
+the [quickstart](docs/quickstart.md).
 
 ## Repository layout
 

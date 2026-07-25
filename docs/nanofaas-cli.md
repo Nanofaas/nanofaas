@@ -35,9 +35,11 @@ The platform CLI lifecycle is represented by
 platform validation:
 
 ```bash
-scripts/controlplane.sh plan tools/controlplane/scenarios-v2/cli.yaml
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/cli.yaml \
-  --environment tools/controlplane/environments/external.yaml.example
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh plan packages/nanolab/scenarios-v2/cli.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/cli.yaml \
+  --environment packages/nanolab/environments/external.yaml.example
 ```
 
 The scenario builds the CLI, applies selected function manifests, lists functions,

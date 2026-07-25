@@ -211,4 +211,4 @@ nanofaas exec get <executionId> --watch
 - Add more payload cases in `payloads/` for edge cases and error paths.
 - Deploy to Kubernetes: see `docs/k8s.md`.
 - Run a full E2E load test: see `docs/e2e-tutorial.md`.
-- Add the function key to a YAML scenario, inspect it with `scripts/controlplane.sh plan <scenario>`, then execute the same file with `scripts/controlplane.sh run <scenario>`.
+- Add the function key to a YAML scenario, inspect it with `nanolab.sh plan <scenario>`, then execute the same file with `nanolab.sh run <scenario>` (from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo).

@@ -66,35 +66,42 @@ through the repository launcher; first verify its local prerequisites and list
 the available scenarios:
 
 ```bash
-scripts/controlplane.sh doctor
-scripts/controlplane.sh list
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh doctor
+./nanolab.sh list
 ```
 
 Inspect a workflow before running it:
 
 ```bash
-scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-container.yaml
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-container.yaml
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh plan packages/nanolab/scenarios-v2/validate-container.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml
 ```
 
 For k3s in Multipass:
 
 ```bash
-scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/multipass.yaml
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+  --environment packages/nanolab/environments/multipass.yaml
 ```
 
-For an SSH-only remote VM, copy `tools/controlplane/environments/external.yaml.example`, set its host/user/home, provision the checkout with Ansible, then use the same `plan` or `run` command.
+For an SSH-only remote VM, copy `packages/nanolab/environments/external.yaml.example` (in your `nanolab` checkout), set its host/user/home, provision the checkout with Ansible, then use the same `plan` or `run` command.
 
 Azure and Proxmox use the same workflow. Copy the matching example from
-`tools/controlplane/environments/`, fill in provider values, and run with
+`packages/nanolab/environments/`, fill in provider values, and run with
 `--provision`. The tool deletes managed VMs when the workflow exits; use `--keep`
 only when they must remain available for inspection. External VMs are never deleted.
 
 Start the interactive client with:
 
 ```bash
-scripts/controlplane.sh tui
+export NANOFAAS_ROOT="$(pwd)"
+(cd ../nanolab && ./nanolab.sh tui)
 ```
 
 Its adapted navigation exposes **Validation**, **CLI**, **Load Testing**, and

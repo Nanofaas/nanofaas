@@ -7,8 +7,10 @@ NanoFaaS uses the same scenario workflow locally and on remote VMs.
 Start Docker, then inspect and run the bundled container scenario:
 
 ```bash
-scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-container.yaml
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-container.yaml
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh plan packages/nanolab/scenarios-v2/validate-container.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml
 ```
 
 ## Kubernetes in Multipass
@@ -16,10 +18,12 @@ scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-container.y
 On the first run, explicitly create or reuse the named VM and apply the separately maintained Ansible tasks:
 
 ```bash
-scripts/controlplane.sh plan tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/multipass.yaml
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/multipass.yaml \
+export NANOFAAS_ROOT="$(pwd)"
+cd ../nanolab
+./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+  --environment packages/nanolab/environments/multipass.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+  --environment packages/nanolab/environments/multipass.yaml \
   --provision
 ```
 
@@ -27,12 +31,13 @@ The result contains k3s, Helm, a local registry, JDK 21 and the repository at `/
 
 ## Remote VM through SSH and Ansible
 
-Copy `tools/controlplane/environments/external.yaml.example` to `external.yaml` and set host/user/home. The first run connects over SSH, applies the same idempotent Ansible tasks, and synchronizes the repository; it never creates or destroys the remote VM:
+Copy `packages/nanolab/environments/external.yaml.example` (in your `nanolab` checkout) to `external.yaml` and set host/user/home. The first run connects over SSH, applies the same idempotent Ansible tasks, and synchronizes the repository; it never creates or destroys the remote VM:
 
 ```bash
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/validate-k8s.yaml \
-  --environment tools/controlplane/environments/external.yaml \
-  --provision
+export NANOFAAS_ROOT="$(pwd)"
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+  --environment packages/nanolab/environments/external.yaml \
+  --provision)
 ```
 
 Omit `--provision` on subsequent runs.
@@ -44,10 +49,11 @@ function, runs k6, verifies autoscaling, captures metrics and cleans up the
 deployment. Provisioning only prepares the VM and installs its prerequisites.
 
 ```bash
-scripts/controlplane.sh run tools/controlplane/scenarios-v2/loadtest.yaml \
-  --environment tools/controlplane/environments/external.yaml \
+export NANOFAAS_ROOT="$(pwd)"
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/loadtest.yaml \
+  --environment packages/nanolab/environments/external.yaml \
   --provision \
-  --run-dir tools/controlplane/runs/e2e
+  --run-dir packages/nanolab/runs/e2e)
 ```
 
 The stack host and NodePort endpoints are derived from the environment. Explicit

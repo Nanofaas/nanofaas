@@ -29,4 +29,4 @@ Backend selection: set
 
 - Requires a running container daemon; `DeployCommandTest` and the
   `validate-container` scenarios fail without one.
-- E2E: `./scripts/controlplane.sh e2e run validate-docker-pool`.
+- E2E: `./nanolab.sh e2e run validate-docker-pool` (from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo).
