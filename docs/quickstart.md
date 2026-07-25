@@ -61,9 +61,9 @@ The smoke test starts a temporary local HTTP stub and verifies `--help`,
 
 ## Provision and validate a platform
 
-The control-plane tool owns this lifecycle. It uses a locked uv environment
-through the repository launcher; first verify its local prerequisites and list
-the available scenarios:
+The nanolab tool (a separate checkout) owns this lifecycle. It uses a locked
+uv environment; first verify its local prerequisites and list the available
+scenarios:
 
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
@@ -121,11 +121,11 @@ outside YAML: run `az login` for Azure, and provide the Proxmox password through
 the environment variable named by `password_env`. Do not store secrets in YAML.
 
 For the complete command reference, provider configuration, VM cleanup rules,
-and load-test workflow, read the [control-plane tool guide](../tools/controlplane/README.md).
+and load-test workflow, read the [nanolab guide](https://github.com/miciav/nanolab#readme).
 
 ## Where to go next
 
 - [CLI guide](nanofaas-cli.md) for function operations and deploy semantics.
-- [Control-plane tool guide](../tools/controlplane/README.md) for provisioning and scenarios.
+- [nanolab guide](https://github.com/miciav/nanolab#readme) for provisioning and scenarios.
 - [Testing guide](testing.md) for the appropriate test layer.
 - [E2E tutorial](e2e-tutorial.md) for scenario-specific validation.

@@ -7,7 +7,7 @@ The Java control plane is built directly with Gradle and deployed to Kubernetes 
 helm upgrade --install nanofaas deploy/helm/nanofaas
 ```
 
-The Python tool coordinates validation and experiments without owning task implementations. Scenarios under `tools/controlplane/scenarios-v2` compose tasks from `workflow-tasks`; environment files bind host, stack, and load-generator roles.
+The nanolab tool coordinates validation and experiments without owning task implementations. Scenarios under `packages/nanolab/scenarios-v2` (in the nanolab checkout) compose tasks from `workflow-tasks`; environment files bind host, stack, and load-generator roles.
 
 ```bash
 export NANOFAAS_ROOT="$(pwd)"

@@ -31,8 +31,8 @@ expected response.
 ## Provisioning and validation
 
 The platform CLI lifecycle is represented by
-`tools/controlplane/scenarios-v2/cli.yaml` and uses the same workflow engine as
-platform validation:
+`packages/nanolab/scenarios-v2/cli.yaml` (in the nanolab checkout) and uses the
+same workflow engine as platform validation:
 
 ```bash
 export NANOFAAS_ROOT="$(pwd)"

@@ -60,6 +60,6 @@ The stack host and NodePort endpoints are derived from the environment. Explicit
 URL options remain available as overrides. `--provision` installs k6 on the
 dedicated `loadgen` role when present, otherwise on `stack`; omit it after the
 first run. For a two-VM Multipass run use
-`tools/controlplane/environments/multipass-two-vm.yaml`.
+`packages/nanolab/environments/multipass-two-vm.yaml` (in the nanolab checkout).
 
 Use `--keep` while investigating a failed environment and task slicing for targeted reruns.

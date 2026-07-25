@@ -95,7 +95,7 @@ the [quickstart](docs/quickstart.md).
 
 - [Quickstart](docs/quickstart.md): local build, CLI, and infrastructure paths.
 - [CLI guide](docs/nanofaas-cli.md): commands, payloads, deploy behavior, and scope.
-- [Control-plane tool guide](tools/controlplane/README.md): provisioning, environments, and scenarios.
+- [nanolab guide](https://github.com/miciav/nanolab#readme): provisioning, environments, and scenarios.
 - [Control-plane operation](docs/control-plane.md): Java control-plane deployment overview.
 - [Testing guide](docs/testing.md): test layers and commands.
 - [E2E tutorial](docs/e2e-tutorial.md): validation environments and scenarios.
