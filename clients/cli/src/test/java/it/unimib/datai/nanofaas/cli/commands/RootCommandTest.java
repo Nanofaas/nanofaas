@@ -76,7 +76,7 @@ class RootCommandTest {
         int exit = cli.execute("--version");
 
         assertThat(exit).isZero();
-        assertThat(out.toString()).contains("nanofaas 0.17.0");
+        assertThat(out.toString()).contains("nanofaas 0.17.1");
     }
 
     @Test
