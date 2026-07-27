@@ -27,10 +27,13 @@ test("handleJsonTransform satisfies the shared contract", async () => {
 });
 
 test("handleJsonTransform aggregates the shared sample", async () => {
-    const input = JSON.parse(await readFile(
-        "../../../tools/controlplane/scenarios/payloads/json-transform-sample.json",
+    // The scenario sample is generated from this corpus' first case, so read the
+    // corpus directly rather than the derived copy the ops tooling carries.
+    const corpus = JSON.parse(await readFile(
+        "../../test-data/json-transform/performance-small.json",
         "utf8",
     ));
+    const input = corpus.cases[0].input;
     const output = await handleJsonTransform(createContext(), {
         input,
     });
