@@ -1,9 +1,0 @@
-provider: multipass
-roles:
-  stack:
-    name: nanofaas-stack
-  loadgen:
-    name: nanofaas-loadgen
-    cpus: 2
-    memory: 2G
-    disk: 10G

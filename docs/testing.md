@@ -1,10 +1,10 @@
 # Testing
 
-Run Java tests with `./gradlew test`. Run the portable workflow libraries and tool independently:
+Run Java tests with `./gradlew test`. Run the nanolab workspace tests from the
+separate [nanolab](https://github.com/miciav/nanolab) checkout:
 
 ```bash
-cd tools/workflow-tasks && uv run pytest -q
-cd ../controlplane && uv run pytest -q
+cd ../nanolab && uv run --locked --all-packages --all-groups pytest -c packages/nanolab/pyproject.toml packages/nanolab/tests
 ```
 
 Plan tests do not need Docker or a VM:

@@ -32,7 +32,14 @@ public record FunctionResponse(
         String runtimeCommand,
         ScalingConfig scalingConfig,
         List<String> imagePullSecrets,
-        OffloadPolicy offload
+        OffloadPolicy offload,
+        /**
+         * Names of the objects the deployment backend created for this function —
+         * on Kubernetes the Deployment, Service and namespace. Absent for
+         * non-managed functions, which have no such objects.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        Map<String, String> deploymentObjects
 ) {
     public static FunctionResponse from(FunctionSpec spec,
                                         ExecutionMode requestedExecutionMode,
@@ -40,6 +47,17 @@ public record FunctionResponse(
                                         String deploymentBackend,
                                         String degradationReason,
                                         String endpointUrl) {
+        return from(spec, requestedExecutionMode, effectiveExecutionMode, deploymentBackend,
+                degradationReason, endpointUrl, Map.of());
+    }
+
+    public static FunctionResponse from(FunctionSpec spec,
+                                        ExecutionMode requestedExecutionMode,
+                                        ExecutionMode effectiveExecutionMode,
+                                        String deploymentBackend,
+                                        String degradationReason,
+                                        String endpointUrl,
+                                        Map<String, String> deploymentObjects) {
         return new FunctionResponse(
                 spec.name(),
                 spec.image(),
@@ -59,7 +77,8 @@ public record FunctionResponse(
                 spec.runtimeCommand(),
                 spec.scalingConfig(),
                 spec.imagePullSecrets(),
-                spec.offload()
+                spec.offload(),
+                deploymentObjects
         );
     }
 
@@ -75,7 +94,8 @@ public record FunctionResponse(
                 registeredFunction.deploymentMetadata().effectiveExecutionMode(),
                 registeredFunction.deploymentMetadata().deploymentBackend(),
                 registeredFunction.deploymentMetadata().degradationReason(),
-                registeredFunction.deploymentMetadata().effectiveEndpointUrl()
+                registeredFunction.deploymentMetadata().effectiveEndpointUrl(),
+                registeredFunction.deploymentMetadata().deploymentObjects()
         );
     }
 }

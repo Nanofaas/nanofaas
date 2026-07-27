@@ -1,4 +1,0 @@
-provider: multipass
-roles:
-  stack:
-    name: nanofaas-stack

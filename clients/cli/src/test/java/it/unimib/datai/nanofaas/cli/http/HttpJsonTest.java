@@ -29,6 +29,21 @@ class HttpJsonTest {
     }
 
     @Test
+    void functionDetailsCarriesTheBackendObjectNamesThroughTheCli() {
+        // `fn get` reprints its own copy of the response, so anything FunctionDetails
+        // does not model is dropped between the control plane and the user.
+        HttpJson json = new HttpJson();
+        String fromControlPlane = """
+                {"name":"word-stats","image":"img:1",\
+                "deploymentObjects":{"deployment":"fn-word-stats","namespace":"nanofaas-e2e"}}""";
+
+        String reprinted = json.toJson(json.fromJson(fromControlPlane, FunctionDetails.class));
+
+        assertThat(reprinted).contains("\"deployment\":\"fn-word-stats\"");
+        assertThat(reprinted).contains("\"namespace\":\"nanofaas-e2e\"");
+    }
+
+    @Test
     void constructorWithCustomMapper() {
         ObjectMapper custom = new ObjectMapper().findAndRegisterModules();
         HttpJson json = new HttpJson(custom);

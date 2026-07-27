@@ -152,7 +152,8 @@ public class FunctionService {
                         provisionResult.effectiveExecutionMode(),
                         provisionResult.backendId(),
                         provisionResult.degradationReason(),
-                        provisionResult.endpointUrl()
+                        provisionResult.endpointUrl(),
+                        provisionResult.deploymentObjects()
                 )
         );
     }

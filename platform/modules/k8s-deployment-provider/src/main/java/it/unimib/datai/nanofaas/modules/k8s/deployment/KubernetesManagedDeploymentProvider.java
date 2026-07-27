@@ -4,8 +4,11 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesDeploymentBuilder;
 import it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManager;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 @Component
 public class KubernetesManagedDeploymentProvider implements ManagedDeploymentProvider {
@@ -36,7 +39,10 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
 
     @Override
     public ProvisionResult provision(FunctionSpec spec) {
-        return new ProvisionResult(resourceManager.provision(spec), backendId());
+        return new ProvisionResult(resourceManager.provision(spec), backendId(), Map.of(
+                ProvisionResult.DEPLOYMENT, KubernetesDeploymentBuilder.deploymentName(spec.name()),
+                ProvisionResult.SERVICE, KubernetesDeploymentBuilder.serviceName(spec.name()),
+                ProvisionResult.NAMESPACE, resourceManager.getResolvedNamespace()));
     }
 
     @Override

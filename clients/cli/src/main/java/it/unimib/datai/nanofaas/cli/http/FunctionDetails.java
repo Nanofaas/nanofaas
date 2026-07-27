@@ -32,7 +32,16 @@ public record FunctionDetails(
         String runtimeCommand,
         ScalingConfig scalingConfig,
         List<String> imagePullSecrets,
-        OffloadPolicy offload
+        OffloadPolicy offload,
+        /**
+         * Names of the objects the deployment backend created — the Deployment,
+         * Service and namespace on Kubernetes. Carried so `fn get` reprints what
+         * the control plane reported instead of dropping it on the way through.
+         *
+         * <p>Not part of {@link #matches}: it is derived by the backend, never
+         * requested, so it says nothing about whether a function has drifted.
+         */
+        Map<String, String> deploymentObjects
 ) {
     public boolean matches(FunctionSpec requested) {
         ExecutionMode requestedMode = requested.executionMode() == null

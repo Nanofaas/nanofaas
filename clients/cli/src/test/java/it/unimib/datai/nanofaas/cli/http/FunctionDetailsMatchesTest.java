@@ -19,7 +19,7 @@ class FunctionDetailsMatchesTest {
     private static FunctionDetails details(OffloadPolicy offload) {
         return new FunctionDetails("echo", "img", List.of(), Map.of(), null,
                 5000, 1, 10, 0, null, ExecutionMode.POOL, ExecutionMode.POOL,
-                null, null, RuntimeMode.HTTP, null, null, null, offload);
+                null, null, RuntimeMode.HTTP, null, null, null, offload, null);
     }
 
     private static FunctionSpec spec(OffloadPolicy offload) {
