@@ -63,7 +63,7 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         try {
             FunctionState existing = states.get(spec.name());
             if (existing != null) {
-                return new ProvisionResult(existing.proxy.endpointUrl(), backendId());
+                return new ProvisionResult(existing.proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
             }
 
             ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
@@ -71,7 +71,7 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
             states.put(spec.name(), state);
             try {
                 scaleTo(state, desiredReplicas(spec));
-                return new ProvisionResult(proxy.endpointUrl(), backendId());
+                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
             } catch (RuntimeException e) {
                 for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
                     suppressCleanupFailure(e, () -> removeReplica(state, replicaIndex));
@@ -222,9 +222,16 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         return env;
     }
 
+    private static Map<String, String> deploymentObjects(String functionName) {
+        return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, containerNamePrefix(functionName));
+    }
+
+    private static String containerNamePrefix(String functionName) {
+        return "nanofaas-" + normalizeName(functionName);
+    }
+
     private String containerName(String functionName, int replicaIndex) {
-        String normalized = normalizeName(functionName);
-        return "nanofaas-" + normalized + "-r" + replicaIndex;
+        return containerNamePrefix(functionName) + "-r" + replicaIndex;
     }
 
     private String baseUrl(int hostPort) {

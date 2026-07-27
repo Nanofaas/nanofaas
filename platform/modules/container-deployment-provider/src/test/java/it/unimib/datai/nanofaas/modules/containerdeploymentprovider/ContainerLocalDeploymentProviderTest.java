@@ -54,6 +54,28 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void provision_reportsThePrefixTheReplicaContainersAreActuallyNamedWith() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> proxy
+        );
+
+        // An upper-case name proves the prefix carries the provider's normalisation,
+        // which is the part a client cannot reproduce from the function name alone.
+        ProvisionResult result = provider.provision(spec("Word_Stats", 2));
+
+        String prefix = result.deploymentObjects().get(ProvisionResult.CONTAINER_NAME_PREFIX);
+        assertThat(prefix).isEqualTo("nanofaas-word-stats");
+        assertThat(adapter.startedSpecs().stream().map(ContainerInstanceSpec::containerName))
+                .containsExactly(prefix + "-r1", prefix + "-r2");
+    }
+
+    @Test
     void setReplicas_scalesUpAndDownAndTracksReadyReplicas() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         MutableEndpointProbe probe = new MutableEndpointProbe();

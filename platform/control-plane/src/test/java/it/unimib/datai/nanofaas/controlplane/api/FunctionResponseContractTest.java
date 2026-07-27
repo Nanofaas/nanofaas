@@ -3,11 +3,13 @@ package it.unimib.datai.nanofaas.controlplane.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -150,6 +152,70 @@ class FunctionResponseContractTest {
 
         assertThat(json).contains("\"endpointUrl\":\"http://managed:8080/invoke\"");
         assertThat(json).doesNotContain("\"endpointUrl\":\"http://user-provided:8080/invoke\"");
+    }
+
+    @Test
+    void serialization_reportsTheObjectNamesTheBackendCreated() throws Exception {
+        FunctionSpec spec = new FunctionSpec(
+                "word-stats",
+                "img:latest",
+                null,
+                null,
+                null,
+                30000,
+                4,
+                100,
+                3,
+                null,
+                ExecutionMode.DEPLOYMENT,
+                null,
+                null,
+                null
+        );
+
+        FunctionResponse response = FunctionResponse.from(new RegisteredFunction(
+                spec,
+                new DeploymentMetadata(
+                        ExecutionMode.DEPLOYMENT,
+                        ExecutionMode.DEPLOYMENT,
+                        "k8s",
+                        null,
+                        "http://managed:8080/invoke",
+                        Map.of(
+                                ProvisionResult.DEPLOYMENT, "fn-word-stats",
+                                ProvisionResult.NAMESPACE, "nanofaas-e2e"
+                        )
+                )
+        ));
+
+        String json = objectMapper.writeValueAsString(response);
+
+        assertThat(json).contains("\"deployment\":\"fn-word-stats\"");
+        assertThat(json).contains("\"namespace\":\"nanofaas-e2e\"");
+    }
+
+    @Test
+    void serialization_omitsDeploymentObjectsWhenNothingWasProvisioned() throws Exception {
+        FunctionSpec spec = new FunctionSpec(
+                "fn",
+                "img:latest",
+                null,
+                null,
+                null,
+                30000,
+                4,
+                100,
+                3,
+                "http://user:8080/invoke",
+                ExecutionMode.LOCAL,
+                null,
+                null,
+                null
+        );
+
+        String json = objectMapper.writeValueAsString(FunctionResponse.fromNonManaged(spec));
+
+        assertThat(json).doesNotContain("\"deploymentObjects\":");
     }
 
     @Test

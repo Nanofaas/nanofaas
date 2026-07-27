@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +37,7 @@ class KubernetesManagedDeploymentProviderTest {
                 null
         );
         when(resourceManager.provision(spec)).thenReturn("http://fn-echo.default.svc.cluster.local:8080/invoke");
+        when(resourceManager.getResolvedNamespace()).thenReturn("nanofaas");
         when(resourceManager.getReadyReplicas("echo")).thenReturn(3);
 
         ProvisionResult result = provider.provision(spec);
@@ -52,5 +54,37 @@ class KubernetesManagedDeploymentProviderTest {
 
         verify(resourceManager).setReplicas("echo", 2);
         verify(resourceManager).deprovision("echo");
+    }
+
+    @Test
+    void provision_namesTheObjectsItCreatedSoClientsNeedNotGuessThem() {
+        KubernetesResourceManager resourceManager = mock(KubernetesResourceManager.class);
+        KubernetesManagedDeploymentProvider provider = new KubernetesManagedDeploymentProvider(resourceManager);
+        FunctionSpec spec = new FunctionSpec(
+                "word-stats",
+                "img:latest",
+                null,
+                Map.of(),
+                null,
+                30_000,
+                4,
+                100,
+                3,
+                null,
+                ExecutionMode.DEPLOYMENT,
+                null,
+                null,
+                null
+        );
+        when(resourceManager.provision(spec)).thenReturn("http://fn-word-stats.nanofaas-e2e.svc.cluster.local:8080/invoke");
+        when(resourceManager.getResolvedNamespace()).thenReturn("nanofaas-e2e");
+
+        ProvisionResult result = provider.provision(spec);
+
+        assertThat(result.deploymentObjects()).containsOnly(
+                entry(ProvisionResult.DEPLOYMENT, "fn-word-stats"),
+                entry(ProvisionResult.SERVICE, "fn-word-stats"),
+                entry(ProvisionResult.NAMESPACE, "nanofaas-e2e")
+        );
     }
 }
