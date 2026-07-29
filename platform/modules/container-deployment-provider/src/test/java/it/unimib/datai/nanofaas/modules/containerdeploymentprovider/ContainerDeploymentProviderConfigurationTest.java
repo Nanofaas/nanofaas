@@ -19,10 +19,30 @@ class ContainerDeploymentProviderConfigurationTest {
     void configuration_registersRuntimeAdapterAndManagedProvider() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(ContainerRuntimeAdapter.class);
+            assertThat(context.getBean(ContainerRuntimeAdapter.class))
+                    .isInstanceOf(CliContainerRuntimeAdapter.class);
             assertThat(context).hasSingleBean(ManagedDeploymentProvider.class);
             assertThat(context).hasSingleBean(ContainerLocalDeploymentProvider.class);
             assertThat(context.getBean(ContainerLocalDeploymentProvider.class).backendId())
                     .isEqualTo("container-local");
         });
+    }
+
+    @Test
+    void configuration_selectsDockerJavaRuntimeAdapterExplicitly() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(ContainerDeploymentProviderConfiguration.class)
+                .withPropertyValues(
+                        "nanofaas.container-local.runtime-adapter=docker-java",
+                        "nanofaas.container-local.bind-host=127.0.0.1",
+                        "nanofaas.container-local.network-name=nanofaas"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(ContainerRuntimeAdapter.class);
+                    assertThat(context.getBean(ContainerRuntimeAdapter.class))
+                            .isInstanceOf(DockerJavaContainerRuntimeAdapter.class);
+                    assertThat(context.getBean(ContainerLocalProperties.class).networkName())
+                            .isEqualTo("nanofaas");
+                });
     }
 }

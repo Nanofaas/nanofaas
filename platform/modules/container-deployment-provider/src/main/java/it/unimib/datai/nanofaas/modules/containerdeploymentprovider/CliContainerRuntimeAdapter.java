@@ -27,6 +27,9 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public void runContainer(ContainerInstanceSpec spec) {
+        if (spec.hostPort() == null) {
+            throw new IllegalArgumentException("hostPort is required by the CLI container runtime adapter");
+        }
         executor.run(List.of(runtimeAdapter, "rm", "-f", spec.containerName()));
 
         List<String> command = new ArrayList<>();

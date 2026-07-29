@@ -168,8 +168,8 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
 
     private void addReplica(FunctionState state, int replicaIndex) {
         String containerName = containerName(state.spec.name(), replicaIndex);
-        int hostPort = portAllocator.nextPort();
-        String baseUrl = baseUrl(hostPort);
+        Integer hostPort = properties.networkName() == null ? portAllocator.nextPort() : null;
+        String baseUrl = baseUrl(containerName, hostPort);
         ContainerInstanceSpec instanceSpec = new ContainerInstanceSpec(
                 containerName,
                 state.spec.image(),
@@ -241,7 +241,10 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         return containerNamePrefix(functionName) + "-r" + replicaIndex;
     }
 
-    private String baseUrl(int hostPort) {
+    private String baseUrl(String containerName, Integer hostPort) {
+        if (properties.networkName() != null) {
+            return "http://" + containerName + ":8080";
+        }
         return "http://" + properties.bindHost() + ":" + hostPort;
     }
 
@@ -281,6 +284,6 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         }
     }
 
-    private record ReplicaState(String containerName, int hostPort, String baseUrl) {
+    private record ReplicaState(String containerName, Integer hostPort, String baseUrl) {
     }
 }
