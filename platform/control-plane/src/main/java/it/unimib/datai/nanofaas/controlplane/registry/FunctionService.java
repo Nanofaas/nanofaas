@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,6 +112,19 @@ public class FunctionService {
             managedDeploymentCoordinator.setReplicas(function, replicas);
             log.info("Set replicas for function {} to {}", name, replicas);
             return Optional.of(replicas);
+        });
+    }
+
+    public Optional<ReplicaStatus> getReplicaStatus(String name) {
+        return withFunctionLock(name, () -> {
+            RegisteredFunction function = registry.getRegistered(name).orElse(null);
+            if (function == null) {
+                return Optional.empty();
+            }
+            if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+                throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
+            }
+            return Optional.of(managedDeploymentCoordinator.getReplicaStatus(function));
         });
     }
 

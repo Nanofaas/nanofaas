@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import org.slf4j.Logger;
@@ -171,16 +172,22 @@ public class KubernetesResourceManager {
      * Returns the number of ready replicas for a function's Deployment.
      */
     public int getReadyReplicas(String functionName) {
+        return getReplicaStatus(functionName).readyReplicas();
+    }
+
+    public ReplicaStatus getReplicaStatus(String functionName) {
         String name = KubernetesDeploymentBuilder.deploymentName(functionName);
         KubernetesClient client = clientProvider.getObject();
         Deployment deployment = client.apps().deployments()
                 .inNamespace(resolvedNamespace)
                 .withName(name)
                 .get();
-        if (deployment == null || deployment.getStatus() == null || deployment.getStatus().getReadyReplicas() == null) {
-            return 0;
+        if (deployment == null) {
+            return new ReplicaStatus(0, 0);
         }
-        return deployment.getStatus().getReadyReplicas();
+        Integer desired = deployment.getSpec() == null ? null : deployment.getSpec().getReplicas();
+        Integer ready = deployment.getStatus() == null ? null : deployment.getStatus().getReadyReplicas();
+        return new ReplicaStatus(desired == null ? 0 : desired, ready == null ? 0 : ready);
     }
 
     public String getResolvedNamespace() {

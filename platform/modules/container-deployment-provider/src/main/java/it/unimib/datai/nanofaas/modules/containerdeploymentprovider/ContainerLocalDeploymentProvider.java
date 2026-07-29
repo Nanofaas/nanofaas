@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,19 +128,25 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
 
     @Override
     public int getReadyReplicas(String functionName) {
+        return getReplicaStatus(functionName).readyReplicas();
+    }
+
+    @Override
+    public ReplicaStatus getReplicaStatus(String functionName) {
         ReentrantLock lock = locks.get(functionName);
         if (lock == null) {
-            return 0;
+            return new ReplicaStatus(0, 0);
         }
         lock.lock();
         try {
             FunctionState state = states.get(functionName);
             if (state == null) {
-                return 0;
+                return new ReplicaStatus(0, 0);
             }
-            return (int) state.replicas.values().stream()
+            int readyReplicas = (int) state.replicas.values().stream()
                     .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
                     .count();
+            return new ReplicaStatus(state.replicas.size(), readyReplicas);
         } finally {
             lock.unlock();
         }

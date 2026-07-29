@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesDeploymentBuilder;
 import it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManager;
 import org.springframework.stereotype.Component;
@@ -58,5 +59,10 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
     @Override
     public int getReadyReplicas(String functionName) {
         return resourceManager.getReadyReplicas(functionName);
+    }
+
+    @Override
+    public ReplicaStatus getReplicaStatus(String functionName) {
+        return resourceManager.getReplicaStatus(functionName);
     }
 }
