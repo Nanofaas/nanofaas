@@ -16,4 +16,9 @@ public interface ManagedDeploymentProvider {
     void setReplicas(String functionName, int replicas);
 
     int getReadyReplicas(String functionName);
+
+    default ReplicaStatus getReplicaStatus(String functionName) {
+        int readyReplicas = getReadyReplicas(functionName);
+        return new ReplicaStatus(readyReplicas, readyReplicas);
+    }
 }

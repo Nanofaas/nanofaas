@@ -24,6 +24,10 @@ public class ManagedDeploymentCoordinator {
         return requireProvider(function).getReadyReplicas(function.name());
     }
 
+    public ReplicaStatus getReplicaStatus(RegisteredFunction function) {
+        return requireProvider(function).getReplicaStatus(function.name());
+    }
+
     public void setReplicas(RegisteredFunction function, int replicas) {
         requireProvider(function).setReplicas(function.name(), replicas);
     }

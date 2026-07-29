@@ -1,12 +1,14 @@
 package it.unimib.datai.nanofaas.modules.k8s.dispatch;
 
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.apps.DeploymentStatusBuilder;
 import io.fabric8.kubernetes.api.model.autoscaling.v2.HorizontalPodAutoscaler;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -183,6 +185,28 @@ class KubernetesResourceManagerTest {
     @Test
     void getReadyReplicas_returnsZeroWhenDeploymentNotFound() {
         assertEquals(0, resourceManager.getReadyReplicas("nonexistent"));
+    }
+
+    @Test
+    void getReplicaStatus_readsDesiredAndReadyFromOneDeployment() {
+        resourceManager.provision(spec(new ScalingConfig(
+                ScalingStrategy.INTERNAL,
+                1,
+                10,
+                List.of(new ScalingMetric("queue_depth", "5", null))
+        )));
+        Deployment deployment = client.apps().deployments()
+                .inNamespace("default")
+                .withName("fn-echo")
+                .get();
+        deployment.getSpec().setReplicas(4);
+        deployment.setStatus(new DeploymentStatusBuilder().withReadyReplicas(2).build());
+        client.apps().deployments()
+                .inNamespace("default")
+                .resource(deployment)
+                .update();
+
+        assertEquals(new ReplicaStatus(4, 2), resourceManager.getReplicaStatus("echo"));
     }
 
     @Test

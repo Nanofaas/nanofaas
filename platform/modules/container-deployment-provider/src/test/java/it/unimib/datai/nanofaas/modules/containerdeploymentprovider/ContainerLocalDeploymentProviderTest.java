@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -107,6 +108,29 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r3", "nanofaas-echo-r2");
         assertThat(proxy.backends()).containsExactly("http://127.0.0.1:19001");
         assertThat(provider.getReadyReplicas("echo")).isEqualTo(1);
+    }
+
+    @Test
+    void replicaStatus_distinguishesDesiredFromReadyReplicas() {
+        MutableEndpointProbe probe = new MutableEndpointProbe();
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                new RecordingContainerRuntimeAdapter(),
+                new ContainerLocalProperties(
+                        "docker",
+                        "127.0.0.1",
+                        Duration.ofSeconds(5),
+                        Duration.ofMillis(10),
+                        null
+                ),
+                probe,
+                new FixedPortAllocator(19001, 19002),
+                functionName -> new RecordingProxy("http://127.0.0.1:19090/invoke")
+        );
+        provider.provision(spec("echo", 2));
+        probe.markNotReady("http://127.0.0.1:19002");
+
+        assertThat(provider.getReplicaStatus("echo"))
+                .isEqualTo(new ReplicaStatus(2, 1));
     }
 
     @Test
@@ -450,6 +474,10 @@ class ContainerLocalDeploymentProviderTest {
 
         void markReady(String baseUrl) {
             readyEndpoints.add(baseUrl);
+        }
+
+        void markNotReady(String baseUrl) {
+            readyEndpoints.remove(baseUrl);
         }
 
         @Override
