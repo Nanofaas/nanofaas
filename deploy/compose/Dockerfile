@@ -1,9 +1,11 @@
 FROM eclipse-temurin:21-jdk AS build
 
+ARG NANOFAAS_CONTROL_PLANE_MODULES=container-deployment-provider
+
 WORKDIR /workspace
 COPY . .
 RUN ./gradlew :control-plane:bootJar \
-    -PcontrolPlaneModules=container-deployment-provider \
+    -PcontrolPlaneModules=${NANOFAAS_CONTROL_PLANE_MODULES} \
     --no-daemon
 
 FROM eclipse-temurin:21-jre

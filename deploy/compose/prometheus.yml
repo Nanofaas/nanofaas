@@ -7,3 +7,5 @@ scrape_configs:
     static_configs:
       - targets:
           - control-plane:8081
+        labels:
+          app: nanofaas-control-plane

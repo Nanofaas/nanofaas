@@ -6,6 +6,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
+      args:
+        NANOFAAS_CONTROL_PLANE_MODULES: ${NANOFAAS_CONTROL_PLANE_MODULES:-container-deployment-provider}
     user: "0:0"
     environment:
       NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND: container-local
