@@ -55,6 +55,36 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void provision_onDockerNetworkUsesContainerDnsWithoutAllocatingHostPorts() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties(
+                        "docker-java",
+                        "127.0.0.1",
+                        Duration.ofSeconds(5),
+                        Duration.ofMillis(10),
+                        "http://control-plane:8080/v1/internal/executions",
+                        "nanofaas"
+                ),
+                new ReadyEndpointProbe(),
+                () -> {
+                    throw new AssertionError("networked replicas must not allocate host ports");
+                },
+                functionName -> proxy
+        );
+
+        provider.provision(spec("Word_Stats", 2));
+
+        assertThat(adapter.startedPorts()).containsExactly(null, null);
+        assertThat(proxy.backends()).containsExactly(
+                "http://nanofaas-word-stats-r1:8080",
+                "http://nanofaas-word-stats-r2:8080"
+        );
+    }
+
+    @Test
     void provision_reportsThePrefixTheReplicaContainersAreActuallyNamedWith() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");

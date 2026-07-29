@@ -1,0 +1,44 @@
+name: nanofaas
+
+services:
+  control-plane:
+    image: ${NANOFAAS_CONTROL_PLANE_IMAGE:-ghcr.io/miciav/nanofaas/control-plane:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+    user: "0:0"
+    environment:
+      NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND: container-local
+      NANOFAAS_CONTAINER_LOCAL_RUNTIME_ADAPTER: docker-java
+      NANOFAAS_CONTAINER_LOCAL_NETWORK_NAME: nanofaas
+      NANOFAAS_CONTAINER_LOCAL_CALLBACK_URL: http://control-plane:8080/v1/internal/executions
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - nanofaas
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.9.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - nanofaas
+    restart: unless-stopped
+
+networks:
+  nanofaas:
+    name: nanofaas
+
+volumes:
+  prometheus-data:

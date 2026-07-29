@@ -7,7 +7,7 @@ import java.util.Map;
 record ContainerInstanceSpec(
         String containerName,
         String image,
-        int hostPort,
+        Integer hostPort,
         List<String> command,
         Map<String, String> env,
         ResourceSpec resources
