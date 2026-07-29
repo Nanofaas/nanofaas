@@ -3,9 +3,11 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.concurrent.*;
 
 /**
@@ -28,7 +30,17 @@ public class HandlerExecutor {
     }
 
     public Object execute(FunctionHandler handler, InvocationRequest request) throws Exception {
-        Future<Object> future = executor.submit(() -> handler.handle(request));
+        Map<String, String> mdcContext = MDC.getCopyOfContextMap();
+        Future<Object> future = executor.submit(() -> {
+            if (mdcContext != null) {
+                MDC.setContextMap(mdcContext);
+            }
+            try {
+                return handler.handle(request);
+            } finally {
+                MDC.clear();
+            }
+        });
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
