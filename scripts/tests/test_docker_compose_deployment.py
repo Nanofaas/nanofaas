@@ -5,6 +5,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = REPO_ROOT / "deploy" / "compose" / "compose.yaml"
 DOCKERFILE = REPO_ROOT / "deploy" / "compose" / "Dockerfile"
 PROMETHEUS = REPO_ROOT / "deploy" / "compose" / "prometheus.yml"
+DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 
 
 def test_compose_control_plane_has_build_and_public_image_paths():
@@ -37,3 +38,7 @@ def test_compose_prometheus_scrapes_control_plane_management_port():
     assert "prometheus.yml:/etc/prometheus/prometheus.yml:ro" in compose
     assert "control-plane:8081" in prometheus
     assert "metrics_path: /actuator/prometheus" in prometheus
+
+
+def test_compose_build_context_excludes_local_virtual_environments():
+    assert "**/.venv" in DOCKERIGNORE.read_text(encoding="utf-8").splitlines()

@@ -3,5 +3,6 @@
 .idea
 .worktrees
 **/build
+**/.venv
 **/.pytest_cache
 **/__pycache__
