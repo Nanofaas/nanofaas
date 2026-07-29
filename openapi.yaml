@@ -71,6 +71,50 @@ paths:
         '404':
           description: Not found
 
+  /v1/functions/{name}/replicas:
+    get:
+      summary: Get the managed replica status of a function
+      operationId: getFunctionReplicaStatus
+      parameters:
+        - $ref: '#/components/parameters/FunctionName'
+      responses:
+        '200':
+          description: Desired and ready replicas reported by the deployment backend
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplicaStatusResponse'
+        '400':
+          description: The function does not use a managed deployment backend
+        '404':
+          description: Function not found
+        '503':
+          description: The deployment backend could not report replica status
+    put:
+      summary: Set the desired replica count of a function
+      operationId: setFunctionReplicas
+      parameters:
+        - $ref: '#/components/parameters/FunctionName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplicaRequest'
+      responses:
+        '200':
+          description: Desired replica count accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplicaResponse'
+        '400':
+          description: Invalid replica count or unmanaged function
+        '404':
+          description: Function not found
+        '503':
+          description: The deployment backend could not set the replica count
+
   /v1/functions/{name}:invoke:
     post:
       summary: Invoke a function synchronously
@@ -278,6 +322,34 @@ components:
       description: Max time in milliseconds for sync invocation.
 
   schemas:
+    ReplicaRequest:
+      type: object
+      required: [replicas]
+      properties:
+        replicas:
+          type: integer
+          minimum: 0
+    ReplicaResponse:
+      type: object
+      required: [function, replicas]
+      properties:
+        function:
+          type: string
+        replicas:
+          type: integer
+          minimum: 0
+    ReplicaStatusResponse:
+      type: object
+      required: [name, desiredReplicas, readyReplicas]
+      properties:
+        name:
+          type: string
+        desiredReplicas:
+          type: integer
+          minimum: 0
+        readyReplicas:
+          type: integer
+          minimum: 0
     FunctionSummary:
       type: object
       required: [name, image, concurrency]
