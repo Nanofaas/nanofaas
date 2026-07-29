@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.core.command.PullImageResultCallback;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -15,17 +16,20 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class DockerJavaContainerRuntimeAdapterIntegrationTest {
 
+    private static final String TEST_IMAGE = "busybox:1.36";
+
     @Test
     void adapterCompletesLifecycleAgainstRealDockerEngine() throws Exception {
         String containerName = "nanofaas-docker-java-spike-" + UUID.randomUUID();
         DockerClient client = ContainerDeploymentProviderConfiguration.createDockerClient();
         DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
         assumeTrue(adapter.isAvailable(), "Docker Engine is unavailable");
+        pullTestImage(client);
 
         try {
             adapter.runContainer(new ContainerInstanceSpec(
                     containerName,
-                    "eclipse-temurin:21-jre",
+                    TEST_IMAGE,
                     18089,
                     List.of("sh", "-c", "sleep 30"),
                     Map.of("NANOFAAS_SPIKE", "true"),
@@ -56,12 +60,13 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
         DockerClient client = ContainerDeploymentProviderConfiguration.createDockerClient();
         DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, networkName);
         assumeTrue(adapter.isAvailable(), "Docker Engine is unavailable");
+        pullTestImage(client);
         client.createNetworkCmd().withName(networkName).exec();
 
         try {
             adapter.runContainer(new ContainerInstanceSpec(
                     containerName,
-                    "eclipse-temurin:21-jre",
+                    TEST_IMAGE,
                     null,
                     List.of("sh", "-c", "sleep 30"),
                     Map.of(),
@@ -78,5 +83,11 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
             client.removeNetworkCmd(networkName).exec();
             adapter.close();
         }
+    }
+
+    private static void pullTestImage(DockerClient client) throws InterruptedException {
+        client.pullImageCmd(TEST_IMAGE)
+                .exec(new PullImageResultCallback())
+                .awaitCompletion();
     }
 }
