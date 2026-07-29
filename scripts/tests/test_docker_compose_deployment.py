@@ -35,6 +35,7 @@ def test_compose_grants_explicit_docker_access_and_uses_one_named_network():
     assert "NANOFAAS_CONTAINER_LOCAL_RUNTIME_ADAPTER: docker-java" in compose
     assert "NANOFAAS_CONTAINER_LOCAL_NETWORK_NAME: nanofaas" in compose
     assert "NANOFAAS_CONTAINER_LOCAL_CALLBACK_URL: http://control-plane:8080/v1/internal/executions" in compose
+    assert "NANOFAAS_METRICS_PROFILE: advanced" in compose
     assert "name: nanofaas" in compose
     assert "registry:" not in compose
 

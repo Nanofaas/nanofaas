@@ -14,6 +14,7 @@ services:
       NANOFAAS_CONTAINER_LOCAL_RUNTIME_ADAPTER: docker-java
       NANOFAAS_CONTAINER_LOCAL_NETWORK_NAME: nanofaas
       NANOFAAS_CONTAINER_LOCAL_CALLBACK_URL: http://control-plane:8080/v1/internal/executions
+      NANOFAAS_METRICS_PROFILE: advanced
     ports:
       - "8080:8080"
       - "8081:8081"
