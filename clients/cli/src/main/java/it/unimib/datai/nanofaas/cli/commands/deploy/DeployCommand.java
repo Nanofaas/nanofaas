@@ -23,6 +23,11 @@ public class DeployCommand implements Runnable {
     @Option(names = {"-f", "--file"}, required = true, description = "Path to function YAML (includes x-cli.build).")
     Path file;
 
+    @Option(names = {"--runtime"},
+            defaultValue = "docker",
+            description = "Container runtime to use (docker or podman).")
+    String runtime;
+
     @Override
     public void run() {
         FunctionSpec desired = YamlIO.read(file, FunctionSpec.class);
@@ -31,7 +36,7 @@ public class DeployCommand implements Runnable {
         }
 
         BuildSpec build = BuildSpecLoader.load(file);
-        DockerBuildx.run(desired.image(), build);
+        DockerBuildx.run(desired.image(), build, runtime);
 
         FunctionApplier.apply(root.controlPlaneClient(), desired);
     }

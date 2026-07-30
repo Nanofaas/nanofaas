@@ -25,7 +25,7 @@ COPY functions/java/json-transform-lite/ functions/java/json-transform-lite/
 RUN ./gradlew :functions:java:json-transform-lite:nativeCompile --no-daemon
 
 # Stage 2: minimal runtime
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /build/functions/java/json-transform-lite/build/native/nativeCompile/json-transform-lite /app/json-transform-lite
 EXPOSE 8080

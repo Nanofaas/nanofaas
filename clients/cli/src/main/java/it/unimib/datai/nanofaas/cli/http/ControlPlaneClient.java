@@ -152,21 +152,47 @@ public final class ControlPlaneClient {
         return json.fromJson(resp.body(), ExecutionStatus.class);
     }
 
+    /**
+     * Sends an HTTP request to the control-plane and handles transport errors.
+     *
+     * @param request HTTP request to execute
+     * @return HTTP response with body as string
+     * @throws ControlPlaneHttpException if the request fails
+     */
     private HttpResponse<String> send(HttpRequest request) {
         try {
+            // Execute HTTP request and return response body as string.
             return http.send(request, HttpResponse.BodyHandlers.ofString());
+
         } catch (IOException e) {
-            throw new ControlPlaneHttpException(0, "I/O error calling control-plane", e.getMessage());
+            // Covers connection errors, DNS failures, and server unreachable cases.
+            throw new ControlPlaneHttpException(0,
+                    String.format("Failed to call control-plane (%s %s): %s", request.method(), request.uri(), e),
+                    e);
+
         } catch (InterruptedException e) {
+            // Restore interrupt flag before propagating the error.
             Thread.currentThread().interrupt();
-            throw new ControlPlaneHttpException(0, "Interrupted calling control-plane", e.getMessage());
+
+            throw new ControlPlaneHttpException(0,
+                    String.format("Interrupted calling control-plane: %s %s", request.method(), request.uri()),
+                    e);
         }
     }
 
+    /**
+     * Creates an exception for an unsuccessful HTTP response.
+     *
+     * @param action operation being performed
+     * @param resp HTTP response containing the error details
+     * @return control-plane HTTP exception
+     */
     private static ControlPlaneHttpException httpError(String action, HttpResponse<String> resp) {
-        String body = resp.body();
-        String msg = "Control-plane HTTP " + resp.statusCode() + " during " + action;
-        return new ControlPlaneHttpException(resp.statusCode(), msg, body);
+        // Include status code and endpoint to make HTTP failures easier to debug.
+        String msg = String.format("Control-plane HTTP %d during %s (%s)", resp.statusCode(), action, resp.request().uri());
+
+        // Preserve server response body, which may contain additional error details.
+        return new ControlPlaneHttpException(resp.statusCode(), msg, resp.body());
     }
 
     private static URI normalizeBase(String baseUrl) {

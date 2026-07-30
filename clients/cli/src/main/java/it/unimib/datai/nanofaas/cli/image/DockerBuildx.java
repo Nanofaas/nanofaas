@@ -8,17 +8,32 @@ import java.util.Map;
 public final class DockerBuildx {
     private DockerBuildx() {}
 
-    public static List<String> toCommand(String image, BuildSpec spec) {
+    public static List<String> toCommand(String image, BuildSpec spec, String runtime) {
         List<String> cmd = new ArrayList<>();
-        cmd.add("docker");
-        cmd.add("buildx");
-        cmd.add("build");
 
-        if (spec.push()) {
-            cmd.add("--push");
-        } else {
-            cmd.add("--load");
+        switch (runtime) {
+            case "docker" -> {
+                cmd.add("docker");
+                cmd.add("buildx");
+                cmd.add("build");
+
+                if (spec.push()) {
+                    cmd.add("--push");
+                } else {
+                    cmd.add("--load");
+                }
+            }
+            case "podman" -> {
+                if (spec.push()) {
+                    throw new IllegalArgumentException("--push is not supported with podman runtime. Disable it or use docker runtime.");
+                }
+
+                cmd.add("podman");
+                cmd.add("build");
+            }
+            default -> throw new IllegalArgumentException(String.format("Unsupported container runtime: %s", runtime));
         }
+
 
         cmd.add("--tag");
         cmd.add(image);
@@ -43,8 +58,8 @@ public final class DockerBuildx {
         return cmd;
     }
 
-    public static void run(String image, BuildSpec spec) {
-        List<String> cmd = toCommand(image, spec);
+    public static void run(String image, BuildSpec spec, String runtime) {
+        List<String> cmd = toCommand(image, spec, runtime);
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.inheritIO();
         try {

@@ -14,7 +14,7 @@ public final class FunctionApplier {
             client.registerFunction(desired);
             return;
         } catch (ControlPlaneHttpException e) {
-            if (e.status() != 409) {
+            if (e.getStatus() != 409) {
                 throw mapError(e);
             }
         }
@@ -32,7 +32,7 @@ public final class FunctionApplier {
     }
 
     private static RuntimeException mapError(ControlPlaneHttpException exception) {
-        String code = ControlPlaneError.fromBody(exception.body()).code();
+        String code = ControlPlaneError.fromBody(exception.getBody()).code();
         return switch (code) {
             case "IMAGE_NOT_FOUND" -> new IllegalArgumentException(
                     "Image not found in registry. Check image name/tag and retry.");

@@ -12,7 +12,7 @@ COPY functions/java/roman-numeral-lite/ functions/java/roman-numeral-lite/
 
 RUN ./gradlew :functions:java:roman-numeral-lite:nativeCompile --no-daemon
 
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /build/functions/java/roman-numeral-lite/build/native/nativeCompile/roman-numeral-lite /app/roman-numeral-lite
 EXPOSE 8080
