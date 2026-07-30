@@ -8,11 +8,25 @@ import java.util.Map;
 public final class DockerBuildx {
     private DockerBuildx() {}
 
-    public static List<String> toCommand(String image, BuildSpec spec) {
+    public static List<String> toCommand(String image, BuildSpec spec, String runtime) {
         List<String> cmd = new ArrayList<>();
-        cmd.add("docker");
-        cmd.add("buildx");
-        cmd.add("build");
+
+        switch (runtime) {
+            case "docker" -> {
+                cmd.add("docker");
+                cmd.add("buildx");
+                cmd.add("build");
+            }
+            case "podman" -> {
+                if (spec.push()) {
+                    throw new IllegalArgumentException("--push is not supported with podman runtime. Disable it or use docker runtime.");
+                }
+
+                cmd.add("podman");
+                cmd.add("build");
+            }
+            default -> throw new IllegalArgumentException(String.format("Unsupported container runtime: %s", runtime));
+        }
 
         if (spec.push()) {
             cmd.add("--push");
@@ -43,8 +57,8 @@ public final class DockerBuildx {
         return cmd;
     }
 
-    public static void run(String image, BuildSpec spec) {
-        List<String> cmd = toCommand(image, spec);
+    public static void run(String image, BuildSpec spec, String runtime) {
+        List<String> cmd = toCommand(image, spec, runtime);
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.inheritIO();
         try {
