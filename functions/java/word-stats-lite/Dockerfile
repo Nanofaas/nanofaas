@@ -25,7 +25,7 @@ COPY functions/java/word-stats-lite/ functions/java/word-stats-lite/
 RUN ./gradlew :functions:java:word-stats-lite:nativeCompile --no-daemon
 
 # Stage 2: minimal runtime
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /build/functions/java/word-stats-lite/build/native/nativeCompile/word-stats-lite /app/word-stats-lite
 EXPOSE 8080

@@ -1,11 +1,11 @@
 # Stage 1: install SDK
-FROM python:3.11-slim AS builder
+FROM docker.io/library/python:3.11-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv/bin/
 COPY sdks/python/ /tmp/sdk/
 RUN /uv/bin/uv pip install --system --target /deps /tmp/sdk/
 
 # Stage 2: minimal runtime
-FROM python:3.11-slim
+FROM docker.io/library/python:3.11-slim
 LABEL org.opencontainers.image.source=https://github.com/miciav/nanofaas
 WORKDIR /app
 COPY --from=builder /deps /usr/local/lib/python3.11/site-packages/
