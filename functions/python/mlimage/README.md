@@ -58,3 +58,18 @@ content-type: application/json
 
 You must encode input images as a base64 JSON string. See the examples in the
 [payloads](./payloads) directory.
+
+## Example response
+
+```console
+$ nanofaas-cli invoke -d @payloads/vulture_request.json mlimage | jq
+{
+  "executionId": "a91f3d7a-29c3-4fd8-b7f3-8d16045bd2ff",
+  "status": "success",
+  "output": {
+    "statusCode": 200,
+    "body": "[{\"class\": \"church\", \"probability\": 0.5182393789291382}]"
+  },
+  "error": null
+}
+```
