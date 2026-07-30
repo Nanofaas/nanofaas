@@ -247,8 +247,8 @@ class ControlPlaneClientTest {
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> {
                     ControlPlaneHttpException he = (ControlPlaneHttpException) ex;
-                    assertThat(he.status()).isEqualTo(500);
-                    assertThat(he.body()).isEqualTo("internal error");
+                    assertThat(he.getStatus()).isEqualTo(500);
+                    assertThat(he.getBody()).isEqualTo("internal error");
                 });
     }
 
@@ -259,7 +259,7 @@ class ControlPlaneClientTest {
 
         assertThatThrownBy(() -> client.deleteFunction("echo"))
                 .isInstanceOf(ControlPlaneHttpException.class)
-                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).status()).isEqualTo(500));
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(500));
     }
 
     @Test
@@ -269,7 +269,7 @@ class ControlPlaneClientTest {
 
         assertThatThrownBy(() -> client.getExecution("exec-missing"))
                 .isInstanceOf(ControlPlaneHttpException.class)
-                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).status()).isEqualTo(404));
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(404));
     }
 
     @Test
@@ -280,7 +280,7 @@ class ControlPlaneClientTest {
 
         assertThatThrownBy(() -> client.invokeSync("echo", req, null, null, null))
                 .isInstanceOf(ControlPlaneHttpException.class)
-                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).status()).isEqualTo(503));
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(503));
     }
 
     @Test
@@ -296,7 +296,7 @@ class ControlPlaneClientTest {
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> {
                     ControlPlaneHttpException he = (ControlPlaneHttpException) ex;
-                    assertThat(he.status()).isEqualTo(500);
+                    assertThat(he.getStatus()).isEqualTo(500);
                 });
     }
 }

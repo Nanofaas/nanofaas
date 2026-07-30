@@ -16,6 +16,12 @@ public final class DockerBuildx {
                 cmd.add("docker");
                 cmd.add("buildx");
                 cmd.add("build");
+
+                if (spec.push()) {
+                    cmd.add("--push");
+                } else {
+                    cmd.add("--load");
+                }
             }
             case "podman" -> {
                 if (spec.push()) {
@@ -28,11 +34,6 @@ public final class DockerBuildx {
             default -> throw new IllegalArgumentException(String.format("Unsupported container runtime: %s", runtime));
         }
 
-        if (spec.push()) {
-            cmd.add("--push");
-        } else {
-            cmd.add("--load");
-        }
 
         cmd.add("--tag");
         cmd.add(image);
