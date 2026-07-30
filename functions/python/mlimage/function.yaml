@@ -1,0 +1,10 @@
+name: mlimage
+image: nanofaas/mlimage:latest
+timeoutMs: 5000
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/python/mlimage/Dockerfile
+    push: false

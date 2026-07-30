@@ -1,0 +1,40 @@
+[project]
+name = "mlimage"
+version = "0.1.0"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "flask",
+    "waitress",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "nanofaas-sdk",
+]
+
+[tool.uv.sources]
+nanofaas-sdk = { path = "../../../sdks/python" }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+# PyTorch dependencies are downloaded from pytorch.org rather than PyPI.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+ignore = [
+    "D203",
+    "D213",
+    "COM812",
+]
