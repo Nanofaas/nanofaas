@@ -29,12 +29,15 @@ import java.nio.file.Path;
 )
 public class RootCommand {
 
+    private static final String DEFAULT_ENDPOINT = "http://localhost:8080";
+
     @Option(names = {"--config"}, scope = ScopeType.INHERIT,
             description = "Path to config file (default: ~/.config/nanofaas/config.yaml).")
     Path configPath;
 
-    @Option(names = {"--endpoint"}, scope = ScopeType.INHERIT,
-            description = "Control-plane base URL (overrides config/env).")
+    @Option(names = {"--endpoint"},
+            scope = ScopeType.INHERIT,
+            description = "Control-plane base URL (overrides config/env). Default: http://localhost:8080")
     String endpoint;
 
     @Option(names = {"--namespace", "-n"}, scope = ScopeType.INHERIT,
@@ -52,11 +55,24 @@ public class RootCommand {
         return store;
     }
 
+    /**
+     * Resolves the active context using CLI options, config, and defaults.
+     *
+     * @return the resolved Nanofaas context
+     */
     public ResolvedContext resolvedContext() {
         if (resolved == null) {
             ResolvedContext base = configStore().loadResolvedContext();
-            String ep = firstNonBlank(endpoint, base.endpoint());
+
+            // Add DEFAULT_ENDPOINT at the end as the default value.
+            String ep = firstNonBlank(
+                endpoint,
+                base.endpoint(),
+                DEFAULT_ENDPOINT
+            );
+
             String ns = firstNonBlank(namespace, base.namespace());
+
             resolved = new ResolvedContext(base.contextName(), ep, ns);
         }
         return resolved;
@@ -65,20 +81,22 @@ public class RootCommand {
     public ControlPlaneClient controlPlaneClient() {
         if (client == null) {
             String ep = resolvedContext().endpoint();
-            if (ep == null || ep.isBlank()) {
-                throw new IllegalArgumentException("Missing endpoint. Set --endpoint or NANOFAAS_ENDPOINT or configure a context.");
-            }
             client = new ControlPlaneClient(ep);
         }
         return client;
     }
 
-    private static String firstNonBlank(String a, String b) {
-        if (a != null && !a.isBlank()) {
-            return a;
-        }
-        if (b != null && !b.isBlank()) {
-            return b;
+    /**
+     * Returns the first non-null and non-blank value, preserving the given order.
+     *
+     * @param values candidate values by priority
+     * @return the first valid value, or {@code null} if none exists
+     */
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
         }
         return null;
     }
