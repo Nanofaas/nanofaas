@@ -1,0 +1,12 @@
+name: figlet
+image: nanofaas/figlet:latest
+executionMode: DEPLOYMENT
+runtimeMode: STDIO
+timeoutMs: 5000
+
+x-cli:
+  build:
+    # Context required because the function's Dockerfile build the watchdog.
+    context: ../../..
+    dockerfile: functions/bash/figlet/Dockerfile
+    push: false
