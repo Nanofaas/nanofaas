@@ -43,6 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtimes/watchdog
       - name: Install integration-test dependencies
         run: sudo apt-get update && sudo apt-get install -y jq netcat-openbsd
       - name: Run watchdog tests
