@@ -33,4 +33,11 @@ when more than one is on the classpath.
 
 - Requires cluster access (`KUBECONFIG` for E2E; fabric8 mock server in unit
   tests).
-- E2E: `./nanolab.sh e2e run validate-k3s` (from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo).
+- E2E: Run via the NanoLab `validate-k8s` scenario:
+  ```bash
+  NANOFAAS_ROOT=/path/to/nanofaas ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/multipass.yaml
+  ```
+  Or against an already-prepared cluster:
+  ```bash
+  NANOFAAS_RUN_K8S_E2E=true KUBECONFIG=/path/to/kubeconfig NANOFAAS_E2E_NAMESPACE=nanofaas-e2e ./gradlew :control-plane-modules:k8s-deployment-provider:test -PrunE2e --tests 'it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest'
+  ```

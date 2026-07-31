@@ -5,57 +5,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
-# The ops/provisioning tool now lives in a separate checkout: https://github.com/miciav/nanolab
+# The ops/provisioning tool lives in a separate checkout: https://github.com/miciav/nanolab
 export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source from here
 
 # Canonical control-plane orchestration wrapper
 (cd ../nanolab && ./nanolab.sh --help)
-(cd ../nanolab && ./nanolab.sh vm up --lifecycle multipass --name nanofaas-e2e --dry-run)
-(cd ../nanolab && ./nanolab.sh e2e run validate-k3s --lifecycle multipass --dry-run)
-(cd ../nanolab && ./nanolab.sh e2e all --only validate-k3s --dry-run)
 
 # Build all modules
 ./gradlew build
 
-# Run locally
-(cd ../nanolab && ./nanolab.sh run --profile core) # API on :8080, metrics on :8081
-./gradlew :services:java:warm-echo:bootRun # Example service on :8080
+# Run all tests (unit + integration; excludes k8s E2E by @Tag)
+./gradlew test --no-parallel
 
-# Run all tests
-./gradlew test
+# E2E scenarios (run from NanoLab checkout)
+# Container validation (requires Docker)
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml --environment packages/nanolab/environments/local.yaml)
+# Kubernetes validation (requires Multipass; provisions k3s VM, deploys Helm, runs curl + K8sE2eTest)
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/multipass.yaml)
+# Plan (dry-run) to preview the workflow without executing
+(cd ../nanolab && ./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/local.yaml)
 
-# Run a single test class
-(cd ../nanolab && ./nanolab.sh test --profile core -- --tests it.unimib.datai.nanofaas.controlplane.config.CoreDefaultsTest)
-
-# E2E tests (requires Docker)
-(cd ../nanolab && ./nanolab.sh e2e run validate-docker-pool)
-(cd ../nanolab && ./nanolab.sh e2e run validate-buildpack-pool)
-
-# CLI E2E (full CLI against k3s, 47 tests)
-(cd ../nanolab && ./nanolab.sh cli-test run vm)
-(cd ../nanolab && ./nanolab.sh cli-test run vm --no-cleanup-vm)
-
-# K3s E2E with Curl (self-contained Multipass VM)
-(cd ../nanolab && ./nanolab.sh e2e run validate-k3s)
-(cd ../nanolab && ./nanolab.sh e2e run validate-k3s --no-cleanup-vm)
-
-# Kubernetes E2E (k3s in Multipass)
-(cd ../nanolab && ./nanolab.sh e2e run validate-k3s)
-# or:
-./gradlew k8sE2e
+# Run only K8sE2eTest against an already-prepared cluster
+NANOFAAS_RUN_K8S_E2E=true \
+KUBECONFIG=/path/to/kubeconfig \
+NANOFAAS_E2E_NAMESPACE=nanofaas-e2e \
+./gradlew \
+  :control-plane-modules:k8s-deployment-provider:test \
+  -PrunE2e \
+  --tests 'it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest' \
+  --no-parallel
 
 # Build OCI images
-(cd ../nanolab && ./nanolab.sh image --profile all)
+./gradlew :control-plane:bootBuildImage
 ./gradlew :services:java:warm-echo:bootBuildImage
 
 # Control-plane optional module selection
-(cd ../nanolab && ./nanolab.sh run --profile all)
-(cd ../nanolab && ./nanolab.sh test --profile all)
-(cd ../nanolab && ./nanolab.sh jar --profile core)
-(cd ../nanolab && ./nanolab.sh matrix --task :control-plane:bootJar --max-combinations 4 --dry-run)
-# No-K8s managed deployment profile
-(cd ../nanolab && ./nanolab.sh run --profile container-local -- --args='--nanofaas.deployment.default-backend=container-local')
-# Use --modules <csv|none|all> only for advanced overrides.
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
 
 # Native build (GraalVM via SDKMAN)
 ./scripts/native-build.sh

@@ -54,18 +54,6 @@ subprojects {
     }
 }
 
-tasks.register('k8sE2e') {
-    group = 'verification'
-    description = 'Run K8sE2eTest in a Multipass VM with k3s.'
-    dependsOn ':control-plane:k8sE2eTest'
-}
-
-tasks.register('k8sE2eVm', Exec) {
-    group = 'verification'
-    description = 'Run K8sE2eTest in an ephemeral Multipass VM with k3s.'
-    commandLine 'bash', 'scripts/controlplane.sh', 'e2e', 'run', 'validate-k3s'
-}
-
 tasks.register('verifyHelmVersionSync') {
     group = 'verification'
     description = 'Verify Helm chart/image versions are aligned with the Gradle project version.'

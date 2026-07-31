@@ -18,8 +18,9 @@
 - `./gradlew :services:java:warm-echo:bootRun` — run the warm-echo example service locally.
 - `./gradlew :control-plane:bootBuildImage` and `:services:java:warm-echo:bootBuildImage` — create buildpack images.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
-- `nanolab.sh e2e run docker` and `nanolab.sh e2e run buildpack` (run from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo) — run local E2E suites.
-- `nanolab.sh e2e run k3s-junit-curl` — provision a Multipass VM with k3s, deploy via Helm, run curl checks, and then run `K8sE2eTest`.
+- `nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml` (run from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo) — run local container E2E validation.
+- `nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml` — provision a VM with k3s, deploy via Helm, run curl checks, and run `K8sE2eTest` (requires NanoLab and a VM environment).
+- To run only `K8sE2eTest` against an already-prepared cluster: `NANOFAAS_RUN_K8S_E2E=true KUBECONFIG=/path/to/kubeconfig NANOFAAS_E2E_NAMESPACE=nanofaas-e2e ./gradlew :control-plane-modules:k8s-deployment-provider:test -PrunE2e --tests 'it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest'`
 
 ## Coding Style & Naming Conventions
 
@@ -31,7 +32,7 @@
 
 - JUnit 5 is the primary framework; tests are named `*Test.java`.
 - E2E tests use Testcontainers, RestAssured, and Fabric8; ensure Docker/compatible runtime is available.
-- K8s E2E (`K8sE2eTest`) runs via `nanolab.sh e2e run k3s-junit-curl` on a real k3s cluster in Multipass.
+- K8s E2E (`K8sE2eTest`) runs via the NanoLab `validate-k8s` scenario, which provisions a k3s cluster and invokes the tagged test with `-PrunE2e`.
 
 ## Project Constraints & Requirements (FaaS MVP)
 
