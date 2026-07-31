@@ -61,4 +61,15 @@ class FigletHandlerTest {
         assertEquals("standard", result.get("font"));
         assertNotNull(result.get("asciiArt"));
     }
+
+    @Test
+    void outputMatchesSystemFiglet() {
+        var req = new InvocationRequest(Map.of("text", "nanoFaaS"), null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        String art = (String) result.get("asciiArt");
+        assertNotNull(art);
+        assertFalse(art.isBlank(), "ASCII art output must not be blank");
+        assertTrue(art.lines().count() >= 5, "FIGlet output must span multiple lines");
+    }
 }
