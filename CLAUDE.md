@@ -14,7 +14,7 @@ export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source fr
 # Build all modules
 ./gradlew build
 
-# Run all tests (unit + integration; excludes k8s E2E by @Tag)
+# Run all tests (unit + integration; E2E validation is owned by NanoLab)
 ./gradlew test --no-parallel
 
 # E2E scenarios (run from NanoLab checkout)
