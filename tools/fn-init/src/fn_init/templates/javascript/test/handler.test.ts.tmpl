@@ -1,23 +1,30 @@
-import { describe, test, expect, vi } from "vitest";
-import { handle{{CLASS_NAME}} } from "../src/handler";
-import type { Context, InvocationRequest } from "nanofaas-function-sdk";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 
-function ctx(): Context {
+import { getLogger, type HandlerContext } from "nanofaas-function-sdk";
+
+import { handle{{CLASS_NAME}} } from "../src/handler.js";
+
+function createContext(): HandlerContext {
     return {
-        requestId: "test",
-        executionId: "test-exec",
-        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    } as unknown as Context;
+        executionId: "exec-test",
+        logger: getLogger("{{FUNCTION_NAME}}.test"),
+        signal: new AbortController().signal,
+        isColdStart: false,
+    };
 }
 
-describe("{{FUNCTION_NAME}} handler", () => {
-    test("returns result for valid input", async () => {
-        const result = await handle{{CLASS_NAME}}(ctx(), { input: { text: "hello" } });
-        expect(result).toBeDefined();
+test("{{FUNCTION_NAME}} handler returns result for valid input", async () => {
+    const result = await handle{{CLASS_NAME}}(createContext(), {
+        input: { text: "hello" },
     });
+    assert.ok(result, "handler must return a result");
+});
 
-    test("returns error for empty input", async () => {
-        const result = await handle{{CLASS_NAME}}(ctx(), { input: {} });
-        expect(result).toHaveProperty("error");
+test("{{FUNCTION_NAME}} handler returns error for empty input", async () => {
+    const result = await handle{{CLASS_NAME}}(createContext(), {
+        input: {},
     });
+    assert.ok(result && typeof result === "object");
+    assert.ok("error" in result, "empty input must return an error key");
 });
