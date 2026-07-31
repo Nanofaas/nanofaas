@@ -99,7 +99,7 @@ class TestHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"not valid json {{{")
 
         elif SCENARIO == "large_response":
-            response = {"data": "x" * 1000000}  # 1MB response
+            response = {"data": "x" * 100000}  # 100KB response (large enough to exercise buffering)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

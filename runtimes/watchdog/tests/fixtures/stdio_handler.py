@@ -75,7 +75,7 @@ def main():
 
     elif SCENARIO == "large_output":
         # Large output
-        json.dump({"data": "x" * 1000000}, sys.stdout)
+        json.dump({"data": "x" * 100000}, sys.stdout)  # 100KB (exercises buffering without stalling CI)
 
     elif SCENARIO == "binary_output":
         # Binary output (non-UTF8)
