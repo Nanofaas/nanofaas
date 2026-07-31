@@ -238,14 +238,16 @@ def generate_function(
     payloads_dir = output_dir / "payloads"
     (payloads_dir / "assets").mkdir(parents=True, exist_ok=True)
     happy = {
+        "_comment": "Update after implementing your handler",
         "description": f"invoke {name} with valid input",
-        "input": {"key": "value"},
+        "input": {"text": "hello"},
         "expected": {"result": "ok"},
     }
     missing = {
+        "_comment": "Update after implementing your handler",
         "description": f"invoke {name} with empty input",
         "input": {},
-        "expected": {"result": "ok"},
+        "expected": {"error": "Field 'text' is required and must be non-empty"},
     }
     (payloads_dir / "happy-path.json").write_text(json.dumps(happy, indent=2))
     (payloads_dir / "missing-input.json").write_text(json.dumps(missing, indent=2))

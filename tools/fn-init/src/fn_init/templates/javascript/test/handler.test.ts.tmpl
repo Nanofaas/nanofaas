@@ -1,37 +1,23 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, test, expect, vi } from "vitest";
+import { handle{{CLASS_NAME}} } from "../src/handler";
+import type { Context, InvocationRequest } from "nanofaas-function-sdk";
 
-import { getLogger, type HandlerContext } from "nanofaas-function-sdk";
-
-import { handle{{CLASS_NAME}} } from "../src/handler.js";
-
-function createContext(): HandlerContext {
+function ctx(): Context {
     return {
-        executionId: "exec-test",
-        logger: getLogger("{{FUNCTION_NAME}}.test"),
-        signal: new AbortController().signal,
-        isColdStart: false,
-    };
+        requestId: "test",
+        executionId: "test-exec",
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    } as unknown as Context;
 }
 
-test("handle{{CLASS_NAME}} returns the default result", async () => {
-    const output = await handle{{CLASS_NAME}}(createContext(), {
-        input: {
-            key: "value",
-        },
+describe("{{FUNCTION_NAME}} handler", () => {
+    test("returns result for valid input", async () => {
+        const result = await handle{{CLASS_NAME}}(ctx(), { input: { text: "hello" } });
+        expect(result).toBeDefined();
     });
 
-    assert.deepEqual(output, {
-        result: "ok",
-    });
-});
-
-test("handle{{CLASS_NAME}} handles empty input", async () => {
-    const output = await handle{{CLASS_NAME}}(createContext(), {
-        input: {},
-    });
-
-    assert.deepEqual(output, {
-        result: "ok",
+    test("returns error for empty input", async () => {
+        const result = await handle{{CLASS_NAME}}(ctx(), { input: {} });
+        expect(result).toHaveProperty("error");
     });
 });

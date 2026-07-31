@@ -32,6 +32,11 @@ assert_eq "non-object input returns error" \
     "error" \
     "$(echo "$result" | jq -r 'keys[0]')"
 
+result=$(echo '{"input":{}}' | bash "$HANDLER")
+assert_eq "empty input returns error key" \
+    "error" \
+    "$(echo "$result" | jq -r 'keys[0]')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

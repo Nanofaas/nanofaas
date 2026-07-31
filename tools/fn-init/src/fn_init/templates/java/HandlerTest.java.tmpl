@@ -12,9 +12,20 @@ class {{CLASS_NAME}}HandlerTest {
     private final {{CLASS_NAME}}Handler handler = new {{CLASS_NAME}}Handler();
 
     @Test
-    void handleReturnsResult() {
+    void handleReturnsMapWithResult() {
+        var req = new InvocationRequest(Map.of("text", "hello"), null);
+        var result = handler.handle(req);
+        assertNotNull(result, "handler must return a non-null response");
+        assertInstanceOf(Map.class, result, "handler must return a Map");
+    }
+
+    @Test
+    void handleRejectsEmptyInput() {
         var req = new InvocationRequest(Map.of(), null);
         var result = handler.handle(req);
         assertNotNull(result);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> map = (Map<String, Object>) result;
+        assertTrue(map.containsKey("error"), "empty input should return an error key");
     }
 }
