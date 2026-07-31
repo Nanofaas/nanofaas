@@ -13,6 +13,8 @@ jq '
   .input as $in
   | if ($in | type) != "object" then
       {"error": "Input must be a JSON object"}
+    elif ($in | length) == 0 then
+      {"error": "Field '"'"'text'"'"' is required and must be non-empty"}
     else
       # TODO: implement handler logic
       {"result": "ok"}

@@ -254,9 +254,9 @@ JAVASCRIPT_PLACEHOLDERS = {
     "DOCKERFILE_PATH": "functions/javascript/greet/Dockerfile",
     "DOCKER_APP_COPY": "COPY functions/javascript/greet /src/functions/javascript/greet",
     "DOCKER_APP_DIR": "/src/functions/javascript/greet",
-    "DOCKER_SDK_COPY": "COPY sdks/javascript ./function-sdk-javascript",
-    "DOCKER_SDK_BUILD_BLOCK": "WORKDIR /src/function-sdk-javascript\nRUN npm ci\nRUN npm run build\n\n",
-    "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
+    "DOCKER_SDK_COPY": "COPY sdks/javascript ./sdks/javascript",
+    "DOCKER_SDK_BUILD_BLOCK": "WORKDIR /src/sdks/javascript\nRUN npm ci\nRUN npm run build\n\n",
+    "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/sdks/javascript /sdks/javascript",
 }
 
 def test_generate_go_creates_main(tmp_path):

@@ -14,8 +14,13 @@ public class {{CLASS_NAME}}Handler implements FunctionHandler {
     private static final Logger log = FunctionContext.getLogger({{CLASS_NAME}}Handler.class);
 
     @Override
+    @SuppressWarnings("unchecked")
     public Object handle(InvocationRequest request) {
         log.info("{{FUNCTION_NAME}} invoked, executionId={}", FunctionContext.getExecutionId());
+        Map<String, Object> input = request.input() instanceof Map ? (Map<String, Object>) request.input() : Map.of();
+        if (input.get("text") == null || input.get("text").toString().isBlank()) {
+            return Map.of("error", "Field 'text' is required and must be non-empty");
+        }
         // TODO: implement handler logic
         return Map.of("result", "ok");
     }
