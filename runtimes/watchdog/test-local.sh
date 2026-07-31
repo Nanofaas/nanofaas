@@ -79,23 +79,28 @@ check_prerequisites() {
     log_info "All prerequisites found"
 }
 
-# Build watchdog
+# Build watchdog (debug — tests don't need release optimizations)
 build_watchdog() {
-    log_info "Building watchdog..."
-    cargo build --release
-    log_info "Build complete: target/release/nanofaas-watchdog"
+    # ponytail: skip build if cargo test already compiled the debug binary
+    if [ -x "$SCRIPT_DIR/target/debug/nanofaas-watchdog" ]; then
+        log_info "Using existing debug binary (skip build)"
+        return 0
+    fi
+    log_info "Building watchdog (debug)..."
+    cargo build
+    log_info "Build complete: target/debug/nanofaas-watchdog"
 }
 
 # Setup test environment
 setup_test_env() {
-    # Export watchdog path
-    export PATH="$SCRIPT_DIR/target/release:$PATH"
-    export WATCHDOG_BIN="$SCRIPT_DIR/target/release/nanofaas-watchdog"
+    # Export watchdog path (debug build — test_helpers.sh also prefers debug)
+    export WATCHDOG_BIN="$SCRIPT_DIR/target/debug/nanofaas-watchdog"
+    export PATH="$SCRIPT_DIR/target/debug:$PATH"
     export TESTS_ROOT="$SCRIPT_DIR/tests"
 
     # Create a convenience symlink for local runs
     mkdir -p "$SCRIPT_DIR/tests/.bin"
-    ln -sf "$SCRIPT_DIR/target/release/nanofaas-watchdog" "$SCRIPT_DIR/tests/.bin/watchdog"
+    ln -sf "$SCRIPT_DIR/target/debug/nanofaas-watchdog" "$SCRIPT_DIR/tests/.bin/watchdog"
 
     # Update PATH for tests
     export PATH="$SCRIPT_DIR/tests/.bin:$PATH"
@@ -229,11 +234,11 @@ main() {
     if [ "$skip_build" = "false" ]; then
         build_watchdog
     else
-        if [ ! -f "$SCRIPT_DIR/target/release/nanofaas-watchdog" ]; then
+        if [ ! -f "$SCRIPT_DIR/target/debug/nanofaas-watchdog" ]; then
             log_error "Watchdog binary not found. Run without --no-build first."
             exit 1
         fi
-        log_info "Using existing watchdog binary"
+        log_info "Using existing debug binary"
     fi
 
     # Setup environment
