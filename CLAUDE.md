@@ -20,20 +20,10 @@ export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source fr
 # E2E scenarios (run from NanoLab checkout)
 # Container validation (requires Docker)
 (cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml --environment packages/nanolab/environments/local.yaml)
-# Kubernetes validation (requires Multipass; provisions k3s VM, deploys Helm, runs curl + K8sE2eTest)
+# Kubernetes validation (requires Multipass; provisions k3s VM, deploys Helm, validates via HTTP + K8s assertions)
 (cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/multipass.yaml)
 # Plan (dry-run) to preview the workflow without executing
 (cd ../nanolab && ./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/local.yaml)
-
-# Run only K8sE2eTest against an already-prepared cluster
-NANOFAAS_RUN_K8S_E2E=true \
-KUBECONFIG=/path/to/kubeconfig \
-NANOFAAS_E2E_NAMESPACE=nanofaas-e2e \
-./gradlew \
-  :control-plane-modules:k8s-deployment-provider:test \
-  -PrunE2e \
-  --tests 'it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest' \
-  --no-parallel
 
 # Build OCI images
 ./gradlew :control-plane:bootBuildImage

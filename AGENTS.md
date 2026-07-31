@@ -19,8 +19,7 @@
 - `./gradlew :control-plane:bootBuildImage` and `:services:java:warm-echo:bootBuildImage` — create buildpack images.
 - `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
 - `nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml` (run from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo) — run local container E2E validation.
-- `nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml` — provision a VM with k3s, deploy via Helm, run curl checks, and run `K8sE2eTest` (requires NanoLab and a VM environment).
-- To run only `K8sE2eTest` against an already-prepared cluster: `NANOFAAS_RUN_K8S_E2E=true KUBECONFIG=/path/to/kubeconfig NANOFAAS_E2E_NAMESPACE=nanofaas-e2e ./gradlew :control-plane-modules:k8s-deployment-provider:test -PrunE2e --tests 'it.unimib.datai.nanofaas.modules.k8s.e2e.K8sE2eTest'`
+- `nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml` — provision a VM with k3s, deploy via Helm, and validate the platform through HTTP and Kubernetes resource assertions (requires NanoLab and a VM environment).
 
 ## Coding Style & Naming Conventions
 
@@ -32,7 +31,7 @@
 
 - JUnit 5 is the primary framework; tests are named `*Test.java`.
 - E2E tests use Testcontainers, RestAssured, and Fabric8; ensure Docker/compatible runtime is available.
-- K8s E2E (`K8sE2eTest`) runs via the NanoLab `validate-k8s` scenario, which provisions a k3s cluster and invokes the tagged test with `-PrunE2e`.
+- Kubernetes end-to-end validation is owned by NanoLab (`validate-k8s` scenario). NanoFaaS does not provision infrastructure for E2E tests.
 
 ## Project Constraints & Requirements (FaaS MVP)
 
