@@ -1,0 +1,41 @@
+plugins {
+    id 'org.springframework.boot' version "${springBootVersion}"
+    id 'io.spring.dependency-management' version "${springDependencyManagementVersion}"
+    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
+    id 'java'
+}
+
+dependencies {
+    implementation project(':sdks:java')
+    implementation 'com.github.lalyos:jfiglet:0.0.9'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+bootJar {
+    archiveFileName = 'figlet.jar'
+}
+
+bootBuildImage {
+    imageName = project.findProperty('functionImage') ?: 'nanofaas/java-figlet:buildpack'
+    def isArm = System.getProperty('os.arch') in ['aarch64', 'arm64']
+    def defaultBuilder = isArm ? 'dashaun/builder:tiny' : 'paketobuildpacks/builder-jammy-tiny:latest'
+    def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
+            ?: defaultBuilder).toString()
+    def runImageName = project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
+    if (!runImageName && !isArm) {
+        runImageName = 'paketobuildpacks/run-jammy-tiny:latest'
+    }
+    builder = builderImage
+    if (runImageName) {
+        runImage = runImageName.toString()
+    }
+    def hostArch = System.getProperty('os.arch')
+    def defaultPlatform = (hostArch in ['aarch64', 'arm64']) ? 'linux/arm64' : 'linux/amd64'
+    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM') ?: defaultPlatform
+    imagePlatform = targetPlatform
+    environment = ['BP_NATIVE_IMAGE': 'true']
+}

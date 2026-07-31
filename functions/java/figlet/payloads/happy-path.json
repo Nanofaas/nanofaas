@@ -1,0 +1,10 @@
+{
+  "description": "invoke figlet with valid text input",
+  "input": {
+    "text": "nanoFaaS"
+  },
+  "expected": {
+    "text": "nanoFaaS",
+    "font": "standard"
+  }
+}
