@@ -94,6 +94,7 @@ tasks.named('test') {
     dependsOn ':services:java:warm-echo:bootJar'
     dependsOn ':functions:java:word-stats:bootJar'
     dependsOn ':functions:java:json-transform:bootJar'
+    dependsOn ':functions:java:roman-numeral:bootJar'
 }
 
 tasks.named('bootJar') {
