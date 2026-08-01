@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:25-jdk AS build
 
 ARG NANOFAAS_CONTROL_PLANE_MODULES=container-deployment-provider
 
@@ -8,7 +8,7 @@ RUN ./gradlew :control-plane:bootJar \
     -PcontrolPlaneModules=${NANOFAAS_CONTROL_PLANE_MODULES} \
     --no-daemon
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 COPY --from=build /workspace/platform/control-plane/build/libs/app.jar /app/app.jar

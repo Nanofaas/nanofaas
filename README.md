@@ -22,7 +22,7 @@ the command contract and its boundary with the provisioning tool.
 
 ## Build and run
 
-NanoFaaS uses Java 21. Build all Java modules with:
+NanoFaaS uses Java 25. Build all Java modules with:
 
 ```bash
 ./gradlew build

@@ -121,7 +121,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - In-memory state (and in-memory queues when queue modules are enabled)
 - No authentication/authorization
 - Performance and latency prioritized over features
-- Java 21 toolchain, 4-space indentation, `com.nanofaas` package root
+- Java 25 toolchain, 4-space indentation, `com.nanofaas` package root
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

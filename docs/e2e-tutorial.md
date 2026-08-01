@@ -27,7 +27,7 @@ cd ../nanolab
   --provision
 ```
 
-The result contains k3s, Helm, a local registry, JDK 21 and the repository at `/home/ubuntu/nanofaas`. Subsequent runs omit `--provision`. Failures leave the VM running for diagnosis.
+The result contains k3s, Helm, a local registry, JDK 25 and the repository at `/home/ubuntu/nanofaas`. Subsequent runs omit `--provision`. Failures leave the VM running for diagnosis.
 
 ## Remote VM through SSH and Ansible
 
