@@ -115,6 +115,7 @@ graalvmNative {
         main {
             // Kubernetes-oriented optional modules may still rely on SnakeYAML charsets.
             buildArgs.add('-H:+AddAllCharsets')
+            buildArgs.add('-Os')
         }
     }
 }
@@ -205,7 +206,7 @@ tasks.named('bootBuildImage') {
 
     def nativeImageBuildArguments = (project.findProperty('nativeImageBuildArgs')
             ?: System.getenv('NATIVE_IMAGE_BUILD_ARGS')
-            ?: '-H:+AddAllCharsets').toString()
+            ?: '-H:+AddAllCharsets -Os').toString()
 
     environment = [
             'BP_NATIVE_IMAGE': 'true',
