@@ -19,6 +19,11 @@ import java.time.Duration;
 public class HttpClientConfig {
 
     @Bean
+    public WebClient.Builder webClientBuilder() {
+        return WebClient.builder();
+    }
+
+    @Bean
     public WebClient webClient(WebClient.Builder builder, HttpClientProperties properties) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, properties.connectTimeoutMs())

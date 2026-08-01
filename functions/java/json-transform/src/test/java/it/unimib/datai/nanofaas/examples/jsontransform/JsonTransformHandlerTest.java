@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.examples.jsontransform;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +31,7 @@ class JsonTransformHandlerTest {
                 assertEquals(expected.get("groupBy").asText(), actual.get("groupBy"), name);
                 assertEquals(expected.get("operation").asText(), actual.get("operation"), name);
                 Map<String, Object> groups = (Map<String, Object>) actual.get("groups");
-                expected.get("groups").fields().forEachRemaining(entry ->
+                expected.get("groups").properties().forEach(entry ->
                         assertEquals(entry.getValue().asDouble(), ((Number) groups.get(entry.getKey())).doubleValue(), name));
             }
         }

@@ -8,6 +8,7 @@ dependencies {
     implementation project(':sdks:java')
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
 }
 
 tasks.named('test') {
