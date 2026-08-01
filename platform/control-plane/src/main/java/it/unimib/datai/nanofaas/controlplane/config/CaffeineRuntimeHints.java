@@ -22,6 +22,8 @@ public class CaffeineRuntimeHints implements RuntimeHintsRegistrar {
     public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
         hints.reflection().registerType(
                 TypeReference.of("com.github.benmanes.caffeine.cache.SSW"),
-                MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+                builder -> builder
+                        .withMembers(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS)
+                        .withField("FACTORY"));
     }
 }
