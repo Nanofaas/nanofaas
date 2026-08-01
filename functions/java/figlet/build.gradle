@@ -20,22 +20,7 @@ bootJar {
 }
 
 bootBuildImage {
-    imageName = project.findProperty('functionImage') ?: 'nanofaas/java-figlet:buildpack'
-    def isArm = System.getProperty('os.arch') in ['aarch64', 'arm64']
-    def defaultBuilder = isArm ? 'dashaun/builder:tiny' : 'paketobuildpacks/builder-jammy-tiny:latest'
-    def builderImage = (project.findProperty('imageBuilder') ?: System.getenv('IMAGE_BUILDER')
-            ?: defaultBuilder).toString()
-    def runImageName = project.findProperty('imageRunImage') ?: System.getenv('IMAGE_RUN_IMAGE')
-    if (!runImageName && !isArm) {
-        runImageName = 'paketobuildpacks/run-jammy-tiny:latest'
+    doFirst {
+        throw new GradleException('Native buildpacks are disabled; run scripts/native-java-image.sh figlet instead')
     }
-    builder = builderImage
-    if (runImageName) {
-        runImage = runImageName.toString()
-    }
-    def hostArch = System.getProperty('os.arch')
-    def defaultPlatform = (hostArch in ['aarch64', 'arm64']) ? 'linux/arm64' : 'linux/amd64'
-    def targetPlatform = project.findProperty('imagePlatform') ?: System.getenv('IMAGE_PLATFORM') ?: defaultPlatform
-    imagePlatform = targetPlatform
-    environment = ['BP_NATIVE_IMAGE': 'true']
 }

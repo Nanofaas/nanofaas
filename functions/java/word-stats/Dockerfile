@@ -1,6 +1,6 @@
 # JVM-only local development Dockerfile. 
 # Production native images are built via GitHub Actions using Cloud Native Buildpacks.
-FROM docker.io/library/eclipse-temurin:21-jre
+FROM gcr.io/distroless/java25-debian13:nonroot
 WORKDIR /app
 COPY build/libs/word-stats.jar app.jar
 EXPOSE 8080

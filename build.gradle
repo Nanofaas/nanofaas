@@ -34,6 +34,14 @@ subprojects {
         finalizedBy jacocoTestReport
     }
 
+    pluginManager.withPlugin('org.graalvm.buildtools.native') {
+        project.extensions.configure('graalvmNative') { nativeExtension ->
+            nativeExtension.binaries.configureEach { binary ->
+                binary.buildArgs.add('-Os')
+            }
+        }
+    }
+
     jacocoTestReport {
         dependsOn test
         reports {

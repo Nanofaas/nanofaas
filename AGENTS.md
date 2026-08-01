@@ -16,8 +16,9 @@
 - `./gradlew test` — run unit/integration/E2E tests (requires container runtime).
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
 - `./gradlew :services:java:warm-echo:bootRun` — run the warm-echo example service locally.
-- `./gradlew :control-plane:bootBuildImage` and `:services:java:warm-echo:bootBuildImage` — create buildpack images.
-- `scripts/native-build.sh` — build GraalVM native binaries (uses SDKMAN).
+- `docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane .` — create a JVM image on Distroless Java 25.
+- `scripts/native-java-image.sh control-plane` — create a native control-plane image on Distroless.
+- `scripts/native-build.sh` — build every Java GraalVM native binary with the configured GraalVM release.
 - `nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml` (run from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo) — run local container E2E validation.
 - `nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/multipass.yaml` — provision a VM with k3s, deploy via Helm, and validate the platform through HTTP and Kubernetes resource assertions (requires NanoLab and a VM environment).
 

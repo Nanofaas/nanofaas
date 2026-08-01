@@ -2,10 +2,15 @@
 # Stage 1: GraalVM native-image compilation via Gradle.
 # Stage 2: Minimal runtime image with the static binary.
 
-FROM ghcr.io/graalvm/native-image-community:21 AS builder
+FROM oraclelinux:9-slim AS builder
 
 # Install findutils (provides xargs, required by gradlew)
-RUN microdnf install -y findutils && microdnf clean all
+ARG TARGETARCH
+RUN microdnf install -y ca-certificates curl findutils gcc glibc-devel gzip tar zlib-devel && microdnf clean all
+COPY gradle.properties scripts/install-graalvm-ce.sh /tmp/
+RUN sh /tmp/install-graalvm-ce.sh "$TARGETARCH" "$(sed -n 's/^graalvmVersion=//p' /tmp/gradle.properties)" "$(sed -n 's/^graalvmJavaVersion=//p' /tmp/gradle.properties)"
+ENV JAVA_HOME=/opt/graalvm
+ENV PATH="$JAVA_HOME/bin:$PATH"
 
 WORKDIR /build
 
@@ -25,8 +30,8 @@ COPY functions/java/word-stats-lite/ functions/java/word-stats-lite/
 RUN ./gradlew :functions:java:word-stats-lite:nativeCompile --no-daemon
 
 # Stage 2: minimal runtime
-FROM docker.io/library/debian:bookworm-slim
+FROM gcr.io/distroless/base-debian13:nonroot
 WORKDIR /app
-COPY --from=builder /build/functions/java/word-stats-lite/build/native/nativeCompile/word-stats-lite /app/word-stats-lite
+COPY --from=builder --chown=nonroot:nonroot /build/functions/java/word-stats-lite/build/native/nativeCompile/word-stats-lite /app/word-stats-lite
 EXPOSE 8080
 ENTRYPOINT ["/app/word-stats-lite"]

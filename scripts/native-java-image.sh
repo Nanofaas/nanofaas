@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+target="${1:-}"
+image="${2:-}"
+gradle_args=""
+
+case "$target" in
+  control-plane)
+    task=":control-plane:nativeCompile"
+    binary="platform/control-plane/build/native/nativeCompile/control-plane"
+    default_image="nanofaas/control-plane:native"
+    gradle_args="-PcontrolPlaneModules=${CONTROL_PLANE_MODULES:-all}"
+    ;;
+  warm-echo)
+    task=":services:java:warm-echo:nativeCompile"
+    binary="services/java/warm-echo/build/native/nativeCompile/warm-echo"
+    default_image="nanofaas/java-warm-echo:native"
+    ;;
+  word-stats)
+    task=":functions:java:word-stats:nativeCompile"
+    binary="functions/java/word-stats/build/native/nativeCompile/word-stats"
+    default_image="nanofaas/java-word-stats:native"
+    ;;
+  json-transform)
+    task=":functions:java:json-transform:nativeCompile"
+    binary="functions/java/json-transform/build/native/nativeCompile/json-transform"
+    default_image="nanofaas/java-json-transform:native"
+    ;;
+  roman-numeral)
+    task=":functions:java:roman-numeral:nativeCompile"
+    binary="functions/java/roman-numeral/build/native/nativeCompile/roman-numeral"
+    default_image="nanofaas/java-roman-numeral:native"
+    ;;
+  figlet)
+    task=":functions:java:figlet:nativeCompile"
+    binary="functions/java/figlet/build/native/nativeCompile/figlet"
+    default_image="nanofaas/java-figlet:native"
+    ;;
+  word-stats-lite)
+    task=":functions:java:word-stats-lite:nativeCompile"
+    binary="functions/java/word-stats-lite/build/native/nativeCompile/word-stats-lite"
+    default_image="nanofaas/java-word-stats-lite:native"
+    ;;
+  json-transform-lite)
+    task=":functions:java:json-transform-lite:nativeCompile"
+    binary="functions/java/json-transform-lite/build/native/nativeCompile/json-transform-lite"
+    default_image="nanofaas/java-json-transform-lite:native"
+    ;;
+  roman-numeral-lite)
+    task=":functions:java:roman-numeral-lite:nativeCompile"
+    binary="functions/java/roman-numeral-lite/build/native/nativeCompile/roman-numeral-lite"
+    default_image="nanofaas/java-roman-numeral-lite:native"
+    ;;
+  *)
+    echo "Usage: $0 {control-plane|warm-echo|word-stats|json-transform|roman-numeral|figlet|word-stats-lite|json-transform-lite|roman-numeral-lite} [image]" >&2
+    exit 2
+    ;;
+esac
+
+image="${image:-$default_image}"
+build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
+if [ -n "${IMAGE_PLATFORM:-}" ]; then
+  build+=(--platform "$IMAGE_PLATFORM")
+fi
+build+=(
+  --build-arg "NATIVE_TASK=$task"
+  --build-arg "NATIVE_BINARY=$binary"
+  --build-arg "GRADLE_ARGS=$gradle_args"
+  .
+)
+
+"${build[@]}"

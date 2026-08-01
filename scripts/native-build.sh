@@ -21,7 +21,8 @@ set -u
 
 # SDKMAN scripts are not nounset-safe; disable temporarily.
 set +u
-GRAALVM_VERSION=${GRAALVM_VERSION:-25.2.4-graalce}
+graalvm_version=$(sed -n 's/^graalvmVersion=//p' gradle.properties)
+GRAALVM_VERSION=${GRAALVM_VERSION:-${graalvm_version}-graalce}
 
 INSTALLED=false
 if [ -d "$HOME/.sdkman/candidates/java/$GRAALVM_VERSION" ]; then
@@ -39,7 +40,21 @@ fi
 sdk use java "$GRAALVM_VERSION"
 set -u
 
-./gradlew :control-plane:nativeCompile :services:java:warm-echo:nativeCompile :nanofaas-cli:nativeCompile -PcontrolPlaneModules=all
+# The SDK is a library, so compile its native test image; executable projects build their main image.
+native_tasks=(
+  :control-plane:nativeCompile
+  :sdks:java:nativeTestCompile
+  :services:java:warm-echo:nativeCompile
+  :nanofaas-cli:nativeCompile
+  :functions:java:word-stats:nativeCompile
+  :functions:java:json-transform:nativeCompile
+  :functions:java:roman-numeral:nativeCompile
+  :functions:java:figlet:nativeCompile
+  :functions:java:word-stats-lite:nativeCompile
+  :functions:java:json-transform-lite:nativeCompile
+  :functions:java:roman-numeral-lite:nativeCompile
+)
+./gradlew "${native_tasks[@]}" -PcontrolPlaneModules=all
 
 RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then

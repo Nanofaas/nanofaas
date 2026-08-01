@@ -4,4 +4,4 @@
 
 The HTTP invocation runtime comes from `sdks/java`; this module only supplies the application and example handler. Register its image through the normal NanoFaaS API to create the managed Deployment and Service. The SDK exposes `/invoke`, health endpoints, and metrics.
 
-Build its image with `./gradlew :services:java:warm-echo:bootBuildImage` or set `WARM_ECHO_IMAGE` to override the destination image name.
+Build its native Distroless image with `./scripts/native-java-image.sh warm-echo`. For a JVM image, use `docker build -f services/java/warm-echo/Dockerfile -t nanofaas/warm-echo .`.

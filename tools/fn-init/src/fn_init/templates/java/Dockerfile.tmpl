@@ -1,4 +1,4 @@
-FROM docker.io/library/eclipse-temurin:21-jre
+FROM gcr.io/distroless/java25-debian13:nonroot
 WORKDIR /app
 # Must match bootJar.archiveFileName in build.gradle
 COPY build/libs/{{FUNCTION_NAME}}.jar app.jar

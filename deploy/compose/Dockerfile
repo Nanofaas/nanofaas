@@ -8,7 +8,7 @@ RUN ./gradlew :control-plane:bootJar \
     -PcontrolPlaneModules=${NANOFAAS_CONTROL_PLANE_MODULES} \
     --no-daemon
 
-FROM eclipse-temurin:25-jre
+FROM gcr.io/distroless/java25-debian13:nonroot
 
 WORKDIR /app
 COPY --from=build /workspace/platform/control-plane/build/libs/app.jar /app/app.jar
