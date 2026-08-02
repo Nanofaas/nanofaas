@@ -14,24 +14,17 @@ function createContext(): HandlerContext {
     };
 }
 
-test("handle{{CLASS_NAME}} returns the default result", async () => {
-    const output = await handle{{CLASS_NAME}}(createContext(), {
-        input: {
-            key: "value",
-        },
+test("{{FUNCTION_NAME}} handler returns result for valid input", async () => {
+    const result = await handle{{CLASS_NAME}}(createContext(), {
+        input: { text: "hello" },
     });
-
-    assert.deepEqual(output, {
-        result: "ok",
-    });
+    assert.ok(result, "handler must return a result");
 });
 
-test("handle{{CLASS_NAME}} handles empty input", async () => {
-    const output = await handle{{CLASS_NAME}}(createContext(), {
+test("{{FUNCTION_NAME}} handler returns error for empty input", async () => {
+    const result = await handle{{CLASS_NAME}}(createContext(), {
         input: {},
     });
-
-    assert.deepEqual(output, {
-        result: "ok",
-    });
+    assert.ok(result && typeof result === "object");
+    assert.ok("error" in result, "empty input must return an error key");
 });

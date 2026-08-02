@@ -6,5 +6,8 @@ logger = context.get_logger(__name__)
 @nanofaas_function
 def handle(input_data):
     logger.info(f"{{FUNCTION_NAME}} invoked, executionId={context.get_execution_id()}")
+    text = input_data.get("text") if isinstance(input_data, dict) else None
+    if not text:
+        return {"error": "Field 'text' is required and must be non-empty"}
     # TODO: implement handler logic
     return {"result": "ok"}

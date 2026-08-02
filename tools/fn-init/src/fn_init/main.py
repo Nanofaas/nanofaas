@@ -14,6 +14,8 @@ from fn_init import generator, wizard
 app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.")
 console = Console(force_terminal=sys.stdout.isatty())
 DEFAULT_JAVASCRIPT_SDK_VERSION = "0.18.1"
+_RUNTIME = {"java": "java", "python": "python", "go": "go", "javascript": "javascript", "bash": "exec"}
+_RUNTIME_PREFIX = {"java": "java-", "python": "", "go": "go-", "javascript": "javascript-", "bash": "bash-"}
 
 
 @app.command()
@@ -69,7 +71,13 @@ def main(
         "CLASS_NAME": class_name,
         "PACKAGE": package,
         "PACKAGE_PATH": package.replace(".", "/"),
-        "IMAGE_TAG": f"nanofaas/{name}:latest",
+        "IMAGE_TAG": f"nanofaas/{_RUNTIME_PREFIX.get(lang, '')}{name}:latest",
+        "PREFIX": _RUNTIME_PREFIX.get(lang, ""),
+        "FAMILY": name,
+        "RUNTIME": _RUNTIME.get(lang, lang),
+        "DESCRIPTION": f"{name} function",
+        "DEFAULT_IMAGE": f"localhost:5000/nanofaas/{_RUNTIME_PREFIX.get(lang, '')}{name}:e2e",
+        "DEFAULT_PAYLOAD": f"{name}-sample.json",
         "LANG": lang,
         "SDK_DEPENDENCY": "",
         "SDK_BUILD_HOOKS": "",

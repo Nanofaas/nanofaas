@@ -2,13 +2,15 @@ from unittest.mock import patch
 from handler import handle
 
 
-def test_handle_returns_result():
+def test_handle_returns_expected_keys():
     with patch("nanofaas.sdk.context.get_execution_id", return_value="test-id"):
-        result = handle({"key": "value"})
-    assert result == {"result": "ok"}
+        result = handle({"text": "hello"})
+    assert isinstance(result, dict), "handler must return a dict"
+    assert "result" in result, "handler must return a result key"
 
 
-def test_handle_empty_input():
+def test_handle_empty_input_returns_error():
     with patch("nanofaas.sdk.context.get_execution_id", return_value="test-id"):
         result = handle({})
-    assert "result" in result
+    assert isinstance(result, dict)
+    assert "error" in result, "empty input must return an error key"

@@ -203,13 +203,15 @@ def build_javascript_scaffold_contract(
         "DOCKERFILE_PATH": f"{normalized_output}/Dockerfile",
         "DOCKER_APP_COPY": f"COPY {normalized_output} {docker_app_dir}",
         "DOCKER_APP_DIR": docker_app_dir,
-        "DOCKER_SDK_COPY": "COPY sdks/javascript ./function-sdk-javascript",
+        "DOCKER_SDK_COPY": "COPY sdks/javascript ./sdks/javascript",
         "DOCKER_SDK_BUILD_BLOCK": (
-            "WORKDIR /src/function-sdk-javascript\n"
+            "WORKDIR /src/sdks/javascript\n"
             "RUN npm ci\n"
             "RUN npm run build\n\n"
         ),
-        "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript",
+        # npm symlinks file: deps into node_modules, so the runtime image must
+        # keep the SDK at the same path the symlink resolves to (/sdks/javascript).
+        "DOCKER_FINAL_SDK_COPY": "COPY --from=build /src/sdks/javascript /sdks/javascript",
     }
 
 
@@ -238,18 +240,39 @@ def generate_function(
     payloads_dir = output_dir / "payloads"
     (payloads_dir / "assets").mkdir(parents=True, exist_ok=True)
     happy = {
+        "_comment": "Update after implementing your handler",
         "description": f"invoke {name} with valid input",
-        "input": {"key": "value"},
+        "input": {"text": "hello"},
         "expected": {"result": "ok"},
     }
     missing = {
+        "_comment": "Update after implementing your handler",
         "description": f"invoke {name} with empty input",
         "input": {},
-        "expected": {"result": "ok"},
+        "expected": {"error": "Field 'text' is required and must be non-empty"},
     }
     (payloads_dir / "happy-path.json").write_text(json.dumps(happy, indent=2))
     (payloads_dir / "missing-input.json").write_text(json.dumps(missing, indent=2))
     created += [payloads_dir / "happy-path.json", payloads_dir / "missing-input.json"]
+
+    # Generate lockfile so the function is buildable immediately.
+    # uv may not be available — fail silently.
+    import subprocess
+    try:
+        subprocess.run(
+            ["uv", "lock"], cwd=str(output_dir), check=True, capture_output=True
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Generate go.sum so the function is buildable immediately.
+    if lang == "go":
+        try:
+            subprocess.run(
+                ["go", "mod", "tidy"], cwd=str(output_dir), check=True, capture_output=True
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
 
     if vscode:
         vscode_dir = TEMPLATES_DIR / "vscode" / lang

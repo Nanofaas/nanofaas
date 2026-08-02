@@ -1,0 +1,7 @@
+{
+  "description": "invoke figlet with empty input",
+  "input": {},
+  "expected": {
+    "error": "Field 'text' is required and must be non-empty"
+  }
+}

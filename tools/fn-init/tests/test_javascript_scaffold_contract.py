@@ -18,10 +18,10 @@ def test_build_javascript_scaffold_contract_inside_monorepo(tmp_path: Path) -> N
     assert contract["DOCKERFILE_PATH"] == "functions/javascript/greet/Dockerfile"
     assert contract["DOCKER_APP_COPY"] == "COPY functions/javascript/greet /src/functions/javascript/greet"
     assert contract["DOCKER_APP_DIR"] == "/src/functions/javascript/greet"
-    assert contract["DOCKER_SDK_COPY"] == "COPY sdks/javascript ./function-sdk-javascript"
-    assert "WORKDIR /src/function-sdk-javascript" in contract["DOCKER_SDK_BUILD_BLOCK"]
+    assert contract["DOCKER_SDK_COPY"] == "COPY sdks/javascript ./sdks/javascript"
+    assert "WORKDIR /src/sdks/javascript" in contract["DOCKER_SDK_BUILD_BLOCK"]
     assert "RUN npm ci" in contract["DOCKER_SDK_BUILD_BLOCK"]
-    assert contract["DOCKER_FINAL_SDK_COPY"] == "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript"
+    assert contract["DOCKER_FINAL_SDK_COPY"] == "COPY --from=build /src/sdks/javascript /sdks/javascript"
     assert "npm --prefix ../../../sdks/javascript install" in contract["SDK_BUILD_HOOKS"]
 
 
@@ -97,11 +97,11 @@ def test_scaffold_main_renders_custom_monorepo_build_paths(tmp_path: Path, monke
     dockerfile = (repo / "custom" / "greet" / "Dockerfile").read_text(encoding="utf-8")
     function_yaml = (repo / "custom" / "greet" / "function.yaml").read_text(encoding="utf-8")
 
-    assert "COPY sdks/javascript ./function-sdk-javascript" in dockerfile
+    assert "COPY sdks/javascript ./sdks/javascript" in dockerfile
     assert "COPY custom/greet /src/custom/greet" in dockerfile
-    assert "WORKDIR /src/function-sdk-javascript" in dockerfile
+    assert "WORKDIR /src/sdks/javascript" in dockerfile
     assert "WORKDIR /src/custom/greet" in dockerfile
-    assert "COPY --from=build /src/function-sdk-javascript /function-sdk-javascript" in dockerfile
+    assert "COPY --from=build /src/sdks/javascript /sdks/javascript" in dockerfile
     assert "context: ../.." in function_yaml
     assert "dockerfile: custom/greet/Dockerfile" in function_yaml
 
