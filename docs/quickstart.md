@@ -6,10 +6,10 @@ control-plane tool provisions VMs and installs the platform.
 
 ## Prerequisites
 
-- Java 21 for the regular Gradle build.
+- Java 25 for the regular Gradle build.
 - Docker or a compatible container runtime for Docker-backed tests and local
   image builds.
-- GraalVM with Native Image only for the standalone CLI executable.
+- GraalVM with Native Image for native Java builds.
 - Multipass for the local k3s path; SSH and Ansible for an external VM.
 
 ## Build the platform

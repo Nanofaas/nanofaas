@@ -1,8 +1,8 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.NullNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.NullNode;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,7 +22,9 @@ public class JsonOutputNormalizer {
         }
         try {
             return objectMapper.valueToTree(output);
-        } catch (IllegalArgumentException ex) {
+        } catch (RuntimeException ex) {
+            // ponytail: Jackson 3 throws InvalidDefinitionException, Jackson 2 throws
+            // IllegalArgumentException; RuntimeException covers both.
             throw new OutputSerializationException(
                     "Function output is not JSON-serializable: " + output.getClass().getName(),
                     ex);

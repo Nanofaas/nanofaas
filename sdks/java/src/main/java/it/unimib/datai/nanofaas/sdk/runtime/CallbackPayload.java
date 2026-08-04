@@ -1,6 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 
 public record CallbackPayload(

@@ -2,7 +2,10 @@
 .gradle
 .idea
 .worktrees
+experiments
 **/build
 **/.venv
+**/.venv/**
+**/target
 **/.pytest_cache
 **/__pycache__

@@ -1,4 +1,4 @@
-FROM docker.io/library/eclipse-temurin:21-jre
+FROM gcr.io/distroless/java25-debian13:nonroot
 WORKDIR /app
 COPY build/libs/roman-numeral.jar app.jar
 EXPOSE 8080

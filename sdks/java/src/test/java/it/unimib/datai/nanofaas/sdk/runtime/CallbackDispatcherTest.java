@@ -1,6 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import com.fasterxml.jackson.databind.node.TextNode;
+import tools.jackson.databind.node.StringNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -51,7 +51,7 @@ class CallbackDispatcherTest {
                 new ThreadPoolExecutor.AbortPolicy());
         dispatcher = new CallbackDispatcher(callbackClient, executor);
 
-        boolean accepted = dispatcher.submit("exec-1", CallbackPayload.success(TextNode.valueOf("ok")), "trace-1");
+        boolean accepted = dispatcher.submit("exec-1", CallbackPayload.success(StringNode.valueOf("ok")), "trace-1");
 
         assertTrue(accepted);
         assertTrue(delivered.await(2, TimeUnit.SECONDS));
@@ -77,11 +77,11 @@ class CallbackDispatcherTest {
                 new ThreadPoolExecutor.AbortPolicy());
         dispatcher = new CallbackDispatcher(callbackClient, executor);
 
-        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(TextNode.valueOf("one")), "trace-1"));
+        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(StringNode.valueOf("one")), "trace-1"));
         assertTrue(running.await(2, TimeUnit.SECONDS));
-        assertTrue(dispatcher.submit("exec-2", CallbackPayload.success(TextNode.valueOf("two")), "trace-2"));
+        assertTrue(dispatcher.submit("exec-2", CallbackPayload.success(StringNode.valueOf("two")), "trace-2"));
 
-        boolean accepted = dispatcher.submit("exec-3", CallbackPayload.success(TextNode.valueOf("three")), "trace-3");
+        boolean accepted = dispatcher.submit("exec-3", CallbackPayload.success(StringNode.valueOf("three")), "trace-3");
 
         release.countDown();
         assertFalse(accepted);
@@ -111,8 +111,8 @@ class CallbackDispatcherTest {
         });
         dispatcher = new CallbackDispatcher(callbackClient, 2);
 
-        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(TextNode.valueOf("one")), "trace-1"));
-        assertTrue(dispatcher.submit("exec-2", CallbackPayload.success(TextNode.valueOf("two")), "trace-2"));
+        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(StringNode.valueOf("one")), "trace-1"));
+        assertTrue(dispatcher.submit("exec-2", CallbackPayload.success(StringNode.valueOf("two")), "trace-2"));
 
         assertTrue(started.await(1, TimeUnit.SECONDS));
         release.countDown();
@@ -133,7 +133,7 @@ class CallbackDispatcherTest {
             return true;
         });
         dispatcher = new CallbackDispatcher(callbackClient, 2);
-        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(TextNode.valueOf("one")), "trace-1"));
+        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(StringNode.valueOf("one")), "trace-1"));
         assertTrue(running.await(1, TimeUnit.SECONDS));
 
         FutureTask<Void> shutdownTask = new FutureTask<>(() -> {

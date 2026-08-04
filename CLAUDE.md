@@ -25,14 +25,18 @@ export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source fr
 # Plan (dry-run) to preview the workflow without executing
 (cd ../nanolab && ./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/local.yaml)
 
-# Build OCI images
-./gradlew :control-plane:bootBuildImage
-./gradlew :services:java:warm-echo:bootBuildImage
+# Build JVM OCI images on Distroless Java 25
+docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane .
+docker build -f services/java/warm-echo/Dockerfile -t nanofaas/warm-echo .
+
+# Build native OCI images on Distroless
+./scripts/native-java-image.sh control-plane
+./scripts/native-java-image.sh warm-echo
 
 # Control-plane optional module selection
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
 
-# Native build (GraalVM via SDKMAN)
+# Build every native Java binary (configured GraalVM release via SDKMAN)
 ./scripts/native-build.sh
 
 # Experiments / load tests (see experiments/)
@@ -121,12 +125,12 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - In-memory state (and in-memory queues when queue modules are enabled)
 - No authentication/authorization
 - Performance and latency prioritized over features
-- Java 21 toolchain, 4-space indentation, `com.nanofaas` package root
+- Java 25 toolchain, 4-space indentation, `com.nanofaas` package root
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **mcFaas** (15282 symbols, 40055 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mcFaas** (11376 symbols, 28721 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

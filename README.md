@@ -22,7 +22,7 @@ the command contract and its boundary with the provisioning tool.
 
 ## Build and run
 
-NanoFaaS uses Java 21. Build all Java modules with:
+NanoFaaS uses Java 25. Build all Java modules with:
 
 ```bash
 ./gradlew build
@@ -42,6 +42,24 @@ Build the standalone native executable when GraalVM Native Image is available:
 ./gradlew :nanofaas-cli:nativeCompile
 clients/cli/build/native/nativeCompile/nanofaas-cli --help
 ```
+
+Build and smoke-test all native Java targets with the GraalVM release pinned in
+`gradle.properties`:
+
+```bash
+scripts/native-build.sh
+```
+
+Build a native Distroless image for any supported service or example function:
+
+```bash
+scripts/native-java-image.sh control-plane
+scripts/native-java-image.sh warm-echo
+scripts/native-java-image.sh roman-numeral-lite
+```
+
+JVM images use their module Dockerfile and Distroless Java 25. Native image
+creation does not use Spring Boot buildpacks.
 
 Run the focused native smoke test with:
 

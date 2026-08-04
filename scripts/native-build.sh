@@ -21,16 +21,8 @@ set -u
 
 # SDKMAN scripts are not nounset-safe; disable temporarily.
 set +u
-GRAALVM_VERSION=${GRAALVM_VERSION:-}
-if [ -z "$GRAALVM_VERSION" ]; then
-  GRAALVM_VERSION=$(sdk list java | awk '/-graal/ {print $NF; exit}')
-fi
-
-if [ -z "$GRAALVM_VERSION" ]; then
-  echo "Unable to determine a GraalVM version from SDKMAN." >&2
-  echo "Set GRAALVM_VERSION (e.g., 17.0.11-graal) and re-run." >&2
-  exit 1
-fi
+graalvm_version=$(sed -n 's/^graalvmVersion=//p' gradle.properties)
+GRAALVM_VERSION=${GRAALVM_VERSION:-${graalvm_version}-graalce}
 
 INSTALLED=false
 if [ -d "$HOME/.sdkman/candidates/java/$GRAALVM_VERSION" ]; then
@@ -48,7 +40,21 @@ fi
 sdk use java "$GRAALVM_VERSION"
 set -u
 
-./gradlew :control-plane:nativeCompile :services:java:warm-echo:nativeCompile :nanofaas-cli:nativeCompile -PcontrolPlaneModules=all
+# The SDK is a library, so compile its native test image; executable projects build their main image.
+native_tasks=(
+  :control-plane:nativeCompile
+  :sdks:java:nativeTestCompile
+  :services:java:warm-echo:nativeCompile
+  :nanofaas-cli:nativeCompile
+  :functions:java:word-stats:nativeCompile
+  :functions:java:json-transform:nativeCompile
+  :functions:java:roman-numeral:nativeCompile
+  :functions:java:figlet:nativeCompile
+  :functions:java:word-stats-lite:nativeCompile
+  :functions:java:json-transform-lite:nativeCompile
+  :functions:java:roman-numeral-lite:nativeCompile
+)
+./gradlew "${native_tasks[@]}" -PcontrolPlaneModules=all
 
 RUN_SMOKE=${RUN_SMOKE:-1}
 if [ "$RUN_SMOKE" = "1" ]; then
@@ -128,6 +134,7 @@ if [ "$RUN_SMOKE" = "1" ]; then
   wait_for_http_ok "http://localhost:${WARM_ECHO_PORT}/actuator/health"
   curl -sf -X POST "http://localhost:${WARM_ECHO_PORT}/invoke" \
     -H 'Content-Type: application/json' \
+    -H 'X-Execution-Id: native-smoke' \
     -d '{"input":{"message":"hi"}}' > /dev/null
 
   ./gradlew :nanofaas-cli:nativeSmoke

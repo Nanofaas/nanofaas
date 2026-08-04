@@ -15,7 +15,7 @@ COPY runtimes/watchdog/src ./src
 RUN cargo build --release
 
 # Stage 2: Build Java warm-echo service
-FROM eclipse-temurin:21-jdk-alpine AS java-builder
+FROM eclipse-temurin:25-jdk-alpine AS java-builder
 
 WORKDIR /build
 COPY gradlew settings.gradle build.gradle gradle.properties ./
@@ -31,7 +31,7 @@ COPY functions ./functions
 RUN ./gradlew :services:java:warm-echo:bootJar --no-daemon
 
 # Stage 3: Final minimal image
-FROM eclipse-temurin:21-jre-alpine
+FROM gcr.io/distroless/java25-debian13:nonroot
 
 # Install minimal dependencies
 RUN apk add --no-cache tini
