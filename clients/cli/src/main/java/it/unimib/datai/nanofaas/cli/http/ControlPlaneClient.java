@@ -15,6 +15,10 @@ import java.time.Duration;
 import java.util.List;
 
 public final class ControlPlaneClient {
+    private static final String FUNCTIONS_PATH = "v1/functions/";
+    private static final String APPLICATION_JSON = "application/json";
+    private static final String CONTENT_TYPE = "Content-Type";
+
     private final URI base;
     private final HttpClient http;
     private final HttpJson json;
@@ -48,7 +52,7 @@ public final class ControlPlaneClient {
     }
 
     public FunctionDetails getFunctionOrNull(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions/" + name))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -64,7 +68,7 @@ public final class ControlPlaneClient {
     }
 
     public void deleteFunction(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions/" + name))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
                 .DELETE()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -81,7 +85,7 @@ public final class ControlPlaneClient {
     public FunctionDetails registerFunction(FunctionSpec spec) {
         String body = json.toJson(spec);
         HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions"))
-                .header("Content-Type", "application/json")
+                .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -96,8 +100,8 @@ public final class ControlPlaneClient {
     public InvocationResponse invokeSync(String name, InvocationRequest request,
                                          String idempotencyKey, String traceId, Integer timeoutMs) {
         String body = json.toJson(request);
-        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve("v1/functions/" + name + ":invoke"))
-                .header("Content-Type", "application/json")
+        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":invoke"))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(300));
 
@@ -120,8 +124,8 @@ public final class ControlPlaneClient {
 
     public InvocationResponse enqueue(String name, InvocationRequest request, String idempotencyKey, String traceId) {
         String body = json.toJson(request);
-        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve("v1/functions/" + name + ":enqueue"))
-                .header("Content-Type", "application/json")
+        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":enqueue"))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(30));
 

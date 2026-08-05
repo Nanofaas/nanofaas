@@ -23,6 +23,7 @@ import java.util.concurrent.TimeoutException;
 public class InvokeController {
     private static final Logger log = LoggerFactory.getLogger(InvokeController.class);
     private static final String DEFAULT_HANDLER_ERROR_MESSAGE = "Handler execution failed";
+    private static final String ERROR_KEY = "error";
 
     private final CallbackDispatcher callbackDispatcher;
     private final HandlerRegistry handlerRegistry;
@@ -59,7 +60,7 @@ public class InvokeController {
         if (effectiveExecutionId == null || effectiveExecutionId.isBlank()) {
             log.error("No execution ID provided (header or ENV)");
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Execution ID not configured"));
+                    .body(Map.of(ERROR_KEY, "Execution ID not configured"));
         }
 
         boolean isColdStart = coldStartTracker.firstInvocation();
@@ -91,7 +92,7 @@ public class InvokeController {
                     runtimeContext.traceId(),
                     dispatchAttempt);
             return ResponseEntity.status(500)
-                    .body(Map.of("error", errorMessage));
+                    .body(Map.of(ERROR_KEY, errorMessage));
         } catch (TimeoutException ex) {
             log.error("Handler timed out for execution {}", effectiveExecutionId);
             callbackDispatcher.submit(
@@ -99,7 +100,7 @@ public class InvokeController {
                     CallbackPayload.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
                     runtimeContext.traceId(),
                     dispatchAttempt);
-            return ResponseEntity.status(504).body(Map.of("error", "Handler timed out"));
+            return ResponseEntity.status(504).body(Map.of(ERROR_KEY, "Handler timed out"));
         } catch (Exception ex) {
             String errorMessage = handlerErrorMessage(ex);
             log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
@@ -111,7 +112,7 @@ public class InvokeController {
                     dispatchAttempt);
 
             return ResponseEntity.status(500)
-                    .body(Map.of("error", errorMessage));
+                    .body(Map.of(ERROR_KEY, errorMessage));
         }
     }
 

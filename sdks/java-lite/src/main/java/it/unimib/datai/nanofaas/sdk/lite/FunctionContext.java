@@ -10,29 +10,32 @@ import org.slf4j.MDC;
  */
 public final class FunctionContext {
 
+    private static final String EXECUTION_ID_KEY = "executionId";
+    private static final String TRACE_ID_KEY = "traceId";
+
     private FunctionContext() {}
 
     // Used by InvokeHandler (different package) - not part of public user API
     public static void set(String executionId, String traceId) {
         if (executionId != null) {
-            MDC.put("executionId", executionId);
+            MDC.put(EXECUTION_ID_KEY, executionId);
         }
         if (traceId != null) {
-            MDC.put("traceId", traceId);
+            MDC.put(TRACE_ID_KEY, traceId);
         }
     }
 
     public static void clear() {
-        MDC.remove("executionId");
-        MDC.remove("traceId");
+        MDC.remove(EXECUTION_ID_KEY);
+        MDC.remove(TRACE_ID_KEY);
     }
 
     public static String getExecutionId() {
-        return MDC.get("executionId");
+        return MDC.get(EXECUTION_ID_KEY);
     }
 
     public static String getTraceId() {
-        return MDC.get("traceId");
+        return MDC.get(TRACE_ID_KEY);
     }
 
     public static Logger getLogger(Class<?> clazz) {

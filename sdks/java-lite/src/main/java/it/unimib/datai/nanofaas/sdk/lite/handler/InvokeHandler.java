@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class InvokeHandler implements HttpHandler {
     private static final Logger log = LoggerFactory.getLogger(InvokeHandler.class);
+    private static final String ERROR_KEY = "error";
     private final FunctionHandler functionHandler;
     private final CallbackClient callbackClient;
     private final RuntimeMetrics metrics;
@@ -93,7 +94,7 @@ public final class InvokeHandler implements HttpHandler {
 
         if (effectiveExecutionId == null || effectiveExecutionId.isBlank()) {
             log.error("No execution ID provided (header or ENV)");
-            sendJson(exchange, 400, Map.of("error", "Execution ID not configured"));
+            sendJson(exchange, 400, Map.of(ERROR_KEY, "Execution ID not configured"));
             return;
         }
 
@@ -118,7 +119,7 @@ public final class InvokeHandler implements HttpHandler {
                         InvocationResult.error("INVALID_JSON", "Request body must be valid JSON"),
                         traceId, dispatchAttempt);
                 sendJson(exchange, 400, Map.of(
-                        "error", Map.of("code", "INVALID_JSON", "message", "Request body must be valid JSON")));
+                        ERROR_KEY, Map.of("code", "INVALID_JSON", "message", "Request body must be valid JSON")));
                 return;
             }
             Object output = invokeWithTimeout(request);
@@ -141,7 +142,7 @@ public final class InvokeHandler implements HttpHandler {
                     InvocationResult.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
                     traceId, dispatchAttempt);
             sendJson(exchange, 504, Map.of(
-                    "error", Map.of("code", "HANDLER_TIMEOUT", "message", "Handler exceeded configured timeout")));
+                    ERROR_KEY, Map.of("code", "HANDLER_TIMEOUT", "message", "Handler exceeded configured timeout")));
         } catch (Exception ex) {
             log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
             metrics.recordInvocation(functionName);
@@ -150,7 +151,7 @@ public final class InvokeHandler implements HttpHandler {
             dispatchCallback(effectiveExecutionId,
                     InvocationResult.error("HANDLER_ERROR", ex.getMessage()), traceId, dispatchAttempt);
 
-            sendJson(exchange, 500, Map.of("error", ex.getMessage() != null ? ex.getMessage() : "Internal error"));
+            sendJson(exchange, 500, Map.of(ERROR_KEY, ex.getMessage() != null ? ex.getMessage() : "Internal error"));
         } finally {
             metrics.observeDuration(functionName, (System.nanoTime() - startNanos) / 1_000_000_000.0);
             metrics.decInFlight(functionName);

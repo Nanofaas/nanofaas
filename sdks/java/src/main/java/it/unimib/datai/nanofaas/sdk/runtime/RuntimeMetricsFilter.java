@@ -16,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public final class RuntimeMetricsFilter extends OncePerRequestFilter {
+    private static final String INVOCATIONS_COUNTER = "runtime_invocations_total";
+    private static final String SUCCESS_TAG = "success";
+
     private final MeterRegistry registry;
     private final Counter coldStarts;
     private final Counter callbackFailures;
@@ -27,8 +30,8 @@ public final class RuntimeMetricsFilter extends OncePerRequestFilter {
         this.callbackFailures = registry.counter("runtime_callback_failures");
         Gauge.builder("runtime_in_flight", inFlight, AtomicInteger::get).register(registry);
         Timer.builder("runtime_invocation_duration_seconds").register(registry);
-        registry.counter("runtime_invocations_total", "success", "true");
-        registry.counter("runtime_invocations_total", "success", "false");
+        registry.counter(INVOCATIONS_COUNTER, SUCCESS_TAG, "true");
+        registry.counter(INVOCATIONS_COUNTER, SUCCESS_TAG, "false");
     }
 
     @Override
@@ -46,7 +49,7 @@ public final class RuntimeMetricsFilter extends OncePerRequestFilter {
         } finally {
             inFlight.decrementAndGet();
             sample.stop(registry.timer("runtime_invocation_duration_seconds"));
-            registry.counter("runtime_invocations_total", "success", String.valueOf(response.getStatus() < 400))
+            registry.counter(INVOCATIONS_COUNTER, SUCCESS_TAG, String.valueOf(response.getStatus() < 400))
                     .increment();
             if ("true".equalsIgnoreCase(response.getHeader("X-Cold-Start"))) {
                 coldStarts.increment();
