@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
 @NanofaasFunction
 public class JsonTransformHandler implements FunctionHandler {
     private static final Logger log = FunctionContext.getLogger(JsonTransformHandler.class);
+    private static final String ERROR_KEY = "error";
+    private static final String OPERATION_COUNT = "count";
 
     @Override
     @SuppressWarnings("unchecked")
@@ -35,20 +37,20 @@ public class JsonTransformHandler implements FunctionHandler {
         try {
             input = (Map<String, Object>) request.input();
         } catch (ClassCastException e) {
-            return Map.of("error", "Input must be a JSON object");
+            return Map.of(ERROR_KEY, "Input must be a JSON object");
         }
 
         List<Map<String, Object>> data = (List<Map<String, Object>>) input.get("data");
         String groupBy = (String) input.get("groupBy");
-        String operation = (String) input.getOrDefault("operation", "count");
+        String operation = (String) input.getOrDefault("operation", OPERATION_COUNT);
         String valueField = (String) input.get("valueField");
 
         if (data == null || groupBy == null) {
-            return Map.of("error", "Fields 'data' (array) and 'groupBy' (string) are required");
+            return Map.of(ERROR_KEY, "Fields 'data' (array) and 'groupBy' (string) are required");
         }
 
-        if (!operation.equals("count") && valueField == null) {
-            return Map.of("error", "Field 'valueField' is required for operation: " + operation);
+        if (!operation.equals(OPERATION_COUNT) && valueField == null) {
+            return Map.of(ERROR_KEY, "Field 'valueField' is required for operation: " + operation);
         }
 
         return transform(data, groupBy, operation, valueField);
@@ -72,7 +74,7 @@ public class JsonTransformHandler implements FunctionHandler {
             List<Map<String, Object>> items = entry.getValue();
 
             Object value = switch (operation.toLowerCase()) {
-                case "count" -> items.size();
+                case OPERATION_COUNT -> items.size();
                 case "sum" -> sumField(items, valueField);
                 case "avg" -> avgField(items, valueField);
                 case "min" -> minField(items, valueField);

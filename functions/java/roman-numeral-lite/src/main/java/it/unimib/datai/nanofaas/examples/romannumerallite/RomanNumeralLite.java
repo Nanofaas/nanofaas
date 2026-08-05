@@ -10,6 +10,7 @@ public final class RomanNumeralLite {
     private static final Logger log = FunctionContext.getLogger(RomanNumeralLite.class);
     private static final int[] VALUES = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
     private static final String[] SYMBOLS = {"M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"};
+    private static final String ERROR_KEY = "error";
 
     private RomanNumeralLite() {
     }
@@ -26,18 +27,18 @@ public final class RomanNumeralLite {
         log.info("roman-numeral-lite invoked, executionId={}", FunctionContext.getExecutionId());
 
         if (!(input instanceof Map<?, ?> values)) {
-            return Map.of("error", "Input must be a JSON object");
+            return Map.of(ERROR_KEY, "Input must be a JSON object");
         }
         if (!values.containsKey("number")) {
-            return Map.of("error", "missing required field: number");
+            return Map.of(ERROR_KEY, "missing required field: number");
         }
         if (!(values.get("number") instanceof Number rawNumber)) {
-            return Map.of("error", "field 'number' must be an integer");
+            return Map.of(ERROR_KEY, "field 'number' must be an integer");
         }
 
         int number = rawNumber.intValue();
         if (number < 1 || number > 3999) {
-            return Map.of("error", "number must be between 1 and 3999, got: " + number);
+            return Map.of(ERROR_KEY, "number must be between 1 and 3999, got: " + number);
         }
         return Map.of("roman", toRoman(number));
     }

@@ -15,6 +15,7 @@ public class RomanNumeralHandler implements FunctionHandler {
 
     private static final int[] VALUES   = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
     private static final String[] SYMS  = {"M","CM","D","CD","C","XC","L","XL","X","IX","V","IV","I"};
+    private static final String ERROR_KEY = "error";
 
     @Override
     @SuppressWarnings("unchecked")
@@ -22,21 +23,21 @@ public class RomanNumeralHandler implements FunctionHandler {
         log.info("roman-numeral invoked, executionId={}", FunctionContext.getExecutionId());
 
         if (!(request.input() instanceof Map<?, ?> rawInput)) {
-            return Map.of("error", "Input must be a JSON object");
+            return Map.of(ERROR_KEY, "Input must be a JSON object");
         }
         var input = (Map<String, Object>) rawInput;
 
         if (!input.containsKey("number")) {
-            return Map.of("error", "missing required field: number");
+            return Map.of(ERROR_KEY, "missing required field: number");
         }
         int n;
         try {
             n = ((Number) input.get("number")).intValue();
         } catch (ClassCastException e) {
-            return Map.of("error", "field 'number' must be an integer");
+            return Map.of(ERROR_KEY, "field 'number' must be an integer");
         }
         if (n < 1 || n > 3999) {
-            return Map.of("error", "number must be between 1 and 3999, got: " + n);
+            return Map.of(ERROR_KEY, "number must be between 1 and 3999, got: " + n);
         }
         return Map.of("roman", toRoman(n));
     }
