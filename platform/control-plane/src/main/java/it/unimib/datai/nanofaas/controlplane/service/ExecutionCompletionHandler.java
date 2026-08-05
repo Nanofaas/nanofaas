@@ -214,14 +214,15 @@ public class ExecutionCompletionHandler {
             record.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
         }
 
-        Long latencyMs = (startedAt != null && finishedAt != null)
-                ? finishedAt.toEpochMilli() - startedAt.toEpochMilli() : null;
-        Long queueWaitMs = (enqueuedAt != null && startedAt != null)
-                ? startedAt.toEpochMilli() - enqueuedAt.toEpochMilli() : null;
-        Long e2eMs = (enqueuedAt != null && finishedAt != null)
-                ? finishedAt.toEpochMilli() - enqueuedAt.toEpochMilli() : null;
+        Long latencyMs = elapsedMs(startedAt, finishedAt);
+        Long queueWaitMs = elapsedMs(enqueuedAt, startedAt);
+        Long e2eMs = elapsedMs(enqueuedAt, finishedAt);
         return new FinalCompletion(functionName, result, latencyMs, queueWaitMs, e2eMs,
                 dispatchResult.coldStart(), dispatchResult.initDurationMs(), false);
+    }
+
+    private static Long elapsedMs(Instant start, Instant end) {
+        return (start != null && end != null) ? end.toEpochMilli() - start.toEpochMilli() : null;
     }
 
     /**

@@ -126,23 +126,28 @@ public class KubernetesImageValidator implements ImageValidator {
             if (state == null || state.getWaiting() == null) {
                 continue;
             }
-            ContainerStateWaiting waiting = state.getWaiting();
-            String reason = waiting.getReason() == null ? "" : waiting.getReason();
-            String message = waiting.getMessage() == null ? "" : waiting.getMessage();
-            String lowerReason = reason.toLowerCase(Locale.ROOT);
-            String lowerMessage = message.toLowerCase(Locale.ROOT);
-
-            if (isImageNotFound(lowerReason, lowerMessage)) {
-                return ImageValidationException.notFound(image);
+            ImageValidationException error = pullErrorFor(state.getWaiting(), image);
+            if (error != null) {
+                return error;
             }
+        }
+        return null;
+    }
 
-            if (isAuthFailure(lowerMessage)) {
-                return ImageValidationException.authRequired(image);
-            }
+    private ImageValidationException pullErrorFor(ContainerStateWaiting waiting, String image) {
+        String reason = waiting.getReason() == null ? "" : waiting.getReason();
+        String message = waiting.getMessage() == null ? "" : waiting.getMessage();
+        String lowerReason = reason.toLowerCase(Locale.ROOT);
+        String lowerMessage = message.toLowerCase(Locale.ROOT);
 
-            if ("errimagepull".equals(lowerReason) || "imagepullbackoff".equals(lowerReason)) {
-                return ImageValidationException.registryUnavailable(image, reason + ": " + message);
-            }
+        if (isImageNotFound(lowerReason, lowerMessage)) {
+            return ImageValidationException.notFound(image);
+        }
+        if (isAuthFailure(lowerMessage)) {
+            return ImageValidationException.authRequired(image);
+        }
+        if ("errimagepull".equals(lowerReason) || "imagepullbackoff".equals(lowerReason)) {
+            return ImageValidationException.registryUnavailable(image, reason + ": " + message);
         }
         return null;
     }

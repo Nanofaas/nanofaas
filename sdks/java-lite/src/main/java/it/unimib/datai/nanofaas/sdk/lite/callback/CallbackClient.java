@@ -77,29 +77,40 @@ public final class CallbackClient {
         }
 
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try {
-                int status = doSend(executionId, body, traceId, dispatchAttempt);
-                if (status >= 200 && status < 300) {
-                    log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
-                    return true;
-                }
-                if (isPermanentFailure(status)) {
-                    log.error("Permanent callback failure for execution {} with status {}", executionId, status);
-                    return false;
-                }
-                log.warn("Callback failed for execution {} (attempt {}) with status {}",
-                        executionId, attempt + 1, status);
-            } catch (Exception ex) {
-                log.warn("Callback failed for execution {} (attempt {}): {}",
-                        executionId, attempt + 1, ex.getMessage());
-                if (attempt < MAX_RETRIES - 1 && !pauseBeforeRetry(attempt, executionId)) {
-                    return false;
-                }
+            SendStatus outcome = attemptSend(executionId, body, traceId, dispatchAttempt, attempt);
+            if (outcome == SendStatus.SUCCESS) {
+                return true;
+            }
+            if (outcome != SendStatus.RETRYABLE) {
+                return false;
             }
         }
-
         log.error("All {} callback attempts failed for execution {}", MAX_RETRIES, executionId);
         return false;
+    }
+
+    private SendStatus attemptSend(String executionId, byte[] body, String traceId, String dispatchAttempt, int attempt) {
+        try {
+            int status = doSend(executionId, body, traceId, dispatchAttempt);
+            if (status >= 200 && status < 300) {
+                log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
+                return SendStatus.SUCCESS;
+            }
+            if (isPermanentFailure(status)) {
+                log.error("Permanent callback failure for execution {} with status {}", executionId, status);
+                return SendStatus.PERMANENT;
+            }
+            log.warn("Callback failed for execution {} (attempt {}) with status {}",
+                    executionId, attempt + 1, status);
+            return SendStatus.RETRYABLE;
+        } catch (Exception ex) {
+            log.warn("Callback failed for execution {} (attempt {}): {}",
+                    executionId, attempt + 1, ex.getMessage());
+            if (attempt < MAX_RETRIES - 1 && !pauseBeforeRetry(attempt, executionId)) {
+                return SendStatus.INTERRUPTED;
+            }
+            return SendStatus.RETRYABLE;
+        }
     }
 
     private int doSend(String executionId, byte[] body, String traceId, String dispatchAttempt) throws Exception {
@@ -136,4 +147,6 @@ public final class CallbackClient {
         }
         return base + "/" + executionId + ":complete";
     }
+
+    private enum SendStatus { SUCCESS, PERMANENT, INTERRUPTED, RETRYABLE }
 }
