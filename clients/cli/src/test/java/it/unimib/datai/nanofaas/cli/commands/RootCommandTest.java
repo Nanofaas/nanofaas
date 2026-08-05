@@ -133,9 +133,8 @@ class RootCommandTest {
 
     @Test
     void endpointOptionOverridesConfig() throws Exception {
-        MockWebServer server = new MockWebServer();
-        server.start();
-        try {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
             server.enqueue(new MockResponse()
                     .setResponseCode(200)
                     .addHeader("Content-Type", "application/json")
@@ -153,8 +152,6 @@ class RootCommandTest {
             } finally {
                 System.setOut(prev);
             }
-        } finally {
-            server.shutdown();
         }
     }
 }

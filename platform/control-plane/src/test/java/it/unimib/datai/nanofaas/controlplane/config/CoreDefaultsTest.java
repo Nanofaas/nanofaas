@@ -67,15 +67,18 @@ class CoreDefaultsTest {
 
             @Override
             public void setEffectiveConcurrency(String functionName, int value) {
+                // No-op override — the test only verifies this bean is selected over the default.
             }
 
             @Override
             public void updateConcurrencyController(String functionName, ConcurrencyControlMode mode, int targetInFlightPerPod) {
+                // No-op override — the test only verifies this bean is selected over the default.
             }
         };
         SyncQueueGateway customSyncQueueGateway = new SyncQueueGateway() {
             @Override
             public void enqueueOrThrow(it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask task) {
+                // No-op override — the test only verifies this bean is selected over the default.
             }
 
             @Override
