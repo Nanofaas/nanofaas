@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ExecutionStoreEvictionTest {
 
-    private static ExecutionRecord record(String id) {
+    private static ExecutionRecord executionRecord(String id) {
         FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         InvocationTask task = new InvocationTask(id, "fn", spec,
@@ -32,7 +32,7 @@ class ExecutionStoreEvictionTest {
                 Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofMillis(50));
         ExecutionStore store = new ExecutionStore(props);
         try {
-            ExecutionRecord stuck = record("stuck-queued");
+            ExecutionRecord stuck = executionRecord("stuck-queued");
             store.put(stuck); // never transitions: simulates a lost dispatch
 
             Thread.sleep(120);
@@ -48,7 +48,7 @@ class ExecutionStoreEvictionTest {
     void freshNonTerminalRecordsSurviveEviction() {
         ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null));
         try {
-            ExecutionRecord running = record("fresh");
+            ExecutionRecord running = executionRecord("fresh");
             store.put(running);
             store.evictExpired();
             assertThat(store.getOrNull("fresh")).isNotNull();
@@ -59,7 +59,7 @@ class ExecutionStoreEvictionTest {
 
     @Test
     void cleanupReleasesPayloadOnlyOnce() {
-        ExecutionRecord done = record("done");
+        ExecutionRecord done = executionRecord("done");
         done.markSuccess("out");
         done.cleanup();
         InvocationTask afterFirstCleanup = done.task();
@@ -75,15 +75,15 @@ class ExecutionStoreEvictionTest {
 
         ExecutionStore store = new ExecutionStore(props);
         try {
-            ExecutionRecord success = record("success");
+            ExecutionRecord success = executionRecord("success");
             success.markSuccess("ok");
             store.put(success);
 
-            ExecutionRecord error = record("error");
+            ExecutionRecord error = executionRecord("error");
             error.markError(new ErrorInfo("ERR", "boom"));
             store.put(error);
 
-            ExecutionRecord timeout = record("timeout");
+            ExecutionRecord timeout = executionRecord("timeout");
             timeout.markTimeout();
             store.put(timeout);
 
@@ -105,7 +105,7 @@ class ExecutionStoreEvictionTest {
 
         ExecutionStore store = new ExecutionStore(props);
         try {
-            ExecutionRecord running = record("long-running");
+            ExecutionRecord running = executionRecord("long-running");
             store.put(running);
 
             // createdAt becomes older than ttl/cleanupTtl before the record finishes
@@ -129,7 +129,7 @@ class ExecutionStoreEvictionTest {
 
         ExecutionStore store = new ExecutionStore(props);
         try {
-            ExecutionRecord done = record("done");
+            ExecutionRecord done = executionRecord("done");
             done.markSuccess("payload");
             store.put(done);
 
@@ -152,7 +152,7 @@ class ExecutionStoreEvictionTest {
 
         ExecutionStore store = new ExecutionStore(props);
         try {
-            ExecutionRecord queued = record("queued");
+            ExecutionRecord queued = executionRecord("queued");
             store.put(queued);
 
             Thread.sleep(120);
@@ -168,7 +168,7 @@ class ExecutionStoreEvictionTest {
     void removeDeletesExecution() {
         ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null));
         try {
-            ExecutionRecord toRemove = record("to-remove");
+            ExecutionRecord toRemove = executionRecord("to-remove");
             store.put(toRemove);
 
             store.remove("to-remove");

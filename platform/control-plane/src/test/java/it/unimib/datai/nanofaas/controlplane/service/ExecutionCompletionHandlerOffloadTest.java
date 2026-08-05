@@ -34,19 +34,19 @@ class ExecutionCompletionHandlerOffloadTest {
     private final ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
             executionStore, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
 
-    private ExecutionRecord record(String executionId, String functionName) {
+    private ExecutionRecord executionRecord(String executionId, String functionName) {
         FunctionSpec spec = new FunctionSpec(functionName, "img", List.of(), Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         InvocationTask task = new InvocationTask(executionId, functionName, spec,
                 new InvocationRequest("p", Map.of()), null, null, Instant.now(), 1);
-        ExecutionRecord record = new ExecutionRecord(executionId, task);
-        executionStore.put(record);
-        return record;
+        ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
+        executionStore.put(executionRecord);
+        return executionRecord;
     }
 
     @Test
     void offloadedSuccessCompletesWithoutReleasingDispatchSlot() {
-        ExecutionRecord record = record("exec-ok", "fn");
+        ExecutionRecord executionRecord = executionRecord("exec-ok", "fn");
         when(enqueuer.enabled()).thenReturn(true);
 
         InvocationResult result = InvocationResult.success("remote-out");
@@ -56,12 +56,12 @@ class ExecutionCompletionHandlerOffloadTest {
         // the local concurrency accounting
         verify(enqueuer, never()).releaseDispatchSlot(anyString());
         verify(enqueuer, never()).enqueue(any());
-        assertThat(record.completion()).isCompletedWithValue(result);
+        assertThat(executionRecord.completion()).isCompletedWithValue(result);
     }
 
     @Test
     void offloadedFunctionErrorCompletesWithoutRetry() {
-        ExecutionRecord record = record("exec-err", "fn");
+        ExecutionRecord executionRecord = executionRecord("exec-err", "fn");
         when(enqueuer.enabled()).thenReturn(true);
 
         InvocationResult remoteError = InvocationResult.error("BOOM", "remote function failed");
@@ -69,12 +69,12 @@ class ExecutionCompletionHandlerOffloadTest {
 
         verify(enqueuer, never()).enqueue(any());
         verify(dispatcherRouter, never()).dispatchLocal(any());
-        assertThat(record.completion()).isCompletedWithValue(remoteError);
+        assertThat(executionRecord.completion()).isCompletedWithValue(remoteError);
     }
 
     @Test
     void offloadInfraFailureCompletesExceptionallyWithoutRetryOrSlotRelease() {
-        ExecutionRecord record = record("exec-fail", "fn");
+        ExecutionRecord executionRecord = executionRecord("exec-fail", "fn");
         when(enqueuer.enabled()).thenReturn(true);
 
         OffloadFailedException failure = new OffloadFailedException("http://cloud:8080", false, "unreachable");
@@ -83,19 +83,19 @@ class ExecutionCompletionHandlerOffloadTest {
         verify(enqueuer, never()).enqueue(any());
         verify(enqueuer, never()).releaseDispatchSlot(anyString());
         verify(dispatcherRouter, never()).dispatchLocal(any());
-        assertThat(record.completion().isCompletedExceptionally()).isTrue();
-        assertThat(record.snapshot().lastError().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);
+        assertThat(executionRecord.completion().isCompletedExceptionally()).isTrue();
+        assertThat(executionRecord.snapshot().lastError().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);
     }
 
     @Test
     void ordinaryErrorStillRetries() {
-        ExecutionRecord record = record("exec-plain", "fn2");
+        ExecutionRecord executionRecord = executionRecord("exec-plain", "fn2");
         when(enqueuer.enabled()).thenReturn(true);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         handler.completeExecution("exec-plain", InvocationResult.error("BOOM", "transient"));
 
         verify(enqueuer).enqueue(any());
-        assertThat(record.completion()).isNotCompleted();
+        assertThat(executionRecord.completion()).isNotCompleted();
     }
 }

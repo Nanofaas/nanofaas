@@ -55,8 +55,8 @@ public final class ReactiveInvocationCoordinator {
                                        FunctionSpec spec,
                                        Integer timeoutOverrideMs,
                                        OffloadContext offloadContext) {
-        ExecutionRecord record = lookup.record();
-        InvocationResponse replay = responseMapper.terminalResponse(record);
+        ExecutionRecord executionRecord = lookup.executionRecord();
+        InvocationResponse replay = responseMapper.terminalResponse(executionRecord);
         if (replay != null) {
             return Mono.just(SyncInvocation.local(replay));
         }
@@ -65,14 +65,14 @@ public final class ReactiveInvocationCoordinator {
         AtomicReference<String> offloadedTarget = new AtomicReference<>();
         try {
             InvocationEnqueueSupport.admitIfNew(lookup,
-                    () -> admit(record, spec, offloadContext, timeoutMs, offloadedTarget));
+                    () -> admit(executionRecord, spec, offloadContext, timeoutMs, offloadedTarget));
         } catch (RuntimeException ex) {
             return Mono.error(ex);
         }
 
         // suppressCancel=true: a single subscriber's timeout/disconnect must not cancel
         // the shared completion future other idempotent waiters depend on.
-        return Mono.fromFuture(record.completion(), true)
+        return Mono.fromFuture(executionRecord.completion(), true)
                 // offload failures complete the future exceptionally; make sure the
                 // typed exception survives any CompletionException wrapping
                 .onErrorMap(java.util.concurrent.CompletionException.class,
@@ -82,20 +82,20 @@ public final class ReactiveInvocationCoordinator {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
                         throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueGateway.retryAfterSeconds());
                     }
-                    return new SyncInvocation(responseMapper.toResponse(record, result), offloadedTarget.get());
+                    return new SyncInvocation(responseMapper.toResponse(executionRecord, result), offloadedTarget.get());
                 })
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
-                    record.markTimeout();
-                    metrics.timeout(record.task().functionName());
-                    return Mono.just(new SyncInvocation(responseMapper.timeoutResponse(record), offloadedTarget.get()));
+                    executionRecord.markTimeout();
+                    metrics.timeout(executionRecord.task().functionName());
+                    return Mono.just(new SyncInvocation(responseMapper.timeoutResponse(executionRecord), offloadedTarget.get()));
                 })
                 .onErrorResume(ex -> !(ex instanceof SyncQueueRejectedException) && !(ex instanceof OffloadFailedException), ex -> {
-                    log.warn("Execution {} completed exceptionally", record.executionId(), ex);
+                    log.warn("Execution {} completed exceptionally", executionRecord.executionId(), ex);
                     String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                     InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", message);
-                    record.markError(failure.error());
-                    metrics.error(record.task().functionName());
-                    return Mono.just(new SyncInvocation(responseMapper.toResponse(record, failure), offloadedTarget.get()));
+                    executionRecord.markError(failure.error());
+                    metrics.error(executionRecord.task().functionName());
+                    return Mono.just(new SyncInvocation(responseMapper.toResponse(executionRecord, failure), offloadedTarget.get()));
                 });
     }
 
@@ -104,39 +104,39 @@ public final class ReactiveInvocationCoordinator {
      * admission; on sync-queue pressure rejection (DEPTH/EST_WAIT) offload instead
      * of propagating the 429. Requests received via offload are never re-offloaded.
      */
-    private void admit(ExecutionRecord record,
+    private void admit(ExecutionRecord executionRecord,
                        FunctionSpec spec,
                        OffloadContext context,
                        int timeoutMs,
                        AtomicReference<String> offloadedTarget) {
         boolean offloadable = !context.offloadedHop() && offloadGateway.enabled();
         if (offloadable && offloadGateway.shouldOffloadEagerly(spec)) {
-            startOffload(record, spec, OffloadTrigger.EAGER, context, timeoutMs, offloadedTarget);
+            startOffload(executionRecord, spec, OffloadTrigger.EAGER, context, timeoutMs, offloadedTarget);
             return;
         }
         try {
-            admitLocally(record);
+            admitLocally(executionRecord);
         } catch (SyncQueueRejectedException ex) {
             OffloadTrigger trigger = pressureTrigger(ex.reason());
             if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec, ex.reason())) {
-                startOffload(record, spec, trigger, context, timeoutMs, offloadedTarget);
+                startOffload(executionRecord, spec, trigger, context, timeoutMs, offloadedTarget);
                 return;
             }
             throw ex;
         }
     }
 
-    private void admitLocally(ExecutionRecord record) {
+    private void admitLocally(ExecutionRecord executionRecord) {
         if (syncQueueGateway.enabled()) {
-            syncQueueGateway.enqueueOrThrow(record.task());
+            syncQueueGateway.enqueueOrThrow(executionRecord.task());
         } else if (enqueuer.enabled()) {
-            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
+            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
         } else {
-            completionHandler.dispatch(record.task());
+            completionHandler.dispatch(executionRecord.task());
         }
     }
 
-    private void startOffload(ExecutionRecord record,
+    private void startOffload(ExecutionRecord executionRecord,
                               FunctionSpec spec,
                               OffloadTrigger trigger,
                               OffloadContext context,
@@ -146,15 +146,15 @@ public final class ReactiveInvocationCoordinator {
         offloadedTarget.set(target);
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
-        offloadGateway.invokeRemote(record.task(), trigger, context, timeoutMs)
+        offloadGateway.invokeRemote(executionRecord.task(), trigger, context, timeoutMs)
                 .subscribe(
-                        result -> completionHandler.completeOffloadedExecution(record.executionId(), result),
+                        result -> completionHandler.completeOffloadedExecution(executionRecord.executionId(), result),
                         ex -> {
                             OffloadFailedException failure = ex instanceof OffloadFailedException ofe
                                     ? ofe
                                     : new OffloadFailedException(target, false,
                                             ex.getMessage() != null ? ex.getMessage() : ex.toString());
-                            completionHandler.failOffloadedExecution(record.executionId(), failure);
+                            completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
                         });
     }
 

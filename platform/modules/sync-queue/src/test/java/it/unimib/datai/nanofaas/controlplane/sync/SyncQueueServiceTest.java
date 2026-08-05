@@ -66,15 +66,15 @@ class SyncQueueServiceTest {
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, t0, 1);
-        ExecutionRecord record = new ExecutionRecord("e1", task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
+        store.put(executionRecord);
 
         service.enqueueOrThrow(task);
 
         service.peekReady(t0.plusSeconds(3));
 
-        assertTrue(record.completion().isDone());
-        assertEquals("QUEUE_TIMEOUT", record.completion().join().error().code());
+        assertTrue(executionRecord.completion().isDone());
+        assertEquals("QUEUE_TIMEOUT", executionRecord.completion().join().error().code());
     }
 
     @Test
@@ -169,8 +169,8 @@ class SyncQueueServiceTest {
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        ExecutionRecord record = new ExecutionRecord("e1", task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
+        store.put(executionRecord);
         service.enqueueOrThrow(task);
         assertEquals(1, service.queuedItems());
         assertEquals(1.0, registry.get("sync_queue_depth").tag("function", "fn").gauge().value());
@@ -178,8 +178,8 @@ class SyncQueueServiceTest {
         service.removeFunctionState("fn");
 
         assertEquals(0, service.queuedItems());
-        assertTrue(record.completion().isDone());
-        assertEquals("FUNCTION_REMOVED", record.completion().join().error().code());
+        assertTrue(executionRecord.completion().isDone());
+        assertEquals("FUNCTION_REMOVED", executionRecord.completion().join().error().code());
         assertEquals(null, registry.find("sync_queue_depth").tag("function", "fn").gauge());
         assertEquals(null, registry.find("sync_queue_admitted_total").tag("function", "fn").counter());
     }
@@ -197,15 +197,15 @@ class SyncQueueServiceTest {
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        ExecutionRecord record = new ExecutionRecord("e1", task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
+        store.put(executionRecord);
 
         service.removeFunctionState("fn");
 
         assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task));
         assertEquals(0, service.queuedItems());
-        assertTrue(record.completion().isDone());
-        assertEquals("FUNCTION_REMOVED", record.completion().join().error().code());
+        assertTrue(executionRecord.completion().isDone());
+        assertEquals("FUNCTION_REMOVED", executionRecord.completion().join().error().code());
         assertEquals(null, registry.find("sync_queue_depth").tag("function", "fn").gauge());
         assertEquals(null, registry.find("sync_queue_admitted_total").tag("function", "fn").counter());
     }

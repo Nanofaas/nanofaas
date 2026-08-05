@@ -8,13 +8,13 @@ final class InvocationEnqueueSupport {
     private InvocationEnqueueSupport() {
     }
 
-    static void enqueueOrThrow(InvocationEnqueuer enqueuer, Metrics metrics, ExecutionRecord record) {
-        boolean enqueued = enqueuer.enqueue(record.task());
+    static void enqueueOrThrow(InvocationEnqueuer enqueuer, Metrics metrics, ExecutionRecord executionRecord) {
+        boolean enqueued = enqueuer.enqueue(executionRecord.task());
         if (!enqueued) {
-            metrics.queueRejected(record.task().functionName());
+            metrics.queueRejected(executionRecord.task().functionName());
             throw new QueueFullException();
         }
-        metrics.enqueue(record.task().functionName());
+        metrics.enqueue(executionRecord.task().functionName());
     }
 
     /**

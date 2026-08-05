@@ -33,19 +33,19 @@ class AsyncQueueConfigurationTest {
         FunctionRegistrationListener listener = configuration.queueLifecycleListener(queueManager, executionStore);
         FunctionSpec spec = spec("echo");
         InvocationTask task = task("exec-queued", spec);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
 
         listener.onRegister(spec);
-        executionStore.put(record);
+        executionStore.put(executionRecord);
         assertThat(queueManager.enqueue(task)).isTrue();
 
         listener.onRemove("echo");
 
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(record.lastError().code()).isEqualTo("FUNCTION_REMOVED");
-        assertThat(record.lastError().message()).contains("echo");
-        assertThat(record.completion().isDone()).isTrue();
-        InvocationResult result = record.completion().join();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.lastError().code()).isEqualTo("FUNCTION_REMOVED");
+        assertThat(executionRecord.lastError().message()).contains("echo");
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("FUNCTION_REMOVED");
     }

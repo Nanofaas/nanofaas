@@ -57,12 +57,12 @@ class ReactiveInvocationCoordinatorOffloadTest {
     private void wireOffloadCompletion(InvocationExecutionFactory.ExecutionLookup lookup) {
         doAnswer(inv -> {
             InvocationResult result = inv.getArgument(1);
-            lookup.record().completion().complete(result);
+            lookup.executionRecord().completion().complete(result);
             return null;
         }).when(completionHandler).completeOffloadedExecution(anyString(), any(InvocationResult.class));
         doAnswer(inv -> {
             OffloadFailedException failure = inv.getArgument(1);
-            lookup.record().completion().completeExceptionally(failure);
+            lookup.executionRecord().completion().completeExceptionally(failure);
             return null;
         }).when(completionHandler).failOffloadedExecution(anyString(), any(OffloadFailedException.class));
     }
@@ -149,7 +149,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
         when(offloadGateway.enabled()).thenReturn(true);
         doAnswer(inv -> {
-            lookup.record().completion().complete(InvocationResult.success("local-out"));
+            lookup.executionRecord().completion().complete(InvocationResult.success("local-out"));
             return null;
         }).when(completionHandler).dispatch(any(InvocationTask.class));
 

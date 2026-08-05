@@ -95,50 +95,50 @@ class ExecutionCompletionHandlerTest {
     @Test
     void dispatch_whenExecutionAlreadyTerminal_releasesSlotAndSkipsRouter() {
         InvocationTask task = task("exec-timeout-before-dispatch", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        executionStore.put(record);
-        record.markTimeout();
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
+        executionRecord.markTimeout();
 
         completionHandler.dispatch(task);
 
         verify(enqueuer).releaseDispatchSlot("local-fn");
         verifyNoInteractions(dispatcherRouter);
-        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
     }
 
     @Test
     void dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() throws Exception {
         InvocationTask task = task("exec-1", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        executionStore.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
 
         assertThatCode(() -> completionHandler.dispatch(task)).doesNotThrowAnyException();
 
-        InvocationResult result = record.completion().get(1, TimeUnit.SECONDS);
+        InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("LOCAL_ERROR");
         assertThat(result.error().message()).contains("router down");
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         verify(enqueuer).releaseDispatchSlot("local-fn");
     }
 
     @Test
     void dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() throws Exception {
         InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.POOL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        executionStore.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchPool(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
 
         completionHandler.dispatch(task);
 
-        InvocationResult result = record.completion().get(1, TimeUnit.SECONDS);
+        InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isTrue();
         assertThat(result.output()).isEqualTo("ok");
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         verify(dispatcherRouter).dispatchPool(task);
     }
 
@@ -146,91 +146,91 @@ class ExecutionCompletionHandlerTest {
 
     @Test
     void completeExecution_withRetry_doesNotCompleteTheFuture() {
-        ExecutionRecord record = recordInStore("exec-retry", testSpec, "idem-key");
+        ExecutionRecord executionRecord = recordInStore("exec-retry", testSpec, "idem-key");
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         completionHandler.completeExecution("exec-retry", InvocationResult.error("ERROR", "First attempt failed"));
 
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
         verify(enqueuer, times(1)).enqueue(any());
         verify(enqueuer).releaseDispatchSlot("testFunc");
     }
 
     @Test
     void completeExecution_afterMaxRetries_completesTheFuture() {
-        ExecutionRecord record = recordInStore("exec-max", testSpec, null);
+        ExecutionRecord executionRecord = recordInStore("exec-max", testSpec, null);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         // Attempt 1
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 1 failed"));
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 2 failed"));
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(3);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 3 failed"));
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(4);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (initial attempt + maxRetries=3)
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 4 failed"));
 
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         verify(enqueuer, times(4)).releaseDispatchSlot("testFunc");
     }
 
     @Test
     void completeExecution_withSuccess_completesImmediately() {
-        ExecutionRecord record = recordInStore("exec-ok", testSpec, null);
+        ExecutionRecord executionRecord = recordInStore("exec-ok", testSpec, null);
 
         completionHandler.completeExecution("exec-ok", InvocationResult.success("result"));
 
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.output()).isEqualTo("result");
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.output()).isEqualTo("result");
         verify(enqueuer).releaseDispatchSlot("testFunc");
     }
 
     @Test
     void completeExecution_withSuccess_readsFieldsUnderLockWithoutSnapshot() {
-        CountingExecutionRecord record = countingRecordInStore("exec-count", testSpec);
+        CountingExecutionRecord executionRecord = countingRecordInStore("exec-count", testSpec);
 
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
 
-        assertThat(record.snapshotReads()).isEqualTo(0);
-        assertThat(record.finishedAtReads()).isEqualTo(1);
+        assertThat(executionRecord.snapshotReads()).isEqualTo(0);
+        assertThat(executionRecord.finishedAtReads()).isEqualTo(1);
     }
 
     @Test
     void completeExecution_afterTimeout_doesNotOverwriteTimeoutOrEmitSuccessMetrics() {
-        ExecutionRecord record = recordInStore("exec-timeout", testSpec, null);
-        record.markRunning();
-        record.markTimeout();
+        ExecutionRecord executionRecord = recordInStore("exec-timeout", testSpec, null);
+        executionRecord.markRunning();
+        executionRecord.markTimeout();
 
         completionHandler.completeExecution("exec-timeout", InvocationResult.success("late-result"));
 
-        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
-        assertThat(record.output()).isNull();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
+        assertThat(executionRecord.output()).isNull();
         verify(metrics, never()).success("testFunc");
         verify(metrics, never()).error("testFunc");
     }
 
     @Test
     void retry_preservesExecutionId() {
-        ExecutionRecord record = recordInStore("exec-preserve", testSpec, null);
+        ExecutionRecord executionRecord = recordInStore("exec-preserve", testSpec, null);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         completionHandler.completeExecution("exec-preserve", InvocationResult.error("ERROR", "Failed"));
 
-        assertThat(record.executionId()).isEqualTo("exec-preserve");
-        assertThat(record.task().executionId()).isEqualTo("exec-preserve");
+        assertThat(executionRecord.executionId()).isEqualTo("exec-preserve");
+        assertThat(executionRecord.task().executionId()).isEqualTo("exec-preserve");
     }
 
     @Test
@@ -240,15 +240,15 @@ class ExecutionCompletionHandlerTest {
                 new InvocationRequest("payload", null),
                 "my-idempotency-key", null, Instant.now(), 1
         );
-        ExecutionRecord record = new ExecutionRecord("exec-idem", taskWithKey);
-        executionStore.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord("exec-idem", taskWithKey);
+        executionStore.put(executionRecord);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
-        assertThat(record.task().idempotencyKey()).isEqualTo("my-idempotency-key");
+        assertThat(executionRecord.task().idempotencyKey()).isEqualTo("my-idempotency-key");
 
         completionHandler.completeExecution("exec-idem", InvocationResult.error("ERROR", "Failed"));
 
-        assertThat(record.task().idempotencyKey()).isNull();
+        assertThat(executionRecord.task().idempotencyKey()).isNull();
     }
 
     // ─── queue-full retry tests ────────────────────────────────────────────────
@@ -256,13 +256,13 @@ class ExecutionCompletionHandlerTest {
     @Test
     void retryWithQueueFull_completesFutureWithError() {
         when(enqueuer.enqueue(any())).thenReturn(false);
-        ExecutionRecord record = recordInStore("exec-qfull", testSpec, null);
+        ExecutionRecord executionRecord = recordInStore("exec-qfull", testSpec, null);
 
         completionHandler.completeExecution("exec-qfull", InvocationResult.error("ERROR", "First attempt failed"));
 
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        InvocationResult result = record.completion().join();
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+        InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
         verify(enqueuer).releaseDispatchSlot("testFunc");
@@ -273,18 +273,18 @@ class ExecutionCompletionHandlerTest {
         when(enqueuer.enqueue(any()))
                 .thenReturn(true)   // first retry succeeds
                 .thenReturn(false); // second retry queue full
-        ExecutionRecord record = recordInStore("exec-mixed", testSpec, null);
+        ExecutionRecord executionRecord = recordInStore("exec-mixed", testSpec, null);
 
         // First failure → retry (attempt 2)
         completionHandler.completeExecution("exec-mixed", InvocationResult.error("ERROR", "Attempt 1"));
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure → retry attempt but queue full
         completionHandler.completeExecution("exec-mixed", InvocationResult.error("ERROR", "Attempt 2"));
 
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         verify(enqueuer, times(2)).releaseDispatchSlot("testFunc");
     }
 
@@ -296,9 +296,9 @@ class ExecutionCompletionHandlerTest {
                 new InvocationRequest("payload", null),
                 idempotencyKey, null, Instant.now(), 1
         );
-        ExecutionRecord record = new ExecutionRecord(executionId, task);
-        executionStore.put(record);
-        return record;
+        ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
+        executionStore.put(executionRecord);
+        return executionRecord;
     }
 
     private InvocationTask task(String executionId, String functionName, ExecutionMode mode) {
@@ -322,9 +322,9 @@ class ExecutionCompletionHandlerTest {
                 new InvocationRequest("payload", null),
                 null, null, Instant.now(), 1
         );
-        CountingExecutionRecord record = new CountingExecutionRecord(executionId, task);
-        executionStore.put(record);
-        return record;
+        CountingExecutionRecord executionRecord = new CountingExecutionRecord(executionId, task);
+        executionStore.put(executionRecord);
+        return executionRecord;
     }
 
     private static final class CountingExecutionRecord extends ExecutionRecord {

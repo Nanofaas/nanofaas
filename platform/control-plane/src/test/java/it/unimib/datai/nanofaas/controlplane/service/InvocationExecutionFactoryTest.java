@@ -52,7 +52,7 @@ class InvocationExecutionFactoryTest {
 
             InvocationExecutionFactory.ExecutionLookup secondLookup = second.get(1, TimeUnit.SECONDS);
             assertThat(secondLookup.isNew()).isFalse();
-            assertThat(secondLookup.record().executionId()).isEqualTo(firstLookup.record().executionId());
+            assertThat(secondLookup.executionRecord().executionId()).isEqualTo(firstLookup.executionRecord().executionId());
         } finally {
             executionStore.allowFirstPutToComplete();
             executor.shutdownNow();
@@ -124,7 +124,7 @@ class InvocationExecutionFactoryTest {
         private final AtomicBoolean blockNextPut = new AtomicBoolean(true);
 
         @Override
-        public void put(ExecutionRecord record) {
+        public void put(ExecutionRecord executionRecord) {
             if (blockNextPut.compareAndSet(true, false)) {
                 firstPutStarted.countDown();
                 try {
@@ -134,7 +134,7 @@ class InvocationExecutionFactoryTest {
                     throw new AssertionError("Interrupted while blocking first execution put", ex);
                 }
             }
-            super.put(record);
+            super.put(executionRecord);
         }
 
         void awaitFirstPutStarted() throws InterruptedException {

@@ -37,9 +37,9 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 new Metrics(new SimpleMeterRegistry())
         );
         InvocationTask task = task("exec-duplicate", "fn");
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
-        record.markRunning();
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("late-duplicate")));
@@ -59,12 +59,12 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 new Metrics(new SimpleMeterRegistry())
         );
         InvocationTask task = task("exec-retry", "fn");
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
-        record.markRunning();
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error("ERR", "first")));
-        record.markRunning();
+        executionRecord.markRunning();
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
 
         assertThat(enqueuer.releases()).isEqualTo(2);
@@ -83,8 +83,8 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 new Metrics(new SimpleMeterRegistry())
         );
         InvocationTask attempt1Task = task("exec-stale-callback", "fn");
-        ExecutionRecord record = new ExecutionRecord(attempt1Task.executionId(), attempt1Task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(attempt1Task.executionId(), attempt1Task);
+        store.put(executionRecord);
 
         CompletableFuture<DispatchResult> failedAttempt1 = new CompletableFuture<>();
         CompletableFuture<DispatchResult> staleAttempt1 = new CompletableFuture<>();
@@ -97,19 +97,19 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
         failedAttempt1.complete(DispatchResult.warm(InvocationResult.error("ERR", "first")));
         assertThat(enqueuer.releases()).isEqualTo(1);
-        assertThat(record.task().attempt()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
 
         staleAttempt1.complete(DispatchResult.warm(InvocationResult.success("late-duplicate")));
         assertThat(enqueuer.releases()).isEqualTo(1);
-        assertThat(record.task().attempt()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
         successfulAttempt2.complete(DispatchResult.warm(InvocationResult.success("ok")));
 
         assertThat(enqueuer.releases()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         store.shutdown();
     }
 
@@ -124,26 +124,26 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 new Metrics(new SimpleMeterRegistry())
         );
         InvocationTask task = task("exec-public-stale", "fn");
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
-        record.markRunning();
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
 
         completeExecution(handler, task.executionId(), InvocationResult.error("ERR", "first"), 1);
         assertThat(enqueuer.releases()).isEqualTo(1);
-        assertThat(record.task().attempt()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
 
-        record.markRunning();
+        executionRecord.markRunning();
         completeExecution(handler, task.executionId(), InvocationResult.success("late-duplicate"), 1);
         assertThat(enqueuer.releases()).isEqualTo(1);
-        assertThat(record.task().attempt()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
-        assertThat(record.completion()).isNotDone();
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
+        assertThat(executionRecord.completion()).isNotDone();
 
         completeExecution(handler, task.executionId(), InvocationResult.success("ok"), 2);
         assertThat(enqueuer.releases()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.completion()).isDone();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.completion()).isDone();
         store.shutdown();
     }
 
@@ -158,17 +158,17 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 new Metrics(new SimpleMeterRegistry())
         );
         InvocationTask task = task("exec-legacy-race", "fn");
-        MutatingExecutionRecord record = new MutatingExecutionRecord(task.executionId(), task);
-        store.put(record);
-        record.markRunning();
-        record.mutateToNextAttemptOnNextTaskRead();
+        MutatingExecutionRecord executionRecord = new MutatingExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
+        executionRecord.mutateToNextAttemptOnNextTaskRead();
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
 
         assertThat(enqueuer.releases()).isEqualTo(1);
-        assertThat(record.task().attempt()).isEqualTo(2);
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.completion()).isDone();
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.completion()).isDone();
         store.shutdown();
     }
 

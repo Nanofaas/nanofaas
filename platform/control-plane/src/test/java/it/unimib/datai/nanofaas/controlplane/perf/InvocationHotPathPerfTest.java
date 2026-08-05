@@ -43,8 +43,8 @@ class InvocationHotPathPerfTest {
         assertThat(first.isNew()).isTrue();
         assertThat(replayOne.isNew()).isFalse();
         assertThat(replayTwo.isNew()).isFalse();
-        assertThat(replayOne.record().executionId()).isEqualTo(first.record().executionId());
-        assertThat(replayTwo.record().executionId()).isEqualTo(first.record().executionId());
+        assertThat(replayOne.executionRecord().executionId()).isEqualTo(first.executionRecord().executionId());
+        assertThat(replayTwo.executionRecord().executionId()).isEqualTo(first.executionRecord().executionId());
         assertThat(executionStore.putCount())
                 .as("replays should reuse the published execution instead of creating speculative records")
                 .isEqualTo(1);
@@ -77,9 +77,9 @@ class InvocationHotPathPerfTest {
         private int removeCount;
 
         @Override
-        public void put(ExecutionRecord record) {
+        public void put(ExecutionRecord executionRecord) {
             putCount++;
-            super.put(record);
+            super.put(executionRecord);
         }
 
         @Override

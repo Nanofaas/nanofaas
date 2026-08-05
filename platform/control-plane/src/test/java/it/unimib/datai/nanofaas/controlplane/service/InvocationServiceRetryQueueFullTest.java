@@ -89,8 +89,8 @@ class InvocationServiceRetryQueueFullTest {
                 "testFunc", new InvocationRequest("payload", null), null, null
         );
 
-        ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
-        assertThat(record.completion().isDone()).isFalse();
+        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        assertThat(executionRecord.completion().isDone()).isFalse();
 
         // Now make queue reject on retry
         when(enqueuer.enqueue(any())).thenReturn(false);
@@ -100,10 +100,10 @@ class InvocationServiceRetryQueueFullTest {
         invocationService.completeExecution(response.executionId(), errorResult);
 
         // Future SHOULD be completed with the error since retry failed
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
 
-        InvocationResult result = record.completion().join();
+        InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
         verify(enqueuer).releaseDispatchSlot("testFunc");
@@ -121,14 +121,14 @@ class InvocationServiceRetryQueueFullTest {
                 "testFunc", new InvocationRequest("payload", null), null, null
         );
 
-        ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
 
         // First failure -> retry (attempt 2)
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 1")
         );
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure -> retry attempt but queue full
         invocationService.completeExecution(
@@ -136,8 +136,8 @@ class InvocationServiceRetryQueueFullTest {
         );
 
         // Future should be completed because retry queue was full
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         verify(enqueuer, times(2)).releaseDispatchSlot("testFunc");
     }
 }

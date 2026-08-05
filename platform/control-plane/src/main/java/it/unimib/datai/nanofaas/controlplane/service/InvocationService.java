@@ -118,25 +118,25 @@ public class InvocationService {
 
         InvocationExecutionFactory.ExecutionLookup lookup =
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
-        ExecutionRecord record = lookup.record();
+        ExecutionRecord executionRecord = lookup.executionRecord();
 
         // replay is a component that checks if the execution has already completed and returns the appropriate response if so. 
         // If replay is not null, it means the execution has already completed, and we can return the terminal response immediately.
         // replay is stored in a variable to avoid calling responseMapper.terminalResponse(record) multiple times, which could be inefficient.
-        InvocationResponse replay = responseMapper.terminalResponse(record);
+        InvocationResponse replay = responseMapper.terminalResponse(executionRecord);
         if (replay != null) {
             return replay;
         }
 
         // If the execution is new (not a replay), we need to enqueue it for processing.
         InvocationEnqueueSupport.admitIfNew(lookup,
-                () -> InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record));
+                () -> InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord));
             
         // Return a response indicating that the invocation has been queued for processing.
         // This time, we return a new InvocationResponse with the status "queued" to indicate that the invocation has been accepted 
         // and is waiting to be processed. And not returning the replay response, because we have already checked that the execution 
         // is new and not a replay.
-        return new InvocationResponse(record.executionId(), "queued", null, null);
+        return new InvocationResponse(executionRecord.executionId(), "queued", null, null);
 
         // Old code commented out for reference:
         // InvocationEnqueueSupport.admitIfNew(lookup,

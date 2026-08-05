@@ -121,10 +121,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-success-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-replay-success", "replay-success-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        record.markSuccess("replayed-ok");
-        executionStore.put(record);
-        idempotencyStore.put("replay-success-fn", "idem-1", record.executionId());
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionRecord.markSuccess("replayed-ok");
+        executionStore.put(executionRecord);
+        idempotencyStore.put("replay-success-fn", "idem-1", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-success-fn",
@@ -148,10 +148,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-reactive-success-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-reactive-replay-success", "replay-reactive-success-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        record.markSuccess("reactive-replayed-ok");
-        executionStore.put(record);
-        idempotencyStore.put("replay-reactive-success-fn", "idem-reactive-success", record.executionId());
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionRecord.markSuccess("reactive-replayed-ok");
+        executionStore.put(executionRecord);
+        idempotencyStore.put("replay-reactive-success-fn", "idem-reactive-success", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-reactive-success-fn",
@@ -176,10 +176,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-sync-timeout-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-sync-replay-timeout", "replay-sync-timeout-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        record.markTimeout();
-        executionStore.put(record);
-        idempotencyStore.put("replay-sync-timeout-fn", "idem-sync-timeout", record.executionId());
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionRecord.markTimeout();
+        executionStore.put(executionRecord);
+        idempotencyStore.put("replay-sync-timeout-fn", "idem-sync-timeout", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-sync-timeout-fn",
@@ -202,10 +202,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-timeout-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-replay-timeout", "replay-timeout-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        record.markTimeout();
-        executionStore.put(record);
-        idempotencyStore.put("replay-timeout-fn", "idem-timeout", record.executionId());
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionRecord.markTimeout();
+        executionStore.put(executionRecord);
+        idempotencyStore.put("replay-timeout-fn", "idem-timeout", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-timeout-fn",
@@ -245,36 +245,36 @@ class InvocationServiceDispatchTest {
     @Test
     void dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() throws Exception {
         InvocationTask task = task("exec-1", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        executionStore.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
 
         assertThatCode(() -> invocationService.dispatch(task)).doesNotThrowAnyException();
 
-        InvocationResult result = record.completion().get(1, TimeUnit.SECONDS);
+        InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("LOCAL_ERROR");
         assertThat(result.error().message()).contains("router down");
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         verify(enqueuer).releaseDispatchSlot("local-fn");
     }
 
     @Test
     void dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() throws Exception {
         InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.POOL);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        executionStore.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchPool(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
 
         invocationService.dispatch(task);
 
-        InvocationResult result = record.completion().get(1, TimeUnit.SECONDS);
+        InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isTrue();
         assertThat(result.output()).isEqualTo("ok");
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         verify(dispatcherRouter).dispatchPool(task);
     }
 
@@ -787,9 +787,9 @@ class InvocationServiceDispatchTest {
         private volatile String blockedExecutionId;
 
         @Override
-        public void put(ExecutionRecord record) {
+        public void put(ExecutionRecord executionRecord) {
             if (blockNextPut.compareAndSet(true, false)) {
-                blockedExecutionId = record.executionId();
+                blockedExecutionId = executionRecord.executionId();
                 firstPutStarted.countDown();
                 try {
                     allowFirstPutToComplete.await(5, TimeUnit.SECONDS);
@@ -797,7 +797,7 @@ class InvocationServiceDispatchTest {
                     Thread.currentThread().interrupt();
                 }
             }
-            super.put(record);
+            super.put(executionRecord);
         }
 
         @Override

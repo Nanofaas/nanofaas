@@ -119,8 +119,8 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
-        assertThat(record.completion().isDone()).isFalse();
+        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        assertThat(executionRecord.completion().isDone()).isFalse();
 
         // Complete with error (should trigger retry since maxRetries=3, attempt=1)
         invocationService.completeExecution(
@@ -129,13 +129,13 @@ class InvocationServiceRetryTest {
         );
 
         // Future should NOT be completed yet because retry was scheduled
-        assertThat(record.completion().isDone()).isFalse();
+        assertThat(executionRecord.completion().isDone()).isFalse();
 
         // Record should be back in QUEUED state
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
 
         // Task should have attempt=2
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Enqueue should have been called twice (initial + retry)
         verify(enqueuer, times(2)).enqueue(any());
@@ -152,7 +152,7 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
 
         // Simulate the initial attempt plus 3 retries (maxRetries=3)
         // Attempt 1
@@ -160,24 +160,24 @@ class InvocationServiceRetryTest {
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 1 failed")
         );
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 2 failed")
         );
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(3);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 3 failed")
         );
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.task().attempt()).isEqualTo(4);
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (last one, maxRetries reached)
         invocationService.completeExecution(
@@ -186,8 +186,8 @@ class InvocationServiceRetryTest {
         );
 
         // NOW the future should be completed with the error
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         verify(enqueuer, times(4)).releaseDispatchSlot("testFunc");
     }
 
@@ -201,7 +201,7 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
 
         // Complete with success
         invocationService.completeExecution(
@@ -210,9 +210,9 @@ class InvocationServiceRetryTest {
         );
 
         // Future should be completed immediately
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.output()).isEqualTo("result");
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.output()).isEqualTo("result");
         verify(enqueuer).releaseDispatchSlot("testFunc");
     }
 
@@ -227,7 +227,7 @@ class InvocationServiceRetryTest {
         );
 
         String originalExecutionId = response.executionId();
-        ExecutionRecord record = executionStore.get(originalExecutionId).orElseThrow();
+        ExecutionRecord executionRecord = executionStore.get(originalExecutionId).orElseThrow();
 
         // Trigger a retry
         invocationService.completeExecution(
@@ -236,8 +236,8 @@ class InvocationServiceRetryTest {
         );
 
         // ExecutionId should be the same
-        assertThat(record.executionId()).isEqualTo(originalExecutionId);
-        assertThat(record.task().executionId()).isEqualTo(originalExecutionId);
+        assertThat(executionRecord.executionId()).isEqualTo(originalExecutionId);
+        assertThat(executionRecord.task().executionId()).isEqualTo(originalExecutionId);
     }
 
     @Test
@@ -250,10 +250,10 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord record = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
 
         // Original task has idempotency key
-        assertThat(record.task().idempotencyKey()).isEqualTo("my-idempotency-key");
+        assertThat(executionRecord.task().idempotencyKey()).isEqualTo("my-idempotency-key");
 
         // Trigger a retry
         invocationService.completeExecution(
@@ -262,7 +262,7 @@ class InvocationServiceRetryTest {
         );
 
         // Retry task should NOT have idempotency key (internal retry)
-        assertThat(record.task().idempotencyKey()).isNull();
+        assertThat(executionRecord.task().idempotencyKey()).isNull();
     }
 
     @Test

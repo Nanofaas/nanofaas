@@ -19,10 +19,10 @@ class InvocationResponseMapperTest {
 
     @Test
     void terminalResponse_mapsTimeoutRecordToTimeoutResponse() {
-        ExecutionRecord record = new ExecutionRecord("exec-1", task("exec-1"));
-        record.markTimeout();
+        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        executionRecord.markTimeout();
 
-        InvocationResponse response = mapper.terminalResponse(record);
+        InvocationResponse response = mapper.terminalResponse(executionRecord);
 
         assertThat(response.status()).isEqualTo("timeout");
         assertThat(response.executionId()).isEqualTo("exec-1");

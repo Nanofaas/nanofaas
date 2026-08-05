@@ -40,7 +40,7 @@ class ReactiveInvocationCoordinatorTest {
         assertThat(response.status()).isEqualTo("timeout");
         // The shared future must survive a single client's timeout: other idempotent
         // waiters and the completion callback still depend on it.
-        assertThat(lookup.record().completion().isCancelled()).isFalse();
+        assertThat(lookup.executionRecord().completion().isCancelled()).isFalse();
     }
 
     @Test
@@ -48,7 +48,7 @@ class ReactiveInvocationCoordinatorTest {
         FunctionSpec spec = spec("fn-boom");
         InvocationExecutionFactory.ExecutionLookup lookup =
                 factory.createOrReuseExecution("fn-boom", spec, new InvocationRequest("p", Map.of()), null, null);
-        lookup.record().completion().completeExceptionally(new RuntimeException("boom"));
+        lookup.executionRecord().completion().completeExceptionally(new RuntimeException("boom"));
 
         SyncInvocation invocation = coordinator.invoke(lookup, spec, 1000).block();
 

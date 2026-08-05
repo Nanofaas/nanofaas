@@ -10,105 +10,105 @@ class ExecutionRecordStateTransitionTest {
 
     @Test
     void validTransition_queued_to_running() {
-        ExecutionRecord record = createRecord("exec-1");
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
 
-        record.markRunning();
-        assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
+        executionRecord.markRunning();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
     }
 
     @Test
     void validTransition_running_to_success() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
 
-        record.markSuccess("output");
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.output()).isEqualTo("output");
+        executionRecord.markSuccess("output");
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.output()).isEqualTo("output");
     }
 
     @Test
     void validTransition_running_to_error() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
 
         ErrorInfo error = new ErrorInfo("TEST_ERROR", "something failed");
-        record.markError(error);
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(record.lastError()).isEqualTo(error);
+        executionRecord.markError(error);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.lastError()).isEqualTo(error);
     }
 
     @Test
     void validTransition_running_to_timeout() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
 
-        record.markTimeout();
-        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
+        executionRecord.markTimeout();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
     }
 
     @Test
     void validTransition_running_to_queued_viaResetForRetry() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
 
         InvocationTask retryTask = createTask("exec-1");
-        record.resetForRetry(retryTask);
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-        assertThat(record.startedAt()).isNull();
-        assertThat(record.finishedAt()).isNull();
+        executionRecord.resetForRetry(retryTask);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.startedAt()).isNull();
+        assertThat(executionRecord.finishedAt()).isNull();
     }
 
     @Test
     void validTransition_queued_to_success() {
-        ExecutionRecord record = createRecord("exec-1");
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
 
-        record.markSuccess("output");
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.output()).isEqualTo("output");
+        executionRecord.markSuccess("output");
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.output()).isEqualTo("output");
     }
 
     @Test
     void invalidTransition_success_to_running_isIgnored() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
-        record.markSuccess("output");
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+        executionRecord.markSuccess("output");
 
-        record.markRunning();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.output()).isEqualTo("output");
+        executionRecord.markRunning();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.output()).isEqualTo("output");
     }
 
     @Test
     void invalidTransition_error_to_success_isIgnored() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
-        record.markError(new ErrorInfo("ERR", "failed"));
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+        executionRecord.markError(new ErrorInfo("ERR", "failed"));
 
-        record.markSuccess("output");
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(record.output()).isNull();
+        executionRecord.markSuccess("output");
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.output()).isNull();
     }
 
     @Test
     void invalidTransition_timeout_to_success_isIgnored() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
-        record.markTimeout();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+        executionRecord.markTimeout();
 
-        record.markSuccess("late-output");
+        executionRecord.markSuccess("late-output");
 
-        assertThat(record.state()).isEqualTo(ExecutionState.TIMEOUT);
-        assertThat(record.output()).isNull();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
+        assertThat(executionRecord.output()).isNull();
     }
 
     @Test
     void snapshot_returnsConsistentView() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
 
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         assertThat(snapshot.executionId()).isEqualTo("exec-1");
         assertThat(snapshot.state()).isEqualTo(ExecutionState.RUNNING);
         assertThat(snapshot.startedAt()).isNotNull();
@@ -117,35 +117,35 @@ class ExecutionRecordStateTransitionTest {
 
     @Test
     void markColdStart_setsFieldsInSnapshot() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
-        record.markColdStart(350);
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+        executionRecord.markColdStart(350);
 
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         assertThat(snapshot.coldStart()).isTrue();
         assertThat(snapshot.initDurationMs()).isEqualTo(350L);
     }
 
     @Test
     void markDispatchedAt_setsFieldInSnapshot() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
-        record.markDispatchedAt();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+        executionRecord.markDispatchedAt();
 
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         assertThat(snapshot.dispatchedAt()).isNotNull();
     }
 
     @Test
     void resetForRetry_clearsColdStartFields() {
-        ExecutionRecord record = createRecord("exec-1");
-        record.markRunning();
-        record.markColdStart(200);
-        record.markDispatchedAt();
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+        executionRecord.markColdStart(200);
+        executionRecord.markDispatchedAt();
 
-        record.resetForRetry(createTask("exec-1"));
+        executionRecord.resetForRetry(createTask("exec-1"));
 
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         assertThat(snapshot.coldStart()).isFalse();
         assertThat(snapshot.initDurationMs()).isNull();
         assertThat(snapshot.dispatchedAt()).isNull();

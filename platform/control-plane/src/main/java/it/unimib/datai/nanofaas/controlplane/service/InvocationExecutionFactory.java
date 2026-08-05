@@ -30,9 +30,9 @@ public final class InvocationExecutionFactory {
                                                   String idempotencyKey,
                                                   String traceId) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            ExecutionRecord record = newExecutionRecord(functionName, spec, request, null, traceId);
-            executionStore.put(record);
-            return ExecutionLookup.newUnclaimed(record, executionStore);
+            ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, null, traceId);
+            executionStore.put(executionRecord);
+            return ExecutionLookup.newUnclaimed(executionRecord, executionStore);
         }
 
         while (true) {
@@ -81,11 +81,11 @@ public final class InvocationExecutionFactory {
                                                 String idempotencyKey,
                                                 String traceId,
                                                 String claimToken) {
-        ExecutionRecord record = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
+        ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
         try {
-            executionStore.put(record);
+            executionStore.put(executionRecord);
             return ExecutionLookup.newClaimed(
-                    record,
+                    executionRecord,
                     executionStore,
                     idempotencyStore,
                     functionName,
@@ -93,7 +93,7 @@ public final class InvocationExecutionFactory {
                     claimToken
             );
         } catch (RuntimeException ex) {
-            executionStore.remove(record.executionId());
+            executionStore.remove(executionRecord.executionId());
             idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
             throw ex;
         }
@@ -139,7 +139,7 @@ public final class InvocationExecutionFactory {
     }
 
     public static final class ExecutionLookup {
-        private final ExecutionRecord record;
+        private final ExecutionRecord executionRecord;
         private final boolean isNew;
         private final ExecutionStore executionStore;
         private final IdempotencyStore idempotencyStore;
@@ -148,14 +148,14 @@ public final class InvocationExecutionFactory {
         private final String claimToken;
         private boolean claimPublished;
 
-        private ExecutionLookup(ExecutionRecord record,
+        private ExecutionLookup(ExecutionRecord executionRecord,
                                 boolean isNew,
                                 ExecutionStore executionStore,
                                 IdempotencyStore idempotencyStore,
                                 String functionName,
                                 String idempotencyKey,
                                 String claimToken) {
-            this.record = record;
+            this.executionRecord = executionRecord;
             this.isNew = isNew;
             this.executionStore = executionStore;
             this.idempotencyStore = idempotencyStore;
@@ -164,25 +164,25 @@ public final class InvocationExecutionFactory {
             this.claimToken = claimToken;
         }
 
-        private static ExecutionLookup existing(ExecutionRecord record) {
-            return new ExecutionLookup(record, false, null, null, null, null, null);
+        private static ExecutionLookup existing(ExecutionRecord executionRecord) {
+            return new ExecutionLookup(executionRecord, false, null, null, null, null, null);
         }
 
-        private static ExecutionLookup newUnclaimed(ExecutionRecord record, ExecutionStore executionStore) {
-            return new ExecutionLookup(record, true, executionStore, null, null, null, null);
+        private static ExecutionLookup newUnclaimed(ExecutionRecord executionRecord, ExecutionStore executionStore) {
+            return new ExecutionLookup(executionRecord, true, executionStore, null, null, null, null);
         }
 
-        private static ExecutionLookup newClaimed(ExecutionRecord record,
+        private static ExecutionLookup newClaimed(ExecutionRecord executionRecord,
                                                   ExecutionStore executionStore,
                                                   IdempotencyStore idempotencyStore,
                                                   String functionName,
                                                   String idempotencyKey,
                                                   String claimToken) {
-            return new ExecutionLookup(record, true, executionStore, idempotencyStore, functionName, idempotencyKey, claimToken);
+            return new ExecutionLookup(executionRecord, true, executionStore, idempotencyStore, functionName, idempotencyKey, claimToken);
         }
 
-        public ExecutionRecord record() {
-            return record;
+        public ExecutionRecord executionRecord() {
+            return executionRecord;
         }
 
         public boolean isNew() {
@@ -193,7 +193,7 @@ public final class InvocationExecutionFactory {
             if (idempotencyStore == null || claimPublished) {
                 return;
             }
-            idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, record.executionId());
+            idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, executionRecord.executionId());
             claimPublished = true;
         }
 
@@ -201,7 +201,7 @@ public final class InvocationExecutionFactory {
             if (!isNew) {
                 return;
             }
-            executionStore.remove(record.executionId());
+            executionStore.remove(executionRecord.executionId());
             if (idempotencyStore != null && !claimPublished) {
                 idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
             }

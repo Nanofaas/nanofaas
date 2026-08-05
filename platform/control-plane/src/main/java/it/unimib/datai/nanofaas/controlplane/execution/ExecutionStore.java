@@ -41,8 +41,8 @@ public class ExecutionStore {
         janitor.scheduleAtFixedRate(this::evictExpired, 1, 1, TimeUnit.MINUTES);
     }
 
-    public void put(ExecutionRecord record) {
-        executions.put(record.executionId(), new StoredExecution(record, Instant.now()));
+    public void put(ExecutionRecord executionRecord) {
+        executions.put(executionRecord.executionId(), new StoredExecution(executionRecord, Instant.now()));
     }
 
     public Optional<ExecutionRecord> get(String executionId) {
@@ -50,7 +50,7 @@ public class ExecutionStore {
         if (stored == null) {
             return Optional.empty();
         }
-        return Optional.of(stored.record());
+        return Optional.of(stored.executionRecord());
     }
 
     /**
@@ -58,7 +58,7 @@ public class ExecutionStore {
      */
     public ExecutionRecord getOrNull(String executionId) {
         StoredExecution stored = executions.get(executionId);
-        return stored == null ? null : stored.record();
+        return stored == null ? null : stored.executionRecord();
     }
 
     public void remove(String executionId) {
@@ -74,21 +74,21 @@ public class ExecutionStore {
 
         executions.entrySet().removeIf(entry -> {
             StoredExecution stored = entry.getValue();
-            ExecutionRecord record = stored.record();
+            ExecutionRecord executionRecord = stored.executionRecord();
             Instant created = stored.createdAt();
-            if (!record.isTerminal()) {
+            if (!executionRecord.isTerminal()) {
                 // Stuck executions (lost dispatch, missing callback) must not leak forever.
                 return created.isBefore(lifetimeCutoff);
             }
 
-            Instant completedAt = record.finishedAt();
+            Instant completedAt = executionRecord.finishedAt();
             Instant retentionAnchor = completedAt == null ? created : completedAt;
 
             if (retentionAnchor.isBefore(cutoff)) {
                 return true;
             }
             if (retentionAnchor.isBefore(cleanupCutoff)) {
-                record.cleanup();
+                executionRecord.cleanup();
             }
             return false;
         });
@@ -99,6 +99,6 @@ public class ExecutionStore {
         janitor.shutdownNow();
     }
 
-    private record StoredExecution(ExecutionRecord record, Instant createdAt) {
+    private record StoredExecution(ExecutionRecord executionRecord, Instant createdAt) {
     }
 }

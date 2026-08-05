@@ -50,21 +50,21 @@ public class ExecutionCompletionHandler {
      * release (offloaded calls never acquired one), just state + metrics + future.
      */
     public void completeOffloadedExecution(String executionId, InvocationResult result) {
-        ExecutionRecord record = executionStore.getOrNull(executionId);
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(executionId);
+        if (executionRecord == null) {
             return;
         }
-        synchronized (record) {
-            if (isTerminal(record.state())) {
+        synchronized (executionRecord) {
+            if (isTerminal(executionRecord.state())) {
                 return;
             }
             if (result.success()) {
-                record.markSuccess(result.output());
+                executionRecord.markSuccess(result.output());
             } else {
-                record.markError(result.error());
+                executionRecord.markError(result.error());
             }
         }
-        String functionName = record.task().functionName();
+        String functionName = executionRecord.task().functionName();
         if (result.success()) {
             metrics.success(functionName);
         } else {
@@ -72,7 +72,7 @@ public class ExecutionCompletionHandler {
         }
         // Future published outside the record monitor (same invariant as
         // publishFinalCompletion): synchronous waiters must not run under the lock.
-        record.completion().complete(result);
+        executionRecord.completion().complete(result);
     }
 
     /**
@@ -81,40 +81,40 @@ public class ExecutionCompletionHandler {
      * exceptionally so every idempotent waiter surfaces the same 502/504.
      */
     public void failOffloadedExecution(String executionId, OffloadFailedException failure) {
-        ExecutionRecord record = executionStore.getOrNull(executionId);
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(executionId);
+        if (executionRecord == null) {
             return;
         }
         ErrorInfo error = new ErrorInfo(
                 failure.gatewayTimeout() ? OffloadGateway.OFFLOAD_TIMEOUT_CODE : OffloadGateway.OFFLOAD_FAILED_CODE,
                 failure.getMessage());
-        synchronized (record) {
-            if (isTerminal(record.state())) {
+        synchronized (executionRecord) {
+            if (isTerminal(executionRecord.state())) {
                 return;
             }
-            record.markError(error);
+            executionRecord.markError(error);
         }
-        metrics.error(record.task().functionName());
-        record.completion().completeExceptionally(failure);
+        metrics.error(executionRecord.task().functionName());
+        executionRecord.completion().completeExceptionally(failure);
     }
 
     public void dispatch(InvocationTask task) {
-        ExecutionRecord record = executionStore.getOrNull(task.executionId());
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
+        if (executionRecord == null) {
             releaseDispatchSlot(task.functionName());
             return;
         }
 
         boolean terminal;
-        synchronized (record) {
-            terminal = record.isTerminal();
+        synchronized (executionRecord) {
+            terminal = executionRecord.isTerminal();
             if (!terminal) {
-                record.markRunning();
-                record.markDispatchedAt();
+                executionRecord.markRunning();
+                executionRecord.markDispatchedAt();
             }
         }
         if (terminal) {
-            releaseDispatchSlotOnce(record, task.attempt(), task.functionName());
+            releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             return;
         }
         metrics.dispatch(task.functionName());
@@ -146,29 +146,29 @@ public class ExecutionCompletionHandler {
     }
 
     public void completeExecution(String executionId, DispatchResult dispatchResult) {
-        ExecutionRecord record = executionStore.getOrNull(executionId);
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(executionId);
+        if (executionRecord == null) {
             return;
         }
 
-        completeExecution(record, dispatchResult, null);
+        completeExecution(executionRecord, dispatchResult, null);
     }
 
     public void completeExecution(String executionId, DispatchResult dispatchResult, Integer completedAttempt) {
-        ExecutionRecord record = executionStore.getOrNull(executionId);
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(executionId);
+        if (executionRecord == null) {
             return;
         }
 
-        completeExecution(record, dispatchResult, completedAttempt);
+        completeExecution(executionRecord, dispatchResult, completedAttempt);
     }
 
-    private void completeExecution(ExecutionRecord record, DispatchResult dispatchResult, Integer completedAttempt) {
+    private void completeExecution(ExecutionRecord executionRecord, DispatchResult dispatchResult, Integer completedAttempt) {
         FinalCompletion completion;
-        synchronized (record) {
-            completion = completeUnderLock(record, dispatchResult, completedAttempt);
+        synchronized (executionRecord) {
+            completion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
         }
-        publishFinalCompletion(record, completion);
+        publishFinalCompletion(executionRecord, completion);
     }
 
     /**
@@ -177,19 +177,19 @@ public class ExecutionCompletionHandler {
      * whenComplete callbacks never run while the lock is held. (Retry-path counters
      * still increment under the lock.)
      */
-    private FinalCompletion completeUnderLock(ExecutionRecord record,
+    private FinalCompletion completeUnderLock(ExecutionRecord executionRecord,
                                               DispatchResult dispatchResult,
                                               Integer completedAttempt) {
         InvocationResult result = dispatchResult.result();
-        InvocationTask currentTask = record.task();
+        InvocationTask currentTask = executionRecord.task();
         int attempt = completedAttempt != null ? completedAttempt : currentTask.attempt();
         if (completedAttempt != null && currentTask.attempt() != completedAttempt) {
             return null;
         }
 
         String functionName = currentTask.functionName();
-        releaseDispatchSlotOnce(record, attempt, functionName);
-        if (isTerminal(record.state())) {
+        releaseDispatchSlotOnce(executionRecord, attempt, functionName);
+        if (isTerminal(executionRecord.state())) {
             return null;
         }
 
@@ -199,19 +199,19 @@ public class ExecutionCompletionHandler {
             // handleRetry always terminates the retry path: null when the retry was
             // enqueued (never fall through to final completion), a FinalCompletion
             // when retry is exhausted (queue full).
-            return handleRetry(record, currentTask, result);
+            return handleRetry(executionRecord, currentTask, result);
         }
 
         Instant enqueuedAt = currentTask.enqueuedAt();
-        Instant startedAt = record.startedAt();
+        Instant startedAt = executionRecord.startedAt();
         if (result.success()) {
-            record.markSuccess(result.output());
+            executionRecord.markSuccess(result.output());
         } else {
-            record.markError(result.error());
+            executionRecord.markError(result.error());
         }
-        Instant finishedAt = record.finishedAt();
+        Instant finishedAt = executionRecord.finishedAt();
         if (dispatchResult.coldStart()) {
-            record.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
+            executionRecord.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
         }
 
         Long latencyMs = elapsedMs(startedAt, finishedAt);
@@ -256,7 +256,7 @@ public class ExecutionCompletionHandler {
         }
     }
 
-    private void publishFinalCompletion(ExecutionRecord record, FinalCompletion completion) {
+    private void publishFinalCompletion(ExecutionRecord executionRecord, FinalCompletion completion) {
         if (completion == null) {
             return;
         }
@@ -269,7 +269,7 @@ public class ExecutionCompletionHandler {
         } else {
             metrics.error(functionName);
         }
-        record.completion().complete(completion.result());
+        executionRecord.completion().complete(completion.result());
     }
 
     private void recordCompletionMetrics(FinalCompletion completion) {
@@ -322,8 +322,8 @@ public class ExecutionCompletionHandler {
         enqueuer.releaseDispatchSlot(functionName);
     }
 
-    private void releaseDispatchSlotOnce(ExecutionRecord record, int attempt, String functionName) {
-        if (record.markDispatchSlotReleased(attempt)) {
+    private void releaseDispatchSlotOnce(ExecutionRecord executionRecord, int attempt, String functionName) {
+        if (executionRecord.markDispatchSlotReleased(attempt)) {
             releaseDispatchSlot(functionName);
         }
     }

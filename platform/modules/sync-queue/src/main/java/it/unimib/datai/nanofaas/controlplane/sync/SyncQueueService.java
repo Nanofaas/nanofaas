@@ -280,8 +280,8 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void markFunctionRemoved(String functionName, SyncQueueItem item, boolean wasQueued) {
-        ExecutionRecord record = executionStore.getOrNull(item.task().executionId());
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(item.task().executionId());
+        if (executionRecord == null) {
             if (wasQueued) {
                 metrics.dequeued(functionName);
             }
@@ -291,10 +291,10 @@ public class SyncQueueService implements SyncQueueGateway {
                 FUNCTION_REMOVED,
                 "Function '%s' was removed before queued execution could run".formatted(functionName)
         );
-        synchronized (record) {
-            if (!record.isTerminal()) {
-                record.markError(result.error());
-                record.completion().complete(result);
+        synchronized (executionRecord) {
+            if (!executionRecord.isTerminal()) {
+                executionRecord.markError(result.error());
+                executionRecord.completion().complete(result);
             }
         }
         if (wasQueued) {
@@ -307,13 +307,13 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void timeout(SyncQueueItem item) {
-        ExecutionRecord record = executionStore.getOrNull(item.task().executionId());
-        if (record != null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(item.task().executionId());
+        if (executionRecord != null) {
             // Guard: completeExecution publishes the future outside the record monitor; only complete if not already finalized.
-            synchronized (record) {
-                if (!record.isTerminal()) {
-                    record.markTimeout();
-                    record.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
+            synchronized (executionRecord) {
+                if (!executionRecord.isTerminal()) {
+                    executionRecord.markTimeout();
+                    executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
                 }
             }
         }

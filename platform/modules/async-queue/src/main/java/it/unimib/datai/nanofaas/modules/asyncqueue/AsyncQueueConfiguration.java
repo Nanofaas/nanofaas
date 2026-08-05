@@ -60,8 +60,8 @@ public class AsyncQueueConfiguration {
     }
 
     private static void markFunctionRemoved(ExecutionStore executionStore, String functionName, InvocationTask task) {
-        ExecutionRecord record = executionStore.getOrNull(task.executionId());
-        if (record == null) {
+        ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
+        if (executionRecord == null) {
             return;
         }
         InvocationResult result = InvocationResult.error(
@@ -69,12 +69,12 @@ public class AsyncQueueConfiguration {
                 "Function '%s' was removed before queued execution could run".formatted(functionName)
         );
         ErrorInfo error = result.error();
-        synchronized (record) {
-            if (record.isTerminal()) {
+        synchronized (executionRecord) {
+            if (executionRecord.isTerminal()) {
                 return;
             }
-            record.markError(error);
-            record.completion().complete(result);
+            executionRecord.markError(error);
+            executionRecord.completion().complete(result);
         }
     }
 }

@@ -10,31 +10,31 @@ import org.springframework.stereotype.Service;
 @Service
 public final class InvocationResponseMapper {
 
-    public InvocationResponse toResponse(ExecutionRecord record, InvocationResult result) {
+    public InvocationResponse toResponse(ExecutionRecord executionRecord, InvocationResult result) {
         String status = result.success() ? "success" : "error";
-        return new InvocationResponse(record.executionId(), status, result.output(), result.error());
+        return new InvocationResponse(executionRecord.executionId(), status, result.output(), result.error());
     }
 
-    public InvocationResponse timeoutResponse(ExecutionRecord record) {
-        return new InvocationResponse(record.executionId(), "timeout", null, null);
+    public InvocationResponse timeoutResponse(ExecutionRecord executionRecord) {
+        return new InvocationResponse(executionRecord.executionId(), "timeout", null, null);
     }
 
-    public InvocationResponse terminalResponse(ExecutionRecord record) {
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
+    public InvocationResponse terminalResponse(ExecutionRecord executionRecord) {
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         if (snapshot.state() == ExecutionState.SUCCESS || snapshot.state() == ExecutionState.ERROR) {
             InvocationResult result = snapshot.lastError() == null
                     ? InvocationResult.success(snapshot.output())
                     : new InvocationResult(false, null, snapshot.lastError());
-            return toResponse(record, result);
+            return toResponse(executionRecord, result);
         }
         if (snapshot.state() == ExecutionState.TIMEOUT) {
-            return timeoutResponse(record);
+            return timeoutResponse(executionRecord);
         }
         return null;
     }
 
-    public ExecutionStatus toStatus(ExecutionRecord record) {
-        ExecutionRecord.Snapshot snapshot = record.snapshot();
+    public ExecutionStatus toStatus(ExecutionRecord executionRecord) {
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         String status = snapshot.state().name().toLowerCase();
         return new ExecutionStatus(
                 snapshot.executionId(),
