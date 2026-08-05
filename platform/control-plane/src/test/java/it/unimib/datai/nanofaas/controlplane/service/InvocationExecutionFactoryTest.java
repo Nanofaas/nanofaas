@@ -85,10 +85,11 @@ class InvocationExecutionFactoryTest {
 
         Thread.currentThread().interrupt();
         try {
+            InvocationRequest request = new InvocationRequest("payload", Map.of());
             assertThatThrownBy(() -> factory.createOrReuseExecution(
                     "interrupted-pending-fn",
                     spec,
-                    new InvocationRequest("payload", Map.of()),
+                    request,
                     "same-key",
                     null
             )).isInstanceOf(CancellationException.class);

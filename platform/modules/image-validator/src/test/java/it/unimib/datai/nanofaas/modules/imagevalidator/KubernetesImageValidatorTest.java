@@ -125,7 +125,8 @@ class KubernetesImageValidatorTest {
                 new KubernetesProperties("nanofaas", null)
         );
 
-        assertThatThrownBy(() -> validator.validate(deploymentSpec("fn", "ghcr.io/example/fn:v1", null)))
+        FunctionSpec spec = deploymentSpec("fn", "ghcr.io/example/fn:v1", null);
+        assertThatThrownBy(() -> validator.validate(spec))
                 .isInstanceOf(ImageValidationException.class)
                 .extracting(ex -> ((ImageValidationException) ex).errorCode())
                 .isEqualTo("IMAGE_REGISTRY_UNAVAILABLE");
@@ -141,7 +142,8 @@ class KubernetesImageValidatorTest {
                 new KubernetesProperties("nanofaas", null)
         );
 
-        assertThatThrownBy(() -> validator.validate(deploymentSpec("fn", "ghcr.io/example/missing:v1", null)))
+        FunctionSpec spec = deploymentSpec("fn", "ghcr.io/example/missing:v1", null);
+        assertThatThrownBy(() -> validator.validate(spec))
                 .isInstanceOf(ImageValidationException.class)
                 .extracting(ex -> ((ImageValidationException) ex).errorCode())
                 .isEqualTo("IMAGE_NOT_FOUND");
@@ -157,7 +159,8 @@ class KubernetesImageValidatorTest {
                 new KubernetesProperties("nanofaas", null)
         );
 
-        assertThatThrownBy(() -> validator.validate(deploymentSpec("fn", "ghcr.io/private/fn:v1", null)))
+        FunctionSpec spec = deploymentSpec("fn", "ghcr.io/private/fn:v1", null);
+        assertThatThrownBy(() -> validator.validate(spec))
                 .isInstanceOf(ImageValidationException.class)
                 .extracting(ex -> ((ImageValidationException) ex).errorCode())
                 .isEqualTo("IMAGE_PULL_AUTH_REQUIRED");
@@ -173,7 +176,8 @@ class KubernetesImageValidatorTest {
                 new KubernetesProperties("nanofaas", null)
         );
 
-        assertThatThrownBy(() -> validator.validate(deploymentSpec("fn", "not_a_valid_ref", null)))
+        FunctionSpec spec = deploymentSpec("fn", "not_a_valid_ref", null);
+        assertThatThrownBy(() -> validator.validate(spec))
                 .isInstanceOf(ImageValidationException.class)
                 .extracting(ex -> ((ImageValidationException) ex).errorCode())
                 .isEqualTo("IMAGE_NOT_FOUND");

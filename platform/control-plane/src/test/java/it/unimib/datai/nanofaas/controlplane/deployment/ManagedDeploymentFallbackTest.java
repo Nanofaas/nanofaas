@@ -67,7 +67,8 @@ class ManagedDeploymentFallbackTest {
                 new DeploymentProperties(null)
         );
 
-        assertThatThrownBy(() -> resolver.resolveAndProvision(spec("fn", null), null))
+        FunctionSpec functionSpec = spec("fn", null);
+        assertThatThrownBy(() -> resolver.resolveAndProvision(functionSpec, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No managed deployment provider");
     }

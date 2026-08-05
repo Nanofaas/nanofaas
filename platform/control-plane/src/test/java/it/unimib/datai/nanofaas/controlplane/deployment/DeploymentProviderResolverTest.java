@@ -36,7 +36,8 @@ class DeploymentProviderResolverTest {
                 new DeploymentProperties(null)
         );
 
-        assertThatThrownBy(() -> resolver.resolve(spec("fn"), "k8s"))
+        FunctionSpec functionSpec = spec("fn");
+        assertThatThrownBy(() -> resolver.resolve(functionSpec, "k8s"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not available");
     }
@@ -50,7 +51,8 @@ class DeploymentProviderResolverTest {
                 new DeploymentProperties(null)
         );
 
-        assertThatThrownBy(() -> resolver.resolve(spec("fn"), "k8s"))
+        FunctionSpec functionSpec = spec("fn");
+        assertThatThrownBy(() -> resolver.resolve(functionSpec, "k8s"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("does not support");
     }
@@ -103,7 +105,8 @@ class DeploymentProviderResolverTest {
                 new DeploymentProperties(null)
         );
 
-        assertThatThrownBy(() -> resolver.resolve(spec("fn"), null))
+        FunctionSpec functionSpec = spec("fn");
+        assertThatThrownBy(() -> resolver.resolve(functionSpec, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Ambiguous");
     }
@@ -115,7 +118,8 @@ class DeploymentProviderResolverTest {
                 new DeploymentProperties(null)
         );
 
-        assertThatThrownBy(() -> resolver.resolve(spec("fn"), null))
+        FunctionSpec functionSpec = spec("fn");
+        assertThatThrownBy(() -> resolver.resolve(functionSpec, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No managed deployment provider");
     }

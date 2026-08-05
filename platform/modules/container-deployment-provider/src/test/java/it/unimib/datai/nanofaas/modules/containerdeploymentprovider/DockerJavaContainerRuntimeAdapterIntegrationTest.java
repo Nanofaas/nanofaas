@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.InspectContainerCmd;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.core.command.PullImageResultCallback;
@@ -44,7 +45,8 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
 
             adapter.removeContainer(containerName);
 
-            assertThatThrownBy(() -> client.inspectContainerCmd(containerName).exec())
+            InspectContainerCmd inspectCmd = client.inspectContainerCmd(containerName);
+            assertThatThrownBy(() -> inspectCmd.exec())
                     .isInstanceOf(NotFoundException.class);
         } finally {
             adapter.removeContainer(containerName);

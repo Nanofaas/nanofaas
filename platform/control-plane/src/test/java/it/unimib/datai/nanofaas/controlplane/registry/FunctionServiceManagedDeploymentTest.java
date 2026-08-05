@@ -111,7 +111,8 @@ class FunctionServiceManagedDeploymentTest {
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null))
         );
 
-        assertThatThrownBy(() -> service.register(deploymentSpec("fn", null)))
+        FunctionSpec functionSpec = deploymentSpec("fn", null);
+        assertThatThrownBy(() -> service.register(functionSpec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("listener failure");
 

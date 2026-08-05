@@ -107,8 +107,9 @@ class DefaultOffloadGatewayTest {
         server.enqueue(new MockResponse().setResponseCode(404));
         FunctionSpec spec = spec("ghost", null, 5000);
 
-        assertThatThrownBy(() -> gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+        DefaultOffloadGateway gateway = gateway();
+        InvocationTask invocationTask = task(spec);
+        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
                 .block())
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("not registered on remote");
@@ -121,8 +122,9 @@ class DefaultOffloadGatewayTest {
         server.enqueue(new MockResponse().setResponseCode(503).setBody("saturated"));
         FunctionSpec spec = spec("busy", null, 5000);
 
-        assertThatThrownBy(() -> gateway()
-                .invokeRemote(task(spec), OffloadTrigger.DEPTH, OffloadContext.none(), BUDGET_MS)
+        DefaultOffloadGateway gateway = gateway();
+        InvocationTask invocationTask = task(spec);
+        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.DEPTH, OffloadContext.none(), BUDGET_MS)
                 .block())
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("503");
@@ -135,8 +137,8 @@ class DefaultOffloadGatewayTest {
         FunctionSpec spec = spec("down", null, 2000);
         DefaultOffloadGateway gateway = gateway(new OffloadProperties(true, url, true));
 
-        assertThatThrownBy(() -> gateway
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+        InvocationTask invocationTask = task(spec);
+        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
                 .block())
                 .isInstanceOf(OffloadFailedException.class)
                 .matches(ex -> !offloadFailure(ex).gatewayTimeout());
@@ -150,8 +152,9 @@ class DefaultOffloadGatewayTest {
                 .setBodyDelay(2, java.util.concurrent.TimeUnit.SECONDS));
         FunctionSpec spec = spec("slow", null, 5000);
 
-        assertThatThrownBy(() -> gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), 300)
+        DefaultOffloadGateway gateway = gateway();
+        InvocationTask invocationTask = task(spec);
+        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), 300)
                 .block())
                 .isInstanceOf(OffloadFailedException.class)
                 .matches(ex -> offloadFailure(ex).gatewayTimeout());
@@ -162,8 +165,9 @@ class DefaultOffloadGatewayTest {
         server.enqueue(new MockResponse().setResponseCode(200));
         FunctionSpec spec = spec("mute", null, 5000);
 
-        assertThatThrownBy(() -> gateway()
-                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+        DefaultOffloadGateway gateway = gateway();
+        InvocationTask invocationTask = task(spec);
+        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
                 .block())
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("empty response body");

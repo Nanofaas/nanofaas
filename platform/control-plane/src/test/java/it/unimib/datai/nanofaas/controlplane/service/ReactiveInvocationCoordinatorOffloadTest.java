@@ -139,7 +139,8 @@ class ReactiveInvocationCoordinatorOffloadTest {
         when(offloadGateway.enabled()).thenReturn(true);
         when(offloadGateway.shouldOffloadOnPressure(any(), any())).thenReturn(false);
 
-        assertThatThrownBy(() -> coordinator(syncQueueGateway).invoke(lookup, spec, 1000).block())
+        ReactiveInvocationCoordinator coordinator = coordinator(syncQueueGateway);
+        assertThatThrownBy(() -> coordinator.invoke(lookup, spec, 1000).block())
                 .isInstanceOf(SyncQueueRejectedException.class);
     }
 
@@ -174,7 +175,8 @@ class ReactiveInvocationCoordinatorOffloadTest {
         when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
                 .thenReturn(Mono.error(new OffloadFailedException(TARGET, false, "unreachable")));
 
-        assertThatThrownBy(() -> coordinator(null).invoke(lookup, spec, 1000).block())
+        ReactiveInvocationCoordinator coordinator = coordinator(null);
+        assertThatThrownBy(() -> coordinator.invoke(lookup, spec, 1000).block())
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("unreachable")
                 .matches(ex -> TARGET.equals(((OffloadFailedException) ex).targetUrl()));
@@ -191,7 +193,8 @@ class ReactiveInvocationCoordinatorOffloadTest {
         when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
                 .thenReturn(Mono.error(new OffloadFailedException(TARGET, true, "too slow")));
 
-        assertThatThrownBy(() -> coordinator(null).invoke(lookup, spec, 1000).block())
+        ReactiveInvocationCoordinator coordinator = coordinator(null);
+        assertThatThrownBy(() -> coordinator.invoke(lookup, spec, 1000).block())
                 .isInstanceOf(OffloadFailedException.class)
                 .matches(ex -> ((OffloadFailedException) ex).gatewayTimeout());
     }

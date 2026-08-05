@@ -437,7 +437,8 @@ class InvocationServiceDispatchTest {
                 1_000
         ))).doesNotThrowAnyException();
 
-        assertThatThrownBy(() -> monoRef.get().block())
+        reactor.core.publisher.Mono<SyncInvocation> rejectedMono = monoRef.get();
+        assertThatThrownBy(() -> rejectedMono.block())
                 .isInstanceOf(SyncQueueRejectedException.class);
     }
 
@@ -667,9 +668,10 @@ class InvocationServiceDispatchTest {
             return false;
         }).when(enqueuer).enqueue(any());
 
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
         assertThatThrownBy(() -> invocationService.invokeAsync(
                 "queue-reject-fn",
-                new InvocationRequest("payload", Map.of()),
+                request,
                 null,
                 null
         )).isInstanceOf(QueueFullException.class);
@@ -691,9 +693,10 @@ class InvocationServiceDispatchTest {
             return false;
         }).when(enqueuer).enqueue(any());
 
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
         assertThatThrownBy(() -> invocationService.invokeSyncReactive(
                 "sync-reject-local-fn",
-                new InvocationRequest("payload", Map.of()),
+                request,
                 null,
                 null,
                 1_000
@@ -715,9 +718,10 @@ class InvocationServiceDispatchTest {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 1);
         }).when(syncQueueGateway).enqueueOrThrow(any());
 
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
         assertThatThrownBy(() -> invocationService.invokeSyncReactive(
                 "reactive-sync-reject-fn",
-                new InvocationRequest("payload", Map.of()),
+                request,
                 null,
                 null,
                 1_000

@@ -269,9 +269,10 @@ class InvocationServiceRetryTest {
     void invokeAsync_whenEnqueuerDisabled_throwsAsyncQueueUnavailableException() {
         when(enqueuer.enabled()).thenReturn(false);
 
+        InvocationRequest request = new InvocationRequest("payload", null);
         assertThatThrownBy(() -> invocationService.invokeAsync(
                 "testFunc",
-                new InvocationRequest("payload", null),
+                request,
                 null,
                 null
         )).isInstanceOf(AsyncQueueUnavailableException.class)
@@ -283,9 +284,10 @@ class InvocationServiceRetryTest {
         when(enqueuer.enabled()).thenReturn(false, true, true);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
+        InvocationRequest request = new InvocationRequest("payload", null);
         assertThatThrownBy(() -> invocationService.invokeAsync(
                 "testFunc",
-                new InvocationRequest("payload", null),
+                request,
                 "idem-123",
                 null
         )).isInstanceOf(AsyncQueueUnavailableException.class);

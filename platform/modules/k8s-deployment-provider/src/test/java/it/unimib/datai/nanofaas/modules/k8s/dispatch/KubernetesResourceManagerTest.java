@@ -77,7 +77,8 @@ class KubernetesResourceManagerTest {
                 .andReturn(422, "service creation failed")
                 .once();
 
-        assertThrows(RuntimeException.class, () -> resourceManager.provision(spec(scaling)));
+        FunctionSpec deploymentSpec = spec(scaling);
+        assertThrows(RuntimeException.class, () -> resourceManager.provision(deploymentSpec));
 
         assertNull(client.apps().deployments().inNamespace("default").withName("fn-echo").get());
         assertNull(client.services().inNamespace("default").withName("fn-echo").get());
@@ -99,7 +100,8 @@ class KubernetesResourceManagerTest {
                 .andReturn(422, "service creation failed")
                 .once();
 
-        assertThrows(RuntimeException.class, () -> resourceManager.provision(spec(scaling)));
+        FunctionSpec deploymentSpec = spec(scaling);
+        assertThrows(RuntimeException.class, () -> resourceManager.provision(deploymentSpec));
 
         Deployment deployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
         assertNotNull(deployment);
@@ -116,7 +118,8 @@ class KubernetesResourceManagerTest {
                 .andReturn(422, "hpa creation failed")
                 .once();
 
-        assertThrows(RuntimeException.class, () -> resourceManager.provision(spec(scaling)));
+        FunctionSpec deploymentSpec = spec(scaling);
+        assertThrows(RuntimeException.class, () -> resourceManager.provision(deploymentSpec));
 
         assertNull(client.autoscaling().v2().horizontalPodAutoscalers()
                 .inNamespace("default").withName("fn-echo").get());

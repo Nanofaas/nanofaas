@@ -31,8 +31,9 @@ class HandlerRegistryTest {
     @Test
     void resolve_noHandlers_throwsIllegalState() {
         RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
+        Map<String, FunctionHandler> handlers = Map.of();
         assertThrows(IllegalStateException.class,
-                () -> new HandlerRegistry(Map.of(), settings));
+                () -> new HandlerRegistry(handlers, settings));
     }
 
     @Test
@@ -61,8 +62,9 @@ class HandlerRegistryTest {
         FunctionHandler h2 = mock(FunctionHandler.class);
         RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
 
+        Map<String, FunctionHandler> handlers = Map.of("alphaHandler", h1, "betaHandler", h2);
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> new HandlerRegistry(Map.of("alphaHandler", h1, "betaHandler", h2), settings));
+                () -> new HandlerRegistry(handlers, settings));
 
         String msg = ex.getMessage();
         assertTrue(msg.contains("alphaHandler") || msg.contains("betaHandler"),
@@ -76,7 +78,8 @@ class HandlerRegistryTest {
         FunctionHandler h1 = mock(FunctionHandler.class);
         RuntimeSettings settings = new RuntimeSettings(null, null, null, "nonExistentHandler");
 
+        Map<String, FunctionHandler> handlers = Map.of("myHandler", h1);
         assertThrows(IllegalStateException.class,
-                () -> new HandlerRegistry(Map.of("myHandler", h1), settings));
+                () -> new HandlerRegistry(handlers, settings));
     }
 }

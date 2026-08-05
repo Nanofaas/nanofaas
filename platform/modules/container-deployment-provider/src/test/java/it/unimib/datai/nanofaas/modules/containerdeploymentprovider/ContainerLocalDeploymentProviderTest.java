@@ -229,7 +229,8 @@ class ContainerLocalDeploymentProviderTest {
                 functionName -> proxyCreations.getAndIncrement() == 0 ? firstProxy : secondProxy
         );
 
-        assertThatThrownBy(() -> provider.provision(spec("echo", 1)))
+        FunctionSpec provisionSpec = spec("echo", 1);
+        assertThatThrownBy(() -> provider.provision(provisionSpec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("boom");
 
@@ -250,7 +251,8 @@ class ContainerLocalDeploymentProviderTest {
                 functionName -> proxy
         );
 
-        assertThatThrownBy(() -> provider.provision(spec("echo", 1)))
+        FunctionSpec provisionSpec = spec("echo", 1);
+        assertThatThrownBy(() -> provider.provision(provisionSpec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("start result lost");
 
@@ -270,7 +272,8 @@ class ContainerLocalDeploymentProviderTest {
                 functionName -> proxy
         );
 
-        assertThatThrownBy(() -> provider.provision(spec("echo", 1)))
+        FunctionSpec provisionSpec = spec("echo", 1);
+        assertThatThrownBy(() -> provider.provision(provisionSpec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("probe timeout");
 
@@ -292,7 +295,8 @@ class ContainerLocalDeploymentProviderTest {
                 functionName -> proxyCreations.getAndIncrement() == 0 ? firstProxy : secondProxy
         );
 
-        assertThatThrownBy(() -> provider.provision(spec("echo", 2)))
+        FunctionSpec provisionSpec = spec("echo", 2);
+        assertThatThrownBy(() -> provider.provision(provisionSpec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("second replica failed");
 

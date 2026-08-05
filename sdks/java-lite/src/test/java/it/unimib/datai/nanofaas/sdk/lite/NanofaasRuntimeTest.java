@@ -51,7 +51,7 @@ class NanofaasRuntimeTest {
 
     @Test
     void builderRequiresHandler() {
-        assertThrows(IllegalStateException.class, () ->
-                NanofaasRuntime.builder().build());
+        NanofaasRuntime.Builder builder = NanofaasRuntime.builder();
+        assertThrows(IllegalStateException.class, () -> builder.build());
     }
 }
