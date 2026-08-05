@@ -69,10 +69,6 @@ if [ "$ONLY" = "rust" ] || [ -z "$ONLY" ]; then
         echo "cargo clippy unavailable. Install it: rustup component add clippy" >&2; exit 1
     }
 fi
-if [ "$DRY" = false ] && lsof -iTCP:9000 -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Port 9000 is already in use; release it or use SONAR_HOST elsewhere" >&2
-    exit 1
-fi
 # --- Server lifecycle --------------------------------------------------------
 if [ "$DRY" = false ]; then
     if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
@@ -84,6 +80,10 @@ if [ "$DRY" = false ]; then
         fi
     fi
     if ! docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+        if lsof -iTCP:9000 -sTCP:LISTEN >/dev/null 2>&1; then
+            echo "Port 9000 is already in use; release it or remove the container holding it" >&2
+            exit 1
+        fi
         run docker run -d --name "$CONTAINER_NAME" -p 127.0.0.1:9000:9000 "$SONAR_IMAGE"
     fi
 
