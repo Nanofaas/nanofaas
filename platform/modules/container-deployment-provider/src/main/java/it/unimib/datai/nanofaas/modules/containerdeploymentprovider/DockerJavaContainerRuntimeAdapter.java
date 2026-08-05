@@ -60,17 +60,18 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
         }
         addResourceLimits(hostConfig, spec.resources());
 
-        CreateContainerCmd create = client.createContainerCmd(spec.image())
+        try (CreateContainerCmd create = client.createContainerCmd(spec.image())
                 .withName(spec.containerName())
                 .withExposedPorts(functionPort)
                 .withHostConfig(hostConfig)
-                .withEnv(environment(spec.env()));
-        if (spec.command() != null && !spec.command().isEmpty()) {
-            create.withCmd(spec.command());
-        }
+                .withEnv(environment(spec.env()))) {
+            if (spec.command() != null && !spec.command().isEmpty()) {
+                create.withCmd(spec.command());
+            }
 
-        CreateContainerResponse created = create.exec();
-        client.startContainerCmd(created.getId()).exec();
+            CreateContainerResponse created = create.exec();
+            client.startContainerCmd(created.getId()).exec();
+        }
     }
 
     @Override
