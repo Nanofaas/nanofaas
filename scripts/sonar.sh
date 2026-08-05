@@ -108,16 +108,21 @@ cleanup() {
 trap cleanup EXIT
 # --- Credentials -------------------------------------------------------------
 TOKEN=""
+TOKEN_NAME="nanofaas-run-$(date +%s)"   # unique: reused servers reject duplicate token names
 if [ "$DRY" = false ]; then
     if ! TOKEN="$(curl -sf -u admin:admin -X POST "$SONAR_HOST/api/user_tokens/generate" \
-        -d "name=nanofaas-run" -d "type=GLOBAL" | python3 -c \
+        -d "name=${TOKEN_NAME}" -d "type=USER_TOKEN" | python3 -c \
         'import json,sys; print(json.load(sys.stdin)["token"])' 2>/dev/null)"; then
         echo "Token generation with admin/admin rejected; changing admin password first..." >&2
-        NEW_PASS="Nanofaas$(date +%s)"
+        NEW_PASS="Nanofaas$(date +%s)!"
         curl -sf -u admin:admin -X POST "$SONAR_HOST/api/users/change_password" \
-            -d "login=admin" -d "previousPassword=admin" -d "password=${NEW_PASS}" >/dev/null
+            -d "login=admin" -d "previousPassword=admin" -d "password=${NEW_PASS}" >/dev/null || {
+            echo "Failed to reset the admin password; the reused server may no longer use admin/admin." >&2
+            echo "Remove the container to restore a fresh server: docker rm -f ${CONTAINER_NAME}" >&2
+            exit 1
+        }
         TOKEN="$(curl -sf -u "admin:${NEW_PASS}" -X POST "$SONAR_HOST/api/user_tokens/generate" \
-            -d "name=nanofaas-run" -d "type=GLOBAL" | python3 -c \
+            -d "name=${TOKEN_NAME}" -d "type=USER_TOKEN" | python3 -c \
             'import json,sys; print(json.load(sys.stdin)["token"])')"
     fi
     [ -n "$TOKEN" ] || { echo "Failed to obtain an API token" >&2; exit 1; }
@@ -156,10 +161,32 @@ if [ "${RUN_java:-false}" = true ] && ! run_java; then FAILED="${FAILED} java"; 
 if [ "${RUN_python:-false}" = true ] && ! run_python; then FAILED="${FAILED} python"; fi
 if [ "${RUN_rust:-false}" = true ] && ! run_rust; then FAILED="${FAILED} rust"; fi
 # --- Report ------------------------------------------------------------------
+wait_for_analysis() {
+    # The scanner exits as soon as the report is uploaded; issues are only
+    # queryable once the Compute Engine has processed it. Wait for CE first.
+    local key="$1" status="" deadline=$((SECONDS + 180))
+    while true; do
+        status="$(curl -sf -u "$TOKEN": "$SONAR_HOST/api/ce/component?component=${key}" 2>/dev/null \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("current",{}).get("status",""))' 2>/dev/null || true)"
+        case "$status" in
+            SUCCESS) return 0 ;;
+            FAILED|CANCELED)
+                echo "  WARNING: background analysis task for ${key} finished with status ${status}" >&2
+                return 1 ;;
+        esac
+        if (( SECONDS >= deadline )); then
+            echo "  WARNING: analysis task for ${key} still ${status:-unknown} after 180s" >&2
+            return 1
+        fi
+        sleep 2
+    done
+}
+
 report() {
     local key="$1" name="$2"
     local counts
     if [ "$DRY" = false ]; then
+        if ! wait_for_analysis "$key"; then return 1; fi
         if ! counts="$(curl -sf -u "$TOKEN": \
             "$SONAR_HOST/api/issues/search?componentKeys=${key}&resolved=false&ps=1&facets=impactSeverities" \
             | python3 -c '
@@ -170,6 +197,9 @@ for f in d.get("facets", []):
         counts = {v["val"]: v["count"] for v in f["values"]}
         total = d.get("paging", {}).get("total", 0)
         order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+        # impactSeverities reports BLOCKER as its top level; surface it in the CRITICAL slot
+        if counts.get("BLOCKER", 0):
+            counts["CRITICAL"] = counts["BLOCKER"]
         parts = [f"{sev}={counts.get(sev, 0)}" for sev in order]
         print(f"{total}|" + ",".join(parts))
         sys.exit(0)
