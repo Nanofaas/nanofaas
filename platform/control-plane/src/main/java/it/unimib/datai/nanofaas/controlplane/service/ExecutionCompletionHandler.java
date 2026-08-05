@@ -229,14 +229,14 @@ public class ExecutionCompletionHandler {
      * Returns a final completion when the retry path terminates (queue full), null when the
      * retry was enqueued or when no retry applies (success or attempts exhausted).
      */
-    private FinalCompletion handleRetry(ExecutionRecord record, InvocationTask currentTask, InvocationResult result) {
+    private FinalCompletion handleRetry(ExecutionRecord executionRecord, InvocationTask currentTask, InvocationResult result) {
         if (result.success() || currentTask.attempt() > currentTask.functionSpec().maxRetries()) {
             return null;
         }
         String functionName = currentTask.functionName();
         metrics.retry(functionName);
         InvocationTask retryTask = new InvocationTask(
-                record.executionId(),
+                executionRecord.executionId(),
                 functionName,
                 currentTask.functionSpec(),
                 currentTask.request(),
@@ -245,13 +245,13 @@ public class ExecutionCompletionHandler {
                 Instant.now(),
                 currentTask.attempt() + 1
         );
-        record.resetForRetry(retryTask);
+        executionRecord.resetForRetry(retryTask);
         try {
-            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
+            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
             return null;
         } catch (QueueFullException ex) {
-            log.warn("Retry queue full for execution {}, completing with error", record.executionId());
-            record.markError(result.error());
+            log.warn("Retry queue full for execution {}, completing with error", executionRecord.executionId());
+            executionRecord.markError(result.error());
             return FinalCompletion.retryExhausted(functionName, result);
         }
     }
