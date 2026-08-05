@@ -39,6 +39,21 @@ public final class CallbackClient {
         this.baseUrl = baseUrl;
     }
 
+    private static boolean isPermanentFailure(int status) {
+        return status >= 400 && status < 500 && status != 408 && status != 429;
+    }
+
+    private boolean pauseBeforeRetry(int attempt, String executionId) {
+        try {
+            Thread.sleep(RETRY_DELAYS_MS[attempt]);
+            return true;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            log.warn("Callback retry interrupted for execution {}", executionId);
+            return false;
+        }
+    }
+
     public boolean sendResult(String executionId, InvocationResult result, String traceId) {
         return sendResult(executionId, result, traceId, null);
     }
@@ -68,7 +83,7 @@ public final class CallbackClient {
                     log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
                     return true;
                 }
-                if (status >= 400 && status < 500 && status != 408 && status != 429) {
+                if (isPermanentFailure(status)) {
                     log.error("Permanent callback failure for execution {} with status {}", executionId, status);
                     return false;
                 }
@@ -77,14 +92,8 @@ public final class CallbackClient {
             } catch (Exception ex) {
                 log.warn("Callback failed for execution {} (attempt {}): {}",
                         executionId, attempt + 1, ex.getMessage());
-                if (attempt < MAX_RETRIES - 1) {
-                    try {
-                        Thread.sleep(RETRY_DELAYS_MS[attempt]);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        log.warn("Callback retry interrupted for execution {}", executionId);
-                        return false;
-                    }
+                if (attempt < MAX_RETRIES - 1 && !pauseBeforeRetry(attempt, executionId)) {
+                    return false;
                 }
             }
         }

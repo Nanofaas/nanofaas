@@ -45,6 +45,17 @@ public class CallbackClient {
         Thread.sleep(RETRY_DELAYS_MS[attemptIndex]);
     }
 
+    private boolean pauseBeforeRetry(int attempt, String executionId) {
+        try {
+            sleepBeforeRetry(attempt);
+            return true;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            log.warn("Callback retry interrupted for execution {}", executionId);
+            return false;
+        }
+    }
+
     private boolean isPermanentClientFailure(RestClientException ex) {
         if (!(ex instanceof RestClientResponseException responseException)) {
             return false;
@@ -83,14 +94,8 @@ public class CallbackClient {
                             executionId, ((RestClientResponseException) ex).getStatusCode());
                     return false;
                 }
-                if (attempt < MAX_RETRIES - 1) {
-                    try {
-                        sleepBeforeRetry(attempt);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        log.warn("Callback retry interrupted for execution {}", executionId);
-                        return false;
-                    }
+                if (attempt < MAX_RETRIES - 1 && !pauseBeforeRetry(attempt, executionId)) {
+                    return false;
                 }
             }
         }
