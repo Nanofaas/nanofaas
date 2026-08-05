@@ -37,7 +37,7 @@ public class AdminRuntimeConfigController {
     }
 
     @PostMapping("/validate")
-    public ResponseEntity<?> validate(@RequestBody PatchRequest request) {
+    public ResponseEntity<Object> validate(@RequestBody PatchRequest request) {
         RuntimeConfigPatch patch;
         try {
             patch = request.toPatch();
@@ -56,7 +56,7 @@ public class AdminRuntimeConfigController {
     }
 
     @PatchMapping
-    public synchronized ResponseEntity<?> patch(@RequestBody PatchRequest request) {
+    public synchronized ResponseEntity<Object> patch(@RequestBody PatchRequest request) {
         if (request.expectedRevision() == null) {
             return ResponseEntity.badRequest().body(Map.of(ERROR_KEY, "expectedRevision is required"));
         }

@@ -29,10 +29,10 @@ public class FunctionController {
     }
 
     @PostMapping
-    public ResponseEntity<?> register(@Valid @RequestBody FunctionSpec spec) {
+    public ResponseEntity<Object> register(@Valid @RequestBody FunctionSpec spec) {
         try {
             return functionService.register(spec)
-                    .map(registered -> ResponseEntity.status(HttpStatus.CREATED).body(FunctionResponse.from(registered)))
+                    .map(registered -> ResponseEntity.status(HttpStatus.CREATED).<Object>body(FunctionResponse.from(registered)))
                     .orElse(ResponseEntity.status(HttpStatus.CONFLICT).build());
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());
@@ -51,12 +51,12 @@ public class FunctionController {
     }
 
     @PutMapping("/{name}/replicas")
-    public ResponseEntity<?> setReplicas(
+    public ResponseEntity<Object> setReplicas(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @Valid @RequestBody ReplicaRequest request) {
         try {
             return functionService.setReplicas(name, request.replicas())
-                    .map(r -> ResponseEntity.ok(new ReplicaResponse(name, r)))
+                    .map(r -> ResponseEntity.<Object>ok(new ReplicaResponse(name, r)))
                     .orElse(ResponseEntity.notFound().build());
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());
@@ -66,11 +66,11 @@ public class FunctionController {
     }
 
     @GetMapping("/{name}/replicas")
-    public ResponseEntity<?> getReplicas(
+    public ResponseEntity<Object> getReplicas(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
         try {
             return functionService.getReplicaStatus(name)
-                    .map(status -> ResponseEntity.ok(new ReplicaStatusResponse(
+                    .map(status -> ResponseEntity.<Object>ok(new ReplicaStatusResponse(
                             name,
                             status.desiredReplicas(),
                             status.readyReplicas()
