@@ -195,28 +195,11 @@ public class ExecutionCompletionHandler {
 
         boolean shouldRetry = !result.success()
                 && currentTask.attempt() <= currentTask.functionSpec().maxRetries();
-
         if (shouldRetry) {
-            metrics.retry(functionName);
-            InvocationTask retryTask = new InvocationTask(
-                    record.executionId(),
-                    functionName,
-                    currentTask.functionSpec(),
-                    currentTask.request(),
-                    null,  // No idempotency key for retry - retry is internal
-                    currentTask.traceId(),
-                    Instant.now(),
-                    currentTask.attempt() + 1
-            );
-            record.resetForRetry(retryTask);
-            try {
-                InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
-                return null;
-            } catch (QueueFullException ex) {
-                log.warn("Retry queue full for execution {}, completing with error", record.executionId());
-                record.markError(result.error());
-                return FinalCompletion.retryExhausted(functionName, result);
-            }
+            // handleRetry always terminates the retry path: null when the retry was
+            // enqueued (never fall through to final completion), a FinalCompletion
+            // when retry is exhausted (queue full).
+            return handleRetry(record, currentTask, result);
         }
 
         Instant enqueuedAt = currentTask.enqueuedAt();
@@ -241,30 +224,44 @@ public class ExecutionCompletionHandler {
                 dispatchResult.coldStart(), dispatchResult.initDurationMs(), false);
     }
 
+    /**
+     * Returns a final completion when the retry path terminates (queue full), null when the
+     * retry was enqueued or when no retry applies (success or attempts exhausted).
+     */
+    private FinalCompletion handleRetry(ExecutionRecord record, InvocationTask currentTask, InvocationResult result) {
+        if (result.success() || currentTask.attempt() > currentTask.functionSpec().maxRetries()) {
+            return null;
+        }
+        String functionName = currentTask.functionName();
+        metrics.retry(functionName);
+        InvocationTask retryTask = new InvocationTask(
+                record.executionId(),
+                functionName,
+                currentTask.functionSpec(),
+                currentTask.request(),
+                null,  // No idempotency key for retry - retry is internal
+                currentTask.traceId(),
+                Instant.now(),
+                currentTask.attempt() + 1
+        );
+        record.resetForRetry(retryTask);
+        try {
+            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record);
+            return null;
+        } catch (QueueFullException ex) {
+            log.warn("Retry queue full for execution {}, completing with error", record.executionId());
+            record.markError(result.error());
+            return FinalCompletion.retryExhausted(functionName, result);
+        }
+    }
+
     private void publishFinalCompletion(ExecutionRecord record, FinalCompletion completion) {
         if (completion == null) {
             return;
         }
         String functionName = completion.functionName();
         if (!completion.retryExhausted()) {
-            Metrics.FunctionTimers timers = metrics.timers(functionName);
-            if (completion.coldStart()) {
-                metrics.coldStart(functionName);
-                if (completion.initDurationMs() != null) {
-                    timers.initDuration().record(completion.initDurationMs(), TimeUnit.MILLISECONDS);
-                }
-            } else {
-                metrics.warmStart(functionName);
-            }
-            if (completion.latencyMs() != null) {
-                timers.latency().record(completion.latencyMs(), TimeUnit.MILLISECONDS);
-            }
-            if (completion.queueWaitMs() != null && completion.queueWaitMs() >= 0) {
-                timers.queueWait().record(completion.queueWaitMs(), TimeUnit.MILLISECONDS);
-            }
-            if (completion.e2eMs() != null && completion.e2eMs() >= 0) {
-                timers.e2eLatency().record(completion.e2eMs(), TimeUnit.MILLISECONDS);
-            }
+            recordCompletionMetrics(completion);
         }
         if (completion.result().success()) {
             metrics.success(functionName);
@@ -272,6 +269,28 @@ public class ExecutionCompletionHandler {
             metrics.error(functionName);
         }
         record.completion().complete(completion.result());
+    }
+
+    private void recordCompletionMetrics(FinalCompletion completion) {
+        String functionName = completion.functionName();
+        Metrics.FunctionTimers timers = metrics.timers(functionName);
+        if (completion.coldStart()) {
+            metrics.coldStart(functionName);
+            if (completion.initDurationMs() != null) {
+                timers.initDuration().record(completion.initDurationMs(), TimeUnit.MILLISECONDS);
+            }
+        } else {
+            metrics.warmStart(functionName);
+        }
+        if (completion.latencyMs() != null) {
+            timers.latency().record(completion.latencyMs(), TimeUnit.MILLISECONDS);
+        }
+        if (completion.queueWaitMs() != null && completion.queueWaitMs() >= 0) {
+            timers.queueWait().record(completion.queueWaitMs(), TimeUnit.MILLISECONDS);
+        }
+        if (completion.e2eMs() != null && completion.e2eMs() >= 0) {
+            timers.e2eLatency().record(completion.e2eMs(), TimeUnit.MILLISECONDS);
+        }
     }
 
     private record FinalCompletion(String functionName,

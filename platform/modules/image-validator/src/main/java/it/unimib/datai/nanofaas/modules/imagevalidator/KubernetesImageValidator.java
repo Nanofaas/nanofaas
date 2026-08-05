@@ -132,17 +132,11 @@ public class KubernetesImageValidator implements ImageValidator {
             String lowerReason = reason.toLowerCase(Locale.ROOT);
             String lowerMessage = message.toLowerCase(Locale.ROOT);
 
-            if (lowerMessage.contains("not found")
-                    || lowerMessage.contains("manifest unknown")
-                    || lowerMessage.contains("name unknown")
-                    || "invalidimagename".equals(lowerReason)) {
+            if (isImageNotFound(lowerReason, lowerMessage)) {
                 return ImageValidationException.notFound(image);
             }
 
-            if (lowerMessage.contains("pull access denied")
-                    || lowerMessage.contains("authentication required")
-                    || lowerMessage.contains("unauthorized")
-                    || lowerMessage.contains("denied")) {
+            if (isAuthFailure(lowerMessage)) {
                 return ImageValidationException.authRequired(image);
             }
 
@@ -151,6 +145,20 @@ public class KubernetesImageValidator implements ImageValidator {
             }
         }
         return null;
+    }
+
+    private static boolean isImageNotFound(String reason, String message) {
+        return message.contains("not found")
+                || message.contains("manifest unknown")
+                || message.contains("name unknown")
+                || "invalidimagename".equals(reason);
+    }
+
+    private static boolean isAuthFailure(String message) {
+        return message.contains("pull access denied")
+                || message.contains("authentication required")
+                || message.contains("unauthorized")
+                || message.contains("denied");
     }
 
     private Pod buildValidationPod(FunctionSpec spec, String podName) {
