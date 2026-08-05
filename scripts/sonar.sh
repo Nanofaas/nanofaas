@@ -69,6 +69,12 @@ if [ "$ONLY" = "rust" ] || [ -z "$ONLY" ]; then
         echo "cargo clippy unavailable. Install it: rustup component add clippy" >&2; exit 1
     }
 fi
+cleanup() {
+    if [ "$KEEP" = false ] && [ "$DRY" = false ]; then
+        docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT
 # --- Server lifecycle --------------------------------------------------------
 if [ "$DRY" = false ]; then
     if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
@@ -100,12 +106,6 @@ if [ "$DRY" = false ]; then
     done
 fi
 
-cleanup() {
-    if [ "$KEEP" = false ] && [ "$DRY" = false ]; then
-        docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    fi
-}
-trap cleanup EXIT
 # --- Credentials -------------------------------------------------------------
 TOKEN=""
 TOKEN_NAME="nanofaas-run-$(date +%s)"   # unique: reused servers reject duplicate token names
@@ -167,7 +167,7 @@ wait_for_analysis() {
     local key="$1" status="" deadline=$((SECONDS + 180))
     while true; do
         status="$(curl -sf -u "$TOKEN": "$SONAR_HOST/api/ce/component?component=${key}" 2>/dev/null \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("current",{}).get("status",""))' 2>/dev/null || true)"
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("current") or {}).get("status",""))' 2>/dev/null || true)"
         case "$status" in
             SUCCESS) return 0 ;;
             FAILED|CANCELED)
@@ -198,7 +198,7 @@ for f in d.get("facets", []):
         total = d.get("paging", {}).get("total", 0)
         order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
         # impactSeverities reports BLOCKER as its top level; surface it in the CRITICAL slot
-        if counts.get("BLOCKER", 0):
+        if f["property"] == "impactSeverities" and counts.get("BLOCKER", 0):
             counts["CRITICAL"] = counts["BLOCKER"]
         parts = [f"{sev}={counts.get(sev, 0)}" for sev in order]
         print(f"{total}|" + ",".join(parts))
