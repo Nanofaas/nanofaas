@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class QueueManager {
+    private static final String FUNCTION_TAG = "function";
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
@@ -44,13 +45,13 @@ public class QueueManager {
                 );
                 List<Meter.Id> ids = new ArrayList<>();
                 ids.add(Gauge.builder("function_queue_depth", state::queued)
-                        .tag("function", name)
+                        .tag(FUNCTION_TAG, name)
                         .register(meterRegistry).getId());
                 ids.add(Gauge.builder("function_inFlight", state::inFlight)
-                        .tag("function", name)
+                        .tag(FUNCTION_TAG, name)
                         .register(meterRegistry).getId());
                 ids.add(Gauge.builder("function_effective_concurrency", state::effectiveConcurrency)
-                        .tag("function", name)
+                        .tag(FUNCTION_TAG, name)
                         .register(meterRegistry).getId());
                 concurrencyMetrics.ensureRegistered(
                         name,

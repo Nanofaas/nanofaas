@@ -20,6 +20,8 @@ public class KubernetesDeploymentBuilder {
     private static final Set<String> RESERVED_ENV = Set.of(
             "FUNCTION_NAME", "WARM", "TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD", "CALLBACK_URL"
     );
+    private static final String APP_LABEL = "nanofaas";
+    private static final String FUNCTION_LABEL = "function";
 
     private final KubernetesProperties properties;
     private final KubernetesMetricsTranslator metricsTranslator = new KubernetesMetricsTranslator();
@@ -46,8 +48,8 @@ public class KubernetesDeploymentBuilder {
         }
 
         Map<String, String> labels = Map.of(
-                "app", "nanofaas",
-                "function", spec.name()
+                "app", APP_LABEL,
+                FUNCTION_LABEL, spec.name()
         );
 
         return new DeploymentBuilder()
@@ -58,7 +60,7 @@ public class KubernetesDeploymentBuilder {
                 .withNewSpec()
                     .withReplicas(replicas)
                     .withNewSelector()
-                        .addToMatchLabels("function", spec.name())
+                        .addToMatchLabels(FUNCTION_LABEL, spec.name())
                     .endSelector()
                     .withNewTemplate()
                         .withNewMetadata()
@@ -69,7 +71,7 @@ public class KubernetesDeploymentBuilder {
                         .endMetadata()
                         .withNewSpec()
                             .addNewContainer()
-                                .withName("function")
+                                .withName(FUNCTION_LABEL)
                                 .withImage(spec.image())
                                 .withImagePullPolicy(properties.imagePullPolicy())
                                 .withCommand(spec.command() == null || spec.command().isEmpty() ? null : spec.command())
@@ -100,15 +102,15 @@ public class KubernetesDeploymentBuilder {
         return new ServiceBuilder()
                 .withNewMetadata()
                     .withName(serviceName(spec.name()))
-                    .addToLabels("app", "nanofaas")
-                    .addToLabels("function", spec.name())
+                    .addToLabels("app", APP_LABEL)
+                    .addToLabels(FUNCTION_LABEL, spec.name())
                     .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_SCRAPE, "true")
                     .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PATH, "/metrics")
                     .addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PORT, "8080")
                 .endMetadata()
                 .withNewSpec()
                     .withType("ClusterIP")
-                    .addToSelector("function", spec.name())
+                    .addToSelector(FUNCTION_LABEL, spec.name())
                     .addNewPort()
                         .withPort(8080)
                         .withTargetPort(new IntOrString(8080))
@@ -129,8 +131,8 @@ public class KubernetesDeploymentBuilder {
         return new HorizontalPodAutoscalerBuilder()
                 .withNewMetadata()
                     .withName(deploymentName(spec.name()))
-                    .addToLabels("app", "nanofaas")
-                    .addToLabels("function", spec.name())
+                    .addToLabels("app", APP_LABEL)
+                    .addToLabels(FUNCTION_LABEL, spec.name())
                 .endMetadata()
                 .withNewSpec()
                     .withNewScaleTargetRef()

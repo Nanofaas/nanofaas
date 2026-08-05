@@ -22,9 +22,10 @@ public class FunctionSpecResolver {
     private static final long DEFAULT_DOWNSCALE_COOLDOWN_MS = 60_000L;
     private static final double DEFAULT_HIGH_LOAD_THRESHOLD = 0.85;
     private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.35;
+    private static final String QUEUE_DEPTH_METRIC = "queue_depth";
 
     private final FunctionDefaults defaults;
-    private static final Set<String> SUPPORTED_INTERNAL_SCALING_METRICS = Set.of("queue_depth", "in_flight", "rps");
+    private static final Set<String> SUPPORTED_INTERNAL_SCALING_METRICS = Set.of(QUEUE_DEPTH_METRIC, "in_flight", "rps");
 
     public FunctionSpecResolver(FunctionDefaults defaults) {
         this.defaults = defaults;
@@ -62,13 +63,13 @@ public class FunctionSpecResolver {
                     ScalingStrategy.INTERNAL,
                     1,
                     10,
-                    List.of(new ScalingMetric("queue_depth", "5", null)),
+                    List.of(new ScalingMetric(QUEUE_DEPTH_METRIC, "5", null)),
                     normalizeConcurrencyControl(null)
             );
         }
         ScalingStrategy strategy = Optional.ofNullable(config.strategy()).orElse(ScalingStrategy.INTERNAL);
         List<ScalingMetric> metrics = Optional.ofNullable(config.metrics()).filter(m -> !m.isEmpty())
-                .orElseGet(() -> List.of(new ScalingMetric("queue_depth", "5", null)));
+                .orElseGet(() -> List.of(new ScalingMetric(QUEUE_DEPTH_METRIC, "5", null)));
         if (strategy == ScalingStrategy.INTERNAL) {
             validateInternalScalingMetrics(metrics);
         }

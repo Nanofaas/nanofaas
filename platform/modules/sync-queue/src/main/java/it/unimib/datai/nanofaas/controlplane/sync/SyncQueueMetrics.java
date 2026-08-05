@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class SyncQueueMetrics {
     private static final String GLOBAL_FUNCTION_TAG = "";
+    private static final String FUNCTION_TAG = "function";
 
     private final MeterRegistry registry;
     private final Map<String, Counter> rejectedCounters = new ConcurrentHashMap<>();
@@ -32,10 +33,10 @@ public class SyncQueueMetrics {
     public SyncQueueMetrics(MeterRegistry registry) {
         this.registry = registry;
         Gauge.builder("sync_queue_depth", globalDepth, AtomicInteger::get)
-                .tag("function", GLOBAL_FUNCTION_TAG)
+                .tag(FUNCTION_TAG, GLOBAL_FUNCTION_TAG)
                 .register(registry);
         this.globalWaitTimer = Timer.builder("sync_queue_wait_seconds")
-                .tag("function", GLOBAL_FUNCTION_TAG)
+                .tag(FUNCTION_TAG, GLOBAL_FUNCTION_TAG)
                 .register(registry);
     }
 
@@ -65,7 +66,7 @@ public class SyncQueueMetrics {
         return perFunctionDepth.computeIfAbsent(functionName, name -> {
             AtomicInteger depth = new AtomicInteger();
             Gauge gauge = Gauge.builder("sync_queue_depth", depth, AtomicInteger::get)
-                    .tag("function", name)
+                    .tag(FUNCTION_TAG, name)
                     .register(registry);
             perFunctionDepthGaugeIds.put(name, gauge.getId());
             return depth;
@@ -138,13 +139,13 @@ public class SyncQueueMetrics {
 
     private Counter counter(Map<String, Counter> map, String name, String function) {
         return map.computeIfAbsent(function, key -> Counter.builder(name)
-                .tag("function", function)
+                .tag(FUNCTION_TAG, function)
                 .register(registry));
     }
 
     private Timer waitTimer(String function) {
         return waitTimers.computeIfAbsent(function, key -> Timer.builder("sync_queue_wait_seconds")
-                .tag("function", function)
+                .tag(FUNCTION_TAG, function)
                 .register(registry));
     }
 

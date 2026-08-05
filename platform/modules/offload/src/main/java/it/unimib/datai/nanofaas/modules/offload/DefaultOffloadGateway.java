@@ -25,6 +25,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
     // ponytail: fixed margin so the gateway's remote budget expires before the
     // coordinator's local wait, making 504 (not a local "timeout") deterministic
     private static final long TIMEOUT_MARGIN_MS = 50;
+    private static final String REMOTE_PREFIX = "remote ";
 
     private final OffloadProperties properties;
     private final Supplier<WebClient> webClient;
@@ -117,18 +118,18 @@ public class DefaultOffloadGateway implements OffloadGateway {
                     return response.bodyToMono(String.class)
                             .defaultIfEmpty("")
                             .flatMap(body -> Mono.error(new OffloadFailedException(target, false,
-                                    "remote " + target + " returned " + status
+                                    REMOTE_PREFIX + target + " returned " + status
                                             + (body.isBlank() ? "" : ": " + body))));
                 })
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorMap(TimeoutException.class, ex ->
                         new OffloadFailedException(target, true,
-                                "remote " + target + " did not answer within " + timeoutMs + "ms"))
+                                REMOTE_PREFIX + target + " did not answer within " + timeoutMs + "ms"))
                 .onErrorMap(ex -> !(ex instanceof OffloadFailedException), ex -> {
                     log.warn("Offload call to {} failed for function {}", target, task.functionName(), ex);
                     String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                     return new OffloadFailedException(target, false,
-                            "remote " + target + " unreachable: " + message);
+                            REMOTE_PREFIX + target + " unreachable: " + message);
                 })
                 .doOnSubscribe(s -> meterRegistry.get().counter("nanofaas.offload",
                         "function", task.functionName(),

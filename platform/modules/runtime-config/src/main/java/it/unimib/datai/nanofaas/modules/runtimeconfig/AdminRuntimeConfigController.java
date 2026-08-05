@@ -17,6 +17,8 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "nanofaas.admin.runtime-config.enabled", havingValue = "true")
 public class AdminRuntimeConfigController {
 
+    private static final String ERROR_KEY = "error";
+
     private final RuntimeConfigService configService;
     private final RuntimeConfigValidator validator;
     private final RuntimeConfigApplier applier;
@@ -41,7 +43,7 @@ public class AdminRuntimeConfigController {
             patch = request.toPatch();
         } catch (InvalidPatchRequestException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", e.getMessage(),
+                    ERROR_KEY, e.getMessage(),
                     "field", e.fieldName(),
                     "value", e.value()
             ));
@@ -56,7 +58,7 @@ public class AdminRuntimeConfigController {
     @PatchMapping
     public synchronized ResponseEntity<?> patch(@RequestBody PatchRequest request) {
         if (request.expectedRevision() == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "expectedRevision is required"));
+            return ResponseEntity.badRequest().body(Map.of(ERROR_KEY, "expectedRevision is required"));
         }
 
         RuntimeConfigPatch patch;
@@ -64,7 +66,7 @@ public class AdminRuntimeConfigController {
             patch = request.toPatch();
         } catch (InvalidPatchRequestException e) {
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", e.getMessage(),
+                    ERROR_KEY, e.getMessage(),
                     "field", e.fieldName(),
                     "value", e.value()
             ));
@@ -80,14 +82,14 @@ public class AdminRuntimeConfigController {
             updated = configService.update(request.expectedRevision(), patch);
         } catch (RevisionMismatchException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", e.getMessage(), "currentRevision", e.getActual()));
+                    .body(Map.of(ERROR_KEY, e.getMessage(), "currentRevision", e.getActual()));
         }
 
         try {
             applier.apply(updated, previous, configService);
         } catch (RuntimeConfigApplyException e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("error", "Apply failed, rolled back", "detail", e.getMessage()));
+                    .body(Map.of(ERROR_KEY, "Apply failed, rolled back", "detail", e.getMessage()));
         }
 
         return ResponseEntity.ok(new PatchResponse(
