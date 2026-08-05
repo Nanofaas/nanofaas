@@ -52,8 +52,9 @@ class HandlerRegistryTest {
         FunctionHandler h2 = mock(FunctionHandler.class);
         RuntimeSettings settings = new RuntimeSettings(null, null, null, null);
 
+        Map<String, FunctionHandler> handlers = Map.of("alphaHandler", h1, "betaHandler", h2);
         assertThrows(IllegalStateException.class,
-                () -> new HandlerRegistry(Map.of("alphaHandler", h1, "betaHandler", h2), settings));
+                () -> new HandlerRegistry(handlers, settings));
     }
 
     @Test
