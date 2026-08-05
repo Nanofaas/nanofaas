@@ -4,6 +4,7 @@ plugins {
     id 'org.springframework.boot' version "${springBootVersion}" apply false
     id 'io.spring.dependency-management' version "${springDependencyManagementVersion}" apply false
     id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}" apply false
+    id 'org.sonarqube' version "${sonarQubePluginVersion}"
 }
 
 allprojects {
