@@ -118,5 +118,6 @@ VM provisioning and scenario orchestration now live in the separate
 - [nanolab guide](https://github.com/miciav/nanolab#readme): provisioning, environments, and scenarios.
 - [Control-plane operation](docs/control-plane.md): Java control-plane deployment overview.
 - [Testing guide](docs/testing.md): test layers and commands.
+- [SonarQube analysis](docs/sonarqube.md): on-demand local analysis via `scripts/sonar.sh`.
 - [E2E tutorial](docs/e2e-tutorial.md): validation environments and scenarios.
 - [Function pod architecture](docs/function-pod-architecture.md): function execution model.

@@ -39,7 +39,7 @@ docker build -f services/java/warm-echo/Dockerfile -t nanofaas/warm-echo .
 # Build every native Java binary (configured GraalVM release via SDKMAN)
 ./scripts/native-build.sh
 
-# Local SonarQube analysis (ephemeral Docker server, on demand — not CI)
+# Local SonarQube analysis (ephemeral Docker server, on demand — not CI; see docs/sonarqube.md)
 ./scripts/sonar.sh [--rm] [--only java|python|rust]
 
 # Experiments / load tests (see experiments/)
