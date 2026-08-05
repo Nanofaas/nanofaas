@@ -21,6 +21,7 @@ import java.util.Map;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -60,7 +61,7 @@ class InternalScalerBranchTest {
     void scalingLoop_registryFailure_isHandledWithoutThrowing() {
         when(registry.listRegistered()).thenThrow(new RuntimeException("registry down"));
 
-        scaler.scalingLoop();
+        assertThatCode(() -> scaler.scalingLoop()).doesNotThrowAnyException();
     }
 
     @Test

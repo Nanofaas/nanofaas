@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class QueueManagerBranchTest {
 
@@ -34,9 +35,11 @@ class QueueManagerBranchTest {
     void releaseSlot_andIncrementDecrement_unknownFunction_doNotThrow() {
         QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
 
-        queueManager.releaseSlot("missing");
-        queueManager.incrementInFlight("missing");
-        queueManager.decrementInFlight("missing");
+        assertThatCode(() -> {
+            queueManager.releaseSlot("missing");
+            queueManager.incrementInFlight("missing");
+            queueManager.decrementInFlight("missing");
+        }).doesNotThrowAnyException();
     }
 
     @Test

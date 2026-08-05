@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class TargetLoadMetricsBranchTest {
 
@@ -102,6 +103,6 @@ class TargetLoadMetricsBranchTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         TargetLoadMetrics metrics = new TargetLoadMetrics(registry);
 
-        metrics.remove(null);
+        assertThatCode(() -> metrics.remove(null)).doesNotThrowAnyException();
     }
 }

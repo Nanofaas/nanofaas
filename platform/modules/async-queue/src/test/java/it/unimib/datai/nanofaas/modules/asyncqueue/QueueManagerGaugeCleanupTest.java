@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class QueueManagerGaugeCleanupTest {
 
@@ -47,8 +48,7 @@ class QueueManagerGaugeCleanupTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager queueManager = new QueueManager(registry);
 
-        // Should not throw
-        queueManager.remove("nonexistent");
+        assertThatCode(() -> queueManager.remove("nonexistent")).doesNotThrowAnyException();
     }
 
     @Test
