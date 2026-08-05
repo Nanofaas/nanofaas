@@ -356,7 +356,7 @@ bash -n scripts/sonar.sh
 ./scripts/sonar.sh --dry-run
 ```
 
-Expected: `bash -n` silent; `--dry-run` prints the docker run and analysis commands without executing them, no Docker contact, exit 0.
+Expected: `bash -n` silent; `--dry-run` prints the three analysis commands without executing anything (preconditions are still checked; the docker run line is not echoed — the server-lifecycle block is gated by `DRY=false`), exit 0.
 
 - [ ] **Step 7: Commit**
 
