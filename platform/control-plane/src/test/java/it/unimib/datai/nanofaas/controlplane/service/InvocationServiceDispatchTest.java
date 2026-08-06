@@ -340,7 +340,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_whenSyncQueueDisabledAndEnqueuerEnabled_enqueuesAndWaitsForCompletion() throws Exception {
+    void invokeSync_whenSyncQueueDisabledAndEnqueuerEnabled_enqueuesAndWaitsForCompletion() {
         FunctionSpec spec = functionSpec("queued-sync-fn", ExecutionMode.LOCAL);
         when(functionService.get("queued-sync-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
@@ -482,7 +482,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() throws Exception {
+    void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() {
         CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
         FunctionSpec spec = functionSpec("timeout-fn", ExecutionMode.LOCAL);
         when(functionService.get("timeout-fn")).thenReturn(Optional.of(spec));

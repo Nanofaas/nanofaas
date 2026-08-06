@@ -34,7 +34,7 @@ class InvokeHandlerTest {
     private int port;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() {
         objectMapper = new ObjectMapper()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         client = HttpClient.newHttpClient();

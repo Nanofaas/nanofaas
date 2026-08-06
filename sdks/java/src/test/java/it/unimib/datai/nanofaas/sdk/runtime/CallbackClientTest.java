@@ -142,7 +142,7 @@ class CallbackClientTest {
             "429, exec-9b",  // 429: retryable429Failure_isRetried
             "408, exec-9c"   // 408: retryable408Failure_isRetried
     })
-    void sendResult_retryableFailure_thenSucceeds(int status, String execId) throws Exception {
+    void sendResult_retryableFailure_thenSucceeds(int status, String execId) {
         server.enqueue(new MockResponse().setResponseCode(status));
         server.enqueue(new MockResponse().setResponseCode(200));
 

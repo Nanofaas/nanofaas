@@ -89,7 +89,7 @@ class RootCommandTest {
     }
 
     @Test
-    void namespaceOptionOverridesConfig() throws Exception {
+    void namespaceOptionOverridesConfig() {
         // Setup config file with namespace
         Path cfgPath = tmp.resolve("config.yaml");
         ConfigStore store = new ConfigStore(cfgPath, k -> null);
@@ -111,7 +111,7 @@ class RootCommandTest {
     }
 
     @Test
-    void configOptionLoadsFromCustomPath() throws Exception {
+    void configOptionLoadsFromCustomPath() {
         Path cfgPath = tmp.resolve("custom-config.yaml");
         ConfigStore store = new ConfigStore(cfgPath, k -> null);
         Config cfg = new Config();

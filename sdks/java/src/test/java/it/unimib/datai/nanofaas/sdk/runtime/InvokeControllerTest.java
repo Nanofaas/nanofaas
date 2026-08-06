@@ -212,7 +212,7 @@ class InvokeControllerTest {
 
     @SuppressWarnings("java:S2925") // the mocked handler must outlive the 50ms executor timeout: the 10s sleep guarantees the timeout fires while the handler is still running
     @Test
-    void invoke_handlerTimesOut_returns504AndSendsErrorCallback() throws Exception {
+    void invoke_handlerTimesOut_returns504AndSendsErrorCallback() {
         when(handler.handle(any())).thenAnswer(inv -> { Thread.sleep(10_000); return null; });
         controller = new InvokeController(
             callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker,

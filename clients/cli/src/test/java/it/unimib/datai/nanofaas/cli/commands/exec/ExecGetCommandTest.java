@@ -59,7 +59,7 @@ class ExecGetCommandTest {
     }
 
     @Test
-    void watchWithTerminalStateExitsImmediately() throws Exception {
+    void watchWithTerminalStateExitsImmediately() {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -87,7 +87,7 @@ class ExecGetCommandTest {
     }
 
     @Test
-    void watchPollsUntilTerminal() throws Exception {
+    void watchPollsUntilTerminal() {
         // First poll: "running" (non-terminal)
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
@@ -123,7 +123,7 @@ class ExecGetCommandTest {
     }
 
     @Test
-    void watchExitsOnTimeoutTerminalState() throws Exception {
+    void watchExitsOnTimeoutTerminalState() {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -141,7 +141,7 @@ class ExecGetCommandTest {
     }
 
     @Test
-    void watchDeadlineExceededExitsNonZero() throws Exception {
+    void watchDeadlineExceededExitsNonZero() {
         // Always return non-terminal status
         for (int i = 0; i < 20; i++) {
             server.enqueue(new MockResponse()
