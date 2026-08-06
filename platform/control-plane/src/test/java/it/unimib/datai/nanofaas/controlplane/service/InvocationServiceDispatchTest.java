@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
@@ -439,7 +440,7 @@ class InvocationServiceDispatchTest {
         ))).doesNotThrowAnyException();
 
         reactor.core.publisher.Mono<SyncInvocation> rejectedMono = monoRef.get();
-        assertThatThrownBy(() -> rejectedMono.block())
+        assertThatThrownBy(rejectedMono::block)
                 .isInstanceOf(SyncQueueRejectedException.class);
     }
 
@@ -512,7 +513,7 @@ class InvocationServiceDispatchTest {
 
         assertThat(second.status()).isEqualTo("timeout");
         assertThat(invocationService.getStatus(first.executionId())).get()
-                .extracting(status -> status.status())
+                .extracting(ExecutionStatus::status)
                 .isEqualTo("timeout");
     }
 
@@ -549,7 +550,7 @@ class InvocationServiceDispatchTest {
         assertThat(second).isNotNull();
         assertThat(second.status()).isEqualTo("timeout");
         assertThat(invocationService.getStatus(first.executionId())).get()
-                .extracting(status -> status.status())
+                .extracting(ExecutionStatus::status)
                 .isEqualTo("timeout");
     }
 

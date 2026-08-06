@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 public class KubernetesImageValidator implements ImageValidator {
     private static final String NATIVE_IMAGE_CODE_PROPERTY = "org.graalvm.nativeimage.imagecode";
@@ -113,7 +114,7 @@ public class KubernetesImageValidator implements ImageValidator {
         }
         return pod.getStatus().getContainerStatuses().stream()
                 .map(cs -> cs.getState())
-                .filter(state -> state != null)
+                .filter(Objects::nonNull)
                 .anyMatch(state -> state.getRunning() != null || state.getTerminated() != null);
     }
 

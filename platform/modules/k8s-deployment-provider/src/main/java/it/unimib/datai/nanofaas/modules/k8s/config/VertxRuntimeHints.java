@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
 
 /**
  * Registers Vert.x resource files for GraalVM native-image inclusion.
@@ -93,7 +94,7 @@ public class VertxRuntimeHints {
                 JarURLConnection conn = (JarURLConnection) url.openConnection();
                 try (JarFile jarFile = conn.getJarFile()) {
                     jarFile.stream()
-                            .map(entry -> entry.getName())
+                            .map(ZipEntry::getName)
                             .filter(name -> name.startsWith(packagePath + "/"))
                             .filter(name -> name.endsWith(".class"))
                             .filter(name -> !name.endsWith("package-info.class"))

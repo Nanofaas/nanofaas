@@ -243,7 +243,7 @@ class ControlPlaneClientTest {
 
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        assertThatThrownBy(() -> client.listFunctions())
+        assertThatThrownBy(client::listFunctions)
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> {
                     ControlPlaneHttpException he = (ControlPlaneHttpException) ex;
