@@ -1,9 +1,12 @@
 package it.unimib.datai.nanofaas.controlplane;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -43,28 +46,20 @@ class IssueCoverageTest {
         assertFalse(Files.exists(root.resolve("deploy/helm/nanofaas-runtime")));
     }
 
-    @Test
-    void issue005_openApiExists() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("repoFiles")
+    void issueFileExists(Path file) {
         Path root = repoRoot();
-        assertTrue(Files.exists(root.resolve("openapi.yaml")));
+        assertTrue(Files.exists(root.resolve(file)));
     }
 
-    @Test
-    void issue019_sloDocExists() {
-        Path root = repoRoot();
-        assertTrue(Files.exists(root.resolve("docs/slo.md")));
-    }
-
-    @Test
-    void issue020_quickstartDocExists() {
-        Path root = repoRoot();
-        assertTrue(Files.exists(root.resolve("docs/quickstart.md")));
-    }
-
-    @Test
-    void issue021_exampleFunctionDocExists() {
-        Path root = repoRoot();
-        assertTrue(Files.exists(root.resolve("docs/example-function.md")));
+    /** Cases: issue005_openApiExists, issue019_sloDocExists, issue020_quickstartDocExists, issue021_exampleFunctionDocExists. */
+    static Stream<Path> repoFiles() {
+        return Stream.of(
+                Path.of("openapi.yaml"),              // issue005: OpenAPI spec
+                Path.of("docs/slo.md"),               // issue019: SLO doc
+                Path.of("docs/quickstart.md"),        // issue020: quickstart doc
+                Path.of("docs/example-function.md")); // issue021: example function doc
     }
 
     private Path repoRoot() {

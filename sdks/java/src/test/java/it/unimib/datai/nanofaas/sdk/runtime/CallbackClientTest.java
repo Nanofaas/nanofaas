@@ -7,6 +7,8 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
@@ -134,12 +136,17 @@ class CallbackClientTest {
         assertFalse(ok);
     }
 
-    @Test
-    void sendResult_retriesOnFailureThenSucceeds() throws Exception {
-        server.enqueue(new MockResponse().setResponseCode(500));
+    @ParameterizedTest(name = "sendResult_retryable{0}Failure_isRetried")
+    @CsvSource({
+            "500, exec-6",   // 500: retriesOnFailureThenSucceeds
+            "429, exec-9b",  // 429: retryable429Failure_isRetried
+            "408, exec-9c"   // 408: retryable408Failure_isRetried
+    })
+    void sendResult_retryableFailure_thenSucceeds(int status, String execId) throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(status));
         server.enqueue(new MockResponse().setResponseCode(200));
 
-        boolean ok = client.sendResult("exec-6", successPayload("retry-ok"), null);
+        boolean ok = client.sendResult(execId, successPayload("retry-ok"), null);
         assertTrue(ok);
         assertEquals(2, server.getRequestCount());
     }
@@ -176,28 +183,6 @@ class CallbackClientTest {
 
         assertFalse(ok);
         assertEquals(1, server.getRequestCount());
-    }
-
-    @Test
-    void sendResult_retryable429Failure_isRetried() {
-        server.enqueue(new MockResponse().setResponseCode(429));
-        server.enqueue(new MockResponse().setResponseCode(200));
-
-        boolean ok = client.sendResult("exec-9b", successPayload("retry-ok"), null);
-
-        assertTrue(ok);
-        assertEquals(2, server.getRequestCount());
-    }
-
-    @Test
-    void sendResult_retryable408Failure_isRetried() {
-        server.enqueue(new MockResponse().setResponseCode(408));
-        server.enqueue(new MockResponse().setResponseCode(200));
-
-        boolean ok = client.sendResult("exec-9c", successPayload("retry-ok"), null);
-
-        assertTrue(ok);
-        assertEquals(2, server.getRequestCount());
     }
 
     @Test

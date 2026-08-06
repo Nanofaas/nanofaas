@@ -4,6 +4,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -84,9 +86,14 @@ class JsonTransformHandlerTest {
         assertEquals(60000.0, groups.get("sales"));
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}ByGroup")
+    @CsvSource({
+            "avg, 85000.0",
+            "min, 80000.0",
+            "max, 90000.0"
+    })
     @SuppressWarnings("unchecked")
-    void avgByGroup() {
+    void aggregateByGroup(String operation, double expected) {
         InvocationRequest req = new InvocationRequest(
                 Map.of(
                         "data", List.of(
@@ -94,7 +101,7 @@ class JsonTransformHandlerTest {
                                 Map.of("dept", "eng", "salary", 90000)
                         ),
                         "groupBy", "dept",
-                        "operation", "avg",
+                        "operation", operation,
                         "valueField", "salary"
                 ),
                 null
@@ -103,7 +110,7 @@ class JsonTransformHandlerTest {
         Map<String, Object> result = (Map<String, Object>) handler.handle(req);
         Map<String, Object> groups = (Map<String, Object>) result.get("groups");
 
-        assertEquals(85000.0, groups.get("eng"));
+        assertEquals(expected, groups.get("eng"));
     }
 
     @Test
@@ -134,50 +141,6 @@ class JsonTransformHandlerTest {
         Map<String, Object> result = (Map<String, Object>) handler.handle(req);
 
         assertTrue(result.containsKey("error"));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void minByGroup() {
-        InvocationRequest req = new InvocationRequest(
-                Map.of(
-                        "data", List.of(
-                                Map.of("dept", "eng", "salary", 80000),
-                                Map.of("dept", "eng", "salary", 90000)
-                        ),
-                        "groupBy", "dept",
-                        "operation", "min",
-                        "valueField", "salary"
-                ),
-                null
-        );
-
-        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
-        Map<String, Object> groups = (Map<String, Object>) result.get("groups");
-
-        assertEquals(80000.0, groups.get("eng"));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void maxByGroup() {
-        InvocationRequest req = new InvocationRequest(
-                Map.of(
-                        "data", List.of(
-                                Map.of("dept", "eng", "salary", 80000),
-                                Map.of("dept", "eng", "salary", 90000)
-                        ),
-                        "groupBy", "dept",
-                        "operation", "max",
-                        "valueField", "salary"
-                ),
-                null
-        );
-
-        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
-        Map<String, Object> groups = (Map<String, Object>) result.get("groups");
-
-        assertEquals(90000.0, groups.get("eng"));
     }
 
     @Test

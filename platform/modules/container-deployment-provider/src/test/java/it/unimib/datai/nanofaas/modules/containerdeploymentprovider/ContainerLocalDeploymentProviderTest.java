@@ -399,6 +399,8 @@ class ContainerLocalDeploymentProviderTest {
                     try {
                         provider.provision(spec("slow", 1));
                     } catch (Exception ignored) {
+                        // ignore: a provision failure in this background thread must not fail the test;
+                        // the outer provisionStarted latch and getReadyReplicas timing are the real assertions
                     }
                 });
 

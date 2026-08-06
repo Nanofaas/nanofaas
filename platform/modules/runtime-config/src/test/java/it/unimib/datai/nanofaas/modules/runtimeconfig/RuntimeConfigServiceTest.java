@@ -84,6 +84,7 @@ class RuntimeConfigServiceTest {
                 } catch (RevisionMismatchException e) {
                     mismatches.incrementAndGet();
                 } catch (InterruptedException ignored) {
+                    // ignore: worker-thread interruption is not expected here; the success/mismatch counts are the real assertions
                 } finally {
                     done.countDown();
                 }

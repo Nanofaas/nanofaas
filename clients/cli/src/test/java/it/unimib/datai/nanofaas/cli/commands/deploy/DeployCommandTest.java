@@ -8,10 +8,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import picocli.CommandLine;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,15 +36,11 @@ class DeployCommandTest {
         server.shutdown();
     }
 
-    @Test
-    void deployWithMissingImageExitsNonZero() throws Exception {
+    @ParameterizedTest
+    @MethodSource("invalidFunctionYamls")
+    void deployWithInvalidFunctionExitsNonZero(String yaml) throws Exception {
         Path fn = tmp.resolve("function.yaml");
-        Files.writeString(fn, """
-                name: echo
-                x-cli:
-                  build:
-                    context: .
-                """);
+        Files.writeString(fn, yaml);
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
@@ -53,43 +52,29 @@ class DeployCommandTest {
         assertThat(exit).isNotEqualTo(0);
     }
 
-    @Test
-    void deployWithBlankImageExitsNonZero() throws Exception {
-        Path fn = tmp.resolve("function.yaml");
-        Files.writeString(fn, """
+    /** Cases: deployWithMissingImageExitsNonZero, deployWithBlankImageExitsNonZero, deployWithMissingBuildSpecExitsNonZero. */
+    private static Stream<String> invalidFunctionYamls() {
+        // case 1: no image, only x-cli build context
+        String missingImage = """
+                name: echo
+                x-cli:
+                  build:
+                    context: .
+                """;
+        // case 2: blank image, with build context
+        String blankImage = """
                 name: echo
                 image: "  "
                 x-cli:
                   build:
                     context: .
-                """);
-
-        RootCommand root = new RootCommand();
-        CommandLine cli = new CommandLine(root);
-
-        int exit = cli.execute(
-                "--endpoint", server.url("/").toString(),
-                "deploy", "-f", fn.toString()
-        );
-        assertThat(exit).isNotEqualTo(0);
-    }
-
-    @Test
-    void deployWithMissingBuildSpecExitsNonZero() throws Exception {
-        Path fn = tmp.resolve("function.yaml");
-        Files.writeString(fn, """
+                """;
+        // case 3: image, but no x-cli build spec
+        String missingBuildSpec = """
                 name: echo
                 image: registry.example/echo:1
-                """);
-
-        RootCommand root = new RootCommand();
-        CommandLine cli = new CommandLine(root);
-
-        int exit = cli.execute(
-                "--endpoint", server.url("/").toString(),
-                "deploy", "-f", fn.toString()
-        );
-        assertThat(exit).isNotEqualTo(0);
+                """;
+        return Stream.of(missingImage, blankImage, missingBuildSpec);
     }
 
     @Test
