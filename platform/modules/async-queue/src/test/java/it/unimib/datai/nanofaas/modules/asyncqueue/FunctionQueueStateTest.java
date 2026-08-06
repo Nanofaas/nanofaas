@@ -90,7 +90,7 @@ class FunctionQueueStateTest {
     void inFlight_tracksCorrectly() {
         FunctionQueueState state = new FunctionQueueState("fn", 100, 10);
 
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
 
         state.tryAcquireSlot();
         assertThat(state.inFlight()).isEqualTo(1);
@@ -102,7 +102,7 @@ class FunctionQueueStateTest {
         assertThat(state.inFlight()).isEqualTo(1);
 
         state.releaseSlot();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
     }
 
     @Test
@@ -126,7 +126,7 @@ class FunctionQueueStateTest {
     void queued_returnsCorrectCount() {
         FunctionQueueState state = new FunctionQueueState("fn", 10, 1);
 
-        assertThat(state.queued()).isEqualTo(0);
+        assertThat(state.queued()).isZero();
 
         state.offer(createTask("exec1"));
         assertThat(state.queued()).isEqualTo(1);

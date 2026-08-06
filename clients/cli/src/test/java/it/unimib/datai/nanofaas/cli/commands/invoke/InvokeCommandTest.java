@@ -54,7 +54,7 @@ class InvokeCommandTest {
                     "invoke", "echo",
                     "-d", "{\"message\":\"hello\"}"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -90,7 +90,7 @@ class InvokeCommandTest {
                     "invoke", "echo",
                     "-d", "@" + inputFile
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -118,7 +118,7 @@ class InvokeCommandTest {
                 "--idempotency-key", "idem-1",
                 "--trace-id", "trace-1"
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         RecordedRequest req = server.takeRequest();
         assertThat(req.getHeader("Idempotency-Key")).isEqualTo("idem-1");
@@ -149,7 +149,7 @@ class InvokeCommandTest {
                     "invoke", "echo",
                     "-d", "@-"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
             System.setIn(prevIn);
@@ -171,7 +171,7 @@ class InvokeCommandTest {
                 "invoke", "echo",
                 "-d", "@/nonexistent/path/file.json"
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     @Test
@@ -184,6 +184,6 @@ class InvokeCommandTest {
                 "invoke", "echo",
                 "-d", "<<<not json>>>"
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 }

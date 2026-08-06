@@ -52,7 +52,7 @@ class FnApplyCommandTest {
         CommandLine cli = new CommandLine(root);
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         // Only 1 request: POST (201)
         assertThat(server.getRequestCount()).isEqualTo(1);
@@ -102,7 +102,7 @@ class FnApplyCommandTest {
                 "-f", fn.toString()
         );
 
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         RecordedRequest r1 = server.takeRequest();
         assertThat(r1.getMethod()).isEqualTo("POST");
@@ -153,7 +153,7 @@ class FnApplyCommandTest {
                 "-f", fn.toString()
         );
 
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         // Only 2 requests: POST (409) + GET (same spec) — no DELETE or re-POST
         assertThat(server.getRequestCount()).isEqualTo(2);
@@ -226,7 +226,7 @@ class FnApplyCommandTest {
         CommandLine cli = new CommandLine(root);
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         assertThat(server.getRequestCount()).isEqualTo(3);
         RecordedRequest r1 = server.takeRequest();
@@ -252,7 +252,7 @@ class FnApplyCommandTest {
         CommandLine cli = new CommandLine(root);
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     @Test
@@ -275,7 +275,7 @@ class FnApplyCommandTest {
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
 
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
         assertThat(err.toString()).contains("Image not found in registry");
     }
 
@@ -299,7 +299,7 @@ class FnApplyCommandTest {
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "apply", "-f", fn.toString());
 
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
         assertThat(err.toString()).contains("Image pull authentication failed");
     }
 }

@@ -204,7 +204,7 @@ class ExecutionCompletionHandlerTest {
 
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
 
-        assertThat(executionRecord.snapshotReads()).isEqualTo(0);
+        assertThat(executionRecord.snapshotReads()).isZero();
         assertThat(executionRecord.finishedAtReads()).isEqualTo(1);
     }
 

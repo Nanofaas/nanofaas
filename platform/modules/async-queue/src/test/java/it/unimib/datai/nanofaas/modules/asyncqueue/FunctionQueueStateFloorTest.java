@@ -12,13 +12,13 @@ class FunctionQueueStateFloorTest {
 
         // Release without any acquire
         state.releaseSlot();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
 
         // Release multiple times
         state.releaseSlot();
         state.releaseSlot();
         state.releaseSlot();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
     }
 
     @Test
@@ -35,7 +35,7 @@ class FunctionQueueStateFloorTest {
         state.releaseSlot();
         state.releaseSlot();
         state.releaseSlot();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
     }
 
     @Test
@@ -43,11 +43,11 @@ class FunctionQueueStateFloorTest {
         FunctionQueueState state = new FunctionQueueState("fn", 10, 2);
 
         state.decrementInFlight();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
 
         state.decrementInFlight();
         state.decrementInFlight();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
     }
 
     @Test
@@ -57,7 +57,7 @@ class FunctionQueueStateFloorTest {
         // Over-release
         state.releaseSlot();
         state.releaseSlot();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
 
         // Should still be able to acquire
         assertThat(state.tryAcquireSlot()).isTrue();

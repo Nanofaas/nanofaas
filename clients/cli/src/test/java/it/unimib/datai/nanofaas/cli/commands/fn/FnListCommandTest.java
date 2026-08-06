@@ -38,7 +38,7 @@ class FnListCommandTest {
 
         CliTestSupport.CommandResult result = CliTestSupport.executeAndCaptureStdout(
                 cli, "--endpoint", server.url("/").toString(), "fn", "list");
-        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.exitCode()).isZero();
 
         String output = result.stdout();
         assertThat(output).contains("echo\timg/echo:1");
@@ -57,7 +57,7 @@ class FnListCommandTest {
 
         CliTestSupport.CommandResult result = CliTestSupport.executeAndCaptureStdout(
                 cli, "--endpoint", server.url("/").toString(), "fn", "list");
-        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.exitCode()).isZero();
 
         assertThat(result.stdout().trim()).isEmpty();
     }

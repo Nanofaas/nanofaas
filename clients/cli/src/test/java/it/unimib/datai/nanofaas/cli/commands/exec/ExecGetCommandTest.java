@@ -47,7 +47,7 @@ class ExecGetCommandTest {
                     "--endpoint", server.url("/").toString(),
                     "exec", "get", "exec-1"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -76,7 +76,7 @@ class ExecGetCommandTest {
                     "--endpoint", server.url("/").toString(),
                     "exec", "get", "exec-2", "--watch"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -111,7 +111,7 @@ class ExecGetCommandTest {
                     "exec", "get", "exec-3",
                     "--watch", "--interval", "PT0.1S", "--timeout", "PT10S"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -136,7 +136,7 @@ class ExecGetCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "exec", "get", "exec-4", "--watch"
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
         assertThat(server.getRequestCount()).isEqualTo(1);
     }
 
@@ -158,6 +158,6 @@ class ExecGetCommandTest {
                 "exec", "get", "exec-5",
                 "--watch", "--interval", "PT0.05S", "--timeout", "PT0.2S"
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 }

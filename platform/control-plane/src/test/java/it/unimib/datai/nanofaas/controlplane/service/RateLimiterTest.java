@@ -142,6 +142,6 @@ class RateLimiterTest {
         endLatch.await();
 
         // No violations should occur
-        assertThat(violations.get()).isEqualTo(0);
+        assertThat(violations.get()).isZero();
     }
 }
