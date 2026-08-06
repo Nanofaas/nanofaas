@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 public class WordStatsLite {
     private static final Logger log = FunctionContext.getLogger(WordStatsLite.class);
 
+    @SuppressWarnings("java:S1172") // args is required by the JVM main(String[]) contract
     public static void main(String[] args) {
         NanofaasRuntime.builder()
                 .handler(request -> handle(request.input()))

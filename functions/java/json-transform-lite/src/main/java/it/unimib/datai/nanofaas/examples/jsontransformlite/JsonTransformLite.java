@@ -25,6 +25,7 @@ public class JsonTransformLite {
     private static final String ERROR_KEY = "error";
     private static final String OPERATION_COUNT = "count";
 
+    @SuppressWarnings("java:S1172") // args is required by the JVM main(String[]) contract
     public static void main(String[] args) {
         NanofaasRuntime.builder()
                 .handler(request -> {

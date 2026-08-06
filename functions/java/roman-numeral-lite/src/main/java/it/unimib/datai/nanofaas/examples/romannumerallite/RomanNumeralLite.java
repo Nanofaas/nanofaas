@@ -15,6 +15,7 @@ public final class RomanNumeralLite {
     private RomanNumeralLite() {
     }
 
+    @SuppressWarnings("java:S1172") // args is required by the JVM main(String[]) contract
     public static void main(String[] args) {
         NanofaasRuntime.builder()
                 .handler(request -> handle(request.input()))
