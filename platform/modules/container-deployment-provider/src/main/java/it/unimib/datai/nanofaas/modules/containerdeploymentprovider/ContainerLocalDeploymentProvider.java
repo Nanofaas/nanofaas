@@ -268,7 +268,7 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     private static void safeClose(ManagedFunctionProxy proxy) {
         try {
             proxy.close();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException _) {
             // Best-effort cleanup.
         }
     }

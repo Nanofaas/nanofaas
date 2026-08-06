@@ -34,7 +34,7 @@ class InvokeHandlerTest {
     private int port;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() {
         objectMapper = new ObjectMapper()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         client = HttpClient.newHttpClient();
@@ -235,7 +235,7 @@ class InvokeHandlerTest {
             started.incrementAndGet();
             try {
                 release.await(2, TimeUnit.SECONDS);
-            } catch (InterruptedException ex) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
             exchange.sendResponseHeaders(204, -1);

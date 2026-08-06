@@ -47,7 +47,7 @@ class ExecGetCommandTest {
                     "--endpoint", server.url("/").toString(),
                     "exec", "get", "exec-1"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -59,7 +59,7 @@ class ExecGetCommandTest {
     }
 
     @Test
-    void watchWithTerminalStateExitsImmediately() throws Exception {
+    void watchWithTerminalStateExitsImmediately() {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -76,7 +76,7 @@ class ExecGetCommandTest {
                     "--endpoint", server.url("/").toString(),
                     "exec", "get", "exec-2", "--watch"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -87,7 +87,7 @@ class ExecGetCommandTest {
     }
 
     @Test
-    void watchPollsUntilTerminal() throws Exception {
+    void watchPollsUntilTerminal() {
         // First poll: "running" (non-terminal)
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
@@ -111,19 +111,20 @@ class ExecGetCommandTest {
                     "exec", "get", "exec-3",
                     "--watch", "--interval", "PT0.1S", "--timeout", "PT10S"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
 
         assertThat(server.getRequestCount()).isEqualTo(2);
         String output = out.toString();
-        assertThat(output).contains("\"status\":\"running\"");
-        assertThat(output).contains("\"status\":\"error\"");
+        assertThat(output)
+                .contains("\"status\":\"running\"")
+                .contains("\"status\":\"error\"");
     }
 
     @Test
-    void watchExitsOnTimeoutTerminalState() throws Exception {
+    void watchExitsOnTimeoutTerminalState() {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -136,12 +137,12 @@ class ExecGetCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "exec", "get", "exec-4", "--watch"
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
         assertThat(server.getRequestCount()).isEqualTo(1);
     }
 
     @Test
-    void watchDeadlineExceededExitsNonZero() throws Exception {
+    void watchDeadlineExceededExitsNonZero() {
         // Always return non-terminal status
         for (int i = 0; i < 20; i++) {
             server.enqueue(new MockResponse()
@@ -158,6 +159,6 @@ class ExecGetCommandTest {
                 "exec", "get", "exec-5",
                 "--watch", "--interval", "PT0.05S", "--timeout", "PT0.2S"
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 }

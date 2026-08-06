@@ -95,7 +95,7 @@ class KubernetesMetricsTranslator {
     private int parseTarget(String target) {
         try {
             return Integer.parseInt(target);
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return 50;
         }
     }

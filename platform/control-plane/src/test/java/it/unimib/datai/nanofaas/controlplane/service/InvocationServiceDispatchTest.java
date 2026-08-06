@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
@@ -340,7 +341,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_whenSyncQueueDisabledAndEnqueuerEnabled_enqueuesAndWaitsForCompletion() throws Exception {
+    void invokeSync_whenSyncQueueDisabledAndEnqueuerEnabled_enqueuesAndWaitsForCompletion() {
         FunctionSpec spec = functionSpec("queued-sync-fn", ExecutionMode.LOCAL);
         when(functionService.get("queued-sync-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
@@ -439,7 +440,7 @@ class InvocationServiceDispatchTest {
         ))).doesNotThrowAnyException();
 
         reactor.core.publisher.Mono<SyncInvocation> rejectedMono = monoRef.get();
-        assertThatThrownBy(() -> rejectedMono.block())
+        assertThatThrownBy(rejectedMono::block)
                 .isInstanceOf(SyncQueueRejectedException.class);
     }
 
@@ -482,7 +483,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() throws Exception {
+    void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() {
         CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
         FunctionSpec spec = functionSpec("timeout-fn", ExecutionMode.LOCAL);
         when(functionService.get("timeout-fn")).thenReturn(Optional.of(spec));
@@ -512,7 +513,7 @@ class InvocationServiceDispatchTest {
 
         assertThat(second.status()).isEqualTo("timeout");
         assertThat(invocationService.getStatus(first.executionId())).get()
-                .extracting(status -> status.status())
+                .extracting(ExecutionStatus::status)
                 .isEqualTo("timeout");
     }
 
@@ -549,7 +550,7 @@ class InvocationServiceDispatchTest {
         assertThat(second).isNotNull();
         assertThat(second.status()).isEqualTo("timeout");
         assertThat(invocationService.getStatus(first.executionId())).get()
-                .extracting(status -> status.status())
+                .extracting(ExecutionStatus::status)
                 .isEqualTo("timeout");
     }
 
@@ -789,7 +790,7 @@ class InvocationServiceDispatchTest {
                 firstPutStarted.countDown();
                 try {
                     allowFirstPutToComplete.await(5, TimeUnit.SECONDS);
-                } catch (InterruptedException ex) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 }
             }

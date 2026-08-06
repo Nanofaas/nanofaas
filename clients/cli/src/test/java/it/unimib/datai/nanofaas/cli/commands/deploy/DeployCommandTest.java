@@ -49,7 +49,7 @@ class DeployCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", fn.toString()
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     /** Cases: deployWithMissingImageExitsNonZero, deployWithBlankImageExitsNonZero, deployWithMissingBuildSpecExitsNonZero. */
@@ -86,7 +86,7 @@ class DeployCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", tmp.resolve("nonexistent.yaml").toString()
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     @Test
@@ -114,7 +114,7 @@ class DeployCommandTest {
                 "deploy", "-f", fn.toString()
         );
         // docker buildx fails → exit non-zero
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     @Test
@@ -148,7 +148,7 @@ class DeployCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", fn.toString()
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         RecordedRequest req = server.takeRequest();
         assertThat(req.getMethod()).isEqualTo("POST");
@@ -195,7 +195,7 @@ class DeployCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", fn.toString()
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         assertThat(server.getRequestCount()).isEqualTo(4);
         RecordedRequest r1 = server.takeRequest();
@@ -244,7 +244,7 @@ class DeployCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", fn.toString()
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         // Only POST + GET, no DELETE or re-POST
         assertThat(server.getRequestCount()).isEqualTo(2);
@@ -284,7 +284,7 @@ class DeployCommandTest {
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", fn.toString()
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         assertThat(server.getRequestCount()).isEqualTo(3);
     }

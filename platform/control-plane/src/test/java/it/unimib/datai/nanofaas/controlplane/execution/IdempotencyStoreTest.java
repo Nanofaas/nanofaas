@@ -76,7 +76,7 @@ class IdempotencyStoreTest {
     void size_returnsNumberOfEntries() {
         store = new IdempotencyStore(Duration.ofMinutes(15));
 
-        assertThat(store.size()).isEqualTo(0);
+        assertThat(store.size()).isZero();
 
         store.put("fn1", "key1", "exec1");
         assertThat(store.size()).isEqualTo(1);
@@ -103,7 +103,7 @@ class IdempotencyStoreTest {
 
         assertThat(store.getExecutionId("fn1", "key1")).isEmpty();
         assertThat(store.getExecutionId("fn2", "key2")).isEmpty();
-        assertThat(store.size()).isEqualTo(0);
+        assertThat(store.size()).isZero();
     }
 
     @Test

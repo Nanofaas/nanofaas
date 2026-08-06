@@ -53,7 +53,7 @@ class EnqueueCommandTest {
                     "enqueue", "echo",
                     "-d", "{\"msg\":\"async\"}"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -82,7 +82,7 @@ class EnqueueCommandTest {
                 "--idempotency-key", "idem-async",
                 "--trace-id", "trace-async"
         );
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         RecordedRequest req = server.takeRequest();
         assertThat(req.getHeader("Idempotency-Key")).isEqualTo("idem-async");
@@ -112,7 +112,7 @@ class EnqueueCommandTest {
                     "enqueue", "echo",
                     "-d", "@" + inputFile
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
         }
@@ -144,7 +144,7 @@ class EnqueueCommandTest {
                     "enqueue", "echo",
                     "-d", "@-"
             );
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(prev);
             System.setIn(prevIn);
@@ -166,7 +166,7 @@ class EnqueueCommandTest {
                 "enqueue", "echo",
                 "-d", "@/nonexistent/path/file.json"
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     @Test
@@ -179,6 +179,6 @@ class EnqueueCommandTest {
                 "enqueue", "echo",
                 "-d", "not-valid-json{{"
         );
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 }

@@ -36,7 +36,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
         try {
             client.pingCmd().exec();
             return true;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             return false;
         }
     }
@@ -78,7 +78,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
     public void removeContainer(String containerName) {
         try {
             client.removeContainerCmd(containerName).withForce(true).exec();
-        } catch (NotFoundException ignored) {
+        } catch (NotFoundException _) {
             // Removal is idempotent.
         }
     }

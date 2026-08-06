@@ -398,7 +398,7 @@ class ContainerLocalDeploymentProviderTest {
                 .start(() -> {
                     try {
                         provider.provision(spec("slow", 1));
-                    } catch (Exception ignored) {
+                    } catch (Exception _) {
                         // ignore: a provision failure in this background thread is expected,
                         // because the latch wait and the timing checks below are the real assertions.
                     }
@@ -416,12 +416,11 @@ class ContainerLocalDeploymentProviderTest {
         });
 
         try {
-            long elapsedMs = readyFuture.get(500, TimeUnit.MILLISECONDS);
+            long elapsedMs = org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                    () -> readyFuture.get(500, TimeUnit.MILLISECONDS),
+                    "getReadyReplicas for a different function blocked for more than 500 ms while provision held the lock");
             assertThat(elapsedMs).as("getReadyReplicas for a different function must not block during provision of another")
                     .isLessThan(500);
-        } catch (java.util.concurrent.TimeoutException e) {
-            org.junit.jupiter.api.Assertions.fail(
-                    "getReadyReplicas for a different function blocked for more than 500 ms while provision held the lock");
         } finally {
             // Always release so provision thread can finish and no threads leak.
             provisionBlocker.countDown();
@@ -569,7 +568,7 @@ class ContainerLocalDeploymentProviderTest {
             started.countDown();
             try {
                 blocker.await();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
         }

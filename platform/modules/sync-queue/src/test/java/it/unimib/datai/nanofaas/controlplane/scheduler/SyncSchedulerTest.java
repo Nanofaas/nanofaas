@@ -42,7 +42,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> dispatchCount.incrementAndGet());
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet());
 
         scheduler.tickOnce();
 
@@ -64,7 +64,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> dispatchCount.incrementAndGet());
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet());
 
         scheduler.tickOnce();
 
@@ -94,7 +94,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> dispatchCount.incrementAndGet());
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet());
 
         scheduler.tickOnce();
 
@@ -118,7 +118,7 @@ class SyncSchedulerTest {
         store.put(new ExecutionRecord("e2", refill));
         queue.enqueueOrThrow(task);
 
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> {
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
         });
 
         scheduler.tickOnce();
@@ -147,7 +147,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(ready);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> {
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             assertEquals("ready", t.functionName());
             dispatchCount.incrementAndGet();
         });
@@ -182,7 +182,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(ready);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> {
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             assertEquals("ready", t.functionName());
             dispatchCount.incrementAndGet();
         });
@@ -219,7 +219,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(ready);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, (t) -> {
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             assertEquals("ready", t.functionName());
             dispatchCount.incrementAndGet();
         });

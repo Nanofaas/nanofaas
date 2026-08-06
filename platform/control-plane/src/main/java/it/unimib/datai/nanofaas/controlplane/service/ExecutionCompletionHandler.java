@@ -251,7 +251,7 @@ public class ExecutionCompletionHandler {
         try {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
             return null;
-        } catch (QueueFullException ex) {
+        } catch (QueueFullException _) {
             log.warn("Retry queue full for execution {}, completing with error", executionRecord.executionId());
             executionRecord.markError(result.error());
             return FinalCompletion.retryExhausted(functionName, result);

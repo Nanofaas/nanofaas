@@ -9,13 +9,13 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class AdaptivePerPodConcurrencyControllerTest {
 
@@ -131,7 +131,7 @@ class AdaptivePerPodConcurrencyControllerTest {
     void stateResetStillWorksThroughCoordinator() {
         AdaptivePerPodConcurrencyController controller = new AdaptivePerPodConcurrencyController();
         ConcurrencyControlCoordinator coordinator = new ConcurrencyControlCoordinator(
-                Mockito.mock(ScalingMetricsReader.class),
+                mock(ScalingMetricsReader.class),
                 new ScalingProperties(5000L, 1, 10),
                 new StaticPerPodConcurrencyController(),
                 controller

@@ -41,7 +41,7 @@ class RootCommandTest {
 
         int exit = cli.execute("--help");
 
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
         assertThat(out.toString()).contains("Usage:");
     }
 
@@ -85,11 +85,11 @@ class RootCommandTest {
         CommandLine cli = new CommandLine(cmd);
 
         int exit = cli.execute("fn", "list");
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 
     @Test
-    void namespaceOptionOverridesConfig() throws Exception {
+    void namespaceOptionOverridesConfig() {
         // Setup config file with namespace
         Path cfgPath = tmp.resolve("config.yaml");
         ConfigStore store = new ConfigStore(cfgPath, k -> null);
@@ -111,7 +111,7 @@ class RootCommandTest {
     }
 
     @Test
-    void configOptionLoadsFromCustomPath() throws Exception {
+    void configOptionLoadsFromCustomPath() {
         Path cfgPath = tmp.resolve("custom-config.yaml");
         ConfigStore store = new ConfigStore(cfgPath, k -> null);
         Config cfg = new Config();
@@ -148,7 +148,7 @@ class RootCommandTest {
             System.setOut(new PrintStream(out));
             try {
                 int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "list");
-                assertThat(exit).isEqualTo(0);
+                assertThat(exit).isZero();
             } finally {
                 System.setOut(prev);
             }

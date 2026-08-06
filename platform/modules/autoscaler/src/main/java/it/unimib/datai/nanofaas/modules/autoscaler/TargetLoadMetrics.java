@@ -7,7 +7,6 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,10 +44,7 @@ public class TargetLoadMetrics {
         String function = spec.name();
 
         for (ScalingMetric metric : scaling.metrics()) {
-            if (metric == null || metric.type() == null) {
-                continue;
-            }
-            String scalingType = mapScalingType(metric.type());
+            String scalingType = (metric != null && metric.type() != null) ? mapScalingType(metric.type()) : null;
             if (scalingType == null) {
                 continue;
             }
@@ -100,7 +96,7 @@ public class TargetLoadMetrics {
         }
         try {
             return Integer.parseInt(target);
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return defaultValue;
         }
     }

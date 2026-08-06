@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 @Configuration
 public class KubernetesClientConfig {
@@ -25,14 +25,14 @@ public class KubernetesClientConfig {
     private static final Path SA_CA    = Path.of("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt");
     private final Path saTokenPath;
     private final Path saCaPath;
-    private final Function<String, String> envProvider;
+    private final UnaryOperator<String> envProvider;
 
     @Autowired
     public KubernetesClientConfig() {
         this(SA_TOKEN, SA_CA, System::getenv);
     }
 
-    KubernetesClientConfig(Path saTokenPath, Path saCaPath, Function<String, String> envProvider) {
+    KubernetesClientConfig(Path saTokenPath, Path saCaPath, UnaryOperator<String> envProvider) {
         this.saTokenPath = saTokenPath;
         this.saCaPath = saCaPath;
         this.envProvider = envProvider;

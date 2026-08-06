@@ -41,7 +41,7 @@ class FnGetCommandTest {
 
         CliTestSupport.CommandResult result = CliTestSupport.executeAndCaptureStdout(
                 cli, "--endpoint", server.url("/").toString(), "fn", "get", "echo");
-        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.exitCode()).isZero();
 
         assertThat(result.stdout().trim())
                 .startsWith("{")
@@ -58,6 +58,6 @@ class FnGetCommandTest {
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "get", "missing");
 
-        assertThat(exit).isNotEqualTo(0);
+        assertThat(exit).isNotZero();
     }
 }

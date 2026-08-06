@@ -47,11 +47,12 @@ class FunctionResponseContractTest {
 
         String json = objectMapper.writeValueAsString(response);
 
-        assertThat(json).contains("\"requestedExecutionMode\":\"DEPLOYMENT\"");
-        assertThat(json).contains("\"effectiveExecutionMode\":\"DEPLOYMENT\"");
-        assertThat(json).contains("\"deploymentBackend\":\"k8s\"");
-        assertThat(json).contains("\"endpointUrl\":\"http://svc:8080/invoke\"");
-        assertThat(json).doesNotContain("\"degradationReason\":");
+        assertThat(json)
+                .contains("\"requestedExecutionMode\":\"DEPLOYMENT\"")
+                .contains("\"effectiveExecutionMode\":\"DEPLOYMENT\"")
+                .contains("\"deploymentBackend\":\"k8s\"")
+                .contains("\"endpointUrl\":\"http://svc:8080/invoke\"")
+                .doesNotContain("\"degradationReason\":");
     }
 
     @Test
@@ -84,9 +85,10 @@ class FunctionResponseContractTest {
 
         String json = objectMapper.writeValueAsString(response);
 
-        assertThat(json).contains("\"requestedExecutionMode\":\"DEPLOYMENT\"");
-        assertThat(json).contains("\"effectiveExecutionMode\":\"POOL\"");
-        assertThat(json).contains("\"degradationReason\":\"No provider available\"");
+        assertThat(json)
+                .contains("\"requestedExecutionMode\":\"DEPLOYMENT\"")
+                .contains("\"effectiveExecutionMode\":\"POOL\"")
+                .contains("\"degradationReason\":\"No provider available\"");
     }
 
     @Test
@@ -112,10 +114,11 @@ class FunctionResponseContractTest {
 
         String json = objectMapper.writeValueAsString(response);
 
-        assertThat(json).contains("\"requestedExecutionMode\":\"LOCAL\"");
-        assertThat(json).contains("\"effectiveExecutionMode\":\"LOCAL\"");
-        assertThat(json).doesNotContain("\"deploymentBackend\":");
-        assertThat(json).doesNotContain("\"degradationReason\":");
+        assertThat(json)
+                .contains("\"requestedExecutionMode\":\"LOCAL\"")
+                .contains("\"effectiveExecutionMode\":\"LOCAL\"")
+                .doesNotContain("\"deploymentBackend\":")
+                .doesNotContain("\"degradationReason\":");
     }
 
     @Test
@@ -150,8 +153,9 @@ class FunctionResponseContractTest {
 
         String json = objectMapper.writeValueAsString(response);
 
-        assertThat(json).contains("\"endpointUrl\":\"http://managed:8080/invoke\"");
-        assertThat(json).doesNotContain("\"endpointUrl\":\"http://user-provided:8080/invoke\"");
+        assertThat(json)
+                .contains("\"endpointUrl\":\"http://managed:8080/invoke\"")
+                .doesNotContain("\"endpointUrl\":\"http://user-provided:8080/invoke\"");
     }
 
     @Test
@@ -190,8 +194,9 @@ class FunctionResponseContractTest {
 
         String json = objectMapper.writeValueAsString(response);
 
-        assertThat(json).contains("\"deployment\":\"fn-word-stats\"");
-        assertThat(json).contains("\"namespace\":\"nanofaas-e2e\"");
+        assertThat(json)
+                .contains("\"deployment\":\"fn-word-stats\"")
+                .contains("\"namespace\":\"nanofaas-e2e\"");
     }
 
     @Test
@@ -248,10 +253,11 @@ class FunctionResponseContractTest {
                 )
         ))));
 
-        assertThat(json).startsWith("[{");
-        assertThat(json).contains("\"requestedExecutionMode\":\"DEPLOYMENT\"");
-        assertThat(json).contains("\"effectiveExecutionMode\":\"DEPLOYMENT\"");
-        assertThat(json).contains("\"deploymentBackend\":\"k8s\"");
-        assertThat(json).contains("\"endpointUrl\":\"http://svc:8080/invoke\"");
+        assertThat(json)
+                .startsWith("[{")
+                .contains("\"requestedExecutionMode\":\"DEPLOYMENT\"")
+                .contains("\"effectiveExecutionMode\":\"DEPLOYMENT\"")
+                .contains("\"deploymentBackend\":\"k8s\"")
+                .contains("\"endpointUrl\":\"http://svc:8080/invoke\"");
     }
 }

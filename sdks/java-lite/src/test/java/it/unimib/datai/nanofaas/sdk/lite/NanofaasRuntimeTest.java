@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.sdk.lite;
 
-import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -53,6 +52,6 @@ class NanofaasRuntimeTest {
     @Test
     void builderRequiresHandler() {
         NanofaasRuntime.Builder builder = NanofaasRuntime.builder();
-        assertThrows(IllegalStateException.class, () -> builder.build());
+        assertThrows(IllegalStateException.class, builder::build);
     }
 }

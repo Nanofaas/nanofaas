@@ -33,7 +33,7 @@ public class RomanNumeralHandler implements FunctionHandler {
         int n;
         try {
             n = ((Number) input.get("number")).intValue();
-        } catch (ClassCastException e) {
+        } catch (ClassCastException _) {
             return Map.of(ERROR_KEY, "field 'number' must be an integer");
         }
         if (n < 1 || n > 3999) {

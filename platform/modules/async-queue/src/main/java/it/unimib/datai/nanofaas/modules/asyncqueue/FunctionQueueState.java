@@ -84,26 +84,14 @@ public class FunctionQueueState {
         decrementInFlightNonNegative();
     }
 
-    /**
-     * @deprecated Use {@link #tryAcquireSlot()} for thread-safe dispatch slot acquisition
-     */
-    @Deprecated(since = "0.16.0")
     public boolean canDispatch() {
         return inFlight.get() < effectiveConcurrency;
     }
 
-    /**
-     * @deprecated Use {@link #tryAcquireSlot()} for thread-safe dispatch slot acquisition
-     */
-    @Deprecated(since = "0.16.0")
     public void incrementInFlight() {
         inFlight.incrementAndGet();
     }
 
-    /**
-     * @deprecated Use {@link #releaseSlot()} instead
-     */
-    @Deprecated(since = "0.16.0")
     public void decrementInFlight() {
         decrementInFlightNonNegative();
     }

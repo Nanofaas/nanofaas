@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
 
 /**
  * Registers Vert.x resource files for GraalVM native-image inclusion.
@@ -82,7 +83,7 @@ public class VertxRuntimeHints {
                         collectFromDirectory(url, packagePath, classNames);
                     }
                 }
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // Best effort: explicit hints above still cover known hotspots.
             }
             return classNames;
@@ -93,7 +94,7 @@ public class VertxRuntimeHints {
                 JarURLConnection conn = (JarURLConnection) url.openConnection();
                 try (JarFile jarFile = conn.getJarFile()) {
                     jarFile.stream()
-                            .map(entry -> entry.getName())
+                            .map(ZipEntry::getName)
                             .filter(name -> name.startsWith(packagePath + "/"))
                             .filter(name -> name.endsWith(".class"))
                             .filter(name -> !name.endsWith("package-info.class"))
@@ -101,7 +102,7 @@ public class VertxRuntimeHints {
                             .map(name -> name.substring(0, name.length() - 6).replace('/', '.'))
                             .forEach(out::add);
                 }
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // Ignore and continue.
             }
         }
@@ -119,7 +120,7 @@ public class VertxRuntimeHints {
                             .map(name -> name.substring(0, name.length() - 6).replace('/', '.'))
                             .forEach(out::add);
                 }
-            } catch (IOException | URISyntaxException ignored) {
+            } catch (IOException | URISyntaxException _) {
                 // Ignore and continue.
             }
         }
@@ -136,7 +137,7 @@ public class VertxRuntimeHints {
                         MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS,
                         MemberCategory.INVOKE_PUBLIC_METHODS
                 );
-            } catch (ClassNotFoundException | LinkageError ignored) {
+            } catch (ClassNotFoundException | LinkageError _) {
                 // Ignore problematic classes and keep best-effort registration.
             }
         }

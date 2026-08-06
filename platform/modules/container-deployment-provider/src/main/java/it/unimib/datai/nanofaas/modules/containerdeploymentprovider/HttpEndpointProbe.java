@@ -46,10 +46,10 @@ final class HttpEndpointProbe implements EndpointProbe {
                     .build();
             HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
             return response.statusCode() >= 200 && response.statusCode() < 300;
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return false;
-        } catch (Exception ignored) {
+        } catch (Exception _) {
             return false;
         }
     }

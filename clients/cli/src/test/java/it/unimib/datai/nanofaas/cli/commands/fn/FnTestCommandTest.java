@@ -68,7 +68,7 @@ class FnTestCommandTest {
                     "--payloads", payloads.toString()
             );
 
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(previousOut);
         }
@@ -211,7 +211,7 @@ class FnTestCommandTest {
                     "--payloads", payloads.toString()
             );
 
-            assertThat(exit).isEqualTo(0);
+            assertThat(exit).isZero();
         } finally {
             System.setOut(previousOut);
         }

@@ -35,7 +35,7 @@ class FnDeleteCommandTest {
 
         int exit = cli.execute("--endpoint", server.url("/").toString(), "fn", "delete", "echo");
 
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit).isZero();
 
         RecordedRequest req = server.takeRequest();
         assertThat(req.getMethod()).isEqualTo("DELETE");

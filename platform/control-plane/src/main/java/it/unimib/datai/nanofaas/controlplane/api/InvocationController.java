@@ -112,7 +112,7 @@ public class InvocationController {
         try {
             int dispatchAttempt = Integer.parseInt(dispatchAttemptHeader);
             return dispatchAttempt > 0 ? dispatchAttempt : null;
-        } catch (NumberFormatException ex) {
+        } catch (NumberFormatException _) {
             return null;
         }
     }

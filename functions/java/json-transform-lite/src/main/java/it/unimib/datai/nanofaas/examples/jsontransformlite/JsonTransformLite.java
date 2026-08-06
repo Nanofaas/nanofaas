@@ -42,7 +42,7 @@ public class JsonTransformLite {
         Map<String, Object> input;
         try {
             input = (Map<String, Object>) rawInput;
-        } catch (ClassCastException e) {
+        } catch (ClassCastException _) {
             return Map.of(ERROR_KEY, "Input must be a JSON object");
         }
 

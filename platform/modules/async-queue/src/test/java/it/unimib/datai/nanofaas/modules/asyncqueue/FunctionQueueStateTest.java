@@ -3,8 +3,6 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -52,7 +50,6 @@ class FunctionQueueStateTest {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch endLatch = new CountDownLatch(numThreads);
 
-        List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < numThreads; i++) {
             Thread t = new Thread(() -> {
                 try {
@@ -69,13 +66,12 @@ class FunctionQueueStateTest {
                             state.releaseSlot();
                         }
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 } finally {
                     endLatch.countDown();
                 }
             });
-            threads.add(t);
             t.start();
         }
 
@@ -90,7 +86,7 @@ class FunctionQueueStateTest {
     void inFlight_tracksCorrectly() {
         FunctionQueueState state = new FunctionQueueState("fn", 100, 10);
 
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
 
         state.tryAcquireSlot();
         assertThat(state.inFlight()).isEqualTo(1);
@@ -102,7 +98,7 @@ class FunctionQueueStateTest {
         assertThat(state.inFlight()).isEqualTo(1);
 
         state.releaseSlot();
-        assertThat(state.inFlight()).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
     }
 
     @Test
@@ -126,7 +122,7 @@ class FunctionQueueStateTest {
     void queued_returnsCorrectCount() {
         FunctionQueueState state = new FunctionQueueState("fn", 10, 1);
 
-        assertThat(state.queued()).isEqualTo(0);
+        assertThat(state.queued()).isZero();
 
         state.offer(createTask("exec1"));
         assertThat(state.queued()).isEqualTo(1);

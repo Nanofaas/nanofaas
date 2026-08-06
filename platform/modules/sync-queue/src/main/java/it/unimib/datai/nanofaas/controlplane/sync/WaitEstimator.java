@@ -26,7 +26,7 @@ public class WaitEstimator {
         this.perFunctionMinSamples = perFunctionMinSamples;
         this.globalEvents.clear();
         this.globalEvents.addAll(globalEvents);
-        perFunctionEvents.forEach((functionName, events) -> this.perFunctionEvents.put(functionName, events));
+        perFunctionEvents.forEach(this.perFunctionEvents::put);
     }
 
     public void recordDispatch(String functionName, Instant now) {

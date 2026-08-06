@@ -19,7 +19,7 @@ public class OffloadConfiguration {
     OffloadGateway moduleOffloadGateway(OffloadProperties properties,
                                         ObjectProvider<WebClient> webClient,
                                         ObjectProvider<MeterRegistry> meterRegistry) {
-        if (properties.enabled() && !properties.hasTarget()) {
+        if (Boolean.TRUE.equals(properties.enabled()) && !properties.hasTarget()) {
             log.warn("Offload module loaded without nanofaas.offload.target-url; "
                     + "only functions declaring their own offload.targetUrl can offload");
         }

@@ -43,7 +43,7 @@ public class FigletHandler implements FunctionHandler {
         String fontUsed = fontName;
         try {
             asciiArt = FigletFont.convertOneLine(classpathFont(fontName), text);
-        } catch (IOException | NullPointerException e) {
+        } catch (IOException | NullPointerException _) {
             log.warn("FIGlet font '{}' not found, falling back to standard", fontName);
             try {
                 asciiArt = FigletFont.convertOneLine(text);

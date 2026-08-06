@@ -29,7 +29,7 @@ public final class SchedulerLifecycleSupport {
                 log.warn("{} did not terminate in time, forcing shutdown", componentName);
                 executor.shutdownNow();
             }
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException _) {
             log.warn("{} shutdown interrupted", componentName);
             executor.shutdownNow();
             Thread.currentThread().interrupt();

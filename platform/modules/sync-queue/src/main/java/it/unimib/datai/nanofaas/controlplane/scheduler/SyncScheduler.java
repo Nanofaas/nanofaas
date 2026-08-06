@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 
@@ -30,7 +31,7 @@ public class SyncScheduler implements SmartLifecycle {
     private final Object lifecycleMonitor = new Object();
     private volatile long tickMs = 2;
     private volatile long blockedBackoffMs = tickMs;
-    private volatile ExecutorService executor;
+    private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
 
     @Autowired
     public SyncScheduler(InvocationEnqueuer enqueuer,
@@ -61,11 +62,11 @@ public class SyncScheduler implements SmartLifecycle {
             }
             blockedBackoffMs = tickMs;
             ExecutorService newExecutor = SchedulerLifecycleSupport.newSingleThreadExecutor("nanofaas-sync-scheduler");
-            executor = newExecutor;
+            executor.set(newExecutor);
             try {
                 newExecutor.submit(this::loop);
             } catch (RuntimeException e) {
-                executor = null;
+                executor.set(null);
                 running.set(false);
                 SchedulerLifecycleSupport.shutdownExecutor(newExecutor, log, COMPONENT_NAME);
                 throw e;
@@ -77,11 +78,10 @@ public class SyncScheduler implements SmartLifecycle {
     public void stop() {
         ExecutorService executorToStop;
         synchronized (lifecycleMonitor) {
-            if (!running.getAndSet(false) && executor == null) {
+            if (!running.getAndSet(false) && executor.get() == null) {
                 return;
             }
-            executorToStop = executor;
-            executor = null;
+            executorToStop = executor.getAndSet(null);
         }
         SchedulerLifecycleSupport.shutdownExecutor(executorToStop, log, COMPONENT_NAME);
     }
@@ -150,7 +150,7 @@ public class SyncScheduler implements SmartLifecycle {
     private void sleep(long ms) {
         try {
             Thread.sleep(ms);
-        } catch (InterruptedException ignored) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
     }

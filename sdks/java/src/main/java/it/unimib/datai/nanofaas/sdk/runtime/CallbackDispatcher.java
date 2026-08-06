@@ -82,7 +82,7 @@ public class CallbackDispatcher {
                 }
             });
             return true;
-        } catch (RejectedExecutionException ex) {
+        } catch (RejectedExecutionException _) {
             log.warn("Dropping callback for execution {} because dispatcher queue is full", executionId);
             if (runtimeMetrics != null) {
                 runtimeMetrics.recordCallbackFailure();
@@ -98,7 +98,7 @@ public class CallbackDispatcher {
             if (!executor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 executor.shutdownNow();
             }
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             executor.shutdownNow();
         }

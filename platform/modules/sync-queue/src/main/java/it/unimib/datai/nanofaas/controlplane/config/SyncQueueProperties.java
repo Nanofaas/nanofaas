@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.config;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 

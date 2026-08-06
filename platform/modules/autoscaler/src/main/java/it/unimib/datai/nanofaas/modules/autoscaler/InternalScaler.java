@@ -1,10 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
-import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
-import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
@@ -82,7 +79,7 @@ public class InternalScaler implements SmartLifecycle {
                     if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
                         executor.shutdownNow();
                     }
-                } catch (InterruptedException ex) {
+                } catch (InterruptedException _) {
                     executor.shutdownNow();
                     Thread.currentThread().interrupt();
                 }
@@ -110,15 +107,13 @@ public class InternalScaler implements SmartLifecycle {
     void scalingLoop() {
         try {
             for (RegisteredFunction registeredFunction : registry.listRegistered()) {
-                if (!deploymentCoordinator.isManagedDeployment(registeredFunction)) {
-                    continue;
-                }
                 FunctionSpec spec = registeredFunction.spec();
                 ScalingConfig scaling = spec.scalingConfig();
-                if (scaling == null || scaling.strategy() != ScalingStrategy.INTERNAL) {
-                    continue;
+                if (deploymentCoordinator.isManagedDeployment(registeredFunction)
+                        && scaling != null
+                        && scaling.strategy() == ScalingStrategy.INTERNAL) {
+                    scaleFunction(registeredFunction, spec, scaling);
                 }
-                scaleFunction(registeredFunction, spec, scaling);
             }
         } catch (Exception ex) {
             log.error("Error in scaling loop", ex);

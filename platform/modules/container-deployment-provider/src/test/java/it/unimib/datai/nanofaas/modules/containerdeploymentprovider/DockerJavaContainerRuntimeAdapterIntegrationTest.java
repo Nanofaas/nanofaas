@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,7 +47,7 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
             adapter.removeContainer(containerName);
 
             InspectContainerCmd inspectCmd = client.inspectContainerCmd(containerName);
-            assertThatThrownBy(() -> inspectCmd.exec())
+            assertThatThrownBy(inspectCmd::exec)
                     .isInstanceOf(NotFoundException.class);
         } finally {
             adapter.removeContainer(containerName);
@@ -79,7 +80,7 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
             assertThat(inspected.getHostConfig().getNetworkMode()).isEqualTo(networkName);
             assertThat(inspected.getNetworkSettings().getNetworks()).containsKey(networkName);
             assertThat(inspected.getNetworkSettings().getPorts().getBindings().values())
-                    .allMatch(bindings -> bindings == null);
+                    .allMatch(Objects::isNull);
         } finally {
             adapter.removeContainer(containerName);
             client.removeNetworkCmd(networkName).exec();

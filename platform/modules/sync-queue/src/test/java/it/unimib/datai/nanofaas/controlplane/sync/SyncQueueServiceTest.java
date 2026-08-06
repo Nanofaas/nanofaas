@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -163,6 +164,38 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void findReadyMatching_timesOutStaleItemThenSelectsReadyItem() {
+        Instant t0 = Instant.parse("2026-02-01T00:00:00Z");
+        MutableClock clock = new MutableClock(t0);
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofMillis(100), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        SyncQueueService service = createService(props, store, estimator, metrics, clock);
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask stale = new InvocationTask("stale", "fn", spec, new InvocationRequest("stale", Map.of()), null, null, t0, 1);
+        ExecutionRecord staleRecord = new ExecutionRecord("stale", stale);
+        store.put(staleRecord);
+        service.enqueueOrThrow(stale);
+
+        clock.advance(Duration.ofMillis(50));
+        InvocationTask ready = new InvocationTask("ready", "ready", spec, new InvocationRequest("ready", Map.of()), null, null, clock.instant(), 1);
+        store.put(new ExecutionRecord("ready", ready));
+        service.enqueueOrThrow(ready);
+
+        // t0+120ms: stale (enqueued t0, maxQueueWait 100ms) timed out; ready (enqueued t0+50ms) still fresh and selected
+        SyncQueueItem selected = service.findReadyMatching(t0.plusMillis(120), candidate -> candidate.functionName().equals("ready"));
+
+        assertEquals(ready, selected.task());
+        assertEquals(1, service.queuedItems());
+        assertTrue(staleRecord.completion().isDone());
+        assertEquals("QUEUE_TIMEOUT", staleRecord.completion().join().error().code());
+    }
+
+    @Test
     void removeFunctionState_drainsQueuedItemsAndRemovesMeters() {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
@@ -238,5 +271,33 @@ class SyncQueueServiceTest {
 
         assertEquals(SyncQueueRejectReason.DEPTH, ex.reason());
         assertEquals(1.0, registry.get("sync_queue_rejected_total").tag("function", "fn").counter().count());
+    }
+
+    /** Test-only clock with a mutable instant; avoid Thread.sleep-based timing in tests (S2925). */
+    private static class MutableClock extends Clock {
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return Clock.fixed(instant, zone);
+        }
     }
 }

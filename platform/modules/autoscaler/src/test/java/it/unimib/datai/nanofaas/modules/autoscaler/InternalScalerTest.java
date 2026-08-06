@@ -15,7 +15,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.*;
 
@@ -104,6 +103,18 @@ class InternalScalerTest {
         scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
+    }
+
+    @Test
+    void scalingLoop_ignoresFunctionsWithoutScalingConfig() {
+        RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, null);
+
+        when(registry.listRegistered()).thenReturn(List.of(spec));
+
+        scaler.scalingLoop();
+
+        verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
+        verify(deploymentCoordinator, never()).getReadyReplicas(any());
     }
 
     @Test
@@ -226,7 +237,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(metricsReader).setEffectiveConcurrency(eq("echo"), eq(12));
+        verify(metricsReader).setEffectiveConcurrency("echo", 12);
     }
 
     @Test

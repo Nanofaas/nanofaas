@@ -129,7 +129,7 @@ public class AdminRuntimeConfigController {
             }
             try {
                 return Duration.parse(rawValue);
-            } catch (DateTimeParseException e) {
+            } catch (DateTimeParseException _) {
                 throw new InvalidPatchRequestException(fieldName, rawValue);
             }
         }
