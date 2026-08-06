@@ -42,7 +42,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     @Override
     public void signalWork(String functionName) {
         if (enqueuedFunctions.add(functionName)) {
-            activeFunctions.offer(functionName);
+            activeFunctions.add(functionName);
         }
     }
 

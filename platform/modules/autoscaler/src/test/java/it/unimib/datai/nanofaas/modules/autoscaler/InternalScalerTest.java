@@ -237,7 +237,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(metricsReader).setEffectiveConcurrency(eq("echo"), eq(12));
+        verify(metricsReader).setEffectiveConcurrency("echo", 12);
     }
 
     @Test
