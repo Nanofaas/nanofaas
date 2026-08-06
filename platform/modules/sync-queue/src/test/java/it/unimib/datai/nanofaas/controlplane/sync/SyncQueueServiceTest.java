@@ -297,7 +297,7 @@ class SyncQueueServiceTest {
 
         @Override
         public Clock withZone(ZoneId zone) {
-            return this;
+            return Clock.fixed(instant, zone);
         }
     }
 }
