@@ -140,7 +140,4 @@ class CallbackClientTest {
         assertFalse(client.sendResult("exec-json", InvocationResult.success("ok"), null));
         assertEquals(1, attempts.get());
     }
-
-    // Need import for Map
-    private static final java.util.Map<String, Object> EMPTY_MAP = java.util.Map.of();
 }

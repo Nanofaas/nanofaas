@@ -29,7 +29,8 @@ public class HandlerExecutor {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
-    public Object execute(FunctionHandler handler, InvocationRequest request) throws Exception {
+    public Object execute(FunctionHandler handler, InvocationRequest request)
+            throws InterruptedException, TimeoutException {
         Map<String, String> mdcContext = MDC.getCopyOfContextMap();
         Future<Object> future = executor.submit(() -> {
             if (mdcContext != null) {
@@ -49,10 +50,15 @@ public class HandlerExecutor {
         } catch (ExecutionException ex) {
             Throwable cause = ex.getCause();
             if (cause instanceof Exception e) {
-                throw e;
+                throw sneakyThrow(e);
             }
             throw new RuntimeException(cause);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> RuntimeException sneakyThrow(Throwable t) throws E {
+        throw (E) t;
     }
 
     @PreDestroy

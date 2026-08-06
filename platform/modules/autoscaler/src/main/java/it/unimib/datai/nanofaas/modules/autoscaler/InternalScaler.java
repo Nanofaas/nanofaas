@@ -22,7 +22,6 @@ public class InternalScaler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(InternalScaler.class);
 
     private final FunctionRegistry registry;
-    private final ScalingMetricsReader metricsReader;
     private final ManagedDeploymentCoordinator deploymentCoordinator;
     private final ScalingProperties properties;
     private final ColdStartTracker coldStartTracker;
@@ -40,7 +39,6 @@ public class InternalScaler implements SmartLifecycle {
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker) {
         this.registry = registry;
-        this.metricsReader = metricsReader;
         this.deploymentCoordinator = deploymentCoordinator;
         this.properties = properties;
         this.coldStartTracker = coldStartTracker;

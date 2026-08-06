@@ -21,13 +21,11 @@ public class KubernetesResourceManager {
     private static final Logger log = LoggerFactory.getLogger(KubernetesResourceManager.class);
 
     private final ObjectProvider<KubernetesClient> clientProvider;
-    private final KubernetesProperties properties;
     private final KubernetesDeploymentBuilder builder;
     private final String resolvedNamespace;
 
     public KubernetesResourceManager(ObjectProvider<KubernetesClient> clientProvider, KubernetesProperties properties) {
         this.clientProvider = clientProvider;
-        this.properties = properties;
         this.builder = new KubernetesDeploymentBuilder(properties);
         this.resolvedNamespace = resolveNamespace(properties);
     }

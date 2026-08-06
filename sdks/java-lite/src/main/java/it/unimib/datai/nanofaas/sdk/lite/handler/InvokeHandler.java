@@ -159,7 +159,7 @@ public final class InvokeHandler implements HttpHandler {
         }
     }
 
-    private Object invokeWithTimeout(InvocationRequest request) throws Exception {
+    private Object invokeWithTimeout(InvocationRequest request) throws InterruptedException, TimeoutException {
         FutureTask<Object> task = new FutureTask<>(() -> functionHandler.handle(request));
         Thread.ofVirtual().start(task);
         try {
@@ -168,9 +168,14 @@ public final class InvokeHandler implements HttpHandler {
             task.cancel(true);
             throw ex;
         } catch (ExecutionException ex) {
-            if (ex.getCause() instanceof Exception cause) throw cause;
+            if (ex.getCause() instanceof Exception cause) throw sneakyThrow(cause);
             throw new RuntimeException(ex.getCause());
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> RuntimeException sneakyThrow(Throwable t) throws E {
+        throw (E) t;
     }
 
     private void dispatchCallback(String executionId, InvocationResult result,

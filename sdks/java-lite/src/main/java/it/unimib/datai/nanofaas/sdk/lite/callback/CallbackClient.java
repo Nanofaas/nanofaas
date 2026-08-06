@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -113,7 +114,8 @@ public final class CallbackClient {
         }
     }
 
-    private int doSend(String executionId, byte[] body, String traceId, String dispatchAttempt) throws Exception {
+    private int doSend(String executionId, byte[] body, String traceId, String dispatchAttempt)
+            throws IOException, InterruptedException {
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
                 : System.getenv("TRACE_ID");
