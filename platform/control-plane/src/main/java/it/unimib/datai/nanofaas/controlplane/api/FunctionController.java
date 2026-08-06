@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -10,6 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collection;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/v1/functions")
@@ -55,9 +57,11 @@ public class FunctionController {
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @Valid @RequestBody ReplicaRequest request) {
         try {
-            return functionService.setReplicas(name, request.replicas())
-                    .map(r -> ResponseEntity.<Object>ok(new ReplicaResponse(name, r)))
-                    .orElse(ResponseEntity.notFound().build());
+            Optional<Integer> replicas = functionService.setReplicas(name, request.replicas());
+            if (replicas.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaResponse(name, replicas.get()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());
         } catch (IllegalStateException ex) {
@@ -69,13 +73,15 @@ public class FunctionController {
     public ResponseEntity<Object> getReplicas(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
         try {
-            return functionService.getReplicaStatus(name)
-                    .map(status -> ResponseEntity.<Object>ok(new ReplicaStatusResponse(
-                            name,
-                            status.desiredReplicas(),
-                            status.readyReplicas()
-                    )))
-                    .orElse(ResponseEntity.notFound().build());
+            Optional<ReplicaStatus> status = functionService.getReplicaStatus(name);
+            if (status.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaStatusResponse(
+                    name,
+                    status.get().desiredReplicas(),
+                    status.get().readyReplicas()
+            ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());
         } catch (IllegalStateException ex) {

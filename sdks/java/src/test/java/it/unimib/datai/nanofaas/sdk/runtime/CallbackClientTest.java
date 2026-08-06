@@ -333,8 +333,13 @@ class CallbackClientTest {
     void sendResult_sendsStructuredJsonNodeOutputWithoutMessageConverter() throws Exception {
         RestClient restClient = RestClient.builder()
                 .baseUrl(server.url("/").toString())
-                .messageConverters(converters -> converters.removeIf(converter ->
-                        converter.getClass().getName().contains("MappingJackson2HttpMessageConverter")))
+                // messageConverters(Consumer) deprecated for removal in Spring 7: configureMessageConverters
+                // receives an empty ClientBuilder, so registerDefaults() first to keep the previous
+                // "default converters minus Jackson" set (the test must send raw JSON without a Jackson converter).
+                .configureMessageConverters(converters -> converters
+                        .registerDefaults()
+                        .configureMessageConvertersList(list -> list.removeIf(converter ->
+                                converter.getClass().getName().contains("MappingJackson2HttpMessageConverter"))))
                 .build();
         CallbackClient clientWithoutJacksonConverter = newCallbackClient(
                 restClient,

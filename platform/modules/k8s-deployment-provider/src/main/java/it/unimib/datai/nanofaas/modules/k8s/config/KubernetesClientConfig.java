@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
 import io.fabric8.kubernetes.client.vertx.VertxHttpClientFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -26,6 +27,7 @@ public class KubernetesClientConfig {
     private final Path saCaPath;
     private final Function<String, String> envProvider;
 
+    @Autowired
     public KubernetesClientConfig() {
         this(SA_TOKEN, SA_CA, System::getenv);
     }

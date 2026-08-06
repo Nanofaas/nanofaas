@@ -118,14 +118,18 @@ public class InternalScaler implements SmartLifecycle {
                 if (scaling == null || scaling.strategy() != ScalingStrategy.INTERNAL) {
                     continue;
                 }
-                try {
-                    evaluateAndScale(registeredFunction, spec, scaling);
-                } catch (Exception ex) {
-                    log.error("Error scaling function {}", spec.name(), ex);
-                }
+                scaleFunction(registeredFunction, spec, scaling);
             }
         } catch (Exception ex) {
             log.error("Error in scaling loop", ex);
+        }
+    }
+
+    private void scaleFunction(RegisteredFunction registeredFunction, FunctionSpec spec, ScalingConfig scaling) {
+        try {
+            evaluateAndScale(registeredFunction, spec, scaling);
+        } catch (Exception ex) {
+            log.error("Error scaling function {}", spec.name(), ex);
         }
     }
 
@@ -135,7 +139,6 @@ public class InternalScaler implements SmartLifecycle {
         ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
 
         Instant now = Instant.now();
-        boolean scaled = false;
         int effectiveReplicas = decision.effectiveReplicas();
         if (decision.desiredReplicas() > decision.currentReplicas()) {
             if (!cooldownTracker.allowScaleUp(functionName, now)) {
@@ -146,7 +149,6 @@ public class InternalScaler implements SmartLifecycle {
                 coldStartTracker.recordScaleUp(functionName, decision.currentReplicas(), decision.desiredReplicas());
                 deploymentCoordinator.setReplicas(registeredFunction, decision.desiredReplicas());
                 cooldownTracker.recordScaleUp(functionName, now);
-                scaled = true;
                 effectiveReplicas = decision.desiredReplicas();
             }
         } else if (decision.downscaleSignal()) {
@@ -157,7 +159,6 @@ public class InternalScaler implements SmartLifecycle {
                         functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
                 deploymentCoordinator.setReplicas(registeredFunction, decision.desiredReplicas());
                 cooldownTracker.recordScaleDown(functionName, now);
-                scaled = true;
                 effectiveReplicas = decision.desiredReplicas();
             }
         }

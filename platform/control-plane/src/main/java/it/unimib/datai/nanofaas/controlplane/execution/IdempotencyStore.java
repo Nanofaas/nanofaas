@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -15,6 +16,7 @@ public class IdempotencyStore {
     private final Cache<String, StoredKey> cache;
     private final ConcurrentMap<String, StoredKey> keys;
 
+    @Autowired
     public IdempotencyStore() {
         this(Duration.ofMinutes(5));
     }

@@ -29,7 +29,7 @@ final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
         for (Class<?> type : JACKSON_TYPES) {
             hints.reflection().registerType(
                     type,
-                    MemberCategory.DECLARED_FIELDS,
+                    MemberCategory.ACCESS_DECLARED_FIELDS,
                     MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
                     MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS,
                     MemberCategory.INVOKE_PUBLIC_METHODS

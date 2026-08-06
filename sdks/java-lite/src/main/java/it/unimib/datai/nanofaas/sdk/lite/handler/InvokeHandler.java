@@ -109,17 +109,8 @@ public final class InvokeHandler implements HttpHandler {
 
         FunctionContext.set(effectiveExecutionId, traceId);
         try {
-            InvocationRequest request;
-            try {
-                request = objectMapper.readValue(exchange.getRequestBody(), InvocationRequest.class);
-            } catch (JsonProcessingException ex) {
-                metrics.recordInvocation(functionName);
-                metrics.recordError(functionName);
-                dispatchCallback(effectiveExecutionId,
-                        InvocationResult.error("INVALID_JSON", "Request body must be valid JSON"),
-                        traceId, dispatchAttempt);
-                sendJson(exchange, 400, Map.of(
-                        ERROR_KEY, Map.of("code", "INVALID_JSON", "message", "Request body must be valid JSON")));
+            InvocationRequest request = readRequest(exchange, effectiveExecutionId, traceId, dispatchAttempt);
+            if (request == null) {
                 return;
             }
             Object output = invokeWithTimeout(request);
@@ -156,6 +147,22 @@ public final class InvokeHandler implements HttpHandler {
             metrics.observeDuration(functionName, (System.nanoTime() - startNanos) / 1_000_000_000.0);
             metrics.decInFlight(functionName);
             FunctionContext.clear();
+        }
+    }
+
+    private InvocationRequest readRequest(HttpExchange exchange, String executionId, String traceId,
+                                          String dispatchAttempt) throws IOException {
+        try {
+            return objectMapper.readValue(exchange.getRequestBody(), InvocationRequest.class);
+        } catch (JsonProcessingException ex) {
+            metrics.recordInvocation(functionName);
+            metrics.recordError(functionName);
+            dispatchCallback(executionId,
+                    InvocationResult.error("INVALID_JSON", "Request body must be valid JSON"),
+                    traceId, dispatchAttempt);
+            sendJson(exchange, 400, Map.of(
+                    ERROR_KEY, Map.of("code", "INVALID_JSON", "message", "Request body must be valid JSON")));
+            return null;
         }
     }
 
