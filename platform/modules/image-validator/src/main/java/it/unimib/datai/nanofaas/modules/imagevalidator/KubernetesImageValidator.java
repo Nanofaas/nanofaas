@@ -57,7 +57,7 @@ public class KubernetesImageValidator implements ImageValidator {
         KubernetesClient client;
         try {
             client = clientProvider.getObject();
-        } catch (Exception e) {
+        } catch (Exception _) {
             throw ImageValidationException.registryUnavailable(spec.image(), "Kubernetes client unavailable");
         }
 
@@ -71,7 +71,7 @@ public class KubernetesImageValidator implements ImageValidator {
         } finally {
             try {
                 client.pods().inNamespace(namespace).withName(podName).delete();
-            } catch (Exception ignored) {
+            } catch (Exception _) {
                 // Best-effort cleanup.
             }
         }
@@ -94,7 +94,7 @@ public class KubernetesImageValidator implements ImageValidator {
 
             try {
                 Thread.sleep(pollInterval.toMillis());
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 throw ImageValidationException.registryUnavailable(image, "Interrupted while validating image");
             }

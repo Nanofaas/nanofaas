@@ -93,7 +93,7 @@ public class InvokeController {
                     dispatchAttempt);
             return ResponseEntity.status(500)
                     .body(Map.of(ERROR_KEY, errorMessage));
-        } catch (TimeoutException ex) {
+        } catch (TimeoutException _) {
             log.error("Handler timed out for execution {}", effectiveExecutionId);
             callbackDispatcher.submit(
                     effectiveExecutionId,

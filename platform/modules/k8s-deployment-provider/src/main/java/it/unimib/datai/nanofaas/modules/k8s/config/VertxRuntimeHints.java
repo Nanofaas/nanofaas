@@ -82,7 +82,7 @@ public class VertxRuntimeHints {
                         collectFromDirectory(url, packagePath, classNames);
                     }
                 }
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // Best effort: explicit hints above still cover known hotspots.
             }
             return classNames;
@@ -101,7 +101,7 @@ public class VertxRuntimeHints {
                             .map(name -> name.substring(0, name.length() - 6).replace('/', '.'))
                             .forEach(out::add);
                 }
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // Ignore and continue.
             }
         }
@@ -119,7 +119,7 @@ public class VertxRuntimeHints {
                             .map(name -> name.substring(0, name.length() - 6).replace('/', '.'))
                             .forEach(out::add);
                 }
-            } catch (IOException | URISyntaxException ignored) {
+            } catch (IOException | URISyntaxException _) {
                 // Ignore and continue.
             }
         }
@@ -136,7 +136,7 @@ public class VertxRuntimeHints {
                         MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS,
                         MemberCategory.INVOKE_PUBLIC_METHODS
                 );
-            } catch (ClassNotFoundException | LinkageError ignored) {
+            } catch (ClassNotFoundException | LinkageError _) {
                 // Ignore problematic classes and keep best-effort registration.
             }
         }

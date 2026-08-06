@@ -789,7 +789,7 @@ class InvocationServiceDispatchTest {
                 firstPutStarted.countDown();
                 try {
                     allowFirstPutToComplete.await(5, TimeUnit.SECONDS);
-                } catch (InterruptedException ex) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 }
             }

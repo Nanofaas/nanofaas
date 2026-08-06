@@ -82,7 +82,7 @@ public class PoolDispatcher implements Dispatcher {
         }
         try {
             return Long.parseLong(header);
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return null;
         }
     }

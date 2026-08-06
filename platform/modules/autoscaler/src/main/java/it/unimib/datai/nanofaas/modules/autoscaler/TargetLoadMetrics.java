@@ -100,7 +100,7 @@ public class TargetLoadMetrics {
         }
         try {
             return Integer.parseInt(target);
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return defaultValue;
         }
     }

@@ -150,7 +150,7 @@ public class SyncScheduler implements SmartLifecycle {
     private void sleep(long ms) {
         try {
             Thread.sleep(ms);
-        } catch (InterruptedException ignored) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
     }

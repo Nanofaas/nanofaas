@@ -114,7 +114,7 @@ public class SyncQueueService implements SyncQueueGateway {
             while (queuedItems() == 0) {
                 try {
                     workSignal.wait(timeoutMs);
-                } catch (InterruptedException ignored) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     return;
                 }

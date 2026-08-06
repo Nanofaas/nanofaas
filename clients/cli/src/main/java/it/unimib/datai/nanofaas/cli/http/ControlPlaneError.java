@@ -15,7 +15,7 @@ public record ControlPlaneError(String code, String message) {
             String code = root.path("error").isMissingNode() ? null : root.path("error").asText(null);
             String message = root.path("message").isMissingNode() ? null : root.path("message").asText(null);
             return new ControlPlaneError(code, message);
-        } catch (Exception ignored) {
+        } catch (Exception _) {
             return new ControlPlaneError(null, null);
         }
     }

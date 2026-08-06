@@ -85,7 +85,7 @@ class TraceLoggingFilterHeaderPriorityTest {
 
         try {
             filter.doFilter(request, response, chain);
-        } catch (ServletException ignored) {
+        } catch (ServletException _) {
             // ignore: deliberately thrown by the chain — this test only asserts MDC cleanup after the failure
         }
 

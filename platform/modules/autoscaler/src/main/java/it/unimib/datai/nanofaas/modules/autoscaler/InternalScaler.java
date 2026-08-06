@@ -82,7 +82,7 @@ public class InternalScaler implements SmartLifecycle {
                     if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
                         executor.shutdownNow();
                     }
-                } catch (InterruptedException ex) {
+                } catch (InterruptedException _) {
                     executor.shutdownNow();
                     Thread.currentThread().interrupt();
                 }

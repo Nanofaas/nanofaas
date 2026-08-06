@@ -66,7 +66,7 @@ class FunctionServiceConcurrencyTest {
                         successCount.incrementAndGet();
                         registeredSpecs.add(result.get().spec());
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 } finally {
                     endLatch.countDown();
@@ -108,7 +108,7 @@ class FunctionServiceConcurrencyTest {
                     if (result.isPresent()) {
                         successCount.incrementAndGet();
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 } finally {
                     endLatch.countDown();

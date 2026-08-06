@@ -86,7 +86,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                     outputStream.write(body);
                 }
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             byte[] body = "Interrupted while proxying request".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(500, body.length);

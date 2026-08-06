@@ -48,7 +48,7 @@ public final class CallbackClient {
         try {
             Thread.sleep(RETRY_DELAYS_MS[attempt]);
             return true;
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             log.warn("Callback retry interrupted for execution {}", executionId);
             return false;

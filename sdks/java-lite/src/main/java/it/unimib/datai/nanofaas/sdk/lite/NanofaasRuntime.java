@@ -51,7 +51,7 @@ public final class NanofaasRuntime {
         // Block main thread
         try {
             Thread.currentThread().join();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             log.info("Main thread interrupted, shutting down");
         }

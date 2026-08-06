@@ -75,7 +75,7 @@ class RateLimiterTest {
                             allowedCount.incrementAndGet();
                         }
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 } finally {
                     endLatch.countDown();
@@ -130,7 +130,7 @@ class RateLimiterTest {
                         // Small delay to spread across time
                         Thread.sleep(1);
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 } finally {
                     endLatch.countDown();

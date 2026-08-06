@@ -235,7 +235,7 @@ class InvokeHandlerTest {
             started.incrementAndGet();
             try {
                 release.await(2, TimeUnit.SECONDS);
-            } catch (InterruptedException ex) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
             exchange.sendResponseHeaders(204, -1);

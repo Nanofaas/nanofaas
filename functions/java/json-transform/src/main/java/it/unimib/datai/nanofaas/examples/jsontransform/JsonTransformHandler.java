@@ -36,7 +36,7 @@ public class JsonTransformHandler implements FunctionHandler {
         Map<String, Object> input;
         try {
             input = (Map<String, Object>) request.input();
-        } catch (ClassCastException e) {
+        } catch (ClassCastException _) {
             return Map.of(ERROR_KEY, "Input must be a JSON object");
         }
 

@@ -71,7 +71,7 @@ public final class InvokeHandler implements HttpHandler {
         try {
             int parsed = Integer.parseInt(value);
             return parsed > 0 ? parsed : fallback;
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return fallback;
         }
     }
@@ -126,7 +126,7 @@ public final class InvokeHandler implements HttpHandler {
             }
 
             sendJson(exchange, 200, output);
-        } catch (TimeoutException ex) {
+        } catch (TimeoutException _) {
             metrics.recordInvocation(functionName);
             metrics.recordError(functionName);
             dispatchCallback(effectiveExecutionId,
@@ -162,7 +162,7 @@ public final class InvokeHandler implements HttpHandler {
                                           String dispatchAttempt) throws IOException {
         try {
             return objectMapper.readValue(exchange.getRequestBody(), InvocationRequest.class);
-        } catch (JsonProcessingException ex) {
+        } catch (JsonProcessingException _) {
             metrics.recordInvocation(functionName);
             metrics.recordError(functionName);
             dispatchCallback(executionId,
@@ -198,7 +198,7 @@ public final class InvokeHandler implements HttpHandler {
         try {
             callbackExecutor.execute(
                     () -> callbackClient.sendResult(executionId, result, traceId, dispatchAttempt));
-        } catch (RejectedExecutionException ex) {
+        } catch (RejectedExecutionException _) {
             log.warn("Dropping callback for execution {} because dispatcher queue is full", executionId);
         }
     }

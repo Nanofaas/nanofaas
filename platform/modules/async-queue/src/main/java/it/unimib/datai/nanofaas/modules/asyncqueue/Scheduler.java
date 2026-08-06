@@ -103,7 +103,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                 }
                 enqueuedFunctions.remove(functionName);
                 processFunction(functionName);
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {

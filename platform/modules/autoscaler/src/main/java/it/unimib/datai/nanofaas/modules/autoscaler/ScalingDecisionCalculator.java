@@ -52,7 +52,7 @@ public final class ScalingDecisionCalculator {
                 return DEFAULT_TARGET;
             }
             return Double.parseDouble(target);
-        } catch (RuntimeException ex) {
+        } catch (RuntimeException _) {
             return DEFAULT_TARGET;
         }
     }

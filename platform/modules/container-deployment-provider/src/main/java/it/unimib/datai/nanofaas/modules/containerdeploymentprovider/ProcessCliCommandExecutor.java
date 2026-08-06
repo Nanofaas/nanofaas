@@ -44,7 +44,7 @@ final class ProcessCliCommandExecutor implements CliCommandExecutor {
             return new ExecutionResult(exitCode, output);
         } catch (IOException e) {
             return ExecutionResult.failure(1, e.getMessage());
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return ExecutionResult.failure(1, "Interrupted while running command");
         }
@@ -53,7 +53,7 @@ final class ProcessCliCommandExecutor implements CliCommandExecutor {
     private static String readOutput(Process process) {
         try {
             return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        } catch (IOException ignored) {
+        } catch (IOException _) {
             return "";
         }
     }

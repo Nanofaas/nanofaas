@@ -69,7 +69,7 @@ class FunctionQueueStateTest {
                             state.releaseSlot();
                         }
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 } finally {
                     endLatch.countDown();
