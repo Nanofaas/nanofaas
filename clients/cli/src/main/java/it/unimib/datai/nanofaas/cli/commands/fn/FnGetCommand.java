@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.cli.http.HttpJson;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
+@SuppressWarnings("java:S106") // CLI product output must go to stdout for pipes/scripts; a logger is wrong here.
 @Command(name = "get", mixinStandardHelpOptions = true, description = "Get function details by name.")
 public class FnGetCommand implements Runnable {
 

@@ -5,6 +5,7 @@ import picocli.CommandLine.Command;
 
 import java.util.List;
 
+@SuppressWarnings("java:S106") // CLI product output must go to stdout for pipes/scripts; a logger is wrong here.
 @Command(name = "list", mixinStandardHelpOptions = true, description = "List registered functions.")
 public class FnListCommand implements Runnable {
 

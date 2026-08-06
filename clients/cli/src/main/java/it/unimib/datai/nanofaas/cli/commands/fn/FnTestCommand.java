@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
+@SuppressWarnings("java:S106") // CLI product output must go to stdout for pipes/scripts; a logger is wrong here.
 @Command(name = "test", mixinStandardHelpOptions = true,
         description = "Run JSON contract payloads against a function.")
 public class FnTestCommand implements Callable<Integer> {

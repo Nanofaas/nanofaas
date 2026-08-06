@@ -12,6 +12,7 @@ import picocli.CommandLine.Parameters;
 
 import java.io.IOException;
 
+@SuppressWarnings("java:S106") // CLI product output must go to stdout for pipes/scripts; a logger is wrong here.
 @Command(name = "enqueue", mixinStandardHelpOptions = true,
         description = "Invoke a function asynchronously.")
 public class EnqueueCommand implements Runnable {

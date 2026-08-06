@@ -10,6 +10,7 @@ import picocli.CommandLine.Parameters;
 import java.io.IOException;
 import java.time.Duration;
 
+@SuppressWarnings("java:S106") // CLI product output must go to stdout for pipes/scripts; a logger is wrong here.
 @Command(name = "get", mixinStandardHelpOptions = true, description = "Get execution status/result.")
 public class ExecGetCommand implements Runnable {
 
