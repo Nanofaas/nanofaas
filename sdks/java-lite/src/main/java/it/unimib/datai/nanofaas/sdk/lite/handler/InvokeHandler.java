@@ -134,20 +134,28 @@ public final class InvokeHandler implements HttpHandler {
                     traceId, dispatchAttempt);
             sendJson(exchange, 504, Map.of(
                     ERROR_KEY, Map.of("code", "HANDLER_TIMEOUT", "message", "Handler exceeded configured timeout")));
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            handleHandlerFailure(ex, exchange, effectiveExecutionId, traceId, dispatchAttempt);
         } catch (Exception ex) {
-            log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
-            metrics.recordInvocation(functionName);
-            metrics.recordError(functionName);
-
-            dispatchCallback(effectiveExecutionId,
-                    InvocationResult.error("HANDLER_ERROR", ex.getMessage()), traceId, dispatchAttempt);
-
-            sendJson(exchange, 500, Map.of(ERROR_KEY, ex.getMessage() != null ? ex.getMessage() : "Internal error"));
+            handleHandlerFailure(ex, exchange, effectiveExecutionId, traceId, dispatchAttempt);
         } finally {
             metrics.observeDuration(functionName, (System.nanoTime() - startNanos) / 1_000_000_000.0);
             metrics.decInFlight(functionName);
             FunctionContext.clear();
         }
+    }
+
+    private void handleHandlerFailure(Exception ex, HttpExchange exchange, String effectiveExecutionId,
+                                      String traceId, String dispatchAttempt) throws IOException {
+        log.error("Handler error for execution {}: {}", effectiveExecutionId, ex.getMessage(), ex);
+        metrics.recordInvocation(functionName);
+        metrics.recordError(functionName);
+
+        dispatchCallback(effectiveExecutionId,
+                InvocationResult.error("HANDLER_ERROR", ex.getMessage()), traceId, dispatchAttempt);
+
+        sendJson(exchange, 500, Map.of(ERROR_KEY, ex.getMessage() != null ? ex.getMessage() : "Internal error"));
     }
 
     private InvocationRequest readRequest(HttpExchange exchange, String executionId, String traceId,

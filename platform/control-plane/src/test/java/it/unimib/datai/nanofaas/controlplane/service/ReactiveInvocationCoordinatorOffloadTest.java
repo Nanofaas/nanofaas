@@ -140,7 +140,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
         when(offloadGateway.shouldOffloadOnPressure(any(), any())).thenReturn(false);
 
         ReactiveInvocationCoordinator coordinator = coordinator(syncQueueGateway);
-        assertThatThrownBy(() -> coordinator.invoke(lookup, spec, 1000).block())
+        assertThatThrownBy(() -> invokeBlocking(coordinator, lookup, spec, 1000))
                 .isInstanceOf(SyncQueueRejectedException.class);
     }
 
@@ -176,7 +176,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
                 .thenReturn(Mono.error(new OffloadFailedException(TARGET, false, "unreachable")));
 
         ReactiveInvocationCoordinator coordinator = coordinator(null);
-        assertThatThrownBy(() -> coordinator.invoke(lookup, spec, 1000).block())
+        assertThatThrownBy(() -> invokeBlocking(coordinator, lookup, spec, 1000))
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("unreachable")
                 .matches(ex -> TARGET.equals(((OffloadFailedException) ex).targetUrl()));
@@ -194,7 +194,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
                 .thenReturn(Mono.error(new OffloadFailedException(TARGET, true, "too slow")));
 
         ReactiveInvocationCoordinator coordinator = coordinator(null);
-        assertThatThrownBy(() -> coordinator.invoke(lookup, spec, 1000).block())
+        assertThatThrownBy(() -> invokeBlocking(coordinator, lookup, spec, 1000))
                 .isInstanceOf(OffloadFailedException.class)
                 .matches(ex -> ((OffloadFailedException) ex).gatewayTimeout());
     }
@@ -207,5 +207,11 @@ class ReactiveInvocationCoordinatorOffloadTest {
     private static FunctionSpec spec(String name, OffloadPolicy offload) {
         return new FunctionSpec(name, "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null, offload);
+    }
+
+    private static void invokeBlocking(ReactiveInvocationCoordinator coordinator,
+                                       InvocationExecutionFactory.ExecutionLookup lookup,
+                                       FunctionSpec spec, int budgetMs) {
+        coordinator.invoke(lookup, spec, budgetMs).block();
     }
 }

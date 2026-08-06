@@ -101,19 +101,27 @@ public class InvokeController {
                     runtimeContext.traceId(),
                     dispatchAttempt);
             return ResponseEntity.status(504).body(Map.of(ERROR_KEY, "Handler timed out"));
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return handleHandlerFailure(ex, effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
         } catch (Exception ex) {
-            String errorMessage = handlerErrorMessage(ex);
-            log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
-
-            callbackDispatcher.submit(
-                    effectiveExecutionId,
-                    CallbackPayload.error("HANDLER_ERROR", errorMessage),
-                    runtimeContext.traceId(),
-                    dispatchAttempt);
-
-            return ResponseEntity.status(500)
-                    .body(Map.of(ERROR_KEY, errorMessage));
+            return handleHandlerFailure(ex, effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
         }
+    }
+
+    private ResponseEntity<Object> handleHandlerFailure(Exception ex, String effectiveExecutionId,
+                                                        String traceId, String dispatchAttempt) {
+        String errorMessage = handlerErrorMessage(ex);
+        log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
+
+        callbackDispatcher.submit(
+                effectiveExecutionId,
+                CallbackPayload.error("HANDLER_ERROR", errorMessage),
+                traceId,
+                dispatchAttempt);
+
+        return ResponseEntity.status(500)
+                .body(Map.of(ERROR_KEY, errorMessage));
     }
 
     public ResponseEntity<Object> invoke(

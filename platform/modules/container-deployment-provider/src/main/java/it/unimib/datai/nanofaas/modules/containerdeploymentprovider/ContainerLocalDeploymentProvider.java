@@ -252,9 +252,17 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         String normalized = functionName == null ? "fn" : functionName.toLowerCase()
                 .replaceAll("[^a-z0-9-]+", "-")
                 .replaceAll("-{2,}", "-")
-                .replaceAll("^-++", "")
-                .replaceAll("-++$", "");
+                .replaceAll("^(?>-+)", "");
+        normalized = stripTrailingDashes(normalized);
         return normalized.isBlank() ? "fn" : normalized;
+    }
+
+    private static String stripTrailingDashes(String s) {
+        int end = s.length();
+        while (end > 0 && s.charAt(end - 1) == '-') {
+            end--;
+        }
+        return s.substring(0, end);
     }
 
     private static void safeClose(ManagedFunctionProxy proxy) {

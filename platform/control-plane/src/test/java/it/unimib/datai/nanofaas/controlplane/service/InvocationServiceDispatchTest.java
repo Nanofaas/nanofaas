@@ -695,13 +695,8 @@ class InvocationServiceDispatchTest {
         }).when(enqueuer).enqueue(any());
 
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
-                "sync-reject-local-fn",
-                request,
-                null,
-                null,
-                1_000
-        ).block()).isInstanceOf(QueueFullException.class);
+        assertThatThrownBy(() -> invokeSyncReactiveBlocking(invocationService, "sync-reject-local-fn", request, 1_000))
+                .isInstanceOf(QueueFullException.class);
 
         assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
                 assertThat(executionStore.get(executionId)).isEmpty());
@@ -720,13 +715,8 @@ class InvocationServiceDispatchTest {
         }).when(syncQueueGateway).enqueueOrThrow(any());
 
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
-                "reactive-sync-reject-fn",
-                request,
-                null,
-                null,
-                1_000
-        ).block()).isInstanceOf(SyncQueueRejectedException.class);
+        assertThatThrownBy(() -> invokeSyncReactiveBlocking(invocationService, "reactive-sync-reject-fn", request, 1_000))
+                .isInstanceOf(SyncQueueRejectedException.class);
 
         assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
                 assertThat(executionStore.get(executionId)).isEmpty());
@@ -860,5 +850,10 @@ class InvocationServiceDispatchTest {
                 null,
                 null
         );
+    }
+
+    private static void invokeSyncReactiveBlocking(InvocationService service, String functionName,
+                                                   InvocationRequest request, int budgetMs) {
+        service.invokeSyncReactive(functionName, request, null, null, budgetMs).block();
     }
 }

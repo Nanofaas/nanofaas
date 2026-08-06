@@ -210,7 +210,7 @@ public class KubernetesImageValidator implements ImageValidator {
         String normalized = functionName == null ? "fn" : functionName.toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9-]+", "-")
                 .replaceAll("-{2,}+", "-");
-        normalized = normalized.replaceAll("^-+", "").replaceAll("-+$", "");
+        normalized = stripTrailingDashes(normalized.replaceAll("^(?>-+)", ""));
         if (normalized.isBlank()) {
             normalized = "fn";
         }
@@ -218,10 +218,17 @@ public class KubernetesImageValidator implements ImageValidator {
         String base = "imgval-" + normalized;
         int maxBase = 63 - 1 - suffix.length();
         if (base.length() > maxBase) {
-            base = base.substring(0, maxBase);
-            base = base.replaceAll("-+$", "");
+            base = stripTrailingDashes(base.substring(0, maxBase));
         }
         return base + "-" + suffix;
+    }
+
+    private static String stripTrailingDashes(String s) {
+        int end = s.length();
+        while (end > 0 && s.charAt(end - 1) == '-') {
+            end--;
+        }
+        return s.substring(0, end);
     }
 
     private static boolean isNativeRuntime() {

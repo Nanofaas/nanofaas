@@ -87,7 +87,7 @@ public class FunctionQueueState {
     /**
      * @deprecated Use {@link #tryAcquireSlot()} for thread-safe dispatch slot acquisition
      */
-    @Deprecated(since = "0.16.0", forRemoval = true)
+    @Deprecated(since = "0.16.0")
     public boolean canDispatch() {
         return inFlight.get() < effectiveConcurrency;
     }
@@ -95,7 +95,7 @@ public class FunctionQueueState {
     /**
      * @deprecated Use {@link #tryAcquireSlot()} for thread-safe dispatch slot acquisition
      */
-    @Deprecated(since = "0.16.0", forRemoval = true)
+    @Deprecated(since = "0.16.0")
     public void incrementInFlight() {
         inFlight.incrementAndGet();
     }
@@ -103,7 +103,7 @@ public class FunctionQueueState {
     /**
      * @deprecated Use {@link #releaseSlot()} instead
      */
-    @Deprecated(since = "0.16.0", forRemoval = true)
+    @Deprecated(since = "0.16.0")
     public void decrementInFlight() {
         decrementInFlightNonNegative();
     }

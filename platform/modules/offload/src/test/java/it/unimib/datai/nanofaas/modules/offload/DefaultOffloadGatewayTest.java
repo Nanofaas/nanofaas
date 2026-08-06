@@ -75,6 +75,11 @@ class DefaultOffloadGatewayTest {
         return (OffloadFailedException) ex;
     }
 
+    private static void invokeRemoteBlocking(DefaultOffloadGateway gateway, InvocationTask task,
+                                             OffloadTrigger trigger, OffloadContext ctx, int budgetMs) {
+        gateway.invokeRemote(task, trigger, ctx, budgetMs).block();
+    }
+
     @Test
     void successResponseMapsToSuccessResultAndForwardsHeaders() throws InterruptedException {
         server.enqueue(new MockResponse()
@@ -109,8 +114,8 @@ class DefaultOffloadGatewayTest {
 
         DefaultOffloadGateway gateway = gateway();
         InvocationTask invocationTask = task(spec);
-        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
-                .block())
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, BUDGET_MS))
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("not registered on remote");
         assertThat(meterRegistry.counter("nanofaas.offload.failure", "function", "ghost").count())
@@ -124,8 +129,8 @@ class DefaultOffloadGatewayTest {
 
         DefaultOffloadGateway gateway = gateway();
         InvocationTask invocationTask = task(spec);
-        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.DEPTH, OffloadContext.none(), BUDGET_MS)
-                .block())
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.DEPTH, context, BUDGET_MS))
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("503");
     }
@@ -138,8 +143,8 @@ class DefaultOffloadGatewayTest {
         DefaultOffloadGateway gateway = gateway(new OffloadProperties(true, url, true));
 
         InvocationTask invocationTask = task(spec);
-        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
-                .block())
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, BUDGET_MS))
                 .isInstanceOf(OffloadFailedException.class)
                 .matches(ex -> !offloadFailure(ex).gatewayTimeout());
     }
@@ -154,8 +159,8 @@ class DefaultOffloadGatewayTest {
 
         DefaultOffloadGateway gateway = gateway();
         InvocationTask invocationTask = task(spec);
-        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), 300)
-                .block())
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, 300))
                 .isInstanceOf(OffloadFailedException.class)
                 .matches(ex -> offloadFailure(ex).gatewayTimeout());
     }
@@ -167,8 +172,8 @@ class DefaultOffloadGatewayTest {
 
         DefaultOffloadGateway gateway = gateway();
         InvocationTask invocationTask = task(spec);
-        assertThatThrownBy(() -> gateway.invokeRemote(invocationTask, OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
-                .block())
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, BUDGET_MS))
                 .isInstanceOf(OffloadFailedException.class)
                 .hasMessageContaining("empty response body");
     }
