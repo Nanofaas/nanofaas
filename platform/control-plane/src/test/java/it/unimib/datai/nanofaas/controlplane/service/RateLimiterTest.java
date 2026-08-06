@@ -33,6 +33,7 @@ class RateLimiterTest {
         assertThat(limiter.allow()).isFalse();
     }
 
+    @SuppressWarnings("java:S2925") // clock advancement: the fixed sleep must cross the 1s rate-limit window boundary so the window resets
     @Test
     void allow_afterWindowReset_allowsAgain() throws InterruptedException {
         RateLimiter limiter = new RateLimiter();
@@ -93,6 +94,7 @@ class RateLimiterTest {
         assertThat(allowedCount.get()).isLessThanOrEqualTo(maxPerSecond);
     }
 
+    @SuppressWarnings("java:S2925") // deliberate delay to spread concurrent calls across the 1s window: rate-limit semantics depend on real time
     @Test
     void allow_concurrentWindowReset_maintainsCorrectCount() throws Exception {
         int maxPerSecond = 50;

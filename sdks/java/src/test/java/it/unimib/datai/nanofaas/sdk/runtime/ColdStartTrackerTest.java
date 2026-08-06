@@ -23,6 +23,7 @@ class ColdStartTrackerTest {
         assertTrue(tracker.initDurationMs() >= 0);
     }
 
+    @SuppressWarnings("java:S2925") // simulated handler execution: initDurationMs must stay frozen at request arrival while the handler runs
     @Test
     void initDurationMs_doesNotIncludeHandlerTime() throws Exception {
         ColdStartTracker tracker = new ColdStartTracker();
@@ -46,6 +47,7 @@ class ColdStartTrackerTest {
                 "initDurationMs should return -1 before markFirstRequestArrival is called");
     }
 
+    @SuppressWarnings("java:S2925") // deliberate delay between mark calls: a second markFirstRequestArrival after 20ms must not change the frozen timestamp
     @Test
     void markFirstRequestArrival_isIdempotent() throws Exception {
         ColdStartTracker tracker = new ColdStartTracker();

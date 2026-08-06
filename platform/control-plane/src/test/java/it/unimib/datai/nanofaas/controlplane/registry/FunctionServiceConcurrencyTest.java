@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -180,8 +181,9 @@ class FunctionServiceConcurrencyTest {
 
             Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> localService.remove("race-fn"));
 
-            Thread.sleep(150);
-            assertThat(removeFuture.isDone()).isFalse();
+            // remove must still be pending while provisioning is blocked on the latch
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                    assertThat(removeFuture.isDone()).isFalse());
 
             allowProvision.countDown();
 
@@ -229,11 +231,13 @@ class FunctionServiceConcurrencyTest {
             Future<Optional<RegisteredFunction>> registerFuture = executor.submit(() -> localService.register(spec));
 
             assertThat(provisionStarted.await(5, TimeUnit.SECONDS)).isTrue();
-            Thread.sleep(150);
 
-            assertThat(localService.get("deploy-fn")).isEmpty();
-            assertThat(localService.list()).isEmpty();
-            assertThat(localRegistry.get("deploy-fn")).isEmpty();
+            // the function must stay invisible while provisioning is blocked on the latch
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(localService.get("deploy-fn")).isEmpty();
+                assertThat(localService.list()).isEmpty();
+                assertThat(localRegistry.get("deploy-fn")).isEmpty();
+            });
 
             allowProvision.countDown();
 
@@ -283,11 +287,13 @@ class FunctionServiceConcurrencyTest {
             Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> localService.remove("tear-fn"));
 
             assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
-            Thread.sleep(150);
 
-            assertThat(localService.get("tear-fn")).isEmpty();
-            assertThat(localService.list()).isEmpty();
-            assertThat(localRegistry.get("tear-fn")).isEmpty();
+            // the function must stay hidden while teardown is blocked on the latch
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(localService.get("tear-fn")).isEmpty();
+                assertThat(localService.list()).isEmpty();
+                assertThat(localRegistry.get("tear-fn")).isEmpty();
+            });
 
             allowRemoval.countDown();
 
@@ -338,10 +344,12 @@ class FunctionServiceConcurrencyTest {
             assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
             Future<Optional<Integer>> scaleFuture = executor.submit(() -> localService.setReplicas("tear-fn", 2));
-            Thread.sleep(150);
 
-            assertThat(scaleFuture.isDone()).isFalse();
-            assertThat(localRegistry.get("tear-fn")).isEmpty();
+            // setReplicas must still be pending while teardown is blocked on the latch
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(scaleFuture.isDone()).isFalse();
+                assertThat(localRegistry.get("tear-fn")).isEmpty();
+            });
 
             allowRemoval.countDown();
 

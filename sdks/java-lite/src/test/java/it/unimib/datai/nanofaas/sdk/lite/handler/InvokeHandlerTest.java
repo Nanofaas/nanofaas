@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 class InvokeHandlerTest {
@@ -256,8 +257,9 @@ class InvokeHandlerTest {
                         .build();
                 assertEquals(200, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
             }
-            Thread.sleep(100);
-            assertEquals(1, started.get());
+            // single callback worker + bounded queue: only one callback may be in flight
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                    assertEquals(1, started.get()));
         } finally {
             release.countDown();
             callbackServer.stop(0);

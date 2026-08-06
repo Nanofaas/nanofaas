@@ -15,7 +15,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -114,7 +116,7 @@ class ControlPlaneApiTest {
     }
 
     @Test
-    void issue009_schedulerCompletesLocalInvocation() throws InterruptedException {
+    void issue009_schedulerCompletesLocalInvocation() {
         rateLimiter.setMaxPerSecond(1000);
 
         Map<String, Object> body = webTestClient.post()
@@ -129,14 +131,13 @@ class ControlPlaneApiTest {
         assertNotNull(body);
         String executionId = body.get("executionId").toString();
 
-        Thread.sleep(100);
-
-        webTestClient.get()
-                .uri("/v1/executions/{id}", executionId)
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.status").isEqualTo("success");
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
+                webTestClient.get()
+                        .uri("/v1/executions/{id}", executionId)
+                        .exchange()
+                        .expectStatus().isOk()
+                        .expectBody()
+                        .jsonPath("$.status").isEqualTo("success"));
     }
 
     @Test

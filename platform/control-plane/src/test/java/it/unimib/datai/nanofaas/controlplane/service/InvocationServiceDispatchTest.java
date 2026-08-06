@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.awaitility.Awaitility.await;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -766,8 +767,9 @@ class InvocationServiceDispatchTest {
                     null
             ));
 
-            Thread.sleep(50);
-            assertThat(second).isNotDone();
+            // the second invocation must still be waiting on the pending admission
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                    assertThat(second).isNotDone());
 
             allowFirstRejection.countDown();
 

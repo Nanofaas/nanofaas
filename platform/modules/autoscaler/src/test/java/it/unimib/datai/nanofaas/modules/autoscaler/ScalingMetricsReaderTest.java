@@ -63,6 +63,7 @@ class ScalingMetricsReaderTest {
         assertEquals(0.0, value);
     }
 
+    @SuppressWarnings("java:S2925") // clock advancement: the per-interval metric window must advance before the second read
     @Test
     void readMetric_rps_usesPerIntervalDeltaInsteadOfCumulativeCounter() throws Exception {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();

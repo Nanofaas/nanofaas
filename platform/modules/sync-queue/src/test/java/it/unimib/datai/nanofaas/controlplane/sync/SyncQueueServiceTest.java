@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -97,7 +98,12 @@ class SyncQueueServiceTest {
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
         store.put(new ExecutionRecord("e1", task));
-        Thread.sleep(50);
+
+        // Wait until the waiter is blocked inside awaitWork's workSignal.wait(500)
+        // so the enqueue below is what wakes it, not a queue that is already non-empty
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(Thread.State.TIMED_WAITING, waiter.getState()));
+
         service.enqueueOrThrow(task);
 
         assertTrue(done.await(300, TimeUnit.MILLISECONDS));

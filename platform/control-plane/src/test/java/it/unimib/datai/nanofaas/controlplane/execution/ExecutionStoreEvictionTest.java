@@ -26,6 +26,7 @@ class ExecutionStoreEvictionTest {
         return new ExecutionRecord(id, task);
     }
 
+    @SuppressWarnings("java:S2925") // deliberate TTL aging: the record must age past maxLifetime (50ms) before evictExpired() can evict it
     @Test
     void nonTerminalRecordsAreEvictedAfterMaxLifetime() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
@@ -68,6 +69,7 @@ class ExecutionStoreEvictionTest {
         assertThat(done.task()).isSameAs(afterFirstCleanup);
     }
 
+    @SuppressWarnings("java:S2925") // deliberate TTL aging: terminal records must outlive their ttl (50ms) before evictExpired() evicts them
     @Test
     void terminalRecordsAreEvictedAfterTtl() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
@@ -98,6 +100,7 @@ class ExecutionStoreEvictionTest {
         }
     }
 
+    @SuppressWarnings("java:S2925") // deliberate TTL aging: createdAt must age past ttl/cleanupTtl (200/150ms) before the record finishes, so evictExpired() only cleans it
     @Test
     void recentlyFinishedLongRunningRecordIsRetained() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
@@ -122,6 +125,7 @@ class ExecutionStoreEvictionTest {
         }
     }
 
+    @SuppressWarnings("java:S2925") // deliberate TTL aging: the record must age past cleanupTtl (50ms) but stay under ttl (10min) so evictExpired() cleans the payload without evicting
     @Test
     void cleanupFiresBetweenCleanupTtlAndTtl() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
@@ -145,6 +149,7 @@ class ExecutionStoreEvictionTest {
         }
     }
 
+    @SuppressWarnings("java:S2925") // deliberate TTL aging: the record must age past ttl/cleanupTtl (50ms) while staying under maxLifetime so evictExpired() retains it
     @Test
     void agedNonTerminalRecordUnderMaxLifetimeIsRetained() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(

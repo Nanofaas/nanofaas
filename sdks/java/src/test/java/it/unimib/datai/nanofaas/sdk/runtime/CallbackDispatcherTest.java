@@ -11,6 +11,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -143,8 +144,9 @@ class CallbackDispatcherTest {
         Thread shutdownThread = new Thread(shutdownTask);
         shutdownThread.start();
 
-        Thread.sleep(100);
-        assertFalse(shutdownTask.isDone());
+        // shutdown must still be in progress while the callback is running
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertFalse(shutdownTask.isDone()));
 
         release.countDown();
         shutdownTask.get(2, TimeUnit.SECONDS);

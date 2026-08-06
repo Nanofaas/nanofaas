@@ -8,7 +8,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NanofaasRuntimeTest {
@@ -27,17 +29,16 @@ class NanofaasRuntimeTest {
         t.setDaemon(true);
         t.start();
 
-        // Wait for server to be ready
-        Thread.sleep(500);
-
         HttpClient client = HttpClient.newHttpClient();
 
-        // Test health
-        HttpResponse<String> healthResp = client.send(
-                HttpRequest.newBuilder().uri(URI.create("http://localhost:18080/health")).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, healthResp.statusCode());
-        assertTrue(healthResp.body().contains("ok"));
+        // Wait for server to be ready by polling the health endpoint
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+            HttpResponse<String> healthResp = client.send(
+                    HttpRequest.newBuilder().uri(URI.create("http://localhost:18080/health")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, healthResp.statusCode());
+            assertTrue(healthResp.body().contains("ok"));
+        });
 
         // Test metrics
         HttpResponse<String> metricsResp = client.send(

@@ -52,6 +52,7 @@ class HandlerExecutorTest {
         assertEquals("output", result);
     }
 
+    @SuppressWarnings("java:S2925") // the handler must outlive the 100ms executor timeout: the 5s sleep guarantees the timeout fires while the handler is still running
     @Test
     void execute_handlerExceedsTimeout_throwsTimeoutException() {
         executor = new HandlerExecutor(100);

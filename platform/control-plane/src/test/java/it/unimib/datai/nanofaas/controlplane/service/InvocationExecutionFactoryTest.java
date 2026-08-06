@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 class InvocationExecutionFactoryTest {
 
@@ -43,8 +44,9 @@ class InvocationExecutionFactoryTest {
             Future<InvocationExecutionFactory.ExecutionLookup> second = executor.submit(() ->
                     factory.createOrReuseExecution("pending-idem-fn", spec, request, "same-key", "trace-2"));
 
-            Thread.sleep(50);
-            assertThat(second).isNotDone();
+            // the second invocation must still be waiting on the pending claim
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                    assertThat(second).isNotDone());
 
             executionStore.allowFirstPutToComplete();
             InvocationExecutionFactory.ExecutionLookup firstLookup = first.get(1, TimeUnit.SECONDS);
