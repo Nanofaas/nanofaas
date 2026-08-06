@@ -2,8 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -65,7 +63,6 @@ class RateLimiterTest {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch endLatch = new CountDownLatch(numThreads);
 
-        List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < numThreads; i++) {
             Thread t = new Thread(() -> {
                 try {
@@ -81,7 +78,6 @@ class RateLimiterTest {
                     endLatch.countDown();
                 }
             });
-            threads.add(t);
             t.start();
         }
 
@@ -112,19 +108,16 @@ class RateLimiterTest {
             new Thread(() -> {
                 try {
                     startLatch.await();
-                    int allowedThisSecond = 0;
                     long lastSecond = -1;
 
                     for (int j = 0; j < 100; j++) {
                         long currentSecond = System.currentTimeMillis() / 1000;
                         if (currentSecond != lastSecond) {
-                            allowedThisSecond = 0;
                             lastSecond = currentSecond;
                         }
 
                         if (limiter.allow()) {
                             totalAllowed.incrementAndGet();
-                            allowedThisSecond++;
                         }
 
                         // Small delay to spread across time

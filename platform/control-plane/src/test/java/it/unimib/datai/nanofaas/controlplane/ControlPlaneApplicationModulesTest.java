@@ -2,8 +2,6 @@ package it.unimib.datai.nanofaas.controlplane;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Set;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ControlPlaneApplicationModulesTest {

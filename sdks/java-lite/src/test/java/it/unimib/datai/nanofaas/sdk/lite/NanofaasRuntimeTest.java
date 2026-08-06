@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.sdk.lite;
 
-import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;

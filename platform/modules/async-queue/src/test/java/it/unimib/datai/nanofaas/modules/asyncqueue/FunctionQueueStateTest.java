@@ -3,8 +3,6 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -52,7 +50,6 @@ class FunctionQueueStateTest {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch endLatch = new CountDownLatch(numThreads);
 
-        List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < numThreads; i++) {
             Thread t = new Thread(() -> {
                 try {
@@ -75,7 +72,6 @@ class FunctionQueueStateTest {
                     endLatch.countDown();
                 }
             });
-            threads.add(t);
             t.start();
         }
 

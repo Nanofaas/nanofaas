@@ -8,16 +8,12 @@ import java.io.IOException;
 import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.ProxySelector;
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
-import javax.net.ssl.SSLSession;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
