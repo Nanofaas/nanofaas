@@ -1,12 +1,14 @@
-# SonarQube #166 — Findings MINOR + INFO (188) — Design
+# SonarQube #166 — Findings MINOR + INFO (184) — Design
 
 **Data:** 2026-08-06
 **Issue:** https://github.com/miciav/mcFaas/issues/166
-**Fonte:** scansione fresca `./gradlew ... sonar` su main @ 650bcac2 (2026-08-06), server locale sonar-sonata (porta 9000, admin/admin), progetto `nanofaas-java`.
+**Fonte:** scansione fresca `./gradlew ... sonar` su main @ 5882a7b5 (2026-08-06, analisi 09:56), server locale sonar-sonata (porta 9000, admin/admin), progetto `nanofaas-java`. Query OPEN-only (`statuses=OPEN,CONFIRMED,REOPENED`).
 
 ## Contesto
 
-Dopo la chiusura della #165 (220 MAJOR → 0, verificato), restano **188 findings aperti: 186 MINOR + 2 INFO**, distribuiti su 19 regole. Nessun BLOCKER/CRITICAL/MAJOR. Questo tranche li azzera tutti.
+Dopo la chiusura della #165 (220 MAJOR → 0, verificato), restano **184 findings aperti: 182 MINOR + 2 INFO**, distribuiti su 19 regole. Nessun BLOCKER/CRITICAL/MAJOR. Questo tranche li azzera tutti.
+
+> Nota (2026-08-06): le query `issues/search` senza filtro `statuses=OPEN,CONFIRMED,REOPENED` includono le issue già risolte; le occorrenze di questa spec provengono dalla query OPEN-only (baseline esatta).
 
 Le occorrenze in questa spec sono la fonte esatta per i task: ogni fix deve riferirsi alla lista file:line della propria regola. I file estratti sono nel `jq`/API di SonarQube; la lista completa è incorporata qui sotto (sezione "Occorrenze per regola").
 
@@ -20,15 +22,15 @@ Le occorrenze in questa spec sono la fonte esatta per i task: ogni fix deve rife
 
 | Regola | N | Severità | Tipo | Fix shape |
 |---|---|---|---|---|
-| S5838 | 56 | MINOR | CODE_SMELL | AssertJ: `isEqualTo(0)` → `isZero()`, `isNotEqualTo(0)` → `isNotZero()` (vale per int/long/double/float). Solo uguaglianza/non-uguaglianza con 0, nient'altro. |
+| S5838 | 54 | MINOR | CODE_SMELL | AssertJ: `isEqualTo(0)` → `isZero()`, `isNotEqualTo(0)` → `isNotZero()` (vale per int/long/double/float). Solo uguaglianza/non-uguaglianza con 0, nient'altro. |
 | S7467 | 55 | MINOR | CODE_SMELL | Parametro eccezione inutilizzato nei `catch` → unnamed pattern `_` (Java 25, `_` finale da Java 22). Solo dove il param non è usato nel body; i catch multi-type `catch (A \| B e)` inclusi. |
 | S1128 | 15 | MINOR | CODE_SMELL | Rimozione import inutilizzati (incluso l'import same-package in SyncQueueProperties:5). |
-| S1130 | 12 | MINOR | CODE_SMELL | Rimozione `throws Exception`/`throws IOException` ridondanti dai metodi di test (il corpo non le lancia). |
+| S1130 | 11 | MINOR | CODE_SMELL | Rimozione `throws Exception`/`throws IOException` ridondanti dai metodi di test (il corpo non le lancia). |
 | S5853 | 12 | MINOR | CODE_SMELL | Asserzioni AssertJ consecutive sullo stesso soggetto → unica catena. Semantica identica (AssertJ fallisce alla prima asserzione comunque). |
 | S1612 | 10 | MINOR | CODE_SMELL | Lambda → method reference esatta suggerita dal messaggio (es. `ExecutionStatus::status`, `ZipEntry::getName`, `Objects::isNull`). |
 | S1611 | 7 | MINOR | CODE_SMELL | Parentesi ridondanti attorno al parametro lambda singolo: `(t) ->` → `t ->`. |
 | S135 | 5 | MINOR | CODE_SMELL | Loop con >1 `break`/`continue` → refactor a guard clause / early return. Siti: SyncQueueService:174, FnTestCommand:47, InternalScaler:112, Scheduler:98, TargetLoadMetrics:47. Ciascuno con test che copre i percorsi prima/doppio break. |
-| S1481 | 2 | MINOR | CODE_SMELL | Rimozione locali inutilizzati: `scaled` (InternalScaler), `allowedThisSecond` (RateLimiterTest:115). |
+| S1481 | 1 | MINOR | CODE_SMELL | Rimozione locale inutilizzato: `allowedThisSecond` (RateLimiterTest:115). (Il finding InternalScaler "scaled" è già chiuso: la variabile era stata rinominata `effectiveReplicas` dal fix wave #165.) |
 | S3077 | 2 | MINOR | BUG | `volatile ExecutorService` → `AtomicReference<ExecutorService>` (Scheduler:25, SyncScheduler:33). Riscrittura con `get()`/`set()`; semantica di visibilità preservata. |
 | S4030 | 2 | MINOR | CODE_SMELL | Collection costruita e mai usata nei test (RateLimiterTest:68, FunctionQueueStateTest:55) → rimozione (o consumo se la collection è il soggetto del test). |
 | S4276 | 2 | MINOR | CODE_SMELL | `Function<String,String>` → `UnaryOperator<String>` (KubernetesClientConfig:35, ConfigStore:26). |
@@ -40,7 +42,7 @@ Le occorrenze in questa spec sono la fonte esatta per i task: ogni fix deve rife
 | S1133 | 2 | INFO | CODE_SMELL | Rimozione `@Deprecated(since = "0.16.0")` + tag `@deprecated` da canDispatch/incrementInFlight/decrementInFlight (FunctionQueueState). Vedi Decisione 3. |
 | S4507 | 1 | MINOR | VULNERABILITY | **Won't-fix** su SonarQube con commento motivato (Decisione 2). Nessuna modifica al codice. |
 
-Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimozione deprecazioni), **1 won't-fix motivato** (S4507).
+Totale: **183 findings chiusi via modifiche** (181 nel codice + 2 INFO via rimozione deprecazioni), **1 won't-fix motivato** (S4507).
 
 ## Vincoli globali
 
@@ -67,8 +69,6 @@ Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimoz
 - Findings Python (8) e Rust (4) emersi da `./scripts/sonar.sh` — tranche separati, non toccati qui.
 - Il contenitore sonar-sonata e la sua password (admin/admin) restano come sono.
 
----
-
 ## Occorrenze per regola
 
 ### java:S1128 (15)
@@ -87,7 +87,7 @@ Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimoz
   platform/modules/autoscaler/src/main/java/it/unimib/datai/nanofaas/modules/autoscaler/TargetLoadMetrics.java:10 — Remove this unused import 'java.util.ArrayList'.
   platform/modules/autoscaler/src/main/java/it/unimib/datai/nanofaas/modules/autoscaler/InternalScaler.java:3 — Remove this unused import 'it.unimib.datai.nanofaas.common.model.ExecutionMode'.
   platform/modules/autoscaler/src/main/java/it/unimib/datai/nanofaas/modules/autoscaler/InternalScaler.java:7 — Remove this unused import 'it.unimib.datai.nanofaas.common.model.ScalingMetric'.
-### java:S1130 (12)
+### java:S1130 (11)
   sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackClientTest.java:145 — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
   sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java:215 — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
   platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceDispatchTest.java:485 — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
@@ -99,7 +99,6 @@ Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimoz
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/exec/ExecGetCommandTest.java:90 — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/exec/ExecGetCommandTest.java:126 — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/exec/ExecGetCommandTest.java:144 — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
-  sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackClientTest.java:null — Remove the declaration of thrown exception 'java.lang.Exception', as it cannot be thrown from method's body.
 ### java:S1133 (2)
   platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/FunctionQueueState.java:91 — Do not forget to remove this deprecated code someday.
   platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/FunctionQueueState.java:99 — Do not forget to remove this deprecated code someday.
@@ -109,8 +108,7 @@ Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimoz
   platform/modules/autoscaler/src/main/java/it/unimib/datai/nanofaas/modules/autoscaler/InternalScaler.java:112 — Reduce the total number of break and continue statements in this loop to use at most one.
   platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/Scheduler.java:98 — Reduce the total number of break and continue statements in this loop to use at most one.
   platform/modules/autoscaler/src/main/java/it/unimib/datai/nanofaas/modules/autoscaler/TargetLoadMetrics.java:47 — Reduce the total number of break and continue statements in this loop to use at most one.
-### java:S1481 (2)
-  platform/modules/autoscaler/src/main/java/it/unimib/datai/nanofaas/modules/autoscaler/InternalScaler.java:null — Remove this unused "scaled" local variable.
+### java:S1481 (1)
   platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/RateLimiterTest.java:115 — Remove this unused "allowedThisSecond" local variable.
 ### java:S1611 (7)
   platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/controlplane/scheduler/SyncSchedulerTest.java:67 — Remove the parentheses around the "t" parameter
@@ -144,7 +142,7 @@ Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimoz
   clients/cli/src/main/java/it/unimib/datai/nanofaas/cli/NanofaasCli.java:19 — Make sure this debug feature is deactivated before delivering the code in production.
 ### java:S5411 (1)
   platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/OffloadConfiguration.java:22 — Use a primitive boolean expression here.
-### java:S5838 (56)
+### java:S5838 (54)
   platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStoreTest.java:106 — Use isZero() instead.
   platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerTest.java:207 — Use isZero() instead.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/fn/FnTestCommandTest.java:71 — Use isZero() instead.
@@ -156,8 +154,6 @@ Totale: **187 findings chiusi via modifiche** (185 nel codice + 2 INFO via rimoz
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/fn/FnListCommandTest.java:60 — Use isZero() instead.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/RootCommandTest.java:88 — Use isNotZero() instead.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/RootCommandTest.java:151 — Use isZero() instead.
-  clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/deploy/DeployCommandTest.java:null — Use isNotZero() instead.
-  clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/deploy/DeployCommandTest.java:null — Use isNotZero() instead.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/deploy/DeployCommandTest.java:52 — Use isNotZero() instead.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/deploy/DeployCommandTest.java:89 — Use isNotZero() instead.
   clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/commands/deploy/DeployCommandTest.java:117 — Use isNotZero() instead.
