@@ -112,10 +112,8 @@ public class FunctionQueueState {
         int previousConfigured = this.configuredConcurrency;
         int normalized = Math.max(1, concurrency);
         this.configuredConcurrency = normalized;
-        if (effectiveConcurrency == previousConfigured) {
-            // Preserve fixed-mode semantics: effective limit tracks configured limit.
-            effectiveConcurrency = normalized;
-        } else if (effectiveConcurrency > normalized) {
+        if (effectiveConcurrency == previousConfigured || effectiveConcurrency > normalized) {
+            // Preserve fixed-mode semantics: effective limit tracks configured limit (and clamps down on shrink).
             effectiveConcurrency = normalized;
         }
     }

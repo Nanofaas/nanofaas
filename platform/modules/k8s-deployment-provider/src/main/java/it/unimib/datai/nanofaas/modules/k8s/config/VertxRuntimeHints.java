@@ -35,6 +35,7 @@ import java.util.stream.Stream;
  */
 @Configuration
 @ImportRuntimeHints(VertxRuntimeHints.VertxResourceHints.class)
+@SuppressWarnings("java:S1118") // @Configuration class: Spring must be able to instantiate it
 public class VertxRuntimeHints {
 
     private static final List<String> FABRIC8_MODEL_PACKAGES = List.of(

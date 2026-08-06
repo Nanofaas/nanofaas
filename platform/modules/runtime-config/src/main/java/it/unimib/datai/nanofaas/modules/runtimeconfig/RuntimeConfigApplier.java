@@ -7,7 +7,7 @@ import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicLong;
@@ -26,11 +26,12 @@ public class RuntimeConfigApplier {
     private final Counter successCounter;
     private final Counter failureCounter;
     private final Timer applyTimer;
-    @Autowired(required = false)
-    private SyncQueueRuntimeDefaults syncQueueProperties;
+    private final SyncQueueRuntimeDefaults syncQueueProperties;
 
-    public RuntimeConfigApplier(RateLimiter rateLimiter, MeterRegistry registry) {
+    public RuntimeConfigApplier(RateLimiter rateLimiter, MeterRegistry registry,
+                                @Nullable SyncQueueRuntimeDefaults syncQueueProperties) {
         this.rateLimiter = rateLimiter;
+        this.syncQueueProperties = syncQueueProperties;
         io.micrometer.core.instrument.Gauge.builder("controlplane_runtime_config_revision", revisionGauge, AtomicLong::get)
                 .register(registry);
         this.successCounter = Counter.builder("controlplane_runtime_config_updates_total")

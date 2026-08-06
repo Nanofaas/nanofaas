@@ -137,11 +137,6 @@ public class InvocationService {
         // and is waiting to be processed. And not returning the replay response, because we have already checked that the execution 
         // is new and not a replay.
         return new InvocationResponse(executionRecord.executionId(), "queued", null, null);
-
-        // Old code commented out for reference:
-        // InvocationEnqueueSupport.admitIfNew(lookup,
-        //        () -> InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, record));
-        // return new InvocationResponse(record.executionId(), "queued", null, null);
     }
 
     public Optional<ExecutionStatus> getStatus(String executionId) {

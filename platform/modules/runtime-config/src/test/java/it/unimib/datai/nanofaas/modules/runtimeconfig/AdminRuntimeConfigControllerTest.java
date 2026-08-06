@@ -32,7 +32,7 @@ class AdminRuntimeConfigControllerTest {
         RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
         RuntimeConfigValidator validator = new RuntimeConfigValidator();
 
-        RuntimeConfigApplier failingApplier = new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry()) {
+        RuntimeConfigApplier failingApplier = new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry(), null) {
             @Override
             public void apply(RuntimeConfigSnapshot snapshot, RuntimeConfigSnapshot previous, RuntimeConfigService service) {
                 service.restore(previous);
@@ -84,7 +84,7 @@ class AdminRuntimeConfigControllerTest {
         AdminRuntimeConfigController controller = new AdminRuntimeConfigController(
                 configService,
                 new RuntimeConfigValidator(),
-                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry())
+                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry(), null)
         );
         RuntimeConfigSnapshot before = configService.getSnapshot();
 
@@ -110,7 +110,7 @@ class AdminRuntimeConfigControllerTest {
         AdminRuntimeConfigController controller = new AdminRuntimeConfigController(
                 configService,
                 new RuntimeConfigValidator(),
-                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry())
+                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry(), null)
         );
         RuntimeConfigSnapshot before = configService.getSnapshot();
 
@@ -137,7 +137,7 @@ class AdminRuntimeConfigControllerTest {
         CountDownLatch releaseFirstApply = new CountDownLatch(1);
         AtomicInteger applyCalls = new AtomicInteger();
 
-        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry()) {
+        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry(), null) {
             @Override
             public void apply(RuntimeConfigSnapshot snapshot, RuntimeConfigSnapshot previous,
                               RuntimeConfigService service) {
@@ -202,7 +202,7 @@ class AdminRuntimeConfigControllerTest {
         return new AdminRuntimeConfigController(
                 configService,
                 new RuntimeConfigValidator(),
-                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry())
+                new RuntimeConfigApplier(rateLimiter, new SimpleMeterRegistry(), null)
         );
     }
 }

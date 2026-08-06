@@ -163,6 +163,8 @@ public class ExecutionCompletionHandler {
         completeExecution(executionRecord, dispatchResult, completedAttempt);
     }
 
+    // S2445: the record IS the per-execution lock object; a dedicated monitor would serialize all executions.
+    @SuppressWarnings("java:S2445")
     private void completeExecution(ExecutionRecord executionRecord, DispatchResult dispatchResult, Integer completedAttempt) {
         FinalCompletion completion;
         synchronized (executionRecord) {

@@ -25,8 +25,9 @@ public class RuntimeConfigConfiguration {
     @Bean
     RuntimeConfigApplier runtimeConfigApplier(
             RateLimiter rateLimiter,
-            MeterRegistry meterRegistry) {
-        return new RuntimeConfigApplier(rateLimiter, meterRegistry);
+            MeterRegistry meterRegistry,
+            SyncQueueRuntimeDefaults syncQueueDefaults) {
+        return new RuntimeConfigApplier(rateLimiter, meterRegistry, syncQueueDefaults);
     }
 
     @Bean

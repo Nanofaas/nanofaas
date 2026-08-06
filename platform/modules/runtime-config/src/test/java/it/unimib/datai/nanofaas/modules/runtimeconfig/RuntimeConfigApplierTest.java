@@ -21,7 +21,7 @@ class RuntimeConfigApplierTest {
         RateLimiter rateLimiter = new RateLimiter();
         rateLimiter.setMaxPerSecond(1000);
         MeterRegistry registry = new SimpleMeterRegistry();
-        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, registry);
+        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, registry, null);
         RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
 
         RuntimeConfigSnapshot previous = configService.getSnapshot();
@@ -49,7 +49,7 @@ class RuntimeConfigApplierTest {
         };
         rateLimiter.setMaxPerSecond(1000);
         MeterRegistry registry = new SimpleMeterRegistry();
-        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, registry);
+        RuntimeConfigApplier applier = new RuntimeConfigApplier(rateLimiter, registry, null);
         RuntimeConfigService configService = new RuntimeConfigService(rateLimiter, DEFAULT_SYNC_QUEUE_DEFAULTS);
 
         RuntimeConfigSnapshot previous = configService.getSnapshot();

@@ -150,10 +150,10 @@ public final class ReactiveInvocationCoordinator {
                 .subscribe(
                         result -> completionHandler.completeOffloadedExecution(executionRecord.executionId(), result),
                         ex -> {
+                            String detail = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                             OffloadFailedException failure = ex instanceof OffloadFailedException ofe
                                     ? ofe
-                                    : new OffloadFailedException(target, false,
-                                            ex.getMessage() != null ? ex.getMessage() : ex.toString());
+                                    : new OffloadFailedException(target, false, detail);
                             completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
                         });
     }

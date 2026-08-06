@@ -99,7 +99,7 @@ public class SyncQueueService implements SyncQueueGateway {
             metrics.admitted(task.functionName());
         }
         synchronized (workSignal) {
-            workSignal.notify();
+            workSignal.notifyAll();
         }
     }
 
