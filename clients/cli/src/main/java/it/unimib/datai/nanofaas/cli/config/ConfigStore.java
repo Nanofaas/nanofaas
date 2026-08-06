@@ -8,12 +8,12 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 public final class ConfigStore {
     private final Path path;
     private final ObjectMapper yaml;
-    private final Function<String, String> getenv;
+    private final UnaryOperator<String> getenv;
 
     public ConfigStore() {
         this(defaultPath(), System::getenv);
@@ -23,7 +23,7 @@ public final class ConfigStore {
         this(path, System::getenv);
     }
 
-    public ConfigStore(Path path, Function<String, String> getenv) {
+    public ConfigStore(Path path, UnaryOperator<String> getenv) {
         this.path = path;
         this.getenv = getenv;
         this.yaml = new ObjectMapper(new YAMLFactory())

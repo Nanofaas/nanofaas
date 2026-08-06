@@ -12,6 +12,7 @@ import org.springframework.context.SmartLifecycle;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
@@ -22,7 +23,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     private final InvocationService invocationService;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
-    private volatile ExecutorService executor;
+    private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
 
     private final BlockingQueue<String> activeFunctions = new LinkedBlockingQueue<>();
     private final Set<String> enqueuedFunctions = ConcurrentHashMap.newKeySet();
@@ -53,11 +54,11 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             }
             log.info("Scheduler starting");
             ExecutorService newExecutor = SchedulerLifecycleSupport.newSingleThreadExecutor("nanofaas-scheduler");
-            executor = newExecutor;
+            executor.set(newExecutor);
             try {
                 newExecutor.submit(this::loop);
             } catch (RuntimeException e) {
-                executor = null;
+                executor.set(null);
                 running.set(false);
                 SchedulerLifecycleSupport.shutdownExecutor(newExecutor, log, COMPONENT_NAME);
                 throw e;
@@ -69,11 +70,10 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     public void stop() {
         ExecutorService executorToStop;
         synchronized (lifecycleMonitor) {
-            if (!running.getAndSet(false) && executor == null) {
+            if (!running.getAndSet(false) && executor.get() == null) {
                 return;
             }
-            executorToStop = executor;
-            executor = null;
+            executorToStop = executor.getAndSet(null);
         }
         SchedulerLifecycleSupport.shutdownExecutor(executorToStop, log, COMPONENT_NAME);
     }
