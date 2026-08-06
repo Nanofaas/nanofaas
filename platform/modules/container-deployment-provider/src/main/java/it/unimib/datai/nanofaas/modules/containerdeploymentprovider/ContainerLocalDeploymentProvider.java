@@ -250,10 +250,10 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
 
     private static String normalizeName(String functionName) {
         String normalized = functionName == null ? "fn" : functionName.toLowerCase()
-                .replaceAll("[^a-z0-9-]", "-")
+                .replaceAll("[^a-z0-9-]+", "-")
                 .replaceAll("-{2,}", "-")
-                .replaceAll("^-+", "")
-                .replaceAll("-+$", "");
+                .replaceAll("^-++", "")
+                .replaceAll("-++$", "");
         return normalized.isBlank() ? "fn" : normalized;
     }
 

@@ -126,7 +126,7 @@ public class FunctionSpecResolver {
         }
 
         int target = Optional.ofNullable(config.targetInFlightPerPod()).orElse(DEFAULT_TARGET_PER_POD);
-        target = Math.max(min, Math.min(max, target));
+        target = Math.clamp(target, min, max);
 
         return new ConcurrencyControlConfig(
                 config.mode(),

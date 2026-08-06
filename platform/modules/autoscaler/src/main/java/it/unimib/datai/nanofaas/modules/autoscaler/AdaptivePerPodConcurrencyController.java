@@ -76,7 +76,7 @@ public class AdaptivePerPodConcurrencyController {
     }
 
     private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
+        return Math.clamp(value, min, max);
     }
 
     private static int valueOrDefault(Integer value, int fallback) {

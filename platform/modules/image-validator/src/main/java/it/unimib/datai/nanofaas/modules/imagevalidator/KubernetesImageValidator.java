@@ -208,8 +208,8 @@ public class KubernetesImageValidator implements ImageValidator {
 
     private static String validationPodName(String functionName) {
         String normalized = functionName == null ? "fn" : functionName.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9-]", "-")
-                .replaceAll("-{2,}", "-");
+                .replaceAll("[^a-z0-9-]+", "-")
+                .replaceAll("-{2,}+", "-");
         normalized = normalized.replaceAll("^-+", "").replaceAll("-+$", "");
         if (normalized.isBlank()) {
             normalized = "fn";

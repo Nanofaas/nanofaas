@@ -31,7 +31,7 @@ public final class ScalingDecisionCalculator {
         }
 
         int desiredReplicas = (int) Math.ceil(maxRatio * normalizedCurrentReplicas);
-        desiredReplicas = Math.max(scaling.minReplicas(), Math.min(scaling.maxReplicas(), desiredReplicas));
+        desiredReplicas = Math.clamp(desiredReplicas, scaling.minReplicas(), scaling.maxReplicas());
 
         int effectiveReplicas = currentReplicas <= 0
                 ? Math.max(1, scaling.minReplicas())
