@@ -39,8 +39,9 @@ class HttpJsonTest {
 
         String reprinted = json.toJson(json.fromJson(fromControlPlane, FunctionDetails.class));
 
-        assertThat(reprinted).contains("\"deployment\":\"fn-word-stats\"");
-        assertThat(reprinted).contains("\"namespace\":\"nanofaas-e2e\"");
+        assertThat(reprinted)
+                .contains("\"deployment\":\"fn-word-stats\"")
+                .contains("\"namespace\":\"nanofaas-e2e\"");
     }
 
     @Test

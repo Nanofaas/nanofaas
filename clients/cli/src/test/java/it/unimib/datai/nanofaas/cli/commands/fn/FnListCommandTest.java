@@ -41,8 +41,9 @@ class FnListCommandTest {
         assertThat(result.exitCode()).isZero();
 
         String output = result.stdout();
-        assertThat(output).contains("echo\timg/echo:1");
-        assertThat(output).contains("greet\timg/greet:2");
+        assertThat(output)
+                .contains("echo\timg/echo:1")
+                .contains("greet\timg/greet:2");
     }
 
     @Test

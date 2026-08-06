@@ -127,9 +127,10 @@ class OffloadPressureE2eTest {
         assertThat(second.get(15, TimeUnit.SECONDS).body()).contains("slow-local-ok");
 
         String metrics = get(edgeManagementUrl + "/actuator/prometheus");
-        assertThat(metrics).contains(
-                "nanofaas_offload_total{function=\"" + FUNCTION + "\",trigger=\"depth\"}");
-        assertThat(metrics).doesNotContain("nanofaas_offload_failure_total");
+        assertThat(metrics)
+                .contains(
+                        "nanofaas_offload_total{function=\"" + FUNCTION + "\",trigger=\"depth\"}")
+                .doesNotContain("nanofaas_offload_failure_total");
         assertThat(metric(metrics, "function_retry_total{function=\"" + FUNCTION + "\"}"))
                 .isEqualTo(0.0);
     }

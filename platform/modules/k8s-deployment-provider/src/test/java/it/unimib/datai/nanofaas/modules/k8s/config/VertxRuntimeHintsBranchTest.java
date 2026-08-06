@@ -37,8 +37,9 @@ class VertxRuntimeHintsBranchTest {
             classes = result;
         }
 
-        assertThat(classes).contains("demo.pkg.Alpha", "demo.pkg.Beta$Inner");
-        assertThat(classes).doesNotContain("demo.pkg.package-info", "demo.pkg.module-info");
+        assertThat(classes)
+                .contains("demo.pkg.Alpha", "demo.pkg.Beta$Inner")
+                .doesNotContain("demo.pkg.package-info", "demo.pkg.module-info");
     }
 
     @Test

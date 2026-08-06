@@ -71,7 +71,8 @@ class StaticPerPodConcurrencyControllerTest {
     void compute_enforcesMinimumOne() {
         StaticPerPodConcurrencyController controller = new StaticPerPodConcurrencyController();
         int effective = controller.computeEffectiveConcurrency(spec(6, 2), 0);
-        assertThat(effective).isGreaterThanOrEqualTo(1);
-        assertThat(effective).isLessThanOrEqualTo(6);
+        assertThat(effective)
+                .isGreaterThanOrEqualTo(1)
+                .isLessThanOrEqualTo(6);
     }
 }

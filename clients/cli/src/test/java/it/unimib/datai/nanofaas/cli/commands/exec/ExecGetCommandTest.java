@@ -118,8 +118,9 @@ class ExecGetCommandTest {
 
         assertThat(server.getRequestCount()).isEqualTo(2);
         String output = out.toString();
-        assertThat(output).contains("\"status\":\"running\"");
-        assertThat(output).contains("\"status\":\"error\"");
+        assertThat(output)
+                .contains("\"status\":\"running\"")
+                .contains("\"status\":\"error\"");
     }
 
     @Test
