@@ -32,65 +32,65 @@ public class Metrics {
     }
 
     public void enqueue(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.enqueue().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.enqueue().increment();
         }
     }
 
     public void dispatch(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.dispatch().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.dispatch().increment();
         }
     }
 
     public void success(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.success().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.success().increment();
         }
     }
 
     public void error(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.error().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.error().increment();
         }
     }
 
     public void retry(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.retry().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.retry().increment();
         }
     }
 
     public void timeout(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.timeout().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.timeout().increment();
         }
     }
 
     public void queueRejected(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.queueRejected().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.queueRejected().increment();
         }
     }
 
     public void coldStart(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.coldStart().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.coldStart().increment();
         }
     }
 
     public void warmStart(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters != null) {
-            meters.warmStart().increment();
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            metersFor.warmStart().increment();
         }
     }
 
@@ -111,11 +111,11 @@ public class Metrics {
     }
 
     FunctionTimers timers(String function) {
-        FunctionMeters meters = metersOrNull(function);
-        if (meters == null) {
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor == null) {
             return removedFunctionTimers;
         }
-        return meters.timers();
+        return metersFor.timers();
     }
 
     public void registerFunction(String function) {
