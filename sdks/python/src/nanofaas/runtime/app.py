@@ -42,6 +42,7 @@ from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from nanofaas.sdk import context, decorator, logging as sdk_logging
+from typing import Annotated
 import requests
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -82,7 +83,7 @@ async def lifespan(app: FastAPI):
             else:
                 logger.info("Successfully registered handler")
         except Exception as e:
-            logger.error(f"Failed to load handler module {HANDLER_MODULE}: {e}", exc_info=True)
+            logger.exception(f"Failed to load handler module {HANDLER_MODULE}: {e}")
     yield
 
 app = FastAPI(title="nanoFaaS Python Runtime", lifespan=lifespan)
@@ -222,14 +223,20 @@ def _schedule_callback(background_tasks: BackgroundTasks, *args) -> bool:
     background_tasks.add_task(_send_callback_with_slot, *args)
     return True
 
-@app.post("/invoke")
+@app.post(
+    "/invoke",
+    responses={
+        400: {"description": "Execution ID required"},
+        500: {"description": "No function registered with @nanofaas_function"},
+    },
+)
 async def invoke(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_execution_id: str | None = Header(None),
-    x_trace_id: str | None = Header(None),
-    x_callback_url: str | None = Header(None),
-    x_dispatch_attempt: str | None = Header(None),
+    x_execution_id: Annotated[str | None, Header()] = None,
+    x_trace_id: Annotated[str | None, Header()] = None,
+    x_callback_url: Annotated[str | None, Header()] = None,
+    x_dispatch_attempt: Annotated[str | None, Header()] = None,
 ):
     """Handle a single function invocation request.
 
