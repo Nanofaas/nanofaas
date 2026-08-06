@@ -243,12 +243,10 @@ def _fail_response(
     x_dispatch_attempt: str | None,
     *,
     status_code: int,
-    code: str,
-    message: str,
+    error: dict,
     count_failure: bool,
 ) -> JSONResponse:
     """Build the shared failure response: error body, callback, optional failure counter."""
-    error = {"code": code, "message": message}
     if count_failure:
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
     if callback_url:
@@ -362,14 +360,14 @@ async def invoke(
     except json.JSONDecodeError:
         return _fail_response(
             background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
-            status_code=400, code="INVALID_JSON",
-            message="Request body must be valid JSON", count_failure=False,
+            status_code=400, count_failure=False,
+            error={"code": "INVALID_JSON", "message": "Request body must be valid JSON"},
         )
     except asyncio.TimeoutError:
         return _fail_response(
             background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
-            status_code=504, code="HANDLER_TIMEOUT",
-            message="Handler exceeded configured timeout", count_failure=True,
+            status_code=504, count_failure=True,
+            error={"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"},
         )
     except Exception as e:
         logger.exception(f"Handler error in execution {execution_id}: {e}")
