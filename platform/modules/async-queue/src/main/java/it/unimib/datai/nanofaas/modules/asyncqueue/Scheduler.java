@@ -98,11 +98,10 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         while (running.get()) {
             try {
                 String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
-                if (functionName == null) {
-                    continue;
+                if (functionName != null) {
+                    enqueuedFunctions.remove(functionName);
+                    processFunction(functionName);
                 }
-                enqueuedFunctions.remove(functionName);
-                processFunction(functionName);
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 break;

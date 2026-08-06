@@ -176,9 +176,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 if (isTimedOut(item, now)) {
                     iterator.remove();
                     timedOut.add(item);
-                    continue;
-                }
-                if (selector.test(item.task())) {
+                } else if (selector.test(item.task())) {
                     selected = item;
                     break;
                 }

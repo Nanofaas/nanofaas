@@ -107,15 +107,13 @@ public class InternalScaler implements SmartLifecycle {
     void scalingLoop() {
         try {
             for (RegisteredFunction registeredFunction : registry.listRegistered()) {
-                if (!deploymentCoordinator.isManagedDeployment(registeredFunction)) {
-                    continue;
-                }
                 FunctionSpec spec = registeredFunction.spec();
                 ScalingConfig scaling = spec.scalingConfig();
-                if (scaling == null || scaling.strategy() != ScalingStrategy.INTERNAL) {
-                    continue;
+                if (deploymentCoordinator.isManagedDeployment(registeredFunction)
+                        && scaling != null
+                        && scaling.strategy() == ScalingStrategy.INTERNAL) {
+                    scaleFunction(registeredFunction, spec, scaling);
                 }
-                scaleFunction(registeredFunction, spec, scaling);
             }
         } catch (Exception ex) {
             log.error("Error in scaling loop", ex);

@@ -56,25 +56,24 @@ public class FnTestCommand implements Callable<Integer> {
                 continue;
             }
 
-            if (!"success".equalsIgnoreCase(response.status())) {
+            if ("success".equalsIgnoreCase(response.status())) {
+                JsonNode actual = json.valueToTree(response.output());
+                if (actual.equals(payload.expected())) {
+                    passed++;
+                    System.out.printf("\u2705 %s - %s%n", file.getFileName(), payload.description());
+                } else {
+                    failed++;
+                    System.out.printf("\u274c %s - %s%n", file.getFileName(), payload.description());
+                    System.out.printf("  expected: %s%n", compact(payload.expected()));
+                    System.out.printf("  actual:   %s%n", compact(actual));
+                }
+            } else {
                 failed++;
                 System.out.printf("\u274c %s - %s%n", file.getFileName(), payload.description());
                 System.out.printf("  status: %s%n", response.status());
                 if (response.error() != null) {
                     System.out.printf("  error:  %s%n", compact(json.valueToTree(response.error())));
                 }
-                continue;
-            }
-
-            JsonNode actual = json.valueToTree(response.output());
-            if (actual.equals(payload.expected())) {
-                passed++;
-                System.out.printf("\u2705 %s - %s%n", file.getFileName(), payload.description());
-            } else {
-                failed++;
-                System.out.printf("\u274c %s - %s%n", file.getFileName(), payload.description());
-                System.out.printf("  expected: %s%n", compact(payload.expected()));
-                System.out.printf("  actual:   %s%n", compact(actual));
             }
         }
 

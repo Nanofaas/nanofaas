@@ -106,6 +106,18 @@ class InternalScalerTest {
     }
 
     @Test
+    void scalingLoop_ignoresFunctionsWithoutScalingConfig() {
+        RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, null);
+
+        when(registry.listRegistered()).thenReturn(List.of(spec));
+
+        scaler.scalingLoop();
+
+        verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
+        verify(deploymentCoordinator, never()).getReadyReplicas(any());
+    }
+
+    @Test
     void scalingLoop_ignoresNonDeploymentFunctions() {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));

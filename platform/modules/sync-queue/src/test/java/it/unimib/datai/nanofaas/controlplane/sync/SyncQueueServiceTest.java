@@ -163,6 +163,36 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void findReadyMatching_timesOutStaleItemThenSelectsReadyItem() throws Exception {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofMillis(100), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask stale = new InvocationTask("stale", "fn", spec, new InvocationRequest("stale", Map.of()), null, null, Instant.now(), 1);
+        ExecutionRecord staleRecord = new ExecutionRecord("stale", stale);
+        store.put(staleRecord);
+        service.enqueueOrThrow(stale);
+
+        Thread.sleep(300); // exceed syncQueueMaxQueueWait (100ms) before enqueuing the ready item
+
+        InvocationTask ready = new InvocationTask("ready", "ready", spec, new InvocationRequest("ready", Map.of()), null, null, Instant.now(), 1);
+        store.put(new ExecutionRecord("ready", ready));
+        service.enqueueOrThrow(ready);
+
+        SyncQueueItem selected = service.findReadyMatching(Instant.now(), candidate -> candidate.functionName().equals("ready"));
+
+        assertEquals(ready, selected.task());
+        assertEquals(1, service.queuedItems());
+        assertTrue(staleRecord.completion().isDone());
+        assertEquals("QUEUE_TIMEOUT", staleRecord.completion().join().error().code());
+    }
+
+    @Test
     void removeFunctionState_drainsQueuedItemsAndRemovesMeters() {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3

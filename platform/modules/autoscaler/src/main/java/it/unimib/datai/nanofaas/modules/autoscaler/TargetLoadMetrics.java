@@ -44,10 +44,7 @@ public class TargetLoadMetrics {
         String function = spec.name();
 
         for (ScalingMetric metric : scaling.metrics()) {
-            if (metric == null || metric.type() == null) {
-                continue;
-            }
-            String scalingType = mapScalingType(metric.type());
+            String scalingType = (metric != null && metric.type() != null) ? mapScalingType(metric.type()) : null;
             if (scalingType == null) {
                 continue;
             }
