@@ -15,6 +15,8 @@ pluginManagement {
 
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+    // Build health / dependency analysis for all projects (settings plugin since 2.0).
+    id 'com.autonomousapps.build-health' version '3.18.0'
 }
 
 rootProject.name = 'nanofaas'
