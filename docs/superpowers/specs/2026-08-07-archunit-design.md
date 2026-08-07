@@ -35,7 +35,7 @@ Gira sempre con `./gradlew test` (già in CI gitops.yml) — nessuna modifica CI
 
 | # | Regola | Invarianza |
 |---|---|---|
-| R1 | `slices().matching("..controlplane.(*)..").should().beFreeOfCycles()` | nessun ciclo tra i package del core |
+| R1 | `slices().matching("..controlplane.(*)..").should().beFreeOfCycles()` — **IGNORATA al 2026-08-07** (`@ArchIgnore` + commento, decisione utente): il codice attuale ha 5 cicli reali (config↔service↔execution/sync/offload, deployment↔registry); il refactor è rimandato a un tranche futuro, poi l'annotazione si rimuove | nessun ciclo tra i package del core |
 | R2 | `noClasses().that().resideOutsideOfPackage("..controlplane.api..").should().dependOnClassesThat().resideInAPackage("..controlplane.api..")` | api = entry point, i layer sotto non risalgono (verificato: nessuna dipendenza service/dispatch → api oggi) |
 | R3 | `noClasses().that().resideInAPackage("..controlplane..").should().dependOnClassesThat().resideInAPackage("..modules..")` | **optionalità dei moduli**: il core funziona senza moduli (verificato: zero import core → modules) |
 | R4 | `noClasses().that().resideInAnyPackage("..controlplane.dispatch..", "..controlplane.execution..", "..controlplane.deployment..").should().dependOnClassesThat().resideInAPackage("..controlplane.service..")` | direzione unica api → service → dispatch (verificato per dispatch; execution/deployment da confermare a implementazione: se violano, non adeguare la regola — riportarlo, può essere un difetto reale) |

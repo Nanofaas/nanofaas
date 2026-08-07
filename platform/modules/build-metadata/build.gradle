@@ -12,4 +12,7 @@ dependencyManagement {
 dependencies {
     implementation project(':common')
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
 }
