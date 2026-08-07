@@ -1,17 +1,19 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 @Configuration
+@ComponentScan("it.unimib.datai.nanofaas.modules.syncqueue")
 @EnableConfigurationProperties(SyncQueueProperties.class)
 public class SyncQueueConfiguration {
 

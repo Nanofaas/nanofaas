@@ -1,12 +1,15 @@
-package it.unimib.datai.nanofaas.controlplane.sync;
+package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 

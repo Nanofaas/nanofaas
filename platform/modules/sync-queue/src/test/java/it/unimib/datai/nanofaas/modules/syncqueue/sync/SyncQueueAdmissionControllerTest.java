@@ -1,6 +1,8 @@
-package it.unimib.datai.nanofaas.controlplane.sync;
+package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
+import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

@@ -1,4 +1,6 @@
-package it.unimib.datai.nanofaas.controlplane.sync;
+package it.unimib.datai.nanofaas.modules.syncqueue.sync;
+
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 
 public record SyncQueueAdmissionResult(
         boolean accepted,

@@ -12,7 +12,6 @@ dependencyManagement {
 dependencies {
     implementation project(':common')
     implementation project(':control-plane')
-    implementation project(':control-plane-modules:async-queue')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

@@ -1,10 +1,14 @@
-package it.unimib.datai.nanofaas.controlplane.sync;
+package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 

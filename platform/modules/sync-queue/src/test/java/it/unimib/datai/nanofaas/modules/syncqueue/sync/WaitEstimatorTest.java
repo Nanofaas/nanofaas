@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.controlplane.sync;
+package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
 import org.junit.jupiter.api.Test;
 

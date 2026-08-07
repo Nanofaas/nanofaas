@@ -1,8 +1,9 @@
-package it.unimib.datai.nanofaas.controlplane.scheduler;
+package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueItem;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

@@ -1,8 +1,12 @@
-package it.unimib.datai.nanofaas.controlplane.scheduler;
+package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueItem;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;

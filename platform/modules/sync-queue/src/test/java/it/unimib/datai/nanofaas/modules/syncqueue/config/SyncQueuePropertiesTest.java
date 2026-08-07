@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.controlplane.config;
+package it.unimib.datai.nanofaas.modules.syncqueue.config;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
