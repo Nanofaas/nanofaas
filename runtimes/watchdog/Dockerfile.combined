@@ -33,6 +33,9 @@ RUN ./gradlew :services:java:warm-echo:bootJar --no-daemon
 # Stage 3: Final minimal image
 FROM gcr.io/distroless/java25-debian13:nonroot
 
+# The :nonroot tag already runs as UID 65532; make it explicit so the intent survives tooling
+USER 65532
+
 # Install minimal dependencies
 RUN apk add --no-cache tini
 

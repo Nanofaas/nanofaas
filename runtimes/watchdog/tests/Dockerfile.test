@@ -33,11 +33,15 @@ COPY --from=builder /build/target/release/nanofaas-watchdog /usr/local/bin/watch
 
 # Copy test fixtures
 COPY tests/fixtures /tests/fixtures
-RUN chmod +x /tests/fixtures/*.py /tests/fixtures/*.sh
 
 # Copy integration tests
 COPY tests/integration /tests/integration
-RUN chmod +x /tests/integration/*.sh
+
+# Run integration tests as non-root; tests only write under /tmp (world-writable)
+RUN chmod +x /tests/fixtures/*.py /tests/fixtures/*.sh \
+    && chmod +x /tests/integration/*.sh \
+    && addgroup -S watchtest && adduser -S -G watchtest watchtest
+USER watchtest
 
 # Default working directory
 WORKDIR /tests
