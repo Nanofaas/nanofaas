@@ -65,12 +65,10 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-webflux-test'
     testImplementation 'org.springframework.boot:spring-boot-webtestclient'
     testImplementation 'io.projectreactor:reactor-test'
-    testImplementation 'org.yaml:snakeyaml:2.2'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter:2.0.3'
     testImplementation 'org.testcontainers:testcontainers:2.0.3'
     testImplementation 'org.awaitility:awaitility:4.2.1'
-    testImplementation 'io.rest-assured:rest-assured:5.4.0'
 }
 
 tasks.register('printSelectedControlPlaneModules') {

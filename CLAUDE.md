@@ -118,7 +118,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 ## Testing
 
 - JUnit 5, tests named `*Test.java`
-- E2E uses Testcontainers + RestAssured
+- E2E uses Testcontainers + WebTestClient
 - K8s E2E requires `KUBECONFIG` environment variable
 - Fabric8 mock server for K8s unit tests
 
