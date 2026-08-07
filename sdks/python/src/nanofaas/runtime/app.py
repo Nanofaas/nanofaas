@@ -42,6 +42,7 @@ from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from nanofaas.sdk import context, decorator, logging as sdk_logging
+from typing import Annotated
 import requests
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -82,7 +83,7 @@ async def lifespan(app: FastAPI):
             else:
                 logger.info("Successfully registered handler")
         except Exception as e:
-            logger.error(f"Failed to load handler module {HANDLER_MODULE}: {e}", exc_info=True)
+            logger.exception(f"Failed to load handler module {HANDLER_MODULE}: {e}")
     yield
 
 app = FastAPI(title="nanoFaaS Python Runtime", lifespan=lifespan)
@@ -215,6 +216,51 @@ async def _send_callback_with_slot(*args):
         _callback_slots.release()
 
 
+def _consume_cold_start() -> bool:
+    """Atomically read and clear the first-invocation flag."""
+    global _first_invocation
+    with _cold_start_lock:
+        is_cold_start = _first_invocation
+        _first_invocation = False
+    return is_cold_start
+
+
+def _build_cold_start_headers(is_cold_start: bool) -> dict[str, str]:
+    """Return cold-start response headers, incrementing the cold-start metrics."""
+    if not is_cold_start:
+        return {}
+    init_duration_ms = int((time.monotonic() - CONTAINER_START_TIME) * 1000)
+    RUNTIME_COLD_START_TOTAL.labels(function=FUNCTION_NAME).inc()
+    RUNTIME_INIT_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(init_duration_ms / 1000.0)
+    return {"X-Cold-Start": "true", "X-Init-Duration-Ms": str(init_duration_ms)}
+
+
+def _fail_response(
+    background_tasks: BackgroundTasks,
+    callback_url: str | None,
+    execution_id: str,
+    trace_id: str | None,
+    x_dispatch_attempt: str | None,
+    *,
+    status_code: int,
+    error: dict,
+    count_failure: bool,
+) -> JSONResponse:
+    """Build the shared failure response: error body, callback, optional failure counter."""
+    if count_failure:
+        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
+    if callback_url:
+        _schedule_callback(
+            background_tasks,
+            callback_url,
+            execution_id,
+            trace_id,
+            {"success": False, "output": None, "error": error},
+            x_dispatch_attempt,
+        )
+    return JSONResponse(status_code=status_code, content={"error": error})
+
+
 def _schedule_callback(background_tasks: BackgroundTasks, *args) -> bool:
     if not _callback_slots.acquire(blocking=False):
         logger.warning("Dropping callback because the callback queue is full")
@@ -222,14 +268,20 @@ def _schedule_callback(background_tasks: BackgroundTasks, *args) -> bool:
     background_tasks.add_task(_send_callback_with_slot, *args)
     return True
 
-@app.post("/invoke")
+@app.post(
+    "/invoke",
+    responses={
+        400: {"description": "Execution ID required"},
+        500: {"description": "No function registered with @nanofaas_function"},
+    },
+)
 async def invoke(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_execution_id: str | None = Header(None),
-    x_trace_id: str | None = Header(None),
-    x_callback_url: str | None = Header(None),
-    x_dispatch_attempt: str | None = Header(None),
+    x_execution_id: Annotated[str | None, Header()] = None,
+    x_trace_id: Annotated[str | None, Header()] = None,
+    x_callback_url: Annotated[str | None, Header()] = None,
+    x_dispatch_attempt: Annotated[str | None, Header()] = None,
 ):
     """Handle a single function invocation request.
 
@@ -278,10 +330,7 @@ async def invoke(
         logger.error("No handler registered")
         raise HTTPException(status_code=500, detail="No function registered with @nanofaas_function")
 
-    global _first_invocation
-    with _cold_start_lock:
-        is_cold_start = _first_invocation
-        _first_invocation = False
+    is_cold_start = _consume_cold_start()
 
     start = time.perf_counter()
     RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
@@ -305,40 +354,21 @@ async def invoke(
                 background_tasks, callback_url, execution_id, trace_id, result, x_dispatch_attempt
             )
 
-        headers = {}
-        if is_cold_start:
-            init_duration_ms = int((time.monotonic() - CONTAINER_START_TIME) * 1000)
-            headers["X-Cold-Start"] = "true"
-            headers["X-Init-Duration-Ms"] = str(init_duration_ms)
-            RUNTIME_COLD_START_TOTAL.labels(function=FUNCTION_NAME).inc()
-            RUNTIME_INIT_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(init_duration_ms / 1000.0)
+        headers = _build_cold_start_headers(is_cold_start)
 
         return JSONResponse(content=output if isinstance(output, (dict, list)) else {"result": output}, headers=headers)
     except json.JSONDecodeError:
-        error = {"code": "INVALID_JSON", "message": "Request body must be valid JSON"}
-        if callback_url:
-            _schedule_callback(
-                background_tasks,
-                callback_url,
-                execution_id,
-                trace_id,
-                {"success": False, "output": None, "error": error},
-                x_dispatch_attempt,
-            )
-        return JSONResponse(status_code=400, content={"error": error})
+        return _fail_response(
+            background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
+            status_code=400, count_failure=False,
+            error={"code": "INVALID_JSON", "message": "Request body must be valid JSON"},
+        )
     except asyncio.TimeoutError:
-        error = {"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"}
-        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
-        if callback_url:
-            _schedule_callback(
-                background_tasks,
-                callback_url,
-                execution_id,
-                trace_id,
-                {"success": False, "output": None, "error": error},
-                x_dispatch_attempt,
-            )
-        return JSONResponse(status_code=504, content={"error": error})
+        return _fail_response(
+            background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
+            status_code=504, count_failure=True,
+            error={"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"},
+        )
     except Exception as e:
         logger.exception(f"Handler error in execution {execution_id}: {e}")
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
