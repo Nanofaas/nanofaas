@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.junit.jupiter.api.Test;
 
 import static org.mockito.Mockito.mock;
