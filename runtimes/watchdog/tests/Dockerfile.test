@@ -39,6 +39,10 @@ RUN chmod +x /tests/fixtures/*.py /tests/fixtures/*.sh
 COPY tests/integration /tests/integration
 RUN chmod +x /tests/integration/*.sh
 
+# Run integration tests as non-root; tests only write under /tmp (world-writable)
+RUN addgroup -S watchtest && adduser -S -G watchtest watchtest
+USER watchtest
+
 # Default working directory
 WORKDIR /tests
 

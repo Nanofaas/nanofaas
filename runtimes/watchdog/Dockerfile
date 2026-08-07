@@ -26,4 +26,7 @@ LABEL org.opencontainers.image.source="https://github.com/nanofaas/nanofaas"
 
 COPY --from=builder /watchdog /watchdog
 
+# Run as non-root (UID 65534 = nobody; numeric UID works on scratch without /etc/passwd)
+USER 65534:65534
+
 ENTRYPOINT ["/watchdog"]
