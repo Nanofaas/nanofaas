@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -44,13 +45,6 @@ class InternalScalerResilienceTest {
                 new ScalingProperties(5000L, 1, 10),
                 new ColdStartTracker()
         );
-        lenient().when(deploymentCoordinator.isManagedDeployment(any())).thenAnswer(invocation -> {
-            RegisteredFunction function = invocation.getArgument(0);
-            return function != null
-                    && function.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT
-                    && function.deploymentMetadata().deploymentBackend() != null
-                    && !function.deploymentMetadata().deploymentBackend().isBlank();
-        });
     }
 
     @Test
@@ -75,14 +69,14 @@ class InternalScalerResilienceTest {
         );
 
         when(registry.listRegistered()).thenReturn(List.of(broken, healthy));
-        when(deploymentCoordinator.getReadyReplicas(broken)).thenReturn(1);
-        when(deploymentCoordinator.getReadyReplicas(healthy)).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(target(broken))).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(target(healthy))).thenReturn(1);
         when(metricsReader.readMetric(eq("broken"), any())).thenReturn(10.0);
         when(metricsReader.readMetric(eq("healthy"), any())).thenReturn(15.0);
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(healthy, 3);
+        verify(deploymentCoordinator).setReplicas(target(healthy), 3);
     }
 
     private RegisteredFunction spec(String name, ScalingConfig scalingConfig) {
@@ -102,5 +96,8 @@ class InternalScalerResilienceTest {
                 null,
                 scalingConfig
         ), new DeploymentMetadata(ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null));
+    }
+    private static ManagedDeploymentTarget target(RegisteredFunction function) {
+        return new ManagedDeploymentTarget(function.name(), function.deploymentMetadata().deploymentBackend());
     }
 }

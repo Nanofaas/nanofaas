@@ -1,9 +1,11 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.slf4j.Logger;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.SmartLifecycle;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -109,28 +112,29 @@ public class InternalScaler implements SmartLifecycle {
             for (RegisteredFunction registeredFunction : registry.listRegistered()) {
                 FunctionSpec spec = registeredFunction.spec();
                 ScalingConfig scaling = spec.scalingConfig();
-                if (deploymentCoordinator.isManagedDeployment(registeredFunction)
-                        && scaling != null
+                managedDeploymentTarget(registeredFunction).ifPresent(target -> {
+                    if (scaling != null
                         && scaling.strategy() == ScalingStrategy.INTERNAL) {
-                    scaleFunction(registeredFunction, spec, scaling);
-                }
+                        scaleFunction(target, spec, scaling);
+                    }
+                });
             }
         } catch (Exception ex) {
             log.error("Error in scaling loop", ex);
         }
     }
 
-    private void scaleFunction(RegisteredFunction registeredFunction, FunctionSpec spec, ScalingConfig scaling) {
+    private void scaleFunction(ManagedDeploymentTarget target, FunctionSpec spec, ScalingConfig scaling) {
         try {
-            evaluateAndScale(registeredFunction, spec, scaling);
+            evaluateAndScale(target, spec, scaling);
         } catch (Exception ex) {
             log.error("Error scaling function {}", spec.name(), ex);
         }
     }
 
-    private void evaluateAndScale(RegisteredFunction registeredFunction, FunctionSpec spec, ScalingConfig scaling) {
+    private void evaluateAndScale(ManagedDeploymentTarget target, FunctionSpec spec, ScalingConfig scaling) {
         String functionName = spec.name();
-        int currentReplicas = deploymentCoordinator.getReadyReplicas(registeredFunction);
+        int currentReplicas = deploymentCoordinator.getReadyReplicas(target);
         ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
 
         Instant now = Instant.now();
@@ -142,7 +146,7 @@ public class InternalScaler implements SmartLifecycle {
                 log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
                         functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
                 coldStartTracker.recordScaleUp(functionName, decision.currentReplicas(), decision.desiredReplicas());
-                deploymentCoordinator.setReplicas(registeredFunction, decision.desiredReplicas());
+                deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
                 cooldownTracker.recordScaleUp(functionName, now);
                 effectiveReplicas = decision.desiredReplicas();
             }
@@ -152,7 +156,7 @@ public class InternalScaler implements SmartLifecycle {
             } else {
                 log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
                         functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
-                deploymentCoordinator.setReplicas(registeredFunction, decision.desiredReplicas());
+                deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
                 cooldownTracker.recordScaleDown(functionName, now);
                 effectiveReplicas = decision.desiredReplicas();
             }
@@ -172,5 +176,15 @@ public class InternalScaler implements SmartLifecycle {
         cooldownTracker.clear(functionName);
         concurrencyControlCoordinator.removeFunctionState(functionName);
         coldStartTracker.removeFunctionState(functionName);
+    }
+
+    private static Optional<ManagedDeploymentTarget> managedDeploymentTarget(RegisteredFunction function) {
+        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+            return Optional.empty();
+        }
+        String backendId = function.deploymentMetadata().deploymentBackend();
+        return backendId == null || backendId.isBlank()
+                ? Optional.empty()
+                : Optional.of(new ManagedDeploymentTarget(function.name(), backendId));
     }
 }

@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.slf4j.Logger;
@@ -109,7 +110,7 @@ public class FunctionService {
             if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
                 throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
             }
-            managedDeploymentCoordinator.setReplicas(function, replicas);
+            managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas);
             log.info("Set replicas for function {} to {}", name, replicas);
             return Optional.of(replicas);
         });
@@ -124,7 +125,7 @@ public class FunctionService {
             if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
                 throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
             }
-            return Optional.of(managedDeploymentCoordinator.getReplicaStatus(function));
+            return Optional.of(managedDeploymentCoordinator.getReplicaStatus(requireManagedDeploymentTarget(function)));
         });
     }
 
@@ -139,7 +140,7 @@ public class FunctionService {
                         notified.add(listener);
                     }
                     if (existing.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT) {
-                        managedDeploymentCoordinator.deprovision(existing);
+                        managedDeploymentCoordinator.deprovision(requireManagedDeploymentTarget(existing));
                     }
                 } catch (RuntimeException e) {
                     rollbackRemovalListeners(existing.spec(), notified, e);
@@ -194,11 +195,10 @@ public class FunctionService {
     }
 
     private void rollbackProvisionedRegistration(RegisteredFunction function, RuntimeException failure) {
-        if (!managedDeploymentCoordinator.isManagedDeployment(function)) {
-            return;
-        }
+        Optional<ManagedDeploymentTarget> target = managedDeploymentTarget(function);
+        if (target.isEmpty()) return;
         try {
-            managedDeploymentCoordinator.deprovision(function);
+            managedDeploymentCoordinator.deprovision(target.get());
         } catch (RuntimeException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }
@@ -215,6 +215,21 @@ public class FunctionService {
             rollbackRegistrationListeners(spec.name(), notified, e);
             throw e;
         }
+    }
+
+    private ManagedDeploymentTarget requireManagedDeploymentTarget(RegisteredFunction function) {
+        return managedDeploymentTarget(function).orElseThrow(() -> new IllegalStateException(
+                "Function '" + function.name() + "' is not a managed deployment"));
+    }
+
+    private Optional<ManagedDeploymentTarget> managedDeploymentTarget(RegisteredFunction function) {
+        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+            return Optional.empty();
+        }
+        String backendId = function.deploymentMetadata().deploymentBackend();
+        return backendId == null || backendId.isBlank()
+                ? Optional.empty()
+                : Optional.of(new ManagedDeploymentTarget(function.name(), backendId));
     }
 
     private void rollbackRegistrationListeners(String functionName,

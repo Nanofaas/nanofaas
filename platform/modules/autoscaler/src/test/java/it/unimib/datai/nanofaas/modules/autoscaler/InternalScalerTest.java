@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -39,13 +40,6 @@ class InternalScalerTest {
     @BeforeEach
     void setUp() {
         scaler = new InternalScaler(registry, metricsReader, deploymentCoordinator, PROPS, coldStartTracker);
-        lenient().when(deploymentCoordinator.isManagedDeployment(any())).thenAnswer(invocation -> {
-            RegisteredFunction function = invocation.getArgument(0);
-            return function != null
-                    && function.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT
-                    && function.deploymentMetadata().deploymentBackend() != null
-                    && !function.deploymentMetadata().deploymentBackend().isBlank();
-        });
     }
 
     private RegisteredFunction functionSpec(String name, ExecutionMode mode, ScalingConfig scaling) {
@@ -69,14 +63,14 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
         // queue_depth = 15, target = 5, ratio = 3.0, desired = ceil(3.0 * 1) = 3
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).getReadyReplicas(spec);
-        verify(deploymentCoordinator).setReplicas(spec, 3);
+        verify(deploymentCoordinator).getReadyReplicas(target(spec));
+        verify(deploymentCoordinator).setReplicas(target(spec), 3);
     }
 
     @Test
@@ -137,7 +131,7 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
         // queue_depth = 5, target = 5, ratio = 1.0, desired = ceil(1.0 * 1) = 1 (same as current)
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(5.0);
 
@@ -153,13 +147,13 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(3);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(3);
         // queue_depth = 100, target = 1, ratio = 100, desired = ceil(100*3)=300 → clamped to 5
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(100.0);
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(spec, 5);
+        verify(deploymentCoordinator).setReplicas(target(spec), 5);
     }
 
     @Test
@@ -170,13 +164,13 @@ class InternalScalerTest {
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
         // 0 ready replicas, minReplicas=0 → currentReplicas should be treated as 1
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(0);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(0);
         // in_flight = 4, target = 2, ratio = 2.0, desired = ceil(2.0 * 1) = 2
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(4.0);
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(spec, 2);
+        verify(deploymentCoordinator).setReplicas(target(spec), 2);
     }
 
     @Test
@@ -186,13 +180,13 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(2);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(2);
         // in_flight = 0, target = 2, ratio = 0.0, desired = ceil(0 * 2) = 0, clamped to min=0
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(spec, 0);
+        verify(deploymentCoordinator).setReplicas(target(spec), 0);
     }
 
     @Test
@@ -232,7 +226,7 @@ class InternalScalerTest {
         ), new DeploymentMetadata(ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null));
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(4);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(4);
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(30.0);
 
         scaler.scalingLoop();
@@ -303,12 +297,12 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(spec)).thenReturn(1);
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
 
         scaler.scalingLoop();
         scaler.scalingLoop();
-        verify(deploymentCoordinator, times(1)).setReplicas(spec, 3);
+        verify(deploymentCoordinator, times(1)).setReplicas(target(spec), 3);
 
         Method removeFunctionState = InternalScaler.class.getDeclaredMethod("removeFunctionState", String.class);
         removeFunctionState.setAccessible(true);
@@ -316,6 +310,9 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(2)).setReplicas(spec, 3);
+        verify(deploymentCoordinator, times(2)).setReplicas(target(spec), 3);
+    }
+    private static ManagedDeploymentTarget target(RegisteredFunction function) {
+        return new ManagedDeploymentTarget(function.name(), function.deploymentMetadata().deploymentBackend());
     }
 }
