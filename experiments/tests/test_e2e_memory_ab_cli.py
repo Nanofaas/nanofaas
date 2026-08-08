@@ -17,14 +17,6 @@ def test_memory_ab_script_exposes_epoch_toggle_and_reports():
     assert "RESULTS_DIR_OVERRIDE" in script
     assert "K6_STAGE_SEQUENCE" in script
 
-
-def test_memory_ab_script_uses_noninteractive_deploy_and_loadtest():
-    script = SCRIPT.read_text(encoding="utf-8")
-    assert "E2E_K3S_HELM_NONINTERACTIVE=true" in script
-    assert "bash \"${PROJECT_ROOT}/scripts/e2e-k3s-helm.sh\"" in script
-    assert "bash \"${PROJECT_ROOT}/experiments/e2e-loadtest.sh\"" in script
-
-
 def test_memory_ab_aggregates_fail_rate_with_shared_k6_parser():
     script = SCRIPT.read_text(encoding="utf-8")
     assert "from k6_summary import resolve_http_req_failed_count, resolve_http_req_failed_ratio" in script

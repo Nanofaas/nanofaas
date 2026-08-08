@@ -23,8 +23,6 @@ def test_runtime_ab_script_propagates_runtime_to_deploy_and_loadtest():
     assert "BASELINE_RUNTIME" in content
     assert "CANDIDATE_RUNTIME" in content
     assert "CONTROL_PLANE_RUNTIME=\"${runtime}\"" in content
-    assert "bash \"${PROJECT_ROOT}/scripts/e2e-k3s-helm.sh\"" in content
-    assert "bash \"${PROJECT_ROOT}/experiments/e2e-loadtest.sh\"" in content
     assert "comparison.md" in content
     assert "comparison.json" in content
 

@@ -12,6 +12,7 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
 
 import java.net.URI;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
@@ -62,7 +63,7 @@ class CoreArchitectureTest {
     // devono avere il class file sotto platform/control-plane/.
     @ArchTest
     static final ArchRule controlplane_namespace_is_owned_by_core =
-            noClasses()
+            classes()
                     .that().resideInAPackage("it.unimib.datai.nanofaas.controlplane..")
                     .should(haveSourceInCoreModule())
                     .as("classes in the controlplane namespace must live in the control-plane module");

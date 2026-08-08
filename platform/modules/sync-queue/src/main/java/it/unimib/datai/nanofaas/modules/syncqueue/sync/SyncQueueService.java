@@ -21,6 +21,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -114,10 +115,15 @@ public class SyncQueueService implements SyncQueueGateway {
         if (timeoutMs <= 0 || queuedItems() > 0) {
             return;
         }
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
         synchronized (workSignal) {
             while (queuedItems() == 0) {
+                long remainingNanos = deadlineNanos - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    return;
+                }
                 try {
-                    workSignal.wait(timeoutMs);
+                    TimeUnit.NANOSECONDS.timedWait(workSignal, remainingNanos);
                 } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     return;

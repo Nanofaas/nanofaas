@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -112,6 +113,17 @@ class SyncQueueServiceTest {
 
         assertTrue(done.await(300, TimeUnit.MILLISECONDS));
         waiter.join(500);
+    }
+
+    @Test
+    void awaitWork_returnsWhenTimeoutExpiresWithoutWork() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        SyncQueueService service = createService(props, new ExecutionStore(),
+                new WaitEstimator(Duration.ofSeconds(30), 3), new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC());
+
+        assertTimeoutPreemptively(Duration.ofMillis(250), () -> service.awaitWork(10));
     }
 
     @Test

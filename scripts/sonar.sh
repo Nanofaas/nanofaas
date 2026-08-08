@@ -78,20 +78,13 @@ trap cleanup EXIT
 # --- Server lifecycle --------------------------------------------------------
 if [ "$DRY" = false ]; then
     if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
-        if curl -sf "$SONAR_HOST/api/system/status" 2>/dev/null | python3 -c \
-            'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status")=="UP" else 1)'; then
-            echo "Reusing running container ${CONTAINER_NAME}"
-        else
-            docker rm -f "$CONTAINER_NAME" >/dev/null
-        fi
+        docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     fi
-    if ! docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
-        if lsof -iTCP:9000 -sTCP:LISTEN >/dev/null 2>&1; then
-            echo "Port 9000 is already in use; release it or remove the container holding it" >&2
-            exit 1
-        fi
-        run docker run -d --name "$CONTAINER_NAME" -p 127.0.0.1:9000:9000 "$SONAR_IMAGE"
+    if lsof -iTCP:9000 -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "Port 9000 is already in use; release it or remove the container holding it" >&2
+        exit 1
     fi
+    run docker run -d --name "$CONTAINER_NAME" -p 127.0.0.1:9000:9000 "$SONAR_IMAGE"
 
     echo "Waiting for SonarQube on ${SONAR_HOST} (timeout ${START_TIMEOUT}s)..."
     deadline=$((SECONDS + START_TIMEOUT))
