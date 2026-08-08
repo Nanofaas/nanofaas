@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -61,7 +60,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
     }
 
     @Override
-    public boolean shouldOffloadOnPressure(FunctionSpec spec, SyncQueueRejectReason reason) {
+    public boolean shouldOffloadOnPressure(FunctionSpec spec) {
         OffloadPolicy policy = spec.offload();
         return properties.pressureEnabled()
                 && (policy == null || !Boolean.FALSE.equals(policy.enabled()))

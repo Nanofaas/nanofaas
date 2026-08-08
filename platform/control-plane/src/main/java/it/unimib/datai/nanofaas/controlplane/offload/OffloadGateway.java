@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.offload;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import reactor.core.publisher.Mono;
 
 /**
@@ -26,7 +25,7 @@ public interface OffloadGateway {
     boolean shouldOffloadEagerly(FunctionSpec spec);
 
     /** Strategies 1-2: the sync queue rejected admission (DEPTH/EST_WAIT); offload instead? */
-    boolean shouldOffloadOnPressure(FunctionSpec spec, SyncQueueRejectReason reason);
+    boolean shouldOffloadOnPressure(FunctionSpec spec);
 
     /**
      * Effective remote base URL for the function (per-function override or global

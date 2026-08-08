@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.offload;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import reactor.core.publisher.Mono;
 
 final class NoOpOffloadGateway implements OffloadGateway {
@@ -24,7 +23,7 @@ final class NoOpOffloadGateway implements OffloadGateway {
     }
 
     @Override
-    public boolean shouldOffloadOnPressure(FunctionSpec spec, SyncQueueRejectReason reason) {
+    public boolean shouldOffloadOnPressure(FunctionSpec spec) {
         return false;
     }
 

@@ -115,7 +115,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
         }).when(syncQueueGateway).enqueueOrThrow(any());
         when(offloadGateway.enabled()).thenReturn(true);
         when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(false);
-        when(offloadGateway.shouldOffloadOnPressure(spec, SyncQueueRejectReason.DEPTH)).thenReturn(true);
+        when(offloadGateway.shouldOffloadOnPressure(spec)).thenReturn(true);
         when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
         when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
                 .thenReturn(Mono.just(InvocationResult.success("remote-out")));
@@ -129,6 +129,44 @@ class ReactiveInvocationCoordinatorOffloadTest {
     }
 
     @Test
+    void estimatedWaitPressureRejectionUsesEstimatedWaitTrigger() {
+        FunctionSpec spec = spec("fn-est-wait", null);
+        InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
+        wireOffloadCompletion(lookup);
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        doAnswer(inv -> {
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.EST_WAIT, 3);
+        }).when(syncQueueGateway).enqueueOrThrow(any());
+        when(offloadGateway.enabled()).thenReturn(true);
+        when(offloadGateway.shouldOffloadEagerly(spec)).thenReturn(false);
+        when(offloadGateway.shouldOffloadOnPressure(spec)).thenReturn(true);
+        when(offloadGateway.targetUrl(spec)).thenReturn(TARGET);
+        when(offloadGateway.invokeRemote(any(), any(), any(), anyInt()))
+                .thenReturn(Mono.just(InvocationResult.success("remote-out")));
+
+        coordinator(syncQueueGateway).invoke(lookup, spec, 1000).block();
+
+        verify(offloadGateway).invokeRemote(any(), eq(OffloadTrigger.EST_WAIT), any(), anyInt());
+    }
+
+    @Test
+    void timeoutRejectionPropagatesWithoutTryingOffload() {
+        FunctionSpec spec = spec("fn-timeout", null);
+        InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
+        when(syncQueueGateway.enabled()).thenReturn(true);
+        doAnswer(inv -> {
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, 3);
+        }).when(syncQueueGateway).enqueueOrThrow(any());
+        when(offloadGateway.enabled()).thenReturn(true);
+
+        assertThatThrownBy(() -> invokeBlocking(coordinator(syncQueueGateway), lookup, spec, 1000))
+                .isInstanceOf(SyncQueueRejectedException.class);
+
+        verify(offloadGateway, never()).shouldOffloadOnPressure(any());
+        verify(offloadGateway, never()).invokeRemote(any(), any(), any(), anyInt());
+    }
+
+    @Test
     void pressureRejectionPropagatesWhenGatewayDeclines() {
         FunctionSpec spec = spec("fn-declined", null);
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
@@ -137,7 +175,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 3);
         }).when(syncQueueGateway).enqueueOrThrow(any());
         when(offloadGateway.enabled()).thenReturn(true);
-        when(offloadGateway.shouldOffloadOnPressure(any(), any())).thenReturn(false);
+        when(offloadGateway.shouldOffloadOnPressure(any())).thenReturn(false);
 
         ReactiveInvocationCoordinator coordinator = coordinator(syncQueueGateway);
         assertThatThrownBy(() -> invokeBlocking(coordinator, lookup, spec, 1000))

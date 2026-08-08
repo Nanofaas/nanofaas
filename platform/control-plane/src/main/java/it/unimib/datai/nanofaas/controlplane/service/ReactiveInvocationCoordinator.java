@@ -118,7 +118,7 @@ public final class ReactiveInvocationCoordinator {
             admitLocally(executionRecord);
         } catch (SyncQueueRejectedException ex) {
             OffloadTrigger trigger = pressureTrigger(ex.reason());
-            if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec, ex.reason())) {
+            if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec)) {
                 startOffload(executionRecord, spec, trigger, context, timeoutMs, offloadedTarget);
                 return;
             }

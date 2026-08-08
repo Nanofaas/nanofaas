@@ -11,7 +11,6 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -208,8 +207,8 @@ class DefaultOffloadGatewayTest {
         assertThat(gateway.shouldOffloadEagerly(noPolicy)).isFalse();
         assertThat(gateway.shouldOffloadEagerly(always)).isTrue();
         assertThat(gateway.shouldOffloadEagerly(optedOut)).isFalse();
-        assertThat(gateway.shouldOffloadOnPressure(noPolicy, SyncQueueRejectReason.DEPTH)).isTrue();
-        assertThat(gateway.shouldOffloadOnPressure(optedOut, SyncQueueRejectReason.DEPTH)).isFalse();
+        assertThat(gateway.shouldOffloadOnPressure(noPolicy)).isTrue();
+        assertThat(gateway.shouldOffloadOnPressure(optedOut)).isFalse();
         assertThat(gateway.targetUrl(noPolicy)).isEqualTo("http://cloud:8080");
         // trailing slash normalized, per-function override wins
         assertThat(gateway.targetUrl(customTarget)).isEqualTo("http://other:9090");
@@ -218,7 +217,7 @@ class DefaultOffloadGatewayTest {
         assertThat(disabled.enabled()).isFalse();
 
         DefaultOffloadGateway noPressure = gateway(new OffloadProperties(true, "http://cloud:8080", false));
-        assertThat(noPressure.shouldOffloadOnPressure(noPolicy, SyncQueueRejectReason.DEPTH)).isFalse();
+        assertThat(noPressure.shouldOffloadOnPressure(noPolicy)).isFalse();
     }
 
     @Test
@@ -232,6 +231,6 @@ class DefaultOffloadGatewayTest {
         assertThat(noGlobalTarget.targetUrl(withOwnTarget)).isEqualTo("http://edge2:8080");
         // no target anywhere: never offload, even under pressure
         assertThat(noGlobalTarget.shouldOffloadEagerly(withoutTarget)).isFalse();
-        assertThat(noGlobalTarget.shouldOffloadOnPressure(withoutTarget, SyncQueueRejectReason.DEPTH)).isFalse();
+        assertThat(noGlobalTarget.shouldOffloadOnPressure(withoutTarget)).isFalse();
     }
 }
