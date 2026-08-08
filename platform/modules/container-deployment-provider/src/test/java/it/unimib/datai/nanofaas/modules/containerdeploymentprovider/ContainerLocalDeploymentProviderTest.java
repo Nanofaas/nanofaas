@@ -439,6 +439,10 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         @Override
+        public void pullImage(String image) {
+        }
+
+        @Override
         public void runContainer(ContainerInstanceSpec spec) {
             started.add(spec);
         }

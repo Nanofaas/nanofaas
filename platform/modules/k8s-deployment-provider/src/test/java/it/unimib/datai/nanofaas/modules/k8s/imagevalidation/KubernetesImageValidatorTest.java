@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.imagevalidator;
+package it.unimib.datai.nanofaas.modules.k8s.imagevalidation;
 
 import io.fabric8.kubernetes.api.model.ContainerStateBuilder;
 import io.fabric8.kubernetes.api.model.ContainerStatusBuilder;

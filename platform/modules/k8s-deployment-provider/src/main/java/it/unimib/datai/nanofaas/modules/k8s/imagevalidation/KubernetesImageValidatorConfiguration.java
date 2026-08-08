@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.imagevalidator;
+package it.unimib.datai.nanofaas.modules.k8s.imagevalidation;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @ConditionalOnBean(KubernetesProperties.class)
-public class ImageValidatorConfiguration {
+public class KubernetesImageValidatorConfiguration {
 
     @Bean
     ImageValidator moduleImageValidator(ObjectProvider<KubernetesClient> clientProvider,

@@ -74,10 +74,9 @@ Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platfo
 - **sync-queue** - Sync admission/backpressure queue
 - **autoscaler** - Internal scaler and scaling metrics integration
 - **runtime-config** - Hot runtime config service and admin API (`/v1/admin/runtime-config`) when `nanofaas.admin.runtime-config.enabled=true`
-- **image-validator** - Kubernetes-backed image validation
 - **build-metadata** - `/modules/build-metadata` diagnostics endpoint
-- **k8s-deployment-provider** - Kubernetes managed deployment backend for `DEPLOYMENT`
-- **container-deployment-provider** - Local managed deployment backend using a Docker-compatible runtime CLI
+- **k8s-deployment-provider** - Kubernetes managed deployment backend and image validation for `DEPLOYMENT`
+- **container-deployment-provider** - Local managed deployment backend and image validation using a Docker-compatible runtime
 - **offload** - Conditional transparent proxy of sync invocations to a remote nanofaas instance (eager per-function policy, or on sync-queue DEPTH/EST_WAIT rejection); single hop, no local fallback (remote failure → 502/504)
 
 Execution Modes:

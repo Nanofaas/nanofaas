@@ -26,6 +26,14 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     }
 
     @Override
+    public void pullImage(String image) {
+        ExecutionResult result = executor.run(List.of(runtimeAdapter, "pull", image));
+        if (!result.isSuccess()) {
+            throw new IllegalStateException("Failed to pull image '" + image + "': " + result.output());
+        }
+    }
+
+    @Override
     public void runContainer(ContainerInstanceSpec spec) {
         if (spec.hostPort() == null) {
             throw new IllegalArgumentException("hostPort is required by the CLI container runtime adapter");

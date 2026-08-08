@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.imagevalidator;
+package it.unimib.datai.nanofaas.modules.k8s.imagevalidation;
 
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
@@ -11,13 +11,13 @@ import org.springframework.context.annotation.Fallback;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ImageValidatorConfigurationTest {
+class KubernetesImageValidatorLegacyConfigurationTest {
 
     @Test
     void moduleBeanOverridesCoreDefaultWhenKubernetesPropertiesPresent() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.registerBean(KubernetesProperties.class, () -> new KubernetesProperties("nanofaas", null));
-            context.register(DefaultImageValidatorConfiguration.class, ImageValidatorConfiguration.class);
+            context.register(DefaultImageValidatorConfiguration.class, KubernetesImageValidatorConfiguration.class);
             context.refresh();
 
             ImageValidator imageValidator = context.getBean(ImageValidator.class);
@@ -29,7 +29,7 @@ class ImageValidatorConfigurationTest {
     @Test
     void moduleBeanIsNotCreatedWithoutKubernetesProperties() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.register(DefaultImageValidatorConfiguration.class, ImageValidatorConfiguration.class);
+            context.register(DefaultImageValidatorConfiguration.class, KubernetesImageValidatorConfiguration.class);
             context.refresh();
 
             assertThat(context.getBean(ImageValidator.class)).isSameAs(ImageValidator.noOp());

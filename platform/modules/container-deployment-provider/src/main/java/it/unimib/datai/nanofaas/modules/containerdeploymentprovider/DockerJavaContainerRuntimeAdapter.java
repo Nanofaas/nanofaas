@@ -8,6 +8,7 @@ import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
+import com.github.dockerjava.core.command.PullImageResultCallback;
 import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
 import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 
@@ -38,6 +39,16 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
             return true;
         } catch (RuntimeException _) {
             return false;
+        }
+    }
+
+    @Override
+    public void pullImage(String image) {
+        try {
+            client.pullImageCmd(image).exec(new PullImageResultCallback()).awaitCompletion();
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while pulling image '" + image + "'");
         }
     }
 

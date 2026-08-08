@@ -6,6 +6,7 @@ import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.github.dockerjava.zerodep.ZerodepDockerHttpClient;
+import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,6 +31,11 @@ public class ContainerDeploymentProviderConfiguration {
             return new DockerJavaContainerRuntimeAdapter(createDockerClient(), properties.networkName());
         }
         return new CliContainerRuntimeAdapter(properties.runtimeAdapter(), executor);
+    }
+
+    @Bean
+    ImageValidator dockerImageValidator(ContainerRuntimeAdapter adapter) {
+        return new DockerImageValidator(adapter);
     }
 
     static DockerClient createDockerClient() {
