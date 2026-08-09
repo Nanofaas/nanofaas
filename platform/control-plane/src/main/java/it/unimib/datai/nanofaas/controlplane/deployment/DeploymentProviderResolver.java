@@ -38,7 +38,7 @@ public class DeploymentProviderResolver {
                 return new ProvisionResult(
                         spec.endpointUrl(),
                         null,
-                        ExecutionMode.POOL,
+                        ExecutionMode.EXTERNAL,
                         ex.getMessage(),
                         Map.of()
                 );

@@ -18,13 +18,13 @@ class FunctionDetailsMatchesTest {
 
     private static FunctionDetails details(OffloadPolicy offload) {
         return new FunctionDetails("echo", "img", List.of(), Map.of(), null,
-                5000, 1, 10, 0, null, ExecutionMode.POOL, ExecutionMode.POOL,
+                5000, 1, 10, 0, null, ExecutionMode.EXTERNAL, ExecutionMode.EXTERNAL,
                 null, null, RuntimeMode.HTTP, null, null, null, offload, null);
     }
 
     private static FunctionSpec spec(OffloadPolicy offload) {
         return new FunctionSpec("echo", "img", List.of(), Map.of(), null,
-                5000, 1, 10, 0, null, ExecutionMode.POOL, RuntimeMode.HTTP, null, null, null, offload);
+                5000, 1, 10, 0, null, ExecutionMode.EXTERNAL, RuntimeMode.HTTP, null, null, null, offload);
     }
 
     @Test

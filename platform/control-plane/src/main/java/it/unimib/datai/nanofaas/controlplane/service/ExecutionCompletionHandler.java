@@ -125,7 +125,7 @@ public class ExecutionCompletionHandler {
         try {
             future = switch (mode) {
                 case LOCAL -> dispatcherRouter.dispatchLocal(task);
-                case POOL, DEPLOYMENT -> dispatcherRouter.dispatchPool(task);
+                case EXTERNAL, DEPLOYMENT -> dispatcherRouter.dispatchExternal(task);
             };
         } catch (Exception ex) {
             completeExecution(task.executionId(),

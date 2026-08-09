@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class PoolDispatcherTimeoutTest {
+class ExternalDispatcherTimeoutTest {
 
     @Test
     void dispatch_slowServer_returnsPoolTimeout() throws Exception {
@@ -32,7 +32,7 @@ class PoolDispatcherTimeoutTest {
         // Function with 200ms timeout
         FunctionSpec spec = new FunctionSpec(
                 "pool-fn", "image", null, Map.of(), null,
-                200, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null, null
+                200, 1, 10, 3, endpoint, ExecutionMode.EXTERNAL, null, null, null
         );
 
         InvocationTask task = new InvocationTask(
@@ -41,11 +41,11 @@ class PoolDispatcherTimeoutTest {
                 null, null, Instant.now(), 1
         );
 
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertThat(dr.result().success()).isFalse();
-        assertThat(dr.result().error().code()).isEqualTo("POOL_TIMEOUT");
+        assertThat(dr.result().error().code()).isEqualTo("EXTERNAL_TIMEOUT");
         assertThat(dr.result().error().message()).contains("200ms");
 
         server.shutdown();
@@ -55,7 +55,7 @@ class PoolDispatcherTimeoutTest {
     void dispatch_missingEndpoint_returnsPoolEndpointMissing() throws Exception {
         FunctionSpec spec = new FunctionSpec(
                 "pool-fn", "image", null, Map.of(), null,
-                1000, 1, 10, 3, null, ExecutionMode.POOL, null, null, null
+                1000, 1, 10, 3, null, ExecutionMode.EXTERNAL, null, null, null
         );
 
         InvocationTask task = new InvocationTask(
@@ -64,11 +64,11 @@ class PoolDispatcherTimeoutTest {
                 null, null, Instant.now(), 1
         );
 
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertThat(dr.result().success()).isFalse();
-        assertThat(dr.result().error().code()).isEqualTo("POOL_ENDPOINT_MISSING");
+        assertThat(dr.result().error().code()).isEqualTo("EXTERNAL_ENDPOINT_MISSING");
     }
 
     @Test
@@ -81,7 +81,7 @@ class PoolDispatcherTimeoutTest {
 
         FunctionSpec spec = new FunctionSpec(
                 "pool-fn", "image", null, Map.of(), null,
-                1000, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null, null
+                1000, 1, 10, 3, endpoint, ExecutionMode.EXTERNAL, null, null, null
         );
 
         InvocationTask task = new InvocationTask(
@@ -90,11 +90,11 @@ class PoolDispatcherTimeoutTest {
                 null, null, Instant.now(), 1
         );
 
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertThat(dr.result().success()).isFalse();
-        assertThat(dr.result().error().code()).isEqualTo("POOL_ERROR");
+        assertThat(dr.result().error().code()).isEqualTo("EXTERNAL_ERROR");
 
         server.shutdown();
     }

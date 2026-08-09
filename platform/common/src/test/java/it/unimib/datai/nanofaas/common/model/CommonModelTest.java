@@ -102,7 +102,7 @@ class CommonModelTest {
     void executionMode_values() {
         assertEquals(3, ExecutionMode.values().length);
         assertNotNull(ExecutionMode.valueOf("LOCAL"));
-        assertNotNull(ExecutionMode.valueOf("POOL"));
+        assertNotNull(ExecutionMode.valueOf("EXTERNAL"));
         assertNotNull(ExecutionMode.valueOf("DEPLOYMENT"));
     }
 

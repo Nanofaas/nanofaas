@@ -24,7 +24,7 @@ function:
 | `image`         | string  | yes      | Container image to deploy                                          | `ghcr.io/miciav/nanofaas/echo:1` | Must not be blank                                      |
 | `timeoutMs`     | integer | no       | Default request timeout for the function                           | `10000`                          | Used for invocation and runtime behavior               |
 | `concurrency`   | integer | no       | Maximum concurrent requests or instances, depending on the runtime | `2`                              | Defaults to the control plane setting if omitted       |
-| `executionMode` | string  | no       | Tells NanoFaaS how the function should run                         | `DEPLOYMENT`                     | Common values include `DEPLOYMENT` and `POOL`          |
+| `executionMode` | string  | no       | Tells NanoFaaS how the function should run                         | `DEPLOYMENT`                     | Common values include `DEPLOYMENT` and `EXTERNAL`          |
 
 ## CLI-specific build metadata
 

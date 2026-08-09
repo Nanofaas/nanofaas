@@ -56,7 +56,7 @@ class ManagedDeploymentFallbackTest {
 
         assertThat(result.endpointUrl()).isEqualTo("http://external:8080/invoke");
         assertThat(result.backendId()).isNull();
-        assertThat(result.effectiveExecutionMode()).isEqualTo(ExecutionMode.POOL);
+        assertThat(result.effectiveExecutionMode()).isEqualTo(ExecutionMode.EXTERNAL);
         assertThat(result.degradationReason()).contains("No managed deployment provider");
     }
 

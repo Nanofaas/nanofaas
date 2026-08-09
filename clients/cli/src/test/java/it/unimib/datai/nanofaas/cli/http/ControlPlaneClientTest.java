@@ -131,7 +131,7 @@ class ControlPlaneClientTest {
                 .addHeader("Content-Type", "application/json")
                 .setBody("""
                         {"name":"echo","image":"example/echo:1",
-                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"POOL"}
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"EXTERNAL"}
                         """));
 
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
@@ -139,7 +139,7 @@ class ControlPlaneClientTest {
         FunctionDetails function = client.getFunctionOrNull("echo");
 
         assertThat(function.requestedExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
-        assertThat(function.effectiveExecutionMode()).isEqualTo(ExecutionMode.POOL);
+        assertThat(function.effectiveExecutionMode()).isEqualTo(ExecutionMode.EXTERNAL);
     }
 
     @Test

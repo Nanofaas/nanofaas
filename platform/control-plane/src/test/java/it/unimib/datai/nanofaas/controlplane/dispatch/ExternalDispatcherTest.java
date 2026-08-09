@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class PoolDispatcherTest {
+class ExternalDispatcherTest {
     @Test
     void poolDispatchCallsEndpoint() throws Exception {
         MockWebServer server = new MockWebServer();
@@ -41,7 +41,7 @@ class PoolDispatcherTest {
                 10,
                 3,
                 endpoint,
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 null,
                 null,
                 null
@@ -58,7 +58,7 @@ class PoolDispatcherTest {
                 1
         );
 
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertTrue(dr.result().success());
@@ -88,7 +88,7 @@ class PoolDispatcherTest {
                 10,
                 3,
                 endpoint,
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 null,
                 null,
                 null
@@ -104,7 +104,7 @@ class PoolDispatcherTest {
                 4
         );
 
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         dispatcher.dispatch(task).get();
 
         RecordedRequest request = server.takeRequest();
@@ -133,7 +133,7 @@ class PoolDispatcherTest {
                 10,
                 3,
                 endpoint,
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 null,
                 null,
                 null
@@ -150,7 +150,7 @@ class PoolDispatcherTest {
                 1
         );
 
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertTrue(dr.result().success());
@@ -176,7 +176,7 @@ class PoolDispatcherTest {
                     10,
                     3,
                     server.url("/invoke").toString(),
-                    ExecutionMode.POOL,
+                    ExecutionMode.EXTERNAL,
                     null,
                     null,
                     null
@@ -192,7 +192,7 @@ class PoolDispatcherTest {
                     1
             );
 
-            DispatchResult result = new PoolDispatcher(WebClient.builder().build()).dispatch(task).get();
+            DispatchResult result = new ExternalDispatcher(WebClient.builder().build()).dispatch(task).get();
 
             assertNotNull(result);
             assertTrue(result.result().success());

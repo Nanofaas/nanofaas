@@ -126,11 +126,11 @@ class ExecutionCompletionHandlerTest {
 
     @Test
     void dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() throws Exception {
-        InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.POOL);
+        InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.EXTERNAL);
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         executionStore.put(executionRecord);
 
-        when(dispatcherRouter.dispatchPool(any())).thenReturn(
+        when(dispatcherRouter.dispatchExternal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
 
         completionHandler.dispatch(task);
@@ -139,7 +139,7 @@ class ExecutionCompletionHandlerTest {
         assertThat(result.success()).isTrue();
         assertThat(result.output()).isEqualTo("ok");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        verify(dispatcherRouter).dispatchPool(task);
+        verify(dispatcherRouter).dispatchExternal(task);
     }
 
     // ─── completeExecution / retry tests ──────────────────────────────────────

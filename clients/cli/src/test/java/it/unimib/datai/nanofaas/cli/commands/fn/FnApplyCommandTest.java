@@ -183,7 +183,7 @@ class FnApplyCommandTest {
                          "timeoutMs":30000,"concurrency":4,"queueSize":100,"maxRetries":3,
                          "endpointUrl":"http://echo.functions.svc",
                          "requestedExecutionMode":"DEPLOYMENT",
-                         "effectiveExecutionMode":"POOL",
+                         "effectiveExecutionMode":"EXTERNAL",
                          "deploymentBackend":"kubernetes","runtimeMode":"HTTP",
                          "scalingConfig":{"strategy":"INTERNAL","minReplicas":1,"maxReplicas":10,
                            "metrics":[{"type":"queue_depth","target":"5"}]}}

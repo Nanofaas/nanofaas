@@ -34,7 +34,7 @@ class FunctionSpecResolverTest {
     @Test
     void resolve_preservesExplicitValues() {
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", List.of("java"), Map.of("K", "V"),
-                null, 5000, 2, 50, 1, "http://svc", ExecutionMode.POOL,
+                null, 5000, 2, 50, 1, "http://svc", ExecutionMode.EXTERNAL,
                 RuntimeMode.STDIO, "cmd", null);
 
         FunctionSpec resolved = resolver.resolve(spec);
@@ -45,7 +45,7 @@ class FunctionSpecResolverTest {
         assertEquals(2, resolved.concurrency());
         assertEquals(50, resolved.queueSize());
         assertEquals(1, resolved.maxRetries());
-        assertEquals(ExecutionMode.POOL, resolved.executionMode());
+        assertEquals(ExecutionMode.EXTERNAL, resolved.executionMode());
         assertEquals(RuntimeMode.STDIO, resolved.runtimeMode());
     }
 
@@ -79,7 +79,7 @@ class FunctionSpecResolverTest {
                 50,
                 1,
                 "http://svc",
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 RuntimeMode.STDIO,
                 "cmd",
                 new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10, List.of(), null),

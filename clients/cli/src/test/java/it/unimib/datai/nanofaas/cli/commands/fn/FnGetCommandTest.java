@@ -33,7 +33,7 @@ class FnGetCommandTest {
                 .addHeader("Content-Type", "application/json")
                 .setBody("""
                         {"name":"echo","image":"img/echo:1",
-                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"POOL"}
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"EXTERNAL"}
                         """));
 
         RootCommand root = new RootCommand();

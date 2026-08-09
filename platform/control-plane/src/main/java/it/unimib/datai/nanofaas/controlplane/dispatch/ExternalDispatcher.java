@@ -11,10 +11,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 
 @Component
-public class PoolDispatcher implements Dispatcher {
+public class ExternalDispatcher implements Dispatcher {
     private final WebClient webClient;
 
-    public PoolDispatcher(WebClient webClient) {
+    public ExternalDispatcher(WebClient webClient) {
         this.webClient = webClient;
     }
 
@@ -23,7 +23,7 @@ public class PoolDispatcher implements Dispatcher {
         String endpoint = task.functionSpec().endpointUrl();
         if (endpoint == null || endpoint.isBlank()) {
             return CompletableFuture.completedFuture(
-                    DispatchResult.warm(InvocationResult.error("POOL_ENDPOINT_MISSING", "endpointUrl is required for POOL mode")));
+                    DispatchResult.warm(InvocationResult.error("EXTERNAL_ENDPOINT_MISSING", "endpointUrl is required for EXTERNAL mode")));
         }
 
         long timeoutMs = task.functionSpec().timeoutMs();
@@ -66,13 +66,13 @@ public class PoolDispatcher implements Dispatcher {
                     }
                     return response.bodyToMono(String.class)
                             .defaultIfEmpty(response.statusCode().toString())
-                            .map(msg -> new DispatchResult(InvocationResult.error("POOL_ERROR", msg), isCold, initMs));
+                            .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg), isCold, initMs));
                 })
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorResume(TimeoutException.class, ex -> reactor.core.publisher.Mono.just(
-                        DispatchResult.warm(InvocationResult.error("POOL_TIMEOUT", "Pool request timed out after " + timeoutMs + "ms"))))
+                        DispatchResult.warm(InvocationResult.error("EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms"))))
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
-                        DispatchResult.warm(InvocationResult.error("POOL_ERROR", ex.getMessage()))))
+                        DispatchResult.warm(InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()))))
                 .toFuture();
     }
 

@@ -8,10 +8,10 @@ import java.util.concurrent.CompletableFuture;
 @Component
 public class DispatcherRouter {
     private final LocalDispatcher localDispatcher;
-    private final PoolDispatcher poolDispatcher;
+    private final ExternalDispatcher poolDispatcher;
 
     public DispatcherRouter(LocalDispatcher localDispatcher,
-                            PoolDispatcher poolDispatcher) {
+                            ExternalDispatcher poolDispatcher) {
         this.localDispatcher = localDispatcher;
         this.poolDispatcher = poolDispatcher;
     }
@@ -20,7 +20,7 @@ public class DispatcherRouter {
         return localDispatcher.dispatch(task);
     }
 
-    public CompletableFuture<DispatchResult> dispatchPool(InvocationTask task) {
+    public CompletableFuture<DispatchResult> dispatchExternal(InvocationTask task) {
         return poolDispatcher.dispatch(task);
     }
 }

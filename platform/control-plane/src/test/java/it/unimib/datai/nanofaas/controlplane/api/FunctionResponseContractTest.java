@@ -68,7 +68,7 @@ class FunctionResponseContractTest {
                 100,
                 3,
                 "http://external:8080/invoke",
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 null,
                 null,
                 null
@@ -77,7 +77,7 @@ class FunctionResponseContractTest {
         FunctionResponse response = FunctionResponse.from(
                 spec,
                 ExecutionMode.DEPLOYMENT,
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 null,
                 "No provider available",
                 "http://external:8080/invoke"
@@ -87,7 +87,7 @@ class FunctionResponseContractTest {
 
         assertThat(json)
                 .contains("\"requestedExecutionMode\":\"DEPLOYMENT\"")
-                .contains("\"effectiveExecutionMode\":\"POOL\"")
+                .contains("\"effectiveExecutionMode\":\"EXTERNAL\"")
                 .contains("\"degradationReason\":\"No provider available\"");
     }
 

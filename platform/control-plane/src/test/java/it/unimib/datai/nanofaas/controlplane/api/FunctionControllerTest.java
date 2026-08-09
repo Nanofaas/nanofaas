@@ -254,7 +254,7 @@ class FunctionControllerTest {
         RegisteredFunction registered = registered(
                 "echo",
                 ExecutionMode.DEPLOYMENT,
-                ExecutionMode.POOL,
+                ExecutionMode.EXTERNAL,
                 null,
                 "No managed deployment provider available for function 'echo'"
         );
@@ -267,7 +267,7 @@ class FunctionControllerTest {
                 .expectBody()
                 .jsonPath("$.name").isEqualTo("echo")
                 .jsonPath("$.requestedExecutionMode").isEqualTo("DEPLOYMENT")
-                .jsonPath("$.effectiveExecutionMode").isEqualTo("POOL")
+                .jsonPath("$.effectiveExecutionMode").isEqualTo("EXTERNAL")
                 .jsonPath("$.degradationReason").exists();
     }
 

@@ -14,7 +14,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class PoolDispatcherColdStartTest {
+class ExternalDispatcherColdStartTest {
 
     @Test
     void dispatch_extractsColdStartHeaders() throws Exception {
@@ -27,7 +27,7 @@ class PoolDispatcherColdStartTest {
         server.start();
 
         InvocationTask task = createTask(server);
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertThat(dr.result().success()).isTrue();
@@ -46,7 +46,7 @@ class PoolDispatcherColdStartTest {
         server.start();
 
         InvocationTask task = createTask(server);
-        PoolDispatcher dispatcher = new PoolDispatcher(WebClient.builder().build());
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
 
         assertThat(dr.result().success()).isTrue();
@@ -60,7 +60,7 @@ class PoolDispatcherColdStartTest {
         String endpoint = server.url("/invoke").toString();
         FunctionSpec spec = new FunctionSpec(
                 "test-fn", "image", null, Map.of(), null,
-                5000, 1, 10, 3, endpoint, ExecutionMode.POOL, null, null, null
+                5000, 1, 10, 3, endpoint, ExecutionMode.EXTERNAL, null, null, null
         );
         return new InvocationTask(
                 "exec-cs", "test-fn", spec,

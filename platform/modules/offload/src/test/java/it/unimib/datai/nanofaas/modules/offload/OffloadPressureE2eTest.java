@@ -86,7 +86,7 @@ class OffloadPressureE2eTest {
                 {"name": "%s", "image": "img", "executionMode": "LOCAL", "timeoutMs": 10000}
                 """.formatted(FUNCTION));
         register(edgeUrl, """
-                {"name": "%s", "image": "img", "executionMode": "POOL",
+                {"name": "%s", "image": "img", "executionMode": "EXTERNAL",
                  "endpointUrl": "%s", "timeoutMs": 10000, "concurrency": 1, "queueSize": 10}
                 """.formatted(FUNCTION, slowPod.url("/invoke")));
     }

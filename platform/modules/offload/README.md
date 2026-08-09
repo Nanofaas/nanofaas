@@ -55,7 +55,7 @@ offload:
 
 `OffloadPressureE2eTest` boots two full control planes in one JVM: a saturated
 "edge" (sync queue `max-depth=1`, one concurrency slot against a deliberately
-slow POOL endpoint) and a "cloud" running the same function as LOCAL. It
+slow EXTERNAL endpoint) and a "cloud" running the same function as LOCAL. It
 proves the `depth` pressure trigger end-to-end: overflow requests return 200
 with `X-NanoFaaS-Offloaded` instead of 429, queued local work still completes,
 no retries, offload metrics recorded. Runs in `./gradlew test`.

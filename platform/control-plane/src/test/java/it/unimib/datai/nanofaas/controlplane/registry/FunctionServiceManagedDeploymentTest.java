@@ -65,7 +65,7 @@ class FunctionServiceManagedDeploymentTest {
                 .isPresent()
                 .get()
                 .satisfies(registered -> {
-                    assertThat(registered.spec().executionMode()).isEqualTo(ExecutionMode.POOL);
+                    assertThat(registered.spec().executionMode()).isEqualTo(ExecutionMode.EXTERNAL);
                     assertThat(registered.spec().endpointUrl()).isEqualTo("http://external:8080/invoke");
                 });
 
@@ -74,7 +74,7 @@ class FunctionServiceManagedDeploymentTest {
                 .get()
                 .satisfies(registered -> {
                     assertThat(registered.deploymentMetadata().requestedExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
-                    assertThat(registered.deploymentMetadata().effectiveExecutionMode()).isEqualTo(ExecutionMode.POOL);
+                    assertThat(registered.deploymentMetadata().effectiveExecutionMode()).isEqualTo(ExecutionMode.EXTERNAL);
                     assertThat(registered.deploymentMetadata().deploymentBackend()).isNull();
                     assertThat(registered.deploymentMetadata().degradationReason())
                             .contains("No managed deployment provider");

@@ -60,7 +60,7 @@ nanofaas is a minimal FaaS platform for Kubernetes.
 Minimal core API + dispatch orchestration in a single pod. Core components:
 - **FunctionRegistry** - In-memory function storage
 - **InvocationService** - Sync/async invocation orchestration, retries, idempotency integration
-- **PoolDispatcher** - Dispatches to warm Deployment+Service pods (supports DEPLOYMENT and POOL execution modes)
+- **ExternalDispatcher** - Forwards invocations to an externally hosted function endpoint (EXTERNAL execution mode)
 - **ExecutionStore** - Tracks execution lifecycle with TTL eviction
 
 Core provides no-op defaults for:
@@ -81,7 +81,7 @@ Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platfo
 
 Execution Modes:
 - **DEPLOYMENT** - Managed deployment intent resolved through a backend provider (`k8s`, `container-local`, ...)
-- **POOL** - OpenWhisk-style warm pool mode
+- **EXTERNAL** - Function hosted outside the control plane; invocations are forwarded to its `endpointUrl` (passthrough, no lifecycle management)
 - **LOCAL** - In-process execution for testing
 
 Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
@@ -101,7 +101,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 2. Control plane validates, applies rate limit, creates execution state
 3. Sync path: uses `sync-queue` if enabled, else `async-queue` if enabled, else dispatches inline from core
 4. Async path: requires `async-queue` (otherwise API returns `501 Not Implemented`)
-5. Dispatcher forwards request to runtime endpoint (LOCAL/POOL/DEPLOYMENT mode)
+5. Dispatcher forwards request to runtime endpoint (LOCAL/EXTERNAL/DEPLOYMENT mode)
 6. Control plane updates execution state and returns result/status
 
 ## Key Configuration

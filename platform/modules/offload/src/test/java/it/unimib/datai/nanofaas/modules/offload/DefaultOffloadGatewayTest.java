@@ -61,7 +61,7 @@ class DefaultOffloadGatewayTest {
 
     private static FunctionSpec spec(String name, OffloadPolicy offload, int timeoutMs) {
         return new FunctionSpec(name, "img", List.of(), Map.of(), null,
-                timeoutMs, 1, 10, 0, null, ExecutionMode.POOL, RuntimeMode.HTTP, null, null, null, offload);
+                timeoutMs, 1, 10, 0, null, ExecutionMode.EXTERNAL, RuntimeMode.HTTP, null, null, null, offload);
     }
 
     private static InvocationTask task(FunctionSpec spec) {
