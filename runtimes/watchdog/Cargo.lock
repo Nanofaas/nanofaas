@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "nanofaas-watchdog"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "axum",
  "nix",
