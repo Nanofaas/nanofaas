@@ -4,7 +4,7 @@
 #   docker build -f functions/bash/json-transform/Dockerfile -t nanofaas/bash-json-transform:dev .
 #
 
-FROM docker.io/library/rust:1.83-alpine AS watchdog-builder
+FROM docker.io/library/rust:1.97-alpine AS watchdog-builder
 RUN apk add --no-cache musl-dev
 WORKDIR /build/watchdog
 COPY runtimes/watchdog/Cargo.toml runtimes/watchdog/Cargo.lock* ./

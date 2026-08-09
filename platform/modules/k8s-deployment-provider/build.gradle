@@ -14,11 +14,11 @@ dependencies {
     implementation project(':control-plane')
 
     implementation 'org.springframework.boot:spring-boot-starter'
-    implementation 'io.fabric8:kubernetes-client:7.5.2'
-    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.5.2'
+    implementation 'io.fabric8:kubernetes-client:7.8.0'
+    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.8.0'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
-    testImplementation 'io.fabric8:kubernetes-server-mock:7.5.2'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
+    testImplementation 'io.fabric8:kubernetes-server-mock:7.8.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

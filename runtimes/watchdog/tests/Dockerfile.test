@@ -6,7 +6,7 @@
 # - Bash/jq for FILE mode tests
 # - curl for HTTP testing
 
-FROM rust:1.83-alpine AS builder
+FROM rust:1.97-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 

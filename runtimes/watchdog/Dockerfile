@@ -1,7 +1,7 @@
 # Multi-arch build stage. The builder runs on the TARGET platform (QEMU for
 # non-native arches): cross-compiling from amd64 would need an
 # aarch64-linux-musl cross gcc for ring's C code, which alpine does not ship.
-FROM rust:1.83-alpine AS builder
+FROM rust:1.97-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 

@@ -4,7 +4,7 @@
 #   docker build -f Dockerfile.combined -t nanofaas/java-warm-echo:watchdog ..
 
 # Stage 1: Build Rust watchdog
-FROM rust:1.83-alpine AS watchdog-builder
+FROM rust:1.97-alpine AS watchdog-builder
 
 RUN apk add --no-cache musl-dev
 

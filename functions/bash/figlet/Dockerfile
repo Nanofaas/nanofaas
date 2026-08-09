@@ -6,7 +6,7 @@
 #
 # You can skip this step by using the prebuilt image available
 # here: https://github.com/miciav/nanofaas/pkgs/container/nanofaas%2Fwatchdog
-FROM docker.io/library/rust:1.83-alpine AS watchdog-builder
+FROM docker.io/library/rust:1.97-alpine AS watchdog-builder
 RUN apk add --no-cache musl-dev
 WORKDIR /build/watchdog
 COPY runtimes/watchdog/Cargo.toml runtimes/watchdog/Cargo.lock* ./
