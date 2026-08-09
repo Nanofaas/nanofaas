@@ -43,6 +43,12 @@ subprojects {
         }
     }
 
+    configurations.all {
+        // HTTP/3/QUIC support that reactor-netty pulls in automatically; nothing in this
+        // codebase enables HTTP/3. Drops netty-codec-http3 plus its 5 platform-native quic jars.
+        exclude group: 'io.netty', module: 'netty-codec-http3'
+    }
+
     jacocoTestReport {
         dependsOn test
         reports {

@@ -13,7 +13,11 @@ dependencyManagement {
 dependencies {
     api project(':common')
     api 'org.springframework.boot:spring-boot-starter-web'
-    api 'org.springframework.boot:spring-boot-starter-actuator'
+    // Not spring-boot-starter-actuator: this SDK deliberately serves its own /health and /metrics
+    // (see HealthController/MetricsController) instead of Actuator's management endpoints. This
+    // narrower starter keeps the JVM/system meter-binder autoconfiguration those controllers need
+    // without pulling in the unused actuator endpoint machinery.
+    api 'org.springframework.boot:spring-boot-starter-micrometer-metrics'
     api 'io.micrometer:micrometer-registry-prometheus'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

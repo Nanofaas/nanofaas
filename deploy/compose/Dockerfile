@@ -8,13 +8,26 @@ RUN ./gradlew :control-plane:bootJar \
     -PcontrolPlaneModules=${NANOFAAS_CONTROL_PLANE_MODULES} \
     --no-daemon
 
-FROM gcr.io/distroless/java25-debian13:nonroot
+# jlink a runtime with only the modules app.jar actually touches, instead of shipping the full
+# stock JRE. jdk.unsupported (Netty's sun.misc.Unsafe) and jdk.crypto.ec (TLS EC cipher suites,
+# loaded via ServiceLoader) aren't visible to jdeps' static analysis, so add them explicitly.
+RUN cd /workspace/platform/control-plane/build/libs && \
+    jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
+    jdeps --ignore-missing-deps --multi-release 25 --recursive \
+      --print-module-deps --class-path 'BOOT-INF/lib/*' \
+      BOOT-INF/classes app.jar > modules.txt && \
+    jlink --add-modules "$(cat modules.txt),jdk.unsupported,jdk.crypto.ec" \
+      --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
+      --output /jre
+
+FROM gcr.io/distroless/base-debian13:nonroot
 
 WORKDIR /app
+COPY --from=build --chown=nonroot:nonroot /jre /opt/jre
 COPY --from=build /workspace/platform/control-plane/build/libs/app.jar /app/app.jar
 EXPOSE 8080 8081
 
-ENTRYPOINT ["java", \
+ENTRYPOINT ["/opt/jre/bin/java", \
     "-XX:+UseSerialGC", \
     "-XX:MaxRAMPercentage=70", \
     "-XX:TieredStopAtLevel=1", \

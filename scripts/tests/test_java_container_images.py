@@ -5,7 +5,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_java_container_images_target_java_25():
-    distroless_dockerfiles = [
+    # These JVM Dockerfiles jlink a minimal runtime (only the modules the jar actually uses)
+    # from eclipse-temurin:25-jdk, and run it on the same distroless/base image the native
+    # builds use — not the full stock JRE in gcr.io/distroless/java25-debian13.
+    jlink_dockerfiles = [
         "deploy/compose/Dockerfile",
         "platform/control-plane/Dockerfile",
         "services/java/warm-echo/Dockerfile",
@@ -16,9 +19,12 @@ def test_java_container_images_target_java_25():
         "functions/java/figlet/Dockerfile",
         "tools/fn-init/src/fn_init/templates/java/Dockerfile.tmpl",
     ]
-    for relative_path in distroless_dockerfiles:
+    for relative_path in jlink_dockerfiles:
         dockerfile = (REPO_ROOT / relative_path).read_text()
-        assert "gcr.io/distroless/java25-debian13:nonroot" in dockerfile
+        assert "eclipse-temurin:25-jdk" in dockerfile
+        assert "jlink" in dockerfile
+        assert "gcr.io/distroless/base-debian13:nonroot" in dockerfile
+        assert "gcr.io/distroless/java25-debian13:nonroot" not in dockerfile
 
     native_dockerfiles = [
         "functions/java/word-stats-lite/Dockerfile",

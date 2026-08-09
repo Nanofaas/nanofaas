@@ -30,28 +30,44 @@ COPY functions ./functions
 
 RUN ./gradlew :services:java:warm-echo:bootJar --no-daemon
 
-# Stage 3: Final minimal image
-FROM gcr.io/distroless/java25-debian13:nonroot
+# Stage 3: jlink a minimal runtime + fetch tini, both glibc (matching the final distroless base) —
+# NOT the alpine/musl java-builder above, whose binaries wouldn't be ABI-compatible here.
+FROM eclipse-temurin:25-jdk AS jre-builder
+
+WORKDIR /tmp/build
+COPY --from=java-builder /build/services/java/warm-echo/build/libs/app.jar app.jar
+RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
+    jdeps --ignore-missing-deps --multi-release 25 --recursive \
+      --print-module-deps --class-path 'BOOT-INF/lib/*' \
+      BOOT-INF/classes app.jar > modules.txt && \
+    jlink --add-modules "$(cat modules.txt),jdk.unsupported,jdk.crypto.ec" \
+      --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
+      --output /jre
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
+
+# Stage 4: Final minimal image
+FROM gcr.io/distroless/base-debian13:nonroot
 
 # The :nonroot tag already runs as UID 65532; make it explicit so the intent survives tooling
 USER 65532
-
-# Install minimal dependencies
-RUN apk add --no-cache tini
 
 WORKDIR /app
 
 # Copy watchdog binary
 COPY --from=watchdog-builder /build/target/release/nanofaas-watchdog /usr/local/bin/watchdog
 
+# Copy the jlinked JRE and tini (distroless has no package manager to install either)
+COPY --from=jre-builder --chown=nonroot:nonroot /jre /opt/jre
+COPY --from=jre-builder /usr/bin/tini /sbin/tini
+
 # Copy Java warm-echo service
-COPY --from=java-builder /build/services/java/warm-echo/build/libs/app.jar /app/app.jar
+COPY --from=jre-builder /tmp/build/app.jar /app/app.jar
 
 # Environment defaults
 ENV WARM=true
 ENV EXECUTION_MODE=HTTP
 ENV RUNTIME_URL=http://127.0.0.1:8081/invoke
-ENV WATCHDOG_CMD="java -jar /app/app.jar"
+ENV WATCHDOG_CMD="/opt/jre/bin/java -jar /app/app.jar"
 ENV TIMEOUT_MS=30000
 
 EXPOSE 8080
