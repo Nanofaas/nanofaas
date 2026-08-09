@@ -1,7 +1,8 @@
 # Image releases
 
-Official NanoFaaS images are built, benchmarked, and published by
-`controlplane-tool release` from a controlled Azure run. **Azure is the only
+Official NanoFaaS images are built, benchmarked, and published by the
+nanolab release workflow (`nanolab.sh run packages/nanolab/scenarios-v2/release.yaml`)
+from a controlled Azure run. **Azure is the only
 publishing path**: local, Multipass, and Proxmox builds are non-publishing
 experiments, and GitHub Actions only runs tests (enforced by
 `scripts/tests/test_release_authority.py`).
@@ -10,19 +11,13 @@ Design: `docs/plans/2026-07-16-azure-image-release-design.md`.
 
 ## The 52-cell matrix
 
-`controlplane-tool images` owns the logical matrix: 21 targets × 2
+The release workflow owns the logical matrix: 21 targets × 2
 architectures, with JVM/native flavors for the five Spring targets and
 native-only for the three Java Lite functions — 52 cells total, split into 42
-Dockerfile/Buildx-Bake cells and 10 Spring-native Gradle cells.
-
-```bash
-# Inspect without building or publishing (any machine)
-controlplane-tool images plan --version v0.18.0 --arch all --flavor all
-
-# Portable non-publishing build (cannot reach GHCR release tags)
-controlplane-tool images build --version v0.18.0 --arch amd64 \
-  --environment environments/multipass.yaml
-```
+Dockerfile/Buildx-Bake cells and 10 Spring-native Gradle cells. The matrix is
+defined and executed inside the release scenario
+(`packages/nanolab/src/nanolab/release/build.py` in the nanolab checkout);
+there is no standalone `images` command.
 
 ## Tag policy
 
@@ -40,7 +35,7 @@ interrupted release never exposes a partially updated alias.
 ## Preparing a version
 
 ```bash
-controlplane-tool release prepare v0.18.0
+./nanolab.sh release prepare v0.18.0
 # review the diff, run tests, commit the version change
 ```
 
@@ -58,14 +53,11 @@ repository); secret values never appear on the command line or in logs.
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
 
-./nanolab.sh release plan v0.18.0 \
-  --environment packages/nanolab/environments/azure-release.yaml
-
-./nanolab.sh release run v0.18.0 \
-  --environment packages/nanolab/environments/azure-release.yaml \
-  --ghcr-token-file /secure/ghcr-token \
-  --cosign-key-file /secure/cosign.key \
-  --cosign-password-file /secure/cosign-password \
+# Credentials live in a gitignored release-config.yaml (paths to private files,
+# mode 0600, outside the repository — see release-config.yaml.example).
+caffeinate -i ./nanolab.sh run packages/nanolab/scenarios-v2/release.yaml \
+  --environment packages/nanolab/environments/azure.yaml \
+  --release-config packages/nanolab/scenarios-v2/release-config.yaml \
   --provision
 ```
 
@@ -112,9 +104,13 @@ it.
 ### Resume and recovery
 
 ```bash
-controlplane-tool release run v0.18.0 ... --resume
+./nanolab.sh run packages/nanolab/scenarios-v2/release.yaml \
+  --environment packages/nanolab/environments/azure.yaml \
+  --release-config packages/nanolab/scenarios-v2/release-config.yaml \
+  --resume
 ```
 
+Fresh runs require `--provision`; resumes require `--resume` and the journal.
 `--resume` re-verifies every completed phase against the journal: same commit,
 prepared version, config and environment digests, and every referenced
 artifact must still match its recorded digest. Anything missing or changed
