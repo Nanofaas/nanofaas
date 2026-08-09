@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -44,5 +45,17 @@ class ContainerDeploymentProviderConfigurationTest {
                     assertThat(context.getBean(ContainerLocalProperties.class).networkName())
                             .isEqualTo("nanofaas");
                 });
+    }
+
+    @Test
+    void k8sBackendDoesNotRegisterTheDockerImageValidator() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(ContainerDeploymentProviderConfiguration.class)
+                .withPropertyValues(
+                        "nanofaas.deployment.default-backend=k8s",
+                        "nanofaas.container-local.runtime-adapter=podman",
+                        "nanofaas.container-local.bind-host=127.0.0.1"
+                )
+                .run(context -> assertThat(context).doesNotHaveBean(ImageValidator.class));
     }
 }

@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
@@ -16,6 +17,7 @@ class KubernetesImageValidatorLegacyConfigurationTest {
     @Test
     void moduleBeanOverridesCoreDefaultWhenKubernetesPropertiesPresent() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            TestPropertyValues.of("nanofaas.deployment.default-backend=k8s").applyTo(context);
             context.registerBean(KubernetesProperties.class, () -> new KubernetesProperties("nanofaas", null));
             context.register(DefaultImageValidatorConfiguration.class, KubernetesImageValidatorConfiguration.class);
             context.refresh();

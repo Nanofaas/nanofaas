@@ -7,6 +7,7 @@ import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.github.dockerjava.zerodep.ZerodepDockerHttpClient;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,6 +35,11 @@ public class ContainerDeploymentProviderConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(
+            name = "nanofaas.deployment.default-backend",
+            havingValue = "container-local",
+            matchIfMissing = true
+    )
     ImageValidator dockerImageValidator(ContainerRuntimeAdapter adapter) {
         return new DockerImageValidator(adapter);
     }
