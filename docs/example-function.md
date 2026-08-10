@@ -1,6 +1,15 @@
-# Example Function
+# Example functions
 
-## FunctionSpec (sync + async)
+This page collects working examples: `FunctionSpec` manifests for each
+execution mode, raw HTTP calls against the control-plane API, and pointers to
+the real example functions in the repository. For a complete step-by-step
+walkthrough (scaffold → test → deploy → invoke), read the
+[tutorial](tutorial-function.md); for the manifest reference, read
+[function-definition](function-definition.md).
+
+## FunctionSpec examples
+
+### DEPLOYMENT (managed warm instances)
 
 ```json
 {
@@ -14,7 +23,36 @@
 }
 ```
 
-## Sync invoke
+The control plane provisions a Deployment + Service (Kubernetes) or container
+instances (local Docker/Podman) from the image.
+
+### EXTERNAL (passthrough to a hosted endpoint)
+
+```json
+{
+  "name": "legacy-service",
+  "executionMode": "EXTERNAL",
+  "endpointUrl": "http://legacy.example.com/api/transform"
+}
+```
+
+No image is needed: the control plane forwards every invocation to
+`endpointUrl` and returns the response as-is. The function must already be
+serving the `InvocationRequest` contract (`input` + `metadata`) on that URL.
+There is no lifecycle management — deleting the function only removes the
+registration.
+
+## Invoking from the CLI
+
+```bash
+nanofaas invoke echo -d '{"input": {"message": "hi"}}'        # sync
+nanofaas enqueue echo -d '{"input": {"message": "hi"}}'       # async
+nanofaas exec get <executionId> --watch                       # poll async result
+```
+
+## Invoking over HTTP
+
+Sync invoke:
 
 ```bash
 curl -X POST http://localhost:8080/v1/functions/echo:invoke \
@@ -22,39 +60,47 @@ curl -X POST http://localhost:8080/v1/functions/echo:invoke \
   -d '{"input": {"message": "hi"}}'
 ```
 
-## Go runtime example
-
-The Go SDK examples live under:
-
-- `functions/go/word-stats`
-- `functions/go/json-transform`
-
-Run one locally:
-
-```bash
-cd functions/go/word-stats
-go run .
-```
-
-## JavaScript runtime examples
-
-The JavaScript SDK examples live under:
-
-- `functions/javascript/word-stats`
-- `functions/javascript/json-transform`
-
-Run one locally:
-
-```bash
-cd functions/javascript/word-stats
-npm install
-npm start
-```
-
-## Async invoke
+Async invoke (requires the `async-queue` module):
 
 ```bash
 curl -X POST http://localhost:8080/v1/functions/echo:enqueue \
   -H 'Content-Type: application/json' \
   -d '{"input": {"message": "hi"}}'
 ```
+
+## Real examples in the repository
+
+The same three reference families are implemented in every SDK and share the
+contract corpora under `functions/test-data/`:
+
+| Family | Java | Java Lite | Go | Python | JavaScript | Bash |
+| --- | --- | --- | --- | --- | --- | --- |
+| word-stats | `functions/java/word-stats` | `functions/java/word-stats-lite` | `functions/go/word-stats` | — | `functions/javascript/word-stats` | `functions/bash/word-stats` |
+| json-transform | `functions/java/json-transform` | `functions/java/json-transform-lite` | `functions/go/json-transform` | — | `functions/javascript/json-transform` | `functions/bash/json-transform` |
+| roman-numeral | `functions/java/roman-numeral` | `functions/java/roman-numeral-lite` | `functions/go/roman-numeral` | `functions/python/roman-numeral` | `functions/javascript/roman-numeral` | `functions/bash/roman-numeral` |
+
+Run one locally without the platform:
+
+```bash
+# Go
+cd functions/go/word-stats && go run .
+
+# JavaScript
+cd functions/javascript/word-stats && npm install && npm start
+
+# Java
+./gradlew :functions:java:word-stats:bootRun
+```
+
+Additional examples outside the three families: `functions/java/figlet`
+and `functions/bash/figlet` (ASCII-art), and `functions/python/mlimage`
+(Machine-Learning inference, image input).
+
+The cross-SDK contract gate that exercises all six runtimes:
+
+```bash
+./functions/contract-tests/run.sh
+```
+
+Benchmark corpora and the k6 matrix are documented in
+[loadtest-payload-profile.md](loadtest-payload-profile.md).

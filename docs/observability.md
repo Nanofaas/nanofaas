@@ -41,6 +41,42 @@
 - When tuning queueing behavior, prefer preserving those structural guarantees over chasing a fixed local timing number. Absolute timings are environment-sensitive; fairness and reuse guarantees are not.
 - The Go function SDK exposes its own Prometheus endpoint at `/metrics`, including runtime-side counters for invocations, handler duration, cold starts, and dropped async callbacks.
 
+## Example PromQL queries
+
+Metrics are exposed at `/actuator/prometheus` on port 8081. The bundled
+Prometheus (installed by the Helm chart, see `deploy/helm/nanofaas/README.md`)
+discovers them via service annotations; without the chart, point Prometheus at
+the actuator endpoint directly.
+
+```promql
+# Error rate per function (percent)
+rate(function_error_total{function="word-stats"}[5m])
+  / (rate(function_success_total{function="word-stats"}[5m])
+     + rate(function_error_total{function="word-stats"}[5m])) * 100
+
+# Invocation latency percentiles (requires histogram in the runtime, p95)
+histogram_quantile(0.95, sum by (le) (rate(function_latency_ms_bucket{function="word-stats"}[5m])))
+
+# Cold start: average duration of the first-invocation initialization
+rate(function_cold_start_ms_sum{function="word-stats"}[1h]) / rate(function_cold_start_ms_count{function="word-stats"}[1h])
+
+# Queue backlog: pending async work per function
+function_queue_depth{function!=""}
+
+# Sync admission pressure: rejection ratio by reason
+rate(sync_queue_rejected_total{function="word-stats"}[5m]) / rate(sync_queue_admitted_total{function="word-stats"}[5m])
+
+# Autoscaling: effective load per replica (the autoscaler's rps signal)
+rate(function_dispatch_total{function="word-stats"}[1m]) / max by (function) (kube_deployment_status_replicas{deployment="fn-word-stats"})
+
+# Offload activity (offload module)
+rate(nanofaas_offload_total[5m])
+```
+
+See the queue-contention and autoscaler interpretation notes above before
+acting on a query result: a high rejection ratio with low depth means
+estimated-wait rejection, not capacity exhaustion.
+
 ## Health
 
 - /actuator/health/liveness

@@ -1,394 +1,141 @@
-# Architettura interna dei Pod delle funzioni
+# Function Pod Architecture
 
-## Panoramica
+## Overview
 
-Ogni funzione registrata in nanofaas viene eseguita all'interno di un pod K8s.
-Il contenuto del pod dipende da due scelte ortogonali:
+Every function registered on NanoFaaS runs in a container. What the container
+contains and how the control plane reaches it depends on the function's
+`executionMode`:
 
-| Dimensione | Opzioni | Impatto |
-|---|---|---|
-| **ExecutionMode** | `DEPLOYMENT` (default), `REMOTE` (Job) | Come il control plane crea le risorse K8s |
-| **RuntimeMode** | `HTTP` (default), `STDIO`, `FILE` | Come il watchdog comunica con il processo utente |
+| Mode | Meaning |
+|---|---|
+| `DEPLOYMENT` (default) | Managed deployment. The control plane provisions a Deployment + Service (Kubernetes) or container instances (local Docker/Podman) and dispatches invocations to the warm instances. |
+| `EXTERNAL` | The function is hosted outside the control plane; invocations are forwarded to its `endpointUrl` as a passthrough (no lifecycle management). |
+| `LOCAL` | In-process execution for testing. |
 
----
-
-## Struttura di un pod funzione
-
-Ogni pod contiene **due livelli**: il watchdog (process supervisor) e il runtime
-(codice utente). Il watchdog e' un binary Rust statico (~2 MB) che gestisce
-l'intero ciclo di vita del processo figlio.
+A managed container has two layers: the **watchdog** (process supervisor) and
+the **runtime** (user code). The watchdog is a static Rust binary (~2 MB) that
+owns the lifecycle of the user process.
 
 ```
 +--------------------------------------------------------------+
-|  POD (container singolo)                                     |
+|  FUNCTION CONTAINER (DEPLOYMENT mode)                        |
 |                                                              |
 |  +--------------------------------------------------------+  |
-|  |  ENTRYPOINT: /watchdog  (Rust, ~2 MB, statico)        |  |
-|  |                                                        |  |
-|  |  - Legge config da ENV                                 |  |
-|  |  - Avvia il processo figlio (WATCHDOG_CMD)             |  |
-|  |  - Gestisce health check, timeout, callback            |  |
+|  |  ENTRYPOINT: /watchdog  (Rust, static, ~2 MB)        |  |
+|  |  - reads config from env                              |  |
+|  |  - spawns the child process (WATCHDOG_CMD)            |  |
+|  |  - handles health checks, timeout, callback, tracing  |  |
 |  +----+---------------------------------------------------+  |
-|       |                                                      |
-|       | spawn processo figlio                                 |
+|       | spawn (WATCHDOG_CMD)                                 |
 |       v                                                      |
 |  +--------------------------------------------------------+  |
-|  |  RUNTIME: processo utente                              |  |
-|  |                                                        |  |
-|  |  Opzione A: Java (Spring Boot)                         |  |
-|  |    java -jar /app/app.jar                              |  |
-|  |    -> InvokeController espone POST /invoke             |  |
-|  |    -> HandlerRegistry carica handler via Spring scan   |  |
-|  |                                                        |  |
-|  |  Opzione B: Go (function-sdk-go)                       |  |
-|  |    /app/function                                       |  |
-|  |    -> runtime HTTP embedded su :8080                   |  |
-|  |    -> espone /invoke, /health, /metrics               |  |
-|  |    -> callback async al control plane                  |  |
-|  |                                                        |  |
-|  |  Opzione C: Python (Flask + Gunicorn)                  |  |
-|  |    gunicorn nanofaas_runtime.app:app                   |  |
-|  |    -> Flask espone POST /invoke                        |  |
-|  |    -> importlib carica handle() da handler.py          |  |
-|  |                                                        |  |
-|  |  Opzione D: Qualsiasi eseguibile                       |  |
-|  |    /app/mio-binario                                    |  |
-|  |    -> Deve esporre HTTP /invoke (mode HTTP)            |  |
-|  |    -> Oppure leggere stdin/stdout (mode STDIO)         |  |
-|  |    -> Oppure leggere/scrivere file (mode FILE)         |  |
+|  |  RUNTIME: user process                                |  |
+|  |  - Java: Spring Boot SDK (sdks/java) on :8080         |  |
+|  |  - Python: FastAPI runtime (sdks/python) on :8080     |  |
+|  |  - Go: function-sdk-go embedded HTTP runtime on :8080 |  |
+|  |  - JS/Node: nanofaas-function-sdk HTTP runtime        |  |
+|  |  - Any binary: HTTP /invoke, or stdin/stdout (STDIO), |  |
+|  |    or file I/O (FILE)                                  |  |
 |  +--------------------------------------------------------+  |
 +--------------------------------------------------------------+
 ```
 
----
+## The watchdog
 
-## Il Watchdog in dettaglio
+`runtimes/watchdog/src/main.rs` is a Rust binary compiled statically with
+musl, shipped on a `FROM scratch` image (~2 MB).
 
-Il watchdog (`runtimes/watchdog/src/main.rs`) e' un binary Rust compilato staticamente
-con musl libc. Gira su un'immagine `FROM scratch` (~2 MB totali).
+### Communication modes (RuntimeMode)
 
-### Modalita' di comunicazione (RuntimeMode)
+| Mode | Protocol |
+|---|---|
+| `HTTP` (default) | Watchdog polls `GET /health` until ready, then proxies `POST /invoke` to the runtime. |
+| `STDIO` | Watchdog writes the JSON payload to stdin, reads the JSON response from stdout, and reaps the process. |
+| `FILE` | Watchdog writes `/tmp/input.json`, spawns the process with `INPUT_FILE`/`OUTPUT_FILE` env vars, and reads `/tmp/output.json`. |
 
-```
-MODALITA' HTTP (default)
-========================
-Watchdog              Runtime (HTTP server su :8080)
-   |                        |
-   |-- spawn processo ----->|
-   |                        |
-   |-- GET /health -------->|  (poll ogni 50ms, max 10s)
-   |<------- 200 OK --------|
-   |                        |
-   |-- POST /invoke ------->|  (payload JSON)
-   |   Content-Type: json   |
-   |                        |  (handler esegue)
-   |<------- response ------|
-   |                        |
-   |-- SIGTERM ------------->|
-   |-- SIGKILL (dopo 100ms)->|
+In **DEPLOYMENT** mode the watchdog stays alive between invocations (warm
+containers): it exposes its own HTTP server on `:8080`, executes
+`WATCHDOG_CMD` per invocation for `STDIO`/`FILE`, and reverse-proxies to the
+internal runtime on `127.0.0.1:8081` for `HTTP`. The control plane sends the
+request body as an `InvocationRequest` and reads the response body directly —
+no per-invocation callback.
 
+The full contract — environment variables, callback format, retries, signal
+handling, error codes, per-mode examples — lives in
+`runtimes/watchdog/README.md`, which is the authority on watchdog behavior.
 
-MODALITA' STDIO
-================
-Watchdog              Processo figlio
-   |                        |
-   |-- spawn processo ----->|
-   |-- write stdin -------->|  (JSON payload)
-   |-- close stdin -------->|  (EOF)
-   |                        |  (handler esegue)
-   |<------- stdout --------|  (JSON response)
-   |   (processo termina)   |
+## Environment variables
 
+### One-shot mode (legacy cold mode)
 
-MODALITA' FILE
-===============
-Watchdog              Processo figlio
-   |                        |
-   |-- write /tmp/input.json|
-   |-- spawn processo ----->|
-   |   INPUT_FILE=/tmp/input.json
-   |   OUTPUT_FILE=/tmp/output.json
-   |                        |  (legge input, scrive output)
-   |   (processo termina)   |
-   |-- read /tmp/output.json|
-```
+`EXECUTION_ID`, `CALLBACK_URL`, `INVOCATION_PAYLOAD`, `TIMEOUT_MS`,
+`TRACE_ID`, `WATCHDOG_CMD`, `EXECUTION_MODE` are injected into the container
+environment.
 
-### One-shot vs Warm
+### Warm DEPLOYMENT mode
 
-Il watchdog ha due comportamenti radicalmente diversi:
+`FUNCTION_NAME`, `WARM=true`, `TIMEOUT_MS`, `EXECUTION_MODE`, `WATCHDOG_CMD`,
+`RUNTIME_URL` (`http://127.0.0.1:8081/invoke`). No `EXECUTION_ID`/`CALLBACK_URL`
+as env vars: the `executionId` arrives as the `X-Execution-Id` header and the
+body is an `InvocationRequest`.
 
-```
-ONE-SHOT (ExecutionMode = REMOTE, un Job per invocazione)
-=========================================================
+## Kubernetes resources (DEPLOYMENT mode)
 
-   Control Plane          K8s Job Pod
-        |                      |
-        |-- crea Job --------->|
-        |                      |  watchdog avvia
-        |                      |  watchdog esegue funzione (HTTP/STDIO/FILE)
-        |<-- callback result --|  POST /v1/internal/executions/{id}:complete
-        |                      |  pod termina
-        |                      X
-
-
-WARM (ExecutionMode = DEPLOYMENT, pod persistente)
-===================================================
-
-   Control Plane          Deployment Pod (n repliche)
-        |                      |
-        |                      |  watchdog espone HTTP server su :8080
-        |                      |  (se EXECUTION_MODE=HTTP: avvia runtime interno su :8081)
-        |                      |
-        |-- POST /invoke ----->|  Header: X-Execution-Id
-        |   Body: InvocationRequest {input, metadata}
-        |                      |  watchdog:
-        |                      |    - STDIO/FILE: esegue WATCHDOG_CMD per invocazione
-        |                      |    - HTTP: proxy verso runtime interno
-        |<----- response ------|
-        |                      |
-        |-- POST /invoke ----->|  (riusa stesso container!)
-        |                      |  ...
-        |<----- response ------|
-        |                      |
-        |      (il pod resta in vita tra le invocazioni)
-```
-
-In modalita' WARM il watchdog **espone un server HTTP**: accetta richieste
-su `/invoke` e restituisce l'output direttamente nella risposta HTTP.
-Per `STDIO`/`FILE` esegue `WATCHDOG_CMD` a ogni invocazione; per `HTTP`
-fa da reverse proxy verso un runtime interno su `127.0.0.1:8081`. Il processo
-del runtime HTTP e' posseduto dal watchdog: se termina inaspettatamente, il
-watchdog esce con errore e delega il riavvio a Kubernetes o al runtime container.
-Su `SIGTERM`/`SIGINT` arresta invece runtime e server in modo pulito.
-
----
-
-## Variabili d'ambiente iniettate nel pod
-
-### Pod Job (one-shot, ExecutionMode=REMOTE)
-
-| Variabile | Esempio | Descrizione |
-|---|---|---|
-| `FUNCTION_NAME` | `word-stats` | Nome della funzione |
-| `EXECUTION_ID` | `exec-abc-123` | ID univoco dell'invocazione |
-| `CALLBACK_URL` | `http://cp:8080/v1/internal/executions` | URL callback al control plane |
-| `INVOCATION_PAYLOAD` | `{"input":"hello"}` | Payload serializzato JSON |
-| `TIMEOUT_MS` | `30000` | Timeout in millisecondi |
-| `EXECUTION_MODE` | `HTTP` | RuntimeMode (HTTP/STDIO/FILE) |
-| `WATCHDOG_CMD` | `java -jar /app/app.jar` | Comando per avviare il runtime |
-| `TRACE_ID` | `trace-xyz` | ID per distributed tracing |
-
-### Pod Deployment (warm, ExecutionMode=DEPLOYMENT)
-
-| Variabile | Esempio | Descrizione |
-|---|---|---|
-| `FUNCTION_NAME` | `word-stats` | Nome della funzione |
-| `WARM` | `true` | Flag che indica modalita' warm |
-| `TIMEOUT_MS` | `30000` | Timeout in millisecondi |
-| `EXECUTION_MODE` | `HTTP` | RuntimeMode sottostante |
-| `WATCHDOG_CMD` | `java -jar /app/app.jar` | Comando per avviare il runtime |
-| `RUNTIME_URL` | `http://127.0.0.1:8081/invoke` | Endpoint interno per runtime HTTP warm |
-
-**Differenza chiave**: nel warm mode non ci sono `EXECUTION_ID`,
-`CALLBACK_URL`, `INVOCATION_PAYLOAD` come ENV. L'`executionId` arriva
-come header `X-Execution-Id` e il body e' un `InvocationRequest`.
-
----
-
-## Risorse K8s per funzione (modalita' DEPLOYMENT)
+The `k8s` deployment provider (`platform/modules/k8s-deployment-provider`)
+provisions one Deployment + Service per function in the configured namespace:
 
 ```
 +-- Namespace: nanofaas ----------------------------------------+
-|                                                                |
-|  Funzione "image-resize"                                       |
-|  +-----------------------+   +--------------------+            |
-|  |  Deployment           |   |  Service (ClusterIP)|           |
+|  Function "image-resize"                                      |
+|  +-----------------------+   +--------------------+           |
+|  |  Deployment           |   |  Service (ClusterIP)|          |
 |  |  fn-image-resize      |   |  fn-image-resize    |          |
-|  |  replicas: 3          |   |  port: 8080         |          |
+|  |  replicas: N          |   |  port: 8080         |          |
 |  |                       |   |  selector:           |          |
-|  |  +------+ +------+   |   |    function:          |          |
-|  |  | Pod  | | Pod  |   |<--|    image-resize       |          |
-|  |  +------+ +------+   |   +--------------------+            |
-|  |  +------+             |                                     |
-|  |  | Pod  |             |   +--------------------+            |
-|  |  +------+             |   |  HPA (opzionale)   |           |
-|  +-----------------------+   |  min: 1, max: 10   |           |
-|                              |  metric: cpu 50%   |           |
+|  |  (pods)               |<--|    function:          |          |
+|  +-----------------------+   |    image-resize       |          |
 |                              +--------------------+            |
-|                                                                |
-|  Funzione "word-stats"                                         |
-|  +-----------------------+   +--------------------+            |
-|  |  Deployment           |   |  Service (ClusterIP)|           |
-|  |  fn-word-stats        |   |  fn-word-stats      |          |
-|  |  replicas: 1          |   |  port: 8080         |          |
-|  +-----------------------+   +--------------------+            |
+|  +--------------------+                                       |
+|  |  HPA (optional)    |  when scaling strategy is HPA        |
+|  |  min: 1, max: 10   |                                       |
+|  +--------------------+                                       |
 +----------------------------------------------------------------+
 ```
 
----
+- Deployments and Services are **reconciled in place** on provisioning
+  updates (never deleted and recreated).
+- HPAs are reconciled only when the function's scaling strategy is `HPA`;
+  stale HPAs are removed when a function switches to another strategy.
+- The internal autoscaler (`autoscaler` module) drives replica changes for
+  the `INTERNAL` strategy through the same provider.
 
-## Come si usa il watchdog
+## Using the watchdog
 
-### Caso 1: Funzione Java con SDK NanoFaaS
+### Case 1: Java function with the SDK (no watchdog)
 
-L'utente scrive un handler Java e lo pacchettizza con `sdks/java`:
+`sdks/java` is a Spring Boot application that exposes `POST /invoke`,
+`GET /health`, and `GET /metrics` itself. In DEPLOYMENT mode the watchdog is
+not needed — the control plane calls the Kubernetes Service (or container
+instances) directly:
 
-```
-Dockerfile:
-  FROM eclipse-temurin:21-jre
-  COPY build/libs/my-function.jar /app/app.jar
-  ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-```
-
-Il jar contiene il runtime HTTP riusabile di `sdks/java` e
-l'handler utente. L'handler viene scoperto automaticamente via Spring
-component scan grazie all'annotazione `@NanofaasFunction`.
-
-**Il watchdog non serve** in questo caso se usi DEPLOYMENT mode, perche'
-il runtime Java stesso espone `/invoke` e `/health`. Il control plane
-invia richieste direttamente al Service K8s.
-
-**Il watchdog serve** in JOB mode (REMOTE) perche' gestisce il callback
-al control plane e il timeout.
-
-### Caso 2: Funzione Java con watchdog (Dockerfile.combined)
-
-```
-+-------------------------------------------+
-|  Container                                |
-|                                           |
-|  ENTRYPOINT: /watchdog                    |
-|       |                                   |
-|       +-- spawn --> java -jar /app/app.jar|
-|                          |                |
-|                    Spring Boot server     |
-|                    POST /invoke           |
-|                          |                |
-|                    HandlerRegistry        |
-|                    (SPI discovery)        |
-|                          |                |
-|                    @NanofaasFunction      |
-|                    MyHandler.handle()     |
-+-------------------------------------------+
+```dockerfile
+FROM gcr.io/distroless/java25-debian12
+COPY build/libs/my-function.jar /app/app.jar
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 ```
 
-### Caso 3: Funzione Go con function-sdk-go
+### Case 2: Python function with the SDK (no watchdog)
 
-```
-+-------------------------------------------+
-|  Container                                |
-|                                           |
-|  ENTRYPOINT: /app/function                |
-|       |                                   |
-|       +-- runtime HTTP embedded           |
-|              |                            |
-|              POST /invoke                 |
-|              GET /health                  |
-|              GET /metrics                 |
-|              |                            |
-|              resolve X-Execution-Id       |
-|              resolve X-Trace-Id           |
-|              callback async al control    |
-|              plane quando configurato     |
-+-------------------------------------------+
-```
+`sdks/python` provides a FastAPI runtime: `uvicorn nanofaas.runtime.app:app`
+exposes `/invoke`, `/health`, and `/metrics`. Handlers are decorated with
+`@nanofaas_function`.
 
-Lo SDK Go replica il modello warm-first dello SDK Java, ma con API Go
-esplicita invece di annotation Spring. Il processo resta vivo tra le
-invocazioni, espone direttamente gli endpoint HTTP runtime e propaga
-`executionId`/`traceId` nel contesto della request.
+### Case 3: Any binary or script (watchdog)
 
-### Caso 4: Funzione Python
+The watchdog wraps arbitrary executables — Go, Rust, C, Node scripts, bash —
+in HTTP, STDIO, or FILE mode:
 
-```
-+-------------------------------------------+
-|  Container                                |
-|                                           |
-|  ENTRYPOINT: gunicorn app:app             |
-|       |                                   |
-|       +-- Flask server su :8080           |
-|              |                            |
-|              POST /invoke                 |
-|              |                            |
-|              importlib.import_module()    |
-|              handler.handle(request)      |
-+-------------------------------------------+
-```
-
-### Caso 5: Eseguibile generico (STDIO mode)
-
-```
-+-------------------------------------------+
-|  Container                                |
-|                                           |
-|  ENTRYPOINT: /watchdog                    |
-|  WATCHDOG_CMD: /app/my-binary             |
-|  EXECUTION_MODE: STDIO                    |
-|       |                                   |
-|       +-- spawn --> /app/my-binary        |
-|       +-- write stdin: {"input":"..."}    |
-|       +-- close stdin (EOF)               |
-|       +-- read stdout: {"result":"..."}   |
-|       +-- send callback                   |
-+-------------------------------------------+
-```
-
-Qui l'eseguibile puo' essere **qualsiasi cosa**: un binary Go, Rust, C,
-uno script Node.js, un programma compilato nativamente.
-
----
-
-## Posso usare un eseguibile compilato?
-
-**Si', assolutamente.** Ci sono tre approcci:
-
-### Approccio 1: Eseguibile con server HTTP integrato
-
-L'eseguibile espone un server HTTP su porta 8080 con endpoint `/invoke`
-e `/health`. Un runtime Go costruito con `function-sdk-go` rientra
-naturalmente in questa categoria. Non serve il watchdog in DEPLOYMENT mode.
-
-```
-FROM scratch
-COPY my-native-binary /app/handler
-EXPOSE 8080
-ENTRYPOINT ["/app/handler"]
-```
-
-Registrazione:
-```json
-{
-  "name": "my-func",
-  "image": "my-registry/my-native-func:1.0",
-  "executionMode": "DEPLOYMENT"
-}
-```
-
-Il binary deve:
-- Ascoltare su `0.0.0.0:8080`
-- Accettare `POST /invoke` con body JSON
-- Rispondere con JSON
-- Esporre `GET /health` che ritorna 200
-
-### Approccio 2: Eseguibile con watchdog (HTTP mode)
-
-Come sopra ma il watchdog gestisce lifecycle, health check e callback:
-
-```
-FROM scratch
-COPY --from=watchdog /watchdog /watchdog
-COPY my-native-binary /app/handler
-ENV WATCHDOG_CMD="/app/handler"
-ENV EXECUTION_MODE=HTTP
-ENTRYPOINT ["/watchdog"]
-```
-
-### Approccio 3: Eseguibile semplice con watchdog (STDIO mode)
-
-L'eseguibile legge JSON da stdin e scrive JSON su stdout. Non serve un
-server HTTP. Ideale per CLI tools, script, binary semplici.
-
-```
+```dockerfile
 FROM scratch
 COPY --from=watchdog /watchdog /watchdog
 COPY my-cli-tool /app/handler
@@ -397,173 +144,34 @@ ENV EXECUTION_MODE=STDIO
 ENTRYPOINT ["/watchdog"]
 ```
 
-### Approccio 4: Script/processo con watchdog (FILE mode)
+STDIO mode is ideal for CLI tools and simple scripts: read JSON from stdin,
+write JSON to stdout, exit.
 
-Il processo legge da file e scrive su file. Utile per bash scripts o
-programmi legacy.
+## Compiling Java functions natively
 
-```
-FROM alpine
-COPY --from=watchdog /watchdog /watchdog
-COPY process.sh /app/process.sh
-ENV WATCHDOG_CMD="/app/process.sh"
-ENV EXECUTION_MODE=FILE
-ENTRYPOINT ["/watchdog"]
-```
-
----
-
-## Posso compilare le funzioni Java nativamente?
-
-**Si'.** Una funzione Java puo' essere compilata con GraalVM native-image
-per ottenere un binary nativo senza JVM. Questo riduce drasticamente
-il tempo di avvio e il consumo di memoria.
-
-### Come funziona
-
-```
-COMPILAZIONE
-
-  Codice Java          GraalVM native-image           Binary nativo
-  +-------------+      +-------------------+         +-------------+
-  | MyHandler   | ---> | AOT compilation   | ------> | my-func     |
-  | + SDK       |      | + analisi statica |         | ~40-80 MB   |
-  | + Runtime   |      | + SubstrateVM     |         | avvio <0.1s |
-  +-------------+      +-------------------+         +-------------+
-
-
-IMMAGINE DOCKER
-
-  +-------------------------------------------+
-  |  FROM scratch  (o distroless)             |
-  |  COPY my-func /app/handler                |
-  |  ~40-80 MB totali                         |
-  |                                           |
-  |  vs                                       |
-  |                                           |
-  |  FROM eclipse-temurin:21-jre              |
-  |  COPY app.jar /app/app.jar                |
-  |  ~200-300 MB totali                       |
-  +-------------------------------------------+
-```
-
-### Confronto avvio
-
-```
-  JVM (temurin:21)       Nativo (GraalVM)
-  +-----------------+    +-----------------+
-  | Avvio: 1-3 sec  |    | Avvio: <100 ms  |
-  | RAM: ~150 MB    |    | RAM: ~30 MB     |
-  | Immagine: ~300MB|    | Immagine: ~80MB |
-  | Throughput: +++  |    | Throughput: ++  |
-  +-----------------+    +-----------------+
-```
-
-### Come compilare una funzione Java nativa
-
-1. Il progetto usa Spring Boot con il plugin GraalVM:
-
-```groovy
-// build.gradle della funzione
-plugins {
-    id 'org.springframework.boot'
-    id 'org.graalvm.buildtools.native'
-}
-
-dependencies {
-    implementation project(':sdks:java')
-}
-```
-
-2. Compilare:
+Java functions can be compiled ahead-of-time with GraalVM `native-image`:
 
 ```bash
-./gradlew :functions:java:json-transform:nativeCompile
+./gradlew :functions:java:word-stats-lite:nativeCompile
 ```
 
-3. Il binary nativo risultante include:
-   - SubstrateVM (runtime GraalVM minimale)
-   - Spring Boot (AOT-processed)
-   - SDK Java NanoFaaS (InvokeController, HandlerRegistry)
-   - Il tuo handler
+The resulting binary embeds SubstrateVM, Spring Boot (AOT-processed), the
+Java SDK, and the handler; typical size 40-80 MB with sub-100 ms startup. The
+repo-wide native build is orchestrated by `scripts/native-build.sh`, and
+`scripts/native-java-image.sh <service>` builds Distroless native images.
 
-4. Dockerfile nativo:
-
-```dockerfile
-FROM gcr.io/distroless/static
-COPY build/native/nativeCompile/my-function /app/handler
-EXPOSE 8080
-ENTRYPOINT ["/app/handler"]
-```
-
-### Limitazioni del native build
-
-- **Reflection**: Spring AOT lo gestisce automaticamente, ma librerie
-  esterne che usano reflection pesante possono richiedere configurazione
-  aggiuntiva (`RuntimeHints`)
-- **Tempo di compilazione**: 1-3 minuti vs pochi secondi per il JVM build
-- **Throughput**: dopo il warmup la JVM puo' essere piu' veloce del nativo
-  per workload CPU-intensive (JIT vs AOT)
-- **Debugging**: piu' difficile in nativo
-
-### Quando conviene il nativo
-
-| Scenario | JVM | Nativo |
+| Scenario | JVM | Native |
 |---|---|---|
-| Cold start critico | No | **Si'** |
-| Tante repliche (costo RAM) | No | **Si'** |
-| Scale-to-zero | No | **Si'** |
-| CPU-intensive prolungato | **Si'** | No |
-| Sviluppo/debug veloce | **Si'** | No |
+| Cold start critical | No | **Yes** |
+| Many replicas (RAM cost) | No | **Yes** |
+| Scale-to-zero | No | **Yes** |
+| CPU-intensive sustained | **Yes** | No |
+| Fast development/debug | **Yes** | No |
 
----
+### Native build caveats
 
-## Riepilogo: cosa c'e' dentro un pod
-
-```
-+================================================================+
-|                        POD FUNZIONE                            |
-|================================================================|
-|                                                                |
-|  Layer 1: WATCHDOG (opzionale in DEPLOYMENT mode)              |
-|  +----------------------------------------------------------+  |
-|  |  Binary Rust statico (~2 MB)                             |  |
-|  |  Ruolo: process supervisor, HTTP proxy (warm),           |  |
-|  |         health check, timeout, callback, tracing         |  |
-|  |  Modalita': HTTP | STDIO | FILE | WARM                   |  |
-|  +----------------------------------------------------------+  |
-|           |                                                    |
-|           | spawn (WATCHDOG_CMD)                               |
-|           v                                                    |
-|  Layer 2: RUNTIME                                              |
-|  +----------------------------------------------------------+  |
-|  |  Java: Spring Boot (SDK Java NanoFaaS + handler)         |  |
-|  |    - InvokeController: POST /invoke                      |  |
-|  |    - HandlerRegistry: scopre @NanofaasFunction via scan  |  |
-|  |    - CallbackClient: POSTa risultato al control plane    |  |
-|  |    - TraceLoggingFilter: MDC con executionId + traceId   |  |
-|  |                                                          |  |
-|  |  Python: Flask + Gunicorn                                |  |
-|  |    - POST /invoke                                        |  |
-|  |    - importlib carica handle() da modulo configurabile   |  |
-|  |    - callback con retry                                  |  |
-|  |                                                          |  |
-|  |  Nativo: qualsiasi eseguibile                            |  |
-|  |    - HTTP server su :8080 (mode HTTP)                    |  |
-|  |    - oppure stdin/stdout (mode STDIO)                    |  |
-|  |    - oppure file I/O (mode FILE)                         |  |
-|  +----------------------------------------------------------+  |
-|           |                                                    |
-|           | invoca                                             |
-|           v                                                    |
-|  Layer 3: CODICE UTENTE                                        |
-|  +----------------------------------------------------------+  |
-|  |  Java:   class MyHandler implements FunctionHandler      |  |
-|  |          Object handle(InvocationRequest request)        |  |
-|  |                                                          |  |
-|  |  Python: def handle(request: dict) -> dict               |  |
-|  |                                                          |  |
-|  |  Altro:  qualsiasi logica che risponde JSON              |  |
-|  +----------------------------------------------------------+  |
-+================================================================+
-```
+- Spring AOT handles reflection automatically, but libraries relying on heavy
+  reflection may need `RuntimeHints`.
+- Compilation takes 1-3 minutes (JIT-enabled JVM builds take seconds).
+- After warmup, the JVM can outperform native for CPU-intensive workloads.
+- Debugging native binaries is harder.

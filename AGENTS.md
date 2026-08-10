@@ -3,11 +3,11 @@
 ## Project Structure & Module Organization
 
 - `platform/common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
-- `platform/control-plane/` is the API gateway + scheduler + in-memory queues + Kubernetes dispatch logic (supports JOB and WARM execution modes).
+- `platform/control-plane/` is the API gateway + scheduler + in-memory queues + dispatch logic (execution modes: `LOCAL`, `EXTERNAL`, and managed `DEPLOYMENT` via backend providers).
 - `sdks/java/` provides the reusable Java invocation runtime; `services/java/warm-echo/` is its runnable long-running example service.
 - `sdks/python/` provides the Python function SDK and FastAPI runtime.
 - `docs/` holds architecture and operational documentation; `openapi.yaml` is the API spec.
-- `deploy/k8s/` contains Kubernetes manifests; `scripts/` provides helper workflows.
+- `deploy/helm/nanofaas/` contains the Helm chart; `deploy/compose/` a Docker Compose stack; `scripts/` provides helper workflows.
 - Tests live in `*/src/test/java` with E2E tests under `platform/control-plane/src/test/java/.../e2e`.
 
 ## Build, Test, and Development Commands
@@ -37,7 +37,7 @@
 
 - Language: Java with Spring Boot; native image support via GraalVM build tools.
 - Single control-plane pod: API gateway, in-memory queueing, and a dedicated scheduler thread.
-- Function execution runs in separate Kubernetes pods (JOB mode for cold starts, WARM mode for OpenWhisk-style warm containers).
+- Function execution runs in managed warm instances (Kubernetes Deployments via the `k8s` provider, or local containers via `container-local`), as external passthroughs (`EXTERNAL`), or in-process (`LOCAL`).
 - No authentication/authorization in scope.
 - Prometheus metrics exposed via Micrometer/Actuator.
 - Retry default is 3 and must be user-configurable; clients handle idempotency.
@@ -45,8 +45,8 @@
 
 ## Commit & Pull Request Guidelines
 
-- No git history is present; use short, imperative commits (e.g., `Add queue backpressure`).
-- PRs should include a summary, tests run, and updates to `docs/`, `openapi.yaml`, and `deploy/k8s/` when behavior changes.
+- Use short, imperative commits (e.g., `Add queue backpressure`).
+- PRs should include a summary, tests run, and updates to `docs/`, `openapi.yaml`, and `deploy/` when behavior changes.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

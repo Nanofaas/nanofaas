@@ -11,7 +11,7 @@ differ between languages are marked accordingly.
 | Requirement | Version |
 |---|---|
 | nanofaas CLI (`nanofaas`) | any recent |
-| Java (SDKMAN recommended) | 21 — *Java only* |
+| Java (SDKMAN recommended) | 25 — *Java only* |
 | Node.js + npm | 20 — *JavaScript only* |
 | Docker or compatible runtime | any recent |
 | nanofaas platform running | — |

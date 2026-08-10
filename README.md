@@ -113,11 +113,7 @@ VM provisioning and scenario orchestration now live in the separate
 
 ## Documentation
 
+- [Documentation index](docs/README.md): complete table of contents (guides, architecture, operations, reference).
 - [Quickstart](docs/quickstart.md): local build, CLI, and infrastructure paths.
-- [CLI guide](docs/nanofaas-cli.md): commands, payloads, deploy behavior, and scope.
+- [Tutorial: writing a function](docs/tutorial-function.md): end-to-end walkthrough with examples.
 - [nanolab guide](https://github.com/miciav/nanolab#readme): provisioning, environments, and scenarios.
-- [Control-plane operation](docs/control-plane.md): Java control-plane deployment overview.
-- [Testing guide](docs/testing.md): test layers and commands.
-- [SonarQube analysis](docs/sonarqube.md): on-demand local analysis via `scripts/sonar.sh`.
-- [E2E tutorial](docs/e2e-tutorial.md): validation environments and scenarios.
-- [Function pod architecture](docs/function-pod-architecture.md): function execution model.

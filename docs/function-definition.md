@@ -1,4 +1,3 @@
-```markdown name=function-definition.md
 # Function definition
 
 Each NanoFaaS function is described by a YAML manifest file that defines the

@@ -8,3 +8,4 @@ Comparable Azure AMD64 native results. Raw evidence remains in each release run.
 | 0.17.1 | azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1 | 3 | 269.069 | 0.000000 | 5.772 | 3 |
 | v0.18.1 | azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1 | 3 | 239.130 | 0.000000 | 6.607 | 4 |
 | v0.18.2 | azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1 | 3 | 249.341 | 0.000000 | 5.125 | 3 |
+| v0.18.3 | azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1 | 3 | 232.407 | 0.000000 | 5.131 | 4 |
