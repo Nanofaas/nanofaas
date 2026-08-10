@@ -195,6 +195,31 @@ class DeploymentWakeUpGateTest {
     }
 
     @Test
+    void ensureReady_timeoutDoesNotDependOnTheSharedCompletableFutureDelayScheduler() throws Exception {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        CountDownLatch delaySchedulerBlocked = new CountDownLatch(1);
+        CountDownLatch releaseDelayScheduler = new CountDownLatch(1);
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
+        CompletableFuture.delayedExecutor(0, TimeUnit.NANOSECONDS, Runnable::run)
+                .execute(() -> {
+                    delaySchedulerBlocked.countDown();
+                    await(releaseDelayScheduler);
+                });
+        assertThat(delaySchedulerBlocked.await(1, TimeUnit.SECONDS)).isTrue();
+
+        try {
+            assertThatThrownBy(() -> gate(Duration.ofMillis(50), Duration.ofSeconds(1))
+                    .ensureReady(task).get(250, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                    .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TIMEOUT");
+        } finally {
+            releaseDelayScheduler.countDown();
+        }
+    }
+
+    @Test
     void ensureReady_timesOutWhileTheFirstProviderStatusCallIsBlocked() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");

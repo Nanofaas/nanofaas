@@ -23,16 +23,26 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @Service
 public class DeploymentWakeUpGate {
+
+    private static final ScheduledExecutorService FALLBACK_TIMEOUT_SCHEDULER =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "deployment-wakeup-timeout-");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private final FunctionRegistry registry;
     private final ManagedDeploymentCoordinator coordinator;
     private final Duration timeout;
     private final Duration pollInterval;
     private final Executor executor;
+    private final ScheduledExecutorService timeoutScheduler;
     private final DeploymentWakeUpCoordinator wakeUpCoordinator;
     private final ConcurrentMap<String, CompletableFuture<Void>> inFlight = new ConcurrentHashMap<>();
 
@@ -41,15 +51,16 @@ public class DeploymentWakeUpGate {
                                  ManagedDeploymentCoordinator coordinator,
                                  DeploymentWakeUpProperties properties,
                                  @Qualifier("deploymentWakeUpExecutor") Executor executor,
+                                 @Qualifier("deploymentWakeUpTimeoutScheduler") ScheduledExecutorService timeoutScheduler,
                                  DeploymentWakeUpCoordinator wakeUpCoordinator) {
-        this(registry, coordinator, properties.timeout(), properties.pollInterval(), executor, wakeUpCoordinator);
+        this(registry, coordinator, properties.timeout(), properties.pollInterval(), executor, timeoutScheduler, wakeUpCoordinator);
     }
 
     public DeploymentWakeUpGate(FunctionRegistry registry,
                                  ManagedDeploymentCoordinator coordinator,
                                  Duration timeout,
                                  Duration pollInterval) {
-        this(registry, coordinator, timeout, pollInterval, Runnable::run, new DeploymentWakeUpCoordinator());
+        this(registry, coordinator, timeout, pollInterval, Runnable::run, FALLBACK_TIMEOUT_SCHEDULER, new DeploymentWakeUpCoordinator());
     }
 
     DeploymentWakeUpGate(FunctionRegistry registry,
@@ -57,7 +68,7 @@ public class DeploymentWakeUpGate {
                           Duration timeout,
                           Duration pollInterval,
                           Executor executor) {
-        this(registry, coordinator, timeout, pollInterval, executor, new DeploymentWakeUpCoordinator());
+        this(registry, coordinator, timeout, pollInterval, executor, FALLBACK_TIMEOUT_SCHEDULER, new DeploymentWakeUpCoordinator());
     }
 
     public DeploymentWakeUpGate(FunctionRegistry registry,
@@ -66,12 +77,23 @@ public class DeploymentWakeUpGate {
                                  Duration pollInterval,
                                  Executor executor,
                                  DeploymentWakeUpCoordinator wakeUpCoordinator) {
+        this(registry, coordinator, timeout, pollInterval, executor, FALLBACK_TIMEOUT_SCHEDULER, wakeUpCoordinator);
+    }
+
+    DeploymentWakeUpGate(FunctionRegistry registry,
+                          ManagedDeploymentCoordinator coordinator,
+                          Duration timeout,
+                          Duration pollInterval,
+                          Executor executor,
+                          ScheduledExecutorService timeoutScheduler,
+                          DeploymentWakeUpCoordinator wakeUpCoordinator) {
         this.registry = registry;
         this.coordinator = coordinator;
         DeploymentWakeUpProperties properties = new DeploymentWakeUpProperties(timeout, pollInterval);
         this.timeout = properties.timeout();
         this.pollInterval = properties.pollInterval();
         this.executor = executor;
+        this.timeoutScheduler = timeoutScheduler;
         this.wakeUpCoordinator = wakeUpCoordinator;
     }
 
@@ -103,8 +125,7 @@ public class DeploymentWakeUpGate {
     private void wake(String name, ManagedDeploymentTarget target, CompletableFuture<Void> result) {
         long deadline = System.nanoTime() + timeout.toNanos();
         result.whenComplete((ignored, failure) -> inFlight.remove(name, result));
-        CompletableFuture.delayedExecutor(timeout.toNanos(), TimeUnit.NANOSECONDS)
-                .execute(() -> timeout(result));
+        timeoutScheduler.schedule(() -> timeout(result), timeout.toNanos(), TimeUnit.NANOSECONDS);
         try {
             executor.execute(() -> start(target, deadline, result));
         } catch (Throwable failure) {
