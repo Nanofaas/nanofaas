@@ -51,7 +51,7 @@ class ExecutionCompletionHandlerTest {
     @BeforeEach
     void setUp() {
         executionStore = new ExecutionStore();
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
 
         testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,
