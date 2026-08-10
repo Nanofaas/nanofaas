@@ -164,6 +164,34 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void provisionWithZeroMinReplicas_scalesToOneAndReportsReadyStatus() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        MutableEndpointProbe probe = new MutableEndpointProbe();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                probe,
+                new FixedPortAllocator(19001),
+                functionName -> proxy
+        );
+
+        ProvisionResult result = provider.provision(spec("echo", 0));
+
+        assertThat(result.endpointUrl()).isEqualTo("http://127.0.0.1:19090/invoke");
+        assertThat(adapter.startedSpecs()).isEmpty();
+        assertThat(proxy.backends()).isEmpty();
+        assertThat(proxy.isClosed()).isFalse();
+
+        provider.setReplicas("echo", 1);
+        probe.markReady("http://127.0.0.1:19001");
+
+        assertThat(adapter.startedPorts()).containsExactly(19001);
+        assertThat(proxy.backends()).containsExactly("http://127.0.0.1:19001");
+        assertThat(provider.getReplicaStatus("echo")).isEqualTo(new ReplicaStatus(1, 1));
+    }
+
+    @Test
     void provision_passesResourcesToEveryReplica() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
