@@ -94,7 +94,7 @@ prometheus:
 
 # The control plane creates HPA objects per function. Enable this shared
 # cluster component only when at least one registered function uses HPA.
-hpaMetricsAdapter:
+hpa-metrics-adapter:
   enabled: false
   prometheus:
     url: http://prometheus

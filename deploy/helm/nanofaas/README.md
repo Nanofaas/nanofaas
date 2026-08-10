@@ -35,7 +35,7 @@ bundled Prometheus when such functions are used:
 
 ```bash
 helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas \
-  --set hpaMetricsAdapter.enabled=true
+  --set hpa-metrics-adapter.enabled=true
 ```
 
 The adapter exposes `function_in_flight` as the `nanofaas_in_flight` external
