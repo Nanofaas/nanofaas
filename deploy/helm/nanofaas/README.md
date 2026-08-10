@@ -27,6 +27,21 @@ Disable bundled Prometheus:
 helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas --set prometheus.create=false
 ```
 
+### HPA External Metrics
+
+The control plane creates an HPA only for functions registered with
+`scalingConfig.strategy: HPA`. Enable the shared Prometheus Adapter alongside
+bundled Prometheus when such functions are used:
+
+```bash
+helm upgrade --install nanofaas helm/nanofaas --namespace nanofaas \
+  --set hpaMetricsAdapter.enabled=true
+```
+
+The adapter exposes `function_in_flight` as the `nanofaas_in_flight` external
+metric, filtered by the function label. It remains disabled for deployments
+that do not use HPA.
+
 ### External Prometheus Scrape
 
 The chart adds classic Prometheus scrape annotations to the control-plane Service/Pod template
