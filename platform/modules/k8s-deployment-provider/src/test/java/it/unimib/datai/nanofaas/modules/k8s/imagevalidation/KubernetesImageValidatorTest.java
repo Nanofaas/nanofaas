@@ -41,14 +41,11 @@ class KubernetesImageValidatorTest {
     }
 
     @Test
-    void validate_deployment_skipsValidationInNativeRuntime() {
-        @SuppressWarnings("unchecked")
-        ObjectProvider<KubernetesClient> provider = mock(ObjectProvider.class);
-        KubernetesClient client = mock(KubernetesClient.class);
-        when(provider.getObject()).thenReturn(client);
+    void validate_deployment_createsAndDeletesValidationPodInNativeRuntime() {
+        K8sMocks mocks = mockK8s(runningPod(), null);
 
         KubernetesImageValidator validator = new KubernetesImageValidator(
-                provider,
+                mocks.provider,
                 new KubernetesProperties("nanofaas", null)
         );
 
@@ -79,7 +76,8 @@ class KubernetesImageValidatorTest {
             }
         }
 
-        verifyNoInteractions(client);
+        verify(mocks.podResource).create();
+        verify(mocks.namedPod).delete();
     }
 
     @Test
