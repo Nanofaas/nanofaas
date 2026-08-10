@@ -4,7 +4,6 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpGate;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
@@ -52,7 +51,7 @@ class ExecutionCompletionHandlerTest {
     @BeforeEach
     void setUp() {
         executionStore = new ExecutionStore();
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
 
         testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,

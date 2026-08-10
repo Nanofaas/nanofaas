@@ -1,10 +1,14 @@
-package it.unimib.datai.nanofaas.controlplane.deployment;
+package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -23,6 +27,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -42,6 +48,16 @@ class DeploymentWakeUpGateTest {
 
     private final FunctionRegistry registry = mock(FunctionRegistry.class);
     private final ManagedDeploymentCoordinator coordinator = mock(ManagedDeploymentCoordinator.class);
+
+    @Test
+    void properties_defaultAndRejectNonPositiveDurations() {
+        assertThat(new DeploymentWakeUpProperties().timeout()).isEqualTo(Duration.ofSeconds(30));
+        assertThat(new DeploymentWakeUpProperties().pollInterval()).isEqualTo(Duration.ofMillis(250));
+        assertThatThrownBy(() -> new DeploymentWakeUpProperties(Duration.ZERO, Duration.ofMillis(1)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DeploymentWakeUpProperties(Duration.ofMillis(1), Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 
     @Test
     void ensureReady_scalesEligibleZeroReplicaDeploymentToOneAndWaitsForReadiness() {
@@ -76,6 +92,22 @@ class DeploymentWakeUpGateTest {
     }
 
     @Test
+    void ensureReady_removesCompletedWakeUpSoALaterScaleToZeroCanWakeAgain() {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.getReplicaStatus(target)).thenReturn(
+                new ReplicaStatus(0, 0), new ReplicaStatus(1, 1),
+                new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+
+        DeploymentWakeUpGate gate = gate();
+        gate.ensureReady(task).join();
+        gate.ensureReady(task).join();
+
+        verify(coordinator, times(2)).setReplicas(target, 1);
+    }
+
+    @Test
     void ensureReady_coalescesConcurrentWakeUpsForTheSameFunction() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "container-local");
@@ -92,26 +124,28 @@ class DeploymentWakeUpGateTest {
             return statusCalls.get() <= 2 ? new ReplicaStatus(0, 0) : new ReplicaStatus(1, 1);
         });
 
-        DeploymentWakeUpGate gate = gate();
-        CompletableFuture<CompletableFuture<Void>> firstCaller = CompletableFuture.supplyAsync(() -> {
-            await(start);
-            return gate.ensureReady(task);
-        });
-        CompletableFuture<CompletableFuture<Void>> secondCaller = CompletableFuture.supplyAsync(() -> {
-            await(start);
-            return gate.ensureReady(task);
-        });
-        start.countDown();
-        assertThat(firstStatusEntered.await(1, TimeUnit.SECONDS)).isTrue();
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            DeploymentWakeUpGate gate = gate(Duration.ofSeconds(1), Duration.ofMillis(1), executor);
+            CompletableFuture<CompletableFuture<Void>> firstCaller = CompletableFuture.supplyAsync(() -> {
+                await(start);
+                return gate.ensureReady(task);
+            });
+            CompletableFuture<CompletableFuture<Void>> secondCaller = CompletableFuture.supplyAsync(() -> {
+                await(start);
+                return gate.ensureReady(task);
+            });
+            start.countDown();
+            assertThat(firstStatusEntered.await(1, TimeUnit.SECONDS)).isTrue();
 
-        CompletableFuture<Void> first = firstCaller.get(1, TimeUnit.SECONDS);
-        CompletableFuture<Void> second = secondCaller.get(1, TimeUnit.SECONDS);
-        releaseFirstStatus.countDown();
+            CompletableFuture<Void> first = firstCaller.get(1, TimeUnit.SECONDS);
+            CompletableFuture<Void> second = secondCaller.get(1, TimeUnit.SECONDS);
+            releaseFirstStatus.countDown();
 
-        CompletableFuture.allOf(first, second).join();
+            CompletableFuture.allOf(first, second).join();
 
-        assertThat(first).isSameAs(second);
-        verify(coordinator, times(1)).setReplicas(target, 1);
+            assertThat(first).isSameAs(second);
+            verify(coordinator, times(1)).setReplicas(target, 1);
+        }
     }
 
     @Test
@@ -125,6 +159,51 @@ class DeploymentWakeUpGateTest {
                 .ensureReady(task).get(1, TimeUnit.SECONDS))
                 .isInstanceOf(java.util.concurrent.ExecutionException.class)
                 .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TIMEOUT");
+    }
+
+    @Test
+    void ensureReady_timesOutWithinTheWakeUpBudgetWhenPollIntervalIsLonger() {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
+        long started = System.nanoTime();
+
+        assertThatThrownBy(() -> gate(Duration.ofMillis(50), Duration.ofSeconds(1))
+                .ensureReady(task).get(250, TimeUnit.MILLISECONDS))
+                .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TIMEOUT");
+
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(250));
+    }
+
+    @Test
+    void ensureReady_timesOutWhileTheFirstProviderStatusCallIsBlocked() throws Exception {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        CountDownLatch statusEntered = new CountDownLatch(1);
+        CountDownLatch releaseStatus = new CountDownLatch(1);
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.getReplicaStatus(target)).thenAnswer(invocation -> {
+            statusEntered.countDown();
+            await(releaseStatus);
+            return new ReplicaStatus(0, 0);
+        });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            CompletableFuture<Void> ready = gate(Duration.ofMillis(50), Duration.ofMillis(1), executor).ensureReady(task);
+            assertThat(statusEntered.await(1, TimeUnit.SECONDS)).isTrue();
+
+            assertThatThrownBy(() -> ready.get(250, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                    .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TIMEOUT");
+        } finally {
+            releaseStatus.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        }
+        verify(coordinator, never()).setReplicas(target, 1);
     }
 
     @Test
@@ -206,6 +285,10 @@ class DeploymentWakeUpGateTest {
 
     private DeploymentWakeUpGate gate(Duration timeout, Duration pollInterval) {
         return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval);
+    }
+
+    private DeploymentWakeUpGate gate(Duration timeout, Duration pollInterval, ExecutorService executor) {
+        return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval, executor);
     }
 
     private static RegisteredFunction deployment(String name, String backend, ScalingStrategy strategy, int minReplicas) {
