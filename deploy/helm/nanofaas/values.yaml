@@ -92,6 +92,22 @@ prometheus:
     scrapeTimeout: 10s
     additionalLabels: {}
 
+# The control plane creates HPA objects per function. Enable this shared
+# cluster component only when at least one registered function uses HPA.
+hpaMetricsAdapter:
+  enabled: false
+  prometheus:
+    url: http://prometheus
+    port: 9090
+  rules:
+    default: false
+    external:
+      - seriesQuery: 'function_in_flight{function!=""}'
+        name:
+          matches: '^function_in_flight$'
+          as: nanofaas_in_flight
+        metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>})'
+
 demos:
   enabled: true
   # The job will register these functions via the control-plane API.
