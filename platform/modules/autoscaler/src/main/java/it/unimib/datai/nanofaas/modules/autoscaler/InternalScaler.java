@@ -6,19 +6,21 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProtection;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.SmartLifecycle;
+import org.springframework.context.ApplicationListener;
 
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class InternalScaler implements SmartLifecycle {
+public class InternalScaler implements SmartLifecycle, ApplicationListener<DeploymentWakeUpProtection> {
     private static final Logger log = LoggerFactory.getLogger(InternalScaler.class);
 
     private final FunctionRegistry registry;
@@ -31,6 +33,7 @@ public class InternalScaler implements SmartLifecycle {
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
     private final ConcurrencyControlCoordinator concurrencyControlCoordinator;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final ConcurrentMap<String, Instant> wakeUpProtections = new ConcurrentHashMap<>();
     private ScheduledExecutorService executor;
 
     public InternalScaler(FunctionRegistry registry,
@@ -151,7 +154,9 @@ public class InternalScaler implements SmartLifecycle {
                 effectiveReplicas = decision.desiredReplicas();
             }
         } else if (decision.downscaleSignal()) {
-            if (!cooldownTracker.allowScaleDown(functionName, now)) {
+            if (isWakeUpProtected(functionName, now)) {
+                log.debug("Skipping scale-down for {} while deployment wake-up is protected", functionName);
+            } else if (!cooldownTracker.allowScaleDown(functionName, now)) {
                 log.debug("Skipping scale-down for {} (cooldown)", functionName);
             } else {
                 log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
@@ -176,6 +181,25 @@ public class InternalScaler implements SmartLifecycle {
         cooldownTracker.clear(functionName);
         concurrencyControlCoordinator.removeFunctionState(functionName);
         coldStartTracker.removeFunctionState(functionName);
+        wakeUpProtections.remove(functionName);
+    }
+
+    @Override
+    public void onApplicationEvent(DeploymentWakeUpProtection protection) {
+        wakeUpProtections.merge(protection.functionName(), protection.expiresAt(),
+                (current, replacement) -> current.isAfter(replacement) ? current : replacement);
+    }
+
+    private boolean isWakeUpProtected(String functionName, Instant now) {
+        Instant expiresAt = wakeUpProtections.get(functionName);
+        if (expiresAt == null) {
+            return false;
+        }
+        if (now.isBefore(expiresAt)) {
+            return true;
+        }
+        wakeUpProtections.remove(functionName, expiresAt);
+        return false;
     }
 
     private static Optional<ManagedDeploymentTarget> managedDeploymentTarget(RegisteredFunction function) {

@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProtection;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -13,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -183,6 +185,36 @@ class InternalScalerTest {
         when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(2);
         // in_flight = 0, target = 2, ratio = 0.0, desired = ceil(0 * 2) = 0, clamped to min=0
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+
+        scaler.scalingLoop();
+
+        verify(deploymentCoordinator).setReplicas(target(spec), 0);
+    }
+
+    @Test
+    void scalingLoop_doesNotScaleDownWhileWakeUpProtectionIsActive() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 5,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
+        when(registry.listRegistered()).thenReturn(List.of(spec));
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(0);
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        scaler.onApplicationEvent(new DeploymentWakeUpProtection("echo", Instant.now().plusSeconds(1)));
+
+        scaler.scalingLoop();
+
+        verify(deploymentCoordinator, never()).setReplicas(target(spec), 0);
+    }
+
+    @Test
+    void scalingLoop_scalesDownAfterWakeUpProtectionExpires() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 5,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
+        when(registry.listRegistered()).thenReturn(List.of(spec));
+        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(0);
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        scaler.onApplicationEvent(new DeploymentWakeUpProtection("echo", Instant.now().minusSeconds(1)));
 
         scaler.scalingLoop();
 

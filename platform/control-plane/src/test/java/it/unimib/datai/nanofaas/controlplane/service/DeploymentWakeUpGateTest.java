@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProtection;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
@@ -18,6 +19,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -36,6 +38,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -76,6 +79,24 @@ class DeploymentWakeUpGateTest {
         order.verify(coordinator).setReplicas(target, 1);
         order.verify(coordinator).getReplicaStatus(target);
         assertThat(ready).isCompletedWithValue(null);
+    }
+
+    @Test
+    void ensureReady_publishesWakeUpProtectionBeforeScaling() {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+
+        gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run, publisher).ensureReady(task).join();
+
+        var order = inOrder(publisher, coordinator);
+        order.verify(coordinator).getReplicaStatus(target);
+        order.verify(publisher).publishEvent(argThat(event -> event instanceof DeploymentWakeUpProtection protection
+                && protection.functionName().equals("echo")
+                && protection.expiresAt().isAfter(Instant.now())));
+        order.verify(coordinator).setReplicas(target, 1);
     }
 
     @Test
@@ -289,6 +310,13 @@ class DeploymentWakeUpGateTest {
 
     private DeploymentWakeUpGate gate(Duration timeout, Duration pollInterval, ExecutorService executor) {
         return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval, executor);
+    }
+
+    private DeploymentWakeUpGate gate(Duration timeout,
+                                      Duration pollInterval,
+                                      java.util.concurrent.Executor executor,
+                                      ApplicationEventPublisher publisher) {
+        return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval, executor, publisher);
     }
 
     private static RegisteredFunction deployment(String name, String backend, ScalingStrategy strategy, int minReplicas) {

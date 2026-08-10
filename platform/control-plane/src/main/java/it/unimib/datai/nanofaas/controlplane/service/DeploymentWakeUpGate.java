@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProtection;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
@@ -14,9 +15,11 @@ import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,21 +35,23 @@ public class DeploymentWakeUpGate {
     private final Duration timeout;
     private final Duration pollInterval;
     private final Executor executor;
+    private final ApplicationEventPublisher eventPublisher;
     private final ConcurrentMap<String, CompletableFuture<Void>> inFlight = new ConcurrentHashMap<>();
 
     @Autowired
     public DeploymentWakeUpGate(FunctionRegistry registry,
                                  ManagedDeploymentCoordinator coordinator,
                                  DeploymentWakeUpProperties properties,
-                                 @Qualifier("deploymentWakeUpExecutor") Executor executor) {
-        this(registry, coordinator, properties.timeout(), properties.pollInterval(), executor);
+                                 @Qualifier("deploymentWakeUpExecutor") Executor executor,
+                                 ApplicationEventPublisher eventPublisher) {
+        this(registry, coordinator, properties.timeout(), properties.pollInterval(), executor, eventPublisher);
     }
 
     public DeploymentWakeUpGate(FunctionRegistry registry,
                                  ManagedDeploymentCoordinator coordinator,
                                  Duration timeout,
                                  Duration pollInterval) {
-        this(registry, coordinator, timeout, pollInterval, Runnable::run);
+        this(registry, coordinator, timeout, pollInterval, Runnable::run, event -> { });
     }
 
     DeploymentWakeUpGate(FunctionRegistry registry,
@@ -54,12 +59,22 @@ public class DeploymentWakeUpGate {
                           Duration timeout,
                           Duration pollInterval,
                           Executor executor) {
+        this(registry, coordinator, timeout, pollInterval, executor, event -> { });
+    }
+
+    DeploymentWakeUpGate(FunctionRegistry registry,
+                          ManagedDeploymentCoordinator coordinator,
+                          Duration timeout,
+                          Duration pollInterval,
+                          Executor executor,
+                          ApplicationEventPublisher eventPublisher) {
         this.registry = registry;
         this.coordinator = coordinator;
         DeploymentWakeUpProperties properties = new DeploymentWakeUpProperties(timeout, pollInterval);
         this.timeout = properties.timeout();
         this.pollInterval = properties.pollInterval();
         this.executor = executor;
+        this.eventPublisher = eventPublisher;
     }
 
     public CompletableFuture<Void> ensureReady(InvocationTask task) {
@@ -89,17 +104,18 @@ public class DeploymentWakeUpGate {
 
     private void wake(String name, ManagedDeploymentTarget target, CompletableFuture<Void> result) {
         long deadline = System.nanoTime() + timeout.toNanos();
+        Instant expiresAt = Instant.now().plus(timeout);
         result.whenComplete((ignored, failure) -> inFlight.remove(name, result));
         CompletableFuture.delayedExecutor(timeout.toNanos(), TimeUnit.NANOSECONDS)
                 .execute(() -> timeout(result));
         try {
-            executor.execute(() -> start(target, deadline, result));
+            executor.execute(() -> start(target, deadline, expiresAt, result));
         } catch (Throwable failure) {
             result.completeExceptionally(failure);
         }
     }
 
-    private void start(ManagedDeploymentTarget target, long deadline, CompletableFuture<Void> result) {
+    private void start(ManagedDeploymentTarget target, long deadline, Instant expiresAt, CompletableFuture<Void> result) {
         try {
             ReplicaStatus status = coordinator.getReplicaStatus(target);
             if (result.isDone()) {
@@ -109,6 +125,7 @@ public class DeploymentWakeUpGate {
                 result.complete(null);
                 return;
             }
+            eventPublisher.publishEvent(new DeploymentWakeUpProtection(target.functionName(), expiresAt));
             coordinator.setReplicas(target, 1);
             poll(target, deadline, result);
         } catch (Throwable failure) {
