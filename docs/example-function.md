@@ -26,6 +26,29 @@ walkthrough (scaffold → test → deploy → invoke), read the
 The control plane provisions a Deployment + Service (Kubernetes) or container
 instances (local Docker/Podman) from the image.
 
+## Scale a managed deployment to zero
+
+Opt in with internal scaling and a zero minimum replica count:
+
+```yaml
+name: echo
+image: ghcr.io/miciav/nanofaas/java-warm-echo:latest
+executionMode: DEPLOYMENT
+scalingConfig:
+  strategy: INTERNAL
+  minReplicas: 0
+  maxReplicas: 3
+  metrics:
+    - type: in_flight
+      target: "1"
+```
+
+Scale-to-zero applies only to managed `DEPLOYMENT` functions using the `k8s`
+or `container-local` backends. `EXTERNAL` functions are not platform-managed,
+so NanoFaaS does not scale, probe, or wake them. The first request after idle
+waits for a bounded wake-up and readiness check, and therefore incurs
+cold-start latency.
+
 ### EXTERNAL (passthrough to a hosted endpoint)
 
 ```json

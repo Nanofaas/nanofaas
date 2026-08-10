@@ -41,6 +41,7 @@ class ExecutionCompletionHandlerTest {
     @Mock private InvocationEnqueuer enqueuer;
     @Mock private Metrics metrics;
     @Mock private DispatcherRouter dispatcherRouter;
+    @Mock private DeploymentWakeUpGate wakeUpGate;
 
     private ExecutionStore executionStore;
     private ExecutionCompletionHandler completionHandler;
@@ -50,7 +51,7 @@ class ExecutionCompletionHandlerTest {
     @BeforeEach
     void setUp() {
         executionStore = new ExecutionStore();
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
 
         testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,
@@ -140,6 +141,48 @@ class ExecutionCompletionHandlerTest {
         assertThat(result.output()).isEqualTo("ok");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         verify(dispatcherRouter).dispatchExternal(task);
+        verifyNoInteractions(wakeUpGate);
+    }
+
+    @Test
+    void dispatch_deploymentWaitsForWakeUpBeforeRoutingExternally() throws Exception {
+        InvocationTask task = task("exec-deployment", "deployment-fn", ExecutionMode.DEPLOYMENT);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
+        CompletableFuture<Void> wakeUp = new CompletableFuture<>();
+        when(wakeUpGate.ensureReady(task)).thenReturn(wakeUp);
+        when(dispatcherRouter.dispatchExternal(task)).thenReturn(
+                CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
+
+        completionHandler.dispatch(task);
+
+        verify(wakeUpGate).ensureReady(task);
+        verify(dispatcherRouter, never()).dispatchExternal(task);
+        wakeUp.complete(null);
+
+        assertThat(executionRecord.completion().get(1, TimeUnit.SECONDS).success()).isTrue();
+        verify(dispatcherRouter).dispatchExternal(task);
+    }
+
+    @Test
+    void dispatch_deploymentWakeUpFailureCompletesWithDistinctErrorWithoutRouting() throws Exception {
+        FunctionSpec deploymentSpec = functionSpec("deployment-fn", ExecutionMode.DEPLOYMENT, 0);
+        InvocationTask task = new InvocationTask(
+                "exec-deployment-failure", "deployment-fn", deploymentSpec,
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        executionStore.put(executionRecord);
+        CompletableFuture<Void> failedWakeUp = new CompletableFuture<>();
+        failedWakeUp.completeExceptionally(new IllegalStateException("DEPLOYMENT_WAKE_UP_TIMEOUT"));
+        when(wakeUpGate.ensureReady(task)).thenReturn(failedWakeUp);
+
+        completionHandler.dispatch(task);
+
+        InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
+        assertThat(result.success()).isFalse();
+        assertThat(result.error().code()).isEqualTo("DEPLOYMENT_WAKE_UP_FAILED");
+        assertThat(result.error().message()).contains("DEPLOYMENT_WAKE_UP_TIMEOUT");
+        verify(dispatcherRouter, never()).dispatchExternal(task);
     }
 
     // ─── completeExecution / retry tests ──────────────────────────────────────
@@ -310,9 +353,13 @@ class ExecutionCompletionHandlerTest {
     }
 
     private FunctionSpec functionSpec(String functionName, ExecutionMode mode) {
+        return functionSpec(functionName, mode, 1);
+    }
+
+    private FunctionSpec functionSpec(String functionName, ExecutionMode mode, int maxRetries) {
         return new FunctionSpec(
                 functionName, "image", null, Map.of(), null,
-                1000, 1, 10, 1, null, mode, null, null, null
+                1000, 1, 10, maxRetries, null, mode, null, null, null
         );
     }
 

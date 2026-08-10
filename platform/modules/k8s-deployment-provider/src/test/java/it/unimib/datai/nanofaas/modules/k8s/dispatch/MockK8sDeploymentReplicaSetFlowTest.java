@@ -14,6 +14,7 @@ import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,9 +45,13 @@ class MockK8sDeploymentReplicaSetFlowTest {
     }
 
     private FunctionSpec spec() {
+        return spec(2);
+    }
+
+    private FunctionSpec spec(int minReplicas) {
         ScalingConfig scaling = new ScalingConfig(
                 ScalingStrategy.INTERNAL,
-                2,
+                minReplicas,
                 10,
                 List.of(new ScalingMetric("queue_depth", "5", null))
         );
@@ -109,6 +114,30 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 1,
                 client.pods().inNamespace("default").withLabel("function", "echo").list().getItems().size()
         );
+    }
+
+    @Test
+    void deploymentWithZeroMinReplicas_scalesToOneAndReportsReadyStatus() {
+        resourceManager.provision(spec(0));
+
+        Deployment deployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
+        assertNotNull(deployment);
+        assertEquals(0, deployment.getSpec().getReplicas());
+
+        resourceManager.setReplicas("echo", 1);
+        Deployment scaled = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
+        assertNotNull(scaled);
+        assertEquals(1, scaled.getSpec().getReplicas());
+
+        client.apps().deployments().inNamespace("default")
+                .resource(new DeploymentBuilder(scaled)
+                        .editOrNewStatus()
+                        .withReadyReplicas(1)
+                        .endStatus()
+                        .build())
+                .updateStatus();
+
+        assertEquals(new ReplicaStatus(1, 1), resourceManager.getReplicaStatus("echo"));
     }
 
     private ReplicaSet buildReplicaSet() {

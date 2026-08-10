@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.slf4j.Logger;
@@ -30,6 +31,7 @@ public class InternalScaler implements SmartLifecycle {
     private final StaticPerPodConcurrencyController staticConcurrencyController;
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
     private final ConcurrencyControlCoordinator concurrencyControlCoordinator;
+    private final DeploymentWakeUpCoordinator wakeUpCoordinator;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
 
@@ -38,6 +40,15 @@ public class InternalScaler implements SmartLifecycle {
                           @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker) {
+        this(registry, metricsReader, deploymentCoordinator, properties, coldStartTracker, new DeploymentWakeUpCoordinator());
+    }
+
+    public InternalScaler(FunctionRegistry registry,
+                          ScalingMetricsReader metricsReader,
+                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
+                          ScalingProperties properties,
+                          ColdStartTracker coldStartTracker,
+                          DeploymentWakeUpCoordinator wakeUpCoordinator) {
         this.registry = registry;
         this.deploymentCoordinator = deploymentCoordinator;
         this.properties = properties;
@@ -52,6 +63,7 @@ public class InternalScaler implements SmartLifecycle {
                 staticConcurrencyController,
                 adaptiveConcurrencyController
         );
+        this.wakeUpCoordinator = wakeUpCoordinator;
     }
 
     @Override
@@ -154,11 +166,17 @@ public class InternalScaler implements SmartLifecycle {
             if (!cooldownTracker.allowScaleDown(functionName, now)) {
                 log.debug("Skipping scale-down for {} (cooldown)", functionName);
             } else {
-                log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
-                        functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
-                deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
-                cooldownTracker.recordScaleDown(functionName, now);
-                effectiveReplicas = decision.desiredReplicas();
+                boolean scaled = wakeUpCoordinator.scaleDownIfUnprotected(target, () -> {
+                    log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
+                            functionName, decision.currentReplicas(), decision.desiredReplicas(), decision.maxRatio());
+                    deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
+                });
+                if (scaled) {
+                    cooldownTracker.recordScaleDown(functionName, now);
+                    effectiveReplicas = decision.desiredReplicas();
+                } else {
+                    log.debug("Skipping scale-down for {} while deployment wake-up is protected", functionName);
+                }
             }
         }
 
@@ -176,6 +194,7 @@ public class InternalScaler implements SmartLifecycle {
         cooldownTracker.clear(functionName);
         concurrencyControlCoordinator.removeFunctionState(functionName);
         coldStartTracker.removeFunctionState(functionName);
+        wakeUpCoordinator.removeFunctionState(functionName);
     }
 
     private static Optional<ManagedDeploymentTarget> managedDeploymentTarget(RegisteredFunction function) {

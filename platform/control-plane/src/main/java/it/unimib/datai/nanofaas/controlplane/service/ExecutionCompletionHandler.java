@@ -17,6 +17,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,15 +35,35 @@ public class ExecutionCompletionHandler {
     private final InvocationEnqueuer enqueuer;
     private final DispatcherRouter dispatcherRouter;
     private final Metrics metrics;
+    @Nullable private final DeploymentWakeUpGate wakeUpGate;
 
+    /**
+     * Production constructor: deployment invocations wait for a scaled-to-zero
+     * managed deployment before their external dispatch.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public ExecutionCompletionHandler(ExecutionStore executionStore,
                                       @Nullable InvocationEnqueuer enqueuer,
                                       DispatcherRouter dispatcherRouter,
-                                      Metrics metrics) {
+                                      Metrics metrics,
+                                      DeploymentWakeUpGate wakeUpGate) {
         this.executionStore = executionStore;
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.dispatcherRouter = dispatcherRouter;
         this.metrics = metrics;
+        this.wakeUpGate = wakeUpGate;
+    }
+
+    /**
+     * Compatibility constructor for direct unit-test construction. Production
+     * uses the Spring constructor above.
+     */
+    public ExecutionCompletionHandler(ExecutionStore executionStore,
+                                      @Nullable InvocationEnqueuer enqueuer,
+                                      DispatcherRouter dispatcherRouter,
+                                      Metrics metrics) {
+        this(executionStore, enqueuer, dispatcherRouter, metrics,
+                null);
     }
 
     /**
@@ -125,7 +146,8 @@ public class ExecutionCompletionHandler {
         try {
             future = switch (mode) {
                 case LOCAL -> dispatcherRouter.dispatchLocal(task);
-                case EXTERNAL, DEPLOYMENT -> dispatcherRouter.dispatchExternal(task);
+                case EXTERNAL -> dispatcherRouter.dispatchExternal(task);
+                case DEPLOYMENT -> dispatchDeployment(task);
             };
         } catch (Exception ex) {
             completeExecution(task.executionId(),
@@ -136,13 +158,49 @@ public class ExecutionCompletionHandler {
 
         future.whenComplete((dispatchResult, error) -> {
             if (error != null) {
+                Throwable failure = deploymentWakeUpFailure(error);
                 completeExecution(task.executionId(),
-                        DispatchResult.warm(InvocationResult.error(mode.name() + "_ERROR", error.getMessage())),
+                        DispatchResult.warm(InvocationResult.error(
+                                failure != null ? "DEPLOYMENT_WAKE_UP_FAILED" : mode.name() + "_ERROR",
+                                (failure != null ? failure : error).getMessage())),
                         attemptAtDispatch);
             } else {
                 completeExecution(task.executionId(), dispatchResult, attemptAtDispatch);
             }
         });
+    }
+
+    private CompletableFuture<DispatchResult> dispatchDeployment(InvocationTask task) {
+        try {
+            if (wakeUpGate == null) {
+                return dispatcherRouter.dispatchExternal(task);
+            }
+            return wakeUpGate.ensureReady(task)
+                    .handle((ignored, error) -> {
+                        if (error != null) {
+                            throw new DeploymentWakeUpException(error);
+                        }
+                        return ignored;
+                    })
+                    .thenCompose(ignored -> dispatcherRouter.dispatchExternal(task));
+        } catch (Exception error) {
+            return CompletableFuture.failedFuture(new DeploymentWakeUpException(error));
+        }
+    }
+
+    private static Throwable deploymentWakeUpFailure(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof DeploymentWakeUpException) {
+                return current.getCause() != null ? current.getCause() : current;
+            }
+        }
+        return null;
+    }
+
+    private static final class DeploymentWakeUpException extends RuntimeException {
+        private DeploymentWakeUpException(Throwable cause) {
+            super(cause.getMessage(), cause);
+        }
     }
 
     public void completeExecution(String executionId, DispatchResult dispatchResult) {
