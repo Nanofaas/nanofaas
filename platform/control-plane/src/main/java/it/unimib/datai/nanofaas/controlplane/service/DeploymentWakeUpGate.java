@@ -166,12 +166,25 @@ public class DeploymentWakeUpGate {
                 if (remaining <= 0) {
                     timeout(result);
                 } else {
-                    CompletableFuture.delayedExecutor(Math.min(pollInterval.toNanos(), remaining), TimeUnit.NANOSECONDS, executor)
-                            .execute(() -> poll(target, deadline, result));
+                    timeoutScheduler.schedule(
+                            () -> submitPoll(target, deadline, result),
+                            Math.min(pollInterval.toNanos(), remaining),
+                            TimeUnit.NANOSECONDS
+                    );
                 }
             }
         } catch (Throwable failure) {
             result.completeExceptionally(failure);
+        }
+    }
+
+    private void submitPoll(ManagedDeploymentTarget target, long deadline, CompletableFuture<Void> result) {
+        if (!result.isDone()) {
+            try {
+                executor.execute(() -> poll(target, deadline, result));
+            } catch (Throwable failure) {
+                result.completeExceptionally(failure);
+            }
         }
     }
 

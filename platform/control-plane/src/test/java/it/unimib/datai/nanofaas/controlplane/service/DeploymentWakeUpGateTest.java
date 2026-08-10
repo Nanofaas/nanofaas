@@ -220,6 +220,28 @@ class DeploymentWakeUpGateTest {
     }
 
     @Test
+    void ensureReady_pollsIndependentlyOfTheSharedCompletableFutureDelayScheduler() throws Exception {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        CountDownLatch delaySchedulerBlocked = new CountDownLatch(1);
+        CountDownLatch releaseDelayScheduler = new CountDownLatch(1);
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        CompletableFuture.delayedExecutor(0, TimeUnit.NANOSECONDS, Runnable::run)
+                .execute(() -> {
+                    delaySchedulerBlocked.countDown();
+                    await(releaseDelayScheduler);
+                });
+        assertThat(delaySchedulerBlocked.await(1, TimeUnit.SECONDS)).isTrue();
+
+        try {
+            gate(Duration.ofMillis(200), Duration.ofMillis(5)).ensureReady(task).get(150, TimeUnit.MILLISECONDS);
+        } finally {
+            releaseDelayScheduler.countDown();
+        }
+    }
+
+    @Test
     void ensureReady_timesOutWhileTheFirstProviderStatusCallIsBlocked() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
