@@ -102,9 +102,9 @@ hpa-metrics-adapter:
   rules:
     default: false
     external:
-      - seriesQuery: 'function_in_flight{function!=""}'
+      - seriesQuery: 'function_inFlight{function!=""}'
         name:
-          matches: '^function_in_flight$'
+          matches: '^function_inFlight$'
           as: nanofaas_in_flight
         metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>})'
 
