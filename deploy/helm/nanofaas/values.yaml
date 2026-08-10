@@ -103,6 +103,10 @@ hpa-metrics-adapter:
     default: false
     external:
       - seriesQuery: 'function_inFlight{function!=""}'
+        resources:
+          overrides:
+            kubernetes_namespace:
+              resource: namespace
         name:
           matches: '^function_inFlight$'
           as: nanofaas_in_flight
