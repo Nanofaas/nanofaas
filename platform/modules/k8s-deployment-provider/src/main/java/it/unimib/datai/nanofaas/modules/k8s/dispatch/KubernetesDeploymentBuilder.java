@@ -22,6 +22,7 @@ public class KubernetesDeploymentBuilder {
     );
     private static final String APP_LABEL = "nanofaas";
     private static final String FUNCTION_LABEL = "function";
+    private static final int SCALE_TO_ZERO_STABILIZATION_SECONDS = 30;
 
     private final KubernetesProperties properties;
     private final KubernetesMetricsTranslator metricsTranslator = new KubernetesMetricsTranslator();
@@ -45,6 +46,14 @@ public class KubernetesDeploymentBuilder {
         int replicas = 1;
         if (spec.scalingConfig() != null && spec.scalingConfig().minReplicas() != null) {
             replicas = spec.scalingConfig().minReplicas();
+        }
+        if (replicas == 0 && hpaOwnsScaling(spec.scalingConfig())) {
+            // Kubernetes 1.36 only lets an HPA scale a target up from zero once it
+            // has parked that target at zero itself (status condition ScaledToZero).
+            // A Deployment created at zero therefore deadlocks: "scaling is disabled
+            // since the replica count of the target is zero", forever. Start at one
+            // and let the HPA scale it down, which is what stamps that condition.
+            replicas = 1;
         }
 
         Map<String, String> labels = Map.of(
@@ -120,15 +129,19 @@ public class KubernetesDeploymentBuilder {
                 .build();
     }
 
+    private static boolean hpaOwnsScaling(ScalingConfig scaling) {
+        return scaling != null && scaling.strategy() == ScalingStrategy.HPA;
+    }
+
     public HorizontalPodAutoscaler buildHpa(FunctionSpec spec) {
         ScalingConfig scaling = spec.scalingConfig();
-        if (scaling == null || scaling.strategy() != ScalingStrategy.HPA) {
+        if (!hpaOwnsScaling(scaling)) {
             return null;
         }
 
         List<MetricSpec> metricSpecs = metricsTranslator.toMetricSpecs(scaling, spec);
 
-        return new HorizontalPodAutoscalerBuilder()
+        HorizontalPodAutoscalerBuilder hpa = new HorizontalPodAutoscalerBuilder()
                 .withNewMetadata()
                     .withName(deploymentName(spec.name()))
                     .addToLabels("app", APP_LABEL)
@@ -143,8 +156,28 @@ public class KubernetesDeploymentBuilder {
                     .withMinReplicas(scaling.minReplicas())
                     .withMaxReplicas(scaling.maxReplicas())
                     .withMetrics(metricSpecs)
-                .endSpec()
-                .build();
+                .endSpec();
+
+        if (scalesToZero(scaling)) {
+            // The HPA's default 5-minute downscale stabilization keeps an idle
+            // function at its current size for longer than scale-to-zero is worth.
+            // It also has to be the HPA that parks the Deployment at zero, since
+            // that is what lets it scale back up from zero later.
+            hpa.editSpec()
+                    .withNewBehavior()
+                        .withNewScaleDown()
+                            .withStabilizationWindowSeconds(SCALE_TO_ZERO_STABILIZATION_SECONDS)
+                        .endScaleDown()
+                    .endBehavior()
+                .endSpec();
+        }
+        return hpa.build();
+    }
+
+    private static boolean scalesToZero(ScalingConfig scaling) {
+        return hpaOwnsScaling(scaling)
+                && scaling.minReplicas() != null
+                && scaling.minReplicas() == 0;
     }
 
     private List<EnvVar> buildEnvVars(FunctionSpec spec) {

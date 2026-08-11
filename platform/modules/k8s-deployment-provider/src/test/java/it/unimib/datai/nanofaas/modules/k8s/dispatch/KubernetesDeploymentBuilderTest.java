@@ -60,6 +60,26 @@ class KubernetesDeploymentBuilderTest {
     }
 
     @Test
+    void buildDeployment_startsAtOneWhenHpaScalesToZero() {
+        // An HPA cannot lift a Deployment that was created at zero: it only scales
+        // up from zero once it parked the target there itself.
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.HPA, 0, 10,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        Deployment deployment = builder.buildDeployment(spec(scaling));
+
+        assertEquals(1, deployment.getSpec().getReplicas());
+    }
+
+    @Test
+    void buildDeployment_keepsZeroReplicasForInternalScaling() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+        Deployment deployment = builder.buildDeployment(spec(scaling));
+
+        assertEquals(0, deployment.getSpec().getReplicas());
+    }
+
+    @Test
     void buildDeployment_defaultsTo1ReplicaWhenNoScalingConfig() {
         Deployment deployment = builder.buildDeployment(spec(null));
         assertEquals(1, deployment.getSpec().getReplicas());
@@ -224,6 +244,25 @@ class KubernetesDeploymentBuilderTest {
         assertEquals("External", metrics.get(0).getType());
         assertEquals("nanofaas_queue_depth", metrics.get(0).getExternal().getMetric().getName());
         assertEquals("echo", metrics.get(0).getExternal().getMetric().getSelector().getMatchLabels().get("function"));
+    }
+
+    @Test
+    void buildHpa_shortensDownscaleStabilizationWhenScalingToZero() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.HPA, 0, 10,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        HorizontalPodAutoscaler hpa = builder.buildHpa(spec(scaling));
+
+        assertEquals(30,
+                hpa.getSpec().getBehavior().getScaleDown().getStabilizationWindowSeconds());
+    }
+
+    @Test
+    void buildHpa_leavesDefaultBehaviourWhenFloorIsNotZero() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.HPA, 1, 10,
+                List.of(new ScalingMetric("in_flight", "2", null)));
+        HorizontalPodAutoscaler hpa = builder.buildHpa(spec(scaling));
+
+        assertNull(hpa.getSpec().getBehavior());
     }
 
     @Test
