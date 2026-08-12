@@ -131,18 +131,42 @@ class CommonModelTest {
     @Test
     void invocationResponse_recordAccessors() {
         ErrorInfo err = new ErrorInfo("ERR", "detail");
-        InvocationResponse resp = new InvocationResponse("ex-1", "FAILED", null, err);
+        InvocationResponse resp = new InvocationResponse("ex-1", "FAILED", null, err, null, null, null);
         assertEquals("ex-1", resp.executionId());
         assertEquals("FAILED", resp.status());
         assertNull(resp.output());
         assertEquals(err, resp.error());
+        assertNull(resp.statusCode());
+    }
+
+    @Test
+    void invocationResponse_carriesEnvelopeFields() {
+        InvocationResponse resp = new InvocationResponse(
+                "ex-2", "success", "body", null, 201, Map.of("Location", "/x"), null);
+        assertEquals(201, resp.statusCode());
+        assertEquals("/x", resp.headers().get("Location"));
+    }
+
+    @Test
+    void invocationResponse_jsonRoundTrip() {
+        // DefaultOffloadGateway does bodyToMono(InvocationResponse.class) on the remote's
+        // :invoke body — the envelope fields must survive that hop (Task 10b depends on it).
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResponse original = new InvocationResponse(
+                "ex-3", "success", "body", null, 404, Map.of("Content-Type", "text/plain"), "base64");
+        InvocationResponse back = mapper.readValue(mapper.writeValueAsString(original), InvocationResponse.class);
+        assertEquals(404, back.statusCode());
+        assertEquals("text/plain", back.headers().get("Content-Type"));
+        assertEquals("base64", back.encoding());
     }
 
     // --- ExecutionStatus ---
 
     @Test
     void executionStatus_recordAccessors() {
-        ExecutionStatus s = new ExecutionStatus("ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200), "result", null, true, 150L);
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200),
+                "result", null, true, 150L, null, null, null);
         assertEquals("ex-1", s.executionId());
         assertEquals("COMPLETED", s.status());
         assertEquals(Instant.ofEpochMilli(100), s.startedAt());
@@ -151,6 +175,26 @@ class CommonModelTest {
         assertNull(s.error());
         assertTrue(s.coldStart());
         assertEquals(150L, s.initDurationMs());
+        assertNull(s.statusCode());
+    }
+
+    @Test
+    void executionStatus_carriesEnvelopeFields() {
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-2", "success", Instant.now(), Instant.now(),
+                "body", null, false, null, 404, Map.of("Content-Type", "text/plain"), "base64");
+        assertEquals(404, s.statusCode());
+        assertEquals("text/plain", s.headers().get("Content-Type"));
+        assertEquals("base64", s.encoding());
+    }
+
+    @Test
+    void executionStatus_compatConstructorLeavesEnvelopeFieldsNull() {
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-3", "queued", null, null, null, null, false, null);
+        assertNull(s.statusCode());
+        assertNull(s.headers());
+        assertNull(s.encoding());
     }
 
     // --- FunctionSpec ---
