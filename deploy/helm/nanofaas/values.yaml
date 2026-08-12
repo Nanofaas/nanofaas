@@ -111,6 +111,37 @@ hpa-metrics-adapter:
           matches: '^function_inFlight$'
           as: nanofaas_in_flight
         metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>})'
+      # Request rate, the signal in_flight cannot be. In-flight concurrency is
+      # throughput x service time; for a function answering in ~2ms it sits
+      # below 1 at any realistic rate, and it is capped at the queue's
+      # concurrency limit besides. A rate has neither problem: it tracks load
+      # and has no ceiling.
+      - seriesQuery: 'function_dispatch_total{function!=""}'
+        resources:
+          overrides:
+            kubernetes_namespace:
+              resource: namespace
+        name:
+          matches: '^function_dispatch_total$'
+          as: nanofaas_rps
+        # 1m, not 30s: the control plane is scraped every 5s, so a one-minute
+        # window averages twelve samples and does not swing on a single slow
+        # scrape. It also decays to zero within the 90s the load test allows
+        # for scale-down, which is what scale-to-zero needs.
+        metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[1m]))'
+      # Backlog. Zero whenever the function keeps up, so it is a saturation
+      # signal rather than a load signal — usable as a second metric, not as a
+      # sole one. Present here because the type is registrable and translated,
+      # and a registrable metric that nothing serves is a trap.
+      - seriesQuery: 'function_queue_depth{function!=""}'
+        resources:
+          overrides:
+            kubernetes_namespace:
+              resource: namespace
+        name:
+          matches: '^function_queue_depth$'
+          as: nanofaas_queue_depth
+        metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>})'
 
 demos:
   enabled: true
