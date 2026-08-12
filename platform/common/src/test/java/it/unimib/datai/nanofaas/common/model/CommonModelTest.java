@@ -55,6 +55,37 @@ class CommonModelTest {
         assertNull(r.metadata());
     }
 
+    @Test
+    void invocationRequest_headersAccessor() {
+        InvocationRequest r = new InvocationRequest("payload", Map.of("k", "v"), Map.of("authorization", "Bearer x"));
+        assertEquals("Bearer x", r.headers().get("authorization"));
+    }
+
+    @Test
+    void invocationRequest_nullHeaders() {
+        InvocationRequest r = new InvocationRequest("data", null, null);
+        assertNull(r.headers());
+    }
+
+    @Test
+    void invocationRequest_jsonRoundTrip() throws Exception {
+        // The record is @RequestBody-deserialized on two hops; adding a secondary
+        // constructor must not confuse Jackson's canonical-constructor detection.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationRequest original = new InvocationRequest(
+                Map.of("number", 42), Map.of("k", "v"), Map.of("authorization", "Bearer x"));
+        InvocationRequest back = mapper.readValue(mapper.writeValueAsString(original), InvocationRequest.class);
+        assertEquals(original.metadata(), back.metadata());
+        assertEquals(original.headers(), back.headers());
+    }
+
+    @Test
+    void invocationRequest_deserializesLegacyBodyWithoutHeaders() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationRequest back = mapper.readValue("{\"input\":{\"n\":1}}", InvocationRequest.class);
+        assertNull(back.headers());
+    }
+
     // --- InvocationResponse ---
 
     @Test
