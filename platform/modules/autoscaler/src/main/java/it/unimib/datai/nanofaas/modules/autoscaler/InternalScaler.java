@@ -32,6 +32,7 @@ public class InternalScaler implements SmartLifecycle {
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
     private final ConcurrencyControlCoordinator concurrencyControlCoordinator;
     private final DeploymentWakeUpCoordinator wakeUpCoordinator;
+    private final ScalingDecisionMetrics decisionMetrics;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
 
@@ -49,6 +50,18 @@ public class InternalScaler implements SmartLifecycle {
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker,
                           DeploymentWakeUpCoordinator wakeUpCoordinator) {
+        this(registry, metricsReader, deploymentCoordinator, properties, coldStartTracker,
+                wakeUpCoordinator, null);
+    }
+
+    public InternalScaler(FunctionRegistry registry,
+                          ScalingMetricsReader metricsReader,
+                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
+                          ScalingProperties properties,
+                          ColdStartTracker coldStartTracker,
+                          DeploymentWakeUpCoordinator wakeUpCoordinator,
+                          ScalingDecisionMetrics decisionMetrics) {
+        this.decisionMetrics = decisionMetrics;
         this.registry = registry;
         this.deploymentCoordinator = deploymentCoordinator;
         this.properties = properties;
@@ -148,6 +161,9 @@ public class InternalScaler implements SmartLifecycle {
         String functionName = spec.name();
         int currentReplicas = deploymentCoordinator.getReadyReplicas(target);
         ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
+        if (decisionMetrics != null) {
+            decisionMetrics.record(functionName, decision);
+        }
 
         Instant now = Instant.now();
         int effectiveReplicas = decision.effectiveReplicas();
