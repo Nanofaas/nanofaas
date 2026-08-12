@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
@@ -79,12 +80,33 @@ public class InvocationController {
         // defer: a synchronously thrown service exception must flow through onErrorResume
         return Mono.defer(() -> invocationService.invokeSyncReactive(name, requestWithHeaders, idempotencyKey, traceId, timeoutMs, offloadContext))
                 .map(invocation -> {
-                    ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
-                            .header("X-Execution-Id", invocation.response().executionId());
+                    InvocationResponse response = invocation.response();
+                    Integer statusCode = response.statusCode();
+                    // ponytail: statusCode is already validated upstream (ExternalDispatcher via
+                    // ResponseHeaderPolicy.isStatusCodeValid) before it ever reaches an
+                    // InvocationResponse, so this range check is defense-in-depth, not the
+                    // primary guard. An out-of-range int must never reach ResponseEntity.status(int).
+                    boolean functionDecided = statusCode != null && ResponseHeaderPolicy.isStatusCodeValid(statusCode);
+                    int status = functionDecided ? statusCode : 200;
+                    ResponseEntity.BodyBuilder builder = ResponseEntity.status(status)
+                            .header("X-Execution-Id", response.executionId());
+                    if (functionDecided) {
+                        builder.header("X-NanoFaaS-Function-Status", "true");
+                    }
+                    if (response.headers() != null) {
+                        response.headers().forEach((headerName, headerValue) -> {
+                            // Content-Type would describe the handler's raw body, but the body
+                            // here is still the InvocationResponse envelope. Readable in the
+                            // payload's headers field, not applied to this hop.
+                            if (!"content-type".equalsIgnoreCase(headerName)) {
+                                builder.header(headerName, headerValue);
+                            }
+                        });
+                    }
                     if (invocation.offloadedTarget() != null) {
                         builder.header("X-NanoFaaS-Offloaded", invocation.offloadedTarget());
                     }
-                    return builder.body(invocation.response());
+                    return builder.body(response);
                 })
                 .onErrorResume(FunctionNotFoundException.class, ex ->
                         Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))

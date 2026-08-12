@@ -199,6 +199,80 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_functionDecidedStatusCode_usedAsRealHttpStatus() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-1", "success", "out", null, 404,
+                Map.of("Location", "/x"), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(404)
+                .expectHeader().valueEquals("Location", "/x")
+                .expectHeader().valueEquals("X-NanoFaaS-Function-Status", "true")
+                .expectHeader().valueEquals("X-Execution-Id", "ex-1");
+    }
+
+    @Test
+    void invokeSync_doesNotReEmitHandlerContentType() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-2", "success", "out", null, 200,
+                Map.of("Content-Type", "application/pdf"), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.headers['Content-Type']").isEqualTo("application/pdf");
+    }
+
+    @Test
+    void invokeSync_noStatusCode_defaultsTo200AsToday() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-3", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status");
+    }
+
+    @Test
+    void invokeSync_outOfRangeStatusCode_treatedAsPlatformDefaultNot200Lie() {
+        // Defense-in-depth: statusCode is already validated upstream (ExternalDispatcher via
+        // ResponseHeaderPolicy.isStatusCodeValid), so this should never happen in practice.
+        // If it ever did, an out-of-range int must not reach ResponseEntity.status(int).
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-4", "success", "out", null, 999,
+                Map.of(), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status");
+    }
+
+    @Test
     void invokeSync_offloaded_addsOffloadedHeader() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         InvocationResponse response = new InvocationResponse("exec-off", "success", "out", null);
