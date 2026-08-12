@@ -30,8 +30,12 @@ public final class ScalingDecisionCalculator {
             }
         }
 
-        int desiredReplicas = (int) Math.ceil(maxRatio * normalizedCurrentReplicas);
-        desiredReplicas = Math.clamp(desiredReplicas, scaling.minReplicas(), scaling.maxReplicas());
+        // Kept apart on purpose: the clamp used to overwrite the recommendation in
+        // place, so a decision pinned at maxReplicas was indistinguishable from a
+        // metric that had stopped rising.
+        int recommendedReplicas = (int) Math.ceil(maxRatio * normalizedCurrentReplicas);
+        int desiredReplicas =
+                Math.clamp(recommendedReplicas, scaling.minReplicas(), scaling.maxReplicas());
 
         int effectiveReplicas = currentReplicas <= 0
                 ? Math.max(1, scaling.minReplicas())
@@ -39,6 +43,7 @@ public final class ScalingDecisionCalculator {
 
         return new ScalingDecision(
                 normalizedCurrentReplicas,
+                recommendedReplicas,
                 desiredReplicas,
                 effectiveReplicas,
                 maxRatio,

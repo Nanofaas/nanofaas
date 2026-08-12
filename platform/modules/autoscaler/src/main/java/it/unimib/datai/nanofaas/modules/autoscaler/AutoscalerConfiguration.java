@@ -29,6 +29,11 @@ public class AutoscalerConfiguration {
     }
 
     @Bean
+    ScalingDecisionMetrics scalingDecisionMetrics(MeterRegistry meterRegistry) {
+        return new ScalingDecisionMetrics(meterRegistry);
+    }
+
+    @Bean
     TargetLoadMetrics targetLoadMetrics(MeterRegistry meterRegistry) {
         return new TargetLoadMetrics(meterRegistry);
     }
@@ -39,20 +44,23 @@ public class AutoscalerConfiguration {
                                   ObjectProvider<ManagedDeploymentCoordinator> deploymentCoordinatorProvider,
                                   ScalingProperties properties,
                                   ColdStartTracker coldStartTracker,
-                                  DeploymentWakeUpCoordinator wakeUpCoordinator) {
+                                  DeploymentWakeUpCoordinator wakeUpCoordinator,
+                                  ScalingDecisionMetrics scalingDecisionMetrics) {
         return new InternalScaler(
                 registry,
                 metricsReader,
                 deploymentCoordinatorProvider.getIfAvailable(),
                 properties,
                 coldStartTracker,
-                wakeUpCoordinator
+                wakeUpCoordinator,
+                scalingDecisionMetrics
         );
     }
 
     @Bean
     FunctionRegistrationListener autoscalerLifecycleListener(TargetLoadMetrics targetLoadMetrics,
                                                              ScalingMetricsReader scalingMetricsReader,
+                                                             ScalingDecisionMetrics scalingDecisionMetrics,
                                                              InternalScaler internalScaler) {
         return new FunctionRegistrationListener() {
             @Override
@@ -64,6 +72,7 @@ public class AutoscalerConfiguration {
             public void onRemove(String functionName) {
                 targetLoadMetrics.remove(functionName);
                 scalingMetricsReader.removeFunctionState(functionName);
+                scalingDecisionMetrics.remove(functionName);
                 internalScaler.removeFunctionState(functionName);
             }
         };
