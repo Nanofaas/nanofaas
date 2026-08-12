@@ -1,4 +1,8 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -10,6 +14,7 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
@@ -295,6 +300,28 @@ class InvokeControllerTest {
         assertEquals(200, response.getStatusCode().value());
         assertNull(response.getHeaders().getFirst("X-Execution-Id"));
         assertNull(response.getHeaders().getFirst("X-Custom"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_disallowedHeaderLogsWarnWithHeaderNameAndExecutionId() {
+        Logger controllerLogger = (Logger) LoggerFactory.getLogger(InvokeController.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        controllerLogger.addAppender(appender);
+        try {
+            when(handler.handle(any())).thenReturn(
+                    HandlerResponse.of("body", 200, Map.of("X-Custom", "nope")));
+
+            controller.invoke(new InvocationRequest("input", null), "env-exec-id", null);
+
+            boolean warned = appender.list.stream().anyMatch(event ->
+                    event.getLevel() == Level.WARN
+                            && event.getFormattedMessage().contains("X-Custom")
+                            && event.getFormattedMessage().contains("env-exec-id"));
+            assertTrue(warned, "expected a WARN log naming the dropped header and execution id, got: " + appender.list);
+        } finally {
+            controllerLogger.detachAppender(appender);
+        }
     }
 
     @Test
