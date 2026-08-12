@@ -42,6 +42,7 @@ from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from nanofaas.sdk import context, decorator, logging as sdk_logging
+from nanofaas.sdk.response import HandlerResponse
 from typing import Annotated
 import requests
 from prometheus_client import (
@@ -140,6 +141,19 @@ RUNTIME_COLD_START_TOTAL = _collector(
     "Total cold start invocations (Python runtime)",
     ["function"],
 )
+
+# Mirror of ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS (platform/common). Keep in sync.
+_ALLOWED_RESPONSE_HEADERS = {
+    "content-type", "location", "cache-control", "etag",
+    "content-disposition", "content-language", "retry-after", "vary",
+}
+
+
+def _filter_response_headers(raw: dict[str, str] | None) -> dict[str, str]:
+    if not raw:
+        return {}
+    return {k: v for k, v in raw.items() if k.lower() in _ALLOWED_RESPONSE_HEADERS}
+
 
 CONTAINER_START_TIME = time.monotonic()
 _first_invocation = True
@@ -339,24 +353,68 @@ async def invoke(
         # Keep the Python runtime aligned with the Java InvocationRequest contract.
         # Handlers receive the input field rather than the transport envelope.
         input_data = payload.get("input") if isinstance(payload, dict) else payload
-        
+        # Request headers are captured and filtered by the control plane and ride in the
+        # body; this runtime's own HTTP headers belong to the control-plane hop.
+        context.set_headers(payload.get("headers") if isinstance(payload, dict) else None)
+
         logger.info(f"Invoking handler for execution {execution_id}")
         
         invocation = handler(input_data) if asyncio.iscoroutinefunction(handler) \
             else asyncio.to_thread(handler, input_data)
         output = await asyncio.wait_for(invocation, timeout=HANDLER_TIMEOUT_SECONDS)
 
+        response_status = 200
+        response_headers = _build_cold_start_headers(is_cold_start)
+        response_body = output
+        callback_status_code = None
+        callback_headers = None
+        callback_encoding = None
+
+        if isinstance(output, HandlerResponse):
+            if 200 <= output.status_code <= 599:
+                response_status = output.status_code
+                allowed = _filter_response_headers(output.headers)
+                response_headers = {**response_headers, **allowed, "X-NanoFaaS-Function-Status": "true"}
+                response_body = output.output
+                callback_status_code = output.status_code
+                callback_headers = allowed
+                callback_encoding = output.encoding
+            else:
+                logger.warning(f"Handler returned invalid status_code {output.status_code} for execution {execution_id}")
+                RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
+                if callback_url:
+                    _schedule_callback(
+                        background_tasks, callback_url, execution_id, trace_id,
+                        {"success": False, "output": None,
+                         "error": {"code": "OUTPUT_SERIALIZATION_ERROR",
+                                   "message": f"Handler returned invalid status_code: {output.status_code}"}},
+                        x_dispatch_attempt,
+                    )
+                return JSONResponse(status_code=500, content={
+                    "error": f"Handler returned invalid status_code: {output.status_code}"})
+
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
-        result = {"success": True, "output": output, "error": None}
+        result = {"success": True, "output": response_body, "error": None}
+        if callback_status_code is not None:
+            result["statusCode"] = callback_status_code
+            result["headers"] = callback_headers
+            result["encoding"] = callback_encoding
 
         if callback_url:
             _schedule_callback(
                 background_tasks, callback_url, execution_id, trace_id, result, x_dispatch_attempt
             )
 
-        headers = _build_cold_start_headers(is_cold_start)
-
-        return JSONResponse(content=output if isinstance(output, (dict, list)) else {"result": output}, headers=headers)
+        return JSONResponse(
+            status_code=response_status,
+            # ponytail: the envelope path emits output verbatim so Java and Python agree on
+            # the wire; the plain path keeps today's {"result": ...} wrapping untouched for
+            # backward compatibility.
+            content=response_body
+            if callback_status_code is not None or isinstance(response_body, (dict, list))
+            else {"result": response_body},
+            headers=response_headers,
+        )
     except json.JSONDecodeError:
         return _fail_response(
             background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
