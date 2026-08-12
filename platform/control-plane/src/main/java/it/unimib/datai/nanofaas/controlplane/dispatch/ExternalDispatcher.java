@@ -1,12 +1,19 @@
 package it.unimib.datai.nanofaas.controlplane.dispatch;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.UnsupportedMediaTypeException;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 
@@ -51,16 +58,33 @@ public class ExternalDispatcher implements Dispatcher {
                             response.headers().asHttpHeaders().getFirst("X-Cold-Start"));
                     Long initMs = parseInitDuration(
                             response.headers().asHttpHeaders().getFirst("X-Init-Duration-Ms"));
+                    boolean isFunctionDecided = "true".equalsIgnoreCase(
+                            response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Function-Status"));
+
+                    if (isFunctionDecided) {
+                        int statusCode = response.statusCode().value();
+                        if (ResponseHeaderPolicy.isStatusCodeValid(statusCode)) {
+                            Map<String, String> headers = extractAllowedHeaders(response.headers().asHttpHeaders());
+                            return decodeBody(response)
+                                    // ponytail: a function-decided response with a content type our decoder
+                                    // doesn't know (e.g. application/pdf) still carries a legitimate
+                                    // status/headers envelope; don't let a body-decode gap collapse it into
+                                    // EXTERNAL_ERROR. Body decoding beyond JSON/text/plain is out of Task 8
+                                    // scope (see base64 `encoding` field, later tasks).
+                                    .onErrorResume(UnsupportedMediaTypeException.class, ex -> Mono.empty())
+                                    .map(body -> new DispatchResult(
+                                            InvocationResult.successWithEnvelope(body, statusCode, headers, null),
+                                            isCold, initMs))
+                                    .defaultIfEmpty(new DispatchResult(
+                                            InvocationResult.successWithEnvelope(null, statusCode, headers, null),
+                                            isCold, initMs));
+                        }
+                        // ponytail: out-of-range status code from a marker-bearing response is not
+                        // spec-legal (brief is silent) — fall through and treat as a platform error.
+                    }
 
                     if (response.statusCode().is2xxSuccessful()) {
-                        MediaType contentType = response.headers().contentType()
-                                .orElse(MediaType.APPLICATION_JSON);
-                        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
-                            return response.bodyToMono(String.class)
-                                    .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
-                                    .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
-                        }
-                        return response.bodyToMono(Object.class)
+                        return decodeBody(response)
                                 .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
                                 .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
                     }
@@ -85,5 +109,23 @@ public class ExternalDispatcher implements Dispatcher {
         } catch (NumberFormatException _) {
             return null;
         }
+    }
+
+    private static Mono<Object> decodeBody(ClientResponse response) {
+        MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
+        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
+            return response.bodyToMono(String.class).cast(Object.class);
+        }
+        return response.bodyToMono(Object.class);
+    }
+
+    private static Map<String, String> extractAllowedHeaders(HttpHeaders headers) {
+        Map<String, String> raw = new LinkedHashMap<>();
+        headers.forEach((name, values) -> {
+            if (!values.isEmpty()) {
+                raw.put(name, values.get(0));
+            }
+        });
+        return ResponseHeaderPolicy.filterAllowedHeaders(raw);
     }
 }
