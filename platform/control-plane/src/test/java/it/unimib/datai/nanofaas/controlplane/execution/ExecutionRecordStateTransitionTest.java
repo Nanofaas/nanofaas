@@ -4,6 +4,8 @@ import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ExecutionRecordStateTransitionTest {
@@ -149,6 +151,80 @@ class ExecutionRecordStateTransitionTest {
         assertThat(snapshot.coldStart()).isFalse();
         assertThat(snapshot.initDurationMs()).isNull();
         assertThat(snapshot.dispatchedAt()).isNull();
+    }
+
+    @Test
+    void markSuccess_withStatusCodeAndHeaders_reflectedInSnapshot() {
+        ExecutionRecord executionRecord = createRecord("exec-1");
+
+        executionRecord.markSuccess("body", 201, Map.of("Location", "/x"), "base64");
+
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
+        assertThat(snapshot.statusCode()).isEqualTo(201);
+        assertThat(snapshot.headers()).containsEntry("Location", "/x");
+        assertThat(snapshot.encoding()).isEqualTo("base64");
+    }
+
+    @Test
+    void markSuccess_withoutStatusCode_snapshotHasNullEnvelopeFields() {
+        ExecutionRecord executionRecord = createRecord("exec-1");
+
+        executionRecord.markSuccess("body");
+
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
+        assertThat(snapshot.statusCode()).isNull();
+        assertThat(snapshot.headers()).isNull();
+        assertThat(snapshot.encoding()).isNull();
+    }
+
+    @Test
+    void resetForRetry_clearsEnvelopeFields() {
+        // Envelope fields are only ever set by markSuccess(), which transitions the
+        // record into the terminal SUCCESS state; canTransition() then rejects any
+        // further resetForRetry() on that record (same guard validated by
+        // invalidTransition_success_to_running_isIgnored below), so a real retry
+        // attempt never observes a non-null envelope in the first place. This test
+        // covers the reachable path — resetForRetry() from a non-terminal (RUNNING)
+        // state, where the new clearing lines still execute — as a regression guard
+        // in case a future change lets envelope fields be set outside markSuccess.
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markRunning();
+
+        executionRecord.resetForRetry(createTask("exec-1"));
+
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
+        assertThat(snapshot.statusCode()).isNull();
+        assertThat(snapshot.headers()).isNull();
+        assertThat(snapshot.encoding()).isNull();
+    }
+
+    @Test
+    void resetForRetry_afterMarkSuccess_isIgnored_envelopeUnchanged() {
+        // Terminal states are final (see class javadoc): resetForRetry() after
+        // markSuccess() must be a no-op, same as any other post-terminal transition
+        // attempt, so a completed envelope is never silently discarded either.
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markSuccess("body", 404, Map.of("Location", "/x"), "base64");
+
+        executionRecord.resetForRetry(createTask("exec-1"));
+
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
+        assertThat(snapshot.statusCode()).isEqualTo(404);
+        assertThat(snapshot.headers()).containsEntry("Location", "/x");
+        assertThat(snapshot.encoding()).isEqualTo("base64");
+    }
+
+    @Test
+    void cleanup_clearsHeaders() {
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        executionRecord.markSuccess("body", 200, Map.of("Location", "/x"), "base64");
+
+        executionRecord.cleanup();
+
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
+        assertThat(snapshot.headers()).isNull();
+        assertThat(snapshot.output()).isNull();
     }
 
     private ExecutionRecord createRecord(String executionId) {

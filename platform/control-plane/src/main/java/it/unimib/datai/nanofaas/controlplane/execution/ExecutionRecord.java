@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -33,6 +34,9 @@ public class ExecutionRecord {
     private Object output;
     private boolean coldStart;
     private Long initDurationMs;
+    private Integer statusCode;
+    private Map<String, String> headers;
+    private String encoding;
     private boolean cleaned;
     private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
 
@@ -66,7 +70,10 @@ public class ExecutionRecord {
                 output,
                 lastError,
                 coldStart,
-                initDurationMs
+                initDurationMs,
+                statusCode,
+                headers,
+                encoding
         );
     }
 
@@ -103,6 +110,15 @@ public class ExecutionRecord {
      * Marks the execution as completed with success.
      */
     public synchronized void markSuccess(Object output) {
+        markSuccess(output, null, null, null);
+    }
+
+    /**
+     * Marks the execution as completed with success, carrying the handler-decided
+     * response envelope (status code, headers, encoding) through to the recorded result.
+     */
+    public synchronized void markSuccess(Object output, Integer statusCode,
+                                          Map<String, String> headers, String encoding) {
         if (!canTransition(ExecutionState.SUCCESS)) {
             return;
         }
@@ -110,6 +126,9 @@ public class ExecutionRecord {
         this.finishedAt = Instant.now();
         this.output = output;
         this.lastError = null;
+        this.statusCode = statusCode;
+        this.headers = headers;
+        this.encoding = encoding;
     }
 
     /**
@@ -161,6 +180,7 @@ public class ExecutionRecord {
         }
         this.cleaned = true;
         this.output = null;
+        this.headers = null;
         if (this.task != null) {
             // Replace task with one that has no request payload
             this.task = new InvocationTask(
@@ -192,6 +212,9 @@ public class ExecutionRecord {
         this.output = null;
         this.coldStart = false;
         this.initDurationMs = null;
+        this.statusCode = null;
+        this.headers = null;
+        this.encoding = null;
         this.cleaned = false;
     }
 
@@ -246,6 +269,9 @@ public class ExecutionRecord {
             Object output,
             ErrorInfo lastError,
             boolean coldStart,
-            Long initDurationMs
+            Long initDurationMs,
+            Integer statusCode,
+            Map<String, String> headers,
+            String encoding
     ) {}
 }
