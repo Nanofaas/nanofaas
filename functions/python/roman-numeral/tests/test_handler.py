@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 from handler import handle, _to_roman
+from nanofaas.sdk.response import HandlerResponse
 
 
 KNOWN_VALUES = [
@@ -37,28 +38,34 @@ def _invoke(payload):
 
 
 def test_handle_valid_number():
-    assert _invoke({"number": 42}) == {"roman": "XLII"}
+    result = _invoke({"number": 42})
+    assert result == {"roman": "XLII"}  # unchanged: plain value, implicit 200
 
 
 def test_handle_missing_field():
     result = _invoke({})
-    assert result == {"error": "missing required field: number"}
+    assert isinstance(result, HandlerResponse)
+    assert result.status_code == 422
+    assert result.output == {"error": "missing required field: number"}
 
 
 def test_handle_out_of_range_high():
     result = _invoke({"number": 4000})
-    assert "error" in result
-    assert "3999" in result["error"]
+    assert isinstance(result, HandlerResponse)
+    assert result.status_code == 422
+    assert "3999" in result.output["error"]
 
 
 def test_handle_out_of_range_zero():
     result = _invoke({"number": 0})
-    assert "error" in result
+    assert isinstance(result, HandlerResponse)
+    assert result.status_code == 422
 
 
 def test_handle_non_integer():
     result = _invoke({"number": "abc"})
-    assert "error" in result
+    assert isinstance(result, HandlerResponse)
+    assert result.status_code == 422
 
 
 SHARED_CASES = json.loads(
@@ -68,4 +75,8 @@ SHARED_CASES = json.loads(
 
 @pytest.mark.parametrize("contract_case", SHARED_CASES, ids=lambda case: case["name"])
 def test_shared_contract(contract_case):
-    assert _invoke(contract_case["input"]) == contract_case["expected"]
+    result = _invoke(contract_case["input"])
+    actual = result.output if isinstance(result, HandlerResponse) else result
+    assert actual == contract_case["expected"]
+    if isinstance(result, HandlerResponse):
+        assert result.status_code == contract_case.get("expectedStatusCode", 200)
