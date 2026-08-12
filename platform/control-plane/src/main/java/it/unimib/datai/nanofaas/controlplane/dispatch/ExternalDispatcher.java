@@ -6,10 +6,11 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.UnsupportedMediaTypeException;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -19,6 +20,12 @@ import java.util.concurrent.TimeoutException;
 
 @Component
 public class ExternalDispatcher implements Dispatcher {
+    // ponytail: plain JsonMapper (not the app's configured Spring ObjectMapper bean) — this
+    // is a narrow re-decode of a response body whose Content-Type label lied about its actual
+    // JSON encoding; not worth widening the constructor for. Revisit if a custom Jackson
+    // module is ever required for envelope bodies.
+    private static final JsonMapper JSON_FALLBACK_MAPPER = JsonMapper.shared();
+
     private final WebClient webClient;
 
     public ExternalDispatcher(WebClient webClient) {
@@ -65,13 +72,7 @@ public class ExternalDispatcher implements Dispatcher {
                         int statusCode = response.statusCode().value();
                         if (ResponseHeaderPolicy.isStatusCodeValid(statusCode)) {
                             Map<String, String> headers = extractAllowedHeaders(response.headers().asHttpHeaders());
-                            return decodeBody(response)
-                                    // ponytail: a function-decided response with a content type our decoder
-                                    // doesn't know (e.g. application/pdf) still carries a legitimate
-                                    // status/headers envelope; don't let a body-decode gap collapse it into
-                                    // EXTERNAL_ERROR. Body decoding beyond JSON/text/plain is out of Task 8
-                                    // scope (see base64 `encoding` field, later tasks).
-                                    .onErrorResume(UnsupportedMediaTypeException.class, ex -> Mono.empty())
+                            return decodeBody(response, true)
                                     .map(body -> new DispatchResult(
                                             InvocationResult.successWithEnvelope(body, statusCode, headers, null),
                                             isCold, initMs))
@@ -84,7 +85,7 @@ public class ExternalDispatcher implements Dispatcher {
                     }
 
                     if (response.statusCode().is2xxSuccessful()) {
-                        return decodeBody(response)
+                        return decodeBody(response, false)
                                 .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
                                 .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
                     }
@@ -111,10 +112,43 @@ public class ExternalDispatcher implements Dispatcher {
         }
     }
 
-    private static Mono<Object> decodeBody(ClientResponse response) {
+    /**
+     * Decodes a response body, treating {@code text/plain} as a raw string (Spring has no
+     * {@code Object.class} decoder for it — see the class-level history of this method).
+     *
+     * <p>{@code lenientJsonFallback} controls what happens for any other content type:
+     * <ul>
+     *   <li>{@code false} (today's non-marker path, unchanged): delegate to Spring's
+     *       Content-Type-gated {@code bodyToMono(Object.class)}. An unrecognized content type
+     *       (e.g. {@code application/pdf}) throws {@code UnsupportedMediaTypeException}, which
+     *       the caller lets bubble up to the outer {@code onErrorResume} → {@code EXTERNAL_ERROR}
+     *       — exactly today's behavior.</li>
+     *   <li>{@code true} (function-decided/marker path): a handler's {@code Content-Type} is a
+     *       caller-chosen label, decoupled from the actual wire encoding — InvokeController
+     *       always serializes the body as JSON regardless of it. So instead of gating on that
+     *       label, read the body once as a string and parse it as JSON ourselves. This also
+     *       sidesteps a hard constraint: the Reactor Netty inbound receiver only allows a single
+     *       body subscription, so a "try Object.class, then retry on failure" strategy is not
+     *       viable here — the retry throws "Rejecting additional inbound receiver".</li>
+     * </ul>
+     */
+    private static Mono<Object> decodeBody(ClientResponse response, boolean lenientJsonFallback) {
         MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
         if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
             return response.bodyToMono(String.class).cast(Object.class);
+        }
+        if (lenientJsonFallback) {
+            return response.bodyToMono(String.class)
+                    .flatMap(raw -> {
+                        if (raw.isBlank()) {
+                            return Mono.empty();
+                        }
+                        try {
+                            return Mono.justOrEmpty(JSON_FALLBACK_MAPPER.readValue(raw, Object.class));
+                        } catch (JacksonException ex) {
+                            return Mono.empty();
+                        }
+                    });
         }
         return response.bodyToMono(Object.class);
     }
