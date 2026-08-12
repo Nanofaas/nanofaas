@@ -92,6 +92,44 @@ prometheus:
     scrapeTimeout: 10s
     additionalLabels: {}
 
+# What the HPA controller itself decided, which no other source records.
+# Prometheus already carries the metric's *value* (function_dispatch_total, from
+# which nanofaas_rps is derived), but not whether the controller managed to read
+# it, what replica count it computed, or whether that count was clamped by
+# minReplicas/maxReplicas. Those live only in the HPA object's status, and the
+# object is deleted with the function. kube-state-metrics publishes them as
+# series so they survive in Prometheus:
+#   kube_horizontalpodautoscaler_status_desired_replicas
+#   kube_horizontalpodautoscaler_status_current_replicas
+#   kube_horizontalpodautoscaler_status_condition{condition="ScalingActive"}   - could it read the metric
+#   kube_horizontalpodautoscaler_status_condition{condition="ScalingLimited"}  - was the decision clamped
+# Enable it alongside hpa-metrics-adapter; on its own it measures nothing.
+kube-state-metrics:
+  enabled: false
+  # Only the HPA collector: this exists to explain autoscaling decisions, and
+  # the default set watches every object kind in the cluster, which on a lab
+  # node is memory and scrape volume spent on series nobody queries.
+  collectors:
+    - horizontalpodautoscalers
+  # The subchart already sets prometheus.io/scrape from `prometheusScrape`
+  # (default true), and the existing `nanofaas-endpoints` job keeps every
+  # annotated Service in this namespace — so discovery needs nothing from us.
+  # Only the port annotation is missing, and that job reads it to pick the
+  # target port.
+  service:
+    annotations:
+      prometheus.io/port: "8080"
+  prometheus:
+    # ServiceMonitor off: this cluster runs plain Prometheus, not the operator.
+    monitor:
+      enabled: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
 # The control plane creates HPA objects per function. Enable this shared
 # cluster component only when at least one registered function uses HPA.
 hpa-metrics-adapter:
