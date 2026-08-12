@@ -121,6 +121,7 @@ public class Metrics {
     public void registerFunction(String function) {
         synchronized (functionStateMonitor) {
             removedFunctions.remove(function);
+            metersOrNull(function);
         }
     }
 
