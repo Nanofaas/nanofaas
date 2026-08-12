@@ -12,10 +12,21 @@ handler may optionally return instead of a plain value; detected structurally
 (`instanceof` in Java, `isinstance` in Python) so existing handlers are unaffected.
 The signal that a response was function-decided (not a platform error) propagates two
 ways depending on the transport: as a dedicated marker HTTP header
-(`X-NanoFaaS-Function-Status: true`) on the runtime's own synchronous `/invoke`
-response (read by `ExternalDispatcher`), and as a nullable JSON field on the async
-callback body (`CallbackPayload`/`InvocationResult`) — null means "no opinion,"
-non-null means "the function decided this."
+(`X-NanoFaaS-Function-Status: true`) on **every** synchronous HTTP hop that can carry a
+non-2xx function status — the runtime's `/invoke` response (read by
+`ExternalDispatcher`) and the control plane's `:invoke` response (read by
+`DefaultOffloadGateway`) — and as a nullable JSON field on the async callback body
+(`CallbackPayload`/`InvocationResult`) — null means "no opinion," non-null means "the
+function decided this."
+
+**Request headers travel in the body, not on the wire.** `ExternalDispatcher` forwards
+only four fixed headers to the runtime (`X-Execution-Id`, `X-Dispatch-Attempt`,
+`X-Trace-Id`, `Idempotency-Key`), so a runtime reading its own inbound HTTP headers
+would see the control plane's headers, never the caller's. The caller's headers are
+therefore captured once at the control-plane ingress into `InvocationRequest.headers`,
+which already rides in the JSON body via `request.bodyValue(task.request())` and so
+reaches every dispatch mode (EXTERNAL, DEPLOYMENT, LOCAL) unchanged. The runtime SDKs
+read `request.headers()` out of that body and add no header-capture code of their own.
 
 **Tech Stack:** Java 25 / Spring Boot 4.1 (WebFlux control-plane, WebMVC SDK runtime),
 Python 3.11+ / FastAPI, JUnit 5, pytest.
@@ -34,15 +45,46 @@ Python 3.11+ / FastAPI, JUnit 5, pytest.
   `X-Dispatch-Attempt`, `X-NanoFaaS-Offloaded`, `X-Queue-Reject-Reason`) can never be
   set by a handler, regardless of the allow-list.
 - Request headers exposed to the handler: all incoming headers except hop-by-hop
-  (`Connection`, `Transfer-Encoding`, `Keep-Alive`) and the already-dedicated
-  `X-Execution-Id` / `X-Trace-Id` / `X-Dispatch-Attempt`.
-- `encoding` field: only legal value is `"base64"` (or absent/null).
+  (`Connection`, `Transfer-Encoding`, `Keep-Alive`, `Host`, `Content-Length`) and every
+  header the control plane already binds to a dedicated parameter (`X-Execution-Id`,
+  `X-Trace-Id`, `X-Dispatch-Attempt`, `X-Timeout-Ms`, `X-NanoFaaS-Offload-Hop`,
+  `Idempotency-Key`, `traceparent`, `tracestate`).
+- Request header **keys are lower-cased** before reaching the handler, in both
+  languages. HTTP header names are case-insensitive on the wire, Spring preserves the
+  sender's casing and Starlette lower-cases — without normalization the same handler
+  logic would need `Authorization` in Java and `authorization` in Python.
+- Request headers are captured **only** by the control plane (`InvocationController`,
+  both `:invoke` and `:enqueue`), which **overwrites** whatever `headers` the caller put
+  in the JSON body. A caller must not be able to forge a header it did not actually
+  send. The runtime SDKs never read their own inbound HTTP headers for this purpose.
+- `encoding` field: only legal value is `"base64"` (or absent/null). The platform is a
+  pure carrier for this marker — it never encodes or decodes; the caller of `:invoke`
+  does. It must therefore be threaded through *every* model that can reach the caller
+  (`ExecutionStatus` and `ExecutionRecord.Snapshot` included), or it is silently lost on
+  the terminal/replay path.
+- Response body shape: on the runtime's `/invoke`, an envelope response's body is
+  `output` **verbatim** in both languages (Python does not apply its usual
+  `{"result": ...}` wrapping in the envelope path — Java never did). On the control
+  plane's `:invoke`, the body stays the `InvocationResponse` JSON envelope exactly as
+  today; consequently `Content-Type` is *not* re-emitted as a real HTTP header at that
+  hop (it would describe a body that is not there) — it stays readable in
+  `response.headers()`.
+- Retry semantics: a function-decided result is `success()`, so it is never retried,
+  even when its status is 5xx. Only platform errors retry. This is intentional — the
+  function answered, the platform did not fail.
 - Backward compatibility is mandatory: a handler returning a plain value must behave
   exactly as it does today (implicit 200, no extra headers, no encoding) — every task
   below includes a regression test proving this.
+- Every record that is Jackson-(de)serialized from a request/response body
+  (`InvocationRequest`, `InvocationResult`, `InvocationResponse`, `CallbackPayload`)
+  gains a **round-trip serde test**, not just accessor tests. Adding a secondary
+  constructor to a record is the one change here that can break at runtime while every
+  accessor unit test stays green.
 - This milestone covers Java + Python only. Do not touch `sdks/javascript`,
   `sdks/go`, `runtimes/watchdog`, or `tools/fn-init` — out of scope (see spec's
-  "Future milestone" section).
+  "Future milestone" section). Note this means the shared `roman-numeral` contract
+  fixture ends up with 7 implementations of which only 2 return an envelope; Task 15
+  states exactly what that does and does not prove.
 
 ---
 
@@ -232,6 +274,10 @@ git commit -m "feat: add HandlerResponse envelope and response header allow-list
 **Interfaces:**
 - Produces: `InvocationRequest(Object input, Map<String,String> metadata, Map<String,String> headers)`.
 
+**Why this field matters:** it is not decoration — it is the *transport* for request
+headers (see Architecture). The control plane fills it at ingress (Task 6) and it rides
+in the JSON body all the way to the handler.
+
 - [ ] **Step 1: Write the failing test**
 
 Add to `CommonModelTest.java` (near the existing `invocationRequest_*` tests):
@@ -239,8 +285,8 @@ Add to `CommonModelTest.java` (near the existing `invocationRequest_*` tests):
 ```java
     @Test
     void invocationRequest_headersAccessor() {
-        InvocationRequest r = new InvocationRequest("payload", Map.of("k", "v"), Map.of("Authorization", "Bearer x"));
-        assertEquals("Bearer x", r.headers().get("Authorization"));
+        InvocationRequest r = new InvocationRequest("payload", Map.of("k", "v"), Map.of("authorization", "Bearer x"));
+        assertEquals("Bearer x", r.headers().get("authorization"));
     }
 
     @Test
@@ -248,7 +294,29 @@ Add to `CommonModelTest.java` (near the existing `invocationRequest_*` tests):
         InvocationRequest r = new InvocationRequest("data", null, null);
         assertNull(r.headers());
     }
+
+    @Test
+    void invocationRequest_jsonRoundTrip() throws Exception {
+        // The record is @RequestBody-deserialized on two hops; adding a secondary
+        // constructor must not confuse Jackson's canonical-constructor detection.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationRequest original = new InvocationRequest(
+                Map.of("number", 42), Map.of("k", "v"), Map.of("authorization", "Bearer x"));
+        InvocationRequest back = mapper.readValue(mapper.writeValueAsString(original), InvocationRequest.class);
+        assertEquals(original.metadata(), back.metadata());
+        assertEquals(original.headers(), back.headers());
+    }
+
+    @Test
+    void invocationRequest_deserializesLegacyBodyWithoutHeaders() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationRequest back = mapper.readValue("{\"input\":{\"n\":1}}", InvocationRequest.class);
+        assertNull(back.headers());
+    }
 ```
+
+(match the Jackson import style already used elsewhere in this module — the repo is on
+Jackson 3 / `tools.jackson`, confirm before writing.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -330,6 +398,28 @@ Add to `CommonModelTest.java`:
         assertEquals("/x", r.headers().get("Location"));
         assertEquals("base64", r.encoding());
     }
+
+    @Test
+    void invocationResult_jsonRoundTrip() {
+        // This record is the @RequestBody of /internal/executions/{id}:complete — the
+        // async callback wire format. Field names must survive both directions.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResult original = InvocationResult.successWithEnvelope(
+                "body", 201, Map.of("Location", "/x"), "base64");
+        InvocationResult back = mapper.readValue(mapper.writeValueAsString(original), InvocationResult.class);
+        assertEquals(201, back.statusCode());
+        assertEquals("/x", back.headers().get("Location"));
+        assertEquals("base64", back.encoding());
+    }
+
+    @Test
+    void invocationResult_deserializesLegacyCallbackBody() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResult back = mapper.readValue(
+                "{\"success\":true,\"output\":\"ok\",\"error\":null}", InvocationResult.class);
+        assertTrue(back.success());
+        assertNull(back.statusCode());
+    }
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -397,7 +487,20 @@ git commit -m "feat: add statusCode/headers/encoding to InvocationResult"
 
 **Interfaces:**
 - Produces: `InvocationResponse(String executionId, String status, Object output, ErrorInfo error, Integer statusCode, Map<String,String> headers, String encoding)`.
-- Produces: `ExecutionStatus(String executionId, String status, Instant startedAt, Instant finishedAt, Object output, ErrorInfo error, boolean coldStart, Long initDurationMs, Integer statusCode, Map<String,String> headers)`.
+- Produces: `ExecutionStatus(String executionId, String status, Instant startedAt, Instant finishedAt, Object output, ErrorInfo error, boolean coldStart, Long initDurationMs, Integer statusCode, Map<String,String> headers, String encoding)`.
+
+**Both records get a compatibility constructor.** `ExecutionStatus` has two existing
+call sites besides the mapper — `CommonModelTest.java:74` and
+`InvocationControllerTest.java:262` — and its production call site
+(`InvocationResponseMapper.toStatus`) is owned by Task 9. Without a compat constructor
+`:control-plane` stops compiling at the end of *this* task and does not compile again
+until Task 9 lands, which makes Tasks 5–8 unverifiable (Task 8 in particular declares
+`./gradlew :control-plane:test → PASS`, which would be impossible). The compat
+constructor keeps every intermediate commit green.
+
+`encoding` is on `ExecutionStatus` too: it is a caller-visible marker, and
+`GET /v1/executions/{id}` is a path where the caller reads the output back. Dropping it
+here is what would make it silently vanish on the replay path.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -422,6 +525,19 @@ Update the existing tests in `CommonModelTest.java` (replace, don't duplicate):
         assertEquals(201, resp.statusCode());
         assertEquals("/x", resp.headers().get("Location"));
     }
+
+    @Test
+    void invocationResponse_jsonRoundTrip() {
+        // DefaultOffloadGateway does bodyToMono(InvocationResponse.class) on the remote's
+        // :invoke body — the envelope fields must survive that hop (Task 10b depends on it).
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResponse original = new InvocationResponse(
+                "ex-3", "success", "body", null, 404, Map.of("Content-Type", "text/plain"), "base64");
+        InvocationResponse back = mapper.readValue(mapper.writeValueAsString(original), InvocationResponse.class);
+        assertEquals(404, back.statusCode());
+        assertEquals("text/plain", back.headers().get("Content-Type"));
+        assertEquals("base64", back.encoding());
+    }
 ```
 
 ```java
@@ -429,7 +545,7 @@ Update the existing tests in `CommonModelTest.java` (replace, don't duplicate):
     void executionStatus_recordAccessors() {
         ExecutionStatus s = new ExecutionStatus(
                 "ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200),
-                "result", null, true, 150L, null, null);
+                "result", null, true, 150L, null, null, null);
         assertEquals("ex-1", s.executionId());
         assertEquals("COMPLETED", s.status());
         assertEquals(Instant.ofEpochMilli(100), s.startedAt());
@@ -445,9 +561,19 @@ Update the existing tests in `CommonModelTest.java` (replace, don't duplicate):
     void executionStatus_carriesEnvelopeFields() {
         ExecutionStatus s = new ExecutionStatus(
                 "ex-2", "success", Instant.now(), Instant.now(),
-                "body", null, false, null, 404, Map.of("Content-Type", "text/plain"));
+                "body", null, false, null, 404, Map.of("Content-Type", "text/plain"), "base64");
         assertEquals(404, s.statusCode());
         assertEquals("text/plain", s.headers().get("Content-Type"));
+        assertEquals("base64", s.encoding());
+    }
+
+    @Test
+    void executionStatus_compatConstructorLeavesEnvelopeFieldsNull() {
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-3", "queued", null, null, null, null, false, null);
+        assertNull(s.statusCode());
+        assertNull(s.headers());
+        assertNull(s.encoding());
     }
 ```
 
@@ -496,26 +622,30 @@ public record ExecutionStatus(
         boolean coldStart,
         Long initDurationMs,
         Integer statusCode,
-        Map<String, String> headers
+        Map<String, String> headers,
+        String encoding
 ) {
+    public ExecutionStatus(String executionId, String status, Instant startedAt, Instant finishedAt,
+                           Object output, ErrorInfo error, boolean coldStart, Long initDurationMs) {
+        this(executionId, status, startedAt, finishedAt, output, error, coldStart, initDurationMs,
+                null, null, null);
+    }
 }
 ```
 
-Note `ExecutionStatus` has no compatibility constructor — its only production call
-site is `InvocationResponseMapper.toStatus`, updated in Task 10. `InvocationResponse`
-keeps a 4-arg compatibility constructor because it is constructed directly in more
-places (e.g. `InvocationService.invokeAsync`, `InvocationResponseMapper`).
+Both records keep a compatibility constructor so that no intermediate commit breaks the
+build: `InvocationResponse`'s 4-arg form covers `InvocationService.invokeAsync` and
+`InvocationResponseMapper.timeoutResponse`; `ExecutionStatus`'s 8-arg form covers
+`InvocationResponseMapper.toStatus` (rewritten in Task 9) plus the two existing test
+call sites at `CommonModelTest.java:74` and `InvocationControllerTest.java:262`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew :common:test --tests "*CommonModelTest"`
-Expected: FAIL still, until Task 10 updates `InvocationResponseMapper.toStatus`'s
-7-arg `ExecutionStatus` call site (currently 8-arg). This is expected — do not fix it
-here; Task 10 owns that file. Confirm instead with:
-Run: `./gradlew :common:test --tests "*CommonModelTest"`
-Expected: PASS (this module's own tests do not depend on `InvocationResponseMapper`).
-A full `./gradlew build` will fail until Task 10 lands — acceptable mid-plan, not
-mid-task.
+Expected: PASS.
+Then run `./gradlew build` — it must also pass. The compat constructors mean this task
+leaves the whole repository compiling; if `build` fails here, a call site was missed and
+must be fixed **in this task**, not deferred.
 
 - [ ] **Step 5: Commit**
 
@@ -569,8 +699,28 @@ class CallbackPayloadTest {
         assertEquals("/x", p.headers().get("Location"));
         assertEquals("base64", p.encoding());
     }
+
+    @Test
+    void serializedFieldNamesMatchInvocationResult() {
+        // CallbackPayload is serialized here and deserialized as InvocationResult on the
+        // control plane (/internal/executions/{id}:complete). The two records are never
+        // checked against each other by the compiler — only this test catches a rename.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        String json = mapper.writeValueAsString(CallbackPayload.successWithEnvelope(
+                new TextNode("ok"), 201, Map.of("Location", "/x"), "base64"));
+        var received = mapper.readValue(json,
+                it.unimib.datai.nanofaas.common.model.InvocationResult.class);
+        assertTrue(received.success());
+        assertEquals(201, received.statusCode());
+        assertEquals("/x", received.headers().get("Location"));
+        assertEquals("base64", received.encoding());
+    }
 }
 ```
+
+That last test is the one that matters: it is the only thing tying the Java callback
+*sender* to the control-plane *receiver*, and it also pins the exact JSON key names
+(`statusCode`, `headers`, `encoding`) that the Python runtime must emit in Task 13.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -625,117 +775,107 @@ git commit -m "feat: add statusCode/headers/encoding to CallbackPayload"
 
 ---
 
-### Task 6: `InvokeController` captures request headers into `InvocationRequest`
+### Task 6: The control plane captures caller request headers into `InvocationRequest`
 
 **Files:**
-- Modify: `sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeController.java`
-- Test: `sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java` (existing — add cases)
+- Modify: `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java`
+- Test: `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/api/InvocationControllerTest.java` (existing — add cases; read it first to match its mocking style)
 
 **Interfaces:**
 - Consumes: `InvocationRequest` now has 3 args (Task 2).
-- Produces: the `InvocationRequest` passed to `handlerExecutor.execute(handler, request)`
-  now has `headers()` populated from the incoming HTTP request, filtered.
+- Produces: the `InvocationRequest` handed to `invocationService` on both `:invoke` and
+  `:enqueue` has `headers()` populated from the caller's real HTTP headers, filtered and
+  lower-cased, **overwriting** anything the caller put in the body's `headers` field.
 
-**Note:** Spring MVC supports binding *all* request headers into a controller method
-parameter via `@RequestHeader Map<String,String> headers` — no manual
-`HttpServletRequest` iteration needed.
+**Why this is a control-plane task and not an SDK task.** The original version of this
+plan captured headers in the runtime's `InvokeController`. That does not work:
+`ExternalDispatcher` sends the runtime only `X-Execution-Id`, `X-Dispatch-Attempt`,
+`X-Trace-Id` and `Idempotency-Key`, so the runtime's own inbound headers are the control
+plane's, never the caller's. A handler asking for `authorization` would get nothing —
+and the SDK unit tests, which POST directly at `/invoke`, would still pass, hiding it.
+Capturing at ingress and letting the value ride in the body reaches every dispatch mode
+(EXTERNAL, DEPLOYMENT, LOCAL) for free, and needs **zero** changes in either runtime SDK
+for the Java path: `handlerExecutor.execute(handler, request)` already receives a
+deserialized `InvocationRequest` whose `headers()` is now populated.
 
-- [ ] **Step 1: Write the failing test**
-
-Find the existing `InvokeControllerTest.java` and add (mirroring its existing style —
-read the file first to match exact mocking setup before writing this; the shape below
-assumes a `MockMvc`/`WebMvcTest` or direct-construction pattern is already present):
+- [ ] **Step 1: Write the failing tests**
 
 ```java
     @Test
-    void invoke_exposesFilteredRequestHeadersToHandler() {
-        // Arrange: an ArgumentCaptor on the InvocationRequest passed to handlerExecutor.execute
-        // (or the equivalent existing pattern in this test class), a request carrying
-        // Authorization, Connection (hop-by-hop), and X-Execution-Id (already dedicated).
-        // Act: call controller.invoke(...) with those headers.
-        // Assert: the captured InvocationRequest.headers() contains "Authorization" but
-        // NOT "Connection" and NOT "X-Execution-Id".
+    void invokeSync_capturesCallerHeadersIntoRequest() {
+        // Arrange: ArgumentCaptor<InvocationRequest> on invocationService.invokeSyncReactive(...)
+        // Act: POST :invoke with headers Authorization: Bearer x, Connection: keep-alive,
+        //      X-Trace-Id: t-1, Idempotency-Key: k-1
+        // Assert: captured.headers().get("authorization") == "Bearer x"
+        // Assert: captured.headers() has no "connection", no "x-trace-id",
+        //         no "idempotency-key" (all hop-by-hop or already-dedicated)
+    }
+
+    @Test
+    void invokeSync_callerCannotForgeHeadersViaBody() {
+        // Act: POST :invoke with body {"input":{}, "headers":{"authorization":"forged"}}
+        //      and NO Authorization HTTP header
+        // Assert: captured.headers() has no "authorization" — the body value is discarded,
+        //         not merged.
+    }
+
+    @Test
+    void invokeAsync_capturesCallerHeadersIntoRequest() {
+        // Same as the first test but through :enqueue — async handlers see headers too.
     }
 ```
 
-(Write this against the actual existing test scaffolding in the file — read
-`InvokeControllerTest.java` in full before writing the body; do not guess the mocking
-style.)
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `./gradlew :sdks:java:test --tests "*InvokeControllerTest"`
-Expected: FAIL — headers are not yet captured.
+Run: `./gradlew :control-plane:test --tests "*InvocationControllerTest"`
+Expected: FAIL — headers are not captured yet.
 
 - [ ] **Step 3: Implement**
 
-Add a `HOP_BY_HOP_AND_DEDICATED_HEADERS` constant and a `Map<String,String>` parameter
-to `invoke`, filter it, and pass it into the `InvocationRequest` used for execution:
-
 ```java
+    /**
+     * Hop-by-hop headers plus every header the control plane already binds to a dedicated
+     * parameter. Anything left is handler-visible.
+     */
     private static final Set<String> EXCLUDED_REQUEST_HEADERS = Set.of(
-            "connection", "transfer-encoding", "keep-alive",
-            "x-execution-id", "x-trace-id", "x-dispatch-attempt");
+            "connection", "transfer-encoding", "keep-alive", "host", "content-length",
+            "x-execution-id", "x-trace-id", "x-dispatch-attempt", "x-timeout-ms",
+            "x-nanofaas-offload-hop", "idempotency-key", "traceparent", "tracestate");
 
-    @PostMapping("/invoke")
-    public ResponseEntity<Object> invoke(
-            @RequestBody InvocationRequest request,
-            @RequestHeader(value = "X-Execution-Id", required = false) String headerExecutionId,
-            @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
-            @RequestHeader(value = "X-Dispatch-Attempt", required = false) String dispatchAttempt,
-            @RequestHeader Map<String, String> allHeaders) {
-
-        InvocationRuntimeContext runtimeContext = runtimeContextResolver.resolve(headerExecutionId, traceId);
-        String effectiveExecutionId = runtimeContext.executionId();
-
-        if (effectiveExecutionId == null || effectiveExecutionId.isBlank()) {
-            log.error("No execution ID provided (header or ENV)");
-            return ResponseEntity.badRequest()
-                    .body(Map.of(ERROR_KEY, "Execution ID not configured"));
-        }
-
-        InvocationRequest requestWithHeaders = new InvocationRequest(
-                request.input(), request.metadata(), filterRequestHeaders(allHeaders));
-
-        boolean isColdStart = coldStartTracker.firstInvocation();
-        coldStartTracker.markFirstRequestArrival();
-
-        try {
-            FunctionHandler handler = handlerRegistry.resolve();
-            Object rawOutput = handlerExecutor.execute(handler, requestWithHeaders);
-            return buildSuccessResponse(rawOutput, effectiveExecutionId, runtimeContext, dispatchAttempt, isColdStart);
-        } catch (OutputSerializationException ex) {
-            // ... unchanged ...
-```
-
-```java
-    private static Map<String, String> filterRequestHeaders(Map<String, String> raw) {
-        Map<String, String> filtered = new java.util.LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : raw.entrySet()) {
-            if (!EXCLUDED_REQUEST_HEADERS.contains(entry.getKey().toLowerCase())) {
-                filtered.put(entry.getKey(), entry.getValue());
+    /**
+     * Rebuild the request with the caller's real headers, lower-cased. The body's own
+     * {@code headers} field is overwritten, never merged: a caller must not be able to
+     * forge a header it did not send.
+     */
+    private static InvocationRequest withCallerHeaders(InvocationRequest request,
+                                                       Map<String, String> rawHeaders) {
+        Map<String, String> filtered = new LinkedHashMap<>();
+        rawHeaders.forEach((name, value) -> {
+            String key = name.toLowerCase(java.util.Locale.ROOT);
+            if (!EXCLUDED_REQUEST_HEADERS.contains(key)) {
+                filtered.put(key, value);
             }
-        }
-        return filtered;
+        });
+        return new InvocationRequest(request.input(), request.metadata(), filtered);
     }
 ```
 
-`buildSuccessResponse` is introduced in Task 7 (it currently is inline code in
-`invoke`) — for this task alone, keep the existing inline success-path body but change
-its input from `request` to `requestWithHeaders`. Task 7 will refactor it further to
-detect `HandlerResponse`.
+Then add `@RequestHeader Map<String, String> allHeaders` as the last parameter of both
+`invokeSync` and `invokeAsync`, and pass `withCallerHeaders(request, allHeaders)` to
+`invocationService` instead of `request` in each. Everything else in both methods is
+untouched.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew :sdks:java:test --tests "*InvokeControllerTest"`
+Run: `./gradlew :control-plane:test --tests "*InvocationControllerTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeController.java \
-        sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java
-git commit -m "feat: expose filtered request headers to Java handlers"
+git add platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java \
+        platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/api/InvocationControllerTest.java
+git commit -m "feat: capture caller request headers into InvocationRequest at ingress"
 ```
 
 ---
@@ -752,6 +892,11 @@ git commit -m "feat: expose filtered request headers to Java handlers"
   status, allow-listed headers, and adds `X-NanoFaaS-Function-Status: true`; the
   callback uses `CallbackPayload.successWithEnvelope`. Otherwise, identical to today
   (200, cold-start headers only, `CallbackPayload.success`).
+- The response body is `envelope.output()` normalized, **verbatim** — no wrapper object.
+
+**Note:** this is the only task that touches `InvokeController`. Request headers are
+handled entirely by the control plane (Task 6) and arrive already populated in the
+deserialized `InvocationRequest`, so there is nothing to add here for them.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -786,6 +931,15 @@ Add to `InvokeControllerTest.java`:
         // handler.handle(...) returns Map.of("roman", "XLII") (no envelope)
         // Assert: response.getStatusCode().value() == 200
         // Assert: no X-NanoFaaS-Function-Status header
+    }
+
+    @Test
+    void invoke_passesCallerHeadersFromBodyToHandler() {
+        // Regression guard for Task 6's transport choice: POST /invoke with a body whose
+        // InvocationRequest carries headers {"authorization": "Bearer x"} and NO such HTTP
+        // header. Assert the InvocationRequest reaching handlerExecutor.execute still has
+        // headers().get("authorization") == "Bearer x" — i.e. the runtime reads the body,
+        // not its own inbound HTTP headers.
     }
 ```
 
@@ -857,7 +1011,7 @@ private method, and implement it:
 ```java
         try {
             FunctionHandler handler = handlerRegistry.resolve();
-            Object rawOutput = handlerExecutor.execute(handler, requestWithHeaders);
+            Object rawOutput = handlerExecutor.execute(handler, request);
             return buildSuccessResponse(rawOutput, effectiveExecutionId, runtimeContext, dispatchAttempt, isColdStart);
         } catch (OutputSerializationException ex) {
 ```
@@ -916,6 +1070,14 @@ git commit -m "feat: detect HandlerResponse envelope in InvokeController"
         // Remote responds 500 with no marker header (today's platform-error case).
         // Assert: result.success() == false, error code EXTERNAL_ERROR — unchanged.
     }
+
+    @Test
+    void dispatch_functionStatusMarkerWithTextPlain_decodesBodyAsString() {
+        // Remote responds 200, X-NanoFaaS-Function-Status: true, Content-Type: text/plain,
+        // body "hello".
+        // Assert: result.success() == true and result.output() == "hello"
+        // (NOT an EXTERNAL_ERROR from a failed Object decode — see Step 3's note).
+    }
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -939,7 +1101,7 @@ Replace the `exchangeToMono` body:
                     if (isFunctionDecided) {
                         int statusCode = response.statusCode().value();
                         Map<String, String> headers = extractAllowedHeaders(response.headers().asHttpHeaders());
-                        return response.bodyToMono(Object.class)
+                        return decodeBody(response)
                                 .map(body -> new DispatchResult(
                                         InvocationResult.successWithEnvelope(body, statusCode, headers, null),
                                         isCold, initMs))
@@ -949,14 +1111,7 @@ Replace the `exchangeToMono` body:
                     }
 
                     if (response.statusCode().is2xxSuccessful()) {
-                        MediaType contentType = response.headers().contentType()
-                                .orElse(MediaType.APPLICATION_JSON);
-                        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
-                            return response.bodyToMono(String.class)
-                                    .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
-                                    .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
-                        }
-                        return response.bodyToMono(Object.class)
+                        return decodeBody(response)
                                 .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
                                 .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
                     }
@@ -964,6 +1119,24 @@ Replace the `exchangeToMono` body:
                             .defaultIfEmpty(response.statusCode().toString())
                             .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg), isCold, initMs));
                 })
+```
+
+**The content-type branch must be shared, not duplicated.** The existing 2xx path
+special-cases `text/plain` on purpose: `bodyToMono(Object.class)` has no decoder for
+`text/plain` and fails, which `onErrorResume` then turns into `EXTERNAL_ERROR`. Since
+setting `Content-Type: text/plain` is one of the main things the envelope exists for,
+the marker branch would break exactly the case it was added to support. Extract the
+existing logic into one helper and call it from both branches:
+
+```java
+    private static reactor.core.publisher.Mono<Object> decodeBody(
+            org.springframework.web.reactive.function.client.ClientResponse response) {
+        MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
+        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
+            return response.bodyToMono(String.class).cast(Object.class);
+        }
+        return response.bodyToMono(Object.class);
+    }
 ```
 
 Add the helper and the import (`it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy`, `org.springframework.http.HttpHeaders`, `java.util.Map`):
@@ -995,7 +1168,7 @@ git commit -m "feat: propagate function-decided status/headers in ExternalDispat
 
 ---
 
-### Task 9: `ExecutionRecord` stores statusCode/headers; `InvocationResponseMapper` propagates them
+### Task 9: `ExecutionRecord` stores statusCode/headers/encoding; `InvocationResponseMapper` propagates them
 
 **Files:**
 - Modify: `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java`
@@ -1006,11 +1179,16 @@ git commit -m "feat: propagate function-decided status/headers in ExternalDispat
 
 **Interfaces:**
 - Consumes: `InvocationResult` (Task 3), `ExecutionStatus`/`InvocationResponse` (Task 4).
-- Produces: `ExecutionRecord.markSuccess(Object output, Integer statusCode, Map<String,String> headers)`
+- Produces: `ExecutionRecord.markSuccess(Object output, Integer statusCode, Map<String,String> headers, String encoding)`
   (new overload; existing 1-arg `markSuccess(Object)` delegates with nulls).
-  `ExecutionRecord.Snapshot` gains `statusCode`, `headers`.
+  `ExecutionRecord.Snapshot` gains `statusCode`, `headers`, `encoding`.
   `InvocationResponseMapper.toResponse/.terminalResponse/.toStatus` all propagate the
   new fields end to end.
+
+`encoding` is carried here too. It is the field the caller uses to know the output is
+base64 binary, and `GET /v1/executions/{id}` plus `terminalResponse` are precisely the
+paths where a caller reads a completed result back. Storing status and headers but not
+encoding would make the marker vanish on exactly those paths.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1020,10 +1198,11 @@ Add to `ExecutionRecordTest.java`:
     @Test
     void markSuccess_withStatusCodeAndHeaders_reflectedInSnapshot() {
         ExecutionRecord record = new ExecutionRecord("ex-1", someTask());
-        record.markSuccess("body", 201, Map.of("Location", "/x"));
+        record.markSuccess("body", 201, Map.of("Location", "/x"), "base64");
         ExecutionRecord.Snapshot snapshot = record.snapshot();
         assertEquals(201, snapshot.statusCode());
         assertEquals("/x", snapshot.headers().get("Location"));
+        assertEquals("base64", snapshot.encoding());
     }
 
     @Test
@@ -1033,6 +1212,18 @@ Add to `ExecutionRecordTest.java`:
         ExecutionRecord.Snapshot snapshot = record.snapshot();
         assertNull(snapshot.statusCode());
         assertNull(snapshot.headers());
+        assertNull(snapshot.encoding());
+    }
+
+    @Test
+    void resetForRetry_clearsEnvelopeFields() {
+        ExecutionRecord record = new ExecutionRecord("ex-3", someTask());
+        record.markSuccess("body", 404, Map.of("Location", "/x"), "base64");
+        record.resetForRetry();
+        ExecutionRecord.Snapshot snapshot = record.snapshot();
+        assertNull(snapshot.statusCode());
+        assertNull(snapshot.headers());
+        assertNull(snapshot.encoding());
     }
 ```
 
@@ -1053,10 +1244,21 @@ Add to `InvocationResponseMapperTest.java`:
 
     @Test
     void toStatus_propagatesStatusCodeAndHeadersFromSnapshot() {
-        executionRecord.markSuccess("body", 201, Map.of("Location", "/x"));
+        executionRecord.markSuccess("body", 201, Map.of("Location", "/x"), "base64");
         ExecutionStatus status = mapper.toStatus(executionRecord);
         assertEquals(201, status.statusCode());
         assertEquals("/x", status.headers().get("Location"));
+        assertEquals("base64", status.encoding());
+    }
+
+    @Test
+    void terminalResponse_propagatesEncoding() {
+        // Guards the field that is easiest to drop: terminalResponse rebuilds an
+        // InvocationResult from the snapshot, so encoding must come from the snapshot,
+        // not be hardcoded null.
+        executionRecord.markSuccess("body", 200, Map.of(), "base64");
+        InvocationResponse response = mapper.terminalResponse(executionRecord);
+        assertEquals("base64", response.encoding());
     }
 ```
 
@@ -1072,14 +1274,16 @@ Expected: FAIL.
 ```java
     private Integer statusCode;
     private Map<String, String> headers;
+    private String encoding;
 ```
 
 ```java
     public synchronized void markSuccess(Object output) {
-        markSuccess(output, null, null);
+        markSuccess(output, null, null, null);
     }
 
-    public synchronized void markSuccess(Object output, Integer statusCode, Map<String, String> headers) {
+    public synchronized void markSuccess(Object output, Integer statusCode,
+                                         Map<String, String> headers, String encoding) {
         if (!canTransition(ExecutionState.SUCCESS)) {
             return;
         }
@@ -1089,6 +1293,7 @@ Expected: FAIL.
         this.lastError = null;
         this.statusCode = statusCode;
         this.headers = headers;
+        this.encoding = encoding;
     }
 ```
 
@@ -1099,7 +1304,7 @@ the end of both the constructor call and the record's component list):
     public synchronized Snapshot snapshot() {
         return new Snapshot(
                 executionId, task, state, startedAt, finishedAt, dispatchedAt,
-                output, lastError, coldStart, initDurationMs, statusCode, headers
+                output, lastError, coldStart, initDurationMs, statusCode, headers, encoding
         );
     }
 
@@ -1109,14 +1314,14 @@ the end of both the constructor call and the record's component list):
             String executionId, InvocationTask task, ExecutionState state,
             Instant startedAt, Instant finishedAt, Instant dispatchedAt,
             Object output, ErrorInfo lastError, boolean coldStart, Long initDurationMs,
-            Integer statusCode, Map<String, String> headers
+            Integer statusCode, Map<String, String> headers, String encoding
     ) {}
 ```
 
-Add `import java.util.Map;` and reset the two fields to `null` in `resetForRetry` (next
-to the existing `this.output = null;` line) and in `cleanup()`'s output-clearing logic
-if headers should also be released — leave `cleanup()` untouched otherwise (only
-`output` is cleared there today; do the same for `headers` for the same memory reason):
+Add `import java.util.Map;`, clear `headers` in `cleanup()` alongside the existing
+`this.output = null;` (same memory reason — it is the only other unbounded field), and
+clear all three in `resetForRetry()` so a retried attempt never inherits the previous
+attempt's status:
 
 ```java
     // in cleanup(), alongside `this.output = null;`:
@@ -1124,6 +1329,7 @@ if headers should also be released — leave `cleanup()` untouched otherwise (on
     // in resetForRetry(), alongside `this.output = null;`:
         this.statusCode = null;
         this.headers = null;
+        this.encoding = null;
 ```
 
 `InvocationResponseMapper.java` — propagate through all three methods:
@@ -1155,7 +1361,8 @@ public final class InvocationResponseMapper {
         ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
         if (snapshot.state() == ExecutionState.SUCCESS || snapshot.state() == ExecutionState.ERROR) {
             InvocationResult result = snapshot.lastError() == null
-                    ? InvocationResult.successWithEnvelope(snapshot.output(), snapshot.statusCode(), snapshot.headers(), null)
+                    ? InvocationResult.successWithEnvelope(snapshot.output(), snapshot.statusCode(),
+                            snapshot.headers(), snapshot.encoding())
                     : new InvocationResult(false, null, snapshot.lastError());
             return toResponse(executionRecord, result);
         }
@@ -1171,17 +1378,19 @@ public final class InvocationResponseMapper {
         return new ExecutionStatus(
                 snapshot.executionId(), status, snapshot.startedAt(), snapshot.finishedAt(),
                 snapshot.output(), snapshot.lastError(), snapshot.coldStart(), snapshot.initDurationMs(),
-                snapshot.statusCode(), snapshot.headers()
+                snapshot.statusCode(), snapshot.headers(), snapshot.encoding()
         );
     }
 }
 ```
 
-`ExecutionCompletionHandler.java` — update the 3 `executionRecord.markSuccess(result.output())`
-call sites (lines ~83, ~268 per the current file) to pass the envelope fields through:
+`ExecutionCompletionHandler.java` — update the **2** `executionRecord.markSuccess(result.output())`
+call sites (`ExecutionCompletionHandler.java:83` and `:268`) to pass the envelope
+fields through:
 
 ```java
-                executionRecord.markSuccess(result.output(), result.statusCode(), result.headers());
+                executionRecord.markSuccess(result.output(), result.statusCode(),
+                        result.headers(), result.encoding());
 ```
 
 (leave the `executionRecord.markError(result.error())` lines untouched — errors never
@@ -1214,8 +1423,24 @@ git commit -m "feat: persist and propagate function status/headers through execu
 **Interfaces:**
 - Consumes: `InvocationResponse.statusCode()/.headers()` (Task 4).
 - Produces: when `invocation.response().statusCode()` is non-null, `invokeSync`'s HTTP
-  response uses it (plus allow-listed headers) instead of always 200. `X-Execution-Id`
-  and `X-NanoFaaS-Offloaded` headers are still always set exactly as today.
+  response uses it (plus allow-listed headers) instead of always 200, and adds
+  `X-NanoFaaS-Function-Status: true`. `X-Execution-Id` and `X-NanoFaaS-Offloaded`
+  headers are still always set exactly as today.
+
+**Two things this task must get right beyond the status code:**
+
+1. **Emit the marker header.** The remote `:invoke` response is itself consumed by
+   another nanofaas instance in the offload path, and `DefaultOffloadGateway` currently
+   treats *any* non-2xx as a failure (404 gets its own "function not registered"
+   branch). Without the marker on this hop, a function-decided 422 from the cloud
+   instance surfaces at the edge as a 502. Task 10b reads this header.
+2. **Do not re-emit `Content-Type`.** The body of this response is still the
+   `InvocationResponse` JSON envelope, not the handler's raw output. Setting the
+   handler's `Content-Type: application/pdf` on a JSON body is a lie that will break
+   any client that trusts it. It stays readable in `response.headers()` — a caller that
+   wants the raw bytes reads `output` plus `headers` and decides for itself. Changing
+   `:invoke` to return the raw body instead of the envelope is a separate, larger
+   contract change and is explicitly **not** in this milestone.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1224,17 +1449,28 @@ git commit -m "feat: persist and propagate function status/headers through execu
     void invokeSync_functionDecidedStatusCode_usedAsRealHttpStatus() {
         // Mock invocationService.invokeSyncReactive(...) to return a SyncInvocation whose
         // .response() is new InvocationResponse("ex-1", "success", body, null, 404,
-        //   Map.of("Content-Type", "application/json"), null).
+        //   Map.of("Location", "/x"), null).
         // Act: call controller.invokeSync(...)
         // Assert: resulting ResponseEntity status is 404
-        // Assert: header Content-Type == application/json
+        // Assert: header Location == /x
+        // Assert: header X-NanoFaaS-Function-Status == "true"
         // Assert: header X-Execution-Id is still present (unchanged existing behavior)
+    }
+
+    @Test
+    void invokeSync_doesNotReEmitHandlerContentType() {
+        // .response() carries headers Map.of("Content-Type", "application/pdf")
+        // Assert: the HTTP Content-Type is NOT application/pdf — the body is still the
+        //         InvocationResponse JSON envelope.
+        // Assert: response body's headers() still contains Content-Type: application/pdf
+        //         (the caller can read it, it is just not applied to this hop).
     }
 
     @Test
     void invokeSync_noStatusCode_defaultsTo200AsToday() {
         // .response() has statusCode == null
         // Assert: resulting ResponseEntity status is 200
+        // Assert: no X-NanoFaaS-Function-Status header
     }
 ```
 
@@ -1250,11 +1486,22 @@ Replace the `.map(invocation -> ...)` block inside `invokeSync`:
 ```java
                 .map(invocation -> {
                     InvocationResponse response = invocation.response();
-                    int status = response.statusCode() != null ? response.statusCode() : 200;
+                    boolean functionDecided = response.statusCode() != null;
+                    int status = functionDecided ? response.statusCode() : 200;
                     ResponseEntity.BodyBuilder builder = ResponseEntity.status(status)
                             .header("X-Execution-Id", response.executionId());
+                    if (functionDecided) {
+                        builder.header("X-NanoFaaS-Function-Status", "true");
+                    }
                     if (response.headers() != null) {
-                        response.headers().forEach(builder::header);
+                        response.headers().forEach((name, value) -> {
+                            // ponytail: Content-Type would describe the handler's body, but the
+                            // body here is still the InvocationResponse envelope. Readable in
+                            // the payload, not applied to this hop.
+                            if (!"content-type".equalsIgnoreCase(name)) {
+                                builder.header(name, value);
+                            }
+                        });
                     }
                     if (invocation.offloadedTarget() != null) {
                         builder.header("X-NanoFaaS-Offloaded", invocation.offloadedTarget());
@@ -1282,17 +1529,154 @@ git commit -m "feat: use function-decided status code as the real :invoke HTTP r
 
 ---
 
+### Task 10b: `DefaultOffloadGateway` stops turning function-decided statuses into 502
+
+**Files:**
+- Modify: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/DefaultOffloadGateway.java`
+- Test: `platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/DefaultOffloadGatewayTest.java` (existing — add cases; read it first to match its WebClient-mocking style)
+
+**Interfaces:**
+- Consumes: the `X-NanoFaaS-Function-Status` marker on `:invoke` (Task 10) and
+  `InvocationResponse.statusCode()/.headers()/.encoding()` (Task 4).
+- Produces: an offloaded function-decided response reaches the edge caller intact
+  instead of becoming a 502.
+
+**Why this task exists.** It was missing from the original plan, and without it Task 10
+is a regression rather than a feature for anyone using the offload module.
+`DefaultOffloadGateway.invokeRemote` maps *every* non-2xx from the remote to
+`OffloadFailedException`, with a dedicated 404 branch that reports "function not
+registered on remote". After Task 10 a cloud-side handler answering 422 or 404 makes the
+remote `:invoke` return that status for real — so the edge caller gets 502 (or a
+misleading "not registered") instead of the function's own answer. Separately,
+`toResult` rebuilds the `InvocationResult` with `InvocationResult.success(output)`,
+which drops `statusCode`/`headers`/`encoding` even on the 2xx path.
+
+- [ ] **Step 1: Write the failing tests**
+
+```java
+    @Test
+    void invokeRemote_functionDecidedNon2xx_isNotAnOffloadFailure() {
+        // Remote :invoke responds 422 with X-NanoFaaS-Function-Status: true and body
+        // {"executionId":"ex-1","status":"success","output":{"error":"bad"},"statusCode":422}
+        // Assert: the Mono emits an InvocationResult (no OffloadFailedException)
+        // Assert: result.success() == true, result.statusCode() == 422
+    }
+
+    @Test
+    void invokeRemote_functionDecided404_isNotReportedAsNotRegistered() {
+        // Remote responds 404 WITH the marker header.
+        // Assert: no OffloadFailedException; result.statusCode() == 404
+        // (guards the dedicated 404 branch, which is the most misleading failure mode)
+    }
+
+    @Test
+    void invokeRemote_2xx_propagatesEnvelopeFields() {
+        // Remote responds 200 with body carrying statusCode 201 and headers {"Location":"/x"}
+        // Assert: result.statusCode() == 201 and result.headers().get("Location") == "/x"
+    }
+
+    @Test
+    void invokeRemote_non2xxWithoutMarker_isStillOffloadFailure() {
+        // Remote responds 500, no marker (genuine platform failure).
+        // Assert: OffloadFailedException — unchanged behavior.
+    }
+
+    @Test
+    void invokeRemote_404WithoutMarker_stillReportsNotRegistered() {
+        // Assert: OffloadFailedException with the "not registered on remote" message — unchanged.
+    }
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `./gradlew :modules:offload:test --tests "*DefaultOffloadGatewayTest"`
+Expected: FAIL.
+
+- [ ] **Step 3: Implement**
+
+Read the marker before any status-based branching, and route marked responses down the
+same body-parsing path as 2xx:
+
+```java
+                .exchangeToMono(response -> {
+                    boolean functionDecided = "true".equalsIgnoreCase(
+                            response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Function-Status"));
+
+                    // A marked response is the function's own answer, whatever its status.
+                    if (functionDecided || response.statusCode().is2xxSuccessful()) {
+                        return response.bodyToMono(InvocationResponse.class)
+                                .map(this::toResult)
+                                .switchIfEmpty(Mono.error(new OffloadFailedException(target, false,
+                                        "empty response body from remote " + target)));
+                    }
+                    if (response.statusCode().value() == 404) {
+                        return response.releaseBody().then(Mono.error(new OffloadFailedException(target, false,
+                                "function '" + task.functionName() + "' not registered on remote " + target)));
+                    }
+                    int status = response.statusCode().value();
+                    return response.bodyToMono(String.class)
+                            .defaultIfEmpty("")
+                            .flatMap(body -> Mono.error(new OffloadFailedException(target, false,
+                                    REMOTE_PREFIX + target + " returned " + status
+                                            + (body.isBlank() ? "" : ": " + body))));
+                })
+```
+
+And stop dropping the envelope in `toResult`:
+
+```java
+    private InvocationResult toResult(InvocationResponse response) {
+        return switch (response.status() == null ? "" : response.status()) {
+            case "success" -> InvocationResult.successWithEnvelope(
+                    response.output(), response.statusCode(), response.headers(), response.encoding());
+            case "timeout" -> InvocationResult.error("REMOTE_TIMEOUT", "remote execution timed out");
+            default -> response.error() != null
+                    ? new InvocationResult(false, null, response.error())
+                    : InvocationResult.error("REMOTE_ERROR", "remote execution failed with status " + response.status());
+        };
+    }
+```
+
+Single hop is preserved: nothing here changes the "no local fallback" rule — a marked
+response is a *success*, not a failure to fall back from.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `./gradlew :modules:offload:test`
+Expected: PASS (whole module — `OffloadPressureE2eTest` exercises the same path and must
+stay green).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/DefaultOffloadGateway.java \
+        platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/DefaultOffloadGatewayTest.java
+git commit -m "feat: propagate function-decided status through the offload hop"
+```
+
+---
+
 ### Task 11: Java example — `roman-numeral` returns 422 for invalid/out-of-range input
 
 **Files:**
 - Modify: `functions/java/roman-numeral/src/main/java/it/unimib/datai/nanofaas/examples/romannumeral/RomanNumeralHandler.java`
 - Modify: `functions/java/roman-numeral/src/test/java/it/unimib/datai/nanofaas/examples/romannumeral/RomanNumeralHandlerTest.java`
-- Modify: `test-data/roman-numeral/correctness.json` (add `expectedStatusCode` to the
-  error cases; read the existing file first to match its structure exactly before
+- Modify: `functions/test-data/roman-numeral/correctness.json` (add `expectedStatusCode`
+  to the error cases; read the existing file first to match its structure exactly before
   editing)
 
 **Interfaces:**
 - Consumes: `HandlerResponse` (Task 1).
+
+**The fixture is shared by seven implementations, not two.** `functions/test-data/roman-numeral/correctness.json`
+is read by `functions/java/roman-numeral`, `functions/java/roman-numeral-lite`,
+`functions/go/roman-numeral`, `functions/python/roman-numeral`,
+`functions/javascript/roman-numeral`, and `functions/contract-tests/run.sh` (which also
+checks `functions/bash/roman-numeral/handler.sh`). Only the Java and Python ones are in
+this milestone's scope. Adding a new `expectedStatusCode` key is additive and the other
+five simply ignore it, so nothing breaks — but do not describe the fixture as proving a
+single cross-language envelope contract, because after this task it does not. Task 15
+states exactly what it does prove.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1371,21 +1755,24 @@ leave the success return unchanged:
 
 Add the import `it.unimib.datai.nanofaas.common.runtime.HandlerResponse;`.
 
-Update `test-data/roman-numeral/correctness.json`'s error-case entries to add
-`"expectedStatusCode": 422` alongside their existing `"expected": {"error": ...}` shape
-(match the file's exact existing key names — read it before editing).
+Update `functions/test-data/roman-numeral/correctness.json`'s four error-case entries to
+add `"expectedStatusCode": 422` alongside their existing `"expected": {"error": ...}`
+shape. The success case (`converts a canonical value`) gets no such key — its absence is
+what the tests read as "implicit 200".
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew :functions:java:roman-numeral:test`
-Expected: PASS
+Run: `./gradlew :functions:java:roman-numeral:test :functions:java:roman-numeral-lite:test`
+Expected: PASS. The `-lite` module is included deliberately: it reads the same fixture
+and still returns plain dicts for errors, so it proves the added `expectedStatusCode`
+key is inert for the implementations left out of this milestone.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add functions/java/roman-numeral/src/main/java/it/unimib/datai/nanofaas/examples/romannumeral/RomanNumeralHandler.java \
         functions/java/roman-numeral/src/test/java/it/unimib/datai/nanofaas/examples/romannumeral/RomanNumeralHandlerTest.java \
-        test-data/roman-numeral/correctness.json
+        functions/test-data/roman-numeral/correctness.json
 git commit -m "feat: roman-numeral returns 422 via HandlerResponse for invalid input"
 ```
 
@@ -1437,9 +1824,18 @@ def test_headers_default_empty_dict():
 
 def test_set_and_get_headers():
     from nanofaas.sdk import context
-    context.set_headers({"Authorization": "Bearer x"})
-    assert context.get_headers()["Authorization"] == "Bearer x"
+    context.set_headers({"authorization": "Bearer x"})
+    assert context.get_headers()["authorization"] == "Bearer x"
+
+
+def test_set_headers_none_yields_empty_dict():
+    from nanofaas.sdk import context
+    context.set_headers(None)
+    assert context.get_headers() == {}
 ```
+
+Keys are lower-case by contract (Global Constraints) — the control plane normalizes them
+so the same handler code works in both languages.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -1523,10 +1919,17 @@ git commit -m "feat: add HandlerResponse dataclass and request headers to Python
   first to match its `TestClient`/fixture style before writing new cases)
 
 **Interfaces:**
-- Consumes: `HandlerResponse`, `context.set_headers` (Task 12), and the constants that
-  mirror `ResponseHeaderPolicy` (Global Constraints section) — define them locally in
+- Consumes: `HandlerResponse`, `context.set_headers` (Task 12), and the allow-list that
+  mirrors `ResponseHeaderPolicy` (Global Constraints section) — define it locally in
   `app.py` since Python has no dependency on the Java `platform/common` module; keep
   the exact same values.
+
+**Headers come from the body, not from `request.headers`.** Same reason as the Java
+side (Task 6): the runtime's own inbound HTTP headers belong to the control-plane hop.
+`app.py` already parses the body into `payload` and reads `payload.get("input")`, so
+this is `payload.get("headers")` right next to it — no request-header filtering code in
+the runtime at all. That also means there is no `_EXCLUDED_REQUEST_HEADERS` constant
+here: the control plane already filtered and lower-cased.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1559,7 +1962,24 @@ def test_invoke_handler_returns_plain_value_behaves_as_today(client, register_ha
     assert "x-nanofaas-function-status" not in resp.headers
 
 
-def test_invoke_exposes_filtered_request_headers_to_handler(client, register_handler):
+def test_invoke_exposes_request_headers_from_body_to_handler(client, register_handler):
+    seen = {}
+    def handler(input_data):
+        from nanofaas.sdk import context
+        seen.update(context.get_headers())
+        return {"ok": True}
+    register_handler(handler)
+    client.post(
+        "/invoke",
+        json={"input": {}, "headers": {"authorization": "Bearer x"}},
+        headers={"X-Execution-Id": "ex-5"},
+    )
+    assert seen.get("authorization") == "Bearer x"
+
+
+def test_invoke_ignores_own_http_headers_for_handler_context(client, register_handler):
+    # The runtime's inbound headers are the control plane's, not the caller's — reading
+    # them here is the bug Task 6 exists to prevent. This test pins that.
     seen = {}
     def handler(input_data):
         from nanofaas.sdk import context
@@ -1567,9 +1987,16 @@ def test_invoke_exposes_filtered_request_headers_to_handler(client, register_han
         return {"ok": True}
     register_handler(handler)
     client.post("/invoke", json={"input": {}}, headers={
-        "X-Execution-Id": "ex-5", "Authorization": "Bearer x", "Connection": "keep-alive"})
-    assert seen.get("authorization") == "Bearer x"
-    assert "connection" not in {k.lower() for k in seen}
+        "X-Execution-Id": "ex-6", "Authorization": "Bearer leaked"})
+    assert seen == {}
+
+
+def test_invoke_envelope_body_is_output_verbatim(client, register_handler):
+    # Java returns the normalized output bare; Python must not apply its usual
+    # {"result": ...} wrapping in the envelope path.
+    register_handler(lambda input_data: HandlerResponse("hello", 200, {"Content-Type": "text/plain"}))
+    resp = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-7"})
+    assert resp.json() == "hello"
 ```
 
 (Use whatever `client`/`register_handler` fixtures the existing test file already
@@ -1587,13 +2014,10 @@ Add near the top of `app.py`, alongside the other module-level constants:
 ```python
 from nanofaas.sdk.response import HandlerResponse
 
+# Mirror of ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS (platform/common). Keep in sync.
 _ALLOWED_RESPONSE_HEADERS = {
     "content-type", "location", "cache-control", "etag",
     "content-disposition", "content-language", "retry-after", "vary",
-}
-_EXCLUDED_REQUEST_HEADERS = {
-    "connection", "transfer-encoding", "keep-alive",
-    "x-execution-id", "x-trace-id", "x-dispatch-attempt",
 }
 
 
@@ -1601,19 +2025,22 @@ def _filter_response_headers(raw: dict[str, str] | None) -> dict[str, str]:
     if not raw:
         return {}
     return {k: v for k, v in raw.items() if k.lower() in _ALLOWED_RESPONSE_HEADERS}
-
-
-def _filter_request_headers(raw_items) -> dict[str, str]:
-    return {k: v for k, v in raw_items if k.lower() not in _EXCLUDED_REQUEST_HEADERS}
 ```
 
-In `invoke`, right after `context.set_context(execution_id, trace_id)`:
+In `invoke`, the headers come out of the already-parsed body, next to `input`:
 
 ```python
-    context.set_context(execution_id, trace_id)
-    context.set_headers(_filter_request_headers(request.headers.items()))
-    handler = decorator.get_registered_handler()
+        payload = await request.json()
+        # Keep the Python runtime aligned with the Java InvocationRequest contract.
+        # Handlers receive the input field rather than the transport envelope.
+        input_data = payload.get("input") if isinstance(payload, dict) else payload
+        # Request headers are captured and filtered by the control plane and ride in the
+        # body; this runtime's own HTTP headers belong to the control-plane hop.
+        context.set_headers(payload.get("headers") if isinstance(payload, dict) else None)
 ```
+
+`context.set_context(execution_id, trace_id)` earlier in the function stays exactly as
+it is — it runs before the body is read and is unrelated.
 
 Replace the success block (from `output = await asyncio.wait_for(...)` through the
 `return JSONResponse(...)` two lines later):
@@ -1665,10 +2092,22 @@ Replace the success block (from `output = await asyncio.wait_for(...)` through t
 
         return JSONResponse(
             status_code=response_status,
-            content=response_body if isinstance(response_body, (dict, list)) else {"result": response_body},
+            # ponytail: the envelope path emits output verbatim so Java and Python agree on
+            # the wire; the plain path keeps today's {"result": ...} wrapping untouched for
+            # backward compatibility.
+            content=response_body
+            if callback_status_code is not None or isinstance(response_body, (dict, list))
+            else {"result": response_body},
             headers=response_headers,
         )
 ```
+
+Note on `Content-Type`: Starlette's `Response.init_headers` only injects its own
+`content-type` when the caller did not supply one, so passing the handler's value
+through `headers=` correctly overrides the default `application/json`. The body is still
+JSON-serialized — a handler claiming `text/plain` gets a JSON-encoded string, which is
+the honest representation of what it returned. Emitting genuinely raw bodies is part of
+the deferred binary milestone, not this one.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1768,7 +2207,7 @@ def handle(input_data):
 
 Run: `cd functions/python/roman-numeral && uv run pytest tests/test_handler.py -v`
 Expected: PASS. Note the `test_shared_contract` parametrized test at the bottom of the
-file reads `test-data/roman-numeral/correctness.json` and only asserts on
+file reads `functions/test-data/roman-numeral/correctness.json` and only asserts on
 `_invoke(...)`'s dict shape — since `HandlerResponse` is not a `dict`, that
 parametrized test starts comparing a `HandlerResponse` instance to a plain dict on the
 error cases and will fail. Fix it in this same step by asserting against `.output` when
@@ -1796,32 +2235,48 @@ git commit -m "feat: roman-numeral returns 422 via HandlerResponse for invalid i
 ### Task 15: Cross-SDK regression check — shared contract fixture agrees for both languages
 
 **Files:**
-- Modify: `test-data/roman-numeral/correctness.json` (verify only — should already
-  carry `expectedStatusCode: 422` on every error case from Task 11; this task is the
-  final cross-language proof, not a new fixture)
-- No new test files — this task runs both suites back to back and fixes any drift.
+- Modify: `functions/test-data/roman-numeral/correctness.json` (verify only — should
+  already carry `expectedStatusCode: 422` on every error case from Task 11; this task is
+  the final cross-language proof, not a new fixture)
+- No new test files — this task runs the suites back to back and fixes any drift.
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–14.
 
-- [ ] **Step 1: Run both language suites against the shared fixture**
+**What this task proves, precisely.** Java and Python read the same fixture and agree on
+both the error body *and* the 422 status. It does **not** prove a single cross-language
+envelope contract: `roman-numeral` also exists in Go, JavaScript, bash and Java `-lite`,
+and those five keep returning plain dicts with an implicit 200 for the same inputs. That
+divergence is the intended, scoped consequence of "Java + Python only" — the point of
+Step 3 is to confirm it is *inert* (nobody breaks) rather than accidental.
+
+- [ ] **Step 1: Run both in-scope language suites against the shared fixture**
 
 Run: `./gradlew :functions:java:roman-numeral:test`
 Run: `cd functions/python/roman-numeral && uv run pytest tests/test_handler.py -v`
 
 Expected: both PASS, and both assert `expectedStatusCode: 422` from the exact same
-`test-data/roman-numeral/correctness.json` file — proving the Java and Python bindings
-of the envelope produce the same wire-level result for the same input, not just that
-each language's tests pass in isolation.
+`functions/test-data/roman-numeral/correctness.json` file — proving the Java and Python
+bindings of the envelope produce the same wire-level result for the same input, not just
+that each language's tests pass in isolation.
 
 - [ ] **Step 2: Run the full repository regression suites**
 
-Run: `./gradlew test`
+Run: `./gradlew test --no-parallel`
 Run: `cd sdks/python && uv run pytest tests/ -v`
 Run: `cd functions/python/roman-numeral && uv run pytest tests/ -v`
 
 Expected: all PASS — proves the envelope changes did not regress any other function,
-module, or control-plane path across the whole repository.
+module, or control-plane path across the whole repository. `--no-parallel` per CLAUDE.md.
+
+- [ ] **Step 3: Run the cross-language contract runner**
+
+Run: `./functions/contract-tests/run.sh`
+
+Expected: PASS. This is the only gate that exercises the out-of-scope implementations
+(Go, JavaScript, bash, Java `-lite`) against the fixture Task 11 edited. It must stay
+green: the new `expectedStatusCode` key has to be inert for them. If it is not, fix the
+fixture — do not start converting out-of-scope languages to the envelope.
 
 - [ ] **Step 3: Commit (only if Step 1/2 required fixes)**
 
@@ -1837,16 +2292,68 @@ record.
 
 ## Self-Review Notes
 
-- **Spec coverage**: wire envelope (Task 1), request headers in (Tasks 6, 13),
-  response status/headers out (Tasks 7, 8, 9, 10, 13), binary `encoding` field
-  (threaded through every model/record in Tasks 1, 3, 4, 5 — no dedicated task encodes
-  a binary example since the spec's binary payload example function work is explicitly
-  in the deferred "extensive" milestone, not this one), validation (Tasks 7, 13),
-  backward compatibility (regression tests in Tasks 2, 3, 4, 7, 11, 13, 14, 15), one
-  demonstration example per language (Tasks 11, 14), shared JSON fixture (Task 15).
+- **Spec coverage**: wire envelope (Task 1), request headers in (Tasks 6, 12, 13),
+  response status/headers out (Tasks 7, 8, 9, 10, 10b, 13), binary `encoding` field
+  (threaded through every model/record in Tasks 1, 3, 4, 5, 9 — no dedicated task
+  encodes a binary example since the spec's binary payload example function work is
+  explicitly in the deferred "extensive" milestone, not this one), validation
+  (Tasks 7, 13), backward compatibility (regression tests in Tasks 2, 3, 4, 7, 11, 13,
+  14, 15), one demonstration example per language (Tasks 11, 14), shared JSON fixture
+  (Task 15).
 - **Marker header** (`X-NanoFaaS-Function-Status`) was not in the original spec text —
   discovered as a genuine gap while writing Task 8: `ExternalDispatcher` reads a real
   HTTP response across a process boundary and cannot see the Java/Python `instanceof`
   check that happens inside the runtime process. Without a marker, a function-decided
   404 and a genuine platform 404 would be indistinguishable on the wire for the
-  sync-dispatch path. Added to Global Constraints and Tasks 7/8/10/13.
+  sync-dispatch path. It applies to *both* synchronous hops — the runtime's `/invoke`
+  and the control plane's `:invoke` — because the offload gateway reads the latter
+  exactly as `ExternalDispatcher` reads the former. Added to Global Constraints and
+  Tasks 7/8/10/10b/13.
+
+### Corrections applied after reviewing the plan against the code
+
+1. **Request headers now travel in the body, captured at control-plane ingress
+   (Task 6, rewritten).** The original Task 6 read the runtime's own inbound HTTP
+   headers, which are the control plane's four fixed headers — the caller's
+   `Authorization` never arrives. The SDK unit tests POST directly at `/invoke`, so
+   they would have gone green on a feature that was dead end to end. Moving capture to
+   `InvocationController` also makes `InvocationRequest.headers` (Task 2) the thing
+   that actually carries them, covers `:enqueue` and every dispatch mode for free, and
+   removes header-capture code from both runtime SDKs.
+2. **Offload was missing entirely (new Task 10b).** `DefaultOffloadGateway` maps every
+   non-2xx to a 502 and 404 to "function not registered", so Task 10 would have turned
+   any offloaded function-decided status into an edge-side failure. Its `toResult` also
+   dropped the envelope fields on the success path.
+3. **`ExecutionStatus` gets a compatibility constructor (Task 4).** Without it
+   `:control-plane` stopped compiling from Task 4 until Task 9, which made Tasks 5–8
+   unverifiable — Task 8 declared a `:control-plane:test → PASS` that could not happen.
+   Two existing call sites (`CommonModelTest.java:74`,
+   `InvocationControllerTest.java:262`) were also unaccounted for.
+4. **`ExternalDispatcher`'s marker branch shares the content-type decode (Task 8).** The
+   original branch went straight to `bodyToMono(Object.class)`, which fails on
+   `text/plain` — breaking precisely the case the envelope exists to enable.
+5. **`Content-Type` is no longer re-emitted at the `:invoke` hop (Task 10).** The body
+   there is still the `InvocationResponse` envelope; labelling it `application/pdf`
+   would be a lie. It stays readable inside the payload.
+6. **`encoding` is threaded consistently (Tasks 4, 9).** It was on four records but not
+   on `ExecutionStatus` or `ExecutionRecord.Snapshot`, so `terminalResponse` hardcoded
+   `null` and the marker vanished on the replay and `GET /executions/{id}` paths — the
+   exact paths where a caller reads a completed binary result back.
+7. **Header keys are lower-cased (Global Constraints, Tasks 6, 12, 13).** Spring
+   preserves the sender's casing, Starlette lower-cases; the original plan's own tests
+   encoded that split (`Authorization` in Java, `authorization` in Python).
+8. **Python emits envelope bodies verbatim (Task 13).** Its `{"result": ...}` wrapping
+   for non-dict outputs would have made the same handler return a different shape than
+   Java through the same envelope.
+9. **Round-trip serde tests added (Global Constraints, Tasks 2, 3, 4, 5).** Adding a
+   secondary constructor to a Jackson-deserialized record is the one change here that
+   can break at runtime while every accessor test stays green. Task 5's test is also
+   the only thing tying `CallbackPayload` (sender) to `InvocationResult` (receiver).
+10. **Fixture path corrected to `functions/test-data/...` (Tasks 11, 14, 15)** — the
+    original path did not exist, so the `git add` lines would have failed — and Task 15
+    no longer claims the fixture proves a single cross-language contract, since five of
+    its seven implementations stay out of scope. Added a `contract-tests/run.sh` gate to
+    prove the fixture change is inert for them.
+11. **Minor**: Task 9 said three `markSuccess` call sites (there are two); Task 4's
+    Step 4 contradicted itself and mis-attributed `InvocationResponseMapper` to Task 10
+    instead of Task 9; Task 15 now uses `./gradlew test --no-parallel` per CLAUDE.md.
