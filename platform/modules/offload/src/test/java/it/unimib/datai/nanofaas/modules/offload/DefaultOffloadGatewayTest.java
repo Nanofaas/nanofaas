@@ -194,6 +194,89 @@ class DefaultOffloadGatewayTest {
     }
 
     @Test
+    void invokeRemote_functionDecidedNon2xx_isNotAnOffloadFailure() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(422)
+                .setHeader("Content-Type", "application/json")
+                .setHeader("X-NanoFaaS-Function-Status", "true")
+                .setBody("{\"executionId\":\"ex-1\",\"status\":\"success\",\"output\":{\"error\":\"bad\"},"
+                        + "\"error\":null,\"statusCode\":422}"));
+        FunctionSpec spec = spec("picky", null, 5000);
+
+        InvocationResult result = gateway()
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .block();
+
+        assertThat(result).isNotNull();
+        assertThat(result.success()).isTrue();
+        assertThat(result.statusCode()).isEqualTo(422);
+    }
+
+    @Test
+    void invokeRemote_functionDecided404_isNotReportedAsNotRegistered() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setHeader("X-NanoFaaS-Function-Status", "true")
+                .setBody("{\"executionId\":\"ex-2\",\"status\":\"success\",\"output\":{\"error\":\"missing\"},"
+                        + "\"error\":null,\"statusCode\":404}"));
+        FunctionSpec spec = spec("picky404", null, 5000);
+
+        InvocationResult result = gateway()
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .block();
+
+        assertThat(result).isNotNull();
+        assertThat(result.success()).isTrue();
+        assertThat(result.statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void invokeRemote_2xx_propagatesEnvelopeFields() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"ex-3\",\"status\":\"success\",\"output\":\"created\","
+                        + "\"error\":null,\"statusCode\":201,\"headers\":{\"Location\":\"/x\"}}"));
+        FunctionSpec spec = spec("created", null, 5000);
+
+        InvocationResult result = gateway()
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .block();
+
+        assertThat(result).isNotNull();
+        assertThat(result.success()).isTrue();
+        assertThat(result.statusCode()).isEqualTo(201);
+        assertThat(result.headers()).containsEntry("Location", "/x");
+    }
+
+    @Test
+    void invokeRemote_non2xxWithoutMarker_isStillOffloadFailure() {
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("boom"));
+        FunctionSpec spec = spec("unmarked500", null, 5000);
+
+        DefaultOffloadGateway gateway = gateway();
+        InvocationTask invocationTask = task(spec);
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, BUDGET_MS))
+                .isInstanceOf(OffloadFailedException.class)
+                .hasMessageContaining("500");
+    }
+
+    @Test
+    void invokeRemote_404WithoutMarker_stillReportsNotRegistered() {
+        server.enqueue(new MockResponse().setResponseCode(404));
+        FunctionSpec spec = spec("unmarked404", null, 5000);
+
+        DefaultOffloadGateway gateway = gateway();
+        InvocationTask invocationTask = task(spec);
+        OffloadContext context = OffloadContext.none();
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, BUDGET_MS))
+                .isInstanceOf(OffloadFailedException.class)
+                .hasMessageContaining("not registered on remote");
+    }
+
+    @Test
     void decisions() {
         OffloadProperties props = new OffloadProperties(true, "http://cloud:8080", true);
         DefaultOffloadGateway gateway = gateway(props);
