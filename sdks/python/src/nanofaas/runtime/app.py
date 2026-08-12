@@ -149,10 +149,14 @@ _ALLOWED_RESPONSE_HEADERS = {
 }
 
 
-def _filter_response_headers(raw: dict[str, str] | None) -> dict[str, str]:
+def _filter_response_headers(raw: dict[str, str] | None, execution_id: str | None = None) -> dict[str, str]:
     if not raw:
         return {}
-    return {k: v for k, v in raw.items() if k.lower() in _ALLOWED_RESPONSE_HEADERS}
+    allowed = {k: v for k, v in raw.items() if k.lower() in _ALLOWED_RESPONSE_HEADERS}
+    if len(allowed) != len(raw):
+        dropped = [k for k in raw if k.lower() not in _ALLOWED_RESPONSE_HEADERS]
+        logger.warning(f"Dropped disallowed response header(s) {dropped} for execution {execution_id}")
+    return allowed
 
 
 CONTAINER_START_TIME = time.monotonic()
@@ -373,25 +377,25 @@ async def invoke(
         if isinstance(output, HandlerResponse):
             if 200 <= output.status_code <= 599:
                 response_status = output.status_code
-                allowed = _filter_response_headers(output.headers)
+                allowed = _filter_response_headers(output.headers, execution_id)
                 response_headers = {**response_headers, **allowed, "X-NanoFaaS-Function-Status": "true"}
                 response_body = output.output
                 callback_status_code = output.status_code
                 callback_headers = allowed
                 callback_encoding = output.encoding
             else:
-                logger.warning(f"Handler returned invalid status_code {output.status_code} for execution {execution_id}")
+                logger.warning(f"Handler returned invalid statusCode {output.status_code} for execution {execution_id}, treating as platform error")
                 RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
                 if callback_url:
                     _schedule_callback(
                         background_tasks, callback_url, execution_id, trace_id,
                         {"success": False, "output": None,
                          "error": {"code": "OUTPUT_SERIALIZATION_ERROR",
-                                   "message": f"Handler returned invalid status_code: {output.status_code}"}},
+                                   "message": f"Handler returned invalid statusCode: {output.status_code}"}},
                         x_dispatch_attempt,
                     )
                 return JSONResponse(status_code=500, content={
-                    "error": f"Handler returned invalid status_code: {output.status_code}"})
+                    "error": f"Handler returned invalid statusCode: {output.status_code}"})
 
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
         result = {"success": True, "output": response_body, "error": None}

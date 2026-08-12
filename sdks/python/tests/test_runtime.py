@@ -295,6 +295,25 @@ def test_invoke_handler_returns_handler_response_drops_disallowed_headers(client
     assert response.headers.get("x-execution-id") != "spoof"
 
 
+def test_invoke_handler_response_dropped_headers_log_warn_but_still_succeed(client, caplog):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"ok": True}, 200, {"X-Execution-Id": "spoof", "X-Custom": "nope"})
+
+    with caplog.at_level("WARNING", logger="nanofaas.runtime.app"):
+        response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-2b"})
+
+    # Dropping disallowed headers must never fail the invocation.
+    assert response.status_code == 200
+    assert response.headers["x-nanofaas-function-status"] == "true"
+
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1, f"expected exactly one WARN, got {warnings}"
+    assert "Dropped disallowed response header(s)" in warnings[0]
+    assert "X-Execution-Id" in warnings[0] and "X-Custom" in warnings[0]
+    assert "ex-2b" in warnings[0]
+
+
 def test_invoke_handler_returns_handler_response_invalid_status_falls_back_to_500(client):
     @decorator.nanofaas_function
     def mock_handler(input_data):
