@@ -96,6 +96,16 @@ class MetricsTest {
     }
 
     @Test
+    void registerFunction_eagerlyCreatesCountersAtZero() {
+        metrics.registerFunction("echo");
+
+        Counter counter = registry.find("function_dispatch_total")
+                .tag("function", "echo").counter();
+        assertThat(counter).isNotNull();
+        assertThat(counter.count()).isEqualTo(0.0);
+    }
+
+    @Test
     void removedFunction_doesNotRecreateMetersUntilRegisteredAgain() {
         metrics.dispatch("echo");
         metrics.removeFunction("echo");
