@@ -3,6 +3,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -268,5 +269,64 @@ class InvokeControllerTest {
         assertNull(second.getHeaders().getFirst("X-Init-Duration-Ms"));
         verify(coldStartTracker, times(2)).firstInvocation();
         verify(coldStartTracker).initDurationMs();
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_usesItsStatusAndHeaders() {
+        when(handler.handle(any())).thenReturn(
+                HandlerResponse.of(Map.of("error", "not found"), 404, Map.of("Content-Type", "application/json")));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("application/json", response.getHeaders().getFirst("Content-Type"));
+        assertEquals("true", response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_dropsDisallowedHeaders() {
+        when(handler.handle(any())).thenReturn(
+                HandlerResponse.of("body", 200, Map.of("X-Execution-Id", "spoof", "X-Custom", "nope")));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, "env-exec-id", null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNull(response.getHeaders().getFirst("X-Execution-Id"));
+        assertNull(response.getHeaders().getFirst("X-Custom"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_invalidStatusCodeFallsBackToPlatformError() {
+        when(handler.handle(any())).thenReturn(HandlerResponse.of("body", 999));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals(500, response.getStatusCode().value());
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+    }
+
+    @Test
+    void invoke_handlerReturnsPlainValue_behavesExactlyAsToday() {
+        when(handler.handle(any())).thenReturn(Map.of("roman", "XLII"));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+    }
+
+    @Test
+    void invoke_passesCallerHeadersFromBodyToHandler() {
+        ArgumentCaptor<InvocationRequest> requestCaptor = ArgumentCaptor.forClass(InvocationRequest.class);
+        when(handler.handle(requestCaptor.capture())).thenReturn("ok");
+
+        InvocationRequest request = new InvocationRequest("input", null, Map.of("authorization", "Bearer x"));
+        controller.invoke(request, null, null);
+
+        assertEquals("Bearer x", requestCaptor.getValue().headers().get("authorization"));
     }
 }
