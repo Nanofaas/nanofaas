@@ -15,6 +15,8 @@ import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -31,6 +33,8 @@ import java.util.Set;
 @RequestMapping("/v1")
 @Validated
 public class InvocationController {
+
+    private static final Logger log = LoggerFactory.getLogger(InvocationController.class);
 
     /**
      * Hop-by-hop headers plus every header the control plane already binds to a dedicated
@@ -85,8 +89,15 @@ public class InvocationController {
                     // ponytail: statusCode is already validated upstream (ExternalDispatcher via
                     // ResponseHeaderPolicy.isStatusCodeValid) before it ever reaches an
                     // InvocationResponse, so this range check is defense-in-depth, not the
-                    // primary guard. An out-of-range int must never reach ResponseEntity.status(int).
+                    // primary guard. Spring's ResponseEntity.status(int) does not throw for any
+                    // 100-999 value, so this isn't about preventing a crash — it enforces the
+                    // project's [200,599] contract and stops a genuinely malformed value
+                    // (negative, >999) from reaching the HTTP layer as a real status.
                     boolean functionDecided = statusCode != null && ResponseHeaderPolicy.isStatusCodeValid(statusCode);
+                    if (statusCode != null && !functionDecided) {
+                        log.warn("Execution {} returned out-of-range status code {} (expected [200,599]); "
+                                + "falling back to 200", response.executionId(), statusCode);
+                    }
                     int status = functionDecided ? statusCode : 200;
                     ResponseEntity.BodyBuilder builder = ResponseEntity.status(status)
                             .header("X-Execution-Id", response.executionId());

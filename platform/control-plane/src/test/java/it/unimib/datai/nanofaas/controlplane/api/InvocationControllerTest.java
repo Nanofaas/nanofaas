@@ -218,10 +218,15 @@ class InvocationControllerTest {
     }
 
     @Test
-    void invokeSync_doesNotReEmitHandlerContentType() {
+    void invokeSync_copiesAllowedHeaderButExcludesContentTypeFromRealResponse() {
+        // Content-Type and Location arrive together so a regression that short-circuits the
+        // whole header-copy loop when Content-Type is present (copying nothing) cannot pass
+        // this test the way it could if the two headers were asserted in isolation. Location
+        // being a REAL header also fails against a full revert of Task 10 (pre-Task-10 code
+        // never copies any handler-supplied header onto the response).
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         InvocationResponse response = new InvocationResponse("ex-2", "success", "out", null, 200,
-                Map.of("Content-Type", "application/pdf"), null);
+                Map.of("Content-Type", "application/pdf", "Location", "/x"), null);
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenReturn(Mono.just(SyncInvocation.local(response)));
 
@@ -232,6 +237,7 @@ class InvocationControllerTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectHeader().valueEquals("Location", "/x")
                 .expectBody()
                 .jsonPath("$.headers['Content-Type']").isEqualTo("application/pdf");
     }
@@ -256,10 +262,15 @@ class InvocationControllerTest {
     void invokeSync_outOfRangeStatusCode_treatedAsPlatformDefaultNot200Lie() {
         // Defense-in-depth: statusCode is already validated upstream (ExternalDispatcher via
         // ResponseHeaderPolicy.isStatusCodeValid), so this should never happen in practice.
-        // If it ever did, an out-of-range int must not reach ResponseEntity.status(int).
+        // If it ever did, the out-of-range value must not reach ResponseEntity.status(int) as
+        // a real status. A co-present allowed header (Location) is asserted too: the header
+        // copy loop is unconditional (runs regardless of functionDecided), so seeing it land
+        // as a real header also fails against a full revert of Task 10, where no
+        // handler-supplied header is ever copied at all — a bare "falls back to 200" assertion
+        // would pass identically pre- and post-Task-10 and prove nothing happened.
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         InvocationResponse response = new InvocationResponse("ex-4", "success", "out", null, 999,
-                Map.of(), null);
+                Map.of("Location", "/x"), null);
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenReturn(Mono.just(SyncInvocation.local(response)));
 
@@ -269,7 +280,8 @@ class InvocationControllerTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isOk()
-                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status");
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status")
+                .expectHeader().valueEquals("Location", "/x");
     }
 
     @Test
