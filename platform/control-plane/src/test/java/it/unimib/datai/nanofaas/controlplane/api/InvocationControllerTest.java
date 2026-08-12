@@ -262,6 +262,11 @@ class InvocationControllerTest {
                 .expectBody()
                 .jsonPath("$.executionId").isEqualTo("exec-2")
                 .jsonPath("$.status").isEqualTo("queued");
+
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeAsync(eq("echo"), captor.capture(), eq("idem-1"), eq("trace-1"));
+        assertThat(captor.getValue().input()).isEqualTo("payload");
+        assertThat(captor.getValue().metadata()).isEqualTo(Map.of("x", "y"));
     }
 
     @Test
