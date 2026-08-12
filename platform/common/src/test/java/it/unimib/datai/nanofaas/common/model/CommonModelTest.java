@@ -31,6 +31,46 @@ class CommonModelTest {
         assertEquals("timed out", r.error().message());
     }
 
+    @Test
+    void invocationResult_success_hasNullEnvelopeFieldsByDefault() {
+        InvocationResult r = InvocationResult.success("hello");
+        assertNull(r.statusCode());
+        assertNull(r.headers());
+        assertNull(r.encoding());
+    }
+
+    @Test
+    void invocationResult_successWithEnvelope_carriesFields() {
+        InvocationResult r = InvocationResult.successWithEnvelope("body", 201, Map.of("Location", "/x"), "base64");
+        assertTrue(r.success());
+        assertEquals("body", r.output());
+        assertEquals(201, r.statusCode());
+        assertEquals("/x", r.headers().get("Location"));
+        assertEquals("base64", r.encoding());
+    }
+
+    @Test
+    void invocationResult_jsonRoundTrip() {
+        // This record is the @RequestBody of /internal/executions/{id}:complete — the
+        // async callback wire format. Field names must survive both directions.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResult original = InvocationResult.successWithEnvelope(
+                "body", 201, Map.of("Location", "/x"), "base64");
+        InvocationResult back = mapper.readValue(mapper.writeValueAsString(original), InvocationResult.class);
+        assertEquals(201, back.statusCode());
+        assertEquals("/x", back.headers().get("Location"));
+        assertEquals("base64", back.encoding());
+    }
+
+    @Test
+    void invocationResult_deserializesLegacyCallbackBody() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResult back = mapper.readValue(
+                "{\"success\":true,\"output\":\"ok\",\"error\":null}", InvocationResult.class);
+        assertTrue(back.success());
+        assertNull(back.statusCode());
+    }
+
     // --- ErrorInfo ---
 
     @Test
