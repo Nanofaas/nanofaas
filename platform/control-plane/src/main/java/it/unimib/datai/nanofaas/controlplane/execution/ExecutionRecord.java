@@ -212,6 +212,12 @@ public class ExecutionRecord {
         this.output = null;
         this.coldStart = false;
         this.initDurationMs = null;
+        // ponytail: statusCode/headers/encoding are only ever set by markSuccess(),
+        // which makes the state terminal, and canTransition() above already refuses
+        // this method on a terminal record — so today, these three are always still
+        // null here. Kept as defensive insurance against a future change that lets
+        // the envelope be set outside markSuccess(); no test can exercise them
+        // going from non-null to null without breaking that invariant.
         this.statusCode = null;
         this.headers = null;
         this.encoding = null;

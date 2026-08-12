@@ -178,27 +178,6 @@ class ExecutionRecordStateTransitionTest {
     }
 
     @Test
-    void resetForRetry_clearsEnvelopeFields() {
-        // Envelope fields are only ever set by markSuccess(), which transitions the
-        // record into the terminal SUCCESS state; canTransition() then rejects any
-        // further resetForRetry() on that record (same guard validated by
-        // invalidTransition_success_to_running_isIgnored below), so a real retry
-        // attempt never observes a non-null envelope in the first place. This test
-        // covers the reachable path — resetForRetry() from a non-terminal (RUNNING)
-        // state, where the new clearing lines still execute — as a regression guard
-        // in case a future change lets envelope fields be set outside markSuccess.
-        ExecutionRecord executionRecord = createRecord("exec-1");
-        executionRecord.markRunning();
-
-        executionRecord.resetForRetry(createTask("exec-1"));
-
-        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
-        assertThat(snapshot.statusCode()).isNull();
-        assertThat(snapshot.headers()).isNull();
-        assertThat(snapshot.encoding()).isNull();
-    }
-
-    @Test
     void resetForRetry_afterMarkSuccess_isIgnored_envelopeUnchanged() {
         // Terminal states are final (see class javadoc): resetForRetry() after
         // markSuccess() must be a no-op, same as any other post-terminal transition
