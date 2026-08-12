@@ -50,6 +50,30 @@ def set_context(execution_id: str | None, trace_id: str | None) -> None:
     _trace_id.set(trace_id)
 
 
+_headers: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
+    "headers", default=None
+)
+
+
+def get_headers() -> dict[str, str]:
+    """Return the incoming request headers for the current invocation context.
+
+    :returns: A mapping of header name to value; empty if none were set.
+    :rtype: dict[str, str]
+    """
+    return _headers.get() or {}
+
+
+def set_headers(headers: dict[str, str] | None) -> None:
+    """Populate the request headers for the current invocation context.
+
+    :param headers: Filtered request headers (hop-by-hop and dedicated control
+        headers already excluded by the caller).
+    :type headers: dict[str, str] | None
+    """
+    _headers.set(headers)
+
+
 def get_logger(name: str) -> logging.Logger:
     """Return a standard :class:`logging.Logger` by name.
 
