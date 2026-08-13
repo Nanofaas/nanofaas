@@ -64,7 +64,7 @@ for family in word-stats json-transform roman-numeral qr-code; do
         exit 1
       fi
       expected_size="$(jq -r '.size // 256' <<<"$input")"
-      dimensions="$(jq -r '.output' <<<"$actual" | python3 -c 'import base64, struct, sys; png = base64.b64decode(sys.stdin.read()); print("{}x{}".format(*struct.unpack(">II", png[16:24])))')"
+      dimensions="$(jq -r '.output' <<<"$actual" | python3 -c 'import base64, struct, sys; png = base64.b64decode(sys.stdin.read()); assert png[12:16] == b"IHDR"; print("{}x{}".format(*struct.unpack(">II", png[16:24])))')"
       if [[ "$dimensions" != "${expected_size}x${expected_size}" ]]; then
         echo "bash qr-code contract failed: $name (got ${dimensions}, want ${expected_size}x${expected_size})" >&2
         exit 1
