@@ -14,7 +14,14 @@ callback body. Nothing about the wire contract changes — this is idiomatic tra
 design.
 
 **Tech Stack:** Go (stdlib `net/http`, `encoding/json`), TypeScript/Node (`node:http`), `go test`,
-vitest.
+and Node's built-in test runner.
+
+**The JavaScript SDK does not use vitest, jest, or any test framework.** Its `npm test` script is
+`tsc -p tsconfig.test.json && node --test build-test/test/**/*.test.js` — tests are written in
+TypeScript against `node:test` and `node:assert/strict`, compiled to `build-test/`, then run by
+Node's own runner. `devDependencies` contains only `@types/node` and `typescript`. Do not add a test
+framework, do not write `describe`/`expect`, and do not run `npx vitest` — it is not installed, and
+invoking it silently reports "no tests" rather than failing, which reads as a green run.
 
 **Context:** the envelope shipped for Java and Python in `0ffaf217`, with follow-up fixes in
 `79f41017` and `bfbdfa4a`. This plan is workstream 1 of GitHub issue #193. The watchdog STDIO
@@ -561,55 +568,61 @@ git commit -m "feat: honour the HandlerResponse envelope in the Go runtime"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `sdks/javascript/test/response.test.ts`, matching the import style the other test files in
-that directory already use (read one first — they import from `../src/...`):
+Create `sdks/javascript/test/response.test.ts`, using the same `node:test` + `node:assert/strict`
+idiom every other file in that directory uses (flat `test(...)` calls, no `describe`/`expect`):
 
 ```typescript
-import { describe, expect, it } from "vitest";
-import { HandlerResponse, filterAllowedHeaders, isStatusCodeValid } from "../src/response";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 
-describe("HandlerResponse", () => {
-    it("defaults headers to an empty object and encoding to undefined", () => {
-        const response = new HandlerResponse({ error: "not found" }, 404);
-        expect(response.output).toEqual({ error: "not found" });
-        expect(response.statusCode).toBe(404);
-        expect(response.headers).toEqual({});
-        expect(response.encoding).toBeUndefined();
-    });
+import { HandlerResponse, filterAllowedHeaders, isStatusCodeValid } from "../src/response.js";
 
-    it("is detected nominally, not structurally", () => {
-        const lookalike = { output: "x", statusCode: 201, headers: {} };
-        expect(lookalike instanceof HandlerResponse).toBe(false);
-        expect(new HandlerResponse("x", 201) instanceof HandlerResponse).toBe(true);
-    });
+test("HandlerResponse defaults headers to an empty object and encoding to undefined", () => {
+    const response = new HandlerResponse({ error: "not found" }, 404);
+    assert.deepEqual(response.output, { error: "not found" });
+    assert.equal(response.statusCode, 404);
+    assert.deepEqual(response.headers, {});
+    assert.equal(response.encoding, undefined);
 });
 
-describe("isStatusCodeValid", () => {
-    it("accepts 200..599 and rejects everything else", () => {
-        expect([200, 422, 599].every(isStatusCodeValid)).toBe(true);
-        expect([199, 600, 0, -1, 999].some(isStatusCodeValid)).toBe(false);
-    });
+test("HandlerResponse is detected nominally, not structurally", () => {
+    const lookalike = { output: "x", statusCode: 201, headers: {} };
+    assert.equal(lookalike instanceof HandlerResponse, false);
+    assert.equal(new HandlerResponse("x", 201) instanceof HandlerResponse, true);
 });
 
-describe("filterAllowedHeaders", () => {
-    it("keeps allow-listed headers and drops everything else", () => {
-        expect(filterAllowedHeaders({
+test("isStatusCodeValid accepts 200..599 and rejects everything else", () => {
+    for (const code of [200, 422, 599]) {
+        assert.equal(isStatusCodeValid(code), true, `expected ${code} to be valid`);
+    }
+    for (const code of [199, 600, 0, -1, 999]) {
+        assert.equal(isStatusCodeValid(code), false, `expected ${code} to be invalid`);
+    }
+});
+
+test("filterAllowedHeaders keeps allow-listed headers and drops everything else", () => {
+    assert.deepEqual(
+        filterAllowedHeaders({
             "Content-Type": "application/pdf",
             "X-Custom": "nope",
             "X-Execution-Id": "spoofed",
-        })).toEqual({ "Content-Type": "application/pdf" });
-    });
+        }),
+        { "Content-Type": "application/pdf" },
+    );
+});
 
-    it("dedupes colliding casings keeping the first occurrence and its casing", () => {
-        expect(filterAllowedHeaders({
+test("filterAllowedHeaders dedupes colliding casings keeping the first occurrence", () => {
+    assert.deepEqual(
+        filterAllowedHeaders({
             "Content-Type": "application/pdf",
             "content-type": "text/plain",
-        })).toEqual({ "Content-Type": "application/pdf" });
-    });
+        }),
+        { "Content-Type": "application/pdf" },
+    );
+});
 
-    it("returns an empty object for undefined", () => {
-        expect(filterAllowedHeaders(undefined)).toEqual({});
-    });
+test("filterAllowedHeaders returns an empty object for undefined", () => {
+    assert.deepEqual(filterAllowedHeaders(undefined), {});
 });
 ```
 
@@ -618,8 +631,8 @@ first-occurrence-wins assertion is stable here and must be pinned.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd sdks/javascript && npx vitest run test/response.test.ts`
-Expected: FAIL — cannot resolve `../src/response`.
+Run: `cd sdks/javascript && npm test`
+Expected: FAIL — `tsc -p tsconfig.test.json` errors with "Cannot find module './response.js'".
 
 - [ ] **Step 3: Implement `response.ts`**
 
@@ -701,8 +714,8 @@ export function filterAllowedHeaders(raw?: Record<string, string>): Record<strin
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd sdks/javascript && npx vitest run test/response.test.ts`
-Expected: PASS, 6 tests.
+Run: `cd sdks/javascript && npm test`
+Expected: PASS — the 6 new tests plus every pre-existing one.
 
 - [ ] **Step 5: Widen the types and export the class**
 
@@ -741,7 +754,7 @@ alphabetical-ish grouping with the other value exports.
 Run: `cd sdks/javascript && npx tsc --noEmit -p tsconfig.json`
 Expected: no errors.
 
-Run: `cd sdks/javascript && npx vitest run`
+Run: `cd sdks/javascript && npm test`
 Expected: PASS, the whole suite.
 
 ```bash
@@ -768,70 +781,88 @@ Create `sdks/javascript/test/runtime.envelope.test.ts`. Read `test/runtime.contr
 and reuse its runtime-start/stop and fetch helpers verbatim — do not invent a new harness:
 
 ```typescript
-import { describe, expect, it } from "vitest";
-import { HandlerResponse } from "../src/response";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 
-describe("runtime envelope handling", () => {
-    it("applies the status, allow-listed headers and both markers", async () => {
-        const response = await invokeWith(() => new HandlerResponse(
-            { error: "not found" },
-            404,
-            { Location: "/x", "X-Custom": "dropped" },
-            "base64",
-        ));
+import { createRuntime } from "../src/index.js";
+import { HandlerResponse } from "../src/response.js";
+import type { Handler } from "../src/types.js";
 
-        expect(response.status).toBe(404);
-        expect(response.headers.get("location")).toBe("/x");
-        expect(response.headers.get("x-custom")).toBeNull();
-        expect(response.headers.get("x-nanofaas-function-status")).toBe("true");
-        expect(response.headers.get("x-nanofaas-encoding")).toBe("base64");
-        expect(await response.json()).toEqual({ error: "not found" });
-    });
+async function invokeWith(handler: Handler): Promise<Response> {
+    const runtime = createRuntime({ port: 0 });
+    runtime.register("fn", handler);
+    await runtime.start();
+    try {
+        return await fetch(`${runtime.baseUrl}/invoke`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-execution-id": "exec-1" },
+            body: JSON.stringify({ input: "payload" }),
+        });
+    } finally {
+        await runtime.stop();
+    }
+}
 
-    it("omits the encoding marker when the handler set no encoding", async () => {
-        const response = await invokeWith(() => new HandlerResponse({ ok: true }, 201));
+test("envelope applies the status, allow-listed headers and both markers", async () => {
+    const response = await invokeWith(() => new HandlerResponse(
+        { error: "not found" },
+        404,
+        { Location: "/x", "X-Custom": "dropped" },
+        "base64",
+    ));
 
-        expect(response.status).toBe(201);
-        expect(response.headers.get("x-nanofaas-function-status")).toBe("true");
-        expect(response.headers.get("x-nanofaas-encoding")).toBeNull();
-    });
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("location"), "/x");
+    assert.equal(response.headers.get("x-custom"), null);
+    assert.equal(response.headers.get("x-nanofaas-function-status"), "true");
+    assert.equal(response.headers.get("x-nanofaas-encoding"), "base64");
+    assert.deepEqual(await response.json(), { error: "not found" });
+});
 
-    it("treats an out-of-range status as a platform error", async () => {
-        const response = await invokeWith(() => new HandlerResponse({ ok: true }, 999));
+test("envelope omits the encoding marker when the handler set no encoding", async () => {
+    const response = await invokeWith(() => new HandlerResponse({ ok: true }, 201));
 
-        expect(response.status).toBe(500);
-        expect(response.headers.get("x-nanofaas-function-status")).toBeNull();
-    });
+    assert.equal(response.status, 201);
+    assert.equal(response.headers.get("x-nanofaas-function-status"), "true");
+    assert.equal(response.headers.get("x-nanofaas-encoding"), null);
+});
 
-    it("does not let a handler spoof the control headers", async () => {
-        const response = await invokeWith(() => new HandlerResponse({ ok: true }, 200, {
-            "X-NanoFaaS-Function-Status": "spoofed",
-            "X-NanoFaaS-Encoding": "spoofed",
-            "X-Execution-Id": "spoofed",
-        }));
+test("an out-of-range status is a platform error", async () => {
+    const response = await invokeWith(() => new HandlerResponse({ ok: true }, 999));
 
-        expect(response.headers.get("x-nanofaas-encoding")).toBeNull();
-        expect(response.headers.get("x-nanofaas-function-status")).toBe("true");
-    });
+    assert.equal(response.status, 500);
+    assert.equal(response.headers.get("x-nanofaas-function-status"), null);
+});
 
-    it("leaves a plain-value return exactly as it was", async () => {
-        const response = await invokeWith(() => ({ roman: "XLII" }));
+test("a handler cannot spoof the control headers", async () => {
+    const response = await invokeWith(() => new HandlerResponse({ ok: true }, 200, {
+        "X-NanoFaaS-Function-Status": "spoofed",
+        "X-NanoFaaS-Encoding": "spoofed",
+        "X-Execution-Id": "spoofed",
+    }));
 
-        expect(response.status).toBe(200);
-        expect(response.headers.get("x-nanofaas-function-status")).toBeNull();
-        expect(response.headers.get("x-nanofaas-encoding")).toBeNull();
-        expect(await response.json()).toEqual({ roman: "XLII" });
-    });
+    assert.equal(response.headers.get("x-nanofaas-encoding"), null);
+    assert.equal(response.headers.get("x-nanofaas-function-status"), "true");
+});
+
+test("a plain-value return behaves exactly as before", async () => {
+    const response = await invokeWith(() => ({ roman: "XLII" }));
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-nanofaas-function-status"), null);
+    assert.equal(response.headers.get("x-nanofaas-encoding"), null);
+    assert.deepEqual(await response.json(), { roman: "XLII" });
 });
 ```
 
-Write the `invokeWith(handler)` helper in the same file: start a runtime with that handler
-registered, POST `{"input": "payload"}` to `/invoke` with an `X-Execution-Id` header, return the
-`Response`, and stop the runtime in a `finally`.
+The `invokeWith` helper above mirrors the `withRuntime` pattern in `test/runtime.contract.test.ts`
+(`createRuntime({ port: 0 })`, `register`, `start`, `fetch` against `runtime.baseUrl`, `stop` in a
+`finally`). Read that file before writing yours and match whatever it actually does — if its helper
+signature differs from what is sketched here, follow the file, not this sketch.
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd sdks/javascript && npx vitest run test/runtime.envelope.test.ts`
+Run: `cd sdks/javascript && npm test`
 Expected: FAIL — the envelope instance is currently JSON-serialized as the body, so the status stays
 200 and no markers appear.
 
@@ -906,7 +937,7 @@ handler-supplied `Content-Type` correctly wins — matching Java.
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd sdks/javascript && npx vitest run`
+Run: `cd sdks/javascript && npm test`
 Expected: PASS, the whole suite including the pre-existing runtime tests.
 
 - [ ] **Step 5: Typecheck, then commit**
@@ -969,44 +1000,47 @@ package, so no import is needed.
 Create `sdks/javascript/test/wire-parity.test.ts`:
 
 ```typescript
-import { describe, expect, it } from "vitest";
-import { HandlerResponse } from "../src/response";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { HandlerResponse } from "../src/response.js";
 
 // The frozen wire contract, shared with platform/common (Java), sdks/python and sdks/go.
 const MARKER_HEADER = "x-nanofaas-function-status";
 const ENCODING_HEADER = "x-nanofaas-encoding";
 const CALLBACK_KEYS = ["statusCode", "headers", "encoding"];
 
-describe("wire contract parity", () => {
-    it("emits the exact marker header names", async () => {
-        const response = await invokeWith(() => new HandlerResponse("x", 201, {}, "base64"));
+test("the runtime emits the exact marker header names", async () => {
+    const response = await invokeWith(() => new HandlerResponse("x", 201, {}, "base64"));
 
-        expect(response.headers.get(MARKER_HEADER)).toBe("true");
-        expect(response.headers.get(ENCODING_HEADER)).toBe("base64");
-    });
+    assert.equal(response.headers.get(MARKER_HEADER), "true");
+    assert.equal(response.headers.get(ENCODING_HEADER), "base64");
+});
 
-    it("emits camelCase callback keys, never snake_case", async () => {
-        const body = await captureCallbackBody(() => new HandlerResponse("x", 201, {}, "base64"));
+test("the callback body uses camelCase keys, never snake_case", async () => {
+    const body = await captureCallbackBody(() => new HandlerResponse("x", 201, {}, "base64"));
 
-        for (const key of CALLBACK_KEYS) {
-            expect(Object.keys(body)).toContain(key);
-        }
-        expect(Object.keys(body)).not.toContain("status_code");
-    });
+    for (const key of CALLBACK_KEYS) {
+        assert.ok(Object.keys(body).includes(key), `callback body must contain ${key}`);
+    }
+    assert.equal(Object.keys(body).includes("status_code"), false);
 });
 ```
 
-Write `invokeWith` and `captureCallbackBody` in this file. `captureCallbackBody` must start a stub
-HTTP server, point the runtime's `callbackUrl` at it, invoke once, and return the parsed JSON body
-the runtime POSTed. Read `test/runtime.callback.test.ts` first — it already does exactly this kind of
-callback capture, so reuse its approach rather than inventing one.
+Write `invokeWith` and `captureCallbackBody` in this file — the test files in this directory are
+self-contained and each defines its own helpers rather than sharing a module, so duplicate the small
+`invokeWith` from Task 4 here rather than exporting it. `captureCallbackBody` must start a stub HTTP
+server, point the runtime's `callbackUrl` at it, invoke once, wait for the callback to arrive, and
+return the parsed JSON body the runtime POSTed. Read `test/runtime.callback.test.ts` first — it
+already does exactly this kind of callback capture, including how it waits for the asynchronous
+delivery; reuse its approach rather than inventing one.
 
 - [ ] **Step 3: Run both**
 
 Run: `cd sdks/go && go test ./nanofaas/ -v`
 Expected: PASS.
 
-Run: `cd sdks/javascript && npx vitest run`
+Run: `cd sdks/javascript && npm test`
 Expected: PASS.
 
 - [ ] **Step 4: Verify the four languages agree, by inspection**
@@ -1040,7 +1074,7 @@ git commit -m "test: pin the cross-SDK wire contract for Go and JavaScript"
 Run: `cd sdks/go && go test ./... && go vet ./...`
 Expected: PASS, no vet output.
 
-Run: `cd sdks/javascript && npx vitest run && npx tsc --noEmit -p tsconfig.json`
+Run: `cd sdks/javascript && npm test && npx tsc --noEmit -p tsconfig.json`
 Expected: PASS, no type errors.
 
 - [ ] **Step 2: Nothing else regressed**
