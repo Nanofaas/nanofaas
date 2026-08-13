@@ -191,10 +191,17 @@ impl Config {
 // ============================================================================
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InvocationResult {
     success: bool,
     output: Option<serde_json::Value>,
     error: Option<ErrorInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status_code: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    headers: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encoding: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -209,6 +216,20 @@ impl InvocationResult {
             success: true,
             output: Some(output),
             error: None,
+            status_code: None,
+            headers: None,
+            encoding: None,
+        }
+    }
+
+    fn success_with_envelope(envelope: envelope::Envelope) -> Self {
+        Self {
+            success: true,
+            output: Some(envelope.output),
+            error: None,
+            status_code: Some(envelope.status_code),
+            headers: (!envelope.headers.is_empty()).then_some(envelope.headers),
+            encoding: envelope.encoding,
         }
     }
 
@@ -220,6 +241,9 @@ impl InvocationResult {
                 code: code.to_string(),
                 message: message.to_string(),
             }),
+            status_code: None,
+            headers: None,
+            encoding: None,
         }
     }
 }
@@ -1187,10 +1211,14 @@ async fn execute_http_mode(config: &Config, payload: &serde_json::Value) -> Invo
 async fn execute_stdio_mode(config: &Config, payload: &serde_json::Value) -> InvocationResult {
     let execution_id = config.execution_id.as_deref().unwrap_or("");
     match run_stdio_warm(config, payload, execution_id, config.trace_id.as_deref()).await {
-        Ok(output) => {
-            info!("Function executed successfully");
-            InvocationResult::success(output)
-        }
+        Ok(output) => match envelope::detect(&output) {
+            None => {
+                info!("Function executed successfully");
+                InvocationResult::success(output)
+            }
+            Some(Ok(envelope)) => InvocationResult::success_with_envelope(envelope),
+            Some(Err(message)) => InvocationResult::error("OUTPUT_SERIALIZATION_ERROR", &message),
+        },
         Err(e) if e.contains("timed out") => {
             error!(timeout_ms = config.timeout_ms, "Function timed out");
             InvocationResult::error("TIMEOUT", &e)
@@ -1205,10 +1233,14 @@ async fn execute_stdio_mode(config: &Config, payload: &serde_json::Value) -> Inv
 async fn execute_file_mode(config: &Config, payload: &serde_json::Value) -> InvocationResult {
     let execution_id = config.execution_id.as_deref().unwrap_or("");
     match run_file_warm(config, payload, execution_id, config.trace_id.as_deref()).await {
-        Ok(output) => {
-            info!("Function executed successfully");
-            InvocationResult::success(output)
-        }
+        Ok(output) => match envelope::detect(&output) {
+            None => {
+                info!("Function executed successfully");
+                InvocationResult::success(output)
+            }
+            Some(Ok(envelope)) => InvocationResult::success_with_envelope(envelope),
+            Some(Err(message)) => InvocationResult::error("OUTPUT_SERIALIZATION_ERROR", &message),
+        },
         Err(e) if e.contains("timed out") => {
             error!(timeout_ms = config.timeout_ms, "Function timed out");
             InvocationResult::error("TIMEOUT", &e)
@@ -1425,5 +1457,35 @@ mod tests {
             .headers()
             .get("X-NanoFaaS-Function-Status")
             .is_none());
+    }
+
+    #[test]
+    fn invocation_result_serializes_envelope_fields_as_camel_case() {
+        let envelope = envelope::Envelope {
+            output: serde_json::json!({"error": "not found"}),
+            status_code: 404,
+            headers: std::collections::BTreeMap::from([(
+                "Location".to_string(),
+                "/x".to_string(),
+            )]),
+            encoding: Some("base64".to_string()),
+        };
+
+        let body = serde_json::to_string(&InvocationResult::success_with_envelope(envelope)).unwrap();
+
+        assert!(body.contains(r#""statusCode":404"#), "got: {body}");
+        assert!(body.contains(r#""encoding":"base64""#), "got: {body}");
+        assert!(body.contains(r#""Location":"/x""#), "got: {body}");
+        assert!(!body.contains("status_code"), "wire keys are camelCase, got: {body}");
+        assert!(body.contains(r#""success":true"#), "got: {body}");
+    }
+
+    #[test]
+    fn invocation_result_plain_success_omits_envelope_fields() {
+        let body = serde_json::to_string(&InvocationResult::success(serde_json::json!("ok"))).unwrap();
+
+        for key in ["statusCode", "headers", "encoding"] {
+            assert!(!body.contains(key), "a plain success must omit {key}, got: {body}");
+        }
     }
 }
