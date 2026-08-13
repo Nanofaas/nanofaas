@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.client.RestClient;
 
 import java.lang.reflect.Method;
@@ -29,6 +31,10 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class InvokeControllerTest {
 
@@ -286,8 +292,12 @@ class InvokeControllerTest {
         ResponseEntity<Object> response = controller.invoke(request, null, null);
 
         assertEquals(404, response.getStatusCode().value());
-        assertEquals("application/json", response.getHeaders().getFirst("Content-Type"));
+        assertNull(response.getHeaders().getFirst("Content-Type"));
         assertEquals("true", response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+
+        ArgumentCaptor<CallbackPayload> callback = ArgumentCaptor.forClass(CallbackPayload.class);
+        verify(callbackDispatcher).submit(eq("env-exec-id"), callback.capture(), isNull(), isNull());
+        assertEquals("application/json", callback.getValue().headers().get("Content-Type"));
     }
 
     @Test
@@ -384,6 +394,27 @@ class InvokeControllerTest {
         ResponseEntity<Object> response = controller.invoke(request, null, null);
 
         assertEquals("base64", response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_base64EnvelopeWithBinaryContentType_writesJsonResponse() throws Exception {
+        when(handler.handle(any())).thenReturn(
+                new HandlerResponse("AAEC", 200, Map.of("Content-Type", "image/png"), "base64"));
+        MockMvc mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/invoke")
+                        .header("X-Execution-Id", "env-exec-id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":{}}"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().json("\"AAEC\""))
+                .andExpect(header().string("X-NanoFaaS-Function-Status", "true"))
+                .andExpect(header().string("X-NanoFaaS-Encoding", "base64"));
+
+        ArgumentCaptor<CallbackPayload> callback = ArgumentCaptor.forClass(CallbackPayload.class);
+        verify(callbackDispatcher).submit(eq("env-exec-id"), callback.capture(), isNull(), isNull());
+        assertEquals("image/png", callback.getValue().headers().get("Content-Type"));
     }
 
     @Test

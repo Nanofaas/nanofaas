@@ -139,7 +139,13 @@ public class InvokeController {
                 dispatchAttempt);
 
         ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(statusCode);
-        allowedHeaders.forEach(responseBuilder::header);
+        // The callback carries function Content-Type to the control plane; this endpoint always
+        // serializes its JsonNode response as JSON.
+        allowedHeaders.forEach((name, value) -> {
+            if (!"content-type".equalsIgnoreCase(name)) {
+                responseBuilder.header(name, value);
+            }
+        });
         if (isEnvelope) {
             responseBuilder.header("X-NanoFaaS-Function-Status", "true");
             if (encoding != null) {
