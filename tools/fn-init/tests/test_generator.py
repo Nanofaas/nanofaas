@@ -386,6 +386,23 @@ def test_generate_bash_creates_build_files(tmp_path):
     assert (out / "function.yaml").exists()
 
 
+@pytest.mark.parametrize(
+    ("language", "placeholders", "handler_path", "expected"),
+    [
+        ("java", JAVA_PLACEHOLDERS, "src/main/java/it/unimib/datai/nanofaas/functions/greet/GreetHandler.java", ("HandlerResponse.of(Map.of(\"error\", \"Field 'text' is required and must be non-empty\"), 422)",)),
+        ("python", PYTHON_PLACEHOLDERS, "handler.py", ("HandlerResponse({\"error\": \"Field 'text' is required and must be non-empty\"}, 422)",)),
+        ("go", GO_PLACEHOLDERS, "main.go", ("nanofaas.NewHandlerResponse(map[string]any{\"error\": \"Field 'text' is required and must be non-empty\"}, 422)",)),
+        ("javascript", JAVASCRIPT_PLACEHOLDERS, "src/handler.ts", ("new HandlerResponse({ error: \"Field 'text' is required and must be non-empty\" }, 422)",)),
+        ("bash", BASH_PLACEHOLDERS, "handler.sh", ("\"__nanofaas_envelope__\":true", "Field '\"'\"'text'\"'\"' is required and must be non-empty", "\"statusCode\":422")),
+    ],
+)
+def test_generated_handler_uses_422_envelope_for_missing_text(tmp_path, language, placeholders, handler_path, expected):
+    out = tmp_path / "greet"
+    generate_function("greet", language, out, vscode=False, placeholders=placeholders)
+    content = (out / handler_path).read_text()
+    assert all(fragment in content for fragment in expected)
+
+
 # --- update_settings_gradle ---
 
 def test_update_settings_gradle_appends(tmp_path):

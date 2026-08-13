@@ -1,6 +1,7 @@
 package {{PACKAGE}};
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -23,9 +24,7 @@ class {{CLASS_NAME}}HandlerTest {
     void handleRejectsEmptyInput() {
         var req = new InvocationRequest(Map.of(), null);
         var result = handler.handle(req);
-        assertNotNull(result);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> map = (Map<String, Object>) result;
-        assertTrue(map.containsKey("error"), "empty input should return an error key");
+        var response = assertInstanceOf(HandlerResponse.class, result);
+        assertEquals(422, response.statusCode());
     }
 }

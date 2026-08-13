@@ -2,6 +2,7 @@ package {{PACKAGE}};
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import it.unimib.datai.nanofaas.sdk.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.NanofaasFunction;
 import org.slf4j.Logger;
@@ -19,7 +20,7 @@ public class {{CLASS_NAME}}Handler implements FunctionHandler {
         log.info("{{FUNCTION_NAME}} invoked, executionId={}", FunctionContext.getExecutionId());
         Map<String, Object> input = request.input() instanceof Map ? (Map<String, Object>) request.input() : Map.of();
         if (input.get("text") == null || input.get("text").toString().isBlank()) {
-            return Map.of("error", "Field 'text' is required and must be non-empty");
+            return HandlerResponse.of(Map.of("error", "Field 'text' is required and must be non-empty"), 422);
         }
         // TODO: implement handler logic
         return Map.of("result", "ok");

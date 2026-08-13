@@ -22,11 +22,11 @@ func TestHandle{{CLASS_NAME}}RejectsEmptyInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	m, ok := result.(map[string]interface{})
+	response, ok := result.(nanofaas.HandlerResponse)
 	if !ok {
-		t.Fatal("expected map result")
+		t.Fatal("expected HandlerResponse result")
 	}
-	if m["error"] == nil {
-		t.Fatal("expected error key for empty input")
+	if response.StatusCode != 422 {
+		t.Fatalf("expected status 422, got %d", response.StatusCode)
 	}
 }
