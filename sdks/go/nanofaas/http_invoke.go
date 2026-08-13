@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -71,13 +72,54 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 		}
 
 		r.markInvocation("success")
-		r.submitCallback(runtimeContext, Success(result.output), dispatchAttempt)
+
+		envelope, isEnvelope := result.output.(HandlerResponse)
+		if isEnvelope && !IsStatusCodeValid(envelope.StatusCode) {
+			message := fmt.Sprintf("Handler returned invalid statusCode: %d", envelope.StatusCode)
+			log.Printf("WARN Handler returned invalid statusCode %d for execution %s, treating as platform error", envelope.StatusCode, runtimeContext.ExecutionID)
+			r.submitCallback(runtimeContext, Failure("OUTPUT_SERIALIZATION_ERROR", message), dispatchAttempt)
+			writeErrorJSON(w, http.StatusInternalServerError, message)
+			return
+		}
+
+		status := http.StatusOK
+		outputForWire := result.output
+		if isEnvelope {
+			status = envelope.StatusCode
+			outputForWire = envelope.Output
+			allowed := FilterAllowedHeaders(envelope.Headers)
+			if len(allowed) != len(envelope.Headers) {
+				dropped := make([]string, 0, len(envelope.Headers))
+				for key := range envelope.Headers {
+					if _, kept := allowed[key]; !kept {
+						dropped = append(dropped, key)
+					}
+				}
+				log.Printf("WARN dropped response header(s) %v for execution %s", dropped, runtimeContext.ExecutionID)
+			}
+			for key, value := range allowed {
+				w.Header().Set(key, value)
+			}
+			w.Header().Set("X-NanoFaaS-Function-Status", "true")
+			if envelope.Encoding != "" {
+				w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
+			}
+			r.submitCallback(runtimeContext,
+				SuccessWithEnvelope(envelope.Output, envelope.StatusCode, allowed, envelope.Encoding),
+				dispatchAttempt)
+		} else {
+			r.submitCallback(runtimeContext, Success(result.output), dispatchAttempt)
+		}
+
 		if isColdStart {
 			w.Header().Set("X-Cold-Start", "true")
 			w.Header().Set("X-Init-Duration-Ms", formatInitDurationHeader(r.coldStart.InitDurationMs()))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(result.output)
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(outputForWire)
 	case <-ctx.Done():
 		r.markHandlerDuration(time.Since(start).Seconds())
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

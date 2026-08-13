@@ -249,3 +249,114 @@ func TestInvokeForwardsDispatchAttemptToCallback(t *testing.T) {
 		t.Fatal("callback not received")
 	}
 }
+
+func TestInvokeHandlerResponseAppliesStatusHeadersAndMarker(t *testing.T) {
+	rec := invokeWithHandler(t, func(ctx context.Context, req InvocationRequest) (any, error) {
+		return HandlerResponse{
+			Output:     map[string]string{"error": "not found"},
+			StatusCode: 404,
+			Headers:    map[string]string{"Location": "/x", "X-Custom": "dropped"},
+			Encoding:   "base64",
+		}, nil
+	})
+
+	if rec.Code != 404 {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Location"); got != "/x" {
+		t.Errorf("allow-listed header must survive, got %q", got)
+	}
+	if got := rec.Header().Get("X-Custom"); got != "" {
+		t.Errorf("disallowed header must be dropped, got %q", got)
+	}
+	if got := rec.Header().Get("X-NanoFaaS-Function-Status"); got != "true" {
+		t.Errorf("marker header must be set on the envelope path, got %q", got)
+	}
+	if got := rec.Header().Get("X-NanoFaaS-Encoding"); got != "base64" {
+		t.Errorf("encoding header must be set when encoding is present, got %q", got)
+	}
+}
+
+func TestInvokeHandlerCannotSpoofControlHeaders(t *testing.T) {
+	rec := invokeWithHandler(t, func(ctx context.Context, req InvocationRequest) (any, error) {
+		return HandlerResponse{
+			Output:     "ok",
+			StatusCode: 200,
+			Headers: map[string]string{
+				"X-NanoFaaS-Function-Status": "spoofed",
+				"X-NanoFaaS-Encoding":        "spoofed",
+				"X-Execution-Id":             "spoofed",
+			},
+		}, nil
+	})
+
+	if got := rec.Header().Get("X-NanoFaaS-Encoding"); got != "" {
+		t.Errorf("a handler must not be able to set the encoding marker, got %q", got)
+	}
+	if got := rec.Header().Get("X-NanoFaaS-Function-Status"); got != "true" {
+		t.Errorf("the marker must come from the runtime, not the handler, got %q", got)
+	}
+}
+
+func TestInvokeHandlerResponseInvalidStatusIsPlatformError(t *testing.T) {
+	rec := invokeWithHandler(t, func(ctx context.Context, req InvocationRequest) (any, error) {
+		return HandlerResponse{Output: "ok", StatusCode: 999}, nil
+	})
+
+	if rec.Code != 500 {
+		t.Errorf("an out-of-range status must be a platform error, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-NanoFaaS-Function-Status"); got != "" {
+		t.Errorf("no marker on a platform error, got %q", got)
+	}
+}
+
+func TestInvokePlainValueBehavesExactlyAsBefore(t *testing.T) {
+	rec := invokeWithHandler(t, func(ctx context.Context, req InvocationRequest) (any, error) {
+		return map[string]string{"roman": "XLII"}, nil
+	})
+
+	if rec.Code != 200 {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-NanoFaaS-Function-Status"); got != "" {
+		t.Errorf("no marker on a plain-value success, got %q", got)
+	}
+	if got := rec.Header().Get("X-NanoFaaS-Encoding"); got != "" {
+		t.Errorf("no encoding header on a plain-value success, got %q", got)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/json" {
+		t.Errorf("plain-value success must still default to application/json, got %q", got)
+	}
+	if body := strings.TrimSpace(rec.Body.String()); body != `{"roman":"XLII"}` {
+		t.Errorf("plain body shape must be unchanged, got %s", body)
+	}
+}
+
+func TestInvokeHandlerSuppliedContentTypeSurvives(t *testing.T) {
+	rec := invokeWithHandler(t, func(ctx context.Context, req InvocationRequest) (any, error) {
+		return HandlerResponse{
+			Output:     "hello",
+			StatusCode: 200,
+			Headers:    map[string]string{"Content-Type": "text/plain"},
+		}, nil
+	})
+
+	if got := rec.Header().Get("Content-Type"); got != "text/plain" {
+		t.Errorf("handler-supplied Content-Type must not be overwritten, got %q", got)
+	}
+}
+
+func invokeWithHandler(t *testing.T, handler Handler) *httptest.ResponseRecorder {
+	t.Helper()
+	rt := NewRuntime(WithSettings(RuntimeSettings{ExecutionID: "env-exec", HandlerTimeout: time.Second}))
+	rt.Register("envelope", handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/invoke", strings.NewReader(`{"input":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Execution-Id", "exec-1")
+	rec := httptest.NewRecorder()
+
+	rt.Handler().ServeHTTP(rec, req)
+	return rec
+}

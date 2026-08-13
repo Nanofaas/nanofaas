@@ -1,6 +1,7 @@
 export { getExecutionId, getTraceId } from "./context.js";
 export { NanofaasError } from "./errors.js";
 export { getLogger } from "./logger.js";
+export { HandlerResponse } from "./response.js";
 export { createRuntime } from "./runtime.js";
 export type {
     ErrorInfo,

@@ -1,3 +1,5 @@
+import type { HandlerResponse } from "./response.js";
+
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue =
@@ -22,6 +24,9 @@ export type CallbackPayload =
         success: true;
         output: JsonValue;
         error: null;
+        statusCode?: number;
+        headers?: Record<string, string>;
+        encoding?: string;
     }
     | {
         success: false;
@@ -47,7 +52,7 @@ export type HandlerContext = {
 export type Handler = (
     ctx: HandlerContext,
     req: InvocationRequest,
-) => JsonValue | Promise<JsonValue>;
+) => JsonValue | HandlerResponse | Promise<JsonValue | HandlerResponse>;
 
 export type RuntimeOptions = {
     port?: number;
