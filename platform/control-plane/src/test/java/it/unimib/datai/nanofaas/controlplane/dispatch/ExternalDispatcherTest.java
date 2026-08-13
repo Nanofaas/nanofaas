@@ -498,4 +498,36 @@ class ExternalDispatcherTest {
         assertEquals("EXTERNAL_ERROR", dr.result().error().code());
         server.shutdown();
     }
+
+    @Test
+    void dispatch_functionStatusMarkerWithOutOfRangeStatus_isPlatformErrorNotPassthrough() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse()
+                .setResponseCode(999)
+                .setBody("{\"ignored\":true}")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-NanoFaaS-Function-Status", "true"));
+        server.start();
+
+        String endpoint = server.url("/invoke").toString();
+        FunctionSpec spec = new FunctionSpec(
+                "oor-fn", "image", null, Map.of(), null, 1000, 1, 10, 3,
+                endpoint, ExecutionMode.EXTERNAL, null, null, null
+        );
+        InvocationTask task = new InvocationTask(
+                "exec-oor", "oor-fn", spec,
+                new InvocationRequest("payload", Map.of()),
+                null, null, Instant.now(), 1
+        );
+
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
+        DispatchResult dr = dispatcher.dispatch(task).get();
+
+        assertFalse(dr.result().success(),
+                "an out-of-range status must not be trusted as a function decision");
+        assertEquals("EXTERNAL_ERROR", dr.result().error().code());
+        assertNull(dr.result().statusCode(),
+                "the illegal status must never be propagated to the caller");
+        server.shutdown();
+    }
 }
