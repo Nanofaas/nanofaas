@@ -4,7 +4,6 @@ import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
@@ -46,7 +45,7 @@ public class FunctionSpecResolver {
                 Optional.ofNullable(spec.maxRetries()).orElse(defaults.maxRetries()),
                 spec.endpointUrl(),
                 mode,
-                Optional.ofNullable(spec.runtimeMode()).orElse(RuntimeMode.HTTP),
+                spec.runtimeMode(),
                 spec.runtimeCommand(),
                 scaling,
                 spec.imagePullSecrets(),

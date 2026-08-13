@@ -28,7 +28,16 @@ class FunctionSpecResolverTest {
         assertEquals(100, resolved.queueSize());
         assertEquals(3, resolved.maxRetries());
         assertEquals(ExecutionMode.DEPLOYMENT, resolved.executionMode());
-        assertEquals(RuntimeMode.HTTP, resolved.runtimeMode());
+    }
+
+    @Test
+    void resolve_keepsRuntimeModeUnsetToPreserveImageDefault() {
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, null, null, null, null);
+
+        FunctionSpec resolved = resolver.resolve(spec);
+
+        assertNull(resolved.runtimeMode());
     }
 
     @Test
