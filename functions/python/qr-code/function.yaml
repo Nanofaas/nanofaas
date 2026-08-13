@@ -1,0 +1,18 @@
+name: qr-code
+image: nanofaas/qr-code:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/python/qr-code/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: qr-code
+  runtime: python
+  description: Python PNG QR code generation demo.
+  defaultImage: localhost:5000/nanofaas/python-qr-code:e2e
