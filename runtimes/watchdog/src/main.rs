@@ -6,6 +6,8 @@
 //! - STDIO: Function reads from stdin, writes to stdout (Python scripts, Node)
 //! - FILE: Function reads /tmp/input.json, writes /tmp/output.json (Bash, legacy)
 
+mod envelope;
+
 use axum::{
     extract::State,
     http::header,
