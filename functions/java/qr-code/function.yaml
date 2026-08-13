@@ -16,3 +16,4 @@ catalog:
   runtime: java
   description: Java PNG QR code generation demo.
   defaultImage: localhost:5000/nanofaas/java-qr-code:e2e
+  defaultPayload: qr-code-sample.json

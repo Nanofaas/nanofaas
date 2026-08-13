@@ -16,3 +16,4 @@ catalog:
   runtime: exec
   description: Exec/watchdog PNG QR code generation demo.
   defaultImage: localhost:5000/nanofaas/bash-qr-code:e2e
+  defaultPayload: qr-code-sample.json

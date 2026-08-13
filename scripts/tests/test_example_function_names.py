@@ -21,3 +21,7 @@ def test_envelope_examples_have_unique_catalog_function_names():
     for function, expected_name in manifests.items():
         manifest = (REPO_ROOT / "functions" / function / "function.yaml").read_text()
         assert f"name: {expected_name}\n" in manifest
+
+    for runtime in ("bash", "go", "java", "javascript", "python"):
+        manifest = (REPO_ROOT / "functions" / runtime / "qr-code" / "function.yaml").read_text()
+        assert "defaultPayload: qr-code-sample.json\n" in manifest
