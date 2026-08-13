@@ -72,12 +72,13 @@ public class ExternalDispatcher implements Dispatcher {
                         int statusCode = response.statusCode().value();
                         if (ResponseHeaderPolicy.isStatusCodeValid(statusCode)) {
                             Map<String, String> headers = extractAllowedHeaders(response.headers().asHttpHeaders());
+                            String encoding = response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Encoding");
                             return decodeBody(response, true)
                                     .map(body -> new DispatchResult(
-                                            InvocationResult.successWithEnvelope(body, statusCode, headers, null),
+                                            InvocationResult.successWithEnvelope(body, statusCode, headers, encoding),
                                             isCold, initMs))
                                     .defaultIfEmpty(new DispatchResult(
-                                            InvocationResult.successWithEnvelope(null, statusCode, headers, null),
+                                            InvocationResult.successWithEnvelope(null, statusCode, headers, encoding),
                                             isCold, initMs));
                         }
                         // ponytail: out-of-range status code from a marker-bearing response is not

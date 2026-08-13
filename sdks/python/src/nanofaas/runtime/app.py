@@ -379,6 +379,8 @@ async def invoke(
                 response_status = output.status_code
                 allowed = _filter_response_headers(output.headers, execution_id)
                 response_headers = {**response_headers, **allowed, "X-NanoFaaS-Function-Status": "true"}
+                if output.encoding:
+                    response_headers["X-NanoFaaS-Encoding"] = output.encoding
                 response_body = output.output
                 callback_status_code = output.status_code
                 callback_headers = allowed

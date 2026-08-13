@@ -406,4 +406,64 @@ class ExternalDispatcherTest {
         assertEquals("hello", dr.result().output());
         server.shutdown();
     }
+
+    @Test
+    void dispatch_functionStatusMarkerPresent_encodingSurvivesTheHop() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("\"aGVsbG8gd29ybGQ=\"")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("X-NanoFaaS-Encoding", "base64"));
+        server.start();
+
+        String endpoint = server.url("/invoke").toString();
+        FunctionSpec spec = new FunctionSpec(
+                "pool-fn", "image", null, Map.of(), null, 1000, 1, 10, 3,
+                endpoint, ExecutionMode.EXTERNAL, null, null, null
+        );
+        InvocationTask task = new InvocationTask(
+                "exec-pool", "pool-fn", spec,
+                new InvocationRequest("payload", Map.of()),
+                null, null, Instant.now(), 1
+        );
+
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
+        DispatchResult dr = dispatcher.dispatch(task).get();
+
+        assertTrue(dr.result().success());
+        assertEquals("base64", dr.result().encoding());
+        assertEquals("aGVsbG8gd29ybGQ=", dr.result().output());
+        server.shutdown();
+    }
+
+    @Test
+    void dispatch_functionStatusMarkerPresent_noEncodingHeaderYieldsNullEncoding() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("{\"message\":\"ok\"}")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-NanoFaaS-Function-Status", "true"));
+        server.start();
+
+        String endpoint = server.url("/invoke").toString();
+        FunctionSpec spec = new FunctionSpec(
+                "pool-fn", "image", null, Map.of(), null, 1000, 1, 10, 3,
+                endpoint, ExecutionMode.EXTERNAL, null, null, null
+        );
+        InvocationTask task = new InvocationTask(
+                "exec-pool", "pool-fn", spec,
+                new InvocationRequest("payload", Map.of()),
+                null, null, Instant.now(), 1
+        );
+
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
+        DispatchResult dr = dispatcher.dispatch(task).get();
+
+        assertTrue(dr.result().success());
+        assertNull(dr.result().encoding());
+        server.shutdown();
+    }
 }

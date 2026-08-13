@@ -142,6 +142,9 @@ public class InvokeController {
         allowedHeaders.forEach(responseBuilder::header);
         if (isEnvelope) {
             responseBuilder.header("X-NanoFaaS-Function-Status", "true");
+            if (encoding != null) {
+                responseBuilder.header("X-NanoFaaS-Encoding", encoding);
+            }
         }
         if (isColdStart) {
             responseBuilder.header("X-Cold-Start", "true");

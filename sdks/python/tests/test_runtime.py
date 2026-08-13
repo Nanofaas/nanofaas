@@ -377,6 +377,45 @@ def test_invoke_envelope_body_is_output_verbatim(client):
     assert response.json() == "hello"
 
 
+def test_invoke_handler_response_with_encoding_emits_encoding_header(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse("aGVsbG8=", 200, {"Content-Type": "application/octet-stream"}, encoding="base64")
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-1"})
+    assert response.headers["x-nanofaas-encoding"] == "base64"
+
+
+def test_invoke_handler_response_without_encoding_omits_encoding_header(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"error": "not found"}, 404, {"Content-Type": "application/json"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-2"})
+    assert "x-nanofaas-encoding" not in response.headers
+
+
+def test_invoke_plain_value_never_emits_encoding_header(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return {"roman": "XLII"}
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-3"})
+    assert "x-nanofaas-encoding" not in response.headers
+
+
+def test_invoke_handler_cannot_spoof_encoding_header_through_its_own_headers_map(client):
+    # X-NanoFaaS-Encoding is not in _ALLOWED_RESPONSE_HEADERS, so a handler stuffing it into
+    # its own headers dict must never leak it through — only the dedicated `encoding` field can.
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse("body", 200, {"X-NanoFaaS-Encoding": "spoofed"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-4"})
+    assert response.headers.get("x-nanofaas-encoding") != "spoofed"
+    assert "x-nanofaas-encoding" not in response.headers
+
+
 @patch("requests.post")
 def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
     mock_post.return_value.status_code = 204

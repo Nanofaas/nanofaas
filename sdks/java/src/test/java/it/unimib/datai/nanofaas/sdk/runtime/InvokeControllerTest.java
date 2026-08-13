@@ -347,6 +347,52 @@ class InvokeControllerTest {
     }
 
     @Test
+    void invoke_handlerReturnsHandlerResponseWithEncoding_emitsEncodingHeader() {
+        when(handler.handle(any())).thenReturn(
+                new HandlerResponse("aGVsbG8=", 200, Map.of("Content-Type", "application/octet-stream"), "base64"));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals("base64", response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponseWithoutEncoding_omitsEncodingHeader() {
+        when(handler.handle(any())).thenReturn(
+                HandlerResponse.of(Map.of("error", "not found"), 404, Map.of("Content-Type", "application/json")));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_handlerReturnsPlainValue_neverEmitsEncodingHeader() {
+        when(handler.handle(any())).thenReturn("ok");
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_handlerCannotSpoofEncodingHeaderThroughItsOwnHeadersMap() {
+        // X-NanoFaaS-Encoding is not in ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS, so a
+        // handler stuffing it into its own headers map must never leak it through — only the
+        // envelope's dedicated `encoding` field can produce this header.
+        when(handler.handle(any())).thenReturn(
+                new HandlerResponse("body", 200, Map.of("X-NanoFaaS-Encoding", "spoofed"), null));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
     void invoke_passesCallerHeadersFromBodyToHandler() {
         ArgumentCaptor<InvocationRequest> requestCaptor = ArgumentCaptor.forClass(InvocationRequest.class);
         when(handler.handle(requestCaptor.capture())).thenReturn("ok");
