@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -319,6 +320,34 @@ class InvokeControllerTest {
                             && event.getFormattedMessage().contains("X-Custom")
                             && event.getFormattedMessage().contains("env-exec-id"));
             assertTrue(warned, "expected a WARN log naming the dropped header and execution id, got: " + appender.list);
+        } finally {
+            controllerLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_dedupedHeaderIsNamedInWarnAlongsideDisallowedOne() {
+        Logger controllerLogger = (Logger) LoggerFactory.getLogger(InvokeController.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        controllerLogger.addAppender(appender);
+        try {
+            Map<String, String> headers = new LinkedHashMap<>();
+            headers.put("Content-Type", "application/pdf");
+            headers.put("content-type", "text/plain");
+            headers.put("X-Custom", "nope");
+            when(handler.handle(any())).thenReturn(HandlerResponse.of("body", 200, headers));
+
+            controller.invoke(new InvocationRequest("input", null), "env-exec-id", null);
+
+            boolean warned = appender.list.stream().anyMatch(event ->
+                    event.getLevel() == Level.WARN
+                            && event.getFormattedMessage().contains("content-type")
+                            && event.getFormattedMessage().contains("X-Custom")
+                            && event.getFormattedMessage().contains("env-exec-id"));
+            assertTrue(warned,
+                    "expected WARN to name the deduplicated header (content-type), not just the disallowed one, got: "
+                            + appender.list);
         } finally {
             controllerLogger.detachAppender(appender);
         }

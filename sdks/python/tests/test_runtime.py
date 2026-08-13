@@ -328,6 +328,27 @@ def test_filter_response_headers_preserves_original_casing():
     assert _filter_response_headers({"Content-Type": "application/pdf"}) == {"Content-Type": "application/pdf"}
 
 
+def test_invoke_handler_response_deduped_header_named_in_warn_alongside_disallowed_one(client, caplog):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse(
+            {"ok": True},
+            200,
+            {"Content-Type": "application/pdf", "content-type": "text/plain", "X-Custom": "nope"},
+        )
+
+    with caplog.at_level("WARNING", logger="nanofaas.runtime.app"):
+        response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-2c"})
+
+    assert response.status_code == 200
+
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1, f"expected exactly one WARN, got {warnings}"
+    assert "content-type" in warnings[0], "WARN must name the deduplicated header, not just the disallowed one"
+    assert "X-Custom" in warnings[0]
+    assert "ex-2c" in warnings[0]
+
+
 def test_invoke_handler_returns_handler_response_invalid_status_falls_back_to_500(client):
     @decorator.nanofaas_function
     def mock_handler(input_data):
