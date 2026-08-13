@@ -23,7 +23,7 @@ func handleJSONTransform(ctx context.Context, req nanofaas.InvocationRequest) (a
 
 	input, ok := req.Input.(map[string]any)
 	if !ok {
-		return map[string]any{"error": "Input must be a JSON object"}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "Input must be a JSON object"}, 400), nil
 	}
 
 	data, ok := input["data"].([]any)
@@ -35,10 +35,10 @@ func handleJSONTransform(ctx context.Context, req nanofaas.InvocationRequest) (a
 	valueField, _ := input["valueField"].(string)
 
 	if !ok || !groupByOK {
-		return map[string]any{"error": "Fields 'data' (array) and 'groupBy' (string) are required"}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "Fields 'data' (array) and 'groupBy' (string) are required"}, 400), nil
 	}
 	if strings.ToLower(operation) != "count" && valueField == "" {
-		return map[string]any{"error": "Field 'valueField' is required for operation: " + operation}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "Field 'valueField' is required for operation: " + operation}, 400), nil
 	}
 
 	groups := map[string][]map[string]any{}

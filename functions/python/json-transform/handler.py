@@ -1,4 +1,4 @@
-from nanofaas.sdk import nanofaas_function, context
+from nanofaas.sdk import HandlerResponse, nanofaas_function, context
 from statistics import mean
 
 logger = context.get_logger(__name__)
@@ -8,7 +8,7 @@ def handle(input_data):
     logger.info(f"Processing json-transform for execution {context.get_execution_id()}")
 
     if not isinstance(input_data, dict):
-        return {"error": "Input must be a JSON object"}
+        return HandlerResponse({"error": "Input must be a JSON object"}, 400)
         
     data = input_data.get("data")
     group_by = input_data.get("groupBy")
@@ -16,10 +16,10 @@ def handle(input_data):
     value_field = input_data.get("valueField")
 
     if data is None or group_by is None:
-        return {"error": "Fields 'data' (array) and 'groupBy' (string) are required"}
+        return HandlerResponse({"error": "Fields 'data' (array) and 'groupBy' (string) are required"}, 400)
 
     if operation != "count" and not value_field:
-        return {"error": f"Field 'valueField' is required for operation: {operation}"}
+        return HandlerResponse({"error": f"Field 'valueField' is required for operation: {operation}"}, 400)
 
     grouped = {}
     for item in data:

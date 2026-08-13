@@ -1,4 +1,4 @@
-import type { Handler, JsonObject } from "nanofaas-function-sdk";
+import { HandlerResponse, type Handler, type JsonObject } from "nanofaas-function-sdk";
 
 function isJsonObject(value: unknown): value is JsonObject {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -21,7 +21,7 @@ export const handleJsonTransform: Handler = async (ctx, req) => {
     ctx.logger.info("processing json transform");
 
     if (!isJsonObject(req.input)) {
-        return { error: "Input must be a JSON object" };
+        return new HandlerResponse({ error: "Input must be a JSON object" }, 400);
     }
 
     const data = req.input.data;
@@ -29,10 +29,10 @@ export const handleJsonTransform: Handler = async (ctx, req) => {
     const operation = typeof req.input.operation === "string" ? req.input.operation : "count";
     const valueField = req.input.valueField;
     if (!Array.isArray(data) || typeof groupBy !== "string") {
-        return { error: "Fields 'data' (array) and 'groupBy' (string) are required" };
+        return new HandlerResponse({ error: "Fields 'data' (array) and 'groupBy' (string) are required" }, 400);
     }
     if (operation.toLowerCase() !== "count" && typeof valueField !== "string") {
-        return { error: `Field 'valueField' is required for operation: ${operation}` };
+        return new HandlerResponse({ error: `Field 'valueField' is required for operation: ${operation}` }, 400);
     }
 
     const groups = new Map<string, JsonObject[]>();

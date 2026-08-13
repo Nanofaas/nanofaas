@@ -38,7 +38,9 @@ assert_eq "3999 → MMMCMXCIX" "MMMCMXCIX" "$(invoke '{"number":3999}' | jq -r .
 
 assert_eq "missing field → error" \
     "missing required field: number" \
-    "$(invoke '{}'   | jq -r .error)"
+    "$(invoke '{}' | jq -r .output.error)"
+assert_eq "missing field → 422 envelope" "true:422" \
+    "$(invoke '{}' | jq -r '.__nanofaas_envelope__, .statusCode' | paste -sd: -)"
 
 assert_eq "out of range → error" \
     "null" \
@@ -46,7 +48,9 @@ assert_eq "out of range → error" \
 
 assert_eq "non-object input → error" \
     "Input must be a JSON object" \
-    "$(echo '{"input":"string"}' | bash "$HANDLER" | jq -r .error)"
+    "$(echo '{"input":"string"}' | bash "$HANDLER" | jq -r .output.error)"
+assert_eq "non-object input → 422 envelope" "true:422" \
+    "$(echo '{"input":"string"}' | bash "$HANDLER" | jq -r '.__nanofaas_envelope__, .statusCode' | paste -sd: -)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

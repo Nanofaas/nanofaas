@@ -12,16 +12,16 @@ req="$(cat)"
 jq '
   .input as $in
   | if ($in | type) != "object" then
-      {"error":"Input must be a JSON object"}
+      {"__nanofaas_envelope__":true,"output":{"error":"Input must be a JSON object"},"statusCode":400}
     else
       ($in.data) as $data
       | ($in.groupBy) as $groupBy
       | ($in.operation // "count") as $op
       | ($in.valueField) as $vf
       | if ($data == null or $groupBy == null) then
-          {"error":"Fields '\''data'\'' (array) and '\''groupBy'\'' (string) are required"}
+          {"__nanofaas_envelope__":true,"output":{"error":"Fields '\''data'\'' (array) and '\''groupBy'\'' (string) are required"},"statusCode":400}
         elif ($op != "count" and ($vf == null or ($vf|tostring|length) == 0)) then
-          {"error":("Field '\''valueField'\'' is required for operation: " + ($op|tostring))}
+          {"__nanofaas_envelope__":true,"output":{"error":("Field '\''valueField'\'' is required for operation: " + ($op|tostring))},"statusCode":400}
         else
           (reduce ($data[]? ) as $item ({}; .[(($item[$groupBy] // "null")|tostring)] += [$item])) as $grouped
           | ($grouped | with_entries(

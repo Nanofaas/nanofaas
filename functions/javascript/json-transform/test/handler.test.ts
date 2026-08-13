@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import { getLogger, type HandlerContext } from "nanofaas-function-sdk";
+import { getLogger, HandlerResponse, type HandlerContext } from "nanofaas-function-sdk";
 
 import { handleJsonTransform } from "../src/handler.js";
 
@@ -18,11 +18,14 @@ function createContext(): HandlerContext {
 test("handleJsonTransform satisfies the shared contract", async () => {
     const fixture = JSON.parse(await readFile("../../test-data/json-transform/correctness.json", "utf8"));
     for (const contractCase of fixture.cases) {
-        assert.deepEqual(
-            await handleJsonTransform(createContext(), { input: contractCase.input }),
-            contractCase.expected,
-            contractCase.name,
-        );
+        const actual = await handleJsonTransform(createContext(), { input: contractCase.input });
+        if (contractCase.expectedStatusCode) {
+            assert.ok(actual instanceof HandlerResponse, contractCase.name);
+            assert.equal(actual.statusCode, contractCase.expectedStatusCode, contractCase.name);
+            assert.deepEqual(actual.output, contractCase.expected, contractCase.name);
+        } else {
+            assert.deepEqual(actual, contractCase.expected, contractCase.name);
+        }
     }
 });
 

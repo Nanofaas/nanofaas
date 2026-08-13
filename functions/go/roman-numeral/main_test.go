@@ -13,9 +13,10 @@ import (
 func TestSharedContract(t *testing.T) {
 	var fixture struct {
 		Cases []struct {
-			Name     string `json:"name"`
-			Input    any    `json:"input"`
-			Expected any    `json:"expected"`
+			Name               string `json:"name"`
+			Input              any    `json:"input"`
+			Expected           any    `json:"expected"`
+			ExpectedStatusCode *int   `json:"expectedStatusCode"`
 		} `json:"cases"`
 	}
 	data, err := os.ReadFile("../../test-data/roman-numeral/correctness.json")
@@ -30,6 +31,13 @@ func TestSharedContract(t *testing.T) {
 			actual, err := handleRomanNumeral(context.Background(), nanofaas.InvocationRequest{Input: tc.Input})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.ExpectedStatusCode != nil {
+				response, ok := actual.(nanofaas.HandlerResponse)
+				if !ok || response.StatusCode != *tc.ExpectedStatusCode {
+					t.Fatalf("got %#v, want HandlerResponse status %d", actual, *tc.ExpectedStatusCode)
+				}
+				actual = response.Output
 			}
 			encoded, _ := json.Marshal(actual)
 			var normalized any
@@ -80,7 +88,11 @@ func TestHandleRomanNumeralMissingField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	out := result.(map[string]any)
+	response := result.(nanofaas.HandlerResponse)
+	if response.StatusCode != 422 {
+		t.Fatalf("got status %d, want 422", response.StatusCode)
+	}
+	out := response.Output.(map[string]any)
 	if out["error"] != "missing required field: number" {
 		t.Errorf("unexpected error: %v", out["error"])
 	}
@@ -90,7 +102,11 @@ func TestHandleRomanNumeralOutOfRange(t *testing.T) {
 	result, _ := handleRomanNumeral(context.Background(), nanofaas.InvocationRequest{
 		Input: map[string]any{"number": float64(4000)},
 	})
-	out := result.(map[string]any)
+	response := result.(nanofaas.HandlerResponse)
+	if response.StatusCode != 422 {
+		t.Fatalf("got status %d, want 422", response.StatusCode)
+	}
+	out := response.Output.(map[string]any)
 	if _, hasErr := out["error"]; !hasErr {
 		t.Error("expected error for out-of-range number")
 	}

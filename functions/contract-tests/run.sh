@@ -42,7 +42,18 @@ for family in word-stats json-transform roman-numeral; do
     name="$(jq -r '.name' <<<"$contract_case")"
     input="$(jq -c '.input' <<<"$contract_case")"
     expected="$(jq -c '.expected' <<<"$contract_case")"
+    expected_status="$(jq -r '.expectedStatusCode // empty' <<<"$contract_case")"
     actual="$(jq -cn --argjson input "$input" '{input:$input}' | bash "$handler")"
+    if [[ -n "$expected_status" ]]; then
+      if ! jq -en --argjson actual "$actual" --argjson expected "$expected" --argjson status "$expected_status" \
+        '$actual.__nanofaas_envelope__ == true and $actual.statusCode == $status and $actual.output == $expected' >/dev/null; then
+        echo "bash $family contract failed: $name" >&2
+        echo "expected envelope: $(jq -cn --argjson output "$expected" --argjson status "$expected_status" '{__nanofaas_envelope__:true,output:$output,statusCode:$status}' | jq -cS .)" >&2
+        echo "actual:            $(jq -cS . <<<"$actual")" >&2
+        exit 1
+      fi
+      continue
+    fi
     if ! jq -en --argjson actual "$actual" --argjson expected "$expected" \
       '$actual == $expected' >/dev/null; then
       echo "bash $family contract failed: $name" >&2

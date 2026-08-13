@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.examples.jsontransform;
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import it.unimib.datai.nanofaas.sdk.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.NanofaasFunction;
 import org.slf4j.Logger;
@@ -37,7 +38,7 @@ public class JsonTransformHandler implements FunctionHandler {
         try {
             input = (Map<String, Object>) request.input();
         } catch (ClassCastException _) {
-            return Map.of(ERROR_KEY, "Input must be a JSON object");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Input must be a JSON object"), 400);
         }
 
         List<Map<String, Object>> data = (List<Map<String, Object>>) input.get("data");
@@ -46,11 +47,11 @@ public class JsonTransformHandler implements FunctionHandler {
         String valueField = (String) input.get("valueField");
 
         if (data == null || groupBy == null) {
-            return Map.of(ERROR_KEY, "Fields 'data' (array) and 'groupBy' (string) are required");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Fields 'data' (array) and 'groupBy' (string) are required"), 400);
         }
 
         if (!operation.equals(OPERATION_COUNT) && valueField == null) {
-            return Map.of(ERROR_KEY, "Field 'valueField' is required for operation: " + operation);
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Field 'valueField' is required for operation: " + operation), 400);
         }
 
         return transform(data, groupBy, operation, valueField);
