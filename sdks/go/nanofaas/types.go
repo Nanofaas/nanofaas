@@ -3,6 +3,7 @@ package nanofaas
 type InvocationRequest struct {
 	Input    any               `json:"input"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+	Headers  map[string]string `json:"headers,omitempty"`
 }
 
 type ErrorInfo struct {

@@ -10,11 +10,11 @@ public class HandlerEnvelopeHandler implements FunctionHandler {
     @Override
     public Object handle(InvocationRequest request) {
         if (!(request.input() instanceof Map<?, ?> input)) {
-            return Map.of("body", null, "header", null);
+            return Map.of("body", "", "header", "");
         }
         return Map.of(
-                "body", input.get("message"),
-                "header", request.headers() == null ? null : request.headers().get("x-e2e-token")
+                "body", input.containsKey("message") ? input.get("message") : "",
+                "header", request.headers() == null ? "" : request.headers().getOrDefault("x-e2e-token", "")
         );
     }
 }

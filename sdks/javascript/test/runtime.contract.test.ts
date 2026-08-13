@@ -126,6 +126,23 @@ test("invoke returns raw handler output on success", async () => {
     }
 });
 
+test("invoke passes top-level envelope headers to the handler", async () => {
+    const runtime = await withRuntime((rt) => {
+        rt.register("echo", async (_ctx, req) => req.headers?.["x-e2e-token"] ?? "missing");
+    });
+    try {
+        const response = await fetch(`${runtime.baseUrl}/invoke`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-execution-id": "exec-headers" },
+            body: JSON.stringify({ input: {}, headers: { "x-e2e-token": "header-sentinel" } }),
+        });
+        assert.equal(response.status, 200);
+        assert.equal(await response.json(), "header-sentinel");
+    } finally {
+        await runtime.stop();
+    }
+});
+
 test("NanofaasError maps to 500 and preserves error code", async () => {
     const runtime = await withRuntime((rt) => {
         rt.register("echo", async () => {

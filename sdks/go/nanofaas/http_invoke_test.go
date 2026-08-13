@@ -347,6 +347,18 @@ func TestInvokeHandlerSuppliedContentTypeSurvives(t *testing.T) {
 	}
 }
 
+func TestInvokePassesEnvelopeHeadersToHandler(t *testing.T) {
+	rt := NewRuntime(WithSettings(RuntimeSettings{ExecutionID: "exec", HandlerTimeout: time.Second}))
+	rt.Register("echo", func(_ context.Context, req InvocationRequest) (any, error) { return req.Headers["x-e2e-token"], nil })
+	req := httptest.NewRequest(http.MethodPost, "/invoke", strings.NewReader(`{"input":{},"headers":{"x-e2e-token":"header-sentinel"}}`))
+	req.Header.Set("X-Execution-Id", "exec")
+	rec := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "header-sentinel") {
+		t.Fatalf("unexpected response %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func invokeWithHandler(t *testing.T, handler Handler) *httptest.ResponseRecorder {
 	t.Helper()
 	rt := NewRuntime(WithSettings(RuntimeSettings{ExecutionID: "env-exec", HandlerTimeout: time.Second}))

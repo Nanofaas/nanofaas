@@ -1,0 +1,9 @@
+plugins {
+    id 'org.springframework.boot' version "${springBootVersion}"
+    id 'io.spring.dependency-management' version "${springDependencyManagementVersion}"
+    id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
+    id 'java'
+}
+dependencies { implementation project(':sdks:java'); testImplementation 'org.springframework.boot:spring-boot-starter-test' }
+tasks.named('test') { useJUnitPlatform() }
+bootJar { archiveFileName = 'binary-envelope.jar' }

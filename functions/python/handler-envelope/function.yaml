@@ -1,0 +1,16 @@
+name: handler-envelope-python
+image: nanofaas/handler-envelope-python:latest
+timeoutMs: 5000
+concurrency: 2
+executionMode: DEPLOYMENT
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/python/handler-envelope/Dockerfile
+    platform: linux/amd64
+    push: true
+catalog:
+  family: handler-envelope
+  runtime: python
+  description: Python probe for invocation body and headers.
+  defaultImage: localhost:5000/nanofaas/python-handler-envelope:e2e

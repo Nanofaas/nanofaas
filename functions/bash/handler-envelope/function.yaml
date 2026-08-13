@@ -1,0 +1,16 @@
+name: handler-envelope-exec
+image: nanofaas/handler-envelope-exec:latest
+executionMode: DEPLOYMENT
+runtimeMode: STDIO
+timeoutMs: 5000
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/bash/handler-envelope/Dockerfile
+    platform: linux/amd64
+    push: true
+catalog:
+  family: handler-envelope
+  runtime: exec
+  description: Watchdog probe for invocation body and headers.
+  defaultImage: localhost:5000/nanofaas/bash-handler-envelope:e2e

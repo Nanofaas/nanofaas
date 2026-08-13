@@ -102,7 +102,11 @@ function normalizeInvocationRequest(payload: unknown): InvocationRequest {
             throw new NanofaasError("INVALID_REQUEST", "Invocation metadata must be a string map");
         }
         const metadata = isMetadataRecord(payload.metadata) ? payload.metadata : undefined;
-        return metadata === undefined ? { input } : { input, metadata };
+        if (payload.headers !== undefined && payload.headers !== null && !isMetadataRecord(payload.headers)) {
+            throw new NanofaasError("INVALID_REQUEST", "Invocation headers must be a string map");
+        }
+        const headers = isMetadataRecord(payload.headers) ? payload.headers : undefined;
+        return { input, ...(metadata === undefined ? {} : { metadata }), ...(headers === undefined ? {} : { headers }) };
     }
     return { input: payload as JsonValue };
 }

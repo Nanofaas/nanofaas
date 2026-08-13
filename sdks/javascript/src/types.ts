@@ -12,6 +12,7 @@ export type JsonObject = { [key: string]: JsonValue };
 export type InvocationRequest = {
     input: JsonValue;
     metadata?: Record<string, string>;
+    headers?: Record<string, string>;
 };
 
 export type ErrorInfo = {

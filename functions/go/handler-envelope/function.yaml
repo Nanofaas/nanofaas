@@ -1,0 +1,16 @@
+name: handler-envelope-go
+image: nanofaas/handler-envelope-go:latest
+timeoutMs: 5000
+concurrency: 2
+executionMode: DEPLOYMENT
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/go/handler-envelope/Dockerfile
+    platform: linux/amd64
+    push: true
+catalog:
+  family: handler-envelope
+  runtime: go
+  description: Go probe for invocation body and headers.
+  defaultImage: localhost:5000/nanofaas/go-handler-envelope:e2e

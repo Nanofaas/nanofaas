@@ -1,0 +1,16 @@
+name: binary-envelope-java
+image: nanofaas/binary-envelope-java:latest
+timeoutMs: 5000
+concurrency: 2
+executionMode: DEPLOYMENT
+x-cli:
+  build:
+    context: .
+    dockerfile: Dockerfile
+    platform: linux/amd64
+    push: true
+catalog:
+  family: binary-envelope
+  runtime: java
+  description: Java deterministic binary response probe.
+  defaultImage: localhost:5000/nanofaas/java-binary-envelope:e2e

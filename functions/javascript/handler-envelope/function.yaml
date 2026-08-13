@@ -1,0 +1,16 @@
+name: handler-envelope-javascript
+image: nanofaas/handler-envelope-javascript:latest
+timeoutMs: 5000
+concurrency: 2
+executionMode: DEPLOYMENT
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/javascript/handler-envelope/Dockerfile
+    platform: linux/amd64
+    push: true
+catalog:
+  family: handler-envelope
+  runtime: javascript
+  description: JavaScript probe for invocation body and headers.
+  defaultImage: localhost:5000/nanofaas/javascript-handler-envelope:e2e
