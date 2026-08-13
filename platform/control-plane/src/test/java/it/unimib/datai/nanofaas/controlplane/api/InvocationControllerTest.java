@@ -15,6 +15,7 @@ import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Import;
@@ -26,6 +27,7 @@ import reactor.core.publisher.Mono;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -62,6 +64,50 @@ class InvocationControllerTest {
                 .jsonPath("$.executionId").isEqualTo("exec-1")
                 .jsonPath("$.status").isEqualTo("success")
                 .jsonPath("$.output").isEqualTo("out");
+    }
+
+    @Test
+    void invokeSync_capturesCallerHeadersIntoRequest() {
+        InvocationResponse response = new InvocationResponse("exec-hdr", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq("k-1"), eq("t-1"), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer x")
+                .header("Connection", "keep-alive")
+                .header("X-Trace-Id", "t-1")
+                .header("Idempotency-Key", "k-1")
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isOk();
+
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeSyncReactive(eq("echo"), captor.capture(), eq("k-1"), eq("t-1"), eq(null), any());
+        Map<String, String> capturedHeaders = captor.getValue().headers();
+        assertThat(capturedHeaders.get("authorization")).isEqualTo("Bearer x");
+        assertThat(capturedHeaders).doesNotContainKey("connection");
+        assertThat(capturedHeaders).doesNotContainKey("x-trace-id");
+        assertThat(capturedHeaders).doesNotContainKey("idempotency-key");
+    }
+
+    @Test
+    void invokeSync_callerCannotForgeHeadersViaBody() {
+        InvocationResponse response = new InvocationResponse("exec-forge", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new InvocationRequest(Map.of(), Map.of(), Map.of("authorization", "forged")))
+                .exchange()
+                .expectStatus().isOk();
+
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeSyncReactive(eq("echo"), captor.capture(), eq(null), eq(null), eq(null), any());
+        assertThat(captor.getValue().headers()).doesNotContainKey("authorization");
     }
 
     @Test
@@ -153,6 +199,92 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_functionDecidedStatusCode_usedAsRealHttpStatus() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-1", "success", "out", null, 404,
+                Map.of("Location", "/x"), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(404)
+                .expectHeader().valueEquals("Location", "/x")
+                .expectHeader().valueEquals("X-NanoFaaS-Function-Status", "true")
+                .expectHeader().valueEquals("X-Execution-Id", "ex-1");
+    }
+
+    @Test
+    void invokeSync_copiesAllowedHeaderButExcludesContentTypeFromRealResponse() {
+        // Content-Type and Location arrive together so a regression that short-circuits the
+        // whole header-copy loop when Content-Type is present (copying nothing) cannot pass
+        // this test the way it could if the two headers were asserted in isolation. Location
+        // being a REAL header also fails against a full revert of Task 10 (pre-Task-10 code
+        // never copies any handler-supplied header onto the response).
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-2", "success", "out", null, 200,
+                Map.of("Content-Type", "application/pdf", "Location", "/x"), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectHeader().valueEquals("Location", "/x")
+                .expectBody()
+                .jsonPath("$.headers['Content-Type']").isEqualTo("application/pdf");
+    }
+
+    @Test
+    void invokeSync_noStatusCode_defaultsTo200AsToday() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-3", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status");
+    }
+
+    @Test
+    void invokeSync_outOfRangeStatusCode_treatedAsPlatformDefaultNot200Lie() {
+        // Defense-in-depth: statusCode is already validated upstream (ExternalDispatcher via
+        // ResponseHeaderPolicy.isStatusCodeValid), so this should never happen in practice.
+        // If it ever did, the out-of-range value must not reach ResponseEntity.status(int) as
+        // a real status. A co-present allowed header (Location) is asserted too: the header
+        // copy loop is unconditional (runs regardless of functionDecided), so seeing it land
+        // as a real header also fails against a full revert of Task 10, where no
+        // handler-supplied header is ever copied at all — a bare "falls back to 200" assertion
+        // would pass identically pre- and post-Task-10 and prove nothing happened.
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-4", "success", "out", null, 999,
+                Map.of("Location", "/x"), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status")
+                .expectHeader().valueEquals("Location", "/x");
+    }
+
+    @Test
     void invokeSync_offloaded_addsOffloadedHeader() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         InvocationResponse response = new InvocationResponse("exec-off", "success", "out", null);
@@ -203,7 +335,7 @@ class InvocationControllerTest {
     void invokeAsync_success_returns202AndDelegatesHeaders() {
         InvocationRequest request = new InvocationRequest("payload", Map.of("x", "y"));
         InvocationResponse response = new InvocationResponse("exec-2", "queued", null, null);
-        when(invocationService.invokeAsync("echo", request, "idem-1", "trace-1")).thenReturn(response);
+        when(invocationService.invokeAsync(eq("echo"), any(), eq("idem-1"), eq("trace-1"))).thenReturn(response);
 
         webClient.post()
                 .uri("/v1/functions/echo:enqueue")
@@ -216,6 +348,36 @@ class InvocationControllerTest {
                 .expectBody()
                 .jsonPath("$.executionId").isEqualTo("exec-2")
                 .jsonPath("$.status").isEqualTo("queued");
+
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeAsync(eq("echo"), captor.capture(), eq("idem-1"), eq("trace-1"));
+        assertThat(captor.getValue().input()).isEqualTo("payload");
+        assertThat(captor.getValue().metadata()).isEqualTo(Map.of("x", "y"));
+    }
+
+    @Test
+    void invokeAsync_capturesCallerHeadersIntoRequest() {
+        InvocationResponse response = new InvocationResponse("exec-async-hdr", "queued", null, null);
+        when(invocationService.invokeAsync(eq("echo"), any(), eq("k-1"), eq("t-1"))).thenReturn(response);
+
+        webClient.post()
+                .uri("/v1/functions/echo:enqueue")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer x")
+                .header("Connection", "keep-alive")
+                .header("X-Trace-Id", "t-1")
+                .header("Idempotency-Key", "k-1")
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isAccepted();
+
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeAsync(eq("echo"), captor.capture(), eq("k-1"), eq("t-1"));
+        Map<String, String> capturedHeaders = captor.getValue().headers();
+        assertThat(capturedHeaders.get("authorization")).isEqualTo("Bearer x");
+        assertThat(capturedHeaders).doesNotContainKey("connection");
+        assertThat(capturedHeaders).doesNotContainKey("x-trace-id");
+        assertThat(capturedHeaders).doesNotContainKey("idempotency-key");
     }
 
     @Test

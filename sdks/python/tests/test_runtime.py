@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 
 import nanofaas.runtime.app as _app
 from nanofaas.runtime.app import app
-from nanofaas.sdk import decorator
+from nanofaas.sdk import context, decorator
+from nanofaas.sdk.response import HandlerResponse
 
 @pytest.fixture
 def client():
@@ -271,3 +272,166 @@ def test_callback_submission_is_bounded(mock_post, client, monkeypatch):
     assert response.status_code == 200
     mock_post.assert_not_called()
     slots.release()
+
+
+def test_invoke_handler_returns_handler_response_uses_its_status_and_headers(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"error": "not found"}, 404, {"Content-Type": "application/json"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-1"})
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["x-nanofaas-function-status"] == "true"
+
+
+def test_invoke_handler_returns_handler_response_drops_disallowed_headers(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"ok": True}, 200, {"X-Execution-Id": "spoof", "X-Custom": "nope"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-2"})
+    assert response.headers.get("x-custom") is None
+    assert response.headers.get("x-execution-id") != "spoof"
+
+
+def test_invoke_handler_response_dropped_headers_log_warn_but_still_succeed(client, caplog):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"ok": True}, 200, {"X-Execution-Id": "spoof", "X-Custom": "nope"})
+
+    with caplog.at_level("WARNING", logger="nanofaas.runtime.app"):
+        response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-2b"})
+
+    # Dropping disallowed headers must never fail the invocation.
+    assert response.status_code == 200
+    assert response.headers["x-nanofaas-function-status"] == "true"
+
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1, f"expected exactly one WARN, got {warnings}"
+    assert "Dropped disallowed response header(s)" in warnings[0]
+    assert "X-Execution-Id" in warnings[0] and "X-Custom" in warnings[0]
+    assert "ex-2b" in warnings[0]
+
+
+def test_invoke_handler_returns_handler_response_invalid_status_falls_back_to_500(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"x": 1}, 999)
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-3"})
+    assert response.status_code == 500
+    assert "x-nanofaas-function-status" not in response.headers
+
+
+def test_invoke_handler_returns_plain_value_behaves_as_today(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return {"roman": "XLII"}
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-4"})
+    assert response.status_code == 200
+    assert "x-nanofaas-function-status" not in response.headers
+
+
+def test_invoke_exposes_request_headers_from_body_to_handler(client):
+    seen = {}
+
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        seen.update(context.get_headers())
+        return {"ok": True}
+
+    client.post(
+        "/invoke",
+        json={"input": {}, "headers": {"authorization": "Bearer x"}},
+        headers={"X-Execution-Id": "ex-5"},
+    )
+    assert seen.get("authorization") == "Bearer x"
+
+
+def test_invoke_ignores_own_http_headers_for_handler_context(client):
+    # The runtime's inbound HTTP headers are the control plane's, not the caller's —
+    # reading them here is the bug Task 6 (Java side) exists to prevent. This test
+    # pins that the Python runtime only trusts payload["headers"].
+    seen = {}
+
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        seen.update(context.get_headers())
+        return {"ok": True}
+
+    client.post("/invoke", json={"input": {}}, headers={
+        "X-Execution-Id": "ex-6", "Authorization": "Bearer leaked"})
+    assert seen == {}
+
+
+def test_invoke_envelope_body_is_output_verbatim(client):
+    # Java returns the normalized output bare; Python must not apply its usual
+    # {"result": ...} wrapping in the envelope path.
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse("hello", 200, {"Content-Type": "text/plain"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-7"})
+    assert response.json() == "hello"
+
+
+def test_invoke_handler_response_with_encoding_emits_encoding_header(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse("aGVsbG8=", 200, {"Content-Type": "application/octet-stream"}, encoding="base64")
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-1"})
+    assert response.headers["x-nanofaas-encoding"] == "base64"
+
+
+def test_invoke_handler_response_without_encoding_omits_encoding_header(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"error": "not found"}, 404, {"Content-Type": "application/json"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-2"})
+    assert "x-nanofaas-encoding" not in response.headers
+
+
+def test_invoke_plain_value_never_emits_encoding_header(client):
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return {"roman": "XLII"}
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-3"})
+    assert "x-nanofaas-encoding" not in response.headers
+
+
+def test_invoke_handler_cannot_spoof_encoding_header_through_its_own_headers_map(client):
+    # X-NanoFaaS-Encoding is not in _ALLOWED_RESPONSE_HEADERS, so a handler stuffing it into
+    # its own headers dict must never leak it through — only the dedicated `encoding` field can.
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse("body", 200, {"X-NanoFaaS-Encoding": "spoofed"})
+
+    response = client.post("/invoke", json={"input": {}}, headers={"X-Execution-Id": "ex-enc-4"})
+    assert response.headers.get("x-nanofaas-encoding") != "spoofed"
+    assert "x-nanofaas-encoding" not in response.headers
+
+
+@patch("requests.post")
+def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
+    mock_post.return_value.status_code = 204
+
+    @decorator.nanofaas_function
+    def mock_handler(input_data):
+        return HandlerResponse({"ok": True}, 201, {"Content-Type": "application/json"}, encoding="base64")
+
+    response = client.post(
+        "/invoke",
+        json={"input": {}},
+        headers={"X-Execution-Id": "ex-8", "X-Callback-Url": "http://control-plane/callbacks"},
+    )
+    assert response.status_code == 201
+    callback_body = mock_post.call_args.kwargs["json"]
+    assert callback_body["statusCode"] == 201
+    assert callback_body["headers"] == {"Content-Type": "application/json"}
+    assert callback_body["encoding"] == "base64"
+    assert "status_code" not in callback_body

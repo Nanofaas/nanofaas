@@ -80,7 +80,8 @@ public class ExecutionCompletionHandler {
                 return;
             }
             if (result.success()) {
-                executionRecord.markSuccess(result.output());
+                executionRecord.markSuccess(result.output(), result.statusCode(),
+                        result.headers(), result.encoding());
             } else {
                 executionRecord.markError(result.error());
             }
@@ -265,7 +266,8 @@ public class ExecutionCompletionHandler {
         Instant enqueuedAt = currentTask.enqueuedAt();
         Instant startedAt = executionRecord.startedAt();
         if (result.success()) {
-            executionRecord.markSuccess(result.output());
+            executionRecord.markSuccess(result.output(), result.statusCode(),
+                    result.headers(), result.encoding());
         } else {
             executionRecord.markError(result.error());
         }

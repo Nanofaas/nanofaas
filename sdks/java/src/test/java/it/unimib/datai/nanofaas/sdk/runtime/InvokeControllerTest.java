@@ -1,14 +1,20 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
@@ -268,5 +274,132 @@ class InvokeControllerTest {
         assertNull(second.getHeaders().getFirst("X-Init-Duration-Ms"));
         verify(coldStartTracker, times(2)).firstInvocation();
         verify(coldStartTracker).initDurationMs();
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_usesItsStatusAndHeaders() {
+        when(handler.handle(any())).thenReturn(
+                HandlerResponse.of(Map.of("error", "not found"), 404, Map.of("Content-Type", "application/json")));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("application/json", response.getHeaders().getFirst("Content-Type"));
+        assertEquals("true", response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_dropsDisallowedHeaders() {
+        when(handler.handle(any())).thenReturn(
+                HandlerResponse.of("body", 200, Map.of("X-Execution-Id", "spoof", "X-Custom", "nope")));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, "env-exec-id", null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNull(response.getHeaders().getFirst("X-Execution-Id"));
+        assertNull(response.getHeaders().getFirst("X-Custom"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_disallowedHeaderLogsWarnWithHeaderNameAndExecutionId() {
+        Logger controllerLogger = (Logger) LoggerFactory.getLogger(InvokeController.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        controllerLogger.addAppender(appender);
+        try {
+            when(handler.handle(any())).thenReturn(
+                    HandlerResponse.of("body", 200, Map.of("X-Custom", "nope")));
+
+            controller.invoke(new InvocationRequest("input", null), "env-exec-id", null);
+
+            boolean warned = appender.list.stream().anyMatch(event ->
+                    event.getLevel() == Level.WARN
+                            && event.getFormattedMessage().contains("X-Custom")
+                            && event.getFormattedMessage().contains("env-exec-id"));
+            assertTrue(warned, "expected a WARN log naming the dropped header and execution id, got: " + appender.list);
+        } finally {
+            controllerLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponse_invalidStatusCodeFallsBackToPlatformError() {
+        when(handler.handle(any())).thenReturn(HandlerResponse.of("body", 999));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals(500, response.getStatusCode().value());
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+    }
+
+    @Test
+    void invoke_handlerReturnsPlainValue_behavesExactlyAsToday() {
+        when(handler.handle(any())).thenReturn(Map.of("roman", "XLII"));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponseWithEncoding_emitsEncodingHeader() {
+        when(handler.handle(any())).thenReturn(
+                new HandlerResponse("aGVsbG8=", 200, Map.of("Content-Type", "application/octet-stream"), "base64"));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertEquals("base64", response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_handlerReturnsHandlerResponseWithoutEncoding_omitsEncodingHeader() {
+        when(handler.handle(any())).thenReturn(
+                HandlerResponse.of(Map.of("error", "not found"), 404, Map.of("Content-Type", "application/json")));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_handlerReturnsPlainValue_neverEmitsEncodingHeader() {
+        when(handler.handle(any())).thenReturn("ok");
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_handlerCannotSpoofEncodingHeaderThroughItsOwnHeadersMap() {
+        // X-NanoFaaS-Encoding is not in ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS, so a
+        // handler stuffing it into its own headers map must never leak it through — only the
+        // envelope's dedicated `encoding` field can produce this header.
+        when(handler.handle(any())).thenReturn(
+                new HandlerResponse("body", 200, Map.of("X-NanoFaaS-Encoding", "spoofed"), null));
+
+        InvocationRequest request = new InvocationRequest("input", null);
+        ResponseEntity<Object> response = controller.invoke(request, null, null);
+
+        assertNull(response.getHeaders().getFirst("X-NanoFaaS-Encoding"));
+    }
+
+    @Test
+    void invoke_passesCallerHeadersFromBodyToHandler() {
+        ArgumentCaptor<InvocationRequest> requestCaptor = ArgumentCaptor.forClass(InvocationRequest.class);
+        when(handler.handle(requestCaptor.capture())).thenReturn("ok");
+
+        InvocationRequest request = new InvocationRequest("input", null, Map.of("authorization", "Bearer x"));
+        controller.invoke(request, null, null);
+
+        assertEquals("Bearer x", requestCaptor.getValue().headers().get("authorization"));
     }
 }

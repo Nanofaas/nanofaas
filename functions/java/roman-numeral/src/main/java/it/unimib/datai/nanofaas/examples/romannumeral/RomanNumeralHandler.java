@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.examples.romannumeral;
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import it.unimib.datai.nanofaas.sdk.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.NanofaasFunction;
 import org.slf4j.Logger;
@@ -23,21 +24,21 @@ public class RomanNumeralHandler implements FunctionHandler {
         log.info("roman-numeral invoked, executionId={}", FunctionContext.getExecutionId());
 
         if (!(request.input() instanceof Map<?, ?> rawInput)) {
-            return Map.of(ERROR_KEY, "Input must be a JSON object");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Input must be a JSON object"), 422);
         }
         var input = (Map<String, Object>) rawInput;
 
         if (!input.containsKey("number")) {
-            return Map.of(ERROR_KEY, "missing required field: number");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "missing required field: number"), 422);
         }
         int n;
         try {
             n = ((Number) input.get("number")).intValue();
         } catch (ClassCastException _) {
-            return Map.of(ERROR_KEY, "field 'number' must be an integer");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "field 'number' must be an integer"), 422);
         }
         if (n < 1 || n > 3999) {
-            return Map.of(ERROR_KEY, "number must be between 1 and 3999, got: " + n);
+            return HandlerResponse.of(Map.of(ERROR_KEY, "number must be between 1 and 3999, got: " + n), 422);
         }
         return Map.of("roman", toRoman(n));
     }

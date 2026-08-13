@@ -103,7 +103,14 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
         return request.bodyValue(task.request())
                 .exchangeToMono(response -> {
-                    if (response.statusCode().is2xxSuccessful()) {
+                    boolean functionDecided = "true".equalsIgnoreCase(
+                            response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Function-Status"));
+
+                    // A marked response is the function's own answer, whatever its status —
+                    // read it down the same body-parsing path as a plain 2xx, before any
+                    // status-based branching (a marker-bearing 404 is a function decision,
+                    // not "unregistered function").
+                    if (functionDecided || response.statusCode().is2xxSuccessful()) {
                         return response.bodyToMono(InvocationResponse.class)
                                 .map(this::toResult)
                                 .switchIfEmpty(Mono.error(new OffloadFailedException(target, false,
@@ -140,7 +147,8 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
     private InvocationResult toResult(InvocationResponse response) {
         return switch (response.status() == null ? "" : response.status()) {
-            case "success" -> InvocationResult.success(response.output());
+            case "success" -> InvocationResult.successWithEnvelope(
+                    response.output(), response.statusCode(), response.headers(), response.encoding());
             case "timeout" -> InvocationResult.error("REMOTE_TIMEOUT", "remote execution timed out");
             default -> response.error() != null
                     ? new InvocationResult(false, null, response.error())

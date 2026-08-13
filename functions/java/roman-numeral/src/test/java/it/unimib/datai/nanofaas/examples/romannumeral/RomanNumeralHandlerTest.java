@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.examples.romannumeral;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -21,7 +22,13 @@ class RomanNumeralHandlerTest {
         JsonNode cases = mapper.readTree(Path.of("../..", "test-data", "roman-numeral", "correctness.json").toFile()).get("cases");
         for (JsonNode contractCase : cases) {
             Object input = mapper.convertValue(contractCase.get("input"), Object.class);
-            Map<String, Object> actual = (Map<String, Object>) handler.handle(new InvocationRequest(input, null));
+            Object result = handler.handle(new InvocationRequest(input, null));
+            Map<String, Object> actual;
+            if (result instanceof HandlerResponse response) {
+                actual = (Map<String, Object>) response.output();
+            } else {
+                actual = (Map<String, Object>) result;
+            }
             JsonNode expected = contractCase.get("expected");
             String key = expected.has("error") ? "error" : "roman";
             assertEquals(expected.get(key).asText(), actual.get(key), contractCase.get("name").asText());
@@ -48,24 +55,30 @@ class RomanNumeralHandlerTest {
     @Test
     void handleReturnsMissingFieldError() {
         var req = new InvocationRequest(Map.of(), null);
+        var result = (HandlerResponse) handler.handle(req);
+        assertEquals(422, result.statusCode());
         @SuppressWarnings("unchecked")
-        var result = (Map<String, Object>) handler.handle(req);
-        assertEquals("missing required field: number", result.get("error"));
+        var body = (Map<String, Object>) result.output();
+        assertEquals("missing required field: number", body.get("error"));
     }
 
     @Test
     void handleReturnsRomanForValidNumber() {
         var req = new InvocationRequest(Map.of("number", 42), null);
+        var result = handler.handle(req);
+        assertFalse(result instanceof HandlerResponse); // unchanged: plain value, implicit 200
         @SuppressWarnings("unchecked")
-        var result = (Map<String, Object>) handler.handle(req);
-        assertEquals("XLII", result.get("roman"));
+        var body = (Map<String, Object>) result;
+        assertEquals("XLII", body.get("roman"));
     }
 
     @Test
     void handleRejectsOutOfRangeNumber() {
         var req = new InvocationRequest(Map.of("number", 4000), null);
+        var result = (HandlerResponse) handler.handle(req);
+        assertEquals(422, result.statusCode());
         @SuppressWarnings("unchecked")
-        var result = (Map<String, Object>) handler.handle(req);
-        assertTrue(((String) result.get("error")).startsWith("number must be between"));
+        var body = (Map<String, Object>) result.output();
+        assertTrue(((String) body.get("error")).startsWith("number must be between"));
     }
 }

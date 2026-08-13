@@ -31,6 +31,46 @@ class CommonModelTest {
         assertEquals("timed out", r.error().message());
     }
 
+    @Test
+    void invocationResult_success_hasNullEnvelopeFieldsByDefault() {
+        InvocationResult r = InvocationResult.success("hello");
+        assertNull(r.statusCode());
+        assertNull(r.headers());
+        assertNull(r.encoding());
+    }
+
+    @Test
+    void invocationResult_successWithEnvelope_carriesFields() {
+        InvocationResult r = InvocationResult.successWithEnvelope("body", 201, Map.of("Location", "/x"), "base64");
+        assertTrue(r.success());
+        assertEquals("body", r.output());
+        assertEquals(201, r.statusCode());
+        assertEquals("/x", r.headers().get("Location"));
+        assertEquals("base64", r.encoding());
+    }
+
+    @Test
+    void invocationResult_jsonRoundTrip() {
+        // This record is the @RequestBody of /internal/executions/{id}:complete — the
+        // async callback wire format. Field names must survive both directions.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResult original = InvocationResult.successWithEnvelope(
+                "body", 201, Map.of("Location", "/x"), "base64");
+        InvocationResult back = mapper.readValue(mapper.writeValueAsString(original), InvocationResult.class);
+        assertEquals(201, back.statusCode());
+        assertEquals("/x", back.headers().get("Location"));
+        assertEquals("base64", back.encoding());
+    }
+
+    @Test
+    void invocationResult_deserializesLegacyCallbackBody() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResult back = mapper.readValue(
+                "{\"success\":true,\"output\":\"ok\",\"error\":null}", InvocationResult.class);
+        assertTrue(back.success());
+        assertNull(back.statusCode());
+    }
+
     // --- ErrorInfo ---
 
     @Test
@@ -55,23 +95,90 @@ class CommonModelTest {
         assertNull(r.metadata());
     }
 
+    @Test
+    void invocationRequest_headersAccessor() {
+        InvocationRequest r = new InvocationRequest("payload", Map.of("k", "v"), Map.of("authorization", "Bearer x"));
+        assertEquals("Bearer x", r.headers().get("authorization"));
+    }
+
+    @Test
+    void invocationRequest_nullHeaders() {
+        InvocationRequest r = new InvocationRequest("data", null, null);
+        assertNull(r.headers());
+    }
+
+    @Test
+    void invocationRequest_jsonRoundTrip() throws Exception {
+        // The record is @RequestBody-deserialized on two hops; adding a secondary
+        // constructor must not confuse Jackson's canonical-constructor detection.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationRequest original = new InvocationRequest(
+                Map.of("number", 42), Map.of("k", "v"), Map.of("authorization", "Bearer x"));
+        InvocationRequest back = mapper.readValue(mapper.writeValueAsString(original), InvocationRequest.class);
+        assertEquals(original.metadata(), back.metadata());
+        assertEquals(original.headers(), back.headers());
+    }
+
+    @Test
+    void invocationRequest_deserializesLegacyBodyWithoutHeaders() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationRequest back = mapper.readValue("{\"input\":{\"n\":1}}", InvocationRequest.class);
+        assertNull(back.headers());
+    }
+
     // --- InvocationResponse ---
 
     @Test
     void invocationResponse_recordAccessors() {
         ErrorInfo err = new ErrorInfo("ERR", "detail");
-        InvocationResponse resp = new InvocationResponse("ex-1", "FAILED", null, err);
+        InvocationResponse resp = new InvocationResponse("ex-1", "FAILED", null, err, null, null, null);
         assertEquals("ex-1", resp.executionId());
         assertEquals("FAILED", resp.status());
         assertNull(resp.output());
         assertEquals(err, resp.error());
+        assertNull(resp.statusCode());
+    }
+
+    @Test
+    void invocationResponse_carriesEnvelopeFields() {
+        InvocationResponse resp = new InvocationResponse(
+                "ex-2", "success", "body", null, 201, Map.of("Location", "/x"), null);
+        assertEquals(201, resp.statusCode());
+        assertEquals("/x", resp.headers().get("Location"));
+    }
+
+    @Test
+    void invocationResponse_jsonRoundTrip() {
+        // DefaultOffloadGateway does bodyToMono(InvocationResponse.class) on the remote's
+        // :invoke body — the envelope fields must survive that hop (Task 10b depends on it).
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResponse original = new InvocationResponse(
+                "ex-3", "success", "body", null, 404, Map.of("Content-Type", "text/plain"), "base64");
+        InvocationResponse back = mapper.readValue(mapper.writeValueAsString(original), InvocationResponse.class);
+        assertEquals(404, back.statusCode());
+        assertEquals("text/plain", back.headers().get("Content-Type"));
+        assertEquals("base64", back.encoding());
+    }
+
+    @Test
+    void invocationResponse_deserializesLegacyBody() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        InvocationResponse back = mapper.readValue(
+                "{\"executionId\":\"ex-4\",\"status\":\"success\",\"output\":\"ok\",\"error\":null}",
+                InvocationResponse.class);
+        assertEquals("ex-4", back.executionId());
+        assertNull(back.statusCode());
+        assertNull(back.headers());
+        assertNull(back.encoding());
     }
 
     // --- ExecutionStatus ---
 
     @Test
     void executionStatus_recordAccessors() {
-        ExecutionStatus s = new ExecutionStatus("ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200), "result", null, true, 150L);
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-1", "COMPLETED", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200),
+                "result", null, true, 150L, null, null, null);
         assertEquals("ex-1", s.executionId());
         assertEquals("COMPLETED", s.status());
         assertEquals(Instant.ofEpochMilli(100), s.startedAt());
@@ -80,6 +187,58 @@ class CommonModelTest {
         assertNull(s.error());
         assertTrue(s.coldStart());
         assertEquals(150L, s.initDurationMs());
+        assertNull(s.statusCode());
+    }
+
+    @Test
+    void executionStatus_carriesEnvelopeFields() {
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-2", "success", Instant.now(), Instant.now(),
+                "body", null, false, null, 404, Map.of("Content-Type", "text/plain"), "base64");
+        assertEquals(404, s.statusCode());
+        assertEquals("text/plain", s.headers().get("Content-Type"));
+        assertEquals("base64", s.encoding());
+    }
+
+    @Test
+    void executionStatus_compatConstructorLeavesEnvelopeFieldsNull() {
+        ExecutionStatus s = new ExecutionStatus(
+                "ex-3", "queued", null, null, null, null, false, null);
+        assertNull(s.statusCode());
+        assertNull(s.headers());
+        assertNull(s.encoding());
+    }
+
+    @Test
+    void executionStatus_jsonRoundTrip() {
+        // GET /v1/executions/{id} returns ExecutionStatus as the response body
+        // (InvocationController.getExecution) — the replay path where a caller reads a
+        // completed result back, envelope fields (esp. encoding) must survive Jackson.
+        // Jackson 3's JsonMapper has built-in java.time support (verified: no JavaTimeModule
+        // registration needed), so real, non-null Instant values are used below.
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        ExecutionStatus original = new ExecutionStatus(
+                "ex-4", "success", Instant.ofEpochMilli(100), Instant.ofEpochMilli(200),
+                "body", null, false, 50L, 404, Map.of("Content-Type", "text/plain"), "base64");
+        ExecutionStatus back = mapper.readValue(mapper.writeValueAsString(original), ExecutionStatus.class);
+        assertEquals(Instant.ofEpochMilli(100), back.startedAt());
+        assertEquals(Instant.ofEpochMilli(200), back.finishedAt());
+        assertEquals(404, back.statusCode());
+        assertEquals("text/plain", back.headers().get("Content-Type"));
+        assertEquals("base64", back.encoding());
+    }
+
+    @Test
+    void executionStatus_deserializesLegacyBody() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        ExecutionStatus back = mapper.readValue(
+                "{\"executionId\":\"e\",\"status\":\"queued\",\"startedAt\":null,\"finishedAt\":null,"
+                        + "\"output\":null,\"error\":null,\"coldStart\":false,\"initDurationMs\":null}",
+                ExecutionStatus.class);
+        assertEquals("e", back.executionId());
+        assertNull(back.statusCode());
+        assertNull(back.headers());
+        assertNull(back.encoding());
     }
 
     // --- FunctionSpec ---

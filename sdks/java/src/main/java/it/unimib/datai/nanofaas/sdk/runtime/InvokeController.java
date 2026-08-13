@@ -3,11 +3,14 @@ package it.unimib.datai.nanofaas.sdk.runtime;
 import tools.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
+import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
@@ -69,20 +72,7 @@ public class InvokeController {
         try {
             FunctionHandler handler = handlerRegistry.resolve();
             Object rawOutput = handlerExecutor.execute(handler, request);
-            JsonNode output = outputNormalizer.toJsonNode(rawOutput);
-
-            callbackDispatcher.submit(
-                    effectiveExecutionId,
-                    CallbackPayload.success(output),
-                    runtimeContext.traceId(),
-                    dispatchAttempt);
-
-            ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
-            if (isColdStart) {
-                responseBuilder.header("X-Cold-Start", "true");
-                responseBuilder.header("X-Init-Duration-Ms", String.valueOf(coldStartTracker.initDurationMs()));
-            }
-            return responseBuilder.body(output);
+            return buildSuccessResponse(rawOutput, effectiveExecutionId, runtimeContext, dispatchAttempt, isColdStart);
         } catch (OutputSerializationException ex) {
             String errorMessage = ex.getMessage();
             log.error("Handler output serialization failed for execution {}: {}", effectiveExecutionId, errorMessage, ex);
@@ -106,6 +96,73 @@ public class InvokeController {
             return handleHandlerFailure(ex, effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
         } catch (Exception ex) {
             return handleHandlerFailure(ex, effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
+        }
+    }
+
+    private ResponseEntity<Object> buildSuccessResponse(Object rawOutput, String executionId,
+                                                          InvocationRuntimeContext runtimeContext,
+                                                          String dispatchAttempt, boolean isColdStart) {
+        int statusCode = 200;
+        Map<String, String> allowedHeaders = Map.of();
+        String encoding = null;
+        Object outputForSerialization = rawOutput;
+        boolean isEnvelope = false;
+
+        if (rawOutput instanceof HandlerResponse envelope) {
+            if (ResponseHeaderPolicy.isStatusCodeValid(envelope.statusCode())) {
+                statusCode = envelope.statusCode();
+                allowedHeaders = ResponseHeaderPolicy.filterAllowedHeaders(envelope.headers());
+                warnOnDroppedHeaders(envelope.headers(), allowedHeaders, executionId);
+                encoding = envelope.encoding();
+                outputForSerialization = envelope.output();
+                isEnvelope = true;
+            } else {
+                log.warn("Handler returned invalid statusCode {} for execution {}, treating as platform error",
+                        envelope.statusCode(), executionId);
+                callbackDispatcher.submit(executionId,
+                        CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR",
+                                "Handler returned invalid statusCode: " + envelope.statusCode()),
+                        runtimeContext.traceId(), dispatchAttempt);
+                return ResponseEntity.status(500)
+                        .body(Map.of(ERROR_KEY, "Handler returned invalid statusCode: " + envelope.statusCode()));
+            }
+        }
+
+        JsonNode output = outputNormalizer.toJsonNode(outputForSerialization);
+
+        callbackDispatcher.submit(
+                executionId,
+                isEnvelope
+                        ? CallbackPayload.successWithEnvelope(output, statusCode, allowedHeaders, encoding)
+                        : CallbackPayload.success(output),
+                runtimeContext.traceId(),
+                dispatchAttempt);
+
+        ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(statusCode);
+        allowedHeaders.forEach(responseBuilder::header);
+        if (isEnvelope) {
+            responseBuilder.header("X-NanoFaaS-Function-Status", "true");
+            if (encoding != null) {
+                responseBuilder.header("X-NanoFaaS-Encoding", encoding);
+            }
+        }
+        if (isColdStart) {
+            responseBuilder.header("X-Cold-Start", "true");
+            responseBuilder.header("X-Init-Duration-Ms", String.valueOf(coldStartTracker.initDurationMs()));
+        }
+        return responseBuilder.body(output);
+    }
+
+    private void warnOnDroppedHeaders(Map<String, String> rawHeaders, Map<String, String> allowedHeaders,
+                                       String executionId) {
+        if (rawHeaders == null || rawHeaders.size() == allowedHeaders.size()) {
+            return;
+        }
+        List<String> dropped = rawHeaders.keySet().stream()
+                .filter(key -> !ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS.contains(key.toLowerCase()))
+                .toList();
+        if (!dropped.isEmpty()) {
+            log.warn("Dropped disallowed response header(s) {} for execution {}", dropped, executionId);
         }
     }
 
