@@ -26,6 +26,9 @@ def test_java_container_images_target_java_25():
         assert "gcr.io/distroless/base-debian13:nonroot" in dockerfile
         assert "gcr.io/distroless/java25-debian13:nonroot" not in dockerfile
 
+    control_plane_dockerfile = (REPO_ROOT / "platform/control-plane/Dockerfile").read_text()
+    assert "jdk.httpserver" in control_plane_dockerfile
+
     native_dockerfiles = [
         "functions/java/word-stats-lite/Dockerfile",
         "functions/java/json-transform-lite/Dockerfile",
