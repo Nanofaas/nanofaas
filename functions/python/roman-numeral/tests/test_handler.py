@@ -76,7 +76,14 @@ SHARED_CASES = json.loads(
 @pytest.mark.parametrize("contract_case", SHARED_CASES, ids=lambda case: case["name"])
 def test_shared_contract(contract_case):
     result = _invoke(contract_case["input"])
-    actual = result.output if isinstance(result, HandlerResponse) else result
+    expected_status = contract_case.get("expectedStatusCode", 200)
+
+    if expected_status == 200:
+        assert not isinstance(result, HandlerResponse), "a 200 case must return a plain value"
+        actual = result
+    else:
+        assert isinstance(result, HandlerResponse), "a non-200 case must return a HandlerResponse envelope"
+        assert result.status_code == expected_status
+        actual = result.output
+
     assert actual == contract_case["expected"]
-    if isinstance(result, HandlerResponse):
-        assert result.status_code == contract_case.get("expectedStatusCode", 200)
