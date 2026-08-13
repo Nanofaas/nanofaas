@@ -5,7 +5,7 @@ import { runWithContext } from "./context.js";
 import { NanofaasError, TimeoutError, toErrorInfo } from "./errors.js";
 import { createLogger } from "./logger.js";
 import { createMetrics, type RuntimeMetrics } from "./metrics.js";
-import type { HandlerResponse } from "./response.js";
+import { HandlerResponse, filterAllowedHeaders, isStatusCodeValid } from "./response.js";
 import type {
     CallbackPayload,
     Handler,
@@ -331,7 +331,22 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
             ...(traceId === undefined ? {} : { traceId }),
         };
 
-        const output = await invokeHandler(state, handler, ctx, payload) as JsonValue;
+        const result = await invokeHandler(state, handler, ctx, payload);
+        const isEnvelope = result instanceof HandlerResponse;
+
+        if (isEnvelope && !isStatusCodeValid(result.statusCode)) {
+            const message = `Handler returned invalid statusCode: ${result.statusCode}`;
+            state.logger.warn(message, { executionId });
+            state.metrics.invocations.inc({ success: "false" });
+            dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
+                success: false,
+                output: null,
+                error: { code: "OUTPUT_SERIALIZATION_ERROR", message },
+            });
+            writeJson(res, 500, { error: { code: "OUTPUT_SERIALIZATION_ERROR", message } });
+            return;
+        }
+
         state.metrics.invocations.inc({ success: "true" });
 
         const responseHeaders: Record<string, string> = {};
@@ -340,13 +355,34 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
             responseHeaders["x-init-duration-ms"] = String(Date.now() - state.startedAt);
         }
 
-        dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
-            success: true,
-            output,
-            error: null,
-        });
-
-        writeJson(res, 200, output, responseHeaders);
+        if (isEnvelope) {
+            const allowed = filterAllowedHeaders(result.headers);
+            const dropped = Object.keys(result.headers).filter((key) => !(key in allowed));
+            if (dropped.length > 0) {
+                state.logger.warn("dropped response header(s)", { executionId, dropped: dropped.join(", ") });
+            }
+            Object.assign(responseHeaders, allowed);
+            responseHeaders["x-nanofaas-function-status"] = "true";
+            if (result.encoding !== undefined) {
+                responseHeaders["x-nanofaas-encoding"] = result.encoding;
+            }
+            dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
+                success: true,
+                output: result.output,
+                error: null,
+                statusCode: result.statusCode,
+                headers: allowed,
+                ...(result.encoding === undefined ? {} : { encoding: result.encoding }),
+            });
+            writeJson(res, result.statusCode, result.output, responseHeaders);
+        } else {
+            dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
+                success: true,
+                output: result,
+                error: null,
+            });
+            writeJson(res, 200, result, responseHeaders);
+        }
     } catch (error) {
         const info = toErrorInfo(error);
         const status = info.code === "HANDLER_TIMEOUT"
