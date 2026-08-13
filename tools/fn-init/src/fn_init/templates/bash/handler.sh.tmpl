@@ -13,7 +13,7 @@ jq '
   .input as $in
   | if ($in | type) != "object" then
       {"__nanofaas_envelope__":true,"output":{"error": "Input must be a JSON object"},"statusCode":422}
-    elif ($in | length) == 0 then
+    elif ($in.text | type) != "string" or ($in.text | length) == 0 then
       {"__nanofaas_envelope__":true,"output":{"error": "Field '"'"'text'"'"' is required and must be non-empty"},"statusCode":422}
     else
       # TODO: implement handler logic
