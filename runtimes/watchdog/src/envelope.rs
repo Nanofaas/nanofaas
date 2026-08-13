@@ -6,10 +6,6 @@
 //! a statusCode key". This marker applies to STDIO and FILE mode only: on the HTTP proxy path the
 //! fronted runtime is an SDK that already emits the marker headers, and the watchdog forwards them.
 
-// Tasks 2 and 3 wire this module's public API into main.rs (warm_invoke, invoke_http_warm,
-// InvocationResult). Until then this bin crate sees these pub items as unused.
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 
 pub const MARKER_HEADER: &str = "X-NanoFaaS-Function-Status";

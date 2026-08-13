@@ -674,6 +674,17 @@ async fn warm_invoke_get_ready() -> StatusCode {
     StatusCode::OK
 }
 
+struct ProxiedResponse {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Vec<u8>,
+}
+
+enum WarmOutput {
+    Local(serde_json::Value),
+    Proxied(ProxiedResponse),
+}
+
 async fn warm_invoke(
     State(state): State<WarmAppState>,
     headers: HeaderMap,
@@ -717,8 +728,12 @@ async fn warm_invoke(
 
     let out = match state.config.mode {
         ExecutionMode::Http => invoke_http_warm(&state.config, &payload, execution_id, trace_id).await,
-        ExecutionMode::Stdio => run_stdio_warm(&state.config, &payload, execution_id, trace_id).await,
-        ExecutionMode::File => run_file_warm(&state.config, &payload, execution_id, trace_id).await,
+        ExecutionMode::Stdio => run_stdio_warm(&state.config, &payload, execution_id, trace_id)
+            .await
+            .map(WarmOutput::Local),
+        ExecutionMode::File => run_file_warm(&state.config, &payload, execution_id, trace_id)
+            .await
+            .map(WarmOutput::Local),
     };
 
     let elapsed = start.elapsed().as_secs_f64();
@@ -740,7 +755,7 @@ async fn warm_invoke(
         .dec();
 
     match out {
-        Ok(value) => {
+        Ok(output) => {
             state
                 .metrics
                 .invocations_total
@@ -750,55 +765,61 @@ async fn warm_invoke(
                     success: "true".to_string(),
                 })
                 .inc();
-            if state.config.mode == ExecutionMode::Http {
-                return (StatusCode::OK, Json(value)).into_response();
-            }
-
-            match envelope::detect(&value) {
-                None => (StatusCode::OK, Json(value)).into_response(),
-                Some(Err(message)) => {
-                    warn!(execution_id = %execution_id, error = %message,
-                        "Envelope rejected, treating as platform error");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"error": message})),
-                    )
-                        .into_response()
-                }
-                Some(Ok(envelope)) => {
-                    let mut response = (
-                        StatusCode::from_u16(envelope.status_code)
-                            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                        Json(envelope.output),
-                    )
-                        .into_response();
-                    let headers = response.headers_mut();
-                    for (name, value) in &envelope.headers {
-                        if let (Ok(name), Ok(value)) = (
-                            name.parse::<axum::http::HeaderName>(),
-                            value.parse::<axum::http::HeaderValue>(),
-                        ) {
-                            headers.insert(name, value);
-                        }
-                    }
-                    headers.insert(
-                        envelope::MARKER_HEADER
-                            .parse::<axum::http::HeaderName>()
-                            .unwrap(),
-                        axum::http::HeaderValue::from_static("true"),
-                    );
-                    if let Some(encoding) = envelope.encoding.as_deref() {
-                        if let Ok(value) = encoding.parse::<axum::http::HeaderValue>() {
-                            headers.insert(
-                                envelope::ENCODING_HEADER
-                                    .parse::<axum::http::HeaderName>()
-                                    .unwrap(),
-                                value,
-                            );
-                        }
-                    }
+            match output {
+                WarmOutput::Proxied(proxied) => {
+                    let mut response = axum::response::Response::builder()
+                        .status(proxied.status)
+                        .body(axum::body::Body::from(proxied.body))
+                        .unwrap();
+                    response.headers_mut().extend(proxied.headers);
                     response
                 }
+                WarmOutput::Local(value) => match envelope::detect(&value) {
+                    None => (StatusCode::OK, Json(value)).into_response(),
+                    Some(Err(message)) => {
+                        warn!(execution_id = %execution_id, error = %message,
+                            "Envelope rejected, treating as platform error");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"error": message})),
+                        )
+                            .into_response()
+                    }
+                    Some(Ok(envelope)) => {
+                        let mut response = (
+                            StatusCode::from_u16(envelope.status_code)
+                                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                            Json(envelope.output),
+                        )
+                            .into_response();
+                        let headers = response.headers_mut();
+                        for (name, value) in &envelope.headers {
+                            if let (Ok(name), Ok(value)) = (
+                                name.parse::<axum::http::HeaderName>(),
+                                value.parse::<axum::http::HeaderValue>(),
+                            ) {
+                                headers.insert(name, value);
+                            }
+                        }
+                        headers.insert(
+                            envelope::MARKER_HEADER
+                                .parse::<axum::http::HeaderName>()
+                                .unwrap(),
+                            axum::http::HeaderValue::from_static("true"),
+                        );
+                        if let Some(encoding) = envelope.encoding.as_deref() {
+                            if let Ok(value) = encoding.parse::<axum::http::HeaderValue>() {
+                                headers.insert(
+                                    envelope::ENCODING_HEADER
+                                        .parse::<axum::http::HeaderName>()
+                                        .unwrap(),
+                                    value,
+                                );
+                            }
+                        }
+                        response
+                    }
+                },
             }
         }
         Err(e) => {
@@ -840,7 +861,7 @@ async fn invoke_http_warm(
     payload: &serde_json::Value,
     execution_id: &str,
     trace_id: Option<&str>,
-) -> Result<serde_json::Value, String> {
+) -> Result<WarmOutput, String> {
     let client = reqwest::Client::new();
     let mut req = client
         .post(&config.runtime_url)
@@ -857,13 +878,33 @@ async fn invoke_http_warm(
         .await
         .map_err(|e| format!("HTTP error: {}", e))?;
 
-    if response.status().is_success() {
+    let status = response.status();
+    let function_decided = response
+        .headers()
+        .get(envelope::MARKER_HEADER)
+        .and_then(|value| value.to_str().ok())
+        == Some("true");
+
+    if function_decided {
+        return Ok(WarmOutput::Proxied(ProxiedResponse {
+            status: StatusCode::from_u16(status.as_u16())
+                .map_err(|e| format!("Invalid runtime status {status}: {e}"))?,
+            headers: response.headers().clone(),
+            body: response
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read response: {e}"))?
+                .to_vec(),
+        }));
+    }
+
+    if status.is_success() {
         response
             .json()
             .await
+            .map(WarmOutput::Local)
             .map_err(|e| format!("Failed to parse response: {}", e))
     } else {
-        let status = response.status();
         let body = response.text().await.unwrap_or_default();
         Err(format!("Runtime error {}: {}", status, body))
     }
@@ -1226,6 +1267,51 @@ mod tests {
         .into_response()
     }
 
+    async fn spawn_stub_runtime(status: StatusCode, envelope: bool) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/",
+            axum::routing::post(move || async move {
+                let mut response = axum::response::Response::builder()
+                    .status(status)
+                    .header("content-type", "application/json")
+                    .header("Location", "/x");
+                if envelope {
+                    response = response
+                        .header("X-NanoFaaS-Function-Status", "true")
+                        .header("X-NanoFaaS-Encoding", "base64");
+                }
+                response
+                    .body(axum::body::Body::from(r#"{"error":"not found"}"#))
+                    .unwrap()
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        format!("http://{address}")
+    }
+
+    async fn invoke_http_returning(url: &str) -> axum::response::Response {
+        let mut config = stdio_config(serde_json::Value::Null);
+        config.mode = ExecutionMode::Http;
+        config.runtime_url = url.to_string();
+        let state = WarmAppState {
+            config: Arc::new(config),
+            invoke_lock: Arc::new(Mutex::new(())),
+            metrics: Arc::new(WatchdogMetrics::new()),
+            function_name: "test".to_string(),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-execution-id", "exec-1".parse().unwrap());
+
+        warm_invoke(
+            State(state),
+            headers,
+            Json(serde_json::json!({"input": "payload"})),
+        )
+        .await
+    }
+
     #[test]
     fn parse_command_preserves_quoted_arguments() {
         assert_eq!(
@@ -1304,6 +1390,37 @@ mod tests {
         .await;
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(response
+            .headers()
+            .get("X-NanoFaaS-Function-Status")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn warm_invoke_http_forwards_the_fronted_runtimes_envelope() {
+        let upstream = spawn_stub_runtime(StatusCode::NOT_FOUND, true).await;
+
+        let response = invoke_http_returning(&upstream).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response
+                .headers()
+                .get("X-NanoFaaS-Function-Status")
+                .unwrap(),
+            "true"
+        );
+        assert_eq!(response.headers().get("X-NanoFaaS-Encoding").unwrap(), "base64");
+        assert_eq!(response.headers().get("Location").unwrap(), "/x");
+    }
+
+    #[tokio::test]
+    async fn warm_invoke_http_plain_success_behaves_exactly_as_before() {
+        let upstream = spawn_stub_runtime(StatusCode::OK, false).await;
+
+        let response = invoke_http_returning(&upstream).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
         assert!(response
             .headers()
             .get("X-NanoFaaS-Function-Status")
