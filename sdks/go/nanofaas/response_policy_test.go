@@ -2,6 +2,7 @@ package nanofaas
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -29,13 +30,39 @@ func TestFilterAllowedHeadersKeepsAllowedDropsEverythingElse(t *testing.T) {
 	}
 }
 
-func TestFilterAllowedHeadersPreservesCasingAndDedupes(t *testing.T) {
+func TestFilterAllowedHeadersPreservesCasing(t *testing.T) {
 	filtered := FilterAllowedHeaders(map[string]string{"Content-Type": "application/pdf"})
 	if filtered["Content-Type"] != "application/pdf" {
 		t.Errorf("original casing must be preserved, got %v", filtered)
 	}
 	if len(filtered) != 1 {
 		t.Errorf("expected exactly one entry, got %v", filtered)
+	}
+}
+
+// TestFilterAllowedHeadersDedupesCaseInsensitiveCollision feeds two casings of the same
+// header name (plus an allowed and a disallowed distractor) and asserts only one entry
+// survives. It intentionally does NOT assert which casing/value wins: Go map iteration
+// order is undefined, so that assertion would be flaky. The count is deterministic
+// regardless of iteration order, which is what makes this test meaningful.
+func TestFilterAllowedHeadersDedupesCaseInsensitiveCollision(t *testing.T) {
+	filtered := FilterAllowedHeaders(map[string]string{
+		"Content-Type": "application/pdf",
+		"content-type": "text/plain",
+		"ETag":         `"abc123"`,
+		"X-Custom":     "nope",
+	})
+	count := 0
+	for key := range filtered {
+		if strings.EqualFold(key, "content-type") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly one content-type entry (any casing), got %d in %v", count, filtered)
+	}
+	if len(filtered) != 2 {
+		t.Errorf("expected content-type (deduped) + etag = 2 entries, got %v", filtered)
 	}
 }
 
