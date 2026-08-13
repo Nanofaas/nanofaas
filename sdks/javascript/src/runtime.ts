@@ -5,6 +5,7 @@ import { runWithContext } from "./context.js";
 import { NanofaasError, TimeoutError, toErrorInfo } from "./errors.js";
 import { createLogger } from "./logger.js";
 import { createMetrics, type RuntimeMetrics } from "./metrics.js";
+import type { HandlerResponse } from "./response.js";
 import type {
     CallbackPayload,
     Handler,
@@ -249,7 +250,7 @@ async function invokeHandler(
     handler: Handler,
     ctx: HandlerContext,
     request: InvocationRequest,
-): Promise<JsonValue> {
+): Promise<JsonValue | HandlerResponse> {
     const timeoutController = new AbortController();
     const timer = setTimeout(() => {
         timeoutController.abort();
@@ -330,7 +331,7 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
             ...(traceId === undefined ? {} : { traceId }),
         };
 
-        const output = await invokeHandler(state, handler, ctx, payload);
+        const output = await invokeHandler(state, handler, ctx, payload) as JsonValue;
         state.metrics.invocations.inc({ success: "true" });
 
         const responseHeaders: Record<string, string> = {};
