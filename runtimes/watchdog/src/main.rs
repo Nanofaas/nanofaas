@@ -678,7 +678,7 @@ async fn warm_invoke(
     State(state): State<WarmAppState>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> axum::response::Response {
     let execution_id = headers
         .get("x-execution-id")
         .and_then(|v| v.to_str().ok())
@@ -688,7 +688,8 @@ async fn warm_invoke(
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "X-Execution-Id header is required"})),
-        );
+        )
+            .into_response();
     }
 
     let trace_id = headers
@@ -739,7 +740,7 @@ async fn warm_invoke(
         .dec();
 
     match out {
-        Ok(v) => {
+        Ok(value) => {
             state
                 .metrics
                 .invocations_total
@@ -749,7 +750,56 @@ async fn warm_invoke(
                     success: "true".to_string(),
                 })
                 .inc();
-            (StatusCode::OK, Json(v))
+            if state.config.mode == ExecutionMode::Http {
+                return (StatusCode::OK, Json(value)).into_response();
+            }
+
+            match envelope::detect(&value) {
+                None => (StatusCode::OK, Json(value)).into_response(),
+                Some(Err(message)) => {
+                    warn!(execution_id = %execution_id, error = %message,
+                        "Envelope rejected, treating as platform error");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": message})),
+                    )
+                        .into_response()
+                }
+                Some(Ok(envelope)) => {
+                    let mut response = (
+                        StatusCode::from_u16(envelope.status_code)
+                            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        Json(envelope.output),
+                    )
+                        .into_response();
+                    let headers = response.headers_mut();
+                    for (name, value) in &envelope.headers {
+                        if let (Ok(name), Ok(value)) = (
+                            name.parse::<axum::http::HeaderName>(),
+                            value.parse::<axum::http::HeaderValue>(),
+                        ) {
+                            headers.insert(name, value);
+                        }
+                    }
+                    headers.insert(
+                        envelope::MARKER_HEADER
+                            .parse::<axum::http::HeaderName>()
+                            .unwrap(),
+                        axum::http::HeaderValue::from_static("true"),
+                    );
+                    if let Some(encoding) = envelope.encoding.as_deref() {
+                        if let Ok(value) = encoding.parse::<axum::http::HeaderValue>() {
+                            headers.insert(
+                                envelope::ENCODING_HEADER
+                                    .parse::<axum::http::HeaderName>()
+                                    .unwrap(),
+                                value,
+                            );
+                        }
+                    }
+                    response
+                }
+            }
         }
         Err(e) => {
             if is_timeout_error(&e) {
@@ -771,7 +821,11 @@ async fn warm_invoke(
                     success: "false".to_string(),
                 })
                 .inc();
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e})),
+            )
+                .into_response()
         }
     }
 }
@@ -1129,6 +1183,49 @@ async fn execute_file_mode(config: &Config, payload: &serde_json::Value) -> Invo
 mod tests {
     use super::*;
 
+    fn stdio_config(output: serde_json::Value) -> Config {
+        Config {
+            warm: true,
+            callback_url: None,
+            execution_id: None,
+            timeout_ms: 1_000,
+            trace_id: None,
+            command: vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "cat >/dev/null; printf '%s' \"$1\"".to_string(),
+                "sh".to_string(),
+                output.to_string(),
+            ],
+            mode: ExecutionMode::Stdio,
+            runtime_url: "http://127.0.0.1:0".to_string(),
+            health_url: None,
+            ready_timeout_ms: 1_000,
+            input_file: "/tmp/input.json".to_string(),
+            output_file: "/tmp/output.json".to_string(),
+            warm_port: 0,
+        }
+    }
+
+    async fn invoke_stdio_returning(output: serde_json::Value) -> axum::response::Response {
+        let state = WarmAppState {
+            config: Arc::new(stdio_config(output)),
+            invoke_lock: Arc::new(Mutex::new(())),
+            metrics: Arc::new(WatchdogMetrics::new()),
+            function_name: "test".to_string(),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-execution-id", "exec-1".parse().unwrap());
+
+        warm_invoke(
+            State(state),
+            headers,
+            Json(serde_json::json!({"input": "payload"})),
+        )
+        .await
+        .into_response()
+    }
+
     #[test]
     fn parse_command_preserves_quoted_arguments() {
         assert_eq!(
@@ -1159,5 +1256,57 @@ mod tests {
         assert!(dockerfile.contains("ENV WARM=true"));
         assert!(dockerfile.contains("ENV EXECUTION_MODE=HTTP"));
         assert!(dockerfile.contains("ENV RUNTIME_URL=http://127.0.0.1:8081/invoke"));
+    }
+
+    #[tokio::test]
+    async fn warm_invoke_stdio_envelope_applies_status_headers_and_markers() {
+        let response = invoke_stdio_returning(serde_json::json!({
+            "__nanofaas_envelope__": true,
+            "output": {"error": "not found"},
+            "statusCode": 404,
+            "headers": {"Location": "/x", "X-Custom": "dropped"},
+            "encoding": "base64"
+        }))
+        .await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response
+                .headers()
+                .get("X-NanoFaaS-Function-Status")
+                .unwrap(),
+            "true"
+        );
+        assert_eq!(response.headers().get("X-NanoFaaS-Encoding").unwrap(), "base64");
+        assert_eq!(response.headers().get("Location").unwrap(), "/x");
+        assert!(response.headers().get("X-Custom").is_none());
+    }
+
+    #[tokio::test]
+    async fn warm_invoke_stdio_plain_output_behaves_exactly_as_before() {
+        let response = invoke_stdio_returning(serde_json::json!({"roman": "XLII"})).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response
+            .headers()
+            .get("X-NanoFaaS-Function-Status")
+            .is_none());
+        assert!(response.headers().get("X-NanoFaaS-Encoding").is_none());
+    }
+
+    #[tokio::test]
+    async fn warm_invoke_stdio_out_of_range_status_is_a_platform_error() {
+        let response = invoke_stdio_returning(serde_json::json!({
+            "__nanofaas_envelope__": true,
+            "output": "ok",
+            "statusCode": 999
+        }))
+        .await;
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(response
+            .headers()
+            .get("X-NanoFaaS-Function-Status")
+            .is_none());
     }
 }
