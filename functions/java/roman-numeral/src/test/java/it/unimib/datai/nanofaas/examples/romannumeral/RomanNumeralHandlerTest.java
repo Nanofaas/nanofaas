@@ -21,17 +21,30 @@ class RomanNumeralHandlerTest {
         ObjectMapper mapper = new ObjectMapper();
         JsonNode cases = mapper.readTree(Path.of("../..", "test-data", "roman-numeral", "correctness.json").toFile()).get("cases");
         for (JsonNode contractCase : cases) {
+            String name = contractCase.get("name").asText();
             Object input = mapper.convertValue(contractCase.get("input"), Object.class);
             Object result = handler.handle(new InvocationRequest(input, null));
+
+            int expectedStatus = contractCase.has("expectedStatusCode")
+                    ? contractCase.get("expectedStatusCode").asInt()
+                    : 200;
+
             Map<String, Object> actual;
-            if (result instanceof HandlerResponse response) {
-                actual = (Map<String, Object>) response.output();
-            } else {
+            if (expectedStatus == 200) {
+                assertFalse(result instanceof HandlerResponse,
+                        name + ": a 200 case must return a plain value, not an envelope");
                 actual = (Map<String, Object>) result;
+            } else {
+                assertInstanceOf(HandlerResponse.class, result,
+                        name + ": a non-200 case must return a HandlerResponse envelope");
+                HandlerResponse response = (HandlerResponse) result;
+                assertEquals(expectedStatus, response.statusCode(), name + ": status code");
+                actual = (Map<String, Object>) response.output();
             }
+
             JsonNode expected = contractCase.get("expected");
             String key = expected.has("error") ? "error" : "roman";
-            assertEquals(expected.get(key).asText(), actual.get(key), contractCase.get("name").asText());
+            assertEquals(expected.get(key).asText(), actual.get(key), name);
         }
     }
 

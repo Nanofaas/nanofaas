@@ -159,10 +159,10 @@ public class InvokeController {
             return;
         }
         List<String> dropped = rawHeaders.keySet().stream()
-                .filter(key -> !ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS.contains(key.toLowerCase()))
+                .filter(key -> !allowedHeaders.containsKey(key))
                 .toList();
         if (!dropped.isEmpty()) {
-            log.warn("Dropped disallowed response header(s) {} for execution {}", dropped, executionId);
+            log.warn("Dropped response header(s) {} for execution {}", dropped, executionId);
         }
     }
 

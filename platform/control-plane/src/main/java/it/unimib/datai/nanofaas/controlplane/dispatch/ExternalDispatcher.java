@@ -81,8 +81,12 @@ public class ExternalDispatcher implements Dispatcher {
                                             InvocationResult.successWithEnvelope(null, statusCode, headers, encoding),
                                             isCold, initMs));
                         }
-                        // ponytail: out-of-range status code from a marker-bearing response is not
-                        // spec-legal (brief is silent) — fall through and treat as a platform error.
+                        // An out-of-range status on a marker-bearing response is not spec-legal
+                        // ([200,599] only). Fall through to the platform-error path rather than
+                        // trusting it: EXTERNAL/DEPLOYMENT endpoints are arbitrary unauthenticated
+                        // URLs, and HTTP's status-line grammar is 3DIGIT, so a misbehaving upstream
+                        // can emit one. Covered by
+                        // dispatch_functionStatusMarkerWithOutOfRangeStatus_isPlatformErrorNotPassthrough.
                     }
 
                     if (response.statusCode().is2xxSuccessful()) {
