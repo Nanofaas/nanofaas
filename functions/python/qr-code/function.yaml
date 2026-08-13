@@ -1,4 +1,4 @@
-name: qr-code
+name: qr-code-python
 image: nanofaas/qr-code:latest
 timeoutMs: 10000
 concurrency: 2

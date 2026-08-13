@@ -1,4 +1,4 @@
-name: roman-numeral
+name: roman-numeral-java
 image: nanofaas/roman-numeral:latest
 timeoutMs: 10000
 concurrency: 2
