@@ -147,7 +147,11 @@ public class ExternalDispatcher implements Dispatcher {
                         try {
                             return Mono.justOrEmpty(JSON_FALLBACK_MAPPER.readValue(raw, Object.class));
                         } catch (JacksonException ex) {
-                            return Mono.empty();
+                            // Malformed body on the marker path is a genuine transport/serialization
+                            // failure, not an empty response — must not be silently reported as
+                            // success=true with output=null. Propagate so the outer onErrorResume
+                            // turns it into an EXTERNAL_ERROR (success=false, retryable).
+                            return Mono.error(ex);
                         }
                     });
         }

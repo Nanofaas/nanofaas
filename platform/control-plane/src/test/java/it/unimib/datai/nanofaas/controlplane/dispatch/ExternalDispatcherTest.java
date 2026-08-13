@@ -466,4 +466,36 @@ class ExternalDispatcherTest {
         assertNull(dr.result().encoding());
         server.shutdown();
     }
+
+    @Test
+    void dispatch_functionStatusMarkerPresent_malformedBodyIsExternalErrorNotSilentNull() throws Exception {
+        // A marker-bearing response whose body is present but not valid JSON (truncated by a
+        // proxy, or a buggy third-party runtime) must surface as a platform error, not
+        // success=true/output=null.
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("{not-valid-json")
+                .addHeader("Content-Type", "application/pdf")
+                .addHeader("X-NanoFaaS-Function-Status", "true"));
+        server.start();
+
+        String endpoint = server.url("/invoke").toString();
+        FunctionSpec spec = new FunctionSpec(
+                "pool-fn", "image", null, Map.of(), null, 1000, 1, 10, 3,
+                endpoint, ExecutionMode.EXTERNAL, null, null, null
+        );
+        InvocationTask task = new InvocationTask(
+                "exec-pool", "pool-fn", spec,
+                new InvocationRequest("payload", Map.of()),
+                null, null, Instant.now(), 1
+        );
+
+        ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
+        DispatchResult dr = dispatcher.dispatch(task).get();
+
+        assertFalse(dr.result().success());
+        assertEquals("EXTERNAL_ERROR", dr.result().error().code());
+        server.shutdown();
+    }
 }
