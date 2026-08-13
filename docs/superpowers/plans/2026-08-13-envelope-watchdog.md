@@ -50,6 +50,24 @@ templates are a separate plan.
 - Do not touch `platform/`, `sdks/`, or anything under `functions/` — all out of scope for this plan.
 - Do NOT add a `Co-Authored-By` trailer to any commit message.
 
+### Two facts about this crate's gates, verified at baseline
+
+**`cargo fmt --check` fails on `main.rs` before any of this work.** Confirmed by running
+`rustfmt --check` against `main.rs` as it exists at the commit this branch started from. It is
+therefore **not a usable gate for this plan**, and no task should assert it comes back clean.
+Reformatting the whole 1161-line file would be a large diff unrelated to the envelope and is out of
+scope. The rule for this plan: **new files must be rustfmt-clean on their own**
+(`rustfmt --check --edition 2021 src/<file>.rs`), and edits to `main.rs` must follow rustfmt
+conventions by eye without reformatting untouched regions. `cargo clippy -- -D warnings` does work at
+baseline and remains the real lint gate.
+
+**Task 1's `envelope.rs` carries `#![allow(dead_code)]`, and it is temporary.** Nothing calls into
+the module until Tasks 2 and 3 wire it up, so clippy's `-D warnings` rejects every new item as dead
+code. That allow is a scaffolding bridge, exactly like a type cast added to keep a tree compiling
+across a task boundary: **Task 3 must delete it**, once `warm_invoke`, `invoke_http_warm` and
+`InvocationResult` all reference the module. Leaving it would permanently mask genuinely dead code in
+a module whose whole job is to be called.
+
 ## Why HTTP proxy mode is in scope
 
 `runtimes/watchdog/Dockerfile.combined` sets `ENV EXECUTION_MODE=HTTP` and fronts `warm-echo`, a Java
@@ -326,9 +344,15 @@ Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Format, lint, commit**
 
-Run: `cd runtimes/watchdog && cargo fmt --check && cargo clippy -- -D warnings`
-Expected: no output from fmt, no warnings from clippy. If clippy objects to something in the
-prescribed code, fix it the way clippy suggests and say so in your report.
+Run: `cd runtimes/watchdog && rustfmt --check --edition 2021 src/envelope.rs && cargo clippy -- -D warnings`
+Expected: no output from rustfmt (the new file must be clean on its own), no warnings from clippy.
+
+Do **not** run `cargo fmt --check` — it fails on `main.rs` at baseline, for reasons unrelated to this
+work, so it cannot tell you anything about your change.
+
+Clippy will reject every new item in `envelope.rs` as dead code, because nothing calls the module
+until Task 2. Add `#![allow(dead_code)]` at the top of `envelope.rs` to get past it, and note in your
+report that it is temporary — Task 3 deletes it once all three call sites exist.
 
 ```bash
 git add runtimes/watchdog/src/envelope.rs runtimes/watchdog/src/main.rs
@@ -496,8 +520,9 @@ Expected: PASS, the whole crate including every pre-existing test.
 
 - [ ] **Step 5: Format, lint, commit**
 
-Run: `cd runtimes/watchdog && cargo fmt --check && cargo clippy -- -D warnings`
-Expected: clean.
+Run: `cd runtimes/watchdog && cargo clippy -- -D warnings`
+Expected: no warnings. Do not run `cargo fmt --check` — it fails on `main.rs` at baseline for
+unrelated reasons. Match the surrounding code's formatting by eye; do not reformat untouched regions.
 
 ```bash
 git add runtimes/watchdog/src/main.rs
@@ -615,18 +640,37 @@ STDIO/FILE arm's `serde_json::Value` into a `ProxiedResponse` right after `envel
 final response-building code has a single form. Choose whichever keeps the diff smaller and say which
 you chose and why in your report.
 
-- [ ] **Step 4: Run to verify they pass**
+- [ ] **Step 4: Delete Task 1's temporary `#![allow(dead_code)]`**
+
+Task 1 put `#![allow(dead_code)]` at the top of `runtimes/watchdog/src/envelope.rs` because nothing
+referenced the module yet and clippy's `-D warnings` rejected every new item. After this task,
+`warm_invoke`, `invoke_http_warm` and `InvocationResult` all reference it, so the allow has done its
+job. **Remove that line.**
+
+It is scaffolding, not a lint preference: leaving it would permanently mask genuinely dead code in a
+module whose entire purpose is to be called. Same shape as a type cast added to bridge a task
+boundary — it exists to be deleted.
+
+Run: `cd runtimes/watchdog && cargo clippy -- -D warnings`
+Expected: no warnings **with the allow removed**. If clippy now reports a specific item as dead,
+that is a real finding, not a reason to restore the allow: either a later task still needs to call
+it, or it should not have been written. Report which, and do not put the blanket allow back.
+
+- [ ] **Step 5: Run to verify everything passes**
 
 Run: `cd runtimes/watchdog && cargo test`
 Expected: PASS, the whole crate.
 
-- [ ] **Step 5: Format, lint, commit**
+Run: `cd runtimes/watchdog && grep -n "allow(dead_code)" src/envelope.rs`
+Expected: no match.
 
-Run: `cd runtimes/watchdog && cargo fmt --check && cargo clippy -- -D warnings`
-Expected: clean.
+Do not run `cargo fmt --check` — it fails on `main.rs` at baseline for unrelated reasons. Match the
+surrounding code's formatting by eye; do not reformat untouched regions.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add runtimes/watchdog/src/main.rs
+git add runtimes/watchdog/src/main.rs runtimes/watchdog/src/envelope.rs
 git commit -m "fix: forward the fronted runtime's envelope in watchdog HTTP proxy mode"
 ```
 
@@ -744,8 +788,9 @@ Expected: PASS, the whole crate.
 
 - [ ] **Step 5: Format, lint, commit**
 
-Run: `cd runtimes/watchdog && cargo fmt --check && cargo clippy -- -D warnings`
-Expected: clean.
+Run: `cd runtimes/watchdog && cargo clippy -- -D warnings`
+Expected: no warnings. Do not run `cargo fmt --check` — it fails on `main.rs` at baseline for
+unrelated reasons. Match the surrounding code's formatting by eye; do not reformat untouched regions.
 
 ```bash
 git add runtimes/watchdog/src/main.rs
@@ -758,8 +803,15 @@ git commit -m "feat: carry the envelope on the watchdog's one-shot callback"
 
 - [ ] **Step 1: The crate**
 
-Run: `cd runtimes/watchdog && cargo test && cargo fmt --check && cargo clippy -- -D warnings`
+Run: `cd runtimes/watchdog && cargo test && cargo clippy -- -D warnings`
 Expected: all green, no warnings.
+
+Run: `cd runtimes/watchdog && rustfmt --check --edition 2021 src/envelope.rs`
+Expected: no output — the one new file this plan adds must be rustfmt-clean on its own.
+
+Run: `cd runtimes/watchdog && grep -n "allow(dead_code)" src/envelope.rs`
+Expected: **no match.** Task 1's temporary allow must be gone; if it is still there, either Task 3
+failed to remove it or the module has genuinely unused items worth deleting.
 
 - [ ] **Step 2: Nothing else regressed**
 
@@ -804,3 +856,19 @@ cross-language break: stop and report it.
   server in Task 3 — rather than calling `envelope::detect` directly. Unit-testing the detector is
   Task 1's job; re-testing it through a helper would prove nothing about the wiring, which is exactly
   the gap that let a Critical through in the first milestone.
+
+### Corrections applied during execution
+
+**The `cargo fmt --check` gate was unsatisfiable and has been replaced.** Every task originally
+asserted it comes back clean. It does not: `main.rs` is unformatted at the commit this branch started
+from, verified with `git show <base>:runtimes/watchdog/src/main.rs | rustfmt --check`. This is the
+third instance in this effort of a plan asserting a green gate that was never green — the earlier two
+were a task boundary that left the tree non-compiling, and a JavaScript plan written for a test
+framework the package does not have. The replacement gates are narrower and true: `rustfmt --check`
+on the one new file, and `cargo clippy -- -D warnings`, which does pass at baseline.
+
+**Task 1's `#![allow(dead_code)]` is now explicitly Task 3's to remove.** It was not in the original
+plan at all; Task 1's implementer had to add it because clippy rejects an entirely uncalled module
+under `-D warnings`, and reported it honestly as temporary. The plan now names it in the Global
+Constraints and makes its deletion a numbered step with its own verification, so it cannot quietly
+survive to merge the way an unguarded scaffolding bridge would.
