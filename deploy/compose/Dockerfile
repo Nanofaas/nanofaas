@@ -10,13 +10,14 @@ RUN ./gradlew :control-plane:bootJar \
 
 # jlink a runtime with only the modules app.jar actually touches, instead of shipping the full
 # stock JRE. jdk.unsupported (Netty's sun.misc.Unsafe) and jdk.crypto.ec (TLS EC cipher suites,
-# loaded via ServiceLoader) aren't visible to jdeps' static analysis, so add them explicitly.
+# loaded via ServiceLoader), and jdk.httpserver (the container proxy) aren't visible to jdeps'
+# static analysis, so add them explicitly.
 RUN cd /workspace/platform/control-plane/build/libs && \
     jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
     jdeps --ignore-missing-deps --multi-release 25 --recursive \
       --print-module-deps --class-path 'BOOT-INF/lib/*' \
       BOOT-INF/classes app.jar > modules.txt && \
-    jlink --add-modules "$(cat modules.txt),jdk.unsupported,jdk.crypto.ec" \
+    jlink --add-modules "$(cat modules.txt),jdk.unsupported,jdk.crypto.ec,jdk.httpserver" \
       --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
       --output /jre
 
