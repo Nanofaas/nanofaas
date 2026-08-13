@@ -2,10 +2,30 @@ package it.unimib.datai.nanofaas.common.runtime;
 
 import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResponseHeaderPolicyTest {
+    @Test
+    void filterAllowedHeaders_foldsCaseIndependentlyOfTheDefaultLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            // Turkish folds ASCII 'I' to dotless 'ı', so a default-locale toLowerCase() would
+            // turn "Content-Type" into "content-type" but "CONTENT-TYPE" into "content-type"
+            // with a dotless i — silently failing the allow-list match.
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+
+            Map<String, String> filtered = ResponseHeaderPolicy.filterAllowedHeaders(
+                    Map.of("CONTENT-DISPOSITION", "attachment"));
+
+            assertEquals(Map.of("CONTENT-DISPOSITION", "attachment"), filtered,
+                    "an allow-listed header must survive regardless of the JVM default locale");
+        } finally {
+            Locale.setDefault(original);
+        }
+    }
+
     @Test
     void isStatusCodeValid_rangeBoundaries() {
         assertTrue(ResponseHeaderPolicy.isStatusCodeValid(200));
