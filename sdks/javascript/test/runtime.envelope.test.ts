@@ -68,5 +68,16 @@ test("a plain-value return behaves exactly as before", async () => {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-nanofaas-function-status"), null);
     assert.equal(response.headers.get("x-nanofaas-encoding"), null);
+    assert.match(response.headers.get("content-type") ?? "", /application\/json/);
     assert.deepEqual(await response.json(), { roman: "XLII" });
+});
+
+test("a handler-supplied Content-Type survives over the runtime's default", async () => {
+    const response = await invokeWith(() => new HandlerResponse(
+        "<xml/>",
+        200,
+        { "Content-Type": "application/xml" },
+    ));
+
+    assert.equal(response.headers.get("content-type"), "application/xml");
 });
