@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.common.runtime;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -33,7 +34,9 @@ public final class ResponseHeaderPolicy {
         Map<String, String> filtered = new LinkedHashMap<>();
         Set<String> seen = new HashSet<>();
         for (Map.Entry<String, String> entry : raw.entrySet()) {
-            String lowerKey = entry.getKey().toLowerCase();
+            // Locale.ROOT, not the default locale: under a Turkish/Azerbaijani default,
+            // 'I' folds to dotless 'ı' and the allow-list match would silently fail.
+            String lowerKey = entry.getKey().toLowerCase(Locale.ROOT);
             if (ALLOWED_RESPONSE_HEADERS.contains(lowerKey) && seen.add(lowerKey)) {
                 filtered.put(entry.getKey(), entry.getValue());
             }

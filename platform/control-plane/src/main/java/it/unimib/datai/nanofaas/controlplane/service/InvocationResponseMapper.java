@@ -7,6 +7,8 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
+
 @Service
 public final class InvocationResponseMapper {
 
@@ -37,7 +39,9 @@ public final class InvocationResponseMapper {
 
     public ExecutionStatus toStatus(ExecutionRecord executionRecord) {
         ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
-        String status = snapshot.state().name().toLowerCase();
+        // Locale.ROOT, not the default locale: RUNNING and TIMEOUT contain 'I', which folds to
+        // dotless 'ı' under a Turkish/Azerbaijani default — this string is the public status field.
+        String status = snapshot.state().name().toLowerCase(Locale.ROOT);
         return new ExecutionStatus(
                 snapshot.executionId(),
                 status,

@@ -193,7 +193,9 @@ public class InvocationController {
     private static ResponseEntity<InvocationResponse> tooManyRequests(SyncQueueRejectedException ex) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
-                .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase())
+                // Locale.ROOT, not the default locale: TIMEOUT contains 'I', which folds to
+                // dotless 'ı' under a Turkish/Azerbaijani default — this is a wire header value.
+                .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase(Locale.ROOT))
                 .build();
     }
 

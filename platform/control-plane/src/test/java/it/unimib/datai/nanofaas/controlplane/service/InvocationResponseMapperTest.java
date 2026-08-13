@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,6 +68,23 @@ class InvocationResponseMapperTest {
         assertThat(response.statusCode()).isNull();
         assertThat(response.headers()).isNull();
         assertThat(response.encoding()).isNull();
+    }
+
+    @Test
+    void toStatus_statusStringIsIndependentOfTheDefaultLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            // RUNNING and TIMEOUT both contain 'I', which Turkish folds to dotless 'ı'.
+            // This string is the public status field of GET /executions/{id}.
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+
+            ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+            executionRecord.markTimeout();
+
+            assertThat(mapper.toStatus(executionRecord).status()).isEqualTo("timeout");
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
