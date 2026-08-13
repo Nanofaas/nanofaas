@@ -150,12 +150,26 @@ _ALLOWED_RESPONSE_HEADERS = {
 
 
 def _filter_response_headers(raw: dict[str, str] | None, execution_id: str | None = None) -> dict[str, str]:
+    """Filter handler-supplied response headers down to the allow-list.
+
+    At most one entry survives per header name, compared case-insensitively: HTTP header names are
+    case-insensitive, so emitting both ``Content-Type`` and ``content-type`` would put two colliding
+    entries on the response. The first occurrence wins and keeps its original casing, which is part
+    of the public ``InvocationResponse.headers`` contract. Mirrors
+    ``ResponseHeaderPolicy.filterAllowedHeaders`` in platform/common — keep the two in sync.
+    """
     if not raw:
         return {}
-    allowed = {k: v for k, v in raw.items() if k.lower() in _ALLOWED_RESPONSE_HEADERS}
+    allowed: dict[str, str] = {}
+    seen: set[str] = set()
+    for key, value in raw.items():
+        lower_key = key.lower()
+        if lower_key in _ALLOWED_RESPONSE_HEADERS and lower_key not in seen:
+            seen.add(lower_key)
+            allowed[key] = value
     if len(allowed) != len(raw):
-        dropped = [k for k in raw if k.lower() not in _ALLOWED_RESPONSE_HEADERS]
-        logger.warning(f"Dropped disallowed response header(s) {dropped} for execution {execution_id}")
+        dropped = [k for k in raw if k not in allowed]
+        logger.warning(f"Dropped response header(s) {dropped} for execution {execution_id}")
     return allowed
 
 

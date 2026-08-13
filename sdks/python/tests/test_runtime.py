@@ -309,9 +309,23 @@ def test_invoke_handler_response_dropped_headers_log_warn_but_still_succeed(clie
 
     warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1, f"expected exactly one WARN, got {warnings}"
-    assert "Dropped disallowed response header(s)" in warnings[0]
+    assert "Dropped response header(s)" in warnings[0]
     assert "X-Execution-Id" in warnings[0] and "X-Custom" in warnings[0]
     assert "ex-2b" in warnings[0]
+
+
+def test_filter_response_headers_dedupes_case_insensitively():
+    from nanofaas.runtime.app import _filter_response_headers
+
+    filtered = _filter_response_headers({"Content-Type": "application/pdf", "content-type": "text/plain"})
+
+    assert filtered == {"Content-Type": "application/pdf"}, "first occurrence wins, original casing kept"
+
+
+def test_filter_response_headers_preserves_original_casing():
+    from nanofaas.runtime.app import _filter_response_headers
+
+    assert _filter_response_headers({"Content-Type": "application/pdf"}) == {"Content-Type": "application/pdf"}
 
 
 def test_invoke_handler_returns_handler_response_invalid_status_falls_back_to_500(client):

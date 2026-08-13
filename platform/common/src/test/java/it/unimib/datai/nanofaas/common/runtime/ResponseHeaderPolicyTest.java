@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.common.runtime;
 
 import org.junit.jupiter.api.Test;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,5 +37,26 @@ class ResponseHeaderPolicyTest {
     @Test
     void filterAllowedHeaders_nullInputReturnsEmptyMap() {
         assertTrue(ResponseHeaderPolicy.filterAllowedHeaders(null).isEmpty());
+    }
+
+    @Test
+    void filterAllowedHeaders_dedupesCaseInsensitivelyKeepingFirstOccurrence() {
+        Map<String, String> raw = new LinkedHashMap<>();
+        raw.put("Content-Type", "application/pdf");
+        raw.put("content-type", "text/plain");
+
+        Map<String, String> filtered = ResponseHeaderPolicy.filterAllowedHeaders(raw);
+
+        assertEquals(1, filtered.size(), "colliding casings must collapse to one entry");
+        assertEquals("application/pdf", filtered.get("Content-Type"), "first occurrence wins");
+    }
+
+    @Test
+    void filterAllowedHeaders_preservesOriginalCasingOfSurvivors() {
+        Map<String, String> filtered = ResponseHeaderPolicy.filterAllowedHeaders(
+                Map.of("Content-Type", "application/pdf"));
+
+        assertEquals(Map.of("Content-Type", "application/pdf"), filtered,
+                "original casing is part of the public InvocationResponse.headers contract");
     }
 }
