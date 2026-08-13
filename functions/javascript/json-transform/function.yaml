@@ -15,5 +15,5 @@ catalog:
   family: json-transform
   runtime: javascript
   description: Node.js JavaScript JSON transform demo.
-  defaultImage: localhost:5000/nanofaas/javascript-json-transform:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/javascript-json-transform:e2e
   defaultPayload: json-transform-sample.json

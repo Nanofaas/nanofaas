@@ -15,5 +15,5 @@ catalog:
   family: qr-code
   runtime: python
   description: Python PNG QR code generation demo.
-  defaultImage: localhost:5000/nanofaas/python-qr-code:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/python-qr-code:e2e
   defaultPayload: qr-code-sample.json

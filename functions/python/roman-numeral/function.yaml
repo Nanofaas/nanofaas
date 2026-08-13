@@ -15,5 +15,5 @@ catalog:
   family: roman-numeral
   runtime: python
   description: Python roman numeral conversion demo.
-  defaultImage: localhost:5000/nanofaas/python-roman-numeral:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/python-roman-numeral:e2e
   defaultPayload: roman-numeral-sample.json

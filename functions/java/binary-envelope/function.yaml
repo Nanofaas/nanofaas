@@ -13,4 +13,4 @@ catalog:
   family: binary-envelope
   runtime: java
   description: Java deterministic binary response probe.
-  defaultImage: localhost:5000/nanofaas/java-binary-envelope:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/java-binary-envelope:e2e

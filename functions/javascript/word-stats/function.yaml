@@ -15,5 +15,5 @@ catalog:
   family: word-stats
   runtime: javascript
   description: Node.js JavaScript word statistics demo.
-  defaultImage: localhost:5000/nanofaas/javascript-word-stats:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/javascript-word-stats:e2e
   defaultPayload: word-stats-sample.json

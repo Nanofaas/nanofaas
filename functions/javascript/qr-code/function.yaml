@@ -15,5 +15,5 @@ catalog:
   family: qr-code
   runtime: javascript
   description: Node.js PNG QR code generation demo.
-  defaultImage: localhost:5000/nanofaas/javascript-qr-code:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/javascript-qr-code:e2e
   defaultPayload: qr-code-sample.json

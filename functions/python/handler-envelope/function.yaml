@@ -13,4 +13,4 @@ catalog:
   family: handler-envelope
   runtime: python
   description: Python probe for invocation body and headers.
-  defaultImage: localhost:5000/nanofaas/python-handler-envelope:e2e
+  defaultImage: 127.0.0.1:5000/nanofaas/python-handler-envelope:e2e
