@@ -6,7 +6,7 @@ COPY runtimes/watchdog/src ./src
 RUN cargo build --release && cp target/release/nanofaas-watchdog /watchdog
 
 FROM docker.io/library/debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends bash jq qrencode && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends bash imagemagick jq qrencode && rm -rf /var/lib/apt/lists/*
 COPY --from=watchdog-builder /watchdog /usr/local/bin/watchdog
 COPY functions/bash/qr-code/handler.sh /app/handler.sh
 RUN chmod +x /usr/local/bin/watchdog /app/handler.sh
