@@ -325,8 +325,25 @@ func TestInvokePlainValueBehavesExactlyAsBefore(t *testing.T) {
 	if got := rec.Header().Get("X-NanoFaaS-Encoding"); got != "" {
 		t.Errorf("no encoding header on a plain-value success, got %q", got)
 	}
+	if got := rec.Header().Get("Content-Type"); got != "application/json" {
+		t.Errorf("plain-value success must still default to application/json, got %q", got)
+	}
 	if body := strings.TrimSpace(rec.Body.String()); body != `{"roman":"XLII"}` {
 		t.Errorf("plain body shape must be unchanged, got %s", body)
+	}
+}
+
+func TestInvokeHandlerSuppliedContentTypeSurvives(t *testing.T) {
+	rec := invokeWithHandler(t, func(ctx context.Context, req InvocationRequest) (any, error) {
+		return HandlerResponse{
+			Output:     "hello",
+			StatusCode: 200,
+			Headers:    map[string]string{"Content-Type": "text/plain"},
+		}, nil
+	})
+
+	if got := rec.Header().Get("Content-Type"); got != "text/plain" {
+		t.Errorf("handler-supplied Content-Type must not be overwritten, got %q", got)
 	}
 }
 

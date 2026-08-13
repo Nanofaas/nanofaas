@@ -76,6 +76,7 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 		envelope, isEnvelope := result.output.(HandlerResponse)
 		if isEnvelope && !IsStatusCodeValid(envelope.StatusCode) {
 			message := fmt.Sprintf("Handler returned invalid statusCode: %d", envelope.StatusCode)
+			log.Printf("WARN Handler returned invalid statusCode %d for execution %s, treating as platform error", envelope.StatusCode, runtimeContext.ExecutionID)
 			r.submitCallback(runtimeContext, Failure("OUTPUT_SERIALIZATION_ERROR", message), dispatchAttempt)
 			writeErrorJSON(w, http.StatusInternalServerError, message)
 			return
@@ -114,7 +115,9 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("X-Cold-Start", "true")
 			w.Header().Set("X-Init-Duration-Ms", formatInitDurationHeader(r.coldStart.InitDurationMs()))
 		}
-		w.Header().Set("Content-Type", "application/json")
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", "application/json")
+		}
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(outputForWire)
 	case <-ctx.Done():
