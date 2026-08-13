@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { getLogger, type HandlerContext } from "nanofaas-function-sdk";
+import { getLogger, HandlerResponse, type HandlerContext } from "nanofaas-function-sdk";
 
 import { handle{{CLASS_NAME}} } from "../src/handler.js";
 
@@ -25,6 +25,6 @@ test("{{FUNCTION_NAME}} handler returns error for empty input", async () => {
     const result = await handle{{CLASS_NAME}}(createContext(), {
         input: {},
     });
-    assert.ok(result && typeof result === "object");
-    assert.ok("error" in result, "empty input must return an error key");
+    assert.ok(result instanceof HandlerResponse);
+    assert.equal(result.statusCode, 422);
 });

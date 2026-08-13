@@ -1,5 +1,6 @@
 from unittest.mock import patch
 from handler import handle
+from nanofaas.sdk import HandlerResponse
 
 
 def test_handle_returns_expected_keys():
@@ -12,5 +13,5 @@ def test_handle_returns_expected_keys():
 def test_handle_empty_input_returns_error():
     with patch("nanofaas.sdk.context.get_execution_id", return_value="test-id"):
         result = handle({})
-    assert isinstance(result, dict)
-    assert "error" in result, "empty input must return an error key"
+    assert isinstance(result, HandlerResponse)
+    assert result.status_code == 422

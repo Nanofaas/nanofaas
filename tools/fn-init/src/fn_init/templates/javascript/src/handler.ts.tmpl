@@ -1,10 +1,10 @@
-import type { Handler } from "nanofaas-function-sdk";
+import { HandlerResponse, type Handler } from "nanofaas-function-sdk";
 
 export const handle{{CLASS_NAME}}: Handler = async (ctx, req) => {
     ctx.logger.info("{{FUNCTION_NAME}} invoked");
     const input = typeof req.input === "object" && req.input !== null && !Array.isArray(req.input) ? req.input : {};
     if (typeof input["text"] !== "string" || input["text"].length === 0) {
-        return { error: "Field 'text' is required and must be non-empty" };
+        return new HandlerResponse({ error: "Field 'text' is required and must be non-empty" }, 422);
     }
     return {
         result: "ok",

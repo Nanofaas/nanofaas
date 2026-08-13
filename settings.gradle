@@ -81,3 +81,4 @@ if (!unknownModules.isEmpty()) {
 include 'functions:java:roman-numeral'
 include 'functions:java:roman-numeral-lite'
 include 'functions:java:figlet'
+include 'functions:java:qr-code'

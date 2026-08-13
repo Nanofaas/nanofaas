@@ -12,13 +12,13 @@ req="$(cat)"
 jq '
   .input as $in
   | if ($in | type) != "object" then
-      {"error": "Input must be a JSON object"}
+      {"__nanofaas_envelope__":true,"output":{"error": "Input must be a JSON object"},"statusCode":422}
     elif ($in | has("number") | not) then
-      {"error": "missing required field: number"}
+      {"__nanofaas_envelope__":true,"output":{"error": "missing required field: number"},"statusCode":422}
     elif ($in.number | type) != "number" then
-      {"error": "field '\''number'\'' must be an integer"}
+      {"__nanofaas_envelope__":true,"output":{"error": "field '\''number'\'' must be an integer"},"statusCode":422}
     elif ($in.number < 1 or $in.number > 3999) then
-      {"error": ("number must be between 1 and 3999, got: " + ($in.number | tostring))}
+      {"__nanofaas_envelope__":true,"output":{"error": ("number must be between 1 and 3999, got: " + ($in.number | tostring))},"statusCode":422}
     else
       ($in.number | floor) as $n
       | [

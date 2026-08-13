@@ -13,9 +13,10 @@ import (
 func TestSharedContract(t *testing.T) {
 	var fixture struct {
 		Cases []struct {
-			Name     string `json:"name"`
-			Input    any    `json:"input"`
-			Expected any    `json:"expected"`
+			Name               string `json:"name"`
+			Input              any    `json:"input"`
+			Expected           any    `json:"expected"`
+			ExpectedStatusCode *int   `json:"expectedStatusCode"`
 		} `json:"cases"`
 	}
 	data, err := os.ReadFile("../../test-data/json-transform/correctness.json")
@@ -30,6 +31,13 @@ func TestSharedContract(t *testing.T) {
 			actual, err := handleJSONTransform(context.Background(), nanofaas.InvocationRequest{Input: tc.Input})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.ExpectedStatusCode != nil {
+				response, ok := actual.(nanofaas.HandlerResponse)
+				if !ok || response.StatusCode != *tc.ExpectedStatusCode {
+					t.Fatalf("got %#v, want HandlerResponse status %d", actual, *tc.ExpectedStatusCode)
+				}
+				actual = response.Output
 			}
 			encoded, _ := json.Marshal(actual)
 			var normalized any

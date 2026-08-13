@@ -9,6 +9,7 @@ are added by the caller.
 | word-stats | 100 | 5,000 | 50,000 | words per input, four cases |
 | json-transform | 10 | 500 | 5,000 | records per input, five operations |
 | roman-numeral | 8 | 64 | 3,999 | unique values across 1–3999 |
+| qr-code | — | — | — | correctness-only PNG QR response envelope |
 
 Roman `small` emphasizes boundaries and subtractive notation, `medium` is
 stratified over the complete interval, and `large` exhausts the valid domain.

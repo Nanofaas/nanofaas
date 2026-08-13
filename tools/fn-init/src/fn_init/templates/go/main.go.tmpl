@@ -20,7 +20,7 @@ func handle{{CLASS_NAME}}(ctx context.Context, req nanofaas.InvocationRequest) (
 	nanofaas.Logger(ctx, slog.Default()).Info("{{FUNCTION_NAME}} invoked")
 	input, _ := req.Input.(map[string]any)
 	if text, _ := input["text"].(string); text == "" {
-		return map[string]any{"error": "Field 'text' is required and must be non-empty"}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "Field 'text' is required and must be non-empty"}, 422), nil
 	}
 	// TODO: implement handler logic
 	return map[string]any{"result": "ok"}, nil

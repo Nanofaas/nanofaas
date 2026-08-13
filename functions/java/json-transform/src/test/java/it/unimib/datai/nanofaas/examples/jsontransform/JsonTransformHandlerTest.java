@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.examples.jsontransform;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -24,12 +25,16 @@ class JsonTransformHandlerTest {
         JsonNode cases = mapper.readTree(Path.of("../..", "test-data", "json-transform", "correctness.json").toFile()).get("cases");
         for (JsonNode contractCase : cases) {
             Object input = mapper.convertValue(contractCase.get("input"), Object.class);
-            Map<String, Object> actual = (Map<String, Object>) handler.handle(new InvocationRequest(input, null));
+            Object result = handler.handle(new InvocationRequest(input, null));
             JsonNode expected = contractCase.get("expected");
             String name = contractCase.get("name").asText();
             if (expected.has("error")) {
+                HandlerResponse response = assertInstanceOf(HandlerResponse.class, result, name);
+                assertEquals(contractCase.get("expectedStatusCode").asInt(), response.statusCode(), name);
+                Map<String, Object> actual = (Map<String, Object>) response.output();
                 assertEquals(expected.get("error").asText(), actual.get("error"), name);
             } else {
+                Map<String, Object> actual = (Map<String, Object>) result;
                 assertEquals(expected.get("groupBy").asText(), actual.get("groupBy"), name);
                 assertEquals(expected.get("operation").asText(), actual.get("operation"), name);
                 Map<String, Object> groups = (Map<String, Object>) actual.get("groups");
@@ -121,7 +126,9 @@ class JsonTransformHandlerTest {
                 null
         );
 
-        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        HandlerResponse response = (HandlerResponse) handler.handle(req);
+        assertEquals(400, response.statusCode());
+        Map<String, Object> result = (Map<String, Object>) response.output();
 
         assertTrue(result.containsKey("error"));
     }
@@ -138,7 +145,9 @@ class JsonTransformHandlerTest {
                 null
         );
 
-        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        HandlerResponse response = (HandlerResponse) handler.handle(req);
+        assertEquals(400, response.statusCode());
+        Map<String, Object> result = (Map<String, Object>) response.output();
 
         assertTrue(result.containsKey("error"));
     }
@@ -167,7 +176,9 @@ class JsonTransformHandlerTest {
     void nonMapInput_returnsError() {
         InvocationRequest req = new InvocationRequest("not a map", null);
 
-        Map<String, Object> result = (Map<String, Object>) handler.handle(req);
+        HandlerResponse response = (HandlerResponse) handler.handle(req);
+        assertEquals(400, response.statusCode());
+        Map<String, Object> result = (Map<String, Object>) response.output();
 
         assertTrue(result.containsKey("error"));
         assertTrue(result.get("error").toString().contains("JSON object"));

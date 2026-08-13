@@ -1,0 +1,18 @@
+name: qr-code
+image: nanofaas/qr-code:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/bash/qr-code/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: qr-code
+  runtime: exec
+  description: Exec/watchdog PNG QR code generation demo.
+  defaultImage: localhost:5000/nanofaas/bash-qr-code:e2e

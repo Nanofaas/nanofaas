@@ -1,4 +1,4 @@
-from nanofaas.sdk import nanofaas_function, context
+from nanofaas.sdk import HandlerResponse, nanofaas_function, context
 
 logger = context.get_logger(__name__)
 
@@ -8,6 +8,6 @@ def handle(input_data):
     logger.info(f"{{FUNCTION_NAME}} invoked, executionId={context.get_execution_id()}")
     text = input_data.get("text") if isinstance(input_data, dict) else None
     if not text:
-        return {"error": "Field 'text' is required and must be non-empty"}
+        return HandlerResponse({"error": "Field 'text' is required and must be non-empty"}, 422)
     # TODO: implement handler logic
     return {"result": "ok"}

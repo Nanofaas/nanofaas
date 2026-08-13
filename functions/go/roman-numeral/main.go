@@ -42,21 +42,21 @@ func handleRomanNumeral(ctx context.Context, req nanofaas.InvocationRequest) (an
 
 	input, ok := req.Input.(map[string]any)
 	if !ok {
-		return map[string]any{"error": "Input must be a JSON object"}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "Input must be a JSON object"}, 422), nil
 	}
 
 	raw, exists := input["number"]
 	if !exists {
-		return map[string]any{"error": "missing required field: number"}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "missing required field: number"}, 422), nil
 	}
 
 	n, ok := toInt(raw)
 	if !ok {
-		return map[string]any{"error": "field 'number' must be an integer"}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": "field 'number' must be an integer"}, 422), nil
 	}
 
 	if n < 1 || n > 3999 {
-		return map[string]any{"error": fmt.Sprintf("number must be between 1 and 3999, got: %d", n)}, nil
+		return nanofaas.NewHandlerResponse(map[string]any{"error": fmt.Sprintf("number must be between 1 and 3999, got: %d", n)}, 422), nil
 	}
 
 	return map[string]any{"roman": toRoman(n)}, nil

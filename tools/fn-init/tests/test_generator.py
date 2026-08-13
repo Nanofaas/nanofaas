@@ -1,5 +1,6 @@
 # tools/fn-init/tests/test_generator.py
 import json
+import subprocess
 import pytest
 from pathlib import Path
 from fn_init.generator import (
@@ -384,6 +385,36 @@ def test_generate_bash_creates_build_files(tmp_path):
     generate_function("greet", "bash", out, vscode=False, placeholders=BASH_PLACEHOLDERS)
     assert (out / "Dockerfile").exists()
     assert (out / "function.yaml").exists()
+
+
+@pytest.mark.parametrize(
+    ("language", "placeholders", "handler_path", "expected"),
+    [
+        ("java", JAVA_PLACEHOLDERS, "src/main/java/it/unimib/datai/nanofaas/functions/greet/GreetHandler.java", ("HandlerResponse.of(Map.of(\"error\", \"Field 'text' is required and must be non-empty\"), 422)",)),
+        ("python", PYTHON_PLACEHOLDERS, "handler.py", ("HandlerResponse({\"error\": \"Field 'text' is required and must be non-empty\"}, 422)",)),
+        ("go", GO_PLACEHOLDERS, "main.go", ("nanofaas.NewHandlerResponse(map[string]any{\"error\": \"Field 'text' is required and must be non-empty\"}, 422)",)),
+        ("javascript", JAVASCRIPT_PLACEHOLDERS, "src/handler.ts", ("new HandlerResponse({ error: \"Field 'text' is required and must be non-empty\" }, 422)",)),
+        ("bash", BASH_PLACEHOLDERS, "handler.sh", ("\"__nanofaas_envelope__\":true", "Field '\"'\"'text'\"'\"' is required and must be non-empty", "\"statusCode\":422")),
+    ],
+)
+def test_generated_handler_uses_422_envelope_for_missing_text(tmp_path, language, placeholders, handler_path, expected):
+    out = tmp_path / "greet"
+    generate_function("greet", language, out, vscode=False, placeholders=placeholders)
+    content = (out / handler_path).read_text()
+    assert all(fragment in content for fragment in expected)
+
+
+def test_generated_bash_handler_rejects_missing_text_field(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "bash", out, vscode=False, placeholders=BASH_PLACEHOLDERS)
+    result = subprocess.run(
+        ["bash", out / "handler.sh"],
+        input='{"input":{"other":1}}',
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(result.stdout)["statusCode"] == 422
 
 
 # --- update_settings_gradle ---
