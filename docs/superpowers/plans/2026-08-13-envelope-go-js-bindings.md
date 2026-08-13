@@ -745,6 +745,16 @@ export type Handler = (
 
 Add `import type { HandlerResponse } from "./response.js";` at the top of `types.ts`.
 
+**Also widen `invokeHandler`'s return type in `runtime.ts:252`** from `Promise<JsonValue>` to
+`Promise<JsonValue | HandlerResponse>`, adding the `HandlerResponse` import to that file. This is the
+one line of `runtime.ts` Task 3 must touch, and it is not optional: widening `Handler` without it
+leaves `tsc` failing with `TS2322: Type 'HandlerResponse | JsonValue' is not assignable to type
+'JsonValue'` at `runtime.ts:281`, so the tree would not build between Task 3 and Task 4 and this
+task's own Step 6 expectations could not be met. Change nothing else in `runtime.ts` — the envelope
+detection, status handling, header logic, marker headers and callback changes are all Task 4's, and
+pulling them forward would make Task 4's review meaningless. At runtime the widened signature changes
+nothing: `invokeHandler` still passes the handler's return value straight through.
+
 In `sdks/javascript/src/index.ts`, add `export { HandlerResponse } from "./response.js";` — a value
 export, not a type-only one, since handlers construct it with `new`. Keep it in the file's existing
 alphabetical-ish grouping with the other value exports.
@@ -1112,3 +1122,14 @@ Converting them is the separate example-function plan.
 - **Task 5 exists because the milestone-1 Critical was a wire-level gap** — `encoding` had no channel
   on one hop — found only at the final whole-branch review. Four implementations of one contract need
   a test that names the literals.
+
+### Correction applied during execution
+
+**Task 3 must widen `invokeHandler`'s return type in `runtime.ts`, and originally did not say so.**
+The first version of this plan told Task 3 not to touch `runtime.ts` at all, while also widening
+`Handler` in `types.ts`. Those two are incompatible: `invokeHandler` declares `Promise<JsonValue>`,
+so widening `Handler` alone leaves `tsc` failing at `runtime.ts:281` and the tree non-compiling
+between Tasks 3 and 4 — contradicting Task 3's own Step 6, which asserts a clean typecheck and a
+green suite. This is the same class of defect as the milestone-1 plan's missing `ExecutionStatus`
+compatibility constructor, which would have left `:control-plane` non-compiling across five tasks.
+The fix is the minimum type-level accommodation in the earlier task, exactly as it was there.
