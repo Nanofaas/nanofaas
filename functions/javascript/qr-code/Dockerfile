@@ -14,4 +14,5 @@ COPY --from=build /src/functions/javascript/qr-code/package.json ./package.json
 COPY --from=build /src/functions/javascript/qr-code/node_modules ./node_modules
 COPY --from=build /src/functions/javascript/qr-code/dist ./dist
 EXPOSE 8080
+USER node
 CMD ["node", "dist/src/index.js"]

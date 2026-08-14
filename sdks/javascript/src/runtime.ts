@@ -36,7 +36,7 @@ type RuntimeState = {
 
 function readEnvString(name: string): string | undefined {
     const value = process.env[name]?.trim();
-    return value ? value : undefined;
+    return value || undefined;
 }
 
 function resolvePort(port?: number): number {
@@ -95,17 +95,21 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     }
 }
 
+function resolveOptionalMetadata(value: unknown, message: string): Record<string, string> | undefined {
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+    if (!isMetadataRecord(value)) {
+        throw new NanofaasError("INVALID_REQUEST", message);
+    }
+    return value;
+}
+
 function normalizeInvocationRequest(payload: unknown): InvocationRequest {
     if (isJsonObject(payload)) {
         const input = "input" in payload ? (payload.input as JsonValue) : (payload as JsonValue);
-        if (payload.metadata !== undefined && payload.metadata !== null && !isMetadataRecord(payload.metadata)) {
-            throw new NanofaasError("INVALID_REQUEST", "Invocation metadata must be a string map");
-        }
-        const metadata = isMetadataRecord(payload.metadata) ? payload.metadata : undefined;
-        if (payload.headers !== undefined && payload.headers !== null && !isMetadataRecord(payload.headers)) {
-            throw new NanofaasError("INVALID_REQUEST", "Invocation headers must be a string map");
-        }
-        const headers = isMetadataRecord(payload.headers) ? payload.headers : undefined;
+        const metadata = resolveOptionalMetadata(payload.metadata, "Invocation metadata must be a string map");
+        const headers = resolveOptionalMetadata(payload.headers, "Invocation headers must be a string map");
         return { input, ...(metadata === undefined ? {} : { metadata }), ...(headers === undefined ? {} : { headers }) };
     }
     return { input: payload as JsonValue };
@@ -155,7 +159,34 @@ function callbackUrlForRequest(state: RuntimeState, req: IncomingMessage): strin
 }
 
 function buildCallbackUrl(baseUrl: string, executionId: string): string {
-    return `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(executionId)}:complete`;
+    let base = baseUrl;
+    while (base.endsWith("/")) {
+        base = base.slice(0, -1);
+    }
+    return `${base}/${encodeURIComponent(executionId)}:complete`;
+}
+
+function isPermanentStatus(status: number): boolean {
+    return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+function recordCallbackFailure(state: RuntimeState, executionId: string, details: Record<string, JsonValue>): void {
+    state.metrics.callbackFailures.inc();
+    state.logger.warn("callback delivery failed", { executionId, ...details });
+}
+
+async function sleepWithAbort(signal: AbortSignal, delayMs: number): Promise<boolean> {
+    if (signal.aborted) {
+        return false;
+    }
+    await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, delayMs);
+        signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+        }, { once: true });
+    });
+    return !signal.aborted;
 }
 
 async function sendCallback(
@@ -183,44 +214,45 @@ async function sendCallback(
     }
 
     for (let attempt = 0; attempt < CALLBACK_RETRY_DELAYS_MS.length; attempt += 1) {
-        try {
-            const response = await fetch(url, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(payload),
-                signal,
-            });
-            if (response.ok) return;
-            const permanent = response.status >= 400
-                && response.status < 500
-                && response.status !== 408
-                && response.status !== 429;
-            if (permanent || attempt === CALLBACK_RETRY_DELAYS_MS.length - 1) {
-                state.metrics.callbackFailures.inc();
-                state.logger.warn("callback delivery failed", { executionId, statusCode: response.status });
-                return;
-            }
-        } catch (error) {
-            if (signal.aborted) return;
-            if (attempt === CALLBACK_RETRY_DELAYS_MS.length - 1) {
-                state.metrics.callbackFailures.inc();
-                state.logger.warn("callback delivery failed", {
-                    executionId,
-                    error: toErrorInfo(error).message,
-                });
-                return;
-            }
+        if (!(await deliverCallbackOnce(state, url, headers, payload, signal, attempt, executionId))) {
+            return;
         }
 
-        await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, CALLBACK_RETRY_DELAYS_MS[attempt]);
-            signal.addEventListener("abort", () => {
-                clearTimeout(timer);
-                resolve();
-            }, { once: true });
-        });
-        if (signal.aborted) return;
+        if (!(await sleepWithAbort(signal, CALLBACK_RETRY_DELAYS_MS[attempt]!))) {
+            return;
+        }
     }
+}
+
+async function deliverCallbackOnce(
+    state: RuntimeState,
+    url: string,
+    headers: Record<string, string>,
+    payload: CallbackPayload,
+    signal: AbortSignal,
+    attempt: number,
+    executionId: string,
+): Promise<boolean> {
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+            signal,
+        });
+        if (response.ok) return false;
+        if (isPermanentStatus(response.status) || attempt === CALLBACK_RETRY_DELAYS_MS.length - 1) {
+            recordCallbackFailure(state, executionId, { statusCode: response.status });
+            return false;
+        }
+    } catch (error) {
+        if (signal.aborted) return false;
+        if (attempt === CALLBACK_RETRY_DELAYS_MS.length - 1) {
+            recordCallbackFailure(state, executionId, { error: toErrorInfo(error).message });
+            return false;
+        }
+    }
+    return true;
 }
 
 function dispatchCallback(
@@ -289,20 +321,28 @@ async function invokeHandler(
     }
 }
 
+function resolveRequestHeader(header: string | string[] | undefined): string | undefined {
+    return typeof header === "string" && header.trim() !== "" ? header.trim() : undefined;
+}
+
+function statusCodeForError(info: ReturnType<typeof toErrorInfo>): number {
+    if (info.code === "HANDLER_TIMEOUT") return 504;
+    if (info.code === "INVALID_JSON" || info.code === "INVALID_REQUEST") return 400;
+    return 500;
+}
+
+interface CallbackTarget {
+    callbackUrl: string | undefined;
+    executionId: string;
+    traceId: string | undefined;
+    dispatchAttempt: string | undefined;
+}
+
 async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: ServerResponse): Promise<void> {
     const handler = selectHandler(state);
-    const executionIdHeader = req.headers["x-execution-id"];
-    const traceIdHeader = req.headers["x-trace-id"];
-    const dispatchAttemptHeader = req.headers["x-dispatch-attempt"];
-    const executionId = typeof executionIdHeader === "string" && executionIdHeader.trim() !== ""
-        ? executionIdHeader.trim()
-        : readEnvString("EXECUTION_ID");
-    const traceId = typeof traceIdHeader === "string" && traceIdHeader.trim() !== ""
-        ? traceIdHeader.trim()
-        : readEnvString("TRACE_ID");
-    const dispatchAttempt = typeof dispatchAttemptHeader === "string" && dispatchAttemptHeader.trim() !== ""
-        ? dispatchAttemptHeader.trim()
-        : undefined;
+    const executionId = resolveRequestHeader(req.headers["x-execution-id"]) ?? readEnvString("EXECUTION_ID");
+    const traceId = resolveRequestHeader(req.headers["x-trace-id"]) ?? readEnvString("TRACE_ID");
+    const dispatchAttempt = resolveRequestHeader(req.headers["x-dispatch-attempt"]);
 
     if (!executionId) {
         writeJson(res, 400, {
@@ -321,6 +361,8 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
         state.metrics.coldStarts.inc();
     }
 
+    const target: CallbackTarget = { callbackUrl, executionId, traceId, dispatchAttempt };
+
     state.metrics.inFlight.inc();
     const timer = state.metrics.duration.startTimer();
     const requestSignal = new AbortController();
@@ -336,80 +378,91 @@ async function handleInvoke(state: RuntimeState, req: IncomingMessage, res: Serv
         };
 
         const result = await invokeHandler(state, handler, ctx, payload);
-        const isEnvelope = result instanceof HandlerResponse;
-
-        if (isEnvelope && !isStatusCodeValid(result.statusCode)) {
-            const message = `Handler returned invalid statusCode: ${result.statusCode}`;
-            state.logger.warn(message, { executionId });
-            state.metrics.invocations.inc({ success: "false" });
-            dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
-                success: false,
-                output: null,
-                error: { code: "OUTPUT_SERIALIZATION_ERROR", message },
-            });
-            writeJson(res, 500, { error: { code: "OUTPUT_SERIALIZATION_ERROR", message } });
-            return;
-        }
-
-        state.metrics.invocations.inc({ success: "true" });
-
-        const responseHeaders: Record<string, string> = {};
-        if (coldStart) {
-            responseHeaders["x-cold-start"] = "true";
-            responseHeaders["x-init-duration-ms"] = String(Date.now() - state.startedAt);
-        }
-
-        if (isEnvelope) {
-            const allowed = filterAllowedHeaders(result.headers);
-            const dropped = Object.keys(result.headers).filter((key) => !(key in allowed));
-            if (dropped.length > 0) {
-                state.logger.warn("dropped response header(s)", { executionId, dropped: dropped.join(", ") });
-            }
-            Object.assign(responseHeaders, allowed);
-            responseHeaders["x-nanofaas-function-status"] = "true";
-            if (result.encoding !== undefined) {
-                responseHeaders["x-nanofaas-encoding"] = result.encoding;
-            }
-            dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
-                success: true,
-                output: result.output,
-                error: null,
-                statusCode: result.statusCode,
-                headers: allowed,
-                ...(result.encoding === undefined ? {} : { encoding: result.encoding }),
-            });
-            writeJson(res, result.statusCode, result.output, responseHeaders);
-        } else {
-            dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
-                success: true,
-                output: result,
-                error: null,
-            });
-            writeJson(res, 200, result, responseHeaders);
-        }
+        writeInvokeResult(state, res, result, target, coldStart);
     } catch (error) {
         const info = toErrorInfo(error);
-        const status = info.code === "HANDLER_TIMEOUT"
-            ? 504
-            : info.code === "INVALID_JSON" || info.code === "INVALID_REQUEST"
-                ? 400
-                : 500;
         state.metrics.invocations.inc({ success: "false" });
-
-        dispatchCallback(state, callbackUrl, executionId, traceId, dispatchAttempt, {
+        dispatchCallback(state, target.callbackUrl, target.executionId, target.traceId, target.dispatchAttempt, {
             success: false,
             output: null,
             error: info,
         });
-
-        writeJson(res, status, {
-            error: info,
-        });
+        writeJson(res, statusCodeForError(info), { error: info });
     } finally {
         requestSignal.abort();
         timer();
         state.metrics.inFlight.dec();
     }
+}
+
+function writeInvokeResult(
+    state: RuntimeState,
+    res: ServerResponse,
+    result: JsonValue | HandlerResponse,
+    target: CallbackTarget,
+    coldStart: boolean,
+): void {
+    const isEnvelope = result instanceof HandlerResponse;
+
+    if (isEnvelope && !isStatusCodeValid(result.statusCode)) {
+        const message = `Handler returned invalid statusCode: ${result.statusCode}`;
+        state.logger.warn(message, { executionId: target.executionId });
+        state.metrics.invocations.inc({ success: "false" });
+        dispatchCallback(state, target.callbackUrl, target.executionId, target.traceId, target.dispatchAttempt, {
+            success: false,
+            output: null,
+            error: { code: "OUTPUT_SERIALIZATION_ERROR", message },
+        });
+        writeJson(res, 500, { error: { code: "OUTPUT_SERIALIZATION_ERROR", message } });
+        return;
+    }
+
+    state.metrics.invocations.inc({ success: "true" });
+
+    const responseHeaders: Record<string, string> = {};
+    if (coldStart) {
+        responseHeaders["x-cold-start"] = "true";
+        responseHeaders["x-init-duration-ms"] = String(Date.now() - state.startedAt);
+    }
+
+    if (isEnvelope) {
+        writeEnvelopeResult(state, res, result, target, responseHeaders);
+    } else {
+        dispatchCallback(state, target.callbackUrl, target.executionId, target.traceId, target.dispatchAttempt, {
+            success: true,
+            output: result,
+            error: null,
+        });
+        writeJson(res, 200, result, responseHeaders);
+    }
+}
+
+function writeEnvelopeResult(
+    state: RuntimeState,
+    res: ServerResponse,
+    result: HandlerResponse,
+    target: CallbackTarget,
+    responseHeaders: Record<string, string>,
+): void {
+    const allowed = filterAllowedHeaders(result.headers);
+    const dropped = Object.keys(result.headers).filter((key) => !(key in allowed));
+    if (dropped.length > 0) {
+        state.logger.warn("dropped response header(s)", { executionId: target.executionId, dropped: dropped.join(", ") });
+    }
+    Object.assign(responseHeaders, allowed);
+    responseHeaders["x-nanofaas-function-status"] = "true";
+    if (result.encoding !== undefined) {
+        responseHeaders["x-nanofaas-encoding"] = result.encoding;
+    }
+    dispatchCallback(state, target.callbackUrl, target.executionId, target.traceId, target.dispatchAttempt, {
+        success: true,
+        output: result.output,
+        error: null,
+        statusCode: result.statusCode,
+        headers: allowed,
+        ...(result.encoding === undefined ? {} : { encoding: result.encoding }),
+    });
+    writeJson(res, result.statusCode, result.output, responseHeaders);
 }
 
 async function routeRequest(state: RuntimeState, req: IncomingMessage, res: ServerResponse): Promise<void> {

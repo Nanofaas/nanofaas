@@ -32,20 +32,24 @@ func TestSharedContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.ExpectedStatusCode != nil {
-				response, ok := actual.(nanofaas.HandlerResponse)
-				if !ok || response.StatusCode != *tc.ExpectedStatusCode {
-					t.Fatalf("got %#v, want HandlerResponse status %d", actual, *tc.ExpectedStatusCode)
-				}
-				actual = response.Output
-			}
-			encoded, _ := json.Marshal(actual)
-			var normalized any
-			_ = json.Unmarshal(encoded, &normalized)
-			if !reflect.DeepEqual(normalized, tc.Expected) {
-				t.Fatalf("got %#v, want %#v", normalized, tc.Expected)
-			}
+			assertContractCase(t, actual, tc.ExpectedStatusCode, tc.Expected)
 		})
+	}
+}
+
+func assertContractCase(t *testing.T, actual any, expectedStatusCode *int, expected any) {
+	if expectedStatusCode != nil {
+		response, ok := actual.(nanofaas.HandlerResponse)
+		if !ok || response.StatusCode != *expectedStatusCode {
+			t.Fatalf("got %#v, want HandlerResponse status %d", actual, *expectedStatusCode)
+		}
+		actual = response.Output
+	}
+	encoded, _ := json.Marshal(actual)
+	var normalized any
+	_ = json.Unmarshal(encoded, &normalized)
+	if !reflect.DeepEqual(normalized, expected) {
+		t.Fatalf("got %#v, want %#v", normalized, expected)
 	}
 }
 

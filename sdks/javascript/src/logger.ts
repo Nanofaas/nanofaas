@@ -11,7 +11,7 @@ function write(level: Level, name: string, message: string, fields?: Record<stri
         message,
         executionId: getExecutionId() ?? null,
         traceId: getTraceId() ?? null,
-        ...(fields ?? {}),
+        ...fields,
     };
     const line = JSON.stringify(entry);
     if (level === "error") {

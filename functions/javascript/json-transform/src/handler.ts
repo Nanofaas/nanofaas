@@ -1,4 +1,4 @@
-import { HandlerResponse, type Handler, type JsonObject } from "nanofaas-function-sdk";
+import { HandlerResponse, type Handler, type JsonObject, type JsonValue } from "nanofaas-function-sdk";
 
 function isJsonObject(value: unknown): value is JsonObject {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15,6 +15,23 @@ function aggregate(items: JsonObject[], field: string, operation: string): numbe
     if (operation === "avg") return values.reduce((total, value) => total + value, 0) / values.length;
     if (operation === "min") return Math.min(...values);
     return Math.max(...values);
+}
+
+function toGroupKey(rawKey: unknown): string {
+    if (rawKey == null) return "null";
+    if (typeof rawKey === "string") return rawKey;
+    return JSON.stringify(rawKey);
+}
+
+function computeGroupResult(items: JsonObject[], operation: string, valueField: string): JsonValue {
+    const normalized = operation.toLowerCase();
+    if (normalized === "count") {
+        return items.length;
+    }
+    if (["sum", "avg", "min", "max"].includes(normalized)) {
+        return aggregate(items, valueField, normalized);
+    }
+    return `unknown operation: ${operation}`;
 }
 
 export const handleJsonTransform: Handler = async (ctx, req) => {
@@ -38,19 +55,13 @@ export const handleJsonTransform: Handler = async (ctx, req) => {
     const groups = new Map<string, JsonObject[]>();
     for (const item of data) {
         if (!isJsonObject(item)) continue;
-        const rawKey = item[groupBy];
-        const key = rawKey == null ? "null" : String(rawKey);
+        const key = toGroupKey(item[groupBy]);
         groups.set(key, [...(groups.get(key) ?? []), item]);
     }
 
     const result: JsonObject = {};
     for (const [key, items] of groups) {
-        const normalized = operation.toLowerCase();
-        result[key] = normalized === "count"
-            ? items.length
-            : ["sum", "avg", "min", "max"].includes(normalized)
-                ? aggregate(items, valueField as string, normalized)
-                : `unknown operation: ${operation}`;
+        result[key] = computeGroupResult(items, operation, valueField as string);
     }
 
     return { groupBy, operation, groups: result };

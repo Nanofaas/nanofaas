@@ -13,4 +13,5 @@ COPY --from=build /src/functions/javascript/handler-envelope/package.json ./pack
 COPY --from=build /src/functions/javascript/handler-envelope/node_modules ./node_modules
 COPY --from=build /src/functions/javascript/handler-envelope/dist ./dist
 EXPOSE 8080
+USER node
 CMD ["node", "dist/src/index.js"]

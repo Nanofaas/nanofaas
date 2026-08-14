@@ -60,21 +60,7 @@ func handleJSONTransform(ctx context.Context, req nanofaas.InvocationRequest) (a
 
 	resultGroups := map[string]any{}
 	for _, key := range order {
-		items := groups[key]
-		switch strings.ToLower(operation) {
-		case "count":
-			resultGroups[key] = len(items)
-		case "sum":
-			resultGroups[key] = aggregate(items, valueField, sum)
-		case "avg":
-			resultGroups[key] = aggregate(items, valueField, avg)
-		case "min":
-			resultGroups[key] = aggregate(items, valueField, min)
-		case "max":
-			resultGroups[key] = aggregate(items, valueField, max)
-		default:
-			resultGroups[key] = "unknown operation: " + operation
-		}
+		resultGroups[key] = computeGroupResult(groups[key], operation, valueField)
 	}
 
 	return map[string]any{
@@ -85,6 +71,23 @@ func handleJSONTransform(ctx context.Context, req nanofaas.InvocationRequest) (a
 }
 
 type aggregation func([]float64) float64
+
+func computeGroupResult(items []map[string]any, operation, valueField string) any {
+	switch strings.ToLower(operation) {
+	case "count":
+		return len(items)
+	case "sum":
+		return aggregate(items, valueField, sum)
+	case "avg":
+		return aggregate(items, valueField, avg)
+	case "min":
+		return aggregate(items, valueField, min)
+	case "max":
+		return aggregate(items, valueField, max)
+	default:
+		return "unknown operation: " + operation
+	}
+}
 
 func aggregate(items []map[string]any, field string, op aggregation) float64 {
 	values := make([]float64, 0, len(items))

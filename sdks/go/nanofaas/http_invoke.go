@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const contentTypeHeader = "Content-Type"
+
 func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -64,73 +66,82 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 	select {
 	case result := <-resultCh:
 		r.markHandlerDuration(time.Since(start).Seconds())
-		if result.err != nil {
-			r.markInvocation("error")
-			r.submitCallback(runtimeContext, Failure("HANDLER_ERROR", result.err.Error()), dispatchAttempt)
-			writeErrorJSON(w, http.StatusInternalServerError, result.err.Error())
-			return
-		}
-
-		r.markInvocation("success")
-
-		envelope, isEnvelope := result.output.(HandlerResponse)
-		if isEnvelope && !IsStatusCodeValid(envelope.StatusCode) {
-			message := fmt.Sprintf("Handler returned invalid statusCode: %d", envelope.StatusCode)
-			log.Printf("WARN Handler returned invalid statusCode %d for execution %s, treating as platform error", envelope.StatusCode, runtimeContext.ExecutionID)
-			r.submitCallback(runtimeContext, Failure("OUTPUT_SERIALIZATION_ERROR", message), dispatchAttempt)
-			writeErrorJSON(w, http.StatusInternalServerError, message)
-			return
-		}
-
-		status := http.StatusOK
-		outputForWire := result.output
-		if isEnvelope {
-			status = envelope.StatusCode
-			outputForWire = envelope.Output
-			allowed := FilterAllowedHeaders(envelope.Headers)
-			if len(allowed) != len(envelope.Headers) {
-				dropped := make([]string, 0, len(envelope.Headers))
-				for key := range envelope.Headers {
-					if _, kept := allowed[key]; !kept {
-						dropped = append(dropped, key)
-					}
-				}
-				log.Printf("WARN dropped response header(s) %v for execution %s", dropped, runtimeContext.ExecutionID)
-			}
-			for key, value := range allowed {
-				w.Header().Set(key, value)
-			}
-			w.Header().Set("X-NanoFaaS-Function-Status", "true")
-			if envelope.Encoding != "" {
-				w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
-			}
-			r.submitCallback(runtimeContext,
-				SuccessWithEnvelope(envelope.Output, envelope.StatusCode, allowed, envelope.Encoding),
-				dispatchAttempt)
-		} else {
-			r.submitCallback(runtimeContext, Success(result.output), dispatchAttempt)
-		}
-
-		if isColdStart {
-			w.Header().Set("X-Cold-Start", "true")
-			w.Header().Set("X-Init-Duration-Ms", formatInitDurationHeader(r.coldStart.InitDurationMs()))
-		}
-		if w.Header().Get("Content-Type") == "" {
-			w.Header().Set("Content-Type", "application/json")
-		}
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(outputForWire)
+		r.handleInvokeResult(w, result.output, result.err, isColdStart, runtimeContext, dispatchAttempt)
 	case <-ctx.Done():
 		r.markHandlerDuration(time.Since(start).Seconds())
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			r.markInvocation("timeout")
-			r.submitCallback(runtimeContext, Failure("HANDLER_TIMEOUT", "Handler exceeded configured timeout"), dispatchAttempt)
-			writeErrorJSON(w, http.StatusGatewayTimeout, "Handler timed out")
-			return
-		}
-		r.markInvocation("error")
-		writeErrorJSON(w, http.StatusInternalServerError, "Handler execution cancelled")
+		r.handleInvokeTimeout(w, ctx, runtimeContext, dispatchAttempt)
 	}
+}
+
+func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerErr error, isColdStart bool, runtimeContext InvocationContext, dispatchAttempt string) {
+	if handlerErr != nil {
+		r.markInvocation("error")
+		r.submitCallback(runtimeContext, Failure("HANDLER_ERROR", handlerErr.Error()), dispatchAttempt)
+		writeErrorJSON(w, http.StatusInternalServerError, handlerErr.Error())
+		return
+	}
+
+	r.markInvocation("success")
+
+	envelope, isEnvelope := output.(HandlerResponse)
+	if isEnvelope && !IsStatusCodeValid(envelope.StatusCode) {
+		message := fmt.Sprintf("Handler returned invalid statusCode: %d", envelope.StatusCode)
+		log.Printf("WARN Handler returned invalid statusCode %d for execution %s, treating as platform error", envelope.StatusCode, runtimeContext.ExecutionID)
+		r.submitCallback(runtimeContext, Failure("OUTPUT_SERIALIZATION_ERROR", message), dispatchAttempt)
+		writeErrorJSON(w, http.StatusInternalServerError, message)
+		return
+	}
+
+	status, outputForWire := r.buildInvokeResponse(w, output, isEnvelope, runtimeContext, dispatchAttempt)
+
+	if isColdStart {
+		w.Header().Set("X-Cold-Start", "true")
+		w.Header().Set("X-Init-Duration-Ms", formatInitDurationHeader(r.coldStart.InitDurationMs()))
+	}
+	if w.Header().Get(contentTypeHeader) == "" {
+		w.Header().Set(contentTypeHeader, "application/json")
+	}
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(outputForWire)
+}
+
+func (r *Runtime) buildInvokeResponse(w http.ResponseWriter, output any, isEnvelope bool, runtimeContext InvocationContext, dispatchAttempt string) (int, any) {
+	if !isEnvelope {
+		r.submitCallback(runtimeContext, Success(output), dispatchAttempt)
+		return http.StatusOK, output
+	}
+
+	envelope := output.(HandlerResponse)
+	allowed := FilterAllowedHeaders(envelope.Headers)
+	if len(allowed) != len(envelope.Headers) {
+		dropped := make([]string, 0, len(envelope.Headers))
+		for key := range envelope.Headers {
+			if _, kept := allowed[key]; !kept {
+				dropped = append(dropped, key)
+			}
+		}
+		log.Printf("WARN dropped response header(s) %v for execution %s", dropped, runtimeContext.ExecutionID)
+	}
+	for key, value := range allowed {
+		w.Header().Set(key, value)
+	}
+	w.Header().Set("X-NanoFaaS-Function-Status", "true")
+	if envelope.Encoding != "" {
+		w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
+	}
+	r.submitCallback(runtimeContext, SuccessWithEnvelope(envelope.Output, envelope.StatusCode, allowed, envelope.Encoding), dispatchAttempt)
+	return envelope.StatusCode, envelope.Output
+}
+
+func (r *Runtime) handleInvokeTimeout(w http.ResponseWriter, ctx context.Context, runtimeContext InvocationContext, dispatchAttempt string) {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		r.markInvocation("timeout")
+		r.submitCallback(runtimeContext, Failure("HANDLER_TIMEOUT", "Handler exceeded configured timeout"), dispatchAttempt)
+		writeErrorJSON(w, http.StatusGatewayTimeout, "Handler timed out")
+		return
+	}
+	r.markInvocation("error")
+	writeErrorJSON(w, http.StatusInternalServerError, "Handler execution cancelled")
 }
 
 func (r *Runtime) submitCallback(runtimeContext InvocationContext, result InvocationResult, dispatchAttempt string) {
@@ -144,7 +155,7 @@ func writeErrorJSON(w http.ResponseWriter, status int, message string) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
 }

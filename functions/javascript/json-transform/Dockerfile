@@ -23,4 +23,5 @@ COPY --from=build /src/functions/javascript/json-transform/node_modules ./node_m
 COPY --from=build /src/functions/javascript/json-transform/dist ./dist
 
 EXPOSE 8080
+USER node
 CMD ["node", "dist/src/index.js"]

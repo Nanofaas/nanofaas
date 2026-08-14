@@ -23,4 +23,5 @@ COPY --from=build /src/functions/javascript/word-stats/node_modules ./node_modul
 COPY --from=build /src/functions/javascript/word-stats/dist ./dist
 
 EXPOSE 8080
+USER node
 CMD ["node", "dist/src/index.js"]

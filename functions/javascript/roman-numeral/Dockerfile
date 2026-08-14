@@ -23,4 +23,5 @@ COPY --from=build /src/functions/javascript/roman-numeral/node_modules ./node_mo
 COPY --from=build /src/functions/javascript/roman-numeral/dist ./dist
 
 EXPOSE 8080
+USER node
 CMD ["node", "dist/src/index.js"]

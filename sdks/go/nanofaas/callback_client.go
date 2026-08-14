@@ -41,27 +41,8 @@ func (c *CallbackClient) SendResultWithDispatchAttempt(ctx context.Context, exec
 
 	url := c.callbackURL(executionID)
 	for attempt := 0; attempt < len(c.retryDelays); attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
-			return false
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if strings.TrimSpace(traceID) != "" {
-			req.Header.Set("X-Trace-Id", traceID)
-		}
-		if strings.TrimSpace(dispatchAttempt) != "" {
-			req.Header.Set("X-Dispatch-Attempt", dispatchAttempt)
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err == nil && resp != nil {
-			resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return true
-			}
-			if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode != http.StatusTooManyRequests {
-				return false
-			}
+		if success, final := c.sendCallbackRequest(ctx, url, body, traceID, dispatchAttempt); final {
+			return success
 		}
 
 		if attempt == len(c.retryDelays)-1 {
@@ -73,6 +54,48 @@ func (c *CallbackClient) SendResultWithDispatchAttempt(ctx context.Context, exec
 	}
 
 	return false
+}
+
+// sendCallbackRequest performs one delivery attempt and reports the outcome:
+// final indicates the send must stop (success, a non-retryable 4xx, or a request
+// that could not be built); a non-final result means the attempt failed retryably.
+func (c *CallbackClient) sendCallbackRequest(ctx context.Context, url string, body []byte, traceID, dispatchAttempt string) (success bool, final bool) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return false, true
+	}
+	setCallbackHeaders(req, traceID, dispatchAttempt)
+
+	resp, err := c.httpClient.Do(req)
+	if err == nil && resp != nil {
+		resp.Body.Close()
+		return classifyCallbackResponse(resp)
+	}
+	return false, false
+}
+
+func setCallbackHeaders(req *http.Request, traceID, dispatchAttempt string) {
+	req.Header.Set(contentTypeHeader, "application/json")
+	if strings.TrimSpace(traceID) != "" {
+		req.Header.Set("X-Trace-Id", traceID)
+	}
+	if strings.TrimSpace(dispatchAttempt) != "" {
+		req.Header.Set("X-Dispatch-Attempt", dispatchAttempt)
+	}
+}
+
+// classifyCallbackResponse reports whether the response ends the send and, when
+// it does, the outcome. 2xx is success; a non-retryable 4xx is a permanent
+// failure; anything else (5xx, 408, 429) is retried.
+func classifyCallbackResponse(resp *http.Response) (success bool, final bool) {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, true
+	}
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 &&
+		resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode != http.StatusTooManyRequests {
+		return false, true
+	}
+	return false, false
 }
 
 func (c *CallbackClient) callbackURL(executionID string) string {

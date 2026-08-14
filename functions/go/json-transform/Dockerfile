@@ -9,4 +9,5 @@ FROM docker.io/library/alpine:3.22
 WORKDIR /app
 COPY --from=build /out/json-transform /app/json-transform
 EXPOSE 8080
+USER nobody
 ENTRYPOINT ["/app/json-transform"]

@@ -8,4 +8,5 @@ FROM docker.io/library/alpine:3.22
 WORKDIR /app
 COPY --from=build /out/handler-envelope /app/handler-envelope
 EXPOSE 8080
+USER nobody
 ENTRYPOINT ["/app/handler-envelope"]
