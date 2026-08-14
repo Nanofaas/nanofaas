@@ -292,7 +292,7 @@ class InvokeControllerTest {
         ResponseEntity<Object> response = controller.invoke(request, null, null);
 
         assertEquals(404, response.getStatusCode().value());
-        assertNull(response.getHeaders().getFirst("Content-Type"));
+        assertEquals("application/json", response.getHeaders().getFirst("Content-Type"));
         assertEquals("true", response.getHeaders().getFirst("X-NanoFaaS-Function-Status"));
 
         ArgumentCaptor<CallbackPayload> callback = ArgumentCaptor.forClass(CallbackPayload.class);
@@ -397,7 +397,7 @@ class InvokeControllerTest {
     }
 
     @Test
-    void invoke_base64EnvelopeWithBinaryContentType_writesJsonResponse() throws Exception {
+    void invoke_base64EnvelopeWithBinaryContentType_preservesContentTypeAndWritesJsonString() throws Exception {
         when(handler.handle(any())).thenReturn(
                 new HandlerResponse("AAEC", 200, Map.of("Content-Type", "image/png"), "base64"));
         MockMvc mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
@@ -407,7 +407,7 @@ class InvokeControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"input\":{}}"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG))
                 .andExpect(content().json("\"AAEC\""))
                 .andExpect(header().string("X-NanoFaaS-Function-Status", "true"))
                 .andExpect(header().string("X-NanoFaaS-Encoding", "base64"));
@@ -415,6 +415,7 @@ class InvokeControllerTest {
         ArgumentCaptor<CallbackPayload> callback = ArgumentCaptor.forClass(CallbackPayload.class);
         verify(callbackDispatcher).submit(eq("env-exec-id"), callback.capture(), isNull(), isNull());
         assertEquals("image/png", callback.getValue().headers().get("Content-Type"));
+        assertEquals("AAEC", callback.getValue().output().asText());
     }
 
     @Test

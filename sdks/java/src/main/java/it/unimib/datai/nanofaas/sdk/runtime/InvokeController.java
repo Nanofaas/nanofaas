@@ -139,13 +139,7 @@ public class InvokeController {
                 dispatchAttempt);
 
         ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(statusCode);
-        // The callback carries function Content-Type to the control plane; this endpoint always
-        // serializes its JsonNode response as JSON.
-        allowedHeaders.forEach((name, value) -> {
-            if (!"content-type".equalsIgnoreCase(name)) {
-                responseBuilder.header(name, value);
-            }
-        });
+        allowedHeaders.forEach(responseBuilder::header);
         if (isEnvelope) {
             responseBuilder.header("X-NanoFaaS-Function-Status", "true");
             if (encoding != null) {
@@ -156,7 +150,11 @@ public class InvokeController {
             responseBuilder.header("X-Cold-Start", "true");
             responseBuilder.header("X-Init-Duration-Ms", String.valueOf(coldStartTracker.initDurationMs()));
         }
-        return responseBuilder.body(output);
+        // A handler Content-Type selects StringHttpMessageConverter.  The string stays JSON
+        // (including quotes for scalar output), while the callback keeps the JsonNode envelope.
+        boolean hasContentType = allowedHeaders.keySet().stream()
+                .anyMatch(name -> "content-type".equalsIgnoreCase(name));
+        return responseBuilder.body(hasContentType ? output.toString() : output);
     }
 
     private void warnOnDroppedHeaders(Map<String, String> rawHeaders, Map<String, String> allowedHeaders,
