@@ -218,6 +218,26 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_functionDecidedEncoding_isExposedOnEnvelopeResponse() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        InvocationResponse response = new InvocationResponse("ex-encoding", "success", "AAEC", null, 200,
+                Map.of("Content-Type", "application/octet-stream"), "base64");
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("X-NanoFaaS-Function-Status", "true")
+                .expectHeader().valueEquals("X-NanoFaaS-Encoding", "base64")
+                .expectBody()
+                .jsonPath("$.encoding").isEqualTo("base64");
+    }
+
+    @Test
     void invokeSync_copiesAllowedHeaderButExcludesContentTypeFromRealResponse() {
         // Content-Type and Location arrive together so a regression that short-circuits the
         // whole header-copy loop when Content-Type is present (copying nothing) cannot pass
@@ -245,7 +265,7 @@ class InvocationControllerTest {
     @Test
     void invokeSync_noStatusCode_defaultsTo200AsToday() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
-        InvocationResponse response = new InvocationResponse("ex-3", "success", "out", null);
+        InvocationResponse response = new InvocationResponse("ex-3", "success", "out", null, null, null, "base64");
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
                 .thenReturn(Mono.just(SyncInvocation.local(response)));
 
@@ -255,7 +275,8 @@ class InvocationControllerTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isOk()
-                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status");
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status")
+                .expectHeader().doesNotExist("X-NanoFaaS-Encoding");
     }
 
     @Test

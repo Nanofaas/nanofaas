@@ -103,6 +103,9 @@ public class InvocationController {
                             .header("X-Execution-Id", response.executionId());
                     if (functionDecided) {
                         builder.header("X-NanoFaaS-Function-Status", "true");
+                        if (response.encoding() != null && !response.encoding().isBlank()) {
+                            builder.header("X-NanoFaaS-Encoding", response.encoding());
+                        }
                     }
                     if (response.headers() != null) {
                         response.headers().forEach((headerName, headerValue) -> {
