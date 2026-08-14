@@ -28,6 +28,7 @@ tasks.named('test') {
 }
 
 tasks.named('processResources') {
+    inputs.property('version', project.version)
     filesMatching('nanofaas-cli.properties') {
         expand(version: project.version)
     }
