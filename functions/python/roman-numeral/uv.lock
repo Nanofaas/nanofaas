@@ -182,7 +182,7 @@ wheels = [
 
 [[package]]
 name = "nanofaas-sdk"
-version = "0.18.3"
+version = "0.19.0"
 source = { directory = "../../../sdks/python" }
 dependencies = [
     { name = "fastapi" },
