@@ -19,15 +19,15 @@ ONLY=""
 
 usage() {
     cat <<'EOF'
-Usage: scripts/sonar.sh [--rm] [--only java|python|rust] [--dry-run]
+Usage: scripts/sonar.sh [--rm] [--only java|python|rust|go|javascript] [--dry-run]
 
-Runs SonarQube analysis for nanofaas (Java + Python + Rust by default)
-against an ephemeral SonarQube container on 127.0.0.1:9000.
+Runs SonarQube analysis for nanofaas (Java, Python, Rust, Go and JavaScript
+by default) against an ephemeral SonarQube container on 127.0.0.1:9000.
 
   --rm           remove the container when the run finishes (default:
                  leave it up so issues can be browsed; the next run
                  replaces it)
-  --only LANG    analyse only java, python or rust
+  --only LANG    analyse only java, python, rust, go or javascript
   --dry-run      print the commands without executing them (preconditions
                  are still checked, but nothing is started)
 EOF
@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
         --only)
             [[ $# -ge 2 ]] || { usage >&2; exit 1; }
             case "$2" in
-                java|python|rust) ONLY="$2"; shift 2 ;;
+                java|python|rust|go|javascript) ONLY="$2"; shift 2 ;;
                 *) echo "Unknown language: $2" >&2; usage >&2; exit 1 ;;
             esac
             ;;
@@ -143,16 +143,33 @@ run_rust() {
         -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml
 }
 
+run_go() {
+    run sonar-scanner \
+        -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$TOKEN" \
+        -Dsonar.projectKey=nanofaas-go -Dsonar.projectName="nanofaas Go" \
+        -Dsonar.sources=sdks/go,functions/go
+}
+
+run_javascript() {
+    run sonar-scanner \
+        -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$TOKEN" \
+        -Dsonar.projectKey=nanofaas-javascript -Dsonar.projectName="nanofaas JavaScript" \
+        -Dsonar.sources=sdks/javascript,functions/javascript \
+        -Dsonar.exclusions="**/dist/**,**/node_modules/**"
+}
+
 FAILED=""
 if [ -n "$ONLY" ]; then
     eval "RUN_${ONLY}=true"
 else
-    RUN_java=true; RUN_python=true; RUN_rust=true
+    RUN_java=true; RUN_python=true; RUN_rust=true; RUN_go=true; RUN_javascript=true
 fi
 
 if [ "${RUN_java:-false}" = true ] && ! run_java; then FAILED="${FAILED} java"; fi
 if [ "${RUN_python:-false}" = true ] && ! run_python; then FAILED="${FAILED} python"; fi
 if [ "${RUN_rust:-false}" = true ] && ! run_rust; then FAILED="${FAILED} rust"; fi
+if [ "${RUN_go:-false}" = true ] && ! run_go; then FAILED="${FAILED} go"; fi
+if [ "${RUN_javascript:-false}" = true ] && ! run_javascript; then FAILED="${FAILED} javascript"; fi
 # --- Report ------------------------------------------------------------------
 wait_for_analysis() {
     # The scanner exits as soon as the report is uploaded; issues are only
@@ -213,7 +230,7 @@ REPORT_FAILED=false
 if [ -n "$ONLY" ]; then
     if ! report "nanofaas-${ONLY}" "${ONLY}"; then REPORT_FAILED=true; fi
 else
-    for pair in "nanofaas-java java" "nanofaas-python python" "nanofaas-rust rust"; do
+    for pair in "nanofaas-java java" "nanofaas-python python" "nanofaas-rust rust" "nanofaas-go go" "nanofaas-javascript javascript"; do
         set -- $pair
         if ! report "$1" "$2"; then REPORT_FAILED=true; fi
     done
