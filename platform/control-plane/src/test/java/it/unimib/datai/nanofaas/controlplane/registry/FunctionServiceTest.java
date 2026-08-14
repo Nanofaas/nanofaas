@@ -173,7 +173,7 @@ class FunctionServiceTest {
                 3,
                 null,
                 mode,
-                it.unimib.datai.nanofaas.common.model.RuntimeMode.HTTP,
+                null,
                 null,
                 mode == ExecutionMode.DEPLOYMENT
                         ? new it.unimib.datai.nanofaas.common.model.ScalingConfig(
