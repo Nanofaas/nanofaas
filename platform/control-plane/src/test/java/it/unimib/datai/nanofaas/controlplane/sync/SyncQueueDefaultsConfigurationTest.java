@@ -25,6 +25,7 @@ class SyncQueueDefaultsConfigurationTest {
         SyncQueueGateway customGateway = new SyncQueueGateway() {
             @Override
             public void enqueueOrThrow(it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask task) {
+                // no-op: the stub gateway never enqueues
             }
 
             @Override

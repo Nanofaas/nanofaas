@@ -33,7 +33,7 @@ public class ScalingDecisionMetrics {
     }
 
     /** Record a decision, registering the function's gauges on first sight. */
-    public void record(String functionName, ScalingDecision decision) {
+    public void recordDecision(String functionName, ScalingDecision decision) {
         Values values = byFunction.computeIfAbsent(functionName, this::register);
         // Ratios are continuous; the gauges are integers, so the ratio is scaled by 1000
         // rather than rounded away — at target 100 and 365 req/s it is 3.65, which would

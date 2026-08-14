@@ -778,101 +778,127 @@ async fn warm_invoke(
         })
         .dec();
 
+    finish_invocation(out, &state, mode_str, execution_id)
+}
+
+fn finish_invocation(
+    out: Result<WarmOutput, String>,
+    state: &WarmAppState,
+    mode_str: &str,
+    execution_id: &str,
+) -> axum::response::Response {
     match out {
-        Ok(output) => {
-            state
-                .metrics
-                .invocations_total
-                .get_or_create(&InvocationsLabels {
-                    function: state.function_name.clone(),
-                    mode: mode_str.to_string(),
-                    success: "true".to_string(),
-                })
-                .inc();
-            match output {
-                WarmOutput::Proxied(proxied) => {
-                    let mut response = axum::response::Response::builder()
-                        .status(proxied.status)
-                        .body(axum::body::Body::from(proxied.body))
-                        .unwrap();
-                    response.headers_mut().extend(proxied.headers);
-                    response
-                }
-                WarmOutput::Local(value) => match envelope::detect(&value) {
-                    None => (StatusCode::OK, Json(value)).into_response(),
-                    Some(Err(message)) => {
-                        warn!(execution_id = %execution_id, error = %message,
-                            "Envelope rejected, treating as platform error");
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(serde_json::json!({"error": message})),
-                        )
-                            .into_response()
-                    }
-                    Some(Ok(envelope)) => {
-                        let mut response = (
-                            StatusCode::from_u16(envelope.status_code)
-                                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                            Json(envelope.output),
-                        )
-                            .into_response();
-                        let headers = response.headers_mut();
-                        for (name, value) in &envelope.headers {
-                            if let (Ok(name), Ok(value)) = (
-                                name.parse::<axum::http::HeaderName>(),
-                                value.parse::<axum::http::HeaderValue>(),
-                            ) {
-                                headers.insert(name, value);
-                            }
-                        }
-                        headers.insert(
-                            envelope::MARKER_HEADER
-                                .parse::<axum::http::HeaderName>()
-                                .unwrap(),
-                            axum::http::HeaderValue::from_static("true"),
-                        );
-                        if let Some(encoding) = envelope.encoding.as_deref() {
-                            if let Ok(value) = encoding.parse::<axum::http::HeaderValue>() {
-                                headers.insert(
-                                    envelope::ENCODING_HEADER
-                                        .parse::<axum::http::HeaderName>()
-                                        .unwrap(),
-                                    value,
-                                );
-                            }
-                        }
-                        response
-                    }
-                },
-            }
-        }
-        Err(e) => {
-            if is_timeout_error(&e) {
-                state
-                    .metrics
-                    .timeouts_total
-                    .get_or_create(&TimeoutsLabels {
-                        function: state.function_name.clone(),
-                        mode: mode_str.to_string(),
-                    })
-                    .inc();
-            }
-            state
-                .metrics
-                .invocations_total
-                .get_or_create(&InvocationsLabels {
-                    function: state.function_name.clone(),
-                    mode: mode_str.to_string(),
-                    success: "false".to_string(),
-                })
-                .inc();
+        Ok(output) => success_response(output, state, mode_str, execution_id),
+        Err(e) => error_response(e, state, mode_str),
+    }
+}
+
+fn success_response(
+    output: WarmOutput,
+    state: &WarmAppState,
+    mode_str: &str,
+    execution_id: &str,
+) -> axum::response::Response {
+    state
+        .metrics
+        .invocations_total
+        .get_or_create(&InvocationsLabels {
+            function: state.function_name.clone(),
+            mode: mode_str.to_string(),
+            success: "true".to_string(),
+        })
+        .inc();
+    match output {
+        WarmOutput::Proxied(proxied) => proxied_response(proxied),
+        WarmOutput::Local(value) => local_response(value, execution_id),
+    }
+}
+
+fn proxied_response(proxied: ProxiedResponse) -> axum::response::Response {
+    let mut response = axum::response::Response::builder()
+        .status(proxied.status)
+        .body(axum::body::Body::from(proxied.body))
+        .unwrap();
+    response.headers_mut().extend(proxied.headers);
+    response
+}
+
+fn local_response(value: serde_json::Value, execution_id: &str) -> axum::response::Response {
+    match envelope::detect(&value) {
+        None => (StatusCode::OK, Json(value)).into_response(),
+        Some(Err(message)) => {
+            warn!(execution_id = %execution_id, error = %message,
+                "Envelope rejected, treating as platform error");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e})),
+                Json(serde_json::json!({"error": message})),
             )
                 .into_response()
         }
+        Some(Ok(envelope)) => envelope_response(envelope),
     }
+}
+
+fn envelope_response(envelope: envelope::Envelope) -> axum::response::Response {
+    let mut response = (
+        StatusCode::from_u16(envelope.status_code)
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        Json(envelope.output),
+    )
+        .into_response();
+    let headers = response.headers_mut();
+    for (name, value) in &envelope.headers {
+        if let (Ok(name), Ok(value)) = (
+            name.parse::<axum::http::HeaderName>(),
+            value.parse::<axum::http::HeaderValue>(),
+        ) {
+            headers.insert(name, value);
+        }
+    }
+    headers.insert(
+        envelope::MARKER_HEADER
+            .parse::<axum::http::HeaderName>()
+            .unwrap(),
+        axum::http::HeaderValue::from_static("true"),
+    );
+    if let Some(encoding) = envelope.encoding.as_deref() {
+        if let Ok(value) = encoding.parse::<axum::http::HeaderValue>() {
+            headers.insert(
+                envelope::ENCODING_HEADER
+                    .parse::<axum::http::HeaderName>()
+                    .unwrap(),
+                value,
+            );
+        }
+    }
+    response
+}
+
+fn error_response(e: String, state: &WarmAppState, mode_str: &str) -> axum::response::Response {
+    if is_timeout_error(&e) {
+        state
+            .metrics
+            .timeouts_total
+            .get_or_create(&TimeoutsLabels {
+                function: state.function_name.clone(),
+                mode: mode_str.to_string(),
+            })
+            .inc();
+    }
+    state
+        .metrics
+        .invocations_total
+        .get_or_create(&InvocationsLabels {
+            function: state.function_name.clone(),
+            mode: mode_str.to_string(),
+            success: "false".to_string(),
+        })
+        .inc();
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({"error": e})),
+    )
+        .into_response()
 }
 
 fn is_timeout_error(e: &str) -> bool {

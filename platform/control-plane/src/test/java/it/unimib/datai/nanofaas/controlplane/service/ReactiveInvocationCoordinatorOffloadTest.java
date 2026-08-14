@@ -159,7 +159,8 @@ class ReactiveInvocationCoordinatorOffloadTest {
         }).when(syncQueueGateway).enqueueOrThrow(any());
         when(offloadGateway.enabled()).thenReturn(true);
 
-        assertThatThrownBy(() -> invokeBlocking(coordinator(syncQueueGateway), lookup, spec, 1000))
+        ReactiveInvocationCoordinator coordinator = coordinator(syncQueueGateway);
+        assertThatThrownBy(() -> invokeBlocking(coordinator, lookup, spec, 1000))
                 .isInstanceOf(SyncQueueRejectedException.class);
 
         verify(offloadGateway, never()).shouldOffloadOnPressure(any());

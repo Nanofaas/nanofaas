@@ -86,10 +86,9 @@ class InvocationControllerTest {
         ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
         verify(invocationService).invokeSyncReactive(eq("echo"), captor.capture(), eq("k-1"), eq("t-1"), eq(null), any());
         Map<String, String> capturedHeaders = captor.getValue().headers();
-        assertThat(capturedHeaders.get("authorization")).isEqualTo("Bearer x");
-        assertThat(capturedHeaders).doesNotContainKey("connection");
-        assertThat(capturedHeaders).doesNotContainKey("x-trace-id");
-        assertThat(capturedHeaders).doesNotContainKey("idempotency-key");
+        assertThat(capturedHeaders)
+                .containsEntry("authorization", "Bearer x")
+                .doesNotContainKeys("connection", "x-trace-id", "idempotency-key");
     }
 
     @Test
@@ -395,10 +394,9 @@ class InvocationControllerTest {
         ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
         verify(invocationService).invokeAsync(eq("echo"), captor.capture(), eq("k-1"), eq("t-1"));
         Map<String, String> capturedHeaders = captor.getValue().headers();
-        assertThat(capturedHeaders.get("authorization")).isEqualTo("Bearer x");
-        assertThat(capturedHeaders).doesNotContainKey("connection");
-        assertThat(capturedHeaders).doesNotContainKey("x-trace-id");
-        assertThat(capturedHeaders).doesNotContainKey("idempotency-key");
+        assertThat(capturedHeaders)
+                .containsEntry("authorization", "Bearer x")
+                .doesNotContainKeys("connection", "x-trace-id", "idempotency-key");
     }
 
     @Test

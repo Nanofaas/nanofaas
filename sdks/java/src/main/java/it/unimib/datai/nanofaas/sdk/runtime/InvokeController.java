@@ -108,23 +108,24 @@ public class InvokeController {
         Object outputForSerialization = rawOutput;
         boolean isEnvelope = false;
 
-        if (rawOutput instanceof HandlerResponse envelope) {
-            if (ResponseHeaderPolicy.isStatusCodeValid(envelope.statusCode())) {
-                statusCode = envelope.statusCode();
-                allowedHeaders = ResponseHeaderPolicy.filterAllowedHeaders(envelope.headers());
-                warnOnDroppedHeaders(envelope.headers(), allowedHeaders, executionId);
-                encoding = envelope.encoding();
-                outputForSerialization = envelope.output();
+        if (rawOutput instanceof HandlerResponse(var envelopeOutput, var envelopeStatus,
+                                                  var envelopeHeaders, var envelopeEncoding)) {
+            if (ResponseHeaderPolicy.isStatusCodeValid(envelopeStatus)) {
+                statusCode = envelopeStatus;
+                allowedHeaders = ResponseHeaderPolicy.filterAllowedHeaders(envelopeHeaders);
+                warnOnDroppedHeaders(envelopeHeaders, allowedHeaders, executionId);
+                encoding = envelopeEncoding;
+                outputForSerialization = envelopeOutput;
                 isEnvelope = true;
             } else {
                 log.warn("Handler returned invalid statusCode {} for execution {}, treating as platform error",
-                        envelope.statusCode(), executionId);
+                        envelopeStatus, executionId);
                 callbackDispatcher.submit(executionId,
                         CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR",
-                                "Handler returned invalid statusCode: " + envelope.statusCode()),
+                                "Handler returned invalid statusCode: " + envelopeStatus),
                         runtimeContext.traceId(), dispatchAttempt);
                 return ResponseEntity.status(500)
-                        .body(Map.of(ERROR_KEY, "Handler returned invalid statusCode: " + envelope.statusCode()));
+                        .body(Map.of(ERROR_KEY, "Handler returned invalid statusCode: " + envelopeStatus));
             }
         }
 
@@ -153,7 +154,7 @@ public class InvokeController {
         // A handler Content-Type selects StringHttpMessageConverter.  The string stays JSON
         // (including quotes for scalar output), while the callback keeps the JsonNode envelope.
         boolean hasContentType = allowedHeaders.keySet().stream()
-                .anyMatch(name -> "content-type".equalsIgnoreCase(name));
+                .anyMatch("content-type"::equalsIgnoreCase);
         return responseBuilder.body(hasContentType ? output.toString() : output);
     }
 

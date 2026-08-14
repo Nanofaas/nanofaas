@@ -63,8 +63,8 @@ class CoreArchitectureTest {
         return new ArchCondition<>("have their class file under the control-plane module") {
             @Override
             public void check(JavaClass item, ConditionEvents events) {
-                // ArchUnit 1.4.1: SourceCodeLocation.getSourceCodePath() was removed;
-                // the source URI is the equivalent (path under platform/control-plane/).
+                // ArchUnit 1.4.1 dropped SourceCodeLocation's source-path accessor, so read the
+                // source URI instead; its path points under platform/control-plane/.
                 String path = item.getSource().map(Source::getUri).map(URI::getPath).orElse("");
                 if (!path.contains("/platform/control-plane/")) {
                     events.add(SimpleConditionEvent.violated(item,

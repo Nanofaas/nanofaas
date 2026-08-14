@@ -381,59 +381,8 @@ async def invoke(
             else asyncio.to_thread(handler, input_data)
         output = await asyncio.wait_for(invocation, timeout=HANDLER_TIMEOUT_SECONDS)
 
-        response_status = 200
-        response_headers = _build_cold_start_headers(is_cold_start)
-        response_body = output
-        callback_status_code = None
-        callback_headers = None
-        callback_encoding = None
-
-        if isinstance(output, HandlerResponse):
-            if 200 <= output.status_code <= 599:
-                response_status = output.status_code
-                allowed = _filter_response_headers(output.headers, execution_id)
-                response_headers = {**response_headers, **allowed, "X-NanoFaaS-Function-Status": "true"}
-                if output.encoding:
-                    response_headers["X-NanoFaaS-Encoding"] = output.encoding
-                response_body = output.output
-                callback_status_code = output.status_code
-                callback_headers = allowed
-                callback_encoding = output.encoding
-            else:
-                logger.warning(f"Handler returned invalid statusCode {output.status_code} for execution {execution_id}, treating as platform error")
-                RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
-                if callback_url:
-                    _schedule_callback(
-                        background_tasks, callback_url, execution_id, trace_id,
-                        {"success": False, "output": None,
-                         "error": {"code": "OUTPUT_SERIALIZATION_ERROR",
-                                   "message": f"Handler returned invalid statusCode: {output.status_code}"}},
-                        x_dispatch_attempt,
-                    )
-                return JSONResponse(status_code=500, content={
-                    "error": f"Handler returned invalid statusCode: {output.status_code}"})
-
-        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
-        result = {"success": True, "output": response_body, "error": None}
-        if callback_status_code is not None:
-            result["statusCode"] = callback_status_code
-            result["headers"] = callback_headers
-            result["encoding"] = callback_encoding
-
-        if callback_url:
-            _schedule_callback(
-                background_tasks, callback_url, execution_id, trace_id, result, x_dispatch_attempt
-            )
-
-        return JSONResponse(
-            status_code=response_status,
-            # ponytail: the envelope path emits output verbatim so Java and Python agree on
-            # the wire; the plain path keeps today's {"result": ...} wrapping untouched for
-            # backward compatibility.
-            content=response_body
-            if callback_status_code is not None or isinstance(response_body, (dict, list))
-            else {"result": response_body},
-            headers=response_headers,
+        return _build_success_response(
+            output, execution_id, is_cold_start, background_tasks, callback_url, trace_id, x_dispatch_attempt
         )
     except json.JSONDecodeError:
         return _fail_response(
@@ -465,6 +414,70 @@ async def invoke(
         elapsed = time.perf_counter() - start
         RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
         RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
+
+
+def _build_success_response(output, execution_id, is_cold_start, background_tasks, callback_url, trace_id, x_dispatch_attempt) -> JSONResponse:
+    """Build the success response, honouring an optional HandlerResponse envelope."""
+    response_status = 200
+    response_headers = _build_cold_start_headers(is_cold_start)
+    response_body = output
+    callback_status_code = None
+    callback_headers = None
+    callback_encoding = None
+
+    if isinstance(output, HandlerResponse):
+        if not (200 <= output.status_code <= 599):
+            return _invalid_status_response(output, execution_id, background_tasks, callback_url, trace_id, x_dispatch_attempt)
+        response_status = output.status_code
+        allowed = _filter_response_headers(output.headers, execution_id)
+        response_headers = {**response_headers, **allowed, "X-NanoFaaS-Function-Status": "true"}
+        if output.encoding:
+            response_headers["X-NanoFaaS-Encoding"] = output.encoding
+        response_body = output.output
+        callback_status_code = output.status_code
+        callback_headers = allowed
+        callback_encoding = output.encoding
+
+    RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="true").inc()
+    result = {"success": True, "output": response_body, "error": None}
+    if callback_status_code is not None:
+        result["statusCode"] = callback_status_code
+        result["headers"] = callback_headers
+        result["encoding"] = callback_encoding
+
+    if callback_url:
+        _schedule_callback(
+            background_tasks, callback_url, execution_id, trace_id, result, x_dispatch_attempt
+        )
+
+    return JSONResponse(
+        status_code=response_status,
+        # ponytail: the envelope path emits output verbatim so Java and Python agree on
+        # the wire; the plain path keeps today's {"result": ...} wrapping untouched for
+        # backward compatibility.
+        content=response_body
+        if callback_status_code is not None or isinstance(response_body, (dict, list))
+        else {"result": response_body},
+        headers=response_headers,
+    )
+
+
+def _invalid_status_response(output, execution_id, background_tasks, callback_url, trace_id, x_dispatch_attempt) -> JSONResponse:
+    logger.warning(
+        f"Handler returned invalid statusCode {output.status_code} for execution {execution_id}, treating as platform error"
+    )
+    RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
+    if callback_url:
+        _schedule_callback(
+            background_tasks, callback_url, execution_id, trace_id,
+            {"success": False, "output": None,
+             "error": {"code": "OUTPUT_SERIALIZATION_ERROR",
+                       "message": f"Handler returned invalid statusCode: {output.status_code}"}},
+            x_dispatch_attempt,
+        )
+    return JSONResponse(status_code=500, content={
+        "error": f"Handler returned invalid statusCode: {output.status_code}"})
+
 
 @app.get("/health")
 def health():

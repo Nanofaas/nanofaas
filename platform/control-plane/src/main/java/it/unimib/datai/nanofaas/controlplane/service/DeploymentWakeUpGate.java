@@ -128,7 +128,7 @@ public class DeploymentWakeUpGate {
         timeoutScheduler.schedule(() -> timeout(result), timeout.toNanos(), TimeUnit.NANOSECONDS);
         try {
             executor.execute(() -> start(target, deadline, result));
-        } catch (Throwable failure) {
+        } catch (Exception failure) {
             result.completeExceptionally(failure);
         }
     }
@@ -145,7 +145,7 @@ public class DeploymentWakeUpGate {
             }
             wakeUpCoordinator.protectAndScaleUp(target, deadline, () -> coordinator.setReplicas(target, 1));
             poll(target, deadline, result);
-        } catch (Throwable failure) {
+        } catch (Exception failure) {
             result.completeExceptionally(failure);
         }
     }
@@ -173,7 +173,7 @@ public class DeploymentWakeUpGate {
                     );
                 }
             }
-        } catch (Throwable failure) {
+        } catch (Exception failure) {
             result.completeExceptionally(failure);
         }
     }
@@ -182,7 +182,7 @@ public class DeploymentWakeUpGate {
         if (!result.isDone()) {
             try {
                 executor.execute(() -> poll(target, deadline, result));
-            } catch (Throwable failure) {
+            } catch (Exception failure) {
                 result.completeExceptionally(failure);
             }
         }

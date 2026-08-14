@@ -54,9 +54,10 @@ class DeploymentWakeUpGateTest {
     void properties_defaultAndRejectNonPositiveDurations() {
         assertThat(new DeploymentWakeUpProperties().timeout()).isEqualTo(Duration.ofSeconds(30));
         assertThat(new DeploymentWakeUpProperties().pollInterval()).isEqualTo(Duration.ofMillis(250));
-        assertThatThrownBy(() -> new DeploymentWakeUpProperties(Duration.ZERO, Duration.ofMillis(1)))
+        Duration oneMillis = Duration.ofMillis(1);
+        assertThatThrownBy(() -> new DeploymentWakeUpProperties(Duration.ZERO, oneMillis))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new DeploymentWakeUpProperties(Duration.ofMillis(1), Duration.ZERO))
+        assertThatThrownBy(() -> new DeploymentWakeUpProperties(oneMillis, Duration.ZERO))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -275,7 +276,8 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         when(registry.getRegistered("echo")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> gate().ensureReady(task).join())
+        CompletableFuture<Void> ready = gate().ensureReady(task);
+        assertThatThrownBy(ready::join)
                 .isInstanceOf(CompletionException.class)
                 .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TARGET_UNAVAILABLE");
         verifyNoInteractions(coordinator);
@@ -288,7 +290,8 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", backend, ScalingStrategy.INTERNAL, 0)));
 
-        assertThatThrownBy(() -> gate().ensureReady(task).join())
+        CompletableFuture<Void> ready = gate().ensureReady(task);
+        assertThatThrownBy(ready::join)
                 .isInstanceOf(CompletionException.class)
                 .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TARGET_UNAVAILABLE");
         verifyNoInteractions(coordinator);
@@ -303,7 +306,8 @@ class DeploymentWakeUpGateTest {
         doThrow(new IllegalStateException("provider unavailable"))
                 .when(coordinator).setReplicas(target, 1);
 
-        assertThatThrownBy(() -> gate().ensureReady(task).join())
+        CompletableFuture<Void> ready = gate().ensureReady(task);
+        assertThatThrownBy(ready::join)
                 .isInstanceOf(CompletionException.class)
                 .hasRootCauseMessage("provider unavailable");
     }
@@ -315,7 +319,8 @@ class DeploymentWakeUpGateTest {
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
         when(coordinator.getReplicaStatus(target)).thenThrow(new IllegalStateException("provider unavailable"));
 
-        assertThatThrownBy(() -> gate().ensureReady(task).join())
+        CompletableFuture<Void> ready = gate().ensureReady(task);
+        assertThatThrownBy(ready::join)
                 .isInstanceOf(CompletionException.class)
                 .hasRootCauseMessage("provider unavailable");
     }

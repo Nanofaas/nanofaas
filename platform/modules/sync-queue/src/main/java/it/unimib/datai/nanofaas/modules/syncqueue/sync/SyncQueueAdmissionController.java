@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 
 import java.time.Instant;
 

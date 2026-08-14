@@ -36,7 +36,9 @@ class DockerImageValidatorTest {
         ContainerRuntimeAdapter adapter = mock(ContainerRuntimeAdapter.class);
         doThrow(new IllegalStateException("denied")).when(adapter).pullImage("ghcr.io/example/function:v1");
 
-        assertThatThrownBy(() -> new DockerImageValidator(adapter).validate(spec(ExecutionMode.DEPLOYMENT)))
+        DockerImageValidator validator = new DockerImageValidator(adapter);
+        FunctionSpec functionSpec = spec(ExecutionMode.DEPLOYMENT);
+        assertThatThrownBy(() -> validator.validate(functionSpec))
                 .isInstanceOf(ImageValidationException.class)
                 .extracting(error -> ((ImageValidationException) error).errorCode())
                 .isEqualTo("IMAGE_REGISTRY_UNAVAILABLE");

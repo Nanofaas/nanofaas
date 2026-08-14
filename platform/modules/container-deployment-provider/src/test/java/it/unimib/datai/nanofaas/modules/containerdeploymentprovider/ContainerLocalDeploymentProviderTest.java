@@ -468,6 +468,7 @@ class ContainerLocalDeploymentProviderTest {
 
         @Override
         public void pullImage(String image) {
+            // no-op: the recording adapter assumes images are already present
         }
 
         @Override

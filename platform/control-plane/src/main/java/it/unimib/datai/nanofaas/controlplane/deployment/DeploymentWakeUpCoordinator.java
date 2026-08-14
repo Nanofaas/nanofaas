@@ -23,7 +23,7 @@ public class DeploymentWakeUpCoordinator {
             long leaseId = leaseIds.incrementAndGet();
             state.leaseId = leaseId;
             state.deadlineNanos = deadlineNanos;
-            scheduleExpiry(target.functionName(), state, leaseId, deadlineNanos);
+            scheduleExpiry(target.functionName(), leaseId, deadlineNanos);
             scaleUp.run();
         }
     }
@@ -58,20 +58,24 @@ public class DeploymentWakeUpCoordinator {
         functions.remove(functionName);
     }
 
-    private void scheduleExpiry(String functionName, FunctionState state, long leaseId, long deadlineNanos) {
+    private void scheduleExpiry(String functionName, long leaseId, long deadlineNanos) {
         long delay = Math.max(0, deadlineNanos - System.nanoTime());
         CompletableFuture.delayedExecutor(delay, TimeUnit.NANOSECONDS)
-                .execute(() -> expire(functionName, state, leaseId, deadlineNanos));
+                .execute(() -> expire(functionName, leaseId, deadlineNanos));
     }
 
-    private void expire(String functionName, FunctionState state, long leaseId, long deadlineNanos) {
+    private void expire(String functionName, long leaseId, long deadlineNanos) {
+        FunctionState state = functions.get(functionName);
+        if (state == null) {
+            return;
+        }
         synchronized (state) {
             if (state.leaseId != leaseId || state.deadlineNanos != deadlineNanos) {
                 return;
             }
             long now = System.nanoTime();
             if (now < deadlineNanos) {
-                scheduleExpiry(functionName, state, leaseId, deadlineNanos);
+                scheduleExpiry(functionName, leaseId, deadlineNanos);
                 return;
             }
             state.leaseId = 0;

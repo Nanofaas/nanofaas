@@ -48,10 +48,12 @@ class ServiceDefaultsConfigurationTest {
 
             @Override
             public void setEffectiveConcurrency(String functionName, int value) {
+                // no-op: the stub's concurrency is fixed, not tracked
             }
 
             @Override
             public void updateConcurrencyController(String functionName, it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode mode, int targetInFlightPerPod) {
+                // no-op: the stub does not adapt concurrency
             }
         };
 

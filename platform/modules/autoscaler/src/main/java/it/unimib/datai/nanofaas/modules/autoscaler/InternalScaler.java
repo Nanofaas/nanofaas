@@ -162,7 +162,7 @@ public class InternalScaler implements SmartLifecycle {
         int currentReplicas = deploymentCoordinator.getReadyReplicas(target);
         ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
         if (decisionMetrics != null) {
-            decisionMetrics.record(functionName, decision);
+            decisionMetrics.recordDecision(functionName, decision);
         }
 
         Instant now = Instant.now();

@@ -16,7 +16,6 @@ public final class NanofaasCli {
         cli.setExpandAtFiles(false);
         cli.setExecutionExceptionHandler((exception, commandLine, parseResult) -> {
             commandLine.getErr().println("Error: " + exception.getMessage());
-            exception.printStackTrace();
             return CommandLine.ExitCode.SOFTWARE;
         });
         return cli;

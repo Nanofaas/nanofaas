@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -48,7 +49,7 @@ class DeploymentWakeUpCoordinatorTest {
     }
 
     @Test
-    void lease_expiresAutomaticallyAndPermitsLaterScaleDown() throws Exception {
+    void lease_expiresAutomaticallyAndPermitsLaterScaleDown() {
         DeploymentWakeUpCoordinator coordinator = new DeploymentWakeUpCoordinator();
         coordinator.protectAndScaleUp(target, System.nanoTime() + Duration.ofMillis(30).toNanos(), () -> { });
 
@@ -58,21 +59,21 @@ class DeploymentWakeUpCoordinatorTest {
     }
 
     @Test
-    void lease_cleanupFromAnOlderWakeUpCannotRemoveReplacementLease() throws Exception {
+    void lease_cleanupFromAnOlderWakeUpCannotRemoveReplacementLease() {
         DeploymentWakeUpCoordinator coordinator = new DeploymentWakeUpCoordinator();
         coordinator.protectAndScaleUp(target, System.nanoTime() + Duration.ofMillis(30).toNanos(), () -> { });
         coordinator.protectAndScaleUp(target, System.nanoTime() + Duration.ofMillis(150).toNanos(), () -> { });
 
-        Thread.sleep(60);
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(60));
 
         assertThat(coordinator.isScaleDownProtected(target.functionName())).isTrue();
         await(() -> !coordinator.isScaleDownProtected(target.functionName()));
     }
 
-    private static void await(Condition condition) throws InterruptedException {
+    private static void await(Condition condition) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
         while (!condition.test() && System.nanoTime() < deadline) {
-            Thread.sleep(1);
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
         }
         assertThat(condition.test()).isTrue();
     }
