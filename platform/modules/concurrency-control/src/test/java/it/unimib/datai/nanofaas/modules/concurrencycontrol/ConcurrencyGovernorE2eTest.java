@@ -48,6 +48,25 @@ class ConcurrencyGovernorE2eTest {
                 .untilAsserted(() -> assertThat(effectiveConcurrency("governed")).isEqualTo(2.0));
     }
 
+    @Test
+    void raisingTheConfiguredCeilingAtRuntimeUnblocksTheGovernor() {
+        // the governor wants 1 replica x 4 per replica, but the configured limit pins it to 2
+        register("capped", 2, 4);
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(effectiveConcurrency("capped")).isEqualTo(2.0));
+
+        webTestClient.patch().uri("/v1/functions/capped")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"concurrency": 8}
+                        """)
+                .exchange()
+                .expectStatus().isOk();
+
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(effectiveConcurrency("capped")).isEqualTo(4.0));
+    }
+
     private void register(String name, int concurrency, int targetInFlightPerPod) {
         webTestClient.post().uri("/v1/functions")
                 .contentType(MediaType.APPLICATION_JSON)

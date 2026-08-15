@@ -1,7 +1,11 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
+import org.mockito.ArgumentCaptor;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
@@ -320,6 +324,88 @@ class FunctionServiceTest {
         service.register(spec);
 
         assertTrue(service.get("fn").isPresent());
+    }
+
+    @Test
+    void update_appliesConcurrencyWithoutTouchingTheDeployment() {
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, 4, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+        reset(provider);
+
+        Optional<RegisteredFunction> updated = service.update("fn",
+                new FunctionUpdateRequest(16, null, null, null));
+
+        assertTrue(updated.isPresent());
+        assertEquals(16, updated.get().spec().concurrency());
+        assertEquals("k8s", updated.get().deploymentMetadata().deploymentBackend());
+        assertEquals("http://fn-svc:8080", updated.get().spec().endpointUrl());
+        assertEquals(16, registry.get("fn").orElseThrow().concurrency());
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void update_notifiesListenersWithTheNewSpec() {
+        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, 4, null, null, null, ExecutionMode.LOCAL, null, null, null));
+
+        service.update("fn", new FunctionUpdateRequest(9, null, null, null));
+
+        ArgumentCaptor<FunctionSpec> captor = ArgumentCaptor.forClass(FunctionSpec.class);
+        verify(listener, times(2)).onRegister(captor.capture());
+        assertEquals(9, captor.getAllValues().get(1).concurrency());
+        verify(listener, never()).onRemove(any());
+    }
+
+    @Test
+    void update_leavesOmittedFieldsAlone() {
+        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                12000, 4, null, 7, null, ExecutionMode.LOCAL, null, null, null));
+
+        FunctionSpec updated = service.update("fn",
+                new FunctionUpdateRequest(null, null, null, null)).orElseThrow().spec();
+
+        assertEquals(12000, updated.timeoutMs());
+        assertEquals(4, updated.concurrency());
+        assertEquals(7, updated.maxRetries());
+        assertEquals("img:latest", updated.image());
+    }
+
+    @Test
+    void update_replacesTheConcurrencyControlBlock() {
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, 4, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+
+        FunctionSpec updated = service.update("fn", new FunctionUpdateRequest(null, null, null,
+                new ConcurrencyControlConfig(ConcurrencyControlMode.ADAPTIVE_PER_POD,
+                        3, 1, 6, null, null, null, null))).orElseThrow().spec();
+
+        ConcurrencyControlConfig control = updated.scalingConfig().concurrencyControl();
+        assertEquals(ConcurrencyControlMode.ADAPTIVE_PER_POD, control.mode());
+        assertEquals(3, control.targetInFlightPerPod());
+        assertEquals(ScalingStrategy.INTERNAL, updated.scalingConfig().strategy());
+    }
+
+    @Test
+    void update_rejectsInvalidBounds() {
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, 4, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+
+        FunctionUpdateRequest request = new FunctionUpdateRequest(null, null, null,
+                new ConcurrencyControlConfig(ConcurrencyControlMode.ADAPTIVE_PER_POD,
+                        3, 4, 2, null, null, null, null));
+
+        // min > max collapses to max instead of failing; the spec stays consistent either way
+        FunctionSpec updated = service.update("fn", request).orElseThrow().spec();
+        ConcurrencyControlConfig control = updated.scalingConfig().concurrencyControl();
+        assertTrue(control.minTargetInFlightPerPod() <= control.maxTargetInFlightPerPod());
+    }
+
+    @Test
+    void update_unknownFunction_returnsEmpty() {
+        assertTrue(service.update("nope", new FunctionUpdateRequest(8, null, null, null)).isEmpty());
     }
 
     private static int functionLockCount(FunctionService service) throws Exception {

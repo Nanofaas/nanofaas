@@ -8,9 +8,11 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionUpdateRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Import;
@@ -23,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
@@ -288,6 +291,69 @@ class FunctionControllerTest {
                 null,
                 null
         );
+    }
+
+    @Test
+    void update_returnsUpdatedFunction() {
+        when(functionService.update(eq("echo"), any())).thenReturn(Optional.of(
+                registered("echo", ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "k8s", null)));
+
+        webClient.patch()
+                .uri("/v1/functions/echo")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"concurrency": 16}
+                        """)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.name").isEqualTo("echo");
+
+        ArgumentCaptor<FunctionUpdateRequest> captor = ArgumentCaptor.forClass(FunctionUpdateRequest.class);
+        verify(functionService).update(eq("echo"), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().concurrency()).isEqualTo(16);
+    }
+
+    @Test
+    void update_missingFunction_returns404() {
+        when(functionService.update(eq("echo"), any())).thenReturn(Optional.empty());
+
+        webClient.patch()
+                .uri("/v1/functions/echo")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"concurrency": 16}
+                        """)
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    void update_immutableField_returns400InsteadOfSilentlyIgnoringIt() {
+        webClient.patch()
+                .uri("/v1/functions/echo")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"image": "ghcr.io/example/echo:v2"}
+                        """)
+                .exchange()
+                .expectStatus().isBadRequest();
+
+        verify(functionService, never()).update(any(), any());
+    }
+
+    @Test
+    void update_invalidConcurrency_returns400() {
+        webClient.patch()
+                .uri("/v1/functions/echo")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"concurrency": 0}
+                        """)
+                .exchange()
+                .expectStatus().isBadRequest();
+
+        verify(functionService, never()).update(any(), any());
     }
 
     private RegisteredFunction registered(String name,

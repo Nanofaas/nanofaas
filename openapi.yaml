@@ -60,6 +60,32 @@ paths:
                 $ref: '#/components/schemas/FunctionResponse'
         '404':
           description: Not found
+    patch:
+      summary: Update the mutable settings of a function
+      operationId: updateFunction
+      description: |
+        Applies a partial update without re-registering the function and without touching its
+        deployment: the function keeps serving throughout. Only control-plane knobs are mutable;
+        any other property is rejected with 400 rather than silently ignored.
+      parameters:
+        - $ref: '#/components/parameters/FunctionName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionUpdateRequest'
+      responses:
+        '200':
+          description: Updated function
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionResponse'
+        '400':
+          description: Invalid value, or an attempt to change an immutable field
+        '404':
+          description: Function not found
     delete:
       summary: Delete a function
       operationId: deleteFunction
@@ -427,6 +453,28 @@ components:
           $ref: '#/components/schemas/ScalingConfig'
         offload:
           $ref: '#/components/schemas/OffloadPolicy'
+    FunctionUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Partial update of a registered function. A field left out keeps its current value.
+        `queueSize` is not mutable: the queue is sized when the function is first registered.
+      properties:
+        concurrency:
+          type: integer
+          minimum: 1
+          description: New ceiling for concurrent in-flight invocations. The concurrency governor can throttle below this value but never above it.
+        timeoutMs:
+          type: integer
+          minimum: 1
+          maximum: 300000
+        maxRetries:
+          type: integer
+          minimum: 0
+        concurrencyControl:
+          allOf:
+            - $ref: '#/components/schemas/ConcurrencyControlConfig'
+          description: Replaces the whole block; it is not merged field by field.
     FunctionResponse:
       type: object
       required: [name, image, requestedExecutionMode, effectiveExecutionMode]

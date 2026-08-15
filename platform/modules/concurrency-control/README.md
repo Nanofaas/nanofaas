@@ -54,6 +54,23 @@ Per-function knobs (`targetInFlightPerPod`, `min`/`maxTargetInFlightPerPod`,
 `upscale`/`downscaleCooldownMs`, `high`/`lowLoadThreshold`) live in the
 `FunctionSpec` and are defaulted by `FunctionSpecResolver`.
 
+## The configured limit is a ceiling
+
+`FunctionQueueState.setEffectiveConcurrency` clamps to the spec's `concurrency`,
+so the governor can only ever throttle *below* it — it cannot grant a function
+more parallelism than it was registered with. Raise the ceiling at runtime,
+without re-registering and without touching the deployment:
+
+```bash
+curl -X PATCH localhost:8080/v1/functions/echo \
+  -H 'Content-Type: application/json' \
+  -d '{"concurrency": 16}'
+```
+
+The same endpoint accepts `timeoutMs`, `maxRetries` and a replacement
+`concurrencyControl` block. Immutable fields (`image`, `executionMode`, …) are
+rejected with 400 rather than silently ignored.
+
 ## Notes
 
 - Independent of the autoscaler: concurrency per replica is orthogonal to how
