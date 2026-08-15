@@ -9,8 +9,6 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -25,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.concurrent.ConcurrentHashMap;
 
-@Component
 public class SyncQueueService implements SyncQueueGateway {
     public static final int POLL_READY_MATCHING_SCAN_LIMIT = 64;
     private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
@@ -41,7 +38,6 @@ public class SyncQueueService implements SyncQueueGateway {
     private final SyncQueueAdmissionController admissionController;
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
 
-    @Autowired
     public SyncQueueService(SyncQueueProperties props,
                             ExecutionStore executionStore,
                             SyncQueueMetrics metrics,

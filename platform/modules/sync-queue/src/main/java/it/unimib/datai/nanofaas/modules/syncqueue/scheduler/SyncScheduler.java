@@ -8,10 +8,7 @@ import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
-import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
@@ -20,8 +17,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 
-@Component
-@ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
 public class SyncScheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(SyncScheduler.class);
     private static final String COMPONENT_NAME = "Sync scheduler";
@@ -36,7 +31,6 @@ public class SyncScheduler implements SmartLifecycle {
     private volatile long blockedBackoffMs = tickMs;
     private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
 
-    @Autowired
     public SyncScheduler(InvocationEnqueuer enqueuer,
                          SyncQueueService queue,
                          it.unimib.datai.nanofaas.controlplane.service.InvocationService invocationService) {
