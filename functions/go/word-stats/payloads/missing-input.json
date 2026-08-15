@@ -1,0 +1,7 @@
+{
+  "description": "rejects missing text",
+  "input": {},
+  "expected": {
+    "error": "Field 'text' is required and must be non-empty"
+  }
+}

@@ -1,9 +1,9 @@
 {
-  "description": "invoke roman-numeral with valid input",
+  "description": "convert 1994 to a Roman numeral",
   "input": {
-    "key": "value"
+    "number": 1994
   },
   "expected": {
-    "result": "ok"
+    "roman": "MCMXCIV"
   }
 }
