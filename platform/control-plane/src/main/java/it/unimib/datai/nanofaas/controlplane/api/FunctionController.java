@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionUpdateRequest;
+import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
@@ -58,9 +59,11 @@ public class FunctionController {
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @Valid @RequestBody FunctionUpdateRequest request) {
         try {
-            return functionService.update(name, request)
-                    .map(updated -> ResponseEntity.ok().<Object>body(FunctionResponse.from(updated)))
-                    .orElse(ResponseEntity.notFound().build());
+            Optional<RegisteredFunction> updated = functionService.update(name, request);
+            if (updated.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.status(HttpStatus.OK).<Object>body(FunctionResponse.from(updated.get()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());
         }

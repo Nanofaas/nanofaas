@@ -88,12 +88,12 @@ class ConcurrencyGovernorTest {
         metrics.registerFunction("echo");
         ConcurrencyGovernor governor = governor(null, 10_000);
 
-        record(10, Duration.ofMillis(10));
+        recordInvocations(10, Duration.ofMillis(10));
         governor.governLoop();
         assertThat(metricsSource.targets).containsEntry("echo", 3);
 
         // ten slower invocations against the freshly learnt baseline -> back off
-        record(10, Duration.ofMillis(30));
+        recordInvocations(10, Duration.ofMillis(30));
         governor(null, 12_500).governLoop();
 
         assertThat(metricsSource.targets).containsEntry("echo", 2);
@@ -111,11 +111,12 @@ class ConcurrencyGovernorTest {
 
         governor(deploymentCoordinator, 10_000).governLoop();
 
-        assertThat(metricsSource.effectiveConcurrency).containsOnlyKeys("healthy");
-        assertThat(metricsSource.effectiveConcurrency).containsEntry("healthy", 4);
+        assertThat(metricsSource.effectiveConcurrency)
+                .containsOnlyKeys("healthy")
+                .containsEntry("healthy", 4);
     }
 
-    private void record(int invocations, Duration each) {
+    private void recordInvocations(int invocations, Duration each) {
         for (int i = 0; i < invocations; i++) {
             metrics.latency("echo").record(each);
         }

@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 @ConfigurationProperties(prefix = "nanofaas.scaling")
 public record ScalingProperties(
@@ -9,9 +8,6 @@ public record ScalingProperties(
         Integer defaultMinReplicas,
         Integer defaultMaxReplicas
 ) {
-    @ConstructorBinding
-    public ScalingProperties {
-    }
 
     public long pollIntervalMsOrDefault() {
         return pollIntervalMs != null && pollIntervalMs > 0 ? pollIntervalMs : 5000;
