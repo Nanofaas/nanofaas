@@ -1,0 +1,28 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+dependencies {
+    implementation project(':common')
+    implementation project(':control-plane')
+
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-core'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
+    testImplementation 'org.springframework.boot:spring-boot-webtestclient'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
+    testImplementation 'org.awaitility:awaitility:4.3.0'
+    // end-to-end test drives the governor into the queue's real concurrency gate
+    testImplementation project(':control-plane-modules:async-queue')
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}

@@ -1,7 +1,7 @@
 # autoscaler
 
-Optional control-plane module: internal replica autoscaler and per-pod
-concurrency control for managed deployments.
+Optional control-plane module: internal replica autoscaler for managed
+deployments. Per-function concurrency lives in the `concurrency-control` module.
 
 ## Provides
 
@@ -10,11 +10,8 @@ concurrency control for managed deployments.
   `ScalingDecisionCalculator`, bounded by the function's `ScalingConfig`
   min/max and rate-limited by `ScalingCooldownTracker` (upscale/downscale
   cooldowns).
-- Per-pod concurrency controllers: `StaticPerPodConcurrencyController` and
-  `AdaptivePerPodConcurrencyController` (with `AdaptiveConcurrencyState` and
-  `ColdStartTracker`), coordinated by `ConcurrencyControlCoordinator`.
-- Scaling and concurrency metrics (`TargetLoadMetrics`,
-  `ConcurrencyControlMetrics`).
+- Cold-start accounting (`ColdStartTracker`) and scaling metrics
+  (`TargetLoadMetrics`, `ScalingDecisionMetrics`).
 
 Functions opt in through the `scalingConfig` block of the `FunctionSpec`
 (strategy `INTERNAL`, min/max replicas, metrics such as `queue_depth`,
