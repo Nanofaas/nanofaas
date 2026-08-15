@@ -72,7 +72,8 @@ Core provides no-op defaults for:
 Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platform/modules/`):
 - **async-queue** - Per-function queues + scheduler for async enqueue path
 - **sync-queue** - Sync admission/backpressure queue
-- **autoscaler** - Internal scaler and scaling metrics integration
+- **autoscaler** - Internal replica scaler and scaling metrics integration
+- **concurrency-control** - Per-function concurrency governor (static per replica, or latency-adaptive); independent of the replica scaling strategy
 - **runtime-config** - Hot runtime config service and admin API (`/v1/admin/runtime-config`) when `nanofaas.admin.runtime-config.enabled=true`
 - **build-metadata** - `/modules/build-metadata` diagnostics endpoint
 - **k8s-deployment-provider** - Kubernetes managed deployment backend and image validation for `DEPLOYMENT`

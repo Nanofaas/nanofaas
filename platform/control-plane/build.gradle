@@ -87,6 +87,14 @@ tasks.register('printSelectedControlPlaneModules') {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // OpenApiRouteCoverageTest and IssueCoverageTest read repo files; without declaring them the
+    // task stays UP-TO-DATE when only the spec or a doc changes, and never notices the drift.
+    inputs.files(
+            rootProject.file('openapi.yaml'),
+            rootProject.file('docs/slo.md'),
+            rootProject.file('docs/quickstart.md'),
+            rootProject.file('docs/example-function.md')
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty 'project.version', project.version.toString()
     systemProperty 'nanofaas.selectedControlPlaneModules', selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort().join(',')
     dependsOn 'bootJar'

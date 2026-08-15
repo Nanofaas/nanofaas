@@ -16,7 +16,8 @@ Current modules:
 
 - `async-queue` — per-function queues + scheduler for the async path
 - `sync-queue` — sync admission/backpressure queue
-- `autoscaler` — internal scaler and scaling metrics integration
+- `autoscaler` — internal replica scaler and scaling metrics integration
+- `concurrency-control` — per-function concurrency governor (static and latency-adaptive)
 - `runtime-config` — hot runtime config service and admin API
 - `build-metadata` — `/modules/build-metadata` diagnostics endpoint
 - `k8s-deployment-provider` — Kubernetes managed deployment backend

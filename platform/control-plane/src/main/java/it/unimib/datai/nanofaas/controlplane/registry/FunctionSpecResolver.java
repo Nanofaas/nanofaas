@@ -19,8 +19,10 @@ public class FunctionSpecResolver {
     private static final int DEFAULT_MAX_TARGET_PER_POD = 8;
     private static final long DEFAULT_UPSCALE_COOLDOWN_MS = 30_000L;
     private static final long DEFAULT_DOWNSCALE_COOLDOWN_MS = 60_000L;
-    private static final double DEFAULT_HIGH_LOAD_THRESHOLD = 0.85;
-    private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.35;
+    // Fractions of latency degradation over the function's best observed service time:
+    // back off above 2x, grow again below ~1.18x. See the concurrency-control module.
+    private static final double DEFAULT_HIGH_LOAD_THRESHOLD = 0.5;
+    private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.15;
     private static final String QUEUE_DEPTH_METRIC = "queue_depth";
 
     private final FunctionDefaults defaults;

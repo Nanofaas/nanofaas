@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: nanofaas Control Plane API
-  version: 0.5.0
+  version: 0.19.0
   description: |
     Minimal FaaS control plane API for function registration and invocation.
 servers:
@@ -60,6 +60,32 @@ paths:
                 $ref: '#/components/schemas/FunctionResponse'
         '404':
           description: Not found
+    patch:
+      summary: Update the mutable settings of a function
+      operationId: updateFunction
+      description: |
+        Applies a partial update without re-registering the function and without touching its
+        deployment: the function keeps serving throughout. Only control-plane knobs are mutable;
+        any other property is rejected with 400 rather than silently ignored.
+      parameters:
+        - $ref: '#/components/parameters/FunctionName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionUpdateRequest'
+      responses:
+        '200':
+          description: Updated function
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionResponse'
+        '400':
+          description: Invalid value, or an attempt to change an immutable field
+        '404':
+          description: Function not found
     delete:
       summary: Delete a function
       operationId: deleteFunction
@@ -149,12 +175,18 @@ paths:
               schema:
                 type: string
                 format: binary
+        '404':
+          description: Function not registered
         '408':
           description: Invocation timed out. The execution is terminal and will remain in `timeout` if later inspected via `GET /v1/executions/{executionId}`.
         '429':
           description: Too many requests. Returned for rate limiting and queue/admission backpressure on the synchronous invoke path.
         '500':
           description: Invocation failed
+        '502':
+          description: The invocation was offloaded to a remote instance and that instance failed. There is no local fallback.
+        '504':
+          description: The invocation was offloaded to a remote instance and that instance timed out.
 
   /v1/functions/{name}:enqueue:
     post:
@@ -181,10 +213,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EnqueueResponse'
+        '404':
+          description: Function not registered
         '429':
           description: Too many requests. Returned for rate limiting or async queue saturation.
         '500':
           description: Enqueue failed
+        '501':
+          description: The async-queue module is not part of this build, so the asynchronous path is unavailable.
 
   /v1/executions/{executionId}:
     get:
@@ -350,20 +386,6 @@ components:
         readyReplicas:
           type: integer
           minimum: 0
-    FunctionSummary:
-      type: object
-      required: [name, image, concurrency]
-      properties:
-        name:
-          type: string
-        image:
-          type: string
-        concurrency:
-          type: integer
-          minimum: 1
-        createdAt:
-          type: string
-          format: date-time
     FunctionSpec:
       type: object
       required: [name, image]
@@ -399,10 +421,10 @@ components:
           description: Number of retries for failed invocations (default 3)
         endpointUrl:
           type: string
-          description: Optional HTTP endpoint for pool execution mode
+          description: HTTP endpoint of the function, required for EXTERNAL execution mode
         executionMode:
           type: string
-          enum: [LOCAL, POOL, DEPLOYMENT]
+          enum: [LOCAL, EXTERNAL, DEPLOYMENT]
           description: Execution mode for the function (DEPLOYMENT is default)
         runtimeMode:
           type: string
@@ -427,6 +449,32 @@ components:
           type: integer
           minimum: 1
           description: Bounded in-memory queue size
+        scalingConfig:
+          $ref: '#/components/schemas/ScalingConfig'
+        offload:
+          $ref: '#/components/schemas/OffloadPolicy'
+    FunctionUpdateRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Partial update of a registered function. A field left out keeps its current value.
+        `queueSize` is not mutable: the queue is sized when the function is first registered.
+      properties:
+        concurrency:
+          type: integer
+          minimum: 1
+          description: New ceiling for concurrent in-flight invocations. The concurrency governor can throttle below this value but never above it.
+        timeoutMs:
+          type: integer
+          minimum: 1
+          maximum: 300000
+        maxRetries:
+          type: integer
+          minimum: 0
+        concurrencyControl:
+          allOf:
+            - $ref: '#/components/schemas/ConcurrencyControlConfig'
+          description: Replaces the whole block; it is not merged field by field.
     FunctionResponse:
       type: object
       required: [name, image, requestedExecutionMode, effectiveExecutionMode]
@@ -465,14 +513,14 @@ components:
           description: Bounded in-memory queue size
         endpointUrl:
           type: string
-          description: Effective HTTP endpoint used for POOL or provider-backed DEPLOYMENT invocation
+          description: Effective HTTP endpoint used for EXTERNAL or provider-backed DEPLOYMENT invocation
         requestedExecutionMode:
           type: string
-          enum: [LOCAL, POOL, DEPLOYMENT]
+          enum: [LOCAL, EXTERNAL, DEPLOYMENT]
           description: Execution mode requested at registration time
         effectiveExecutionMode:
           type: string
-          enum: [LOCAL, POOL, DEPLOYMENT]
+          enum: [LOCAL, EXTERNAL, DEPLOYMENT]
           description: Effective execution mode after provider selection or degradation
         deploymentBackend:
           type: string
@@ -480,7 +528,7 @@ components:
           example: k8s
         degradationReason:
           type: string
-          description: Present when a `DEPLOYMENT` request degrades to `POOL`
+          description: Present when a `DEPLOYMENT` request degrades to a non-managed mode
         runtimeMode:
           type: string
           enum: [HTTP, STDIO, FILE]
@@ -492,6 +540,32 @@ components:
           type: array
           items:
             type: string
+        offload:
+          $ref: '#/components/schemas/OffloadPolicy'
+        deploymentObjects:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            Names of the objects the deployment backend created for this function — on Kubernetes
+            the Deployment, Service and namespace. Absent for non-managed functions.
+    OffloadPolicy:
+      type: object
+      description: >-
+        Per-function offload policy. Omit the block to follow the global offload defaults
+        (pressure-based offload when the offload module is active).
+      properties:
+        enabled:
+          type: boolean
+          description: '`false` opts the function out of offloading entirely'
+        targetUrl:
+          type: string
+          description: Overrides the globally configured remote nanofaas base URL
+        mode:
+          type: string
+          enum: [pressure, always]
+          default: pressure
+          description: '`always` offloads eagerly; `pressure` offloads only on sync-queue rejection'
     ResourceSpec:
       type: object
       properties:
@@ -521,7 +595,10 @@ components:
       properties:
         strategy:
           type: string
-          enum: [INTERNAL, HPA]
+          enum: [INTERNAL, HPA, NONE]
+          description: >-
+            Who owns the replica count: the internal scaler, an external HPA, or nobody
+            (fixed replicas). Concurrency control is independent of this choice.
         minReplicas:
           type: integer
           minimum: 0
@@ -539,39 +616,67 @@ components:
       properties:
         type:
           type: string
+          enum: [queue_depth, in_flight, rps]
+          description: Only these three are accepted for the INTERNAL strategy
         target:
           type: string
-        resource:
+          description: Target value the scaler drives the metric towards
+        query:
           type: string
+          description: Optional backend-specific query, used by external strategies
     ConcurrencyControlConfig:
       type: object
+      description: >-
+        Per-function concurrency governor. Requires the concurrency-control module; without it the
+        function keeps its configured `concurrency` unchanged. The resulting limit never exceeds
+        `concurrency`, which acts as a ceiling.
       properties:
         mode:
           type: string
           enum: [FIXED, STATIC_PER_POD, ADAPTIVE_PER_POD]
+          default: FIXED
+          description: >-
+            `FIXED` leaves `concurrency` alone; `STATIC_PER_POD` sets it to
+            `readyReplicas x targetInFlightPerPod`; `ADAPTIVE_PER_POD` moves the per-replica target
+            with observed service time.
         targetInFlightPerPod:
           type: integer
           minimum: 1
+          default: 2
+          description: In-flight invocations per replica; the starting point in ADAPTIVE_PER_POD
         minTargetInFlightPerPod:
           type: integer
           minimum: 1
+          default: 1
         maxTargetInFlightPerPod:
           type: integer
           minimum: 1
+          default: 8
         upscaleCooldownMs:
           type: integer
           format: int64
           minimum: 0
+          default: 30000
         downscaleCooldownMs:
           type: integer
           format: int64
           minimum: 0
+          default: 60000
         highLoadThreshold:
           type: number
           format: double
+          default: 0.5
+          description: >-
+            ADAPTIVE_PER_POD only. Fraction by which the interval's mean service time may exceed the
+            function's best observed service time before the per-replica target is lowered.
+            0.5 means "back off once latency reaches 2x its best".
         lowLoadThreshold:
           type: number
           format: double
+          default: 0.15
+          description: >-
+            ADAPTIVE_PER_POD only. Below this degradation fraction the per-replica target is raised
+            again. 0.15 means "grow while latency stays under ~1.18x its best".
     InvocationRequest:
       type: object
       properties:

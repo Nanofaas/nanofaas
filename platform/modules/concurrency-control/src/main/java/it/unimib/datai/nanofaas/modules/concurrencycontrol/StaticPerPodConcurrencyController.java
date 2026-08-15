@@ -1,14 +1,12 @@
-package it.unimib.datai.nanofaas.modules.autoscaler;
+package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
-import it.unimib.datai.nanofaas.controlplane.scaling.ConcurrencyController;
 
-public class StaticPerPodConcurrencyController implements ConcurrencyController {
+public class StaticPerPodConcurrencyController {
 
-    @Override
     public int computeEffectiveConcurrency(FunctionSpec spec, int readyReplicas) {
         int configured = Math.max(1, spec.concurrency());
         ScalingConfig scaling = spec.scalingConfig();

@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
@@ -15,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.SmartLifecycle;
 
 import java.time.Instant;
-import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -28,9 +26,6 @@ public class InternalScaler implements SmartLifecycle {
     private final ColdStartTracker coldStartTracker;
     private final ScalingDecisionCalculator decisionCalculator;
     private final ScalingCooldownTracker cooldownTracker;
-    private final StaticPerPodConcurrencyController staticConcurrencyController;
-    private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
-    private final ConcurrencyControlCoordinator concurrencyControlCoordinator;
     private final DeploymentWakeUpCoordinator wakeUpCoordinator;
     private final ScalingDecisionMetrics decisionMetrics;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -68,14 +63,6 @@ public class InternalScaler implements SmartLifecycle {
         this.coldStartTracker = coldStartTracker;
         this.decisionCalculator = new ScalingDecisionCalculator(metricsReader);
         this.cooldownTracker = new ScalingCooldownTracker();
-        this.staticConcurrencyController = new StaticPerPodConcurrencyController();
-        this.adaptiveConcurrencyController = new AdaptivePerPodConcurrencyController();
-        this.concurrencyControlCoordinator = new ConcurrencyControlCoordinator(
-                metricsReader,
-                properties,
-                staticConcurrencyController,
-                adaptiveConcurrencyController
-        );
         this.wakeUpCoordinator = wakeUpCoordinator;
     }
 
@@ -137,10 +124,10 @@ public class InternalScaler implements SmartLifecycle {
             for (RegisteredFunction registeredFunction : registry.listRegistered()) {
                 FunctionSpec spec = registeredFunction.spec();
                 ScalingConfig scaling = spec.scalingConfig();
-                managedDeploymentTarget(registeredFunction).ifPresent(target -> {
+                registeredFunction.managedDeploymentTarget().ifPresent(target -> {
                     if (scaling != null
                         && scaling.strategy() == ScalingStrategy.INTERNAL) {
-                        scaleFunction(target, spec, scaling);
+                        scaleFunction(target, spec);
                     }
                 });
             }
@@ -149,15 +136,15 @@ public class InternalScaler implements SmartLifecycle {
         }
     }
 
-    private void scaleFunction(ManagedDeploymentTarget target, FunctionSpec spec, ScalingConfig scaling) {
+    private void scaleFunction(ManagedDeploymentTarget target, FunctionSpec spec) {
         try {
-            evaluateAndScale(target, spec, scaling);
+            evaluateAndScale(target, spec);
         } catch (Exception ex) {
             log.error("Error scaling function {}", spec.name(), ex);
         }
     }
 
-    private void evaluateAndScale(ManagedDeploymentTarget target, FunctionSpec spec, ScalingConfig scaling) {
+    private void evaluateAndScale(ManagedDeploymentTarget target, FunctionSpec spec) {
         String functionName = spec.name();
         int currentReplicas = deploymentCoordinator.getReadyReplicas(target);
         ScalingDecision decision = decisionCalculator.calculate(spec, currentReplicas);
@@ -166,7 +153,6 @@ public class InternalScaler implements SmartLifecycle {
         }
 
         Instant now = Instant.now();
-        int effectiveReplicas = decision.effectiveReplicas();
         if (decision.desiredReplicas() > decision.currentReplicas()) {
             if (!cooldownTracker.allowScaleUp(functionName, now)) {
                 log.debug("Skipping scale-up for {} (cooldown)", functionName);
@@ -176,7 +162,6 @@ public class InternalScaler implements SmartLifecycle {
                 coldStartTracker.recordScaleUp(functionName, decision.currentReplicas(), decision.desiredReplicas());
                 deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
                 cooldownTracker.recordScaleUp(functionName, now);
-                effectiveReplicas = decision.desiredReplicas();
             }
         } else if (decision.downscaleSignal()) {
             if (!cooldownTracker.allowScaleDown(functionName, now)) {
@@ -189,37 +174,16 @@ public class InternalScaler implements SmartLifecycle {
                 });
                 if (scaled) {
                     cooldownTracker.recordScaleDown(functionName, now);
-                    effectiveReplicas = decision.desiredReplicas();
                 } else {
                     log.debug("Skipping scale-down for {} while deployment wake-up is protected", functionName);
                 }
             }
         }
-
-        concurrencyControlCoordinator.apply(
-                spec,
-                scaling,
-                decision.maxRatio(),
-                effectiveReplicas,
-                decision.downscaleSignal(),
-                decision.currentReplicas()
-        );
     }
 
     void removeFunctionState(String functionName) {
         cooldownTracker.clear(functionName);
-        concurrencyControlCoordinator.removeFunctionState(functionName);
         coldStartTracker.removeFunctionState(functionName);
         wakeUpCoordinator.removeFunctionState(functionName);
-    }
-
-    private static Optional<ManagedDeploymentTarget> managedDeploymentTarget(RegisteredFunction function) {
-        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
-            return Optional.empty();
-        }
-        String backendId = function.deploymentMetadata().deploymentBackend();
-        return backendId == null || backendId.isBlank()
-                ? Optional.empty()
-                : Optional.of(new ManagedDeploymentTarget(function.name(), backendId));
     }
 }

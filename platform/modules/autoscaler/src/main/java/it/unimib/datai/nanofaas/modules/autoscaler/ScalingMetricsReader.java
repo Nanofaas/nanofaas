@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import org.slf4j.Logger;
@@ -50,16 +49,6 @@ public class ScalingMetricsReader {
 
     public double inFlight(String functionName) {
         return readInFlight(functionName);
-    }
-
-    public void setEffectiveConcurrency(String functionName, int effectiveConcurrency) {
-        scalingMetricsSource.setEffectiveConcurrency(functionName, effectiveConcurrency);
-    }
-
-    public void updateConcurrencyControllerState(String functionName,
-                                                 ConcurrencyControlMode mode,
-                                                 int targetInFlightPerPod) {
-        scalingMetricsSource.updateConcurrencyController(functionName, mode, targetInFlightPerPod);
     }
 
     void removeFunctionState(String functionName) {

@@ -96,6 +96,35 @@ public class FunctionService {
     }
 
     /**
+     * Applies a partial update to a registered function. Only control-plane knobs are mutable
+     * (see {@link FunctionUpdateRequest}), so the deployment is left untouched and the function
+     * keeps serving throughout.
+     *
+     * @return the updated function, or empty if it is not registered
+     */
+    public Optional<RegisteredFunction> update(String name, FunctionUpdateRequest request) {
+        return withFunctionLock(name, () -> {
+            RegisteredFunction existing = registry.getRegistered(name).orElse(null);
+            if (existing == null) {
+                return Optional.empty();
+            }
+
+            FunctionSpec updatedSpec = resolver.resolve(request.applyTo(existing.spec()));
+            RegisteredFunction updated = new RegisteredFunction(updatedSpec, existing.deploymentMetadata());
+            registry.put(updated);
+            // ponytail: no rollback on listener failure — the registration rollback path deletes the
+            // function's queue, which is far worse than a listener missing one update. Listeners are
+            // idempotent, so replaying the same PATCH converges.
+            for (FunctionRegistrationListener listener : listeners) {
+                listener.onRegister(updatedSpec);
+            }
+            log.info("Updated function {} (concurrency={}, timeoutMs={}, maxRetries={})",
+                    name, updatedSpec.concurrency(), updatedSpec.timeoutMs(), updatedSpec.maxRetries());
+            return Optional.of(updated);
+        });
+    }
+
+    /**
      * Sets the replica count for a DEPLOYMENT-mode function.
      * Returns the new replica count, or empty if function not found.
      * Throws IllegalArgumentException if function is not in DEPLOYMENT mode.
