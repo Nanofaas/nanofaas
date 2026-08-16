@@ -42,8 +42,8 @@ class BudgetedConcurrencyControllerTest {
         controller.apply(first, 20, metricsSource, nextTick());
         // Both inside their SLO and both busy enough for the knee to be well above the budget,
         // so the budget is what binds rather than the knee.
-        for (int tick = 0; tick < 5; tick++) {
-            long served = 100_000L * (tick + 1);
+        for (int round = 0; round < 5; round++) {
+            long served = 100_000L * (round + 1);
             controller.apply(
                     List.of(observation(a, 8, served, served * 5), observation(b, 8, served, served * 5)),
                     20,
@@ -61,8 +61,8 @@ class BudgetedConcurrencyControllerTest {
         controller.apply(List.of(observation(gold, 8, 0, 0), observation(bulk, 8, 0, 0)), 16, metricsSource, nextTick());
 
         // Both want far more than 16 between them, so the weights are what decides.
-        for (int tick = 0; tick < 5; tick++) {
-            long served = 100_000L * (tick + 1);
+        for (int round = 0; round < 5; round++) {
+            long served = 100_000L * (round + 1);
             controller.apply(
                     List.of(
                             observation(gold, 8, served, served * 5),
