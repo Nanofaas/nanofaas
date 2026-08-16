@@ -61,6 +61,20 @@ case "$target" in
 esac
 
 image="${image:-$default_image}"
+
+# NATIVE_GC=G1 selects the collector, and pulls in the distribution that has one:
+# Community's Native Image offers only 'serial' and 'epsilon'. Asking for G1
+# without Oracle GraalVM fails at build time rather than silently falling back,
+# which is the behaviour worth keeping — a run that reported "G1" while using the
+# serial collector would be worse than no run at all.
+graalvm_distribution="${GRAALVM_DISTRIBUTION:-community}"
+if [ -n "${NATIVE_GC:-}" ]; then
+  gradle_args="$gradle_args -PnativeGc=$NATIVE_GC"
+  if [ "$NATIVE_GC" = "G1" ]; then
+    graalvm_distribution="${GRAALVM_DISTRIBUTION:-oracle}"
+  fi
+fi
+
 build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")
@@ -69,6 +83,7 @@ build+=(
   --build-arg "NATIVE_TASK=$task"
   --build-arg "NATIVE_BINARY=$binary"
   --build-arg "GRADLE_ARGS=$gradle_args"
+  --build-arg "GRAALVM_DISTRIBUTION=$graalvm_distribution"
   .
 )
 

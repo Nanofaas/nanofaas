@@ -2,8 +2,8 @@ FROM oraclelinux:9-slim AS builder
 
 ARG TARGETARCH
 RUN microdnf install -y ca-certificates curl findutils gcc glibc-devel gzip tar zlib-devel && microdnf clean all
-COPY gradle.properties scripts/install-graalvm-ce.sh /tmp/
-RUN sh /tmp/install-graalvm-ce.sh "$TARGETARCH" "$(sed -n 's/^graalvmVersion=//p' /tmp/gradle.properties)" "$(sed -n 's/^graalvmJavaVersion=//p' /tmp/gradle.properties)"
+COPY gradle.properties scripts/install-graalvm.sh /tmp/
+RUN sh /tmp/install-graalvm.sh "$TARGETARCH" "$(sed -n 's/^graalvmVersion=//p' /tmp/gradle.properties)" "$(sed -n 's/^graalvmJavaVersion=//p' /tmp/gradle.properties)"
 ENV JAVA_HOME=/opt/graalvm
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
