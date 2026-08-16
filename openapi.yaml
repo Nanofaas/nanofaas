@@ -633,14 +633,16 @@ components:
       properties:
         mode:
           type: string
-          enum: [FIXED, STATIC_PER_POD, ADAPTIVE_PER_POD, BUDGETED]
+          enum: [FIXED, STATIC_PER_POD, ADAPTIVE_PER_POD, BUDGETED, SOJOURN]
           default: FIXED
           description: >-
             `FIXED` leaves `concurrency` alone; `STATIC_PER_POD` sets it to
             `readyReplicas x targetInFlightPerPod`; `ADAPTIVE_PER_POD` moves the per-replica target
             with observed service time; `BUDGETED` sizes the limit to meet `targetLatencyMs` and
             takes it from a concurrency budget shared with every other BUDGETED function, so the
-            limits cannot add up to more than the platform has.
+            limits cannot add up to more than the platform has; `SOJOURN` searches for the limit
+            that minimises the time a caller spends in the system, queue wait included, which is
+            the quantity the other modes leave out.
         targetInFlightPerPod:
           type: integer
           minimum: 1
@@ -685,10 +687,12 @@ components:
           minimum: 1
           default: 250
           description: >-
-            BUDGETED only. The service-time SLO this function is held to. The limit is sized to
-            meet it, so unlike the ADAPTIVE_PER_POD thresholds this is an absolute target an
-            operator can take from a service agreement rather than a ratio against the function's
-            own past behaviour.
+            BUDGETED and SOJOURN. An absolute target an operator can take from a service
+            agreement, rather than a ratio against the function's own past behaviour as the
+            ADAPTIVE_PER_POD thresholds are. It means different things to the two modes:
+            BUDGETED holds the function to it as a SERVICE-TIME SLO and sizes the limit to meet it,
+            while for SOJOURN it is an END-TO-END promise, queue wait included, and the limit is
+            left alone while the function is inside it.
         weight:
           type: number
           format: double

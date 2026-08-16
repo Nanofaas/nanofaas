@@ -17,5 +17,25 @@ public enum ConcurrencyControlMode {
      * and how much the platform can give it — so that the sum of the limits cannot exceed what the
      * platform has.</p>
      */
-    BUDGETED
+    BUDGETED,
+    /**
+     * Per-function limit chosen to minimise the time a caller spends in the system.
+     *
+     * <p>Every other mode decides from service time, which is what the control plane measures
+     * between dispatch and completion. That is not what a caller experiences: under queueing the
+     * wait was measured at 37-43ms against a service time near 5ms, so a controller can sit inside
+     * a 10ms service SLO while its callers wait eighty. The wait is not incidental — it is the
+     * direct product of the limit the controller chose.</p>
+     *
+     * <p>Service time cannot be optimised for that reason: it rises monotonically with concurrency,
+     * so a rule that shrinks the limit when latency rises has no interior optimum and walks to its
+     * floor, which two runtimes were measured doing. Sojourn time — wait plus service — does have
+     * one, because the wait falls as the limit rises while the service time climbs. So this mode
+     * searches for that minimum by moving and observing rather than by applying a threshold, and
+     * the operating point it settles on is the knee itself, found rather than estimated.</p>
+     *
+     * <p>{@code targetLatencyMs} here is an end-to-end promise, which is what an SLO usually means
+     * when somebody states one. Inside it the limit is left alone.</p>
+     */
+    SOJOURN
 }

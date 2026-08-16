@@ -283,11 +283,12 @@ class CommonModelTest {
 
     @Test
     void concurrencyControlMode_values() {
-        assertEquals(4, ConcurrencyControlMode.values().length);
+        assertEquals(5, ConcurrencyControlMode.values().length);
         assertNotNull(ConcurrencyControlMode.valueOf("FIXED"));
         assertNotNull(ConcurrencyControlMode.valueOf("STATIC_PER_POD"));
         assertNotNull(ConcurrencyControlMode.valueOf("ADAPTIVE_PER_POD"));
         assertNotNull(ConcurrencyControlMode.valueOf("BUDGETED"));
+        assertNotNull(ConcurrencyControlMode.valueOf("SOJOURN"));
     }
 
     @Test

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.InstantSource;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +165,47 @@ class ConcurrencyGovernorTest {
                 metricsSource,
                 InstantSource.fixed(Instant.ofEpochMilli(10_000))
         );
+    }
+
+    @Test
+    void feedsTheEndToEndTimerToTheSojournController() {
+        // The wiring, not the law: SOJOURN is the one mode that reads a different timer, and a
+        // governor that handed it the service timer would look correct in every unit test of the
+        // controller while measuring the wrong quantity in production.
+        FunctionSpec function = spec("echo", 24, ConcurrencySpecs.sojournControl(5, 1, 8));
+        when(registry.listRegistered()).thenReturn(List.of(RegisteredFunction.nonManaged(function)));
+        metrics.registerFunction("echo");
+        // Service time well inside anything, end-to-end far outside it: only a controller reading
+        // the end-to-end timer has any reason to move.
+        for (int i = 0; i < 20; i++) {
+            metrics.latency("echo").record(Duration.ofMillis(1));
+            metrics.e2eLatency("echo").record(Duration.ofMillis(400));
+        }
+        // An advancing clock, because the controller works from intervals: handed the same instant
+        // twice it has been shown nothing, and the limit would sit still for a reason that has
+        // nothing to do with the signal under test.
+        AtomicLong clock = new AtomicLong(10_000);
+        ConcurrencyGovernor governor = new ConcurrencyGovernor(
+                registry,
+                metrics,
+                new ConcurrencyGovernor.ConcurrencyControllers(
+                        coordinator, new BudgetedConcurrencyController()),
+                properties,
+                null,
+                metricsSource,
+                () -> Instant.ofEpochMilli(clock.getAndAdd(5_000))
+        );
+
+        governor.governLoop();
+        int afterBaseline = metricsSource.effectiveConcurrency.get("echo");
+        for (int i = 0; i < 20; i++) {
+            metrics.e2eLatency("echo").record(Duration.ofMillis(200));
+            metrics.latency("echo").record(Duration.ofMillis(1));
+        }
+        governor.governLoop();
+
+        assertThat(metricsSource.modes).containsEntry("echo", ConcurrencyControlMode.SOJOURN);
+        assertThat(metricsSource.effectiveConcurrency.get("echo")).isGreaterThan(afterBaseline);
     }
 
     private void recordInvocations(int invocations, Duration each) {

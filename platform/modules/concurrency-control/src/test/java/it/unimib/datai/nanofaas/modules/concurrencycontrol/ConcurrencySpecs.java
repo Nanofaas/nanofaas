@@ -56,6 +56,14 @@ final class ConcurrencySpecs {
         );
     }
 
+    static ConcurrencyControlConfig sojournControl(long targetLatencyMs, int floor, Integer ceiling) {
+        return new ConcurrencyControlConfig(
+                ConcurrencyControlMode.SOJOURN,
+                null, floor, ceiling, null, null, null, null,
+                targetLatencyMs, null
+        );
+    }
+
     static ConcurrencyControlConfig adaptiveControl(int target) {
         return new ConcurrencyControlConfig(
                 ConcurrencyControlMode.ADAPTIVE_PER_POD,

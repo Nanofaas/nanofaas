@@ -125,6 +125,9 @@ public class FunctionSpecResolver {
         if (config.mode() == ConcurrencyControlMode.BUDGETED) {
             return normalizeBudgeted(config);
         }
+        if (config.mode() == ConcurrencyControlMode.SOJOURN) {
+            return normalizeSojourn(config);
+        }
 
         int min = Optional.ofNullable(config.minTargetInFlightPerPod())
                 .map(v -> Math.max(1, v))
@@ -148,6 +151,36 @@ public class FunctionSpecResolver {
                 Optional.ofNullable(config.downscaleCooldownMs()).orElse(DEFAULT_DOWNSCALE_COOLDOWN_MS),
                 Optional.ofNullable(config.highLoadThreshold()).orElse(DEFAULT_HIGH_LOAD_THRESHOLD),
                 Optional.ofNullable(config.lowLoadThreshold()).orElse(DEFAULT_LOW_LOAD_THRESHOLD)
+        );
+    }
+
+    /**
+     * SOJOURN searches for a minimum rather than stepping towards a per-replica target, so the
+     * target and the gradient thresholds are left null. Its {@code targetLatencyMs} is an
+     * end-to-end promise rather than a service-time one, and the weight is unused: the mode governs
+     * one function at a time and has no budget to divide.
+     */
+    private ConcurrencyControlConfig normalizeSojourn(ConcurrencyControlConfig config) {
+        long targetLatencyMs = Optional.ofNullable(config.targetLatencyMs())
+                .filter(value -> value > 0)
+                .orElse(DEFAULT_TARGET_LATENCY_MS);
+        int min = Optional.ofNullable(config.minTargetInFlightPerPod())
+                .map(value -> Math.max(1, value))
+                .orElse(1);
+        Integer max = config.maxTargetInFlightPerPod() == null
+                ? null
+                : Math.max(min, config.maxTargetInFlightPerPod());
+        return new ConcurrencyControlConfig(
+                ConcurrencyControlMode.SOJOURN,
+                null,
+                min,
+                max,
+                null,
+                null,
+                null,
+                null,
+                targetLatencyMs,
+                null
         );
     }
 

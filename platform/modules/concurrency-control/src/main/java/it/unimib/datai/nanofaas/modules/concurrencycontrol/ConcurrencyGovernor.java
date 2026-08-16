@@ -39,6 +39,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private final ManagedDeploymentCoordinator deploymentCoordinator;
     private final ScalingMetricsSource metricsSource;
     private final BudgetedConcurrencyController budgetedController;
+    private final SojournConcurrencyController sojournController;
     private final InstantSource clock;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
@@ -61,8 +62,13 @@ public class ConcurrencyGovernor implements SmartLifecycle {
      */
     public record ConcurrencyControllers(
             ConcurrencyControlCoordinator perFunction,
-            BudgetedConcurrencyController budgeted
+            BudgetedConcurrencyController budgeted,
+            SojournConcurrencyController sojourn
     ) {
+        public ConcurrencyControllers(
+                ConcurrencyControlCoordinator perFunction, BudgetedConcurrencyController budgeted) {
+            this(perFunction, budgeted, new SojournConcurrencyController());
+        }
     }
 
     public ConcurrencyGovernor(FunctionRegistry registry,
@@ -76,6 +82,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
         this.metrics = metrics;
         this.coordinator = controllers.perFunction();
         this.budgetedController = controllers.budgeted();
+        this.sojournController = controllers.sojourn();
         this.properties = properties;
         this.deploymentCoordinator = deploymentCoordinator;
         this.metricsSource = metricsSource;
@@ -124,10 +131,13 @@ public class ConcurrencyGovernor implements SmartLifecycle {
             long now = clock.millis();
             List<BudgetedConcurrencyController.FunctionObservation> budgeted = new ArrayList<>();
             for (RegisteredFunction registeredFunction : registry.listRegistered()) {
-                if (isBudgeted(registeredFunction.spec())) {
-                    observe(registeredFunction).ifPresent(budgeted::add);
-                } else {
-                    govern(registeredFunction, now);
+                switch (modeOf(registeredFunction.spec())) {
+                    case BUDGETED -> observe(registeredFunction).ifPresent(budgeted::add);
+                    // Routed here rather than through the coordinator because it is the one
+                    // controller that reads the end-to-end timer, and widening the coordinator's
+                    // signature for it would hand every other mode an input it must ignore.
+                    case SOJOURN -> governSojourn(registeredFunction, now);
+                    default -> govern(registeredFunction, now);
                 }
             }
             // One allocation for all of them, after every ask is in: a budget cannot be
@@ -141,10 +151,28 @@ public class ConcurrencyGovernor implements SmartLifecycle {
         }
     }
 
-    private static boolean isBudgeted(FunctionSpec spec) {
-        return spec.scalingConfig() != null
-                && spec.scalingConfig().concurrencyControl() != null
-                && spec.scalingConfig().concurrencyControl().mode() == ConcurrencyControlMode.BUDGETED;
+    private static ConcurrencyControlMode modeOf(FunctionSpec spec) {
+        if (spec.scalingConfig() == null || spec.scalingConfig().concurrencyControl() == null) {
+            return ConcurrencyControlMode.FIXED;
+        }
+        return spec.scalingConfig().concurrencyControl().mode();
+    }
+
+    private void governSojourn(RegisteredFunction registeredFunction, long nowEpochMs) {
+        try {
+            Timer e2e = metrics.e2eLatency(registeredFunction.name());
+            sojournController.apply(
+                    new SojournConcurrencyController.FunctionObservation(
+                            registeredFunction.spec(),
+                            metricsSource.inFlight(registeredFunction.name()),
+                            e2e.count(),
+                            e2e.totalTime(TimeUnit.MILLISECONDS)),
+                    metricsSource,
+                    nowEpochMs);
+        } catch (Exception ex) {
+            log.error("Error governing sojourn concurrency for function {}",
+                    registeredFunction.name(), ex);
+        }
     }
 
     private Optional<BudgetedConcurrencyController.FunctionObservation> observe(
@@ -196,5 +224,6 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     void removeFunctionState(String functionName) {
         coordinator.removeFunctionState(functionName);
         budgetedController.removeFunctionState(functionName);
+        sojournController.removeFunctionState(functionName);
     }
 }
