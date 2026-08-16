@@ -48,6 +48,14 @@ final class ConcurrencySpecs {
         );
     }
 
+    static ConcurrencyControlConfig budgetedControl(long targetLatencyMs, double weight) {
+        return new ConcurrencyControlConfig(
+                ConcurrencyControlMode.BUDGETED,
+                null, 1, null, null, null, null, null,
+                targetLatencyMs, weight
+        );
+    }
+
     static ConcurrencyControlConfig adaptiveControl(int target) {
         return new ConcurrencyControlConfig(
                 ConcurrencyControlMode.ADAPTIVE_PER_POD,

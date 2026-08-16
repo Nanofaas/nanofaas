@@ -40,9 +40,10 @@ public class ConcurrencyControlConfiguration {
                                             Metrics metrics,
                                             ConcurrencyControlCoordinator coordinator,
                                             ConcurrencyControlProperties properties,
+                                            ScalingMetricsSource metricsSource,
                                             ObjectProvider<ManagedDeploymentCoordinator> deploymentCoordinatorProvider) {
         return new ConcurrencyGovernor(registry, metrics, coordinator, properties,
-                deploymentCoordinatorProvider.getIfAvailable());
+                deploymentCoordinatorProvider.getIfAvailable(), metricsSource);
     }
 
     @Bean

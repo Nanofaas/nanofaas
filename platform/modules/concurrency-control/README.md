@@ -16,6 +16,8 @@ the queue module's hot path.
 - `StaticPerPodConcurrencyController` — `min(readyReplicas × targetInFlightPerPod, concurrency)`.
 - `AdaptivePerPodConcurrencyController` — latency-gradient (TCP-Vegas style)
   hill climber over the per-replica target.
+- `BudgetedConcurrencyController` — per-function latency SLO served out of a
+  concurrency budget shared by every function. See below.
 
 Functions opt in through `scalingConfig.concurrencyControl` in the
 `FunctionSpec`; mode `FIXED` (the default) leaves the configured `concurrency`
@@ -48,11 +50,54 @@ nanofaas:
   concurrency-control:
     poll-interval-ms: 5000
     default-target-in-flight-per-pod: 2
+    # Total in-flight invocations across every BUDGETED function. A platform
+    # capacity statement: inferred from load it would grow under load and shrink
+    # when idle, which is the opposite of what a budget is for. Unset, it scales
+    # with the cores the control plane can see.
+    total-budget: 64
 ```
 
 Per-function knobs (`targetInFlightPerPod`, `min`/`maxTargetInFlightPerPod`,
 `upscale`/`downscaleCooldownMs`, `high`/`lowLoadThreshold`) live in the
 `FunctionSpec` and are defaulted by `FunctionSpecResolver`.
+
+## BUDGETED: an SLO, and a budget to pay for it
+
+The adaptive mode asks each function to find its own limit against a resource it
+shares with every other function, which is a decision no function has the
+information to make. Measured on two functions and one control plane: one
+function's arrival moved its neighbour's limit while the neighbour's own load
+was unchanged, and which of the two moved varied between runs.
+
+BUDGETED splits that into a question each party can answer.
+
+**What the function needs** — the gradient from Netflix's `concurrency-limits`,
+with the function's SLO as the target rather than its own best-ever latency:
+
+```
+gradient = clamp(targetLatencyMs / observedLatencyMs, 0.5, 1.0)
+desired  = limit x gradient + sqrt(limit)
+```
+
+Against a fixed target the gradient is 1 while the function is inside its SLO
+and below 1 only when the promise is being broken — unlike a self-measured
+minimum, which has no interior optimum to find because service time rises with
+concurrency on any shared resource, so the limit walks to its floor. The
+`sqrt(limit)` term is deliberate slack: a limit sized exactly to the arrival
+rate leaves nothing for a burst, and the next arrival above the mean is what
+gets rejected.
+
+**What the platform can give** — weighted max-min fairness over
+`nanofaas.concurrency-control.total-budget`, the allocation used for link
+bandwidth and the ancestor of DRF in cluster schedulers. Everyone gets their ask
+if the budget covers it; otherwise each is held to its weighted share and
+whatever a modest function leaves unclaimed is redistributed to those still
+short. A small function is never cut to pay for a large one, and nothing is
+idled while anyone is still short.
+
+The sum of the grants cannot exceed the budget, so contention is prevented by
+construction rather than reacted to afterwards, and functions no longer discover
+each other through interference.
 
 ## The configured limit is a ceiling
 

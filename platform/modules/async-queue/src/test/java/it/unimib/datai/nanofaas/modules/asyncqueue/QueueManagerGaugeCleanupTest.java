@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -13,6 +14,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 class QueueManagerGaugeCleanupTest {
+
+    // depth, in-flight, effective concurrency, target-in-flight, and one mode gauge per
+    // ConcurrencyControlMode so the active mode is readable as a series. Derived rather than
+    // written out, because adding a mode is not supposed to break unrelated tests.
+    private static final int GAUGES_PER_FUNCTION = 4 + ConcurrencyControlMode.values().length;
+
 
     @Test
     void remove_deregistersGaugesFromMeterRegistry() {
@@ -30,7 +37,7 @@ class QueueManagerGaugeCleanupTest {
                 .filter(m -> m.getId().getTag("function") != null
                         && m.getId().getTag("function").equals("fn1"))
                 .toList();
-        assertThat(gaugesBefore).hasSize(7);
+        assertThat(gaugesBefore).hasSize(GAUGES_PER_FUNCTION);
 
         // Remove function
         queueManager.remove("fn1");
@@ -75,7 +82,7 @@ class QueueManagerGaugeCleanupTest {
                 .filter(m -> m.getId().getTag("function") != null
                         && m.getId().getTag("function").equals("fn2"))
                 .toList();
-        assertThat(fn2Gauges).hasSize(7);
+        assertThat(fn2Gauges).hasSize(GAUGES_PER_FUNCTION);
 
         // fn1 gauges should be gone
         List<Meter> fn1Gauges = registry.getMeters().stream()

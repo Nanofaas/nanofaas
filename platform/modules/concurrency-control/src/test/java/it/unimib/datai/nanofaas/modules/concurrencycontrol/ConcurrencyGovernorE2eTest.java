@@ -24,6 +24,7 @@ import static org.awaitility.Awaitility.await;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "nanofaas.concurrency-control.poll-interval-ms=500",
+                "nanofaas.concurrency-control.total-budget=10",
                 // the concurrency gauges are filtered out of the basic metrics profile
                 "nanofaas.metrics.profile=advanced",
                 "sync-queue.enabled=false"
@@ -65,6 +66,45 @@ class ConcurrencyGovernorE2eTest {
 
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> assertThat(effectiveConcurrency("capped")).isEqualTo(4.0));
+    }
+
+    @Test
+    void budgetedFunctionsShareOneBudgetInsteadOfCompetingForTheSameCores() {
+        registerBudgeted("alpha", 200);
+        registerBudgeted("beta", 200);
+
+        // Neither function is told a limit; both are told an SLO, and the platform decides how
+        // much of its budget each one gets. What must hold is the thing a per-function decision
+        // cannot guarantee: the limits together never exceed what the platform has.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            double total = effectiveConcurrency("alpha") + effectiveConcurrency("beta");
+            assertThat(total).isLessThanOrEqualTo(10.0);
+            assertThat(effectiveConcurrency("alpha")).isGreaterThanOrEqualTo(1.0);
+            assertThat(effectiveConcurrency("beta")).isGreaterThanOrEqualTo(1.0);
+        });
+    }
+
+    private void registerBudgeted(String name, long targetLatencyMs) {
+        webTestClient.post().uri("/v1/functions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {
+                          "name": "%s",
+                          "image": "example/%s:1",
+                          "concurrency": 64,
+                          "executionMode": "EXTERNAL",
+                          "endpointUrl": "http://localhost:9",
+                          "scalingConfig": {
+                            "strategy": "NONE",
+                            "concurrencyControl": {
+                              "mode": "BUDGETED",
+                              "targetLatencyMs": %d
+                            }
+                          }
+                        }
+                        """.formatted(name, name, targetLatencyMs))
+                .exchange()
+                .expectStatus().is2xxSuccessful();
     }
 
     private void register(String name, int concurrency, int targetInFlightPerPod) {

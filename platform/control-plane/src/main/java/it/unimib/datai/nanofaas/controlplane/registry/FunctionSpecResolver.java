@@ -23,6 +23,12 @@ public class FunctionSpecResolver {
     // back off above 2x, grow again below ~1.18x. See the concurrency-control module.
     private static final double DEFAULT_HIGH_LOAD_THRESHOLD = 0.5;
     private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.15;
+    // A generic service-time SLO for a function that did not state one. Deliberately not
+    // derived from anything the platform measures: a target the controller inferred from
+    // observed latency would move whenever the function got slower, which is the one thing
+    // an SLO must not do.
+    private static final long DEFAULT_TARGET_LATENCY_MS = 250L;
+    private static final double DEFAULT_WEIGHT = 1.0;
     private static final String QUEUE_DEPTH_METRIC = "queue_depth";
 
     private final FunctionDefaults defaults;
@@ -116,6 +122,10 @@ public class FunctionSpecResolver {
             );
         }
 
+        if (config.mode() == ConcurrencyControlMode.BUDGETED) {
+            return normalizeBudgeted(config);
+        }
+
         int min = Optional.ofNullable(config.minTargetInFlightPerPod())
                 .map(v -> Math.max(1, v))
                 .orElse(DEFAULT_MIN_TARGET_PER_POD);
@@ -138,6 +148,38 @@ public class FunctionSpecResolver {
                 Optional.ofNullable(config.downscaleCooldownMs()).orElse(DEFAULT_DOWNSCALE_COOLDOWN_MS),
                 Optional.ofNullable(config.highLoadThreshold()).orElse(DEFAULT_HIGH_LOAD_THRESHOLD),
                 Optional.ofNullable(config.lowLoadThreshold()).orElse(DEFAULT_LOW_LOAD_THRESHOLD)
+        );
+    }
+
+    /**
+     * BUDGETED states what the function needs, not how its controller steps, so the per-replica
+     * target and the gradient thresholds are left null rather than filled with values that would
+     * read as configuration nobody set.
+     */
+    private ConcurrencyControlConfig normalizeBudgeted(ConcurrencyControlConfig config) {
+        long targetLatencyMs = Optional.ofNullable(config.targetLatencyMs())
+                .filter(value -> value > 0)
+                .orElse(DEFAULT_TARGET_LATENCY_MS);
+        double weight = Optional.ofNullable(config.weight())
+                .filter(value -> value > 0)
+                .orElse(DEFAULT_WEIGHT);
+        int min = Optional.ofNullable(config.minTargetInFlightPerPod())
+                .map(value -> Math.max(1, value))
+                .orElse(1);
+        Integer max = config.maxTargetInFlightPerPod() == null
+                ? null
+                : Math.max(min, config.maxTargetInFlightPerPod());
+        return new ConcurrencyControlConfig(
+                ConcurrencyControlMode.BUDGETED,
+                null,
+                min,
+                max,
+                null,
+                null,
+                null,
+                null,
+                targetLatencyMs,
+                weight
         );
     }
 }

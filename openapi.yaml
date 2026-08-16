@@ -633,12 +633,14 @@ components:
       properties:
         mode:
           type: string
-          enum: [FIXED, STATIC_PER_POD, ADAPTIVE_PER_POD]
+          enum: [FIXED, STATIC_PER_POD, ADAPTIVE_PER_POD, BUDGETED]
           default: FIXED
           description: >-
             `FIXED` leaves `concurrency` alone; `STATIC_PER_POD` sets it to
             `readyReplicas x targetInFlightPerPod`; `ADAPTIVE_PER_POD` moves the per-replica target
-            with observed service time.
+            with observed service time; `BUDGETED` sizes the limit to meet `targetLatencyMs` and
+            takes it from a concurrency budget shared with every other BUDGETED function, so the
+            limits cannot add up to more than the platform has.
         targetInFlightPerPod:
           type: integer
           minimum: 1
@@ -677,6 +679,24 @@ components:
           description: >-
             ADAPTIVE_PER_POD only. Below this degradation fraction the per-replica target is raised
             again. 0.15 means "grow while latency stays under ~1.18x its best".
+        targetLatencyMs:
+          type: integer
+          format: int64
+          minimum: 1
+          default: 250
+          description: >-
+            BUDGETED only. The service-time SLO this function is held to. The limit is sized to
+            meet it, so unlike the ADAPTIVE_PER_POD thresholds this is an absolute target an
+            operator can take from a service agreement rather than a ratio against the function's
+            own past behaviour.
+        weight:
+          type: number
+          format: double
+          minimum: 0
+          default: 1
+          description: >-
+            BUDGETED only. This function's claim on the shared budget when it cannot satisfy every
+            function at once. Only relative values matter, and equal weights mean an equal split.
     InvocationRequest:
       type: object
       properties:

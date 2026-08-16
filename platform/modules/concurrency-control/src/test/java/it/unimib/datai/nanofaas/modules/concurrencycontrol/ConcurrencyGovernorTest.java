@@ -34,7 +34,8 @@ class ConcurrencyGovernorTest {
     private final RecordingMetricsSource metricsSource = new RecordingMetricsSource();
     private final FunctionRegistry registry = mock(FunctionRegistry.class);
     private final ManagedDeploymentCoordinator deploymentCoordinator = mock(ManagedDeploymentCoordinator.class);
-    private final ConcurrencyControlProperties properties = new ConcurrencyControlProperties(5000L, 2);
+    private final ConcurrencyControlProperties properties =
+            new ConcurrencyControlProperties(5000L, 2, 64);
     private Metrics metrics;
     private ConcurrencyControlCoordinator coordinator;
 
@@ -116,6 +117,55 @@ class ConcurrencyGovernorTest {
                 .containsEntry("healthy", 4);
     }
 
+    @Test
+    void budgetedFunctionsAreDecidedTogetherRatherThanOneAtATime() {
+        // The whole point of the mode: a budget cannot be respected by a decision taken per
+        // function, because no function knows what the others are asking for.
+        FunctionSpec a = spec("a", 64, ConcurrencySpecs.budgetedControl(100, 1));
+        FunctionSpec b = spec("b", 64, ConcurrencySpecs.budgetedControl(100, 1));
+        when(registry.listRegistered()).thenReturn(List.of(
+                RegisteredFunction.nonManaged(a), RegisteredFunction.nonManaged(b)));
+        metrics.registerFunction("a");
+        metrics.registerFunction("b");
+
+        ConcurrencyGovernor governor = budgetGovernor(12);
+        governor.governLoop();
+        for (int i = 0; i < 10; i++) {
+            metrics.latency("a").record(Duration.ofMillis(1));
+            metrics.latency("b").record(Duration.ofMillis(1));
+        }
+        governor.governLoop();
+
+        assertThat(metricsSource.effectiveConcurrency.values().stream()
+                .mapToInt(Integer::intValue).sum()).isLessThanOrEqualTo(12);
+        assertThat(metricsSource.modes).containsEntry("a", ConcurrencyControlMode.BUDGETED);
+    }
+
+    @Test
+    void theOtherModesAreUntouchedByTheBudget() {
+        FunctionSpec fixedMode = spec("legacy", 12, ConcurrencySpecs.staticControl(2));
+        when(registry.listRegistered()).thenReturn(List.of(RegisteredFunction.nonManaged(fixedMode)));
+
+        budgetGovernor(4).governLoop();
+
+        // Static per-pod still computes replicas x target and ignores the budget entirely.
+        assertThat(metricsSource.effectiveConcurrency).containsEntry("legacy", 2);
+        assertThat(metricsSource.modes).containsEntry("legacy", ConcurrencyControlMode.STATIC_PER_POD);
+    }
+
+    private ConcurrencyGovernor budgetGovernor(int budget) {
+        return new ConcurrencyGovernor(
+                registry,
+                metrics,
+                new ConcurrencyGovernor.ConcurrencyControllers(
+                        coordinator, new BudgetedConcurrencyController()),
+                new ConcurrencyControlProperties(5000L, 2, budget),
+                null,
+                metricsSource,
+                InstantSource.fixed(Instant.ofEpochMilli(10_000))
+        );
+    }
+
     private void recordInvocations(int invocations, Duration each) {
         for (int i = 0; i < invocations; i++) {
             metrics.latency("echo").record(each);
@@ -126,9 +176,11 @@ class ConcurrencyGovernorTest {
         return new ConcurrencyGovernor(
                 registry,
                 metrics,
-                coordinator,
+                new ConcurrencyGovernor.ConcurrencyControllers(
+                        coordinator, new BudgetedConcurrencyController()),
                 properties,
                 coordinatorOrNull,
+                metricsSource,
                 InstantSource.fixed(Instant.ofEpochMilli(nowEpochMs))
         );
     }

@@ -1,16 +1,22 @@
 package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import io.micrometer.core.instrument.Timer;
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
+import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
 import java.time.InstantSource;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -31,6 +37,8 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private final ConcurrencyControlCoordinator coordinator;
     private final ConcurrencyControlProperties properties;
     private final ManagedDeploymentCoordinator deploymentCoordinator;
+    private final ScalingMetricsSource metricsSource;
+    private final BudgetedConcurrencyController budgetedController;
     private final InstantSource clock;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
@@ -39,21 +47,38 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                                Metrics metrics,
                                ConcurrencyControlCoordinator coordinator,
                                ConcurrencyControlProperties properties,
-                               ManagedDeploymentCoordinator deploymentCoordinator) {
-        this(registry, metrics, coordinator, properties, deploymentCoordinator, InstantSource.system());
+                               ManagedDeploymentCoordinator deploymentCoordinator,
+                               ScalingMetricsSource metricsSource) {
+        this(registry, metrics,
+                new ConcurrencyControllers(coordinator, new BudgetedConcurrencyController()),
+                properties, deploymentCoordinator, metricsSource, InstantSource.system());
+    }
+
+    /**
+     * The two strategies the governor drives. Bundled because they are one choice seen from two
+     * sides — a function is governed by one or the other, never both — and because a constructor
+     * long enough to need counting is a constructor whose arguments get swapped.
+     */
+    public record ConcurrencyControllers(
+            ConcurrencyControlCoordinator perFunction,
+            BudgetedConcurrencyController budgeted
+    ) {
     }
 
     public ConcurrencyGovernor(FunctionRegistry registry,
                                Metrics metrics,
-                               ConcurrencyControlCoordinator coordinator,
+                               ConcurrencyControllers controllers,
                                ConcurrencyControlProperties properties,
                                ManagedDeploymentCoordinator deploymentCoordinator,
+                               ScalingMetricsSource metricsSource,
                                InstantSource clock) {
         this.registry = registry;
         this.metrics = metrics;
-        this.coordinator = coordinator;
+        this.coordinator = controllers.perFunction();
+        this.budgetedController = controllers.budgeted();
         this.properties = properties;
         this.deploymentCoordinator = deploymentCoordinator;
+        this.metricsSource = metricsSource;
         this.clock = clock;
     }
 
@@ -97,11 +122,46 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     void governLoop() {
         try {
             long now = clock.millis();
+            List<BudgetedConcurrencyController.FunctionObservation> budgeted = new ArrayList<>();
             for (RegisteredFunction registeredFunction : registry.listRegistered()) {
-                govern(registeredFunction, now);
+                if (isBudgeted(registeredFunction.spec())) {
+                    observe(registeredFunction).ifPresent(budgeted::add);
+                } else {
+                    govern(registeredFunction, now);
+                }
+            }
+            // One allocation for all of them, after every ask is in: a budget cannot be
+            // respected by a decision taken one function at a time.
+            if (!budgeted.isEmpty()) {
+                budgetedController.apply(
+                        budgeted, properties.totalBudgetOrDefault(), metricsSource, now);
             }
         } catch (Exception ex) {
             log.error("Error in concurrency governor loop", ex);
+        }
+    }
+
+    private static boolean isBudgeted(FunctionSpec spec) {
+        return spec.scalingConfig() != null
+                && spec.scalingConfig().concurrencyControl() != null
+                && spec.scalingConfig().concurrencyControl().mode() == ConcurrencyControlMode.BUDGETED;
+    }
+
+    private Optional<BudgetedConcurrencyController.FunctionObservation> observe(
+            RegisteredFunction registeredFunction) {
+        try {
+            Timer latency = metrics.latency(registeredFunction.name());
+            return Optional.of(new BudgetedConcurrencyController.FunctionObservation(
+                    registeredFunction.spec(),
+                    metricsSource.inFlight(registeredFunction.name()),
+                    latency.count(),
+                    latency.totalTime(TimeUnit.MILLISECONDS)
+            ));
+        } catch (Exception ex) {
+            // One unreadable function must not cost the others their allocation.
+            log.error("Error reading concurrency inputs for function {}",
+                    registeredFunction.name(), ex);
+            return Optional.empty();
         }
     }
 
@@ -135,5 +195,6 @@ public class ConcurrencyGovernor implements SmartLifecycle {
 
     void removeFunctionState(String functionName) {
         coordinator.removeFunctionState(functionName);
+        budgetedController.removeFunctionState(functionName);
     }
 }
