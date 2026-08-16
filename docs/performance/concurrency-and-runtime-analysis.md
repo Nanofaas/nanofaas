@@ -198,9 +198,40 @@ G1, available in Oracle GraalVM, removes the problem entirely: 98.5% of the JVM'
 throughput, a tail of 123ms, and a 0.07s start. Oracle GraalVM is GFTC-licensed
 rather than GPL, so the build stays opt-in via `NATIVE_GC=G1`.
 
-**Known regression:** under G1 the native image exposes no GC metrics at all —
-not even the polled MXBean counters that work under the serial collector. The
-best configuration is the one we are blind on.
+### Observing the collector on each build
+
+Under G1 the native image registers no `GarbageCollectorMXBean` at all, so
+neither Micrometer nor the polling binder reports anything — and
+`--enable-monitoring=jfr,jvmstat,jmxserver` does not bring them back. That was
+tested and does not work.
+
+JFR does, by an indirect route. The GC-specific event types
+(`jdk.G1GarbageCollection`, `jdk.GCHeapSummary`, the `GCPhase*` family) are
+declared in the recording and emit zero events; stopping there would suggest JFR
+is useless here. The pauses are recorded as **VM operations** instead, with a
+duration each. From a 90s recording under load:
+
+| operation | count | total | mean | max |
+|---|---|---|---|---|
+| `G1 wrapper` | 43 | 835.1 ms | 19.4 ms | 97.6 ms |
+| `Collect for allocation` | 31 | 651.1 ms | 21.0 ms | 94.5 ms |
+| `Try init concurrent mark` | 2 | 37.3 ms | 18.6 ms | 22.5 ms |
+| **total** | **76** | **1,524 ms of 90 s** | | **1.69%** |
+
+That independently confirms §6 by a different route — 1.69% of wall clock against
+the serial collector's 31.8% — and yields more than the MXBeans ever could: a
+duration per pause, and therefore the maximum, which the polled counters cannot
+give even where they work.
+
+| build | counts and total time | maximum pause |
+|---|---|---|
+| JVM | Micrometer, natively | yes, from notifications |
+| native, serial | the polling binder | no |
+| native, G1 | **JFR only** | **yes, per pause** |
+
+So G1 is not unobservable, it is unobservable **through Prometheus**: the data
+needs a recording pulled and analysed out of band rather than a gauge to scrape.
+Adequate for an investigation, not for an alert.
 
 ## 7. Memory limits change the answer
 

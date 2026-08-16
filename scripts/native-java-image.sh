@@ -75,6 +75,13 @@ if [ -n "${NATIVE_GC:-}" ]; then
   fi
 fi
 
+# NATIVE_MONITORING=jfr,jvmstat turns on the run-time inspection a native image
+# otherwise lacks. Worth the binary size where the build is meant to be operated
+# rather than only benchmarked.
+if [ -n "${NATIVE_MONITORING:-}" ]; then
+  gradle_args="$gradle_args -PnativeMonitoring=$NATIVE_MONITORING"
+fi
+
 build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")
