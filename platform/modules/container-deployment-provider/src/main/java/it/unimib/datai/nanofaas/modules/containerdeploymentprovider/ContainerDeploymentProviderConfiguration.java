@@ -29,9 +29,11 @@ public class ContainerDeploymentProviderConfiguration {
     ContainerRuntimeAdapter containerRuntimeAdapter(ContainerLocalProperties properties,
                                                     CliCommandExecutor executor) {
         if ("docker-java".equalsIgnoreCase(properties.runtimeAdapter())) {
-            return new DockerJavaContainerRuntimeAdapter(createDockerClient(), properties.networkName());
+            return new DockerJavaContainerRuntimeAdapter(
+                    createDockerClient(), properties.networkName(), properties.cpuset());
         }
-        return new CliContainerRuntimeAdapter(properties.runtimeAdapter(), executor);
+        return new CliContainerRuntimeAdapter(
+                properties.runtimeAdapter(), executor, properties.cpuset());
     }
 
     @Bean

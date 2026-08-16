@@ -14,6 +14,15 @@ services:
       NANOFAAS_CONTAINER_LOCAL_RUNTIME_ADAPTER: docker-java
       NANOFAAS_CONTAINER_LOCAL_NETWORK_NAME: nanofaas
       NANOFAAS_CONTAINER_LOCAL_CALLBACK_URL: http://control-plane:8080/v1/internal/executions
+      # Empty by default: every function gets its own CPU quota and they never compete. Set it
+      # (e.g. "0-3") to put them all on the same cores, which is the only way a co-tenancy
+      # measurement is about cores rather than about sharing a control plane.
+      NANOFAAS_CONTAINER_LOCAL_CPUSET: ${NANOFAAS_CONTAINER_LOCAL_CPUSET:-}
+      # Empty leaves the BUDGETED default, which scales with the cores the control
+      # plane can see (44 on an 11-core host) and so never binds for a couple of
+      # functions capped at 8 each — the mode would look identical to per-function
+      # control because nothing was ever scarce.
+      NANOFAAS_CONCURRENCY_CONTROL_TOTAL_BUDGET: ${NANOFAAS_CONCURRENCY_CONTROL_TOTAL_BUDGET:-}
       NANOFAAS_METRICS_PROFILE: advanced
     ports:
       - "8080:8080"

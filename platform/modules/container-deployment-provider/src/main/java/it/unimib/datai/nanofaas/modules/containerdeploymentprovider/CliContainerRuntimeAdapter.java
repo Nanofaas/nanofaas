@@ -14,10 +14,16 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
 
     private final String runtimeAdapter;
     private final CliCommandExecutor executor;
+    private final String cpuset;
 
     CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor) {
+        this(runtimeAdapter, executor, null);
+    }
+
+    CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset) {
         this.runtimeAdapter = runtimeAdapter == null || runtimeAdapter.isBlank() ? "docker" : runtimeAdapter.trim();
         this.executor = executor;
+        this.cpuset = cpuset == null || cpuset.isBlank() ? null : cpuset.trim();
     }
 
     @Override
@@ -49,6 +55,12 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         command.add("-p");
         command.add(spec.hostPort() + ":8080");
         addResourceFlags(command, spec.resources());
+        if (cpuset != null) {
+            // Every function on the same cores, so the platform's capacity is something they
+            // have to divide rather than something each is capped against independently.
+            command.add("--cpuset-cpus");
+            command.add(cpuset);
+        }
         spec.env().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey(Comparator.naturalOrder()))
                 .forEach(entry -> {

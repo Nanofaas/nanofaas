@@ -22,14 +22,20 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
 
     private final DockerClient client;
     private final String networkName;
+    private final String cpuset;
 
     DockerJavaContainerRuntimeAdapter(DockerClient client) {
         this(client, null);
     }
 
     DockerJavaContainerRuntimeAdapter(DockerClient client, String networkName) {
+        this(client, networkName, null);
+    }
+
+    DockerJavaContainerRuntimeAdapter(DockerClient client, String networkName, String cpuset) {
         this.client = client;
         this.networkName = networkName;
+        this.cpuset = cpuset;
     }
 
     @Override
@@ -70,6 +76,11 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
             hostConfig.withNetworkMode(networkName);
         }
         addResourceLimits(hostConfig, spec.resources());
+        if (cpuset != null && !cpuset.isBlank()) {
+            // Every function on the same cores, so the platform's capacity is something they
+            // have to divide rather than something each is capped against independently.
+            hostConfig.withCpusetCpus(cpuset);
+        }
 
         try (CreateContainerCmd create = client.createContainerCmd(spec.image())
                 .withName(spec.containerName())

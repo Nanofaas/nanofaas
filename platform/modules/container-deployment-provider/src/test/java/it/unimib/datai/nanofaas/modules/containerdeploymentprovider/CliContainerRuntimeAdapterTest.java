@@ -116,4 +116,34 @@ class CliContainerRuntimeAdapterTest {
             return results.removeFirst();
         }
     }
+
+    @Test
+    void pinsEveryContainerToTheSharedCoreSetWhenOneIsConfigured() {
+        // A per-function CPU limit caps each container separately, so on a host with spare cores
+        // the functions never compete: two with four CPUs each on an eleven-core machine barely
+        // affected one another. Sharing a core set is what makes capacity a quantity they divide.
+        RecordingCliCommandExecutor executor = new RecordingCliCommandExecutor()
+                .withResult(ExecutionResult.success(""))
+                .withResult(ExecutionResult.success(""));
+        CliContainerRuntimeAdapter adapter =
+                new CliContainerRuntimeAdapter("docker", executor, "0-3");
+
+        adapter.runContainer(new ContainerInstanceSpec(
+                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null));
+
+        assertThat(executor.commands().get(1)).containsSequence("--cpuset-cpus", "0-3");
+    }
+
+    @Test
+    void leavesTheCoreSetAloneWhenNoneIsConfigured() {
+        RecordingCliCommandExecutor executor = new RecordingCliCommandExecutor()
+                .withResult(ExecutionResult.success(""))
+                .withResult(ExecutionResult.success(""));
+        CliContainerRuntimeAdapter adapter = new CliContainerRuntimeAdapter("docker", executor);
+
+        adapter.runContainer(new ContainerInstanceSpec(
+                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null));
+
+        assertThat(executor.commands().get(1)).doesNotContain("--cpuset-cpus");
+    }
 }
