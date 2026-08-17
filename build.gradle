@@ -67,6 +67,22 @@ subprojects {
                 if (project.hasProperty('nativeMonitoring')) {
                     binary.buildArgs.add("--enable-monitoring=${project.property('nativeMonitoring')}")
                 }
+                // -PnativeBuildMemory=6g bounds the BUILDER's heap, not the built
+                // image's. native-image sizes its own heap from the memory it can
+                // see, which is the whole machine even when most of it is already
+                // spoken for: on a 12GB VM also running k3s, a control plane and
+                // Prometheus, it was SIGKILLed by the OOM killer after 9m50s of
+                // work. A build that dies that way wastes the ten minutes and says
+                // "exit 137"; one that is told its budget either fits or fails fast.
+                if (project.hasProperty('nativeBuildMemory')) {
+                    binary.buildArgs.add("-J-Xmx${project.property('nativeBuildMemory')}")
+                }
+                // Fewer workers cost wall-clock and save peak memory, which is the
+                // right trade on a machine where the build is competing with the
+                // workload it will later be measured against.
+                if (project.hasProperty('nativeParallelism')) {
+                    binary.buildArgs.add("--parallelism=${project.property('nativeParallelism')}")
+                }
             }
         }
     }

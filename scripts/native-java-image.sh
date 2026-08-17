@@ -89,6 +89,18 @@ if [ -n "${NATIVE_OPTIMIZATION:-}" ]; then
   gradle_args="$gradle_args -PnativeOptimization=$NATIVE_OPTIMIZATION"
 fi
 
+# NATIVE_BUILD_MEMORY=6g bounds the builder, not the built image. native-image
+# reads the machine's total memory to size its own heap and does not know what
+# else is running: on a 12GB VM already holding k3s, a control plane and
+# Prometheus it was OOM-killed after nearly ten minutes. Set this wherever the
+# build shares a machine with anything.
+if [ -n "${NATIVE_BUILD_MEMORY:-}" ]; then
+  gradle_args="$gradle_args -PnativeBuildMemory=$NATIVE_BUILD_MEMORY"
+fi
+if [ -n "${NATIVE_PARALLELISM:-}" ]; then
+  gradle_args="$gradle_args -PnativeParallelism=$NATIVE_PARALLELISM"
+fi
+
 build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")
