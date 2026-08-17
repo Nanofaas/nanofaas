@@ -10,9 +10,12 @@ rather than the claim.
    `ADAPTIVE_PER_POD` controllers are within 1% of each other end to end.
    `BUDGETED` reaches it with substantially less concurrency on the function that
    does not need it, which is the property the mode exists for.
-2. The controller optimises a quantity the caller does not experience. Service
+2. The controllers optimised a quantity the caller does not experience. Service
    time is roughly a seventh of end-to-end latency under queueing, so a governor
-   can sit comfortably inside a 10ms SLO while callers wait 80ms.
+   can sit comfortably inside a 10ms SLO while callers wait 80ms. Deciding from
+   sojourn time instead served 3.2% more requests, refused 15.7% fewer and cut
+   end-to-end p95 by 10.6% — but only under open arrivals, and only after two
+   earlier designs failed.
 3. Co-tenancy cross-talk is real but is not CPU contention. Pinning both
    functions to the same four cores changed nothing measurable.
 4. A natively compiled control plane loses half its throughput to garbage
@@ -86,7 +89,87 @@ its own limit created more than absorbed the gain. A concurrency limit does not
 remove work; it moves it into the buffer.
 
 This suggests the controller should be driven by queue wait, or by the sum, not
-by service time alone. That change has not been made.
+by service time alone. That change was made, and §2b is what it cost and bought.
+
+## 2b. Deciding from the caller's latency: two failures and a result
+
+The `SOJOURN` mode decides from sojourn time — wait plus service — instead of
+service time. Three designs were needed and the two that failed are worth as much
+as the one that worked, because each fails for a reason that is easy to repeat.
+
+**Feeding end-to-end latency into the existing gradient rule** is unstable, and
+was rejected before implementation. That rule shrinks the limit when latency
+exceeds its target; a smaller limit drains the queue more slowly, so the wait
+grows, so it shrinks again, to the floor.
+
+**Searching for the minimum** — step, compare with last time, carry on if better
+and turn if worse — was implemented and falsified by measurement. Sojourn does
+have an interior minimum where service time has none, so the search is
+well-posed in principle. It fails because it cannot tell "my move helped" from
+"the load fell". In a trough it credited the natural relief to its own decision
+to shrink and was still small when the load returned:
+
+| | ADAPTIVE_PER_POD | SOJOURN, searching |
+|---|---|---|
+| refused | 32 (0.004%) | **36,181 (4.275%)** |
+| limit | 7.8 [4-8] | 4.0 [1-8] |
+
+The operating point it chose was not the problem — at limit 4 it delivered 96.5%
+of the throughput with half the service time. What it missed is that **the limit
+does two jobs**: with the queue it is also the admission window, since a function
+holds `limit + queueSize` and refuses the rest. Sizing it from latency alone shed
+4% of the traffic.
+
+**Computing it from a model** works. Three parts in strict order of authority: an
+admission guard that raises the limit whenever the queue passes its high-water
+mark and forbids lowering it; Little's law on a *predicted* arrival rate (Holt
+with a damped trend, because a moving average lags a ramp and a ramp is where the
+queue builds); and the end-to-end target shortening the drain horizon in
+proportion to how far outside the promise the function is. Nothing compares two
+intervals, so the attribution problem cannot arise.
+
+### The closed loop could not pose the question
+
+Under `burst` each VU holds one request, so the number in the system is pinned by
+the generator and queue depth is `VUs - limit`. Two consequences, both measured.
+Raising the limit from 4 to 8 shortened a 99-deep queue by four — no controller
+can move the wait by much. And the queue sits at 95 of 100 by construction,
+permanently above any high-water mark, so the admission guard fires every tick
+and the model never speaks: the re-run reads `8 [8-8]` for its whole length.
+
+That is why two controllers reading entirely different signals landed within 2%
+of each other on this profile. The similarity was a property of the harness.
+
+### With open arrivals
+
+Arrivals scheduled by the clock at a peak above measured capacity, so the queue
+grows from demand. Same load, same cores, same queues, both modes per-function.
+
+| | ADAPTIVE_PER_POD | SOJOURN | |
+|---|---|---|---|
+| offered | 659,973 | 659,995 | identical by construction |
+| **served** | 549,856 | **567,210** | **+3.2%** |
+| refused | 110,117 (16.7%) | **92,785 (14.1%)** | **-15.7%** |
+| **end-to-end p95** | 120.48 ms | **107.68 ms** | **-10.6%** |
+| **end-to-end p99** | 157.67 ms | **133.82 ms** | **-15.1%** |
+| queue wait | 35.61 ms | 31.03 ms | -12.9% |
+| service time | 1.69 ms | 2.00 ms | +18% |
+| mean limit | 3.9 | 2.8 | |
+
+The trade went the predicted way: service time worsened 18%, the wait improved
+13%, and since the wait is twenty times the service time the caller gains. The
+target — same throughput, same rejections, lower end-to-end p95 — was written
+into the scenario before the run, and all three were beaten.
+
+The instructive detail is that SOJOURN did this with *less* mean concurrency.
+It does not win by adding capacity but by placing it in time, which is what the
+forecast was there to buy.
+
+**Caveats.** One run each, unrepeated: differences of 10-15% are large but not
+established. Both systems are shedding 14-16%, because the open-loop peak
+genuinely exceeds capacity — this compares two overloaded systems, not two
+comfortable ones. `dropped_iterations` was 21 and 0, so the generator was not
+giving up and the refusals are the platform's.
 
 ## 3. Co-tenancy: cross-talk without contention
 
@@ -279,5 +362,10 @@ set**; until then every memory figure from that path describes appetite.
 - Whether `BUDGETED`'s weights do anything useful: both functions were given
   identical SLOs and weights deliberately, so differentiated service levels
   remain untested.
-- Whether driving the controller from queue wait rather than service time would
-  fix the mismatch in §2. It is the obvious next experiment.
+- Whether the §2b result holds up. It is one unrepeated run per mode, on a bench
+  where both systems were shedding 14-16% of the offered load.
+- What SOJOURN does when the system is NOT overloaded. Every run of it so far has
+  been at or past capacity, so the mode has never been observed choosing a limit
+  in comfortable conditions.
+- Whether the admission guard's high-water mark at 70% is right. It was picked,
+  not measured, and on the closed-loop profile it overrode the model completely.
