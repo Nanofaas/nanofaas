@@ -17,20 +17,13 @@ def availableOptionalControlPlaneModuleProjects = rootProject.subprojects
         .findAll { it.path.startsWith(':control-plane-modules:') }
 def availableOptionalControlPlaneModuleNames = availableOptionalControlPlaneModuleProjects.collect { it.name }
 
-def requestedTaskNames = gradle.startParameter.taskNames.collect { it.toLowerCase() }
-def invocationBuildsRuntimeArtifact = requestedTaskNames.any { taskName ->
-    taskName == 'bootrun' || taskName.endsWith(':bootrun') ||
-            taskName == 'bootjar' || taskName.endsWith(':bootjar') ||
-            taskName == 'build' || taskName.endsWith(':build') ||
-            taskName == 'assemble' || taskName.endsWith(':assemble')
-}
-
+// Every invocation gets every module unless one is named explicitly. The default
+// used to depend on the task: 'all' for bootJar/build, core-only for test. That
+// meant the suite exercised a configuration nothing ever shipped, and the module
+// code shipped in the jar was covered only by its own project's tests.
 def requestedModulesRaw = (project.findProperty('controlPlaneModules') ?: System.getenv('NANOFAAS_CONTROL_PLANE_MODULES'))?.toString()
 if (requestedModulesRaw == null || requestedModulesRaw.trim().isEmpty()) {
-    // Keep tests core-only by default while preserving historical runtime behavior.
-    // Exception: E2E tests (runE2e flag) need the full fat-jar with all modules.
-    def isE2eBuild = project.hasProperty('runE2e')
-    requestedModulesRaw = (invocationBuildsRuntimeArtifact || isE2eBuild) ? 'all' : ''
+    requestedModulesRaw = 'all'
 }
 def requestedControlPlaneModuleNames = new LinkedHashSet<String>(parseCsvModules(requestedModulesRaw))
 if (requestedControlPlaneModuleNames.contains('none')) {

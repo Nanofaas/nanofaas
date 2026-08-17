@@ -35,6 +35,14 @@ jobs:
       - name: Run Tests
         run: ./gradlew test
 
+      # The suite above now runs with every optional module loaded, which is what
+      # ships. CoreOnlyApiTest asserts the opposite configuration — no-op enqueuer,
+      # 501 on :enqueue — and self-skips whenever async-queue is on the classpath,
+      # so it needs its own invocation. Module selection happens at configuration
+      # time and cannot be varied inside a single build.
+      - name: Run Core-Only Tests
+        run: ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest'
+
   test-python:
     runs-on: ubuntu-latest
     timeout-minutes: 15
