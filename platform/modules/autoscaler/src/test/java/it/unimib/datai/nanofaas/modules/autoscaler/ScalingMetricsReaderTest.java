@@ -63,6 +63,17 @@ class ScalingMetricsReaderTest {
         assertEquals(0.0, value);
     }
 
+    @Test
+    void readMetric_rps_worksWithoutAQueueModule() {
+        // Deliberate asymmetry with concurrency-control, which refuses to start against the no-op:
+        // rps is read from a meter here, not from the source, so the autoscaler stays useful.
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        ScalingMetricsReader r = new ScalingMetricsReader(ScalingMetricsSource.noOp(), registry);
+
+        assertEquals(0.0, r.readMetric("echo", new ScalingMetric("rps", "1", null)));
+        assertEquals(0.0, r.readMetric("echo", new ScalingMetric("queue_depth", "5", null)));
+    }
+
     @SuppressWarnings("java:S2925") // clock advancement: the per-interval metric window must advance before the second read
     @Test
     void readMetric_rps_usesPerIntervalDeltaInsteadOfCumulativeCounter() throws Exception {

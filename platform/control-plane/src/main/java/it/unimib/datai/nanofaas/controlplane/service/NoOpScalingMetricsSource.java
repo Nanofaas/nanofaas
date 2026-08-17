@@ -6,6 +6,11 @@ enum NoOpScalingMetricsSource implements ScalingMetricsSource {
     INSTANCE;
 
     @Override
+    public boolean enabled() {
+        return false;
+    }
+
+    @Override
     public int queueDepth(String functionName) {
         return 0;
     }

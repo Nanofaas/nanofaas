@@ -23,12 +23,25 @@ Current modules:
 - `async-queue` — per-function queues + scheduler for the async path
 - `sync-queue` — sync admission/backpressure queue
 - `autoscaler` — internal replica scaler and scaling metrics integration
-- `concurrency-control` — per-function concurrency governor (`FIXED`, `STATIC_PER_POD`, `ADAPTIVE_PER_POD`, `BUDGETED`, `SOJOURN`)
+- `concurrency-control` — per-function concurrency governor (`FIXED`, `STATIC_PER_POD`, `ADAPTIVE_PER_POD`, `BUDGETED`, `SOJOURN`); **requires `async-queue`**
 - `runtime-config` — hot runtime config service and admin API
 - `build-metadata` — `/modules/build-metadata` diagnostics endpoint
 - `k8s-deployment-provider` — Kubernetes managed deployment backend
 - `container-deployment-provider` — local Docker-compatible deployment backend
 - `offload` — conditional transparent proxy of sync invocations to a remote instance
+
+## Modules that need other modules
+
+`concurrency-control` reads queue depth and in-flight count from
+`ScalingMetricsSource`, which only `async-queue` supplies, and writes the limits
+it computes back through the same interface — that write is what actually
+enforces them. Selected without `async-queue` it would run against the core's
+no-op source: zeroes in, limits enforced by nobody. It now **refuses to start**
+and names the missing module.
+
+`autoscaler` reads the same source but is not fatal without it: the `rps` metric
+comes from a meter, not from the source, so only `queue_depth` and `in_flight`
+scaling go blind. Those log a warning on first use.
 
 Image validation is **not** a standalone module: each deployment provider owns
 its validator (`KubernetesImageValidator`, `DockerImageValidator`) and

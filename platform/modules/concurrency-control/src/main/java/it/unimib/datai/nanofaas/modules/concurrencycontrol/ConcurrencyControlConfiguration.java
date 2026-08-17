@@ -17,6 +17,24 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(ConcurrencyControlProperties.class)
 public class ConcurrencyControlConfiguration {
 
+    /**
+     * Refuses to start when no module supplies real queue state.
+     *
+     * <p>{@code @ConditionalOnBean} above cannot catch this: the core always registers a no-op
+     * source, so the condition holds even when nothing produces one. The governor would then run
+     * against a source reporting depth 0 and in-flight 0 forever, and — worse — every limit it
+     * computed would be written into that same no-op and enforced by nobody. The module would be
+     * entirely inert while its metrics claimed otherwise.
+     */
+    public ConcurrencyControlConfiguration(ScalingMetricsSource metricsSource) {
+        if (!metricsSource.enabled()) {
+            throw new IllegalStateException(
+                    "concurrency-control needs a module that supplies queue state (async-queue); "
+                            + "without one the governor reads zeroes and the limits it computes "
+                            + "are enforced by nothing. Add async-queue to the module selection.");
+        }
+    }
+
     @Bean
     StaticPerPodConcurrencyController staticPerPodConcurrencyController() {
         return new StaticPerPodConcurrencyController();
