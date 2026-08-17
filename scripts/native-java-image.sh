@@ -82,6 +82,13 @@ if [ -n "${NATIVE_MONITORING:-}" ]; then
   gradle_args="$gradle_args -PnativeMonitoring=$NATIVE_MONITORING"
 fi
 
+# NATIVE_OPTIMIZATION=s spends throughput to halve the image. The default is 3,
+# which is 10% faster where memory is not the constraint and costs only registry
+# space — with a heap ceiling in place both levels peak at the same resident size.
+if [ -n "${NATIVE_OPTIMIZATION:-}" ]; then
+  gradle_args="$gradle_args -PnativeOptimization=$NATIVE_OPTIMIZATION"
+fi
+
 build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")

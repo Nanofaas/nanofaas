@@ -316,6 +316,45 @@ So G1 is not unobservable, it is unobservable **through Prometheus**: the data
 needs a recording pulled and analysed out of band rather than a gauge to scrape.
 Adequate for an investigation, not for an alert.
 
+### Optimisation level
+
+The build used `-Os` — optimise for size — until it was measured. `-O3` optimises
+for speed instead; the levels choose what to spend rather than how much to
+optimise, and `-O3` does not reduce image size, it doubles it.
+
+| | `-Os` | `-O3` |
+|---|---|---|
+| throughput | 8,398 rps | **9,251 rps** (+10.2%) |
+| p95 | 15.64 ms | 14.79 ms |
+| maximum | 148.7 ms | 127.2 ms |
+| startup | 0.173 s | **0.068 s** |
+| resident at rest | 120.6 MiB | **39.3 MiB** |
+| image | 195 MB | **397 MB** |
+
+At `-O3` the native build does not merely match the JVM, it passes it: 9,251
+against 8,205 requests per second, with a start twenty-three times faster.
+
+**Why the image grows**, from the build report: the code area triples, 47.78MB to
+166.59MB, out of *fewer* compilation units — 84,694 against 105,256. That pairing
+is the signature of inlining. Methods are copied into their callers rather than
+called, so units disappear while each survivor carries copies of what it
+absorbed, and loop unrolling adds more. Same program, more machine code, which is
+also why it is faster: no call overhead and each copy specialised for its site.
+
+**Where the cost lands, and where the gain does not.** With a heap ceiling in
+place both levels peaked at the same 744 MiB resident, because the code is mapped
+from the file rather than copied into the heap — the extra 200MB is a registry and
+disk cost, not a node one. And the throughput gain is conditional: under a 1GB
+limit the two builds were identical at ~3,490 requests per second, since there the
+bottleneck is collection rather than code quality. `-O3` buys speed only where
+memory is not already the constraint.
+
+One further detail worth separating from any future PGO measurement: the build
+log reads `PGO: off` at `-Os` and `PGO: ML-inferred` at `-O3`. Oracle GraalVM
+applies model-inferred profiles when optimising for speed, so part of this gain is
+already a form of profile guidance. Explicit PGO must be measured against `-O3`,
+not against `-Os`, or it will be credited with what `-O3` has already collected.
+
 ## 7. Memory limits change the answer
 
 All figures above are without a container memory limit, where every build grows

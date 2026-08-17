@@ -38,7 +38,20 @@ subprojects {
     pluginManager.withPlugin('org.graalvm.buildtools.native') {
         project.extensions.configure('graalvmNative') { nativeExtension ->
             nativeExtension.binaries.configureEach { binary ->
-                binary.buildArgs.add('-Os')
+                // -O3 optimises for speed and -Os for binary size; the levels choose what
+                // to spend rather than how much to optimise. Measured on an isolated bench
+                // with memory to spare, 3 against s gave 9,251 requests per second against
+                // 8,398 (+10%), started in 0.068s against 0.173s and held 39 MiB at rest
+                // against 121 MiB. The image doubles, 195MB to 397MB, because -O3 inlines:
+                // the code area triples from FEWER compilation units, each carrying copies
+                // of what it absorbed. That cost lands on the registry, not the node — with
+                // a heap ceiling in place both builds peaked at the same 744 MiB, since the
+                // code is mapped from the file rather than copied into the heap.
+                //
+                // The gain is conditional and worth stating: under a 1GB limit the two were
+                // identical at ~3,490 requests per second, because there the bottleneck is
+                // collection rather than code quality.
+                binary.buildArgs.add("-O${project.findProperty('nativeOptimization') ?: '3'}")
                 // -PnativeGc=G1 needs Oracle GraalVM on Linux; Community offers only
                 // 'serial' and 'epsilon', and rejects anything else at build time.
                 // Measured motivation: the serial collector spent 32% of wall-clock
