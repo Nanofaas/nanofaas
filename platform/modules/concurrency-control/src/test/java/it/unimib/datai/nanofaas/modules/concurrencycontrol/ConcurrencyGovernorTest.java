@@ -172,14 +172,19 @@ class ConcurrencyGovernorTest {
         // The wiring, not the law: SOJOURN is the one mode that reads a different timer, and a
         // governor that handed it the service timer would look correct in every unit test of the
         // controller while measuring the wrong quantity in production.
-        FunctionSpec function = spec("echo", 24, ConcurrencySpecs.sojournControl(5, 1, 8));
+        FunctionSpec function = spec("echo", 24, ConcurrencySpecs.sojournControl(100, 1, 16));
         when(registry.listRegistered()).thenReturn(List.of(RegisteredFunction.nonManaged(function)));
         metrics.registerFunction("echo");
+        // A backlog to drain, because that is the term the end-to-end reading scales: with an empty
+        // queue it multiplies nothing and the wiring would be unobservable either way.
+        metricsSource.queueDepth = 80;
         // Service time well inside anything, end-to-end far outside it: only a controller reading
-        // the end-to-end timer has any reason to move.
-        for (int i = 0; i < 20; i++) {
-            metrics.latency("echo").record(Duration.ofMillis(1));
-            metrics.e2eLatency("echo").record(Duration.ofMillis(400));
+        // the end-to-end timer has any reason to hurry. The service time is 50ms because the drain
+        // term is queue x service / horizon — with a fast function it is a fraction of one slot and
+        // no change to the horizon could move a whole-number limit.
+        for (int i = 0; i < 100; i++) {
+            metrics.latency("echo").record(Duration.ofMillis(50));
+            metrics.e2eLatency("echo").record(Duration.ofMillis(60));
         }
         // An advancing clock, because the controller works from intervals: handed the same instant
         // twice it has been shown nothing, and the limit would sit still for a reason that has
@@ -197,15 +202,24 @@ class ConcurrencyGovernorTest {
         );
 
         governor.governLoop();
-        int afterBaseline = metricsSource.effectiveConcurrency.get("echo");
-        for (int i = 0; i < 20; i++) {
-            metrics.e2eLatency("echo").record(Duration.ofMillis(200));
-            metrics.latency("echo").record(Duration.ofMillis(1));
+        for (int i = 0; i < 100; i++) {
+            metrics.latency("echo").record(Duration.ofMillis(50));
+            metrics.e2eLatency("echo").record(Duration.ofMillis(60));
+        }
+        governor.governLoop();
+        int withinPromise = metricsSource.effectiveConcurrency.get("echo");
+
+        // Same service time, same backlog, same throughput — only the end-to-end reading moves,
+        // from just outside the promise to far outside it. A governor handing over the service
+        // timer would produce the same limit twice.
+        for (int i = 0; i < 100; i++) {
+            metrics.latency("echo").record(Duration.ofMillis(50));
+            metrics.e2eLatency("echo").record(Duration.ofMillis(2_000));
         }
         governor.governLoop();
 
         assertThat(metricsSource.modes).containsEntry("echo", ConcurrencyControlMode.SOJOURN);
-        assertThat(metricsSource.effectiveConcurrency.get("echo")).isGreaterThan(afterBaseline);
+        assertThat(metricsSource.effectiveConcurrency.get("echo")).isGreaterThan(withinPromise);
     }
 
     private void recordInvocations(int invocations, Duration each) {
@@ -238,10 +252,11 @@ class ConcurrencyGovernorTest {
         private final Map<String, Integer> effectiveConcurrency = new HashMap<>();
         private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
         private final Map<String, Integer> targets = new HashMap<>();
+        private int queueDepth;
 
         @Override
         public int queueDepth(String functionName) {
-            return 0;
+            return queueDepth;
         }
 
         @Override

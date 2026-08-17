@@ -5,84 +5,94 @@ import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 /**
- * Chooses the limit that minimises how long a caller spends in the system.
+ * Computes the limit a function needs, from what the caller experiences rather than from service
+ * time alone.
  *
- * <p>The other controllers decide from service time. That is the wrong quantity and the reason is
- * measured rather than argued: under queueing the mean wait was 37-43ms against a service time near
- * 5ms, so service time is about a seventh of what the caller experiences, and the missing
- * six-sevenths is produced by the limit the controller itself chose. One mode was observed cutting
- * service time by 31% and 44%, both far inside their target, while making end-to-end p95 worse.</p>
+ * <p>The other controllers decide from {@code function_latency_ms}, which is dispatch to completion
+ * and therefore service time. That is about a seventh of what a caller waits: measured under
+ * queueing, the wait was 37-43ms against a service time near 5ms, and the missing six-sevenths is
+ * produced by the limit the controller itself chose.</p>
  *
- * <p><strong>Why a search and not a threshold.</strong> The obvious repair — feed end-to-end latency
- * into the existing gradient rule — is unstable, and it is worth stating why so nobody tries it
- * again. That rule shrinks the limit when latency exceeds the target; a smaller limit serves fewer
- * requests at once, so the queue drains more slowly and the wait grows, which makes the rule shrink
- * again. The loop runs away to the floor.</p>
+ * <p><strong>Two designs were tried before this one and both are recorded here, because each fails
+ * for a reason that is easy to walk back into.</strong></p>
  *
- * <p>Sojourn time is not monotone in the limit — the wait falls as the limit rises while the service
- * time climbs — so it has an interior minimum, which is exactly what service time lacks. A minimum
- * cannot be found by a threshold, only by moving and looking. So this controller steps the limit,
- * compares the sojourn it got with the sojourn it had, keeps going while that helps and reverses
- * when it stops. The point it settles on is the knee, discovered rather than computed from Little's
- * law — which also removes the estimate the other modes have to make.</p>
+ * <p>Feeding end-to-end latency into the existing gradient rule is unstable. That rule shrinks the
+ * limit when latency exceeds its target; a smaller limit drains the queue more slowly, so the wait
+ * grows, so it shrinks again, to the floor.</p>
  *
- * <p>Inside the target the limit is left alone. Continuously hunting for a minimum nobody asked for
- * costs churn in the enforcing queue for latency the caller was already promised, and a controller
- * with a stable rest state is one an operator can reason about.</p>
+ * <p>Searching for the minimum by stepping and comparing — better than last time, carry on; worse,
+ * turn round — was implemented and measured, and it fails because it cannot tell "my move helped"
+ * from "the load fell". In a trough it credited the natural relief to its own decision to shrink and
+ * was still small when the load returned: 36,181 rejected requests against 32 for the mode it was
+ * meant to improve on. Comparing two moments assumes the world held still between them.</p>
+ *
+ * <p><strong>So this computes instead of comparing</strong>, in three parts with a strict order of
+ * authority.</p>
+ *
+ * <ol>
+ *   <li><em>Admission.</em> The limit does two jobs, and the second one was missed: together with
+ *   the queue it is the admission window, since a function can hold {@code limit + queueSize}
+ *   requests and refuses everything past that. So a queue approaching its ceiling raises the limit
+ *   and forbids lowering it, whatever the latency arithmetic prefers — refusing traffic is worse
+ *   than being slow, and that ordering is not a tuning parameter.</li>
+ *   <li><em>Little's law.</em> Sustaining an arrival rate needs {@code rate x service time} in
+ *   flight. The rate is predicted rather than measured so the limit leads the load instead of
+ *   trailing it, and the backlog already in the queue is added on top as something to drain.</li>
+ *   <li><em>The promise.</em> {@code targetLatencyMs} is end-to-end here. Outside it the queue is
+ *   drained harder — a shorter horizon, hence more concurrency — because the wait is the only part
+ *   of the caller's latency a limit can actually shorten.</li>
+ * </ol>
+ *
+ * <p>Nothing here compares two intervals, so the attribution problem that sank the search cannot
+ * arise. ponytail: no explicit knee cap — the Little term already asks for no more than the load
+ * needs, and the configured ceiling bounds the rest. Add one if a function is seen climbing while
+ * its throughput stays flat.</p>
  */
 public class SojournConcurrencyController {
 
     /**
-     * How much better or worse a reading has to be before it counts as a direction. Two
-     * measurements of the same operating point differ by ordinary variance, and without a dead band
-     * the controller reads that variance as a gradient and oscillates forever.
+     * The share of the queue that counts as pressure. Below it the buffer is doing its job of
+     * absorbing bursts; above it the next burst is refused, and the limit is the only lever left.
      */
-    private static final double DEAD_BAND = 0.05;
+    private static final double HIGH_WATER = 0.7;
 
-    /**
-     * One step at a time. A larger step converges sooner and overshoots the minimum it is looking
-     * for, and overshoot here is paid by the callers whose requests are in flight at the time.
-     */
-    private static final int STEP = 1;
+    /** Seconds allowed to drain a backlog when the function is meeting its promise. */
+    private static final double DRAIN_HORIZON_SECONDS = 5.0;
 
-    private final Map<String, Search> searches = new ConcurrentHashMap<>();
+    /** The shortest that horizon is allowed to become however far outside the promise it is. */
+    private static final double MIN_DRAIN_HORIZON_SECONDS = 1.0;
+
     private final LatencyIntervals sojournIntervals;
+    private final LatencyIntervals serviceIntervals;
+    private final LoadForecast forecast;
 
     public SojournConcurrencyController() {
-        this(new LatencyIntervals());
+        this(new LatencyIntervals(), new LatencyIntervals(), new LoadForecast());
     }
 
-    SojournConcurrencyController(LatencyIntervals sojournIntervals) {
+    SojournConcurrencyController(
+            LatencyIntervals sojournIntervals,
+            LatencyIntervals serviceIntervals,
+            LoadForecast forecast) {
         this.sojournIntervals = sojournIntervals;
-    }
-
-    /** What one function's search knows between ticks. */
-    private static final class Search {
-        private int limit;
-        private double lastSojournMs;
-        private int direction = 1;
-
-        private Search(int limit) {
-            this.limit = limit;
-            this.lastSojournMs = 0;
-        }
+        this.serviceIntervals = serviceIntervals;
+        this.forecast = forecast;
     }
 
     /**
      * One function's inputs for a tick.
      *
-     * @param e2eCount   cumulative count of the end-to-end timer, which spans enqueue to completion
-     * @param e2eTotalMs cumulative total of that timer
+     * @param e2eCount        cumulative count of the end-to-end timer, enqueue to completion
+     * @param serviceCount    cumulative count of the service timer, dispatch to completion
      */
     public record FunctionObservation(
             FunctionSpec spec,
             int inFlight,
             long e2eCount,
-            double e2eTotalMs
+            double e2eTotalMs,
+            long serviceCount,
+            double serviceTotalMs
     ) {
     }
 
@@ -93,66 +103,71 @@ public class SojournConcurrencyController {
             FunctionObservation observation, ScalingMetricsSource metricsSource, long nowEpochMs) {
         FunctionSpec spec = observation.spec();
         Bounds bounds = Bounds.of(spec);
-        Search search = searches.computeIfAbsent(
-                spec.name(), name -> new Search(Math.clamp(observation.inFlight() + 1L,
-                        bounds.floor(), bounds.ceiling())));
+        String name = spec.name();
 
-        LatencyIntervals.Interval interval = sojournIntervals.sample(
-                spec.name(), observation.e2eCount(), observation.e2eTotalMs(), nowEpochMs);
-        int limit = decide(search, interval.meanLatencyMs(), bounds);
+        LatencyIntervals.Interval service = serviceIntervals.sample(
+                name, observation.serviceCount(), observation.serviceTotalMs(), nowEpochMs);
+        LatencyIntervals.Interval sojourn = sojournIntervals.sample(
+                name, observation.e2eCount(), observation.e2eTotalMs(), nowEpochMs);
+        int queueDepth = metricsSource.queueDepth(name);
 
-        metricsSource.setEffectiveConcurrency(spec.name(), limit);
-        metricsSource.updateConcurrencyController(spec.name(), ConcurrencyControlMode.SOJOURN, limit);
+        int limit = decide(bounds, service, sojourn.meanLatencyMs(), queueDepth,
+                observation.inFlight());
+
+        metricsSource.setEffectiveConcurrency(name, limit);
+        metricsSource.updateConcurrencyController(name, ConcurrencyControlMode.SOJOURN, limit);
         return limit;
     }
 
-    private int decide(Search search, double sojournMs, Bounds bounds) {
-        search.limit = Math.clamp(search.limit, bounds.floor(), bounds.ceiling());
-        // An interval in which nothing completed is evidence of nothing, and treating it as a
-        // reading would move the limit on the strength of an absence.
-        if (sojournMs <= 0) {
-            return search.limit;
+    private int decide(
+            Bounds bounds,
+            LatencyIntervals.Interval service,
+            double sojournMs,
+            int queueDepth,
+            int inFlight) {
+        // An interval in which nothing completed says nothing about what the function needs, so the
+        // admission guard is still consulted and the model is not.
+        int needed = service.meanLatencyMs() <= 0
+                ? Math.max(inFlight, bounds.floor())
+                : modelled(bounds, service, sojournMs, queueDepth);
+        if (underQueuePressure(queueDepth, bounds)) {
+            // Never below what is already in flight while the buffer is filling: lowering the limit
+            // here shrinks the admission window and refuses the very traffic that is queueing.
+            needed = Math.max(needed, Math.max(inFlight + 1, bounds.floor()));
         }
-        double previous = search.lastSojournMs;
-        search.lastSojournMs = sojournMs;
-        // Inside the promise: hold. The minimum is somewhere below, but chasing it costs churn for
-        // latency the caller was already promised.
-        if (bounds.targetMs() > 0 && sojournMs <= bounds.targetMs()) {
-            return search.limit;
-        }
-        if (previous > 0) {
-            search.direction = nextDirection(search, sojournMs, previous, bounds);
-        }
-        search.limit = Math.clamp(search.limit + (long) search.direction * STEP,
-                bounds.floor(), bounds.ceiling());
-        return search.limit;
+        return Math.clamp(needed, bounds.floor(), bounds.ceiling());
     }
 
-    private static int nextDirection(Search search, double sojournMs, double previous, Bounds bounds) {
-        double change = (sojournMs - previous) / previous;
-        if (change > DEAD_BAND) {
-            // The last move made things worse, so the minimum is behind us.
-            return -search.direction;
-        }
-        if (change < -DEAD_BAND) {
-            // Still improving. Carry on, including into a bound: resting against the ceiling is
-            // the right answer when the ceiling is the best position available, and turning round
-            // there would give up throughput on every other tick for nothing.
-            return search.direction;
-        }
-        // Flat. In open ground that is the neighbourhood of the minimum and holding course is
-        // fine, but pressed against a bound it means the search has nowhere to go and nothing to
-        // learn, so it turns and explores the way it can still move.
-        return pressingABound(search, bounds) ? -search.direction : search.direction;
+    private int modelled(
+            Bounds bounds, LatencyIntervals.Interval service, double sojournMs, int queueDepth) {
+        double serviceSeconds = service.meanLatencyMs() / 1000.0;
+        double predictedRps = forecast.next(bounds.name(), service.throughputRps());
+        // Little's law: sustaining an arrival rate needs rate x service time in flight.
+        double toServe = predictedRps * serviceSeconds;
+        // Plus whatever is already waiting, spread over the horizon it is allowed to take.
+        double toDrain = queueDepth * serviceSeconds / drainHorizonSeconds(bounds, sojournMs);
+        return (int) Math.ceil(toServe + toDrain);
     }
 
-    private static boolean pressingABound(Search search, Bounds bounds) {
-        return (search.direction > 0 && search.limit >= bounds.ceiling())
-                || (search.direction < 0 && search.limit <= bounds.floor());
+    /**
+     * How long the backlog may take to clear. Outside the promise it is shortened in proportion to
+     * how far outside, which asks for more concurrency — the wait is the only part of the caller's
+     * latency that a concurrency limit can shorten.
+     */
+    private static double drainHorizonSeconds(Bounds bounds, double sojournMs) {
+        if (bounds.targetMs() <= 0 || sojournMs <= bounds.targetMs()) {
+            return DRAIN_HORIZON_SECONDS;
+        }
+        double urgency = bounds.targetMs() / sojournMs;
+        return Math.max(MIN_DRAIN_HORIZON_SECONDS, DRAIN_HORIZON_SECONDS * urgency);
     }
 
-    /** The window the search is allowed to move in, and the promise it is holding to. */
-    private record Bounds(int floor, int ceiling, long targetMs) {
+    private static boolean underQueuePressure(int queueDepth, Bounds bounds) {
+        return bounds.queueSize() > 0 && queueDepth >= bounds.queueSize() * HIGH_WATER;
+    }
+
+    /** The window the limit may move in, the promise it is held to, and the buffer in front of it. */
+    private record Bounds(String name, int floor, int ceiling, long targetMs, int queueSize) {
         static Bounds of(FunctionSpec spec) {
             ConcurrencyControlConfig control = spec.scalingConfig() == null
                     ? null
@@ -168,12 +183,14 @@ public class SojournConcurrencyController {
             long targetMs = control == null || control.targetLatencyMs() == null
                     ? 0L
                     : control.targetLatencyMs();
-            return new Bounds(floor, ceiling, targetMs);
+            int queueSize = spec.queueSize() == null ? 0 : spec.queueSize();
+            return new Bounds(spec.name(), floor, ceiling, targetMs, queueSize);
         }
     }
 
     void removeFunctionState(String functionName) {
-        searches.remove(functionName);
         sojournIntervals.removeFunctionState(functionName);
+        serviceIntervals.removeFunctionState(functionName);
+        forecast.removeFunctionState(functionName);
     }
 }

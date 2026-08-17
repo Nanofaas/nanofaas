@@ -160,13 +160,17 @@ public class ConcurrencyGovernor implements SmartLifecycle {
 
     private void governSojourn(RegisteredFunction registeredFunction, long nowEpochMs) {
         try {
-            Timer e2e = metrics.e2eLatency(registeredFunction.name());
+            String name = registeredFunction.name();
+            Timer e2e = metrics.e2eLatency(name);
+            Timer service = metrics.latency(name);
             sojournController.apply(
                     new SojournConcurrencyController.FunctionObservation(
                             registeredFunction.spec(),
-                            metricsSource.inFlight(registeredFunction.name()),
+                            metricsSource.inFlight(name),
                             e2e.count(),
-                            e2e.totalTime(TimeUnit.MILLISECONDS)),
+                            e2e.totalTime(TimeUnit.MILLISECONDS),
+                            service.count(),
+                            service.totalTime(TimeUnit.MILLISECONDS)),
                     metricsSource,
                     nowEpochMs);
         } catch (Exception ex) {
