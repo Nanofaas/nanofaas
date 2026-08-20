@@ -1,11 +1,18 @@
 FROM oraclelinux:9-slim AS builder
 
 ARG TARGETARCH
-# libstdc++-devel is needed only by G1: its collector library (libg1gc-cr) is C++,
-# and linking it fails with "cannot find -lstdc++". The serial collector needs
-# none of it, which is why this was absent until G1 was tried.
-RUN microdnf install -y ca-certificates curl findutils gcc glibc-devel gzip tar zlib-devel \
-      libstdc++-devel && microdnf clean all
+# gcc-c++ is needed only by G1: its collector library (libg1gc-cr) is C++, and
+# linking it fails with "cannot find -lstdc++". The serial collector needs none
+# of it, which is why nothing here was required until G1 was tried.
+#
+# gcc-c++ and not libstdc++-devel, which is the obvious guess and does not work.
+# On Oracle Linux 9 that package installs cleanly and ships only
+# libstdc++fs.a — no libstdc++.so for the linker to find — so a build reaches
+# the link step after eleven minutes of compiling and dies there. gcc-c++ brings
+# /usr/lib/gcc/x86_64-redhat-linux/11/libstdc++.so, which is what `-lstdc++`
+# resolves against.
+RUN microdnf install -y ca-certificates curl findutils gcc gcc-c++ glibc-devel gzip tar \
+      zlib-devel && microdnf clean all
 
 # `oracle` only where G1 is wanted: Community's Native Image ships a serial
 # collector and nothing else, which cost 32% of wall-clock time on a sustained
