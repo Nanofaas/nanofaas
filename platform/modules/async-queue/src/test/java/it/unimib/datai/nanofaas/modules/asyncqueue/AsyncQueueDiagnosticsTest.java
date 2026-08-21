@@ -21,6 +21,26 @@ import static org.mockito.Mockito.verify;
 class AsyncQueueDiagnosticsTest {
 
     @Test
+    void releasePublishesDispatchSlotHoldDuration() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        FunctionSpec spec = new FunctionSpec(
+                "echo", "image", null, Map.of(), null,
+                1000, 10, 2, 3, null, ExecutionMode.LOCAL, null, null, null
+        );
+        queueManager.getOrCreate(spec);
+
+        assertThat(queueManager.tryAcquireSlot("echo")).isTrue();
+        queueManager.releaseSlot("echo");
+        queueManager.releaseSlot("echo");
+
+        assertThat(registry.get("function_dispatch_slot_hold_duration").tag("function", "echo")
+                .timer().count()).isEqualTo(1);
+        assertThat(registry.get("function_dispatch_slot_hold_duration").tag("function", "echo")
+                .timer().totalTime(java.util.concurrent.TimeUnit.NANOSECONDS)).isPositive();
+    }
+
+    @Test
     void schedulerPublishesQueueAndWakeupDiagnosticsWithoutChangingDispatch() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager queueManager = new QueueManager(registry);

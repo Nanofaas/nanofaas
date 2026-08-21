@@ -69,16 +69,20 @@ public class QueueManager {
                 Timer wakeupDelay = Timer.builder("function_scheduler_wakeup_delay")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Timer slotHoldDuration = Timer.builder("function_dispatch_slot_hold_duration")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
                 ids.add(offerDuration.getId());
                 ids.add(pollDuration.getId());
                 ids.add(wakeupDelay.getId());
+                ids.add(slotHoldDuration.getId());
                 ids.add(batchLimit.getId());
                 diagnosticMeters.put(
                         name,
-                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, batchLimit)
+                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, slotHoldDuration, batchLimit)
                 );
                 concurrencyMetrics.ensureRegistered(
                         name,
@@ -191,7 +195,11 @@ public class QueueManager {
     public void releaseSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {
-            state.releaseSlot();
+            long holdNanos = state.releaseSlotAndGetHoldNanos();
+            DiagnosticMeters meters = diagnosticMeters.get(functionName);
+            if (holdNanos >= 0 && meters != null) {
+                meters.slotHoldDuration().record(holdNanos, TimeUnit.NANOSECONDS);
+            }
             if (state.queued() > 0) {
                 notifyWork(functionName);
             }
@@ -219,6 +227,7 @@ public class QueueManager {
             Timer offerDuration,
             Timer pollDuration,
             Timer wakeupDelay,
+            Timer slotHoldDuration,
             Counter batchLimit
     ) { }
 }

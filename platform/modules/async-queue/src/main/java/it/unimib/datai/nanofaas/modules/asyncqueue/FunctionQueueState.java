@@ -5,11 +5,14 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class FunctionQueueState {
     private final String functionName;
     private final ArrayBlockingQueue<InvocationTask> queue;
+    // ponytail: FIFO preserves the aggregate mean; correlate by invocation only for per-request percentiles.
+    private final ConcurrentLinkedQueue<Long> slotAcquiredAtNanos = new ConcurrentLinkedQueue<>();
     private final AtomicInteger inFlight;
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
@@ -75,6 +78,7 @@ public class FunctionQueueState {
                 return false;
             }
             if (inFlight.compareAndSet(current, current + 1)) {
+                slotAcquiredAtNanos.add(System.nanoTime());
                 return true;
             }
             // CAS failed, another thread modified - retry
@@ -85,7 +89,15 @@ public class FunctionQueueState {
      * Releases a dispatch slot. Must be called after dispatch completes.
      */
     public void releaseSlot() {
-        decrementInFlightNonNegative();
+        releaseSlotAndGetHoldNanos();
+    }
+
+    long releaseSlotAndGetHoldNanos() {
+        if (!decrementInFlightNonNegative()) {
+            return -1;
+        }
+        Long acquiredAt = slotAcquiredAtNanos.poll();
+        return acquiredAt == null ? -1 : System.nanoTime() - acquiredAt;
     }
 
     public boolean canDispatch() {
@@ -94,10 +106,11 @@ public class FunctionQueueState {
 
     public void incrementInFlight() {
         inFlight.incrementAndGet();
+        slotAcquiredAtNanos.add(System.nanoTime());
     }
 
     public void decrementInFlight() {
-        decrementInFlightNonNegative();
+        releaseSlotAndGetHoldNanos();
     }
 
     public void concurrency(int concurrency) {
@@ -126,14 +139,14 @@ public class FunctionQueueState {
         this.effectiveConcurrency = clamped;
     }
 
-    private void decrementInFlightNonNegative() {
+    private boolean decrementInFlightNonNegative() {
         while (true) {
             int current = inFlight.get();
             if (current == 0) {
-                return;
+                return false;
             }
             if (inFlight.compareAndSet(current, current - 1)) {
-                return;
+                return true;
             }
         }
     }

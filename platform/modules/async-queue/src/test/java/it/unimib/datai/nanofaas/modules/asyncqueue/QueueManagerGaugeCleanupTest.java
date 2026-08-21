@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 class QueueManagerGaugeCleanupTest {
 
     // Existing capacity/controller meters plus the five dispatch diagnostics.
-    private static final int METERS_PER_FUNCTION = 9 + ConcurrencyControlMode.values().length;
+    private static final int METERS_PER_FUNCTION = 10 + ConcurrencyControlMode.values().length;
 
 
     @Test
