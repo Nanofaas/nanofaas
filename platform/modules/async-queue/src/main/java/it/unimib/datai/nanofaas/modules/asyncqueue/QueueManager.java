@@ -76,6 +76,10 @@ public class QueueManager {
                 Timer slotReacquisitionDelay = Timer.builder("function_dispatch_slot_reacquisition_delay")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Timer slotReacquisitionActiveDelay = Timer.builder(
+                                "function_dispatch_slot_reacquisition_active_delay")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
@@ -84,11 +88,13 @@ public class QueueManager {
                 ids.add(wakeupDelay.getId());
                 ids.add(slotHoldDuration.getId());
                 ids.add(slotReacquisitionDelay.getId());
+                ids.add(slotReacquisitionActiveDelay.getId());
                 ids.add(batchLimit.getId());
                 diagnosticMeters.put(
                         name,
                         new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay,
-                                slotHoldDuration, slotReacquisitionDelay, batchLimit,
+                                slotHoldDuration, slotReacquisitionDelay,
+                                slotReacquisitionActiveDelay, batchLimit,
                                 new ConcurrentLinkedQueue<>())
                 );
                 concurrencyMetrics.ensureRegistered(
@@ -177,24 +183,25 @@ public class QueueManager {
 
     public boolean tryAcquireSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
+        long schedulerActivatedAt = System.nanoTime();
         boolean acquired = state != null && state.tryAcquireSlot();
         if (acquired) {
-            recordSlotReacquisitionDelay(functionName);
+            recordSlotReacquisitionDelay(functionName, schedulerActivatedAt);
         }
         return acquired;
     }
 
-    void recordSlotReacquisitionDelay(String functionName) {
+    void recordSlotReacquisitionDelay(String functionName, long schedulerActivatedAt) {
+        long acquiredAt = System.nanoTime();
         DiagnosticMeters meters = diagnosticMeters.get(functionName);
         if (meters == null) {
             return;
         }
         Long releasedAt = meters.releasedWithBacklogAtNanos().poll();
         if (releasedAt != null) {
-            meters.slotReacquisitionDelay().record(
-                    System.nanoTime() - releasedAt,
-                    TimeUnit.NANOSECONDS
-            );
+            long activeAt = Math.max(releasedAt, schedulerActivatedAt);
+            meters.slotReacquisitionDelay().record(acquiredAt - releasedAt, TimeUnit.NANOSECONDS);
+            meters.slotReacquisitionActiveDelay().record(acquiredAt - activeAt, TimeUnit.NANOSECONDS);
         }
     }
 
@@ -259,6 +266,7 @@ public class QueueManager {
             Timer wakeupDelay,
             Timer slotHoldDuration,
             Timer slotReacquisitionDelay,
+            Timer slotReacquisitionActiveDelay,
             Counter batchLimit,
             ConcurrentLinkedQueue<Long> releasedWithBacklogAtNanos
     ) { }

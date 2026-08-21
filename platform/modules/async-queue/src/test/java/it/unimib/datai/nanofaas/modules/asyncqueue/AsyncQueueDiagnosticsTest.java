@@ -53,6 +53,8 @@ class AsyncQueueDiagnosticsTest {
 
         assertThat(registry.get("function_dispatch_slot_reacquisition_delay").tag("function", "echo")
                 .timer().count()).isEqualTo(1);
+        assertThat(registry.get("function_dispatch_slot_reacquisition_active_delay").tag("function", "echo")
+                .timer().count()).isEqualTo(1);
     }
 
     @Test
