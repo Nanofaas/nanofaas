@@ -3,19 +3,23 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class QueueManager {
     private static final String FUNCTION_TAG = "function";
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
+    private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
     private final QueueConcurrencyControlMetrics concurrencyMetrics;
     private WorkSignaler workSignaler;
@@ -53,6 +57,29 @@ public class QueueManager {
                 ids.add(Gauge.builder("function_effective_concurrency", state::effectiveConcurrency)
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry).getId());
+                ids.add(Gauge.builder("function_dispatchable_backlog", state::dispatchableBacklog)
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry).getId());
+                Timer offerDuration = Timer.builder("function_queue_offer_duration")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                Timer pollDuration = Timer.builder("function_queue_poll_duration")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                Timer wakeupDelay = Timer.builder("function_scheduler_wakeup_delay")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                ids.add(offerDuration.getId());
+                ids.add(pollDuration.getId());
+                ids.add(wakeupDelay.getId());
+                ids.add(batchLimit.getId());
+                diagnosticMeters.put(
+                        name,
+                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, batchLimit)
+                );
                 concurrencyMetrics.ensureRegistered(
                         name,
                         resolveMode(spec),
@@ -73,6 +100,7 @@ public class QueueManager {
     public List<InvocationTask> remove(String name) {
         FunctionQueueState removed = queues.remove(name);
         concurrencyMetrics.remove(name);
+        diagnosticMeters.remove(name);
         List<Meter.Id> ids = meterIds.remove(name);
         if (ids != null) {
             ids.forEach(meterRegistry::remove);
@@ -89,11 +117,37 @@ public class QueueManager {
         if (state == null) {
             return false;
         }
+        DiagnosticMeters meters = diagnosticMeters.get(task.functionName());
+        long started = System.nanoTime();
         boolean success = state.offer(task);
+        if (meters != null) {
+            meters.offerDuration().record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
+        }
         if (success) {
             notifyWork(task.functionName());
         }
         return success;
+    }
+
+    void recordQueuePollDuration(String functionName, long durationNanos) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.pollDuration().record(durationNanos, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    void recordSchedulerWakeupDelay(String functionName, long delayNanos) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.wakeupDelay().record(delayNanos, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    void recordSchedulerBatchLimit(String functionName) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.batchLimit().increment();
+        }
     }
 
     public void incrementInFlight(String functionName) {
@@ -160,4 +214,11 @@ public class QueueManager {
         Integer target = spec.scalingConfig().concurrencyControl().targetInFlightPerPod();
         return target == null ? 0 : Math.max(0, target);
     }
+
+    private record DiagnosticMeters(
+            Timer offerDuration,
+            Timer pollDuration,
+            Timer wakeupDelay,
+            Counter batchLimit
+    ) { }
 }

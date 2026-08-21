@@ -19,10 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QueueManagerTest {
 
-    // depth, in-flight, effective concurrency, target-in-flight, and one mode gauge per
-    // ConcurrencyControlMode so the active mode is readable as a series. Derived rather than
-    // written out, because adding a mode is not supposed to break unrelated tests.
-    private static final int GAUGES_PER_FUNCTION = 4 + ConcurrencyControlMode.values().length;
+    // Existing capacity/controller meters plus the five dispatch diagnostics.
+    private static final int METERS_PER_FUNCTION = 9 + ConcurrencyControlMode.values().length;
 
     @Test
     void issue008_queueIsBounded() {
@@ -96,7 +94,7 @@ class QueueManagerTest {
         List<Meter> meters = registry.getMeters().stream()
                 .filter(meter -> "echo".equals(meter.getId().getTag("function")))
                 .toList();
-        assertThat(meters).hasSize(GAUGES_PER_FUNCTION);
+        assertThat(meters).hasSize(METERS_PER_FUNCTION);
         assertThat(registry.get("function_target_inflight_per_pod")
                 .tag("function", "echo")
                 .gauge()

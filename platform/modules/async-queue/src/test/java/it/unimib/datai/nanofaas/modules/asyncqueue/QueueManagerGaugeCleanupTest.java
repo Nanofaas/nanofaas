@@ -15,10 +15,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 class QueueManagerGaugeCleanupTest {
 
-    // depth, in-flight, effective concurrency, target-in-flight, and one mode gauge per
-    // ConcurrencyControlMode so the active mode is readable as a series. Derived rather than
-    // written out, because adding a mode is not supposed to break unrelated tests.
-    private static final int GAUGES_PER_FUNCTION = 4 + ConcurrencyControlMode.values().length;
+    // Existing capacity/controller meters plus the five dispatch diagnostics.
+    private static final int METERS_PER_FUNCTION = 9 + ConcurrencyControlMode.values().length;
 
 
     @Test
@@ -37,7 +35,7 @@ class QueueManagerGaugeCleanupTest {
                 .filter(m -> m.getId().getTag("function") != null
                         && m.getId().getTag("function").equals("fn1"))
                 .toList();
-        assertThat(gaugesBefore).hasSize(GAUGES_PER_FUNCTION);
+        assertThat(gaugesBefore).hasSize(METERS_PER_FUNCTION);
 
         // Remove function
         queueManager.remove("fn1");
@@ -82,7 +80,7 @@ class QueueManagerGaugeCleanupTest {
                 .filter(m -> m.getId().getTag("function") != null
                         && m.getId().getTag("function").equals("fn2"))
                 .toList();
-        assertThat(fn2Gauges).hasSize(GAUGES_PER_FUNCTION);
+        assertThat(fn2Gauges).hasSize(METERS_PER_FUNCTION);
 
         // fn1 gauges should be gone
         List<Meter> fn1Gauges = registry.getMeters().stream()

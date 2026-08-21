@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -27,6 +28,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
     private final BlockingQueue<String> activeFunctions = new LinkedBlockingQueue<>();
     private final Set<String> enqueuedFunctions = ConcurrentHashMap.newKeySet();
+    private final Map<String, Long> signalTimes = new ConcurrentHashMap<>();
 
     public Scheduler(QueueManager queueManager,
                      InvocationService invocationService) {
@@ -42,6 +44,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     @Override
     public void signalWork(String functionName) {
         if (enqueuedFunctions.add(functionName)) {
+            signalTimes.put(functionName, System.nanoTime());
             activeFunctions.add(functionName);
         }
     }
@@ -99,7 +102,14 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             try {
                 String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
                 if (functionName != null) {
+                    Long signalTime = signalTimes.remove(functionName);
                     enqueuedFunctions.remove(functionName);
+                    if (signalTime != null) {
+                        queueManager.recordSchedulerWakeupDelay(
+                                functionName,
+                                System.nanoTime() - signalTime
+                        );
+                    }
                     processFunction(functionName);
                 }
             } catch (InterruptedException _) {
@@ -120,7 +130,12 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
         int dispatched = 0;
         while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION && state.tryAcquireSlot()) {
+            long pollStarted = System.nanoTime();
             InvocationTask task = state.poll();
+            queueManager.recordQueuePollDuration(
+                    functionName,
+                    System.nanoTime() - pollStarted
+            );
             if (task == null) {
                 state.releaseSlot();
                 break;
@@ -134,7 +149,11 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             );
         }
 
-        if (state.queued() > 0 && dispatched > 0) {
+        int queued = state.queued();
+        if (queued > 0 && dispatched == MAX_BATCH_PER_FUNCTION) {
+            queueManager.recordSchedulerBatchLimit(functionName);
+        }
+        if (queued > 0 && dispatched > 0) {
             signalWork(functionName);
         }
     }

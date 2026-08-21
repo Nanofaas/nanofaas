@@ -35,6 +35,10 @@ public class FunctionQueueState {
         return queue.size();
     }
 
+    public int dispatchableBacklog() {
+        return canDispatch() ? queued() : 0;
+    }
+
     public synchronized boolean offer(InvocationTask task) {
         if (closed) {
             return false;
