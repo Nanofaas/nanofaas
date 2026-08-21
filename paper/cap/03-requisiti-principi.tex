@@ -1,0 +1,292 @@
+\chapter{Requisiti e principi di progetto}
+\label{cap:03-requisiti-principi}
+
+Il \cref{cap:01-introduzione} ha enunciato la tesi del lavoro: un insieme
+selezionato di rinunce produce un sistema pi\`u utile come strumento di misura
+di quanto lo sarebbe la sua versione completa. Questo capitolo rende operativa
+quella tesi. Per ciascun vincolo dichiara che cosa esclude, che cosa
+\emph{abilita}, e in quale punto del documento se ne trova la conseguenza
+sperimentale.
+
+\section{I vincoli, e che cosa comprano}
+
+\subsection{Processo di controllo singolo}
+
+\nf{} gira in un solo processo. Non esiste modalit\`a distribuita, non esiste
+elezione di leader, non esiste replicazione dello stato di controllo. Il codice
+non incapsula questa assunzione dietro un'astrazione: le strutture dati di
+coordinamento sono mappe concorrenti in memoria, non registri replicati.
+
+\paragraph{Che cosa esclude.} L'alta disponibilit\`a. Un riavvio del pod
+interrompe tutte le invocazioni in volo e azzera il registro delle funzioni. La
+piattaforma non \`e adatta a un servizio la cui indisponibilit\`a abbia costo.
+
+\paragraph{Che cosa abilita.} Tre cose distinte, tutte necessarie nei capitoli
+sperimentali.
+
+Primo, l'\textbf{osservabilit\`a totale dello stato di controllo}. Con un solo
+processo, la profondit\`a di una coda, il numero di richieste in volo per
+funzione e il limite di concorrenza corrente sono variabili di un unico spazio
+di indirizzamento, leggibili in modo consistente nello stesso istante. In un
+control plane distribuito la stessa lettura richiederebbe un'aggregazione, che
+introduce ritardo e incertezza proprio nelle grandezze che il
+\cref{cap:25-valutazione-concorrenza} deve misurare con risoluzione di
+millisecondi.
+
+Secondo, l'\textbf{assenza di dinamiche di coordinamento} nel segnale misurato.
+Un controllore di concorrenza replicato deve riconciliare decisioni prese da
+istanze diverse su osservazioni parzialmente sovrapposte; le oscillazioni che ne
+derivano sono un fenomeno interessante ma \emph{diverso} da quello studiato qui,
+e sarebbero indistinguibili da esso.
+
+Terzo, la \textbf{brevit\`a del percorso critico}, quantificata nella
+\cref{tab:piattaforme}: una singola invocazione sincrona attraversa un solo
+processo di controllo prima di raggiungere il codice utente.
+
+\subsection{Stato in memoria}
+
+Il registro delle funzioni, lo storico delle esecuzioni, le chiavi di
+idempotenza e le code sono tutte strutture in memoria. Nulla \`e persistito su
+disco o su un sistema di stato esterno.
+
+\paragraph{Che cosa esclude.} La sopravvivenza a un riavvio, e con essa
+qualunque garanzia di durabilit\`a sulle invocazioni asincrone accettate ma non
+ancora eseguite.
+
+\paragraph{Che cosa abilita.} L'eliminazione dal percorso critico di ogni
+operazione di I/O che non sia la chiamata alla funzione stessa. Nelle
+piattaforme che consultano un database per risolvere la definizione di una
+funzione, quella lettura \`e sul percorso di ogni invocazione; in \nf{} \`e
+l'accesso a una \code{ConcurrentHashMap}. La conseguenza \`e che la latenza
+misurata dal control plane, al netto dell'esecuzione, \`e dominata da
+elaborazione in memoria e non da una coda di I/O il cui comportamento sotto
+carico avrebbe dinamiche proprie.
+
+Va notato che questa scelta impone il proprio prezzo anche a regime, non solo al
+riavvio: uno store in memoria che non dimentica cresce senza limite. Il
+\code{ExecutionStore} (\cref{cap:06-nucleo}) implementa quindi tre orizzonti di
+ritenzione distinti --- TTL di conservazione, TTL di alleggerimento del record e
+durata massima assoluta --- perch\'e un'esecuzione che non arriva mai a uno stato
+terminale non deve poter restare in memoria per sempre.
+
+\subsection{Nessuna autenticazione n\'e autorizzazione}
+
+L'API non autentica i chiamanti e non applica alcun controllo di accesso.
+
+\paragraph{Che cosa esclude.} L'esposizione su una rete non fidata. \nf{} \`e
+pensato per girare dentro un perimetro gi\`a protetto --- un cluster di
+laboratorio, una VM di test, una rete privata.
+
+\paragraph{Che cosa abilita.} Meno di quanto si potrebbe pensare sul piano delle
+prestazioni: il costo di una verifica di token \`e reale ma modesto. Il guadagno
+\`e principalmente sulla superficie di codice e sul numero di modi in cui un
+esperimento pu\`o fallire per ragioni non attinenti all'esperimento. Un carico di
+prova che riceve \code{401} per un token scaduto \`e tempo perso in un contesto
+in cui l'unica cosa che si vuole osservare \`e la distribuzione della latenza.
+
+Questa \`e la rinuncia meno difendibile delle tre, e il \cref{cap:27-discussione}
+la riprende: \`e la sola che impedisce alla piattaforma di essere usata al di
+fuori di un laboratorio, ed \`e anche la sola per cui l'aggiunta non
+comprometterebbe nessuno degli obiettivi sperimentali.
+
+\subsection{Prestazioni e latenza prima delle funzionalit\`a}
+
+Dove una funzionalit\`a aggiuntiva comporterebbe lavoro sul percorso di
+invocazione, la funzionalit\`a viene rifiutata o spostata fuori dal percorso.
+
+Questo principio ha conseguenze visibili nel codice. Il \code{ExecutionStore}
+espone due varianti di lettura, una che restituisce \code{Optional} e una che
+restituisce \code{null}, con il commento che la seconda \`e destinata al percorso
+caldo per evitare l'allocazione dell'\code{Optional}. Il metodo che risolve
+l'idempotenza pu\`o attendere brevemente su una rivendicazione contesa, e per
+questo \`e esplicitamente confinato su uno scheduler elastico anzich\'e sul
+thread dell'event loop Netty. Sono micro-decisioni; ci\`o che conta \`e che
+esistano e siano commentate come tali, perch\'e definiscono il criterio con cui
+il progetto arbitra i propri compromessi.
+
+\section{Il principio architetturale: nucleo minimale e moduli}
+
+Il vincolo pi\`u caratterizzante non \`e una rinuncia ma una struttura: il
+control plane \`e diviso in un \textbf{nucleo} che implementa i quattro obblighi
+del \cref{cap:02-stato-dell-arte} e in \textbf{moduli opzionali} che ne
+estendono il comportamento.
+
+La regola che governa la divisione \`e la seguente:
+
+\begin{quote}
+Il nucleo deve poter essere compilato ed eseguito senza alcun modulo, e in
+quella configurazione deve restare una piattaforma FaaS funzionante --- ridotta,
+ma non rotta.
+\end{quote}
+
+\`E una regola pi\`u forte di quanto sembri. Non dice che i moduli sono
+disattivabili con un flag: dice che il binario prodotto senza moduli non li
+contiene affatto. La selezione avviene a tempo di compilazione
+(\cref{cap:08-sistema-moduli}), e quindi il codice del nucleo non pu\`o
+contenere rami condizionali che testano la presenza di un modulo. Deve invece
+dipendere da \emph{interfacce} di cui esiste sempre almeno un'implementazione
+neutra.
+
+\subsection{I punti di estensione e i loro default neutri}
+
+Il nucleo dichiara quattro interfacce e fornisce per ciascuna
+un'implementazione no-op, attiva quando nessun modulo ne registra una:
+
+\begin{table}[htbp]
+\centering
+\caption{Punti di estensione del nucleo e comportamento senza moduli.}
+\label{tab:estensioni}
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Interfaccia} & \textbf{Fornita da} & \textbf{Comportamento del default} \\
+\midrule
+\code{InvocationEnqueuer} & \code{async-queue} &
+Dichiara \code{enabled() == false}; il percorso asincrono risponde
+\code{501 Not Implemented}, il sincrono dispaccia in linea. \\
+\code{SyncQueueGateway} & \code{sync-queue} &
+Nessuna ammissione: ogni richiesta sincrona procede senza controllo di
+backpressure. \\
+\code{ScalingMetricsSource} & \code{async-queue} &
+Restituisce zero per profondit\`a e richieste in volo, e dichiara di non essere
+una sorgente reale. \\
+\code{ImageValidator} & provider di deployment &
+Accetta ogni immagine senza verificarne l'esistenza. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Il quarto caso merita una nota, perch\'e non segue lo schema degli altri tre. La
+validazione delle immagini non \`e un modulo autonomo: ciascun provider di
+deployment possiede il proprio validatore
+(\code{KubernetesImageValidator}, \code{DockerImageValidator}) e lo attiva
+quando viene selezionato come backend. La ragione \`e che verificare l'esistenza
+di un'immagine \`e un'operazione specifica del backend --- interrogare un
+registry attraverso l'API Kubernetes non \`e la stessa cosa che interrogare un
+demone Docker locale --- e un modulo generico avrebbe dovuto reintrodurre la
+distinzione al proprio interno.
+
+\subsection{Quando un default neutro non \`e accettabile}
+
+Il principio ha un'eccezione codificata, ed \`e istruttiva. Il modulo
+\code{concurrency-control} legge profondit\`a di coda e richieste in volo da
+\code{ScalingMetricsSource}, e --- soprattutto --- \emph{riscrive} attraverso la
+stessa interfaccia i limiti che calcola. \`E quella scrittura a rendere i limiti
+effettivi. Selezionato senza \code{async-queue}, il modulo leggerebbe zeri e
+scriverebbe verso un'implementazione che scarta: girerebbe, produrrebbe metriche
+plausibili, e non governerebbe nulla.
+
+Il modulo quindi \textbf{rifiuta di avviarsi} e nomina il modulo mancante. La
+distinzione che il progetto traccia \`e fra degradazione \emph{osservabile} e
+degradazione \emph{silenziosa}: la prima \`e accettabile, la seconda no. Lo
+stesso criterio spiega perch\'e il modulo \code{autoscaler}, che legge la stessa
+sorgente ma la cui metrica principale (\code{rps}) proviene da un contatore
+indipendente, si limita invece a registrare un avviso quando una delle sue
+metriche derivate diventa cieca.
+
+\section{Requisiti funzionali}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{RF1 --- Registrazione e ciclo di vita.}] La piattaforma deve
+  consentire di registrare, aggiornare, elencare, ispezionare e cancellare una
+  funzione tramite API REST, con validazione della specifica al momento della
+  registrazione (\cref{cap:05-contratti-dati}).
+
+  \item[\textbf{RF2 --- Invocazione sincrona e asincrona.}] Deve offrire
+  un'invocazione sincrona che restituisce l'esito nella stessa risposta HTTP e
+  un'invocazione asincrona che restituisce un identificatore di esecuzione
+  consultabile in seguito (\cref{cap:06-nucleo}).
+
+  \item[\textbf{RF3 --- Idempotenza.}] Due invocazioni che portano la stessa
+  chiave di idempotenza sulla stessa funzione devono corrispondere a una sola
+  esecuzione, e la seconda deve poter attendere o riprodurre l'esito della prima
+  (\cref{cap:06-nucleo}).
+
+  \item[\textbf{RF4 --- Modalit\`a di esecuzione multiple.}] Deve supportare
+  l'esecuzione in-process (per il collaudo), l'inoltro a un endpoint esterno gi\`a
+  esistente, e la gestione del ciclo di vita di un deployment attraverso un
+  backend sostituibile (\cref{cap:07-modalita-esecuzione}).
+
+  \item[\textbf{RF5 --- Riprova e timeout.}] Deve applicare un timeout per
+  invocazione e un numero massimo di tentativi, entrambi configurabili per
+  funzione con default di piattaforma.
+
+  \item[\textbf{RF6 --- Osservabilit\`a.}] Deve esporre metriche in formato
+  Prometheus su una porta separata da quella dell'API, con granularit\`a per
+  funzione su latenza, esito, cold start, profondit\`a di coda e concorrenza
+  effettiva (\cref{cap:21-osservabilita}).
+\end{description}
+
+\section{Requisiti non funzionali}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{RNF1 --- Componibilit\`a verificata.}] Ogni combinazione di moduli
+  dichiarata valida deve essere costruibile e la suite di test deve poter girare
+  su di essa. La configurazione priva di moduli deve avere una copertura di test
+  propria (\cref{cap:16-moduli-diagnostici}).
+
+  \item[\textbf{RNF2 --- Isolamento fra moduli.}] Un modulo non deve dipendere da
+  un altro modulo se non attraverso interfacce dichiarate nel nucleo o nel
+  modulo condiviso dei contratti. La regola \`e verificata automaticamente
+  (\cref{cap:26-qualita-verifica}).
+
+  \item[\textbf{RNF3 --- Non bloccante sul percorso di invocazione.}] Il percorso
+  sincrono non deve bloccare thread dell'event loop. Le operazioni
+  potenzialmente bloccanti devono essere esplicitamente confinate su scheduler
+  dedicati (\cref{cap:04-architettura-control-plane}).
+
+  \item[\textbf{RNF4 --- Compilabilit\`a in immagine nativa.}] L'intero control
+  plane, con tutti i moduli, deve essere compilabile con GraalVM Native Image
+  senza rinunciare a funzionalit\`a, il che vincola l'uso della riflessione e
+  richiede la dichiarazione esplicita degli \emph{hint} di runtime
+  (\cref{cap:20-build-packaging}).
+
+  \item[\textbf{RNF5 --- Riproducibilit\`a delle misure.}] Ogni numero
+  prestazionale pubblicato deve essere associato a un profilo hardware
+  identificato e a un record versionato, e confrontabile con quello della
+  release precedente sullo stesso profilo (\cref{cap:22-metodo-sperimentale}).
+\end{description}
+
+\section{I default di piattaforma}
+
+I valori di default definiscono il comportamento della piattaforma in assenza di
+configurazione esplicita, e vale la pena esaminarli perch\'e ne rivelano le
+priorit\`a. Sono dichiarati in \code{application.yml}:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Chiave} & \textbf{Default} & \textbf{Interpretazione} \\
+\midrule
+\code{defaults.timeoutMs} & 30\,000 & Generoso: pensato per non far fallire un
+esperimento a causa del timeout. \\
+\code{defaults.concurrency} & 4 & Conservativo: quattro invocazioni contemporanee
+per funzione. \\
+\code{defaults.queueSize} & 100 & Coda per funzione sul percorso asincrono. \\
+\code{defaults.maxRetries} & 3 & \\
+\code{rate.maxPerSecond} & 1\,000\,000 & Di fatto disattivato: il limitatore
+esiste ma il default non vincola. \\
+\code{sync-queue.max-depth} & 200 & \\
+\code{sync-queue.max-estimated-wait} & 2\,s & Soglia di rifiuto per attesa
+stimata. \\
+\code{scaling.poll-interval-ms} & 5\,000 & Periodo di campionamento
+dell'autoscaler. \\
+\code{metrics.profile} & \code{basic} & Il profilo esteso \`e opt-in. \\
+\code{admin.runtime-config.enabled} & \code{false} & L'API di riconfigurazione a
+caldo \`e disattivata per default. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Due default meritano commento. Il limite di frequenza a un milione di richieste
+al secondo \`e un limitatore \emph{presente ma neutro}: il meccanismo esiste ed
+\`e sul percorso, cos\`i che il suo costo sia incluso in ogni misura, ma non
+respinge nulla finch\'e un operatore non lo configura. \`E l'opposto della scelta
+usuale, e discende dal principio che un esperimento non deve fallire per una
+protezione che non stava studiando. Simmetricamente, l'API di riconfigurazione a
+caldo \`e disattivata per default perch\'e espone operazioni di scrittura su un
+sistema che non autentica: attivarla \`e una decisione che l'operatore deve
+prendere consapevolmente.

@@ -1,0 +1,154 @@
+\chapter{Catalogo delle metriche}
+\label{cap:C-metriche}
+
+Tutte le metriche sono esposte su \code{/actuator/prometheus}, porta
+\code{8081}. La colonna \emph{profilo} indica se la metrica \`e presente nel
+profilo \code{basic} (default) o soltanto in \code{advanced}
+(\cref{cap:21-osservabilita}).
+
+\section{Nucleo, per funzione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lllp{4.4cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Profilo} & \textbf{Note} \\
+\midrule
+\code{function\_enqueue\_total} & counter & basic & \\
+\code{function\_dispatch\_total} & counter & basic & cumulativo; la metrica
+\code{rps} \`e la sua derivata \\
+\code{function\_success\_total} & counter & basic & esclude le risposte non-2xx
+decise dall'handler \\
+\code{function\_error\_total} & counter & basic & \\
+\code{function\_retry\_total} & counter & basic & \\
+\code{function\_timeout\_total} & counter & basic & \\
+\code{function\_queue\_rejected\_total} & counter & basic & \\
+\code{function\_latency\_ms} & timer & basic & \textbf{tempo di servizio}:
+dispatch $\to$ completamento \\
+\code{function\_e2e\_latency\_ms} & timer & basic & \textbf{sojourn}: ammissione
+$\to$ completamento \\
+\code{function\_queue\_wait\_ms} & timer & basic & attesa in coda \\
+\code{function\_cold\_start\_ms} & timer & basic & \\
+\code{function\_init\_duration\_ms} & timer & basic & \\
+\code{function\_cold\_start\_total} & counter & advanced & \\
+\code{function\_warm\_start\_total} & counter & advanced & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Nel profilo \code{advanced} i quattro timer per funzione ricevono anche gli
+istogrammi necessari ai percentili.
+
+\section{Code}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lllp{4.4cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Modulo} & \textbf{Note} \\
+\midrule
+\code{function\_queue\_depth} & gauge & \code{async-queue} & \\
+\code{function\_inFlight} & gauge & \code{async-queue} & \\
+\code{function\_effective\_concurrency} & gauge & \code{async-queue} &
+advanced; ci\`o che il controllore ha deciso \\
+\code{sync\_queue\_depth} & gauge & \code{sync-queue} & \code{function=""}
+per la serie globale \\
+\code{sync\_queue\_wait\_seconds} & gauge & \code{sync-queue} & attesa stimata \\
+\code{sync\_queue\_admitted\_total} & counter & \code{sync-queue} & \\
+\code{sync\_queue\_rejected\_total} & counter & \code{sync-queue} & \\
+\code{sync\_queue\_timedout\_total} & counter & \code{sync-queue} & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Politiche}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lllp{4.2cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Modulo} & \textbf{Note} \\
+\midrule
+\code{function\_target\_inflight\_per\_pod} & gauge &
+\code{concurrency-control} & advanced \\
+\code{function\_concurrency\_controller\_mode} & gauge &
+\code{concurrency-control} & advanced \\
+\code{gateway\_service\_target\_load} & gauge & \code{autoscaler} & advanced \\
+\code{nanofaas\_offload\_total} & counter & \code{offload} & etichette
+\code{function}, \code{trigger} \\
+\code{nanofaas\_offload\_failure\_total} & counter & \code{offload} & \\
+\code{controlplane\_runtime\_config\_revision} & gauge &
+\code{runtime-config} & advanced \\
+\code{controlplane\_runtime\_config\_updates\_total} & counter &
+\code{runtime-config} & etichetta \code{status} \\
+\code{controlplane\_runtime\_config\_apply\_duration\_seconds} & timer &
+\code{runtime-config} & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Sistema}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.4cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Note} \\
+\midrule
+\code{scheduler\_tick\_ms} & timer & \\
+\code{dispatcher\_k8s\_latency\_ms} & timer & \\
+\code{removed\_function\_*} & vari & registro separato, non esportato
+(\cref{cap:06-nucleo}) \\
+\code{jvm\_*}, \code{process\_*} & vari & standard Micrometer; sulle build
+native G1 i binder del collector non riportano nulla
+(\cref{cap:24-footprint}) \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Interrogazioni di riferimento}
+
+\begin{lstlisting}[language=bash]
+# tasso di errore per funzione (percentuale)
+rate(function_error_total{function="F"}[5m])
+  / (rate(function_success_total{function="F"}[5m])
+     + rate(function_error_total{function="F"}[5m])) * 100
+
+# p95 della latenza di servizio (richiede il profilo advanced)
+histogram_quantile(0.95, sum by (le) (rate(function_latency_ms_bucket{function="F"}[5m])))
+
+# durata media dell'inizializzazione a freddo
+rate(function_cold_start_ms_sum{function="F"}[1h])
+  / rate(function_cold_start_ms_count{function="F"}[1h])
+
+# arretrato asincrono
+function_queue_depth{function!=""}
+
+# pressione di ammissione sincrona
+rate(sync_queue_rejected_total{function="F"}[5m])
+  / rate(sync_queue_admitted_total{function="F"}[5m])
+
+# carico per replica: il segnale dell'autoscaler
+rate(function_dispatch_total{function="F"}[1m])
+  / max by (function) (kube_deployment_status_replicas{deployment="fn-F"})
+
+# attivita' di offload per causa
+rate(nanofaas_offload_total[5m])
+
+# quota della latenza dovuta all'attesa
+rate(function_queue_wait_ms_sum{function="F"}[5m])
+  / rate(function_e2e_latency_ms_sum{function="F"}[5m])
+\end{lstlisting}
+
+L'ultima interrogazione non compare nella documentazione operativa del progetto
+ed \`e aggiunta qui: \`e la forma diretta del risultato centrale del
+\cref{cap:12-concurrency-control}, e su un sistema sotto carico dovrebbe
+avvicinarsi a $6/7$.

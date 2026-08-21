@@ -1,0 +1,257 @@
+\chapter{Metodo sperimentale}
+\label{cap:22-metodo-sperimentale}
+
+I capitoli seguenti riportano misure. Questo descrive come sono state ottenute,
+e --- pi\`u importante --- quali propriet\`a dell'impianto rendono confrontabili
+due numeri raccolti in momenti diversi.
+
+\section{Il principio: comparabilit\`a nel tempo, non fra piattaforme}
+
+Il \cref{cap:02-stato-dell-arte} ha osservato che confrontare piattaforme FaaS
+misurate da persone diverse su hardware diverso \`e notoriamente inaffidabile.
+Il metodo di \nf{} non tenta quel confronto. Persegue invece la comparabilit\`a
+\emph{intra}-piattaforma: fissati un profilo hardware e un carico, il risultato
+di una release \`e confrontato con quello della release precedente sullo stesso
+profilo, e la deviazione \`e trattata come segnale di regressione.
+
+\`E un obiettivo pi\`u ristretto e pi\`u difendibile. Non consente di affermare
+che \nf{} sia pi\`u veloce di Knative; consente di affermare che una certa
+modifica ha cambiato il throughput del $x\%$ su un profilo dichiarato, che \`e
+l'affermazione di cui il progetto ha effettivamente bisogno.
+
+\section{L'impianto: uno strumento separato}
+
+L'orchestrazione degli esperimenti vive in un repository separato. La
+separazione \`e deliberata e ha una giustificazione di metodo: uno strumento che
+provvisiona macchine, installa Kubernetes, distribuisce immagini ed esegue
+carichi \`e un sistema a s\'e, con dipendenze proprie, e includerlo nel
+repository della piattaforma renderebbe la piattaforma pi\`u difficile da
+costruire per chi vuole solo usarla.
+
+Il confine \`e quello enunciato nel \cref{cap:19-cli-scaffolding}: la CLI \`e un
+client HTTP e non provvisiona nulla; lo strumento di provisioning non conosce il
+protocollo delle funzioni.
+
+\subsection{Scenari dichiarativi}
+
+Un esperimento \`e descritto da uno scenario YAML e da un file di ambiente. Lo
+scenario dichiara \emph{che cosa} accade --- provvisiona, installa, registra,
+carica, verifica --- e l'ambiente dichiara \emph{dove}.
+
+\begin{lstlisting}[language=bash]
+# esecuzione
+./nanolab.sh run scenarios-v2/validate-k8s.yaml --environment environments/multipass.yaml
+# anteprima senza eseguire
+./nanolab.sh plan scenarios-v2/validate-k8s.yaml --environment environments/local.yaml
+\end{lstlisting}
+
+L'esistenza di una modalit\`a \code{plan} \`e significativa: un esperimento che
+provvisiona infrastruttura a pagamento non dovrebbe scoprire un errore di
+configurazione dopo dieci minuti di provisioning.
+
+\subsection{Ambienti disponibili}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{7.6cm}@{}}
+\toprule
+\textbf{Ambiente} & \textbf{Uso} \\
+\midrule
+locale (Docker) & Validazione del container, cicli rapidi. \\
+Multipass & VM locale con k3s: percorso Kubernetes completo senza costo. \\
+Azure & Profilo fissato per le misure pubblicate; VM dedicate per stack e
+generatore di carico. \\
+Proxmox & Ambiente su hardware proprio. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Il generatore di carico}
+
+Il carico \`e generato con k6~\cite{k6}. Due propriet\`a dell'impianto meritano
+attenzione perch\'e hanno influenzato i risultati.
+
+\subsection{Corpora di payload versionati}
+
+L'input dei benchmark non \`e generato casualmente ma letto da corpora
+versionati (\code{functions/test-data/<famiglia>/performance-<profilo>.json}),
+con tre profili di dimensione. Due esecuzioni della stessa configurazione
+ricevono quindi esattamente lo stesso input.
+
+\`E la stessa distinzione discussa nel \cref{cap:18-sdk}: i corpora di
+prestazione omettono deliberatamente gli output attesi, perch\'e verificarli
+durante un benchmark aggiungerebbe alla misura il costo del confronto.
+
+\subsection{Ciclo chiuso e ciclo aperto}
+
+Questa \`e la distinzione metodologicamente pi\`u importante del capitolo, e la
+sua rilevanza \`e stata scoperta a caro prezzo.
+
+In un generatore a \textbf{ciclo chiuso}, ogni utente virtuale mantiene una sola
+richiesta in volo e ne invia un'altra solo dopo aver ricevuto la risposta. Il
+numero di richieste nel sistema \`e quindi fissato dal generatore. In un
+generatore a \textbf{ciclo aperto}, gli arrivi sono programmati dall'orologio
+indipendentemente da quanto il sistema stia impiegando a rispondere.
+
+La differenza \`e cruciale per valutare un controllore di concorrenza:
+
+\begin{quote}\itshape
+Sotto il profilo a raffica ogni utente virtuale tiene una richiesta, quindi il
+numero nel sistema \`e fissato dal generatore e la profondit\`a di coda \`e
+\code{VU} $-$ \code{limite}. Due conseguenze, entrambe misurate. Portare il
+limite da 4 a 8 ha accorciato di quattro una coda profonda 99 --- nessun
+controllore pu\`o muovere l'attesa di molto. E la coda si assesta a 95 su 100 per
+costruzione, permanentemente sopra qualunque soglia di guardia, quindi la
+guardia di ammissione scatta a ogni tick e il modello non parla mai.
+\end{quote}
+
+La conseguenza \`e enunciata senza mezzi termini: \emph{``\`E per questo che due
+controllori che leggevano segnali completamente diversi sono finiti entro il 2\%
+l'uno dall'altro su questo profilo. La somiglianza era una propriet\`a
+dell'impianto.''}
+
+\`E un risultato metodologico che va oltre questo progetto. Un carico a ciclo
+chiuso non pu\`o porre al sistema la domanda a cui un controllore di ammissione
+dovrebbe rispondere, perch\'e retroaziona sulla stessa grandezza che il
+controllore manipola. Il \cref{cap:25-valutazione-concorrenza} riporta i due
+insiemi di risultati, con e senza questa correzione.
+
+\section{Profili hardware fissati}
+
+Ogni record di prestazione porta l'identificatore del profilo su cui \`e stato
+ottenuto:
+
+\begin{lstlisting}[language=bash]
+azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1
+\end{lstlisting}
+
+L'identificatore codifica: provider, tipo di VM dello stack, tipo di VM del
+generatore, architettura, tipo di build del control plane, e una versione del
+profilo stesso. Un confronto fra record di profili diversi \`e vietato per
+costruzione.
+
+Il generatore di carico gira su una VM \emph{separata} da quella dello stack. \`E
+una precauzione elementare e spesso omessa: un generatore co-residente compete
+per CPU con il sistema misurato, e il suo contributo alla latenza osservata
+cresce proprio quando il sistema \`e sotto pressione.
+
+\section{Il record di release}
+
+Ogni release produce un record JSON versionato in
+\code{docs/performance/releases/}. Contiene:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{7.6cm}@{}}
+\toprule
+\textbf{Sezione} & \textbf{Contenuto} \\
+\midrule
+\code{aggregates} & Throughput, tasso di errore, p50/p95/p99, cold start,
+repliche di picco, CPU e heap di picco del control plane, attesa in coda. \\
+\code{profile} & L'identificatore del profilo e le sue componenti. \\
+\code{runCount} & Numero di esecuzioni la cui mediana \`e riportata (3). \\
+\code{sourceCommit} & Il commit esatto da cui l'artefatto \`e stato costruito. \\
+\code{imageDigests} & Digest SHA-256 di \emph{ogni} immagine coinvolta. \\
+\code{thresholds} & Le soglie di regressione applicate. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+I digest sono la parte che rende il record realmente riproducibile: non
+identificano un'etichetta mobile ma il contenuto esatto delle immagini. Un
+record di \nf{} v0.19.0 elenca oltre centoventi digest --- il control plane in
+quattro varianti, il watchdog, e le funzioni di riferimento in cinque linguaggi
+per due architetture.
+
+\section{Il gate di regressione}
+
+Tre esecuzioni per release, mediane confrontate con il record pi\`u recente dello
+stesso profilo. Le soglie:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrl@{}}
+\toprule
+\textbf{Soglia} & \textbf{Valore} & \textbf{Significato} \\
+\midrule
+\code{errorRateMax} & 0{,}3\,\% & Tasso di errore massimo assoluto. \\
+\code{p95MaxIncreasePercent} & 15\,\% & Peggioramento massimo del p95 rispetto
+al record precedente. \\
+\code{throughputMaxLossPercent} & 10\,\% & Perdita massima di throughput. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Le due soglie relative sono generose --- 15\% e 10\% --- e la ragione \`e onesta:
+con tre esecuzioni la varianza campionaria non consente di distinguere
+differenze pi\`u piccole. Una soglia stretta produrrebbe falsi allarmi a ogni
+release, e il gate verrebbe disattivato. Il \cref{cap:27-discussione} riprende
+il punto come limite alla sensibilit\`a del metodo.
+
+Accanto alle soglie numeriche esiste un gate strutturale, gi\`a citato nel
+\cref{cap:21-osservabilita}: una modifica che regredisca le garanzie
+strutturali del percorso caldo --- riuso del replay, forward progress della coda
+sincrona, equit\`a asincrona --- viene respinta anche se i numeri assoluti
+sembrano accettabili.
+
+\section{Un errore di calibrazione, riportato}
+
+La documentazione del progetto conserva un errore che vale la pena riportare
+perch\'e \`e generale:
+
+\begin{quote}\itshape
+La prima esecuzione di questo confronto ha fissato il budget a 8 mentre il carico
+raggiungeva un picco di 105 contro una coda di 100. Sotto contesa ciascuna
+funzione teneva circa 4 posti di 104 contro 105 arrivi, quindi la coda traboccava
+per aritmetica in un modo e non nell'altro, producendo 86\,302 rifiuti che non
+dicevano nulla sul controllore.
+\end{quote}
+
+E la regola che ne \`e stata derivata:
+
+\begin{quote}\itshape
+Il budget deve stare dentro una finestra: a o sopra \emph{funzioni $\times$
+tetto} nulla \`e mai scarso e il modo degenera in controllo per funzione; sotto
+\emph{funzioni $\times$ (picco $-$ coda)} i rifiuti sono fabbricati. Il picco
+offerto deve essere derivato dal limite pi\`u piccolo che qualunque modo sotto
+confronto conceder\`a, o le due esecuzioni non stanno misurando la stessa cosa.
+\end{quote}
+
+\`E un vincolo che non compare in nessuna documentazione di benchmarking
+serverless, e che discende dalla struttura del sistema misurato: quando la
+grandezza controllata determina anche la finestra di ammissione, il carico
+offerto non pu\`o essere scelto indipendentemente dal controllore.
+
+\section{Riproducibilit\`a: che cosa \`e garantito e che cosa no}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{7.8cm}@{}}
+\toprule
+\textbf{Elemento} & \textbf{Stato} \\
+\midrule
+Codice sorgente & Fissato dal commit nel record. \\
+Immagini & Fissate dai digest nel record. \\
+Input del carico & Fissato dai corpora versionati. \\
+Profilo hardware & Fissato dall'identificatore; la VM \`e ricreata a ogni
+esecuzione. \\
+Prestazioni della VM & \textbf{Non garantite}: due VM Azure dello stesso tipo
+possono avere vicini diversi. \\
+Numero di ripetizioni & 3, che \`e poco. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Le ultime due righe sono i limiti reali. Il \cref{cap:27-discussione} li tratta
+per esteso, ma \`e utile enunciarli qui, accanto al metodo che pretendono di
+qualificare: le misure riportate nei prossimi tre capitoli sono \emph{mediane di
+tre esecuzioni su infrastruttura condivisa}, non stime con intervallo di
+confidenza.

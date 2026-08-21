@@ -1,0 +1,216 @@
+\chapter{Discussione e minacce alla validit\`a}
+\label{cap:27-discussione}
+
+Questo capitolo separa ci\`o che il lavoro stabilisce da ci\`o che suggerisce e
+da ci\`o che non tocca affatto. \`E scritto per essere letto da chi volesse
+contestare i risultati: elenca in anticipo le obiezioni che riterrei fondate.
+
+\section{Che cosa i dati stabiliscono}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{S1. Il cross-talk fra funzioni co-residenti non \`e contesa di
+  CPU.}] \`E il risultato pi\`u solido, perch\'e ottenuto per manipolazione diretta:
+  vincolando entrambe le funzioni agli stessi quattro core, il throughput
+  combinato \`e cambiato dello 0{,}6\%, mentre la funzione stabile continuava a
+  perdere il 28\% del proprio throughput all'arrivo della vicina. Il controllo \`e
+  pulito e l'ipotesi \`e falsificata.
+
+  \item[\textbf{S2. Un controllore che decide dal tempo di servizio non ha
+  ottimo interno.}] \`E stabilito analiticamente --- $S(C)$ \`e monotona crescente
+  su una risorsa condivisa, quindi il gradiente punta in discesa ovunque --- e
+  confermato per osservazione su due runtime, entrambi visti camminare fino al
+  proprio pavimento.
+
+  \item[\textbf{S3. Il tempo di servizio \`e una frazione minoritaria della
+  latenza del chiamante sotto carico.}] Misurato: attesa 37--43\,ms contro
+  servizio $\approx 5$\,ms. \`E un rapporto di sette a uno, molto oltre qualunque
+  incertezza di misura.
+
+  \item[\textbf{S4. Un carico a ciclo chiuso non pu\`o distinguere politiche di
+  ammissione.}] Segue dalla struttura del generatore --- il numero in sistema \`e
+  fissato dal generatore, la profondit\`a di coda \`e \code{VU} $-$ \code{limite}
+  --- ed \`e stato osservato: la guardia di ammissione scattava a ogni tick e il
+  modello non parlava mai.
+
+  \item[\textbf{S5. Il collector seriale di GraalVM Community spende circa un
+  terzo del tempo di parete a raccogliere, sotto questo carico.}] 22{,}1\,s su
+  60, con 25 raccolte complete da 883\,ms. Confermato per due vie indipendenti
+  (contatori corretti e registrazione JFR).
+
+  \item[\textbf{S6. Misure di memoria senza limite del container descrivono
+  appetito.}] Dimostrato dalla differenza fra le esecuzioni vincolate e non
+  vincolate: 1{,}8--2{,}7\,GiB senza limite contro 736\,MiB con limite a 1\,GB e
+  throughput superiore.
+
+  \item[\textbf{S7. Il tasso di errore \`e zero su sei release.}] \`E un gate
+  rigido e la sua tenuta \`e verificata su diciotto esecuzioni.
+\end{description}
+
+\section{Che cosa i dati suggeriscono senza stabilire}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{D1. \code{SOJOURN} \`e superiore a \code{ADAPTIVE\_PER\_POD} sotto
+  arrivi aperti.}] I numeri sono netti --- $+3{,}2\%$ servite, $-15{,}7\%$
+  rifiuti, $-10{,}6\%$ p95 --- ma provengono da \emph{una sola esecuzione per
+  modo}. Differenze del 10--15\% sono grandi, e con $n = 1$ non sono
+  distinguibili da una fluttuazione dell'ambiente.
+
+  \item[\textbf{D2. \code{BUDGETED} concede meno concorrenza a parit\`a di
+  lavoro.}] Il dato \`e coerente e spiegato dalla legge di Little, ma il
+  confronto \`e stato eseguito su un impianto a ciclo chiuso che, per S4, non
+  poteva distinguere i segnali dei due controllori. La propriet\`a osservata
+  --- il totale sotto budget, la capacit\`a spostata fra funzioni --- \`e reale;
+  la sua conseguenza sulla latenza del chiamante non \`e stata misurata su un
+  impianto capace di rilevarla.
+
+  \item[\textbf{D3. Il salto di p95 della v0.19.0 \`e uno spostamento del punto
+  di lavoro, non una regressione.}] L'attesa in coda sotto il millisecondo e il
+  p50 invariato lo rendono plausibile. Non \`e stabilito.
+\end{description}
+
+\section{Che cosa non \`e stabilito}
+
+Il progetto enumera esplicitamente cinque questioni aperte, riportate nel
+\cref{cap:25-valutazione-concorrenza}. Vale la pena isolarne due, perch\'e
+toccano contributi dichiarati nel \cref{cap:01-introduzione}.
+
+\paragraph{I pesi di \code{BUDGETED} non sono mai stati esercitati.} L'equit\`a
+max-min \emph{pesata} \`e presentata come contributo, e ogni esecuzione ha usato
+pesi identici. Ci\`o che \`e stato validato \`e l'allocazione a pesi uguali, che
+\`e il caso degenere. La capacit\`a di servire livelli di servizio differenziati
+--- l'argomento principale per cui il peso esiste --- \`e non verificata.
+
+\paragraph{\code{SOJOURN} non \`e mai stato osservato fuori dal sovraccarico.}
+Ogni sua esecuzione \`e stata a capacit\`a o oltre. Il modo \`e progettato per
+trovare un ginocchio, e il ginocchio esiste solo dove il sistema ha margine.
+Il suo comportamento nel regime per cui \`e stato progettato non \`e stato
+osservato.
+
+\section{Minacce alla validit\`a}
+
+\subsection{Validit\`a interna}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{Numerosit\`a campionaria.}] Tre esecuzioni per punto nelle serie
+  di release, una nelle campagne di concorrenza. Non consentono di stimare una
+  varianza. Le soglie del gate (10\% e 15\%) sono state scelte per essere
+  robuste a questa limitazione, il che significa che il gate \`e cieco alle
+  regressioni pi\`u piccole.
+
+  \item[\textbf{Il confondente dei due \code{word-stats}.}] Scoperto in corso
+  d'opera. Le due funzioni differiscono per SDK, tipo di build e tempo di
+  servizio (5{,}57 contro 2{,}15\,ms). Analisi precedenti alla scoperta sono
+  invalidate; quelle riportate qui ne tengono conto, ma la scoperta stessa
+  suggerisce che altri confondenti dello stesso tipo possano esistere.
+
+  \item[\textbf{L'errore di calibrazione del budget.}] La prima esecuzione del
+  confronto fra controllori ha prodotto 86\,302 rifiuti fabbricati
+  dall'aritmetica del budget. La regola derivata --- il picco offerto deve
+  essere derivato dal limite pi\`u piccolo che qualunque modo conceder\`a --- \`e
+  ora nota, ma \`e stata scoperta dopo un'esecuzione, non prima.
+
+  \item[\textbf{Un test invalido riportato come tale.}] L'ipotesi della
+  promozione prematura \`e stata testata con un flag che, a causa di un
+  parametro percentuale con default 10, non faceva nulla. L'esito ``nessun
+  effetto'' era indistinguibile da quello vero. \`E stato rilevato e corretto;
+  la classe di errore resta possibile altrove.
+\end{description}
+
+\subsection{Validit\`a esterna}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{Un solo profilo hardware.}] Tutta la serie di release \`e su
+  \code{azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1}. Non esistono serie
+  comparabili su altri profili, e nulla nei dati consente di estrapolare.
+
+  \item[\textbf{Infrastruttura condivisa.}] Due VM Azure dello stesso tipo
+  possono avere vicini diversi. Parte dell'oscillazione fra le prime cinque
+  release potrebbe essere questa e non il codice.
+
+  \item[\textbf{Un solo scenario di carico.}] \code{autoscaling-cycle-k8s}, con
+  corpora di payload fissati. Profili di arrivo diversi --- code pesanti,
+  raffiche correlate, payload molto grandi --- non sono stati esplorati.
+
+  \item[\textbf{Poche funzioni contemporanee.}] Le campagne di co-tenancy usano
+  due funzioni. Il modo \code{BUDGETED} \`e progettato per una piattaforma
+  multi-tenant, e con due tenant l'allocatore max-min opera nel proprio caso pi\`u
+  semplice.
+\end{description}
+
+\subsection{Validit\`a di costrutto}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{La latenza end-to-end \`e misurata dal control plane, non dal
+  chiamante.}] \code{function\_e2e\_latency\_ms} parte dall'ammissione. Il tempo
+  che una richiesta passa nella rete e nei buffer prima di essere ammessa non \`e
+  incluso. Per un chiamante remoto la grandezza rilevante \`e maggiore.
+
+  \item[\textbf{Il tasso di errore esclude le risposte applicative negative.}]
+  Si veda il \cref{cap:21-osservabilita}. \`E la definizione corretta per un gate di
+  piattaforma, e va tenuta presente confrontando con piattaforme che contano
+  diversamente.
+
+  \item[\textbf{Il cold start \`e in parte inferito.}] Il tracker
+  dell'autoscaler lo deduce da un evento di scale-up da zero entro trenta
+  secondi (\cref{cap:11-autoscaler}), quando il runtime non lo dichiara.
+  L'accordo fra inferenza e dichiarazione non \`e stato misurato.
+\end{description}
+
+\section{Quando \nf{} \`e la scelta sbagliata}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Se l'indisponibilit\`a ha un costo.} Un solo processo di
+  controllo, nessuna replicazione, stato in memoria: un riavvio perde il
+  registro e interrompe le invocazioni in volo.
+  \item \textbf{Se la rete non \`e fidata.} Nessuna autenticazione, nessuna
+  autorizzazione.
+  \item \textbf{Se servono garanzie di durabilit\`a sull'asincrono.} Le code
+  sono in memoria; un riavvio le perde.
+  \item \textbf{Se il carico \`e dominato dal cold start.} \nf{} lo misura e non
+  contribuisce a ridurlo; le piattaforme citate nel
+  \cref{cap:02-stato-dell-arte} hanno meccanismi che \nf{} non ha.
+  \item \textbf{Se servono composizione di funzioni, trigger da sorgenti di
+  eventi, versioning o traffic splitting.} Non esistono.
+\end{itemize}
+
+\section{Riflessione sui vincoli di progetto}
+
+Il \cref{cap:03-requisiti-principi} ha sostenuto che le tre rinunce fondamentali
+non fossero debito ma metodo. A valle dei risultati, il bilancio \`e
+disomogeneo.
+
+Il vincolo del \textbf{processo singolo} ha pagato. La brevit\`a del percorso
+critico \`e ci\`o che ha reso attribuibile una differenza di alcuni millisecondi
+di attesa a una politica di ammissione; e --- ironicamente --- \`e anche il
+sospettato principale del cross-talk che S1 non ha saputo spiegare altrimenti.
+Il vincolo ha prodotto tanto lo strumento di misura quanto il fenomeno da
+misurare.
+
+Il vincolo dello \textbf{stato in memoria} ha pagato in parte. Ha eliminato l'I/O
+dal percorso critico come promesso, ma ha imposto tre orizzonti di ritenzione
+nello \code{ExecutionStore} e un intero apparato di gestione della dimenticanza.
+Il costo \`e stato pi\`u alto di quanto il capitolo dei principi lasciasse
+intendere.
+
+Il vincolo dell'\textbf{assenza di autenticazione} non ha pagato. Il beneficio
+dichiarato --- meno modi in cui un esperimento pu\`o fallire per ragioni non
+attinenti --- \`e reale ma piccolo, e nessun risultato di questo documento
+dipende da esso. \`E anche la sola rinuncia che impedisce alla piattaforma di
+essere usata fuori da un laboratorio. Rivalutandola alla luce dei risultati,
+\`e la prima da rimuovere.
+
+\section{Sulla natura dei risultati negativi}
+
+Tre dei risultati principali di questo lavoro sono negativi: il gradiente sul
+tempo di servizio non ha ottimo interno, la ricerca del minimo non pu\`o
+attribuire il proprio effetto, il ciclo chiuso non pu\`o porre la domanda.
+Ciascuno ha richiesto un'implementazione completa e una campagna di misura per
+essere stabilito, e ciascuno ha eliminato un'intera famiglia di soluzioni
+apparentemente ragionevoli.
+
+Il progetto li conserva nella propria documentazione insieme alle affermazioni
+che hanno confutato. \`E una pratica che vale la pena nominare esplicitamente,
+perch\'e la letteratura sulle piattaforme raramente la adotta: il costo di non
+registrarli \`e che la stessa famiglia di soluzioni viene ritentata, e il segnale
+che le esclude non \`e derivabile dalla lettura del codice finale --- che, per
+costruzione, contiene solo ci\`o che ha funzionato.

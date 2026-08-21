@@ -1,0 +1,165 @@
+\chapter{Conclusioni}
+\label{cap:29-conclusioni}
+
+Il \cref{cap:01-introduzione} ha aperto con una domanda: qual \`e la piattaforma
+FaaS pi\`u piccola che sia ancora una piattaforma FaaS, e che cosa diventa
+misurabile una volta ridotta a quella dimensione? Questo capitolo risponde alle
+quattro domande di ricerca che ne discendevano.
+
+\section{Le risposte}
+
+\subsection{RQ1 --- Modularit\`a a costo zero sul percorso critico}
+
+\textbf{S\`i, ed \`e verificabile.} La selezione modulare a tempo di build,
+combinata con implementazioni no-op per ciascun punto di estensione, produce un
+percorso di invocazione privo di rami condizionali sulla configurazione: la
+catena di ripiego \emph{coda sincrona $\to$ coda asincrona $\to$ dispatch
+diretto} non testa la presenza di un modulo, esegue il default del punto di
+estensione precedente. La regola ArchUnit R3 rende la propriet\`a accertata dalla
+build anzich\'e affermata.
+
+Il costo esiste e \`e stato quantificato: due invocazioni della suite di test per
+ogni verifica completa, e una copertura che riguarda i soli estremi dello spazio
+delle configurazioni. La modularit\`a a costo zero sul percorso critico non \`e a
+costo zero sulla catena di integrazione.
+
+Il fatto che i nove moduli sommino 6\,836 righe contro le 5\,065 del nucleo che
+estendono \`e la misura di quanto la piattaforma sia riducibile: la maggior parte
+del suo codice \`e codice che si pu\`o non compilare.
+
+\subsection{RQ2 --- Da quale segnale decidere}
+
+\textbf{Dal tempo di sojourn, non da quello di servizio.} La risposta \`e
+stabilita su due piani.
+
+Analiticamente: il tempo di servizio cresce monotonamente con il limite di
+concorrenza su qualunque risorsa condivisa, quindi una regola che riduce il
+limite quando la latenza cresce non ha ottimo interno e cammina fino al proprio
+pavimento. Il tempo di sojourn --- attesa pi\`u servizio --- l'ottimo interno ce
+l'ha, perch\'e l'attesa decresce dove il servizio cresce.
+
+Sperimentalmente: sotto carico l'attesa \`e stata misurata a 37--43\,ms contro un
+servizio di circa 5\,ms, e un controllore pu\`o quindi sedere comodamente dentro
+un SLO di servizio di 10\,ms mentre i suoi chiamanti attendono ottanta.
+
+La realizzazione ha richiesto tre tentativi, e i due falliti sono contributi
+quanto quello riuscito. Il gradiente sulla latenza end-to-end \`e instabile per
+retroazione positiva. La ricerca del minimo per passi successivi \`e ben posta in
+teoria e fallisce perch\'e non pu\`o distinguere ``la mia mossa ha aiutato'' da
+``il carico \`e calato'' --- 36\,181 richieste rifiutate contro 32. Il progetto
+che funziona \emph{calcola anzich\'e confrontare}: guardia di ammissione, legge di
+Little su un tasso predetto, orizzonte di drenaggio proporzionale allo
+scostamento dalla promessa. Sotto arrivi aperti ha servito il 3{,}2\% di
+richieste in pi\`u, ne ha rifiutate il 15{,}7\% in meno e ha ridotto il p95
+end-to-end del 10{,}6\% --- con \emph{meno} concorrenza media.
+
+Il risultato \`e di una sola esecuzione per modo, e il
+\cref{cap:27-discussione} lo classifica come suggerito e non stabilito.
+
+\subsection{RQ3 --- Concorrenza come risorsa condivisa}
+
+\textbf{Separare la stima del fabbisogno dall'allocazione funziona; la sua
+superiorit\`a non \`e stata dimostrata.}
+
+Il modo \code{BUDGETED} spezza la domanda in due --- quanto serve a una funzione
+per il proprio SLO, quanto la piattaforma pu\`o dare --- e risolve la seconda con
+equit\`a max-min pesata. Misurato, mantiene il totale sotto il budget e sposta
+capacit\`a fra le funzioni al muoversi del carico, cosa che due controllori
+indipendenti non possono fare per costruzione. Ha concesso alla funzione che non
+ne aveva bisogno met\`a della concorrenza a parit\`a di throughput.
+
+Due riserve. Il confronto \`e stato eseguito su un impianto a ciclo chiuso che,
+come RQ4 ha poi mostrato, non poteva distinguere i segnali dei due controllori.
+E i pesi --- l'argomento principale per cui il meccanismo esiste --- non sono mai
+stati esercitati con valori diversi.
+
+La campagna di co-tenancy ha per\`o prodotto il risultato pi\`u solido del lavoro,
+e lo ha prodotto in negativo: il cross-talk fra funzioni co-residenti \`e reale
+($-28\%$ di throughput sulla funzione stabile) e \textbf{non} \`e contesa di CPU
+(vincolandole agli stessi quattro core, lo 0{,}6\% di differenza). La premessa
+del modo a budget --- che esista una risorsa condivisa da dividere --- \`e
+confermata; la sua identit\`a non \`e la CPU.
+
+\subsection{RQ4 --- Il costo reale di un control plane}
+
+\textbf{Meno di un core e circa 200\,MB di heap per 300 richieste al secondo, e
+la scelta della catena di build conta pi\`u della scelta del framework.}
+
+Tre risultati.
+
+Per una JVM Spring, lo heap --- i dati --- \`e il 12\% della memoria residente. Il
+resto \`e il runtime che descrive se stesso. Ottimizzare le allocazioni agisce
+sull'ottavo del problema.
+
+Il collector seriale di GraalVM Community spende il 31{,}8\% del tempo di parete
+a raccogliere sotto carico sostenuto, con pause fino a 1{,}77\,s, e dimezza il
+throughput. G1 lo elimina: 98{,}5\% del throughput della JVM, coda a 123\,ms,
+avvio in 0{,}07\,s. Compilato a \code{-O3}, il control plane nativo supera la
+JVM --- 9\,251 contro 8\,205 richieste al secondo, con un avvio ventitr\'e volte
+pi\`u rapido.
+
+Il terzo risultato \`e metodologico e vale oltre questo progetto: \emph{misure di
+memoria senza un limite del container descrivono appetito, non fabbisogno}. Con
+un limite a 1\,GB e uno heap esplicito, la stessa build consegna 3\,089
+richieste al secondo in un terzo della memoria che l'esecuzione senza vincoli
+aveva occupato.
+
+\section{La tesi, rivista}
+
+La tesi del \cref{cap:01-introduzione} era che un insieme selezionato di rinunce
+produce un sistema pi\`u utile come strumento di misura di quanto lo sarebbe la
+sua versione completa. A valle dei risultati, il bilancio \`e disomogeneo e vale
+la pena dichiararlo.
+
+Il \textbf{processo singolo} ha pagato pi\`u di quanto promesso. Ha reso
+attribuibile una differenza di pochi millisecondi di attesa a una politica di
+ammissione --- che \`e l'intero contenuto del \cref{cap:25-valutazione-concorrenza}
+--- e si \`e rivelato, per esclusione, anche il sospettato principale del
+cross-talk fra funzioni co-residenti. Il vincolo ha prodotto lo strumento e il
+fenomeno.
+
+Lo \textbf{stato in memoria} ha pagato in parte, a un costo pi\`u alto del
+previsto: tre orizzonti di ritenzione e un intero apparato di dimenticanza per
+evitare che uno store che non persiste diventi uno store che non dimentica.
+
+L'\textbf{assenza di autenticazione} non ha pagato. Nessun risultato di questo
+documento vi dipende, ed \`e la sola rinuncia che impedisca l'uso fuori da un
+laboratorio.
+
+\section{Il contributo che non era previsto}
+
+Il contributo di cui vado pi\`u convinto non compare fra i sei elencati nel
+\cref{cap:01-introduzione}, ed \`e la pratica di conservare i risultati negativi
+insieme alle affermazioni che hanno confutato.
+
+Tre dei risultati principali sono negativi. Ciascuno ha richiesto
+un'implementazione completa e una campagna di misura, e ciascuno ha eliminato una
+famiglia intera di soluzioni apparentemente ragionevoli: il gradiente sul tempo
+di servizio, la ricerca del minimo per confronto fra istanti, il carico a ciclo
+chiuso per valutare politiche di ammissione. A questi si aggiungono un errore di
+calibrazione che ha fabbricato 86\,302 rifiuti, un test invalidato da un flag
+inefficace, e un confondente --- due funzioni omonime con runtime diversi ---
+che ha invalidato analisi precedenti.
+
+Nessuno di questi \`e derivabile dalla lettura del codice finale, che per
+costruzione contiene solo ci\`o che ha funzionato. Il costo di non registrarli \`e
+che la stessa famiglia di soluzioni viene ritentata, e il segnale che le esclude
+va riprodotto da capo.
+
+\section{Chiusura}
+
+\nf{} \`e piccolo di proposito. Il suo nucleo sta in cinquemila righe, il suo
+percorso critico attraversa un solo processo, e la maggior parte del suo codice
+si pu\`o non compilare. Non compete con le piattaforme mature su completezza e
+non aspira a farlo.
+
+Ci\`o che ha prodotto \`e una risposta precisa a una domanda che le piattaforme
+complete rendono difficile porre: da quale grandezza misurata debba decidere un
+controllore di ammissione, e che cosa succede quando decide dalla grandezza
+sbagliata. La risposta --- il tempo di sojourn, non quello di servizio --- \`e
+banale una volta enunciata, ed \`e costata due progetti falliti e la scoperta che
+il generatore di carico stava impedendo alla domanda di essere posta.
+
+\`E il tipo di risultato che una piattaforma abbastanza piccola da essere letta
+per intero consente di ottenere, e che una piattaforma abbastanza grande da
+essere utile in produzione avrebbe nascosto sotto tre livelli di proxy.

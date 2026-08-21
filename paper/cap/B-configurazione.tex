@@ -1,0 +1,183 @@
+\chapter{Configurazione completa}
+\label{cap:B-configurazione}
+
+\section{Configurazione di piattaforma}
+
+Da \code{platform/control-plane/src/main/resources/application.yml}.
+
+\begin{lstlisting}[language=yamlnf]
+server:
+  port: 8080
+management:
+  server:
+    port: 8081
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+nanofaas:
+  metrics:
+    profile: basic              # basic | advanced
+  admin:
+    runtime-config:
+      enabled: false
+  deployment:
+    default-backend: ""         # k8s | container-local; vuoto = risoluzione implicita
+  defaults:
+    timeoutMs: 30000
+    concurrency: 4
+    queueSize: 100
+    maxRetries: 3
+  rate:
+    maxPerSecond: 1000000
+  k8s:
+    namespace: ""
+    callbackUrl: "http://control-plane.default.svc.cluster.local:8080/v1/internal/executions"
+  scaling:
+    poll-interval-ms: 5000
+    default-min-replicas: 1
+    default-max-replicas: 10
+
+sync-queue:
+  enabled: true
+  admission-enabled: true
+  max-depth: 200
+  max-estimated-wait: 2s
+  max-queue-wait: 2s
+  retry-after-seconds: 2
+  throughput-window: 30s
+  per-function-min-samples: 50
+\end{lstlisting}
+
+\section{Chiavi dei moduli non presenti nel file di default}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{5.4cm}@{}}
+\toprule
+\textbf{Chiave} & \textbf{Default} & \textbf{Modulo} \\
+\midrule
+\code{nanofaas.concurrency-control.poll-interval-ms} & 5000 &
+\code{concurrency-control} \\
+\code{nanofaas.concurrency-control.default-target-in-flight-per-pod} & 2 & \\
+\code{nanofaas.concurrency-control.total-budget} & $\max(8, 4 \times$ core$)$ & \\
+\midrule
+\code{nanofaas.offload.enabled} & \code{true} & \code{offload} \\
+\code{nanofaas.offload.target-url} & --- & \\
+\code{nanofaas.offload.pressure-enabled} & \code{true} & \\
+\midrule
+\code{nanofaas.container-local.runtime-adapter} & \code{docker} &
+\code{container-deployment-provider} \\
+\code{nanofaas.container-local.bind-host} & \code{127.0.0.1} & \\
+\code{nanofaas.container-local.readiness-timeout} & 20\,s & \\
+\code{nanofaas.container-local.readiness-poll-interval} & 250\,ms & \\
+\code{nanofaas.container-local.network-name} & --- & \\
+\code{nanofaas.container-local.cpuset} & --- & vincola le funzioni agli stessi
+core (\cref{cap:15-deployment-provider}) \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Configurazione per funzione}
+
+Tutti i campi di \code{FunctionSpec}. \code{null} significa ``non specificato'' e
+attiva il default di piattaforma.
+
+\begin{lstlisting}[language=yamlnf]
+name: <obbligatorio, non vuoto>
+image: <obbligatorio, non vuoto>
+command: [...]                  # default []
+env: { ... }                    # default {}
+resources:
+  requests: { cpu: <positivo>, memoryMiB: <positivo> }
+  limits:   { cpu: <positivo>, memoryMiB: <positivo> }   # richiesta <= limite
+timeoutMs: <>= 1>
+concurrency: <>= 1>
+queueSize: <>= 1>
+maxRetries: <>= 0>
+endpointUrl: <obbligatorio per EXTERNAL>
+executionMode: LOCAL | EXTERNAL | DEPLOYMENT      # default DEPLOYMENT
+runtimeMode: HTTP | STDIO | FILE
+runtimeCommand: <comando del watchdog>
+imagePullSecrets: [...]
+scalingConfig:
+  strategy: HPA | INTERNAL | NONE                 # default INTERNAL
+  minReplicas: <>= 0>                             # default 1
+  maxReplicas: <>= 1>                             # default 10
+  metrics:
+    - type: queue_depth | in_flight | rps
+      target: "<numero>"
+  concurrencyControl:
+    mode: FIXED | STATIC_PER_POD | ADAPTIVE_PER_POD | BUDGETED | SOJOURN
+    targetInFlightPerPod: 2
+    minTargetInFlightPerPod: 1
+    maxTargetInFlightPerPod: 8
+    upscaleCooldownMs: 30000
+    downscaleCooldownMs: 60000
+    highLoadThreshold: 0.5
+    lowLoadThreshold: 0.15
+    targetLatencyMs: 250       # servizio per BUDGETED, end-to-end per SOJOURN
+    weight: 1.0
+offload:
+  enabled: <true|false>
+  targetUrl: <url>
+  mode: pressure | always
+\end{lstlisting}
+
+\section{Costanti non configurabili}
+
+Valori fissati nel codice, elencati perch\'e sono i candidati naturali per un
+esperimento che voglia variarli.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{5cm}@{}}
+\toprule
+\textbf{Costante} & \textbf{Valore} & \textbf{Dove} \\
+\midrule
+Quanto di scheduling asincrono & 2 & \code{async-queue} \\
+Tick dello scheduler sincrono & 2\,ms & \code{sync-queue} \\
+Tetto del backoff sincrono & 50\,ms & \code{sync-queue} \\
+Finestra di scansione della coda sincrona & 64 & \code{sync-queue} \\
+Cooldown di scale-up / scale-down & 30\,s / 60\,s & \code{autoscaler} \\
+Finestra di inferenza del cold start & 30\,s & \code{autoscaler} \\
+Deriva della baseline & $1{,}002$ per tick & \code{concurrency-control} \\
+Decadimento degli estremi & $1{,}01$ per tick & \code{concurrency-control} \\
+Pavimento del gradiente & $0{,}5$ & \code{concurrency-control} \\
+Soglia di guardia della coda & $0{,}7$ & \code{concurrency-control} \\
+Orizzonte di drenaggio & 5\,s (min 1\,s) & \code{concurrency-control} \\
+Holt: $\alpha$, $\beta$, $\phi$ & $0{,}5$, $0{,}3$, $0{,}8$ &
+\code{concurrency-control} \\
+Margine di timeout dell'offload & 50\,ms & \code{offload} \\
+TTL delle chiavi di idempotenza & 5\,min & nucleo \\
+Periodo del janitor dello store & 1\,min & nucleo \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Selettori di build}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{7.6cm}@{}}
+\toprule
+\textbf{Selettore} & \textbf{Effetto} \\
+\midrule
+\code{-PcontrolPlaneModules} & \code{none}, \code{all} (default) o lista; anche
+\code{NANOFAAS\_CONTROL\_PLANE\_MODULES} \\
+\code{-PnativeOptimization} & \code{3} (default) o \code{s} \\
+\code{-PnativeGc} & \code{G1} richiede Oracle GraalVM; anche
+\code{NATIVE\_GC} \\
+\code{-PnativeMonitoring} & per esempio \code{jfr,jvmstat} \\
+\code{-PnativeBuildMemory} & heap del \emph{compilatore}, non dell'immagine \\
+\code{-PnativeParallelism} & lavoratori del compilatore \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}

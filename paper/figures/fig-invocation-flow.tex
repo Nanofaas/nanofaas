@@ -15,9 +15,9 @@
     {Control Plane\\{\scriptsize validate $\cdot$ rate limit $\cdot$ ExecutionStore}};
   \node[module, minimum width=30mm] (qH) at (\qx,0)
     {Admission queue\\{\scriptsize sync-queue / async-queue}};
-  \node[core,   minimum width=24mm] (dH) at (\dx,0) {PoolDispatcher};
+  \node[core,   minimum width=24mm] (dH) at (\dx,0) {DispatcherRouter};
   \node[backend,minimum width=26mm] (rH) at (\rx,0)
-    {Function runtime\\{\scriptsize LOCAL $\cdot$ POOL $\cdot$ DEPLOYMENT}};
+    {Function runtime\\{\scriptsize LOCAL $\cdot$ EXTERNAL $\cdot$ DEPLOYMENT}};
 
   % ---- lifelines ----
   \foreach \n in {cH,pH,qH,dH,rH}{\draw[lifeline] (\n.south) -- ($(\n.south)-(0,10.1)$);}

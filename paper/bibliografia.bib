@@ -1,0 +1,326 @@
+% =========================================================================
+% Bibliografia della monografia NanoFaaS
+% =========================================================================
+
+% ---- visioni e survey sul serverless ------------------------------------
+@techreport{jonas2019berkeley,
+  author      = {Jonas, Eric and Schleier-Smith, Johann and Sreekanti, Vikram and
+                 Tsai, Chia-Che and Khandelwal, Anurag and Pu, Qifan and
+                 Shankar, Vaishaal and Carreira, Joao and Krauth, Karl and
+                 Yadwadkar, Neeraja and Gonzalez, Joseph E. and Popa, Raluca Ada and
+                 Stoica, Ion and Patterson, David A.},
+  title       = {Cloud Programming Simplified: A {Berkeley} View on Serverless Computing},
+  institution = {EECS Department, University of California, Berkeley},
+  number      = {UCB/EECS-2019-3},
+  year        = {2019}
+}
+
+@inproceedings{hellerstein2019onestep,
+  author    = {Hellerstein, Joseph M. and Faleiro, Jose M. and Gonzalez, Joseph E. and
+               Schleier-Smith, Johann and Sreekanti, Vikram and Tumanov, Alexey and
+               Wu, Chenggang},
+  title     = {Serverless Computing: One Step Forward, Two Steps Back},
+  booktitle = {Conference on Innovative Data Systems Research (CIDR)},
+  year      = {2019}
+}
+
+@incollection{baldini2017trends,
+  author    = {Baldini, Ioana and Castro, Paul and Chang, Kerry and Cheng, Perry and
+               Fink, Stephen and Ishakian, Vatche and Mitchell, Nick and
+               Muthusamy, Vinod and Rabbah, Rodric and Slominski, Aleksander and
+               Suter, Philippe},
+  title     = {Serverless Computing: Current Trends and Open Problems},
+  booktitle = {Research Advances in Cloud Computing},
+  publisher = {Springer},
+  pages     = {1--20},
+  year      = {2017}
+}
+
+% ---- caratterizzazione di piattaforme e carichi reali --------------------
+@inproceedings{shahrad2020wild,
+  author    = {Shahrad, Mohammad and Fonseca, Rodrigo and Goiri, {\'I}{\~n}igo and
+               Chaudhry, Gohar and Batum, Paul and Cooke, Jason and
+               Laureano, Eduardo and Tresness, Colby and Russinovich, Mark and
+               Bianchini, Ricardo},
+  title     = {Serverless in the Wild: Characterizing and Optimizing the Serverless
+               Workload at a Large Cloud Provider},
+  booktitle = {USENIX Annual Technical Conference (ATC)},
+  year      = {2020}
+}
+
+@inproceedings{wang2018peeking,
+  author    = {Wang, Liang and Li, Mengyuan and Zhang, Yinqian and
+               Ristenpart, Thomas and Swift, Michael},
+  title     = {Peeking Behind the Curtains of Serverless Platforms},
+  booktitle = {USENIX Annual Technical Conference (ATC)},
+  year      = {2018}
+}
+
+% ---- cold start ---------------------------------------------------------
+@inproceedings{oakes2018sock,
+  author    = {Oakes, Edward and Yang, Leon and Zhou, Dennis and Houck, Kevin and
+               Harter, Tyler and Arpaci-Dusseau, Andrea C. and
+               Arpaci-Dusseau, Remzi H.},
+  title     = {{SOCK}: Rapid Task Provisioning with Serverless-Optimized Containers},
+  booktitle = {USENIX Annual Technical Conference (ATC)},
+  year      = {2018}
+}
+
+@inproceedings{du2020catalyzer,
+  author    = {Du, Dong and Yu, Tianyi and Xia, Yubin and Zang, Binyu and
+               Yan, Guanglu and Qin, Chenggang and Wu, Qixuan and Chen, Haibo},
+  title     = {Catalyzer: Sub-millisecond Startup for Serverless Computing with
+               Initialization-less Booting},
+  booktitle = {ASPLOS},
+  year      = {2020}
+}
+
+@inproceedings{agache2020firecracker,
+  author    = {Agache, Alexandru and Brooker, Marc and Iordache, Alexandra and
+               Liguori, Anthony and Neugebauer, Rolf and Piwonka, Phil and
+               Popa, Diana-Maria},
+  title     = {Firecracker: Lightweight Virtualization for Serverless Applications},
+  booktitle = {USENIX Symposium on Networked Systems Design and Implementation (NSDI)},
+  year      = {2020}
+}
+
+@inproceedings{mohan2019agile,
+  author    = {Mohan, Anup and Sane, Harshad and Doshi, Kshitij and
+               Edupuganti, Saikrishna and Nayak, Naren and Sukhomlinov, Vadim},
+  title     = {Agile Cold Starts for Scalable Serverless},
+  booktitle = {USENIX Workshop on Hot Topics in Cloud Computing (HotCloud)},
+  year      = {2019}
+}
+
+@inproceedings{fuerst2021faascache,
+  author    = {Fuerst, Alexander and Sharma, Prateek},
+  title     = {{FaasCache}: Keeping Serverless Computing Alive with Greedy-Dual Caching},
+  booktitle = {ASPLOS},
+  year      = {2021}
+}
+
+@inproceedings{ustiugov2021snapshots,
+  author    = {Ustiugov, Dmitrii and Petrov, Plamen and Kogias, Marios and
+               Bugnion, Edouard and Grot, Boris},
+  title     = {Benchmarking, Analysis, and Optimization of Serverless Function Snapshots},
+  booktitle = {ASPLOS},
+  year      = {2021}
+}
+
+% ---- scheduling e allocazione -------------------------------------------
+@inproceedings{kaffes2019centralized,
+  author    = {Kaffes, Kostis and Yadwadkar, Neeraja J. and Kozyrakis, Christos},
+  title     = {Centralized Core-granular Scheduling for Serverless Functions},
+  booktitle = {ACM Symposium on Cloud Computing (SoCC)},
+  year      = {2019}
+}
+
+@article{loridobotran2014autoscaling,
+  author  = {Lorido-Botr{\'a}n, Tania and Miguel-Alonso, Jose and Lozano, Jose A.},
+  title   = {A Review of Auto-scaling Techniques for Elastic Applications in Cloud Environments},
+  journal = {Journal of Grid Computing},
+  volume  = {12},
+  number  = {4},
+  pages   = {559--592},
+  year    = {2014}
+}
+
+% ---- benchmarking serverless --------------------------------------------
+@inproceedings{copik2021sebs,
+  author    = {Copik, Marcin and Kwasniewski, Grzegorz and Besta, Maciej and
+               Podstawski, Michal and Hoefler, Torsten},
+  title     = {{SeBS}: A Serverless Benchmark Suite for Function-as-a-Service Computing},
+  booktitle = {ACM/IFIP Middleware Conference},
+  year      = {2021}
+}
+
+@inproceedings{yu2020serverlessbench,
+  author    = {Yu, Tianyi and Liu, Qingyuan and Du, Dong and Xia, Yubin and
+               Zang, Binyu and Lu, Ziqian and Yang, Pingchao and Qin, Chenggang and
+               Chen, Haibo},
+  title     = {Characterizing Serverless Platforms with {ServerlessBench}},
+  booktitle = {ACM Symposium on Cloud Computing (SoCC)},
+  year      = {2020}
+}
+
+% ---- controllo del carico, code, equit\`a --------------------------------
+@article{little1961proof,
+  author  = {Little, John D. C.},
+  title   = {A Proof for the Queuing Formula: {$L = \lambda W$}},
+  journal = {Operations Research},
+  volume  = {9},
+  number  = {3},
+  pages   = {383--387},
+  year    = {1961}
+}
+
+@book{kleinrock1975queueing,
+  author    = {Kleinrock, Leonard},
+  title     = {Queueing Systems, Volume 1: Theory},
+  publisher = {Wiley-Interscience},
+  year      = {1975}
+}
+
+@article{brakmo1995vegas,
+  author  = {Brakmo, Lawrence S. and Peterson, Larry L.},
+  title   = {{TCP Vegas}: End to End Congestion Avoidance on a Global Internet},
+  journal = {IEEE Journal on Selected Areas in Communications},
+  volume  = {13},
+  number  = {8},
+  pages   = {1465--1480},
+  year    = {1995}
+}
+
+@article{nichols2012codel,
+  author  = {Nichols, Kathleen and Jacobson, Van},
+  title   = {Controlling Queue Delay},
+  journal = {ACM Queue},
+  volume  = {10},
+  number  = {5},
+  year    = {2012}
+}
+
+@book{bertsekas1992datanetworks,
+  author    = {Bertsekas, Dimitri P. and Gallager, Robert},
+  title     = {Data Networks},
+  edition   = {2},
+  publisher = {Prentice Hall},
+  year      = {1992}
+}
+
+@inproceedings{welsh2001seda,
+  author    = {Welsh, Matt and Culler, David and Brewer, Eric},
+  title     = {{SEDA}: An Architecture for Well-Conditioned, Scalable Internet Services},
+  booktitle = {ACM Symposium on Operating Systems Principles (SOSP)},
+  year      = {2001}
+}
+
+@article{ha2008cubic,
+  author  = {Ha, Sangtae and Rhee, Injong and Xu, Lisong},
+  title   = {{CUBIC}: A New {TCP}-Friendly High-Speed {TCP} Variant},
+  journal = {ACM SIGOPS Operating Systems Review},
+  volume  = {42},
+  number  = {5},
+  pages   = {64--74},
+  year    = {2008}
+}
+
+% ---- edge / fog ---------------------------------------------------------
+@article{satya2017edge,
+  author  = {Satyanarayanan, Mahadev},
+  title   = {The Emergence of Edge Computing},
+  journal = {IEEE Computer},
+  volume  = {50},
+  number  = {1},
+  pages   = {30--39},
+  year    = {2017}
+}
+
+@article{shi2016edge,
+  author  = {Shi, Weisong and Cao, Jie and Zhang, Quan and Li, Youhuizi and Xu, Lanyu},
+  title   = {Edge Computing: Vision and Challenges},
+  journal = {IEEE Internet of Things Journal},
+  volume  = {3},
+  number  = {5},
+  pages   = {637--646},
+  year    = {2016}
+}
+
+@inproceedings{bonomi2012fog,
+  author    = {Bonomi, Flavio and Milito, Rodolfo and Zhu, Jiang and Addepalli, Sateesh},
+  title     = {Fog Computing and Its Role in the {Internet of Things}},
+  booktitle = {Workshop on Mobile Cloud Computing (MCC)},
+  year      = {2012}
+}
+
+% ---- piattaforme e software di riferimento ------------------------------
+@misc{knative,
+  author       = {{The Knative Authors}},
+  title        = {Knative Documentation},
+  howpublished = {\url{https://knative.dev/docs/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{openwhisk,
+  author       = {{The Apache Software Foundation}},
+  title        = {Apache {OpenWhisk} Documentation},
+  howpublished = {\url{https://openwhisk.apache.org/documentation.html}},
+  note         = {consultato nel 2026}
+}
+
+@misc{openfaas,
+  author       = {Ellis, Alex and {The OpenFaaS Authors}},
+  title        = {{OpenFaaS} Documentation},
+  howpublished = {\url{https://docs.openfaas.com/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{fission,
+  author       = {{The Fission Authors}},
+  title        = {{Fission}: Serverless Functions for Kubernetes},
+  howpublished = {\url{https://fission.io/docs/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{keda,
+  author       = {{The KEDA Authors}},
+  title        = {{KEDA}: Kubernetes Event-driven Autoscaling},
+  howpublished = {\url{https://keda.sh/docs/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{k8shpa,
+  author       = {{The Kubernetes Authors}},
+  title        = {Horizontal Pod Autoscaling},
+  howpublished = {\url{https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{netflixlimits,
+  author       = {{Netflix, Inc.}},
+  title        = {{concurrency-limits}: Java Library for Adaptive Concurrency Limits},
+  howpublished = {\url{https://github.com/Netflix/concurrency-limits}},
+  note         = {consultato nel 2026}
+}
+
+@misc{graalvm,
+  author       = {{Oracle Corporation}},
+  title        = {{GraalVM} Native Image Documentation},
+  howpublished = {\url{https://www.graalvm.org/latest/reference-manual/native-image/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{springwebflux,
+  author       = {{VMware, Inc.}},
+  title        = {Spring Framework Reference: Web on Reactive Stack},
+  howpublished = {\url{https://docs.spring.io/spring-framework/reference/web/webflux.html}},
+  note         = {consultato nel 2026}
+}
+
+@misc{k6,
+  author       = {{Grafana Labs}},
+  title        = {{k6}: Load Testing Tool},
+  howpublished = {\url{https://k6.io/docs/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{prometheus,
+  author       = {{The Prometheus Authors}},
+  title        = {Prometheus Documentation},
+  howpublished = {\url{https://prometheus.io/docs/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{archunit,
+  author       = {{The ArchUnit Authors}},
+  title        = {{ArchUnit}: Unit Test Your Java Architecture},
+  howpublished = {\url{https://www.archunit.org/}},
+  note         = {consultato nel 2026}
+}
+
+@misc{testcontainers,
+  author       = {{AtomicJar, Inc.}},
+  title        = {Testcontainers for Java},
+  howpublished = {\url{https://java.testcontainers.org/}},
+  note         = {consultato nel 2026}
+}

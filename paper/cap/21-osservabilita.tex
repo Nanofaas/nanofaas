@@ -1,0 +1,272 @@
+\chapter{Osservabilit\`a}
+\label{cap:21-osservabilita}
+
+In una piattaforma pensata come strumento di misura, l'osservabilit\`a non \`e un
+corredo operativo: \`e l'apparato sperimentale. Ogni risultato riportato nella
+Parte V \`e stato ottenuto leggendo le metriche descritte in questo capitolo, e
+diverse decisioni di progetto della Parte III sono state prese sulla base di
+grandezze che qui sono definite.
+
+\section{Il modello}
+
+Le metriche sono Micrometer esportate in formato Prometheus~\cite{prometheus} su
+\code{/actuator/prometheus}, porta \code{8081}. La separazione dalla porta
+dell'API (\cref{cap:04-architettura-control-plane}) fa s\`i che lo scraping non
+condivida code n\'e limiti di ammissione con il traffico misurato.
+
+La quasi totalit\`a delle metriche \`e etichettata per funzione. Il ciclo di vita
+dei meter segue quello della funzione: creati alla registrazione, rimossi alla
+cancellazione (\cref{cap:06-nucleo}).
+
+\section{Il catalogo}
+
+\subsection{Nucleo}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
+\midrule
+\code{function\_enqueue\_total} & counter & Accodamenti. \\
+\code{function\_dispatch\_total} & counter & Dispatch verso il runtime.
+Sorgente della metrica \code{rps} dell'autoscaler. \\
+\code{function\_success\_total} & counter & Esiti positivi. \\
+\code{function\_error\_total} & counter & Esiti negativi. \\
+\code{function\_retry\_total} & counter & Riprove. \\
+\code{function\_latency\_ms} & timer & \textbf{Tempo di servizio}: da dispatch a
+completamento. \\
+\code{function\_e2e\_latency\_ms} & timer & Tempo di sojourn: da ammissione a
+completamento. \\
+\code{function\_queue\_wait\_ms} & timer & Attesa in coda. \\
+\code{function\_cold\_start\_ms} & timer & Durata dell'inizializzazione. \\
+\code{function\_init\_duration\_ms} & timer & Come sopra, dal runtime. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La distinzione fra le prime tre metriche temporali \`e la pi\`u importante
+dell'intero capitolo, ed \`e il fondamento del \cref{cap:12-concurrency-control}:
+
+\[
+  \underbrace{\code{function\_e2e\_latency\_ms}}_{\text{sojourn}}
+  \;=\;
+  \underbrace{\code{function\_queue\_wait\_ms}}_{\text{attesa}}
+  \;+\;
+  \underbrace{\code{function\_latency\_ms}}_{\text{servizio}} .
+\]
+
+Che le tre esistano separatamente \`e ci\`o che ha reso possibile stabilire che
+la seconda \`e sei volte la terza sotto carico, e quindi che un controllore che
+decide dalla terza sta ottimizzando la grandezza sbagliata.
+
+\subsection{Code}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Fornita da} \\
+\midrule
+\code{function\_queue\_depth} & gauge & \code{async-queue} \\
+\code{function\_inFlight} & gauge & \code{async-queue} \\
+\code{function\_effective\_concurrency} & gauge & \code{async-queue} \\
+\code{sync\_queue\_depth} & gauge & \code{sync-queue}, globale e per funzione \\
+\code{sync\_queue\_wait\_seconds} & gauge & \code{sync-queue}, attesa stimata \\
+\code{sync\_queue\_admitted\_total} & counter & \code{sync-queue} \\
+\code{sync\_queue\_rejected\_total} & counter & \code{sync-queue} \\
+\code{sync\_queue\_timedout\_total} & counter & \code{sync-queue} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Politiche}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Fornita da} \\
+\midrule
+\code{function\_target\_inflight\_per\_pod} & gauge & \code{concurrency-control} \\
+\code{function\_concurrency\_controller\_mode} & gauge &
+\code{concurrency-control} \\
+\code{nanofaas\_offload\_total} & counter & \code{offload}, con etichetta
+\code{trigger} \\
+\code{nanofaas\_offload\_failure\_total} & counter & \code{offload} \\
+\code{controlplane\_runtime\_config\_revision} & gauge & \code{runtime-config} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Nessuna di queste alimenta una decisione: sono tutte \emph{descrittive della
+decisione}. \`E una categoria che vale la pena isolare concettualmente, perch\'e
+risponde a una domanda che le metriche di stato non possono risolvere: dato un
+comportamento osservato, quale politica era attiva e che cosa aveva deciso.
+
+\section{I due profili}
+
+\begin{lstlisting}[language=Java]
+private static final Set<String> ADVANCED_METRICS = Set.of(
+        "function_cold_start_total", "function_warm_start_total",
+        "function_effective_concurrency", "function_target_inflight_per_pod",
+        "function_concurrency_controller_mode", "gateway_service_target_load",
+        "controlplane_runtime_config_revision", ...);
+\end{lstlisting}
+
+Il profilo \code{basic} (default) esporta il nucleo. Il profilo
+\code{advanced} aggiunge le metriche descrittive delle politiche e --- pi\`u
+significativamente --- attiva gli istogrammi per percentili sui quattro timer
+per funzione.
+
+Il costo che i due profili arbitrano \`e quello degli istogrammi. Un timer
+Micrometer senza istogramma mantiene conteggio, somma e massimo: tre valori. Con
+gli istogrammi mantiene una serie di secchi, e ogni secchio \`e una serie
+temporale in Prometheus. Per una piattaforma con molte funzioni la differenza
+nella cardinalit\`a esportata \`e sostanziale.
+
+La conseguenza pratica \`e che i percentili --- p95, p99 --- sono disponibili
+soltanto sotto \code{advanced}. Poich\'e i risultati della Parte V sono espressi
+prevalentemente in percentili, tutte le campagne sperimentali girano su quel
+profilo.
+
+Il profilo \`e validato all'avvio: un valore diverso da \code{basic} o
+\code{advanced} fa fallire il contesto con un messaggio esplicito, anzich\'e
+ripiegare in silenzio su un default.
+
+\section{Le letture canoniche}
+
+La documentazione operativa del progetto raccoglie le interrogazioni PromQL di
+riferimento. Le pi\`u istruttive sono quelle che \emph{combinano} due metriche,
+perch\'e ciascuna combinazione codifica una diagnosi.
+
+\begin{lstlisting}[language=bash, caption={Tasso di errore per funzione.}]
+rate(function_error_total{function="word-stats"}[5m])
+  / (rate(function_success_total{function="word-stats"}[5m])
+     + rate(function_error_total{function="word-stats"}[5m])) * 100
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption={Pressione di ammissione sincrona.}]
+rate(sync_queue_rejected_total{function="word-stats"}[5m])
+  / rate(sync_queue_admitted_total{function="word-stats"}[5m])
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption={Carico effettivo per replica: il
+segnale su cui l'autoscaler decide.}]
+rate(function_dispatch_total{function="word-stats"}[1m])
+  / max by (function) (kube_deployment_status_replicas{deployment="fn-word-stats"})
+\end{lstlisting}
+
+\subsection{La guida alla lettura della contesa}
+
+Il progetto documenta quattro regole di interpretazione che meritano di essere
+riportate, perch\'e sono il tipo di conoscenza che di norma resta implicita:
+
+\begin{itemize}[leftmargin=*]
+  \item \code{sync\_queue\_depth} crescente con \code{function\_dispatch\_total}
+  piatto significa che l'ammissione riesce pi\`u in fretta di quanto gli slot si
+  riaprano.
+  \item \code{sync\_queue\_rejected\_total} alto con profondit\`a bassa indica un
+  rifiuto per attesa stimata, non un esaurimento di capacit\`a.
+  \item \code{function\_dispatch\_total} che cresce mentre successi ed errori
+  restano indietro indica latenza di completamento, non iniquit\`a dello
+  scheduler.
+  \item Profondit\`a persistente con poche richieste in volo indica una funzione
+  limitata dagli slot; profondit\`a persistente con molte richieste in volo
+  indica un runtime lento.
+\end{itemize}
+
+L'ultima coppia \`e la pi\`u utile e non \`e ovvia: la stessa profondit\`a di coda
+ha due cause opposte, distinguibili solo confrontandola con il contatore delle
+richieste in volo.
+
+\section{Il tasso di errore \`e ambiguo, e il progetto lo disambigua}
+
+Un problema ricorrente nel misurare piattaforme FaaS: il tasso di errore
+mescola i fallimenti della piattaforma con le risposte non-2xx deliberate delle
+funzioni. Una funzione che restituisce correttamente \code{404} per una risorsa
+inesistente non \`e un errore della piattaforma, ma da fuori \`e indistinguibile.
+
+Il meccanismo della busta di risposta (\cref{cap:17-runtime-funzione}) risolve
+l'ambiguit\`a alla radice: una risposta decisa dall'handler porta
+\code{X-NanoFaaS-Function-Status: true} ed \`e contabilizzata come successo dalla
+piattaforma, qualunque sia il suo codice di stato. \code{function\_error\_total}
+conta quindi soltanto i fallimenti che la piattaforma si attribuisce.
+
+\`E una precondizione per il gate sperimentale del
+\cref{cap:23-prestazioni-base}, che richiede tasso di errore esattamente zero:
+un tale gate sarebbe inapplicabile se il contatore includesse le risposte
+applicative negative.
+
+\section{Log e tracing}
+
+I log sono strutturati con cinque campi: \code{executionId},
+\code{functionName}, \code{traceId}, \code{attempt}, \code{status}. Il tracing
+\`e la propagazione di \code{X-Trace-Id} lungo l'intera catena, con supporto per
+i contesti W3C (\code{traceparent}, \code{tracestate}) sul percorso di offload.
+
+Una regola \`e enunciata esplicitamente e vale la pena riportarla:
+
+\begin{quote}\itshape
+Il runtime non sintetizza identificatori di esecuzione segnaposto per il
+logging. Se n\'e l'header della richiesta n\'e \code{EXECUTION\_ID} sono
+disponibili, il contesto diagnostico resta vuoto per \code{executionId}.
+\end{quote}
+
+Un identificatore inventato riempirebbe il campo e renderebbe la correlazione
+\emph{apparentemente} possibile ma sbagliata. Un campo vuoto \`e onesto.
+
+\subsection{La consegna delle callback \`e limitata e pu\`o essere scartata}
+
+Un dettaglio con conseguenze sperimentali. La consegna della callback di
+completamento dal runtime Java \`e asincrona e limitata: \code{/invoke}
+restituisce senza attenderla, e quando il dispatcher \`e saturo la callback viene
+\emph{scartata} con un avviso. Il runtime Go si comporta allo stesso modo e
+incrementa una metrica di callback scartate.
+
+Una callback scartata produce un'esecuzione che non raggiunge mai uno stato
+terminale --- esattamente il caso che il terzo orizzonte di eviction dello
+\code{ExecutionStore} deve ripulire (\cref{cap:06-nucleo}). Che il runtime Go
+esponga un contatore dedicato e quello Java soltanto un avviso nel log \`e
+un'asimmetria che rende il fenomeno misurabile su un SDK e non sull'altro.
+
+Le riprove della callback sono limitate ai fallimenti ritentabili: errori di
+trasporto, \code{408}, \code{429} e \code{5xx}. Gli altri \code{4xx} sono
+considerati permanenti. \`E la distinzione corretta --- un \code{400} sulla
+callback significa che il control plane ha rifiutato il corpo, e ripeterlo non
+lo far\`a accettare.
+
+\section{Salute}
+
+Due sonde: \code{/actuator/health/liveness} e
+\code{/actuator/health/readiness}, entrambe sulla porta di management. Sono la
+base delle \code{livenessProbe} e \code{readinessProbe} del Deployment del
+control plane.
+
+\section{Copertura contro le regressioni}
+
+Il progetto adotta una posizione metodologica che vale la pena riportare per
+esteso:
+
+\begin{quote}\itshape
+Il repository include test strutturali di regressione sul percorso caldo anzich\'e
+microbenchmark assoluti. Asseriscono progresso e comportamenti sensibili
+all'allocazione, come il riuso del replay, il forward progress della coda
+sincrona dietro una testa bloccata, e l'equit\`a asincrona fra funzioni calde e
+fredde. [\ldots] Nel tarare il comportamento delle code, si preferisca
+preservare quelle garanzie strutturali anzich\'e inseguire un numero fisso di
+temporizzazione locale. Le temporizzazioni assolute sono sensibili all'ambiente,
+le garanzie di equit\`a e riuso non lo sono.
+\end{quote}
+
+\`E la risposta corretta a un problema noto dei test di prestazione: un test che
+asserisce ``questa operazione impiega meno di $X$ millisecondi'' fallisce sulla
+macchina di un collega, e viene disattivato. Un test che asserisce ``dietro una
+testa bloccata, un'altra funzione riesce comunque a progredire'' cattura la
+propriet\`a che interessava, ed \`e vero su qualunque macchina.

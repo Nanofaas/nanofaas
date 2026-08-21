@@ -1,6 +1,7 @@
 # nanofaas paper figures (TikZ)
 
-Four standalone, print-ready TikZ figures for the nanofaas paper. Modern flat
+Standalone, print-ready TikZ figures for the nanofaas paper and for the
+Italian monograph in `paper/nanofaas.tex`. Modern flat
 style with a grayscale-safe palette; sans-serif labels.
 
 | File | Figure |
@@ -8,8 +9,10 @@ style with a grayscale-safe palette; sans-serif labels.
 | `fig-architecture.tex` | Single-pod control plane, optional SPI modules, pluggable execution backends |
 | `fig-invocation-flow.tex` | Sync (`:invoke`) vs async (`:enqueue`) invocation as a UML `alt` sequence diagram |
 | `fig-offload.tex` | Edge→cloud transparent offload (pressure / eager policy, single hop, no fallback) |
-| `fig-execution-modes.tex` | LOCAL / POOL / DEPLOYMENT dispatch + cold-start vs warm-start timeline |
-| `nanofaas-figs.sty` | Shared palette + TikZ styles (required by all four) |
+| `fig-execution-modes.tex` | LOCAL / EXTERNAL / DEPLOYMENT dispatch + cold-start vs warm-start timeline |
+| `fig-sojourn-curve.tex` | Schematic: service time has no interior optimum, sojourn time does (illustrative shapes, not measured data) |
+| `fig-release-series.tex` | Throughput and p95 across releases, from `docs/performance/history.md` (requires `pgfplots`) |
+| `nanofaas-figs.sty` | Shared palette + TikZ styles (required by all of them) |
 
 ## Compile
 
@@ -50,6 +53,9 @@ or `\input` the source (put `nanofaas-figs.sty` on the path and load
   the `\sffamily` from the styles in `nanofaas-figs.sty`.
 - **Colours** live in `nanofaas-figs.sty` (`nfblue`/`nfgreen`/`nfamber`/…). They
   stay distinguishable in grayscale.
+- **Language:** the four original figures label components in English; the two
+  added for the Italian monograph (`fig-sojourn-curve`, `fig-release-series`)
+  label their axes in Italian, since only that document includes them.
 - **Offload figure** reflects the shipped module: header `X-NanoFaaS-Offloaded`,
   triggers `EAGER` / `DEPTH` / `EST_WAIT`, counters `nanofaas_offload_total`
   (tagged `function`,`trigger`) and `nanofaas_offload_failure_total`.

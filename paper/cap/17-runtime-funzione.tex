@@ -1,0 +1,243 @@
+\chapter{Il runtime di funzione}
+\label{cap:17-runtime-funzione}
+
+I capitoli precedenti hanno descritto il control plane. Questo attraversa il
+confine e descrive che cosa gira dentro il container di una funzione, quale
+contratto lo lega al control plane, e perch\'e quel contratto ha la forma che ha.
+
+\section{Anatomia del container}
+
+Un container gestito da \nf{} contiene due strati.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{9cm}@{}}
+\toprule
+\textbf{Strato} & \textbf{Ruolo} \\
+\midrule
+\code{watchdog} & Entrypoint del container. Binario Rust statico, circa 2\,MB,
+distribuito su un'immagine \code{FROM scratch}. Possiede il ciclo di vita del
+processo utente. \\
+\emph{runtime} & Il processo dell'utente: un'applicazione Spring Boot, un
+servizio FastAPI, un binario Go, uno script, qualunque cosa risponda a uno dei
+tre protocolli. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La separazione risolve un problema pratico. Il control plane vuole parlare un
+solo protocollo HTTP con ogni funzione; gli autori di funzioni vogliono scrivere
+in qualunque linguaggio, incluso uno che non ha un server HTTP. Il watchdog
+adatta il secondo al primo.
+
+\section{I tre protocolli di runtime}
+
+L'enumerazione \code{RuntimeMode} (\cref{cap:05-contratti-dati}) dichiara come il
+watchdog deve parlare con il processo figlio.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.8cm}@{}}
+\toprule
+\textbf{Modo} & \textbf{Protocollo} \\
+\midrule
+\code{HTTP} & Il watchdog sonda \code{GET /health} finch\'e il runtime \`e
+pronto, poi fa da reverse proxy su \code{POST /invoke} verso
+\code{127.0.0.1:8081}. \\
+\code{STDIO} & Il watchdog scrive il payload JSON su stdin del processo, legge
+la risposta JSON da stdout, e ne raccoglie l'uscita. \\
+\code{FILE} & Il watchdog scrive \code{/tmp/input.json}, avvia il processo con
+le variabili \code{INPUT\_FILE} e \code{OUTPUT\_FILE}, e legge
+\code{/tmp/output.json}. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+I tre modi coprono uno spettro di invasivit\`a decrescente. \code{HTTP} richiede
+un server nel processo utente ed \`e il pi\`u efficiente, perch\'e il processo
+resta vivo fra le invocazioni. \code{STDIO} non richiede nulla oltre alla
+capacit\`a di leggere e scrivere JSON, ma paga la creazione di un processo per
+invocazione. \code{FILE} \`e il ripiego per binari che non hanno un'interfaccia
+migliore.
+
+Il punto importante \`e che i tre modi sono \emph{indistinguibili dal control
+plane}: qualunque sia il modo, il control plane invia una \code{POST} al
+watchdog e riceve una risposta. La differenza \`e interamente confinata dietro
+il watchdog.
+
+\section{Warm e one-shot}
+
+Il watchdog opera in due regimi.
+
+In modalit\`a \code{DEPLOYMENT} resta vivo fra le invocazioni (container caldo):
+espone il proprio server HTTP su \code{:8080}, esegue \code{WATCHDOG\_CMD} per
+invocazione nei modi \code{STDIO} e \code{FILE}, e fa da reverse proxy verso il
+runtime interno nel modo \code{HTTP}. Il control plane invia un
+\code{InvocationRequest} come corpo e legge la risposta direttamente --- nessuna
+callback per invocazione.
+
+Il regime one-shot, precedente, avvia il processo una volta per invocazione e ne
+riporta l'esito con una callback verso \code{CALLBACK\_URL}. \`E il regime che
+paga un'inizializzazione per ogni richiesta, e la sua esistenza \`e ci\`o che
+rende \code{coldStart} e \code{initDurationMs} campi significativi in
+\code{ExecutionStatus}.
+
+\subsection{Le variabili d'ambiente del contratto}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{5.8cm}@{}}
+\toprule
+\textbf{Variabile} & \textbf{Regime} & \textbf{Significato} \\
+\midrule
+\code{FUNCTION\_NAME} & warm & Nome logico. \\
+\code{WARM} & warm & \code{true}. \\
+\code{TIMEOUT\_MS} & entrambi & Budget per invocazione. \\
+\code{EXECUTION\_MODE} & entrambi & \\
+\code{WATCHDOG\_CMD} & entrambi & Comando del processo utente. \\
+\code{RUNTIME\_URL} & warm & \code{http://127.0.0.1:8081/invoke}. \\
+\code{EXECUTION\_ID} & one-shot & Identificatore; nel warm arriva come header
+\code{X-Execution-Id}. \\
+\code{CALLBACK\_URL} & one-shot & Endpoint di completamento. \\
+\code{INVOCATION\_PAYLOAD} & one-shot & Il payload, nell'ambiente. \\
+\code{TRACE\_ID} & one-shot & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Sono le stesse variabili che il builder Kubernetes protegge dalla sovrascrittura
+da parte dell'utente (\cref{cap:15-deployment-provider}).
+
+Il passaggio dal regime one-shot al warm si legge nella tabella: nel warm
+l'identificatore di esecuzione si sposta dall'ambiente agli header, il che \`e
+obbligato --- un processo che serve molte invocazioni non pu\`o riceverne
+l'identit\`a in una variabile d'ambiente fissata all'avvio.
+
+\section{Il contratto della risposta}
+
+\subsection{\code{HandlerResponse}}
+
+Un handler pu\`o restituire un valore semplice, che diventa l'output, oppure una
+busta:
+
+\begin{lstlisting}[language=Java]
+/**
+ * Optional response envelope a handler may return instead of a plain value to control
+ * the HTTP status code, a safe set of response headers, and whether {@code output} is
+ * base64-encoded binary. Its mere presence as the handler's return value is itself the
+ * signal that the response was function-decided, not a platform error.
+ */
+public record HandlerResponse(Object output, int statusCode, Map<String, String> headers, String encoding) { ... }
+\end{lstlisting}
+
+La frase decisiva \`e l'ultima: \emph{la sola presenza della busta \`e il segnale
+che la risposta \`e stata decisa dalla funzione}. \`E ci\`o che consente al
+control plane di distinguere un \code{404} applicativo --- ``la risorsa che hai
+chiesto alla mia funzione non esiste'' --- da un \code{404} di piattaforma ---
+``questa funzione non \`e registrata''. La distinzione viaggia sul filo come
+header \code{X-NanoFaaS-Function-Status} ed \`e interpretata sia dal dispatcher
+esterno (\cref{cap:06-nucleo}) sia dal gateway di offload
+(\cref{cap:13-offload}).
+
+Senza questo meccanismo, il tasso di errore misurato da una piattaforma FaaS \`e
+ambiguo: mescola i fallimenti della piattaforma con le risposte non-2xx
+deliberate delle funzioni. Il \cref{cap:21-osservabilita} riprende il punto.
+
+\subsection{La lista bianca degli header}
+
+Una funzione non pu\`o impostare header arbitrari sulla risposta:
+
+\begin{lstlisting}[language=Java]
+public static final Set<String> ALLOWED_RESPONSE_HEADERS = Set.of(
+        "content-type", "location", "cache-control", "etag",
+        "content-disposition", "content-language", "retry-after", "vary");
+\end{lstlisting}
+
+Otto header, tutti descrittivi del contenuto o della sua cacheabilit\`a. Sono
+esclusi gli header hop-by-hop, quelli che governano la connessione, e quelli che
+il control plane usa per il proprio protocollo. Un handler che potesse impostare
+\code{X-NanoFaaS-Function-Status} potrebbe mentire sulla natura della propria
+risposta; uno che potesse impostare \code{Transfer-Encoding} potrebbe corrompere
+la connessione.
+
+Il filtro contiene due dettagli che vale la pena isolare, perch\'e riguardano
+classi di bug reali.
+
+\paragraph{Collisioni per maiuscole.}
+\begin{lstlisting}[language=Java]
+/**
+ * At most one entry survives per header name, compared case-insensitively: HTTP header names
+ * are case-insensitive, so emitting both {@code Content-Type} and {@code content-type} would put
+ * two colliding entries on the response. The first occurrence in iteration order wins and keeps
+ * its original casing — that casing is part of the public {@code InvocationResponse.headers}
+ * contract and callers read it.
+ */
+\end{lstlisting}
+
+\paragraph{Il locale turco.}
+\begin{lstlisting}[language=Java]
+// Locale.ROOT, not the default locale: under a Turkish/Azerbaijani default,
+// 'I' folds to dotless 'i' (U+0131) and the allow-list match would silently fail.
+String lowerKey = entry.getKey().toLowerCase(Locale.ROOT);
+\end{lstlisting}
+
+In turco la minuscola di \code{I} \`e \code{\i} senza punto, e
+\code{"Location".toLowerCase()} su una JVM con locale turco non produce
+\code{"location"}. Il confronto con la lista bianca fallirebbe, e l'header
+sarebbe silenziosamente scartato --- su alcune macchine e non su altre. Lo stesso
+accorgimento compare nel controller per il valore dell'header di ragione del
+rifiuto (\cref{cap:04-architettura-control-plane}).
+
+Sono dettagli, ma sono i dettagli che distinguono un contratto che funziona da
+uno che funziona sulla macchina dello sviluppatore.
+
+\section{Il watchdog}
+
+Il watchdog \`e scritto in Rust, compilato staticamente con musl, e distribuito
+su un'immagine \code{FROM scratch} di circa 2\,MB. Il sorgente principale \`e di
+circa 1\,500 righe.
+
+La scelta di Rust e della compilazione statica \`e coerente con il ruolo. Il
+watchdog \`e presente in \emph{ogni} container di funzione, quindi la sua
+impronta si moltiplica per il numero di repliche di ogni funzione; ed \`e
+l'entrypoint, quindi il suo tempo di avvio si somma a ogni cold start. Un
+binario statico da 2\,MB su un'immagine vuota \`e ci\`o che rende quei due costi
+trascurabili.
+
+Le sue responsabilit\`a: leggere la configurazione dall'ambiente, avviare il
+processo figlio, attendere che diventi pronto, applicare il timeout per
+invocazione, inoltrare la richiesta secondo il modo configurato, inviare la
+callback nel regime one-shot, e gestire i segnali di terminazione.
+
+\begin{damisurare}
+Il costo del watchdog sul percorso di invocazione --- l'ulteriore salto di
+reverse proxy nel modo \code{HTTP} --- non \`e stato isolato. \`E incluso in
+tutte le misure di \code{function\_latency\_ms} riportate nel
+\cref{cap:23-prestazioni-base}, ma non \`e stato confrontato con un'invocazione
+diretta al runtime.
+\todomis{latenza aggiunta dal reverse proxy del watchdog}
+\end{damisurare}
+
+\section{Il servizio di riferimento \code{warm-echo}}
+
+\code{services/java/warm-echo} \`e un servizio che incorpora l'SDK Java e si
+limita a restituire l'input. Sono ventiquattro righe.
+
+La sua funzione nel progetto \`e sperimentale: fornisce un runtime \emph{reale},
+con un vero salto HTTP e un vero processo JVM, ma con un tempo di esecuzione
+dell'handler prossimo a zero. Il confronto con la modalit\`a \code{LOCAL}
+(\cref{cap:07-modalita-esecuzione}) isola cos\`i il costo del trasporto dal costo
+del control plane.
+
+Il progetto insiste su un punto: \code{warm-echo} \`e distribuito attraverso la
+normale API di registrazione, non installato come infrastruttura condivisa. La
+distinzione conta perch\'e mantiene il servizio di riferimento soggetto alle
+stesse politiche --- code, limiti di concorrenza, retry --- di qualunque altra
+funzione. Un servizio di riferimento privilegiato misurerebbe un percorso che
+nessun'altra funzione percorre.

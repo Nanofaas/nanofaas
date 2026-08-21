@@ -1,0 +1,237 @@
+\chapter{I provider di deployment}
+\label{cap:15-deployment-provider}
+
+Due moduli implementano l'interfaccia \code{ManagedDeploymentProvider}
+(\cref{cap:07-modalita-esecuzione}) e forniscono alla modalit\`a
+\code{DEPLOYMENT} un meccanismo concreto: \code{k8s-deployment-provider}
+(1\,202 righe) e \code{container-deployment-provider} (1\,166 righe). Insieme
+sono un terzo del codice di tutti i moduli.
+
+Che siano due, e che siano intercambiabili, \`e la prova che l'astrazione
+introdotta nel \cref{cap:07-modalita-esecuzione} non \`e speculativa: il progetto
+la esercita con due realizzazioni sostanzialmente diverse.
+
+\section{\code{k8s-deployment-provider}}
+
+Il provider Kubernetes traduce una \code{FunctionSpec} in tre oggetti: un
+\code{Deployment}, un \code{Service} e --- se la strategia di scaling \`e
+\code{HPA} --- un \code{HorizontalPodAutoscaler}. Usa il client
+Fabric8.
+
+\subsection{Convenzioni di denominazione ed etichette}
+
+I nomi degli oggetti sono derivati dal nome della funzione con prefisso
+\code{fn-}, e ogni oggetto porta due etichette: \code{app=nanofaas} e
+\code{function=<nome>}. La seconda \`e anche il selettore del Deployment.
+
+Il template dei pod porta tre annotazioni per lo scraping Prometheus:
+
+\begin{lstlisting}[language=Java]
+.addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_SCRAPE, "true")
+.addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PATH, "/metrics")
+.addToAnnotations(NanofaasDeploymentConstants.ANNOTATION_PORT, "8080")
+\end{lstlisting}
+
+Le metriche lato funzione sono quindi raccolte senza che l'operatore configuri
+nulla. \`E una piccola decisione con una conseguenza sperimentale grande: le
+misure del \cref{cap:25-valutazione-concorrenza} che confrontano il tempo di
+servizio misurato dal control plane con quello misurato dentro la funzione sono
+possibili solo perch\'e la seconda sorgente esiste per default.
+
+\subsection{Le variabili d'ambiente riservate}
+
+\begin{lstlisting}[language=Java]
+private static final Set<String> RESERVED_ENV = Set.of(
+        "FUNCTION_NAME", "WARM", "TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD", "CALLBACK_URL"
+);
+\end{lstlisting}
+
+Sono il contratto fra control plane e runtime della funzione
+(\cref{cap:17-runtime-funzione}). Il builder le inietta e impedisce alla
+specifica dell'utente di sovrascriverle: \code{CALLBACK\_URL} in particolare \`e
+l'indirizzo a cui il runtime invia il completamento asincrono, e un valore
+sbagliato produrrebbe esecuzioni che non terminano mai --- il caso che il terzo
+orizzonte di eviction dello \code{ExecutionStore} deve poi ripulire
+(\cref{cap:06-nucleo}).
+
+\subsection{Il deadlock dello scale-to-zero con HPA}
+
+Il commento pi\`u istruttivo del modulo:
+
+\begin{lstlisting}[language=Java]
+if (replicas == 0 && hpaOwnsScaling(spec.scalingConfig())) {
+    // Kubernetes 1.36 only lets an HPA scale a target up from zero once it
+    // has parked that target at zero itself (status condition ScaledToZero).
+    // A Deployment created at zero therefore deadlocks: "scaling is disabled
+    // since the replica count of the target is zero", forever. Start at one
+    // and let the HPA scale it down, which is what stamps that condition.
+    replicas = 1;
+}
+\end{lstlisting}
+
+Una funzione con \code{minReplicas = 0} e strategia \code{HPA} verrebbe creata a
+zero repliche, e l'HPA rifiuterebbe di risvegliarla perch\'e non \`e stato lui a
+portarla a zero. Il rimedio \`e creare il Deployment a una replica e lasciare che
+sia l'HPA a scalarla a zero, il che imprime la condizione di stato che poi gli
+consente di risalire.
+
+\`E il tipo di dettaglio che vale la pena riportare in un documento accademico
+per una ragione metodologica: una piattaforma FaaS costruita sopra Kubernetes
+eredita i vincoli di Kubernetes, e alcuni di questi non sono documentati come
+vincoli ma si manifestano come comportamenti. Il costo dell'astrazione
+``deployment gestito'' include l'obbligo di conoscerli.
+
+\subsection{Validazione delle immagini}
+
+\code{KubernetesImageValidator} verifica che un'immagine esista e sia scaricabile
+\emph{prima} che la registrazione della funzione venga accettata. Il metodo \`e
+diretto: crea un pod di prova, ne osserva lo stato del container, e cerca le
+condizioni di attesa che segnalano un fallimento di pull
+(\code{ErrImagePull}, \code{ImagePullBackOff}), con un timeout di 20 secondi e
+polling a 500\,ms.
+
+\`E un controllo costoso --- crea e distrugge un pod --- eseguito una sola volta
+per registrazione. L'alternativa sarebbe scoprire l'immagine inesistente alla
+prima invocazione, quando il chiamante sta gi\`a attendendo e la diagnosi \`e
+molto meno diretta. La registrazione fallisce con un errore che nomina il
+problema.
+
+\section{\code{container-deployment-provider}}
+
+Il provider locale crea container su un runtime compatibile con Docker. \`E
+pensato per lo sviluppo e --- soprattutto --- per gli esperimenti su una singola
+macchina, dove interporre Kubernetes fra il control plane e le funzioni
+aggiungerebbe una variabile senza aggiungere realismo.
+
+\subsection{Struttura}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.6cm}@{}}
+\toprule
+\textbf{Componente} & \textbf{Ruolo} \\
+\midrule
+\code{ContainerRuntimeAdapter} & Astrazione sul runtime; due implementazioni,
+via CLI e via client Docker Java. \\
+\code{EphemeralPortAllocator} & Assegna una porta libera dell'host a ciascun
+container. \\
+\code{HttpEndpointProbe} & Attende che il container risponda sull'endpoint di
+salute. \\
+\code{RoundRobinFunctionProxy} & Espone un endpoint stabile che bilancia sulle
+repliche. \\
+\code{DockerImageValidator} & Verifica l'esistenza dell'immagine. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Il proxy: perch\'e serve}
+
+Kubernetes fornisce un \code{Service}, ossia un nome stabile che bilancia sui
+pod. Un runtime container locale non ha nulla di equivalente: ogni container ha
+la propria porta effimera sull'host. Se il control plane conoscesse quelle porte
+direttamente, ogni scale-up e ogni scale-down cambierebbero l'endpoint della
+funzione.
+
+\code{RoundRobinFunctionProxy} colma la differenza con un piccolo server HTTP ---
+costruito sul \code{HttpServer} del JDK, senza dipendenze aggiuntive --- che
+espone \code{/invoke} e \code{/health} su una porta stabile e distribuisce le
+richieste sui backend correnti con round robin. L'insieme dei backend \`e un
+riferimento atomico che il provider aggiorna a ogni cambio di scala.
+
+\`E, in sostanza, una reimplementazione minimale del \code{Service} di
+Kubernetes, ed \`e la componente che rende i due provider \emph{equivalenti dal
+punto di vista del control plane}: entrambi restituiscono un URL stabile.
+
+\subsection{Il \code{cpuset}: una decisione derivata da una misura}
+
+Il commento su \code{ContainerLocalProperties} \`e uno dei pi\`u densi del
+progetto:
+
+\begin{quote}\itshape
+\code{cpuset}: le CPU dell'host a cui ogni container di funzione gestita \`e
+vincolato, per esempio \code{"0-3"}. Un limite di CPU per funzione limita ciascun
+container separatamente, il che su una macchina con core liberi significa che le
+funzioni non competono mai davvero --- misurato: due funzioni con quattro CPU
+ciascuna su un host a undici core hanno condiviso un control plane e si sono a
+malapena influenzate a vicenda. Vincolarle agli stessi core \`e ci\`o che rende la
+capacit\`a della piattaforma una quantit\`a che devono dividersi, che \`e la
+premessa su cui \`e costruito il budget di concorrenza.
+\end{quote}
+
+Questa \`e una funzionalit\`a nata da un requisito \emph{sperimentale}, non
+operativo. Il modo \code{BUDGETED} del \cref{cap:12-concurrency-control} presume
+che la concorrenza sia una risorsa scarsa condivisa; su un host con core in
+eccesso quella premessa \`e falsa e il modo non pu\`o essere valutato. Il
+\code{cpuset} fabbrica la scarsit\`a necessaria a rendere l'esperimento
+significativo.
+
+\`E anche il parametro che ha consentito di \emph{escludere} la contesa di CPU
+come spiegazione del cross-talk fra funzioni co-residenti: vincolando entrambe
+agli stessi quattro core, i risultati sono rimasti identici a tre cifre
+significative (\cref{cap:25-valutazione-concorrenza}).
+
+\subsection{Readiness}
+
+\code{HttpEndpointProbe} interroga l'endpoint di salute del container con un
+timeout di 20 secondi e un intervallo di 250\,ms. Un container che non diventa
+pronto entro il timeout fa fallire il provisioning.
+
+I valori sono deliberatamente pi\`u aggressivi delle sonde di Kubernetes:
+l'obiettivo qui non \`e la robustezza in produzione ma il tempo di ciclo di un
+esperimento, in cui il provisioning avviene decine di volte.
+
+\section{Chi possiede la validazione delle immagini}
+
+Un punto architetturale gi\`a anticipato nel \cref{cap:03-requisiti-principi} e
+che qui trova la sua giustificazione completa: la validazione delle immagini
+\emph{non} \`e un modulo autonomo. Ciascun provider possiede il proprio
+validatore e lo attiva quando \`e selezionato come backend.
+
+Il motivo \`e che l'operazione non \`e la stessa. Verificare un'immagine tramite
+Kubernetes significa creare un pod e osservare le condizioni di attesa del
+container; verificarla tramite un demone Docker locale significa interrogarne
+l'indice delle immagini o tentare un pull. Un modulo generico avrebbe dovuto
+reintrodurre al proprio interno la distinzione fra backend che l'astrazione dei
+provider esiste per eliminare, e avrebbe dovuto essere selezionato
+coerentemente con essi --- un vincolo di coerenza in pi\`u nella selezione
+modulare, per nessun guadagno.
+
+Resta il fatto che l'interfaccia \code{ImageValidator} vive nel package
+\code{registry} del control plane anzich\'e in \code{platform/common}, dove
+stanno gli altri contratti condivisi (\cref{cap:05-contratti-dati}). Non \`e una
+violazione architetturale --- i moduli possono dipendere dal nucleo, e la regola
+ArchUnit vieta soltanto le dipendenze \emph{fra} moduli
+(\cref{cap:26-qualita-verifica}) --- ma \`e una collocazione incoerente con il
+criterio dichiarato altrove, e il posto naturale dell'interfaccia \`e il modulo
+dei contratti.
+
+\section{Confronto}
+
+\begin{table}[htbp]
+\centering
+\caption{I due provider di deployment a confronto.}
+\label{tab:provider}
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+ & \textbf{\code{k8s}} & \textbf{\code{container-local}} \\
+\midrule
+Backend & API Kubernetes (Fabric8) & runtime Docker-compatibile \\
+Endpoint stabile & \code{Service} & proxy round robin interno \\
+Scaling & \code{replicas} del Deployment o HPA & creazione/distruzione
+container \\
+Validazione immagine & pod di prova, condizioni di attesa & indice del demone \\
+Isolamento CPU & \code{resources.limits} & \code{resources.limits} +
+\code{cpuset} \\
+Dipendenze pesanti & Fabric8, Vert.x & client Docker Java \\
+Uso previsto & carichi realistici su cluster & esperimenti su singola macchina \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+L'ultima riga \`e la ragione per cui entrambi esistono. Il provider Kubernetes
+\`e quello che rende \nf{} una piattaforma FaaS reale; quello locale \`e quello
+che rende gli esperimenti eseguibili in un ciclo abbastanza breve da poterli
+ripetere.

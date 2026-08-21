@@ -1,0 +1,215 @@
+\chapter{Introduzione}
+\label{cap:01-introduzione}
+
+\section{Il contesto: che cosa promette il modello serverless}
+
+Il modello \emph{Function-as-a-Service} (FaaS) propone al programmatore un
+contratto tanto semplice quanto ambizioso: si consegna alla piattaforma una
+funzione, ossia un frammento di codice senza stato con una firma nota, e la
+piattaforma si assume ogni responsabilit\`a residua --- collocarla su una
+macchina, replicarla quando gli arrivi crescono, ritirarla quando cessano,
+instradare le richieste, riprovare i fallimenti, contabilizzare l'uso. Il
+programmatore non dimensiona nulla e non paga nulla quando nessuno invoca.
+
+\`E un contratto attraente perch\'e sposta un intero registro di decisioni
+--- capacit\`a, elasticit\`a, collocazione --- dall'utente al fornitore. Ed \`e
+anche un contratto costoso, perch\'e quelle decisioni non spariscono: si
+concentrano dentro la piattaforma, dove diventano politiche automatiche che
+l'utente non vede e, quando il comportamento osservato non lo soddisfa, non sa
+come correggere. Il \emph{cold start} \`e l'esempio pi\`u noto di questa
+opacit\`a: un ritardo che il chiamante misura ma che dipende da una decisione
+di collocazione presa altrove, in un istante che il chiamante non conosce, sulla
+base di uno stato che non gli viene esposto.
+
+La conseguenza per chi fa ricerca su queste piattaforme \`e concreta. Studiare
+una politica di scaling, di ammissione o di controllo della concorrenza richiede
+di poterla sostituire e di poter attribuire una differenza misurata a quella
+sostituzione e non ad altro. Sulle piattaforme FaaS mature questo \`e difficile
+per una ragione strutturale, non accidentale: sono sistemi distribuiti composti
+da molti processi cooperanti --- un ingress, un autoscaler, un attivatore, un
+controller, una coda, un data plane --- ciascuno con la propria dinamica, il
+proprio periodo di campionamento e le proprie isteresi. Il percorso di una
+richiesta attraversa diversi confini di processo prima di raggiungere il codice
+dell'utente, e ogni confine contribuisce alla latenza in un modo che
+l'osservatore non pu\`o disaggregare senza strumentare l'intero sistema.
+
+\section{Il problema}
+
+Da qui la domanda che motiva questo lavoro: \emph{qual \`e la piattaforma pi\`u
+piccola che \`e ancora una piattaforma FaaS, e che cosa diventa misurabile una
+volta che la si \`e ridotta a quella dimensione?}
+
+La domanda non \`e retorica. Una piattaforma pu\`o essere ridotta lungo molte
+dimensioni, e non tutte le riduzioni sono equivalenti. Togliere
+l'autenticazione riduce il codice ma non accorcia il percorso critico di
+un'invocazione; togliere la persistenza dello stato lo accorcia ma rinuncia alla
+sopravvivenza a un riavvio; togliere l'alta disponibilit\`a elimina un intero
+registro di problemi di consenso ma vincola la piattaforma a un singolo punto di
+fallimento. La tesi di questo lavoro \`e che esiste un insieme di rinunce
+--- pod singolo, stato in memoria, nessuna autenticazione --- che, prese
+insieme, producono un sistema il cui percorso critico \`e leggibile per intero
+da una sola persona e in cui una modifica di politica \`e osservabile senza
+rumore di fondo, e che tale sistema resta abbastanza completo da eseguire
+carichi reali su Kubernetes.
+
+\nf{} \`e la realizzazione di questa tesi. \`E un control plane scritto in Java
+su Spring WebFlux, il cui nucleo conta circa 5\,000 righe di codice di
+produzione, esteso da nove moduli opzionali che ne aggiungono complessivamente
+circa 6\,800. Il rapporto fra le due cifre \`e esso stesso una scelta di
+progetto: i moduli, presi insieme, sono pi\`u grandi del nucleo che estendono,
+il che significa che la maggior parte di ci\`o che rende \nf{} interessante \`e
+anche ci\`o che si pu\`o togliere senza che smetta di funzionare.
+
+\section{Domande di ricerca}
+
+Il lavoro \`e organizzato attorno a quattro domande.
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{RQ1 --- Modularit\`a a costo zero sul percorso critico.}]
+  \`E possibile costruire un control plane in cui funzionalit\`a come le code,
+  l'autoscaling e il controllo della concorrenza siano \emph{assenti} anzich\'e
+  disattivate, senza che la loro assenza richieda rami condizionali sul percorso
+  di invocazione? Il \cref{cap:08-sistema-moduli} descrive la soluzione adottata
+  --- selezione a tempo di build attraverso un SPI, con implementazioni no-op di
+  default per ogni punto di estensione --- e ne discute i limiti.
+
+  \item[\textbf{RQ2 --- Da quale segnale deve decidere un controllore di
+  concorrenza.}] Il limite di concorrenza per funzione \`e la grandezza che
+  determina simultaneamente l'utilizzazione delle repliche e il tempo che un
+  chiamante passa in attesa. La domanda \`e da quale segnale misurato tale limite
+  debba essere derivato. Il \cref{cap:12-concurrency-control} mostra
+  analiticamente e sperimentalmente che il tempo di servizio --- la grandezza
+  che il control plane misura pi\`u naturalmente, fra dispatch e completamento
+  --- \`e la scelta sbagliata, e che il tempo di sojourn \`e quella corretta.
+
+  \item[\textbf{RQ3 --- Concorrenza come risorsa condivisa.}] Quando pi\`u
+  funzioni insistono sulle stesse repliche o sullo stesso nodo, un controllore
+  che chiede a ciascuna funzione di trovare da sola il proprio limite le sta
+  chiedendo di decidere su una risorsa condivisa senza informazioni sui vicini.
+  Il \cref{cap:12-concurrency-control} formula un'alternativa (modo
+  \code{BUDGETED}) che separa la stima del fabbisogno dall'allocazione, e il
+  \cref{cap:25-valutazione-concorrenza} riporta la misura del cross-talk fra
+  funzioni co-residenti.
+
+  \item[\textbf{RQ4 --- Qual \`e il costo reale di un control plane.}] Un
+  processo che non esegue codice utente ma lo orchestra ha un'impronta di
+  memoria e un profilo di avvio propri. Il \cref{cap:24-footprint} misura dove
+  va la memoria di una JVM Spring, che cosa cambia compilando lo stesso codice
+  in immagine nativa GraalVM, e come la scelta del garbage collector interagisce
+  con i limiti di memoria imposti dal container.
+\end{description}
+
+\section{Contributi}
+
+Il documento presenta i seguenti contributi.
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Un'architettura di control plane FaaS a nucleo minimale e moduli
+  opzionali}, con un meccanismo di composizione a tempo di build che consente di
+  produrre binari privi delle funzionalit\`a non selezionate, e un insieme di
+  punti di estensione i cui default no-op degradano il sistema in modo esplicito
+  anzich\'e farlo fallire (\cref{cap:04-architettura-control-plane,cap:06-nucleo,cap:08-sistema-moduli}).
+
+  \item \textbf{Una tassonomia operativa di cinque politiche di controllo della
+  concorrenza per funzione} --- fissa, statica per replica, adattiva per replica,
+  a budget di piattaforma, e a minimizzazione del tempo di sojourn --- con la
+  discussione analitica del perch\'e le prime quattro non possono essere valutate
+  con lo stesso esperimento (\cref{cap:12-concurrency-control}).
+
+  \item \textbf{Due risultati sperimentali negativi}, riportati come tali: un
+  controllore che decide dal tempo di servizio non ammette ottimo interno e
+  converge al proprio limite inferiore; e un generatore di carico a ciclo chiuso
+  non pu\`o distinguere fra le politiche, perch\'e retroaziona sulla stessa
+  grandezza che il controllore sta manipolando
+  (\cref{cap:25-valutazione-concorrenza}).
+
+  \item \textbf{Un modulo di offload trasparente edge$\to$cloud} attivabile in
+  modo eager per funzione o reattivo sulla pressione della coda sincrona, con una
+  semantica a singolo salto e senza fallback locale, e la giustificazione di
+  entrambe le rinunce (\cref{cap:13-offload}).
+
+  \item \textbf{Una caratterizzazione dell'impronta di runtime} del control plane
+  su JVM e in immagine nativa, inclusa l'interazione fra scelta del collector e
+  limite di memoria del container (\cref{cap:24-footprint}).
+
+  \item \textbf{Un impianto sperimentale riproducibile}, esterno al codice della
+  piattaforma, che provvisiona l'ambiente, esegue i carichi e confronta i
+  risultati contro record versionati su profilo hardware fissato
+  (\cref{cap:22-metodo-sperimentale}).
+\end{enumerate}
+
+\section{Che cosa questo lavoro non \`e}
+
+\`E utile dichiarare subito i confini, per non farli scoprire al lettore a
+met\`a documento.
+
+\nf{} non compete con Knative, OpenWhisk o OpenFaaS su completezza funzionale, e
+non \`e proposto come loro sostituto in produzione. Non implementa
+autenticazione n\'e autorizzazione, quindi non \`e esponibile su una rete non
+fidata. Non replica il proprio stato: un riavvio del pod perde il registro delle
+funzioni e lo storico delle esecuzioni. Non implementa alta disponibilit\`a, e
+l'esistenza di un singolo processo di controllo \`e assunta ovunque nel codice,
+non incapsulata dietro un'astrazione che un giorno potrebbe diventare
+distribuita.
+
+Sul piano sperimentale, i numeri riportati nel \cref{cap:23-prestazioni-base} e
+seguenti sono ottenuti su un profilo hardware specifico e dichiarato. Non sono
+proposti come caratterizzazione assoluta della piattaforma n\'e come base per un
+confronto con altre piattaforme misurate altrove. Il
+\cref{cap:27-discussione} enumera in modo esplicito le affermazioni che i dati
+raccolti non sostengono.
+
+\section{Struttura del documento}
+
+Il documento \`e diviso in sei parti.
+
+La \textbf{Parte I} (\crefrange{cap:01-introduzione}{cap:03-requisiti-principi})
+inquadra il problema, rivede lo stato dell'arte e formalizza i vincoli di
+progetto, mostrando per ciascuno quale esperimento abilita.
+
+La \textbf{Parte II} (\crefrange{cap:04-architettura-control-plane}{cap:08-sistema-moduli})
+descrive l'architettura: la vista d'insieme, i contratti di dati e l'API REST,
+il nucleo e i suoi punti di estensione, le modalit\`a di esecuzione e il
+meccanismo di composizione modulare.
+
+La \textbf{Parte III} (\crefrange{cap:09-async-queue}{cap:16-moduli-diagnostici})
+dedica un capitolo a ciascun modulo opzionale. Il
+\cref{cap:12-concurrency-control} \`e il pi\`u lungo della parte ed \`e quello a
+contenuto scientifico maggiore.
+
+La \textbf{Parte IV} (\crefrange{cap:17-runtime-funzione}{cap:20-build-packaging})
+attraversa il lato funzione: il contratto di runtime, gli SDK nei vari
+linguaggi, gli strumenti a riga di comando e la catena di build.
+
+La \textbf{Parte V} (\crefrange{cap:21-osservabilita}{cap:25-valutazione-concorrenza})
+presenta il modello di osservabilit\`a, il metodo sperimentale e le tre
+campagne di misura.
+
+La \textbf{Parte VI} (\crefrange{cap:26-qualita-verifica}{cap:29-conclusioni})
+discute la verifica del software, i limiti dei risultati e le direzioni
+successive.
+
+\section{Convenzioni}
+
+Il codice sorgente \`e citato con il percorso relativo alla radice del
+repository, per esempio \code{platform/control-plane/src/main/java/\ldots}. Il
+package radice del codice Java \`e \code{it.unimib.datai.nanofaas}; nel testo i
+nomi di classe sono riportati senza package quando non ambigui. I nomi dei
+moduli opzionali compaiono nella forma con cui sono selezionabili dalla riga di
+comando (\code{async-queue}, \code{concurrency-control}, \ldots), che coincide
+con il nome della directory sotto \code{platform/modules/}.
+
+Le grandezze temporali sono espresse in millisecondi salvo indicazione contraria.
+Con \emph{tempo di servizio} si intende l'intervallo fra l'istante in cui il
+control plane consegna l'invocazione al runtime e l'istante in cui ne riceve la
+risposta; con \emph{tempo di attesa} l'intervallo fra l'ammissione della
+richiesta e la consegna; con \emph{tempo di sojourn} la loro somma, che \`e ci\`o
+che il chiamante osserva al netto della rete. La distinzione \`e centrale nel
+\cref{cap:12-concurrency-control} e viene mantenuta rigorosamente in tutto il
+documento.
+
+Infine, i riquadri marcati \textbf{Da misurare} segnalano affermazioni per cui
+il progetto dispone di uno strumento di misura ma non ancora di un dato
+raccolto. Sono lasciati visibili di proposito: un documento che presenta una
+piattaforma come strumento sperimentale deve distinguere ci\`o che ha misurato
+da ci\`o che potrebbe misurare.

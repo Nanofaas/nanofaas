@@ -1,0 +1,291 @@
+\chapter{Record sperimentali grezzi}
+\label{cap:D-record-sperimentali}
+
+\section{Serie di release}
+
+Profilo \code{azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1}, scenario
+\code{autoscaling-cycle-k8s}, tre esecuzioni per versione, mediane.
+Fonte: \code{docs/performance/history.md} e
+\code{docs/performance/releases/*.json}.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Versione} & \textbf{Throughput (req/s)} & \textbf{Tasso errore} &
+\textbf{p95 (ms)} & \textbf{Repliche picco} \\
+\midrule
+0.17.0  & 241{,}904 & 0{,}000000 & 6{,}496  & 3 \\
+0.17.1  & 269{,}069 & 0{,}000000 & 5{,}772  & 3 \\
+v0.18.1 & 239{,}130 & 0{,}000000 & 6{,}607  & 4 \\
+v0.18.2 & 249{,}341 & 0{,}000000 & 5{,}125  & 3 \\
+v0.18.3 & 232{,}407 & 0{,}000000 & 5{,}131  & 4 \\
+v0.19.0 & 300{,}483 & 0{,}000000 & 11{,}256 & 5 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Dettaglio della v0.19.0}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Campo} & \textbf{Valore} \\
+\midrule
+\code{throughputRps} & 300{,}4828762829388 \\
+\code{errorRate} & 0{,}0 \\
+\code{latencyP50Ms} & 4{,}432555 \\
+\code{latencyP95Ms} & 11{,}256492 \\
+\code{latencyP99Ms} & 21{,}048210 \\
+\code{queueWaitSeconds} & 0{,}0008152916783986485 \\
+\code{coldStarts} & 5{,}0 \\
+\code{peakReplicas} & 5{,}0 \\
+\code{controlPlaneCpuPeak} & 0{,}664 \\
+\code{controlPlaneHeapPeakBytes} & 199\,495\,680 \\
+\code{runCount} & 3 \\
+\code{sourceCommit} & \code{7a5a669\ldots} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Soglie del gate: \code{errorRateMax} $=0{,}3\%$,
+\code{p95MaxIncreasePercent} $=15\%$, \code{throughputMaxLossPercent} $=10\%$.
+
+\section{Confronto \code{BUDGETED} / \code{ADAPTIVE\_PER\_POD}}
+
+Due funzioni, quattro core condivisi, coda 100 ciascuna, tetto 8, budget 12,
+ciclo chiuso con picco 103 per funzione su tre finestre.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{BUDGETED}} \\
+\midrule
+richieste & 899\,684 & 893\,841 \\
+rifiutate & 7 (0{,}001\%) & 33 (0{,}004\%) \\
+p95 end-to-end & 80{,}2\,ms & 79{,}7\,ms \\
+p99 end-to-end & 90{,}2\,ms & 87{,}2\,ms \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+\textbf{Finestra} & \textbf{AD. java} & \textbf{AD. lite} & \textbf{somma} &
+\textbf{BU. java} & \textbf{BU. lite} & \textbf{somma} \\
+\midrule
+una sola & 7{,}8 & 4{,}1 & --- & 8{,}0 & 1{,}2 & --- \\
+antifase & 8{,}0 & 5{,}0 & 13{,}0 & 8{,}0 & 2{,}9 & 10{,}9 \\
+in fase  & 7{,}9 & 5{,}5 & 13{,}4 & 8{,}0 & 3{,}7 & 11{,}7 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{\code{SOJOURN}: ricerca contro modello}
+
+\subsection{Versione a ricerca (fallita)}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{SOJOURN} a ricerca} \\
+\midrule
+rifiutate & 32 (0{,}004\%) & 36\,181 (4{,}275\%) \\
+limite [min--max] & 7{,}8 [4--8] & 4{,}0 [1--8] \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Versione a modello, arrivi aperti}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{SOJOURN}} & \textbf{$\Delta$} \\
+\midrule
+offerte & 659\,973 & 659\,995 & --- \\
+servite & 549\,856 & 567\,210 & $+3{,}2\%$ \\
+rifiutate & 110\,117 (16{,}7\%) & 92\,785 (14{,}1\%) & $-15{,}7\%$ \\
+p95 end-to-end & 120{,}48\,ms & 107{,}68\,ms & $-10{,}6\%$ \\
+p99 end-to-end & 157{,}67\,ms & 133{,}82\,ms & $-15{,}1\%$ \\
+attesa in coda & 35{,}61\,ms & 31{,}03\,ms & $-12{,}9\%$ \\
+tempo di servizio & 1{,}69\,ms & 2{,}00\,ms & $+18\%$ \\
+limite medio & 3{,}9 & 2{,}8 & \\
+\code{dropped\_iterations} & 21 & 0 & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Una sola esecuzione per modo.
+
+\section{Co-tenancy}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{4 core propri} & \textbf{core 0--3 condivisi} \\
+\midrule
+java da sola & 1\,762 rps / 4{,}57\,ms & 1\,762 rps / 4{,}57\,ms \\
+java con vicina & 1\,274 rps / 6{,}23\,ms & 1\,274 rps / 6{,}23\,ms \\
+combinato & 2\,769 rps & 2\,751 rps \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Runtime a confronto}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{word-stats-java}} & \textbf{\code{word-stats-java-lite}} \\
+\midrule
+residente a riposo & 133\,MiB & 2{,}7\,MiB \\
+residente a caldo & 160\,MiB & 51{,}6\,MiB \\
+tempo di servizio & 5{,}57\,ms & 2{,}15\,ms \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Memoria di una JVM Spring}
+
+\code{word-stats-java} a 190\,MiB residenti.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lr@{}}
+\toprule
+heap in uso & 22{,}4\,MB \\
+Metaspace (9\,375 classi) & 53{,}0\,MB \\
+Compressed class space & 6{,}6\,MB \\
+CodeHeap & 13{,}5\,MB \\
+23 stack di thread & $\sim$23\,MB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Control plane: JVM contro nativo}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \textbf{JVM} & \textbf{nativo serial} & \textbf{nativo G1} \\
+\midrule
+throughput & 8\,205 rps & 4\,983 rps & 8\,085 rps \\
+mediana & 5{,}98\,ms & 4{,}71\,ms & 6{,}08\,ms \\
+p95 & 16{,}06\,ms & 27{,}95\,ms & 16{,}51\,ms \\
+massimo & 92\,ms & 1{,}77\,s & 123\,ms \\
+avvio & 1{,}585\,s & 0{,}192\,s & 0{,}072\,s \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{JVM} & \textbf{nativo serial} \\
+\midrule
+raccolte complete & 2 ($\sim$50\,ms) & 25 (883\,ms) \\
+tempo totale di raccolta & 6{,}6\,s & 22{,}1\,s su 60 \\
+quota del tempo di parete & 0{,}9\,\% & 31{,}8\,\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Pause G1 da registrazione JFR (90\,s)}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Operazione} & \textbf{N} & \textbf{Totale} & \textbf{Media} &
+\textbf{Max} \\
+\midrule
+\code{G1 wrapper} & 43 & 835{,}1\,ms & 19{,}4\,ms & 97{,}6\,ms \\
+\code{Collect for allocation} & 31 & 651{,}1\,ms & 21{,}0\,ms & 94{,}5\,ms \\
+\code{Try init concurrent mark} & 2 & 37{,}3\,ms & 18{,}6\,ms & 22{,}5\,ms \\
+\midrule
+totale & 76 & 1\,524\,ms & & 1{,}69\,\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Livello di ottimizzazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{-Os}} & \textbf{\code{-O3}} \\
+\midrule
+throughput & 8\,398 rps & 9\,251 rps \\
+p95 & 15{,}64\,ms & 14{,}79\,ms \\
+massimo & 148{,}7\,ms & 127{,}2\,ms \\
+avvio & 0{,}173\,s & 0{,}068\,s \\
+residente a riposo & 120{,}6\,MiB & 39{,}3\,MiB \\
+immagine & 195\,MB & 397\,MB \\
+area di codice & 47{,}78\,MB & 166{,}59\,MB \\
+unit\`a di compilazione & 105\,256 & 84\,694 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Limiti di memoria}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+\textbf{Limite} & \textbf{Build} & \textbf{rps} & \textbf{p95} &
+\textbf{Max} & \textbf{Memoria} \\
+\midrule
+500\,MB & JVM & 1\,515 & 324\,ms & 1{,}99\,s & 455/500 \\
+        & nativo serial & 1\,370 & 32\,ms & 30{,}0\,s & 489/500 \\
+        & nativo G1 default & 520 & 61\,ms & 30{,}0\,s & 145/500 \\
+        & nativo G1 \code{-Xmx350m} & 1\,445 & 96\,ms & 30{,}0\,s & 378/500 \\
+1\,GB & JVM & 2\,450 & 46\,ms & 1{,}34\,s & 805/1024 \\
+      & nativo G1 \code{-Xmx700m} & 3\,089 & 44\,ms & 135\,ms & 736/1024 \\
+2\,GB & JVM & 2\,712 & 47{,}5\,ms & 451\,ms & 727/2048 \\
+      & nativo G1 \code{-Xmx1400m} & 3\,400 & 39{,}5\,ms & 151\,ms & 1\,201/2048 \\
+nessuno & JVM & 8\,205 & 16{,}1\,ms & 92\,ms & 1{,}8\,GiB \\
+        & nativo G1 & 8\,085 & 16{,}5\,ms & 123\,ms & 2{,}7\,GiB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}

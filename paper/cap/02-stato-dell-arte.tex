@@ -1,0 +1,301 @@
+\chapter{Background e stato dell'arte}
+\label{cap:02-stato-dell-arte}
+
+Questo capitolo fissa il vocabolario e colloca \nf{} rispetto al lavoro
+esistente. Non \`e una rassegna esaustiva del serverless --- ne esistono di
+migliori~\cite{jonas2019berkeley, baldini2017trends} --- ma una ricostruzione
+mirata delle quattro linee di ricerca su cui il progetto interviene: la
+struttura delle piattaforme FaaS, il costo di avvio a freddo, le politiche di
+elasticit\`a e di ammissione, e l'offloading fra dispositivi periferici e
+cloud.
+
+\section{Una definizione operativa di FaaS}
+
+Nella letteratura il termine \emph{serverless} copre sia un modello economico
+(pagamento a consumo, granularit\`a fine, nessun costo a riposo) sia un modello
+di programmazione. Qui interessa il secondo, e conviene definirlo per ci\`o che
+richiede alla piattaforma anzich\'e per ci\`o che promette all'utente. Una
+piattaforma FaaS \`e un sistema che soddisfa quattro obblighi:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Registrazione.} Accetta la definizione di un'unit\`a di calcolo
+  --- un'immagine, un comando, un insieme di variabili d'ambiente, dei limiti di
+  risorsa --- e le associa un nome logico stabile.
+  \item \textbf{Attivazione.} Su richiesta, garantisce l'esistenza di almeno
+  un'istanza in esecuzione capace di servire quel nome, creandola se assente.
+  \item \textbf{Instradamento.} Consegna una richiesta a una delle istanze e ne
+  restituisce l'esito al chiamante, rispettando un contratto di
+  serializzazione noto.
+  \item \textbf{Ritiro.} Riduce il numero di istanze quando la domanda cala,
+  eventualmente fino a zero.
+\end{enumerate}
+
+Sono obblighi minimi: tutto ci\`o che le piattaforme reali offrono in pi\`u ---
+composizione di funzioni, trigger da sorgenti di eventi, versioning, traffic
+splitting, isolamento multi-tenant --- \`e sovrastruttura rispetto a questo
+nucleo. \nf{} implementa i quattro obblighi e quasi nient'altro; il
+\cref{cap:03-requisiti-principi} argomenta perch\'e.
+
+Va osservato che gli obblighi 2 e 4 sono in tensione fra loro, ed \`e da questa
+tensione che discende la maggior parte dei problemi interessanti. Ritirare
+istanze riduce il costo a riposo ma allunga l'attivazione successiva; mantenerle
+accorcia l'attivazione ma paga capacit\`a inutilizzata. Il punto in cui una
+piattaforma colloca il proprio compromesso fra i due \`e, di fatto, la sua
+identit\`a.
+
+\section{Anatomia delle piattaforme di riferimento}
+
+Le piattaforme FaaS open source per Kubernetes condividono una struttura
+ricorrente, che vale la pena esplicitare perch\'e \`e precisamente la struttura
+da cui \nf{} si discosta.
+
+\paragraph{Knative Serving~\cite{knative}.} \`E la realizzazione pi\`u
+articolata del modello. Una richiesta entra da un ingress di rete, raggiunge un
+componente chiamato \emph{activator} quando la revisione ha zero repliche,
+attende che l'\emph{autoscaler} (KPA) osservi la domanda e comandi allo
+scheduler di Kubernetes la creazione di pod, e viene infine instradata a un
+sidecar (\emph{queue-proxy}) che, all'interno del pod applicativo, applica il
+limite di concorrenza e riporta le metriche all'autoscaler. Il modello di
+concorrenza \`e esplicito e centrale: la grandezza \code{containerConcurrency}
+governa contemporaneamente l'ammissione locale e il segnale di scaling. La
+qualit\`a del progetto \`e alta e il numero di componenti che una singola
+invocazione attraversa \`e, di conseguenza, elevato.
+
+\paragraph{Apache OpenWhisk~\cite{openwhisk}.} Adotta un'architettura a
+\emph{controller} e \emph{invoker}: il controller riceve l'attivazione, consulta
+un database (CouchDB) per la definizione dell'azione, e la accoda su Kafka verso
+un invoker, che mantiene un pool di container caldi e ne riusa uno se
+disponibile. La distinzione fra container \emph{cold}, \emph{prewarm} e
+\emph{warm} \`e resa esplicita nel progetto, e la letteratura sul cold start ha
+spesso usato OpenWhisk come piattaforma di riferimento~\cite{wang2018peeking}.
+Il costo \`e la dipendenza da due sistemi di stato esterni sul percorso di ogni
+invocazione.
+
+\paragraph{OpenFaaS~\cite{openfaas}.} Semplifica considerevolmente: un gateway
+riceve la richiesta e la inoltra a un Service Kubernetes che bilancia sulle
+repliche del Deployment della funzione; lo scaling \`e delegato a componenti
+esterni (HPA o KEDA). Il percorso sincrono \`e corto, e l'asincrono passa per
+una coda (NATS). \`E la piattaforma pi\`u vicina a \nf{} per filosofia, ma
+delega all'esterno esattamente le politiche che \nf{} vuole rendere
+sostituibili.
+
+\paragraph{Fission~\cite{fission}.} Introduce il concetto di \emph{pool} di pod
+generici pre-avviati in cui il codice della funzione viene iniettato al momento
+dell'uso, riducendo drasticamente il tempo di attivazione a scapito
+dell'isolamento e della generalit\`a del runtime.
+
+\Cref{tab:piattaforme} riassume il confronto. La colonna che conta ai fini di
+questo lavoro \`e l'ultima: il numero di processi distinti che una singola
+invocazione sincrona attraversa nel caso caldo.
+
+\begin{table}[htbp]
+\centering
+\caption{Confronto strutturale fra piattaforme FaaS per Kubernetes.
+Il conteggio dei salti \`e indicativo e riferito al percorso sincrono con
+repliche gi\`a calde, escluso l'ingress di rete.}
+\label{tab:piattaforme}
+\small
+\begin{tabularx}{\textwidth}{@{}lXccc@{}}
+\toprule
+\textbf{Piattaforma} & \textbf{Componenti sul percorso} & \textbf{Stato esterno} &
+\textbf{Scale-to-zero} & \textbf{Salti} \\
+\midrule
+Knative     & ingress, activator, queue-proxy, utente & no & s\`i & 3--4 \\
+OpenWhisk   & controller, Kafka, invoker, utente      & CouchDB, Kafka & s\`i & 3--4 \\
+OpenFaaS    & gateway, Service, utente                & NATS (async) & con add-on & 2 \\
+Fission     & router, executor, pod generico, utente  & etcd & s\`i & 2--3 \\
+\nf{}       & control plane, utente                   & nessuno & no & 1 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La riga di \nf{} non \`e un vanto prestazionale: un singolo salto \`e
+raggiungibile perch\'e la piattaforma rinuncia a tutto ci\`o che gli altri salti
+fornivano. \`E per\`o la condizione che rende possibile l'esperimento descritto
+nel \cref{cap:25-valutazione-concorrenza}, in cui una variazione di alcuni
+millisecondi nel tempo di attesa dev'essere attribuita a una politica di
+ammissione e non a una catena di proxy interposti.
+
+\section{Il cold start e le sue mitigazioni}
+
+L'attivazione di una funzione che non ha istanze pronte impone al chiamante un
+ritardo composto da pi\`u contributi: la decisione di scheduling, il pull
+dell'immagine, la creazione del sandbox, l'inizializzazione del runtime (che per
+una JVM o un interprete Python con dipendenze pesanti domina spesso tutti gli
+altri) e infine l'esecuzione dell'handler.
+
+La letteratura ha attaccato ciascun contributo separatamente.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Sandbox pi\`u leggeri.} Firecracker~\cite{agache2020firecracker}
+  dimostra che una microVM con superficie hardware ridotta pu\`o avviarsi in
+  poche decine di millisecondi mantenendo isolamento a livello di hypervisor.
+  SOCK~\cite{oakes2018sock} riprogetta il container per il caso serverless,
+  eliminando dal percorso di avvio le operazioni del runtime container generico
+  che il caso d'uso non richiede.
+
+  \item \textbf{Riuso dello stato inizializzato.}
+  Catalyzer~\cite{du2020catalyzer} e i lavori su snapshot e
+  restore~\cite{ustiugov2021snapshots} sostituiscono l'inizializzazione con il
+  ripristino di un'immagine di memoria gi\`a inizializzata, spostando il costo
+  dal percorso critico a una fase preparatoria.
+
+  \item \textbf{Politiche di ritenzione.} FaasCache~\cite{fuerst2021faascache}
+  riformula il mantenimento dei container caldi come un problema di caching e
+  applica politiche di sostituzione greedy-dual; \cite{shahrad2020wild} mostra su
+  traccia di produzione che le distribuzioni di inter-arrivo reali sono
+  sufficientemente strutturate da rendere efficace la predizione.
+\end{itemize}
+
+\nf{} non contribuisce a questa linea. Misura il cold start
+(\code{function\_cold\_start\_ms}, \cref{cap:21-osservabilita}) e lo tratta come
+una grandezza osservabile del proprio ambiente, ma non introduce meccanismi per
+ridurlo. La scelta \`e coerente con il posizionamento del progetto: il cold
+start su \nf{} \`e dominato dal tempo di creazione del pod da parte di
+Kubernetes e dall'avvio del runtime della funzione, entrambi fuori dal
+controllo del control plane.
+
+\section{Elasticit\`a: quante repliche}
+
+Il problema dell'autoscaling di applicazioni elastiche \`e antecedente al
+serverless e ne esiste una rassegna
+consolidata~\cite{loridobotran2014autoscaling}, che classifica gli approcci in
+reattivi a soglia, basati su teoria del controllo, su modelli di code, su
+apprendimento per rinforzo e su serie temporali.
+
+Nel contesto Kubernetes le due realizzazioni dominanti sono reattive a soglia.
+L'Horizontal Pod Autoscaler~\cite{k8shpa} confronta periodicamente un valore
+osservato (tipicamente l'utilizzazione di CPU, oppure una metrica custom) con
+un valore obiettivo e calcola il numero di repliche come rapporto fra i due,
+applicando bande morte e finestre di stabilizzazione per evitare oscillazioni.
+KEDA~\cite{keda} generalizza la sorgente della metrica a un catalogo esteso di
+\emph{scaler} orientati agli eventi, e --- soprattutto --- consente lo scaling
+a zero, che l'HPA di base non permette.
+
+Knative adotta un autoscaler dedicato la cui metrica primaria non \`e
+l'utilizzazione di CPU ma la \emph{concorrenza media per replica}, ossia il
+numero medio di richieste contemporaneamente in carico su ciascun pod. \`E una
+scelta significativa, perch\'e lega la decisione di scaling alla stessa
+grandezza che governa l'ammissione locale.
+
+\nf{} riproduce questa impostazione nel modulo \code{autoscaler}
+(\cref{cap:11-autoscaler}), che pu\`o decidere da richieste al secondo,
+profondit\`a di coda o richieste in volo. La differenza rilevante \`e che \nf{}
+tratta il numero di repliche e il limite di concorrenza per funzione come due
+decisioni \emph{separabili e separatamente sostituibili}, mentre nelle
+piattaforme citate sono accoppiate nello stesso componente.
+
+\section{Ammissione, backpressure e controllo della concorrenza}
+
+Quante richieste ammettere contemporaneamente \`e un problema pi\`u antico del
+serverless e con una letteratura pi\`u matura.
+
+\paragraph{Il risultato strutturale.} La legge di Little~\cite{little1961proof}
+lega il numero medio di richieste presenti nel sistema $L$, il tasso di arrivo
+$\lambda$ e il tempo medio di permanenza $W$ dalla relazione $L = \lambda W$.
+Applicata a un sistema con limite di concorrenza $C$ saturo, fornisce
+immediatamente $W = C / \lambda$: fissato il tasso di arrivo, il tempo di
+permanenza \`e proporzionale al limite. Questa relazione, banale in s\'e, ha una
+conseguenza che il \cref{cap:12-concurrency-control} sviluppa in dettaglio: un
+controllore che aumenta $C$ per aumentare il throughput sta necessariamente
+allungando la permanenza, e i due obiettivi non possono essere ottimizzati
+indipendentemente. La teoria delle code~\cite{kleinrock1975queueing} fornisce
+l'apparato per rendere quantitativa l'osservazione.
+
+\paragraph{Architetture a stadi.} SEDA~\cite{welsh2001seda} propone di
+strutturare un servizio come una pipeline di stadi separati da code esplicite,
+ciascuno con il proprio pool di thread dimensionato dinamicamente. Il contributo
+concettuale rilevante qui \`e l'idea che le code \emph{debbano essere esplicite e
+osservabili}: un servizio ben condizionato \`e uno in cui il punto in cui le
+richieste si accumulano \`e noto e strumentato, anzich\'e disperso nei buffer
+del sistema operativo. Il modulo \code{sync-queue} di \nf{}
+(\cref{cap:10-sync-queue}) segue direttamente questa impostazione.
+
+\paragraph{Controllo dal ritardo.} La linea di lavoro sul controllo di
+congestione fornisce due meccanismi che \nf{} adatta.
+TCP Vegas~\cite{brakmo1995vegas} stima il ritardo di coda confrontando il
+round-trip time corrente con il minimo osservato --- assunto come stima del
+ritardo di propagazione puro --- e regola la finestra di trasmissione in base
+alla differenza, anzich\'e attendere la perdita di pacchetti come segnale.
+CoDel~\cite{nichols2012codel} osserva che il segnale utile non \`e la lunghezza
+della coda ma il \emph{ritardo minimo sperimentato in una finestra temporale},
+e scarta pacchetti quando tale minimo resta sopra soglia per un intervallo
+prolungato. Entrambi condividono la stessa intuizione: il ritardo di coda \`e
+distinguibile dal costo di servizio irriducibile solo confrontando l'osservazione
+corrente con un riferimento storico.
+
+La libreria \code{concurrency-limits} di Netflix~\cite{netflixlimits} porta
+esplicitamente questi algoritmi nel dominio delle chiamate RPC, implementando
+limitatori in stile Vegas e Gradient che aggiustano un limite di concorrenza
+osservando la latenza. \nf{} riprende il segnale in stile Vegas nel modo
+\code{ADAPTIVE\_PER\_POD} (\cref{cap:12-concurrency-control}), e il
+\cref{cap:25-valutazione-concorrenza} riporta il motivo per cui, nel contesto
+FaaS, questo segnale si \`e rivelato insufficiente.
+
+\paragraph{Equit\`a nella ripartizione.} Quando pi\`u flussi competono per una
+risorsa condivisa e la somma delle richieste eccede la disponibilit\`a, la
+nozione di allocazione max-min~\cite{bertsekas1992datanetworks} fornisce un
+criterio: si massimizza l'allocazione minima, e chi chiede meno della propria
+quota equa la ottiene per intero, mentre l'eccedenza viene ridistribuita fra i
+restanti. Nella variante pesata ciascun flusso porta un peso che scala la
+propria quota. Il modo \code{BUDGETED} di \nf{} applica questo criterio ai limiti
+di concorrenza per funzione, trattando la capacit\`a della piattaforma come la
+risorsa condivisa e il fabbisogno stimato di ciascuna funzione come la sua
+domanda.
+
+\section{Offloading fra periferia e cloud}
+
+L'idea di spostare il calcolo dal dispositivo o dal nodo periferico verso
+un'infrastruttura pi\`u capiente quando la periferia non basta risale a prima
+del serverless~\cite{bonomi2012fog, shi2016edge, satya2017edge}. La formulazione
+classica \`e un problema di decisione: dato un compito, valutare se eseguirlo
+localmente o trasferirlo, sulla base di un modello del costo di trasferimento e
+del guadagno di esecuzione.
+
+La declinazione che \nf{} adotta nel modulo \code{offload}
+(\cref{cap:13-offload}) \`e volutamente pi\`u modesta e pi\`u operativa. La
+decisione non \`e presa da un modello ma da due segnali osservati: una politica
+per funzione dichiarata dall'operatore (\emph{eager}), oppure il rifiuto della
+coda di ammissione locale per profondit\`a o per attesa stimata eccessiva
+(\emph{pressure}). Il trasferimento \`e a singolo salto e senza fallback locale.
+Questa combinazione --- decidere dal rifiuto anzich\'e da un modello di costo ---
+non risolve il problema di ottimizzazione classico, ma ha la propriet\`a di non
+richiedere alcuna calibrazione preventiva, e di degradare in modo prevedibile.
+
+\section{Benchmarking delle piattaforme serverless}
+
+Confrontare piattaforme FaaS \`e notoriamente difficile: il risultato dipende dal
+carico, dalla dimensione del payload, dal profilo di arrivo, dall'hardware, e
+dallo stato caldo o freddo del sistema al momento della misura.
+SeBS~\cite{copik2021sebs} e ServerlessBench~\cite{yu2020serverlessbench}
+propongono suite di carichi standardizzati e metriche comparabili, e
+\cite{wang2018peeking} mostra quanto informazione si possa estrarre sulle
+politiche interne di una piattaforma commerciale per sola osservazione esterna.
+
+Il metodo sperimentale di \nf{} (\cref{cap:22-metodo-sperimentale}) non aspira
+alla comparabilit\`a inter-piattaforma. Persegue invece la comparabilit\`a
+\emph{intra}-piattaforma nel tempo: fissato un profilo hardware e un carico, i
+risultati di ogni release sono confrontati con quelli della release precedente
+sullo stesso profilo, e la deviazione \`e trattata come un segnale di
+regressione. \`E un obiettivo pi\`u ristretto e pi\`u difendibile.
+
+\section{Posizionamento}
+
+Riassumendo, \nf{} non contende alle piattaforme mature il terreno della
+completezza funzionale, e non contribuisce alla riduzione del cold start. Si
+colloca invece nello spazio, meno affollato, di una piattaforma FaaS
+sufficientemente piccola da essere usata come banco di prova per politiche di
+ammissione, scaling e concorrenza, con tre elementi di novit\`a rispetto a
+quanto sopra:
+
+\begin{enumerate}[leftmargin=*]
+  \item la \textbf{separazione esplicita} fra la decisione sul numero di repliche
+  e la decisione sul limite di concorrenza per funzione, mantenute in due moduli
+  indipendenti e sostituibili separatamente;
+  \item la formulazione di un controllore che decide dal \textbf{tempo di
+  sojourn} anzich\'e dal tempo di servizio, con la dimostrazione --- analitica e
+  sperimentale --- che la seconda scelta non ammette ottimo interno;
+  \item un modo di allocazione \textbf{a budget di piattaforma} che tratta la
+  concorrenza come risorsa condivisa soggetta a equit\`a max-min pesata, anzich\'e
+  come parametro che ogni funzione negozia per conto proprio.
+\end{enumerate}

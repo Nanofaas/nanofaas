@@ -1,4 +1,4 @@
-% nanofaas execution modes (LOCAL / POOL / DEPLOYMENT) and the cold-start vs
+% nanofaas execution modes (LOCAL / EXTERNAL / DEPLOYMENT) and the cold-start vs
 % warm-start latency contrast that motivates warm pools.
 \documentclass[border=8pt]{standalone}
 \usepackage{nanofaas-figs}
@@ -6,12 +6,12 @@
 \begin{tikzpicture}[nf]
 
   % ============ (a) dispatch targets per mode ============
-  \node[core, minimum width=30mm] (disp) {PoolDispatcher};
+  \node[core, minimum width=30mm] (disp) {DispatcherRouter};
 
   \node[neutral, below=13mm of disp, xshift=-52mm, minimum width=30mm] (local)
     {\textbf{LOCAL}\\{\scriptsize in-process}};
   \node[neutral, below=13mm of disp, minimum width=30mm] (pool)
-    {\textbf{POOL}\\{\scriptsize warm pod pool}};
+    {\textbf{EXTERNAL}\\{\scriptsize already-running endpoint}};
   \node[neutral, below=13mm of disp, xshift=52mm, minimum width=34mm] (dep)
     {\textbf{DEPLOYMENT}\\{\scriptsize backend provider}};
 
@@ -57,9 +57,9 @@
     \phase{6.8}{9.0}{0.35}{nfpurplebg}{nfpurple}{app ready}
     \phase{9.0}{10.6}{0.35}{nfbluebg}{nfblue}{serve}
 
-    % warm track (POOL / warm pool)
+    % warm track (EXTERNAL / warm replica)
     \node[tag, anchor=east, align=right] at (-0.15,-0.65)
-      {POOL /\\warm pool};
+      {EXTERNAL /\\warm replica};
     \phase{0}{0.7}{-0.65}{nfgreenbg}{nfgreen}{ready}
     \phase{0.7}{2.3}{-0.65}{nfbluebg}{nfblue}{serve}
 

@@ -16,8 +16,8 @@
      {\footnotesize\color{nfslate}sync/async $\cdot$ retries}\\
      {\footnotesize\color{nfslate}idempotency $\cdot$ rate limit}};
   \node[iconcore, right=6mm of invoc, minimum width=46mm, minimum height=27mm] (dispatch)
-    {{\color{nfnavy}\large\ic{sitemap}}\ \ \textbf{Pool Dispatcher}\\[5pt]
-     {\footnotesize\color{nfslate}LOCAL / POOL /}\\
+    {{\color{nfnavy}\large\ic{sitemap}}\ \ \textbf{Dispatcher Router}\\[5pt]
+     {\footnotesize\color{nfslate}LOCAL / EXTERNAL /}\\
      {\footnotesize\color{nfslate}DEPLOYMENT}};
   \node[iconcore, right=6mm of dispatch, minimum width=44mm, minimum height=27mm] (store)
     {{\color{nfnavy}\large\ic{database}}\ \ \textbf{Execution Store}\\[5pt]
@@ -33,7 +33,7 @@
     |[iconmod]| {\color{nfgreen}\ic{chart-bar}}~~autoscaler \\
     |[iconmod]| {\color{nfgreen}\ic{cloud-upload-alt}}~~offload &
     |[iconmod]| {\color{nfgreen}\ic{cog}}~~runtime-config &
-    |[iconmod]| {\color{nfgreen}\ic{shield-alt}}~~image-validator \\
+    |[iconmod]| {\color{nfgreen}\ic{tachometer-alt}}~~concurrency-control \\
     |[iconmod]| {\color{nfgreen}\ic{dharmachakra}}~~k8s-deployment-provider &
     |[iconmod]| {\color{nfgreen}\ic{docker}}~~container-deployment-provider &
     |[iconmod]| {\color{nfgreen}\ic{tag}}~~build-metadata \\
@@ -48,8 +48,8 @@
     {{\color{nfamber}\large\ic{dharmachakra}}\ \ \textbf{Kubernetes}\\[4pt]
      {\footnotesize\color{nfslate}Deployment + Service}};
   \node[iconback, right=9mm of clocal, minimum width=42mm, minimum height=21mm] (pool)
-    {{\color{nfamber}\large\ic{fire}}\ \ \textbf{Warm pod pool}\\[4pt]
-     {\footnotesize\color{nfslate}OpenWhisk-style}};
+    {{\color{nfamber}\large\ic{external-link-alt}}\ \ \textbf{External endpoint}\\[4pt]
+     {\footnotesize\color{nfslate}EXTERNAL $\cdot$ passthrough}};
 
   % ================= client =================
   \node[iconcore, minimum width=104mm, minimum height=23mm] (client)
@@ -86,7 +86,7 @@
   \coordinate (hub) at ($(cp.south)+(0,-9mm)$);
   \draw[flowc] (cp.south) -- (hub)
     node[tag, midway, right=1mm, fill=white, inner sep=1.5pt]
-      {Dispatch to execution targets $\cdot$ LOCAL / POOL / DEPLOYMENT};
+      {Dispatch to execution targets $\cdot$ LOCAL / EXTERNAL / DEPLOYMENT};
   \draw[flowc] (hub) -| (k8s.north);
   \draw[flowc] (hub) -- (clocal.north);
   \draw[flowc] (hub) -| (pool.north);

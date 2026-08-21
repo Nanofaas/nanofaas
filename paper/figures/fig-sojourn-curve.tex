@@ -1,0 +1,37 @@
+% Schematic: why service time has no interior optimum and sojourn time does.
+% Illustrative shapes, NOT measured data — the caption must say so.
+\documentclass[border=8pt]{standalone}
+\usepackage{nanofaas-figs}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[
+    width=11cm, height=7cm,
+    xlabel={limite di concorrenza $C$},
+    ylabel={tempo (unit\`a arbitrarie)},
+    xmin=1, xmax=10, ymin=0, ymax=13,
+    domain=1:10, samples=200,
+    axis lines=left, font=\sffamily\small,
+    legend style={draw=nfslate!50, font=\sffamily\footnotesize, at={(0.98,0.98)}, anchor=north east},
+    tick label style={font=\sffamily\footnotesize},
+    grid=major, grid style={nfslate!20},
+]
+  % service time: monotonically increasing with concurrency
+  \addplot[nfblue, line width=1.1pt] {2 + 0.55*x};
+  \addlegendentry{$S(C)$ --- tempo di servizio}
+  % wait: decreasing, ~ backlog / drain rate
+  \addplot[nfamber, line width=1.1pt] {18/x};
+  \addlegendentry{$W(C)$ --- tempo di attesa}
+  % sojourn = sum, interior minimum
+  \addplot[nfgreen, line width=1.5pt] {2 + 0.55*x + 18/x};
+  \addlegendentry{$T(C)=W+S$ --- sojourn}
+  % marker at the minimum: d/dC (0.55C + 18/C) = 0  ->  C = sqrt(18/0.55) ~ 5.72
+  \addplot[only marks, mark=*, mark size=2.4pt, nfgreen]
+      coordinates {(5.72,11.29)};
+  \node[font=\sffamily\footnotesize, text=nfgreen, anchor=south]
+      at (axis cs:5.72,11.5) {ginocchio};
+  \draw[dashed, nfslate] (axis cs:5.72,0) -- (axis cs:5.72,11.29);
+\end{axis}
+\end{tikzpicture}
+\end{document}

@@ -1,0 +1,228 @@
+\chapter{Modalit\`a di esecuzione}
+\label{cap:07-modalita-esecuzione}
+
+Una funzione registrata su \nf{} dichiara \emph{dove} vive attraverso il campo
+\code{executionMode}, che ammette tre valori. La distinzione non riguarda
+il protocollo di invocazione --- che \`e HTTP in tutti i casi in cui esiste un
+processo separato --- ma la responsabilit\`a sul ciclo di vita del processo che
+esegue il codice.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{figures/fig-execution-modes}}
+  \caption{Le tre modalit\`a di esecuzione e il contrasto fra avvio a freddo e a
+  caldo.}
+  \label{fig:modalita}
+\end{figure}
+
+\section{\code{LOCAL}: esecuzione in-process}
+
+\code{LocalDispatcher} \`e sei righe di codice:
+
+\begin{lstlisting}[language=Java]
+@Component
+public class LocalDispatcher implements Dispatcher {
+    @Override
+    public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
+        return CompletableFuture.completedFuture(
+                DispatchResult.warm(InvocationResult.success(task.request().input())));
+    }
+}
+\end{lstlisting}
+
+Restituisce l'input come output, immediatamente, dichiarandosi caldo. \`E un eco.
+
+Il suo scopo \`e sperimentale, non applicativo. Fornisce un percorso di
+invocazione la cui componente di esecuzione ha costo nullo e varianza nulla, e
+quindi rende misurabile il costo del control plane in isolamento: qualunque
+latenza osservata su una funzione \code{LOCAL} \`e attribuibile interamente alla
+piattaforma. \`E anche il modo in cui la maggior parte dei test di integrazione
+esercita il percorso completo senza avviare container.
+
+\section{\code{EXTERNAL}: inoltro a un endpoint esistente}
+
+In modalit\`a \code{EXTERNAL} la funzione \`e ospitata fuori dal control plane,
+che ne conosce soltanto l'URL (\code{endpointUrl}) e vi inoltra le invocazioni.
+Non ne gestisce n\'e la creazione, n\'e le repliche, n\'e la distruzione. \`E,
+letteralmente, un passthrough.
+
+Il codice ne trae due conseguenze. La prima \`e che l'assenza di
+\code{endpointUrl} \`e un errore rilevato al momento del dispatch, non della
+registrazione:
+
+\begin{lstlisting}[language=Java]
+String endpoint = task.functionSpec().endpointUrl();
+if (endpoint == null || endpoint.isBlank()) {
+    return CompletableFuture.completedFuture(DispatchResult.warm(
+            InvocationResult.error("EXTERNAL_ENDPOINT_MISSING",
+                                   "endpointUrl is required for EXTERNAL mode")));
+}
+\end{lstlisting}
+
+La seconda \`e che il blocco di scaling non viene risolto per le funzioni
+\code{EXTERNAL} (\cref{cap:06-nucleo}): il control plane non pu\`o
+ragionevolmente decidere il numero di repliche di un deployment che non
+possiede.
+
+La modalit\`a \code{EXTERNAL} \`e quella che il servizio di riferimento
+\code{warm-echo} usa, ed \`e il veicolo principale degli esperimenti in cui il
+runtime della funzione dev'essere tenuto costante mentre si variano le politiche
+del control plane.
+
+\section{\code{DEPLOYMENT}: intento gestito}
+
+\code{DEPLOYMENT} \`e la modalit\`a completa: il control plane si assume la
+responsabilit\`a di far esistere le repliche. \`E anche il default in assenza di
+dichiarazione esplicita.
+
+La sua realizzazione segue un principio: \code{DEPLOYMENT} \`e un
+\emph{intento}, non un meccanismo. Il control plane non sa creare deployment;
+sa dichiarare che ne serve uno e delegarne la realizzazione a un provider.
+
+\subsection{L'interfaccia del provider}
+
+\begin{lstlisting}[language=Java]
+public interface ManagedDeploymentProvider {
+    String backendId();
+    boolean isAvailable();
+    boolean supports(FunctionSpec spec);
+    ProvisionResult provision(FunctionSpec spec);
+    void deprovision(String functionName);
+    void setReplicas(String functionName, int replicas);
+    int getReadyReplicas(String functionName);
+    default ReplicaStatus getReplicaStatus(String functionName) { ... }
+}
+\end{lstlisting}
+
+L'interfaccia \`e piccola e i suoi primi tre metodi sono i pi\`u interessanti,
+perch\'e non riguardano il provisioning ma la \emph{selezione}. Un provider deve
+poter dichiarare di esistere (\code{backendId}), di essere utilizzabile in questo
+momento (\code{isAvailable} --- il provider Kubernetes non lo \`e senza un
+kubeconfig valido) e di poter servire una specifica particolare
+(\code{supports}).
+
+Il metodo \code{provision} restituisce un \code{ProvisionResult} che contiene
+l'endpoint risultante e i metadati degli oggetti creati. Il ritorno di un
+endpoint anzich\'e di un handle opaco \`e ci\`o che consente al dispatcher di
+trattare uniformemente \code{DEPLOYMENT} ed \code{EXTERNAL} dopo il
+provisioning: una volta che l'endpoint esiste, invocarlo \`e la stessa
+operazione.
+
+\subsection{La risoluzione del backend}
+
+\code{DeploymentProviderResolver} sceglie il provider con una precedenza a tre
+livelli: suggerimento esplicito per registrazione, default di piattaforma
+(\code{nanofaas.deployment.default-backend}), e infine risoluzione implicita.
+
+La risoluzione implicita \`e la parte in cui il progetto compie una scelta
+difendibile ma non ovvia:
+
+\begin{lstlisting}[language=Java]
+if (candidates.isEmpty()) {
+    throw new IllegalStateException("No managed deployment provider available for function ...");
+}
+if (candidates.size() > 1) {
+    throw new IllegalStateException("Ambiguous managed deployment provider selection for function '"
+            + spec.name() + "': " + ids);
+}
+return candidates.getFirst();
+\end{lstlisting}
+
+Con due provider entrambi disponibili e capaci, il resolver \textbf{fallisce}
+anzich\'e scegliere. Una piattaforma con un ordine di preferenza implicito ---
+``prova Kubernetes, altrimenti Docker'' --- funzionerebbe, e produrrebbe
+deployment su un backend diverso da quello atteso ogni volta che l'ambiente
+cambia sotto i piedi dell'operatore. Un'ambiguit\`a dichiarata \`e preferibile a
+una preferenza nascosta. L'operatore risolve fissando
+\code{default-backend}, che \`e un atto esplicito.
+
+\subsection{Degradazione da \code{DEPLOYMENT} a \code{EXTERNAL}}
+
+Esiste un caso in cui il provisioning fallisce ma la registrazione riesce:
+
+\begin{lstlisting}[language=Java]
+public ProvisionResult resolveAndProvision(FunctionSpec spec, String backendHint) {
+    try {
+        return resolve(spec, backendHint).provision(spec);
+    } catch (IllegalStateException ex) {
+        if (spec.endpointUrl() != null && !spec.endpointUrl().isBlank()) {
+            return new ProvisionResult(spec.endpointUrl(), null,
+                    ExecutionMode.EXTERNAL, ex.getMessage(), Map.of());
+        }
+        throw ex;
+    }
+}
+\end{lstlisting}
+
+Se la funzione dichiara \emph{anche} un \code{endpointUrl}, un fallimento del
+provisioning la degrada a \code{EXTERNAL} anzich\'e respingerla. \`E la
+degradazione che consente allo stesso manifesto di funzione di essere usato su
+un cluster Kubernetes e su una macchina di sviluppo priva di backend gestito.
+
+La degradazione \`e \emph{osservabile}, ed \`e questo a renderla accettabile
+secondo il criterio del \cref{cap:03-requisiti-principi}. Il tipo
+\code{DeploymentMetadata} conserva contemporaneamente la modalit\`a richiesta,
+quella effettiva e la ragione della differenza:
+
+\begin{lstlisting}[language=Java]
+public record DeploymentMetadata(
+        ExecutionMode requestedExecutionMode,
+        ExecutionMode effectiveExecutionMode,
+        String deploymentBackend,
+        String degradationReason,
+        String effectiveEndpointUrl,
+        Map<String, String> deploymentObjects
+) { ... }
+\end{lstlisting}
+
+L'API di ispezione della funzione restituisce entrambe le modalit\`a e la
+ragione, cos\`i che un operatore che si aspettava un deployment Kubernetes possa
+scoprire di averne ottenuto un passthrough --- e perch\'e --- senza leggere i
+log.
+
+\section{Risveglio da zero repliche}
+
+Con un deployment scalato a zero, un'invocazione arriva prima che esista una
+replica capace di servirla. Il nucleo affronta il caso con
+\code{DeploymentWakeUpGate}: prima del dispatch verso l'endpoint, se la funzione
+\`e gestita e non ha repliche pronte, la richiesta attende che ne compaia una.
+
+Il meccanismo \`e coordinato: pi\`u invocazioni concorrenti sulla stessa funzione
+condividono la stessa attesa anzich\'e emettere ciascuna la propria richiesta di
+scale-up. \`E il minimo indispensabile per evitare che una raffica su una
+funzione fredda si traduca in una raffica di comandi al backend.
+
+\begin{damisurare}
+La distribuzione del tempo di risveglio da zero repliche \`e strumentata
+(\code{function\_cold\_start\_ms}) ma non \`e stata caratterizzata
+sistematicamente: le campagne di misura del \cref{cap:23-prestazioni-base}
+partono da repliche gi\`a calde. \todomis{distribuzione del tempo di risveglio
+per backend Kubernetes e container locale}
+\end{damisurare}
+
+\section{Confronto}
+
+\begin{table}[htbp]
+\centering
+\caption{Le tre modalit\`a a confronto.}
+\label{tab:modalita}
+\small
+\begin{tabularx}{\textwidth}{@{}lXXX@{}}
+\toprule
+ & \textbf{\code{LOCAL}} & \textbf{\code{EXTERNAL}} & \textbf{\code{DEPLOYMENT}} \\
+\midrule
+Processo funzione & nessuno & preesistente & creato dal control plane \\
+Ciclo di vita & --- & del proprietario & del control plane \\
+Scaling repliche & --- & non applicabile & \code{autoscaler} o backend \\
+Cold start & assente & fuori dal controllo & osservato e misurato \\
+Validazione immagine & no & no & s\`i, dal validatore del backend \\
+Uso previsto & misura del control plane, test & runtime fissato negli esperimenti & carichi realistici \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La riga ``uso previsto'' riassume la logica del progetto: le tre modalit\`a non
+sono tre livelli di completezza ma tre strumenti sperimentali. \code{LOCAL}
+isola il control plane, \code{EXTERNAL} lo mette a confronto con un runtime che
+non cambia fra un esperimento e l'altro, \code{DEPLOYMENT} chiude il ciclo e
+include l'infrastruttura nella misura.

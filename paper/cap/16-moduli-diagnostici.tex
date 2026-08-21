@@ -1,0 +1,116 @@
+\chapter{Moduli diagnostici e superficie minima}
+\label{cap:16-moduli-diagnostici}
+
+Questo capitolo chiude la Parte III con due argomenti che il resto non ha
+collocato: il modulo pi\`u piccolo del progetto, e la configurazione che non ha
+moduli affatto.
+
+\section{\code{build-metadata}}
+
+Quarantatr\'e righe in tre classi. Espone un endpoint,
+\code{/modules/build-metadata}, che riporta l'identit\`a della build in
+esecuzione.
+
+La sua utilit\`a \`e proporzionale alla combinatoria che il sistema modulare
+introduce. Un binario di \nf{} \`e definito da: la versione del codice, la
+selezione dei moduli, il tipo di build (JVM o immagine nativa), il livello di
+ottimizzazione, il garbage collector. Il \cref{cap:24-footprint} confronta
+configurazioni che differiscono \emph{solo} per l'ultimo di questi assi. In un
+tale contesto, l'assenza di un modo diretto per interrogare un'istanza in
+esecuzione sulla propria identit\`a \`e una fonte reale di errore sperimentale:
+il rischio non \`e teorico, ed \`e quello di attribuire a una politica una
+differenza dovuta al fatto che una delle due istanze non era quella che si
+credeva.
+
+Che sia un modulo, e non un endpoint del nucleo, \`e coerente: la
+diagnostica sulla build serve a chi conduce esperimenti, non alla piattaforma.
+Un deployment di produzione pu\`o non compilarla.
+
+\section{La configurazione senza moduli}
+
+\subsection{Che cosa resta}
+
+Compilando con \code{-PcontrolPlaneModules=none} si ottiene una piattaforma con
+le seguenti propriet\`a:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.4cm}@{}}
+\toprule
+\textbf{Capacit\`a} & \textbf{Stato} \\
+\midrule
+Registrazione e ciclo di vita & Completa. \\
+Invocazione sincrona & Completa; dispatch diretto, senza coda n\'e ammissione. \\
+Invocazione asincrona & \code{501 Not Implemented}. \\
+Idempotenza, retry, timeout & Complete. \\
+Modalit\`a \code{LOCAL} ed \code{EXTERNAL} & Complete. \\
+Modalit\`a \code{DEPLOYMENT} & Non disponibile: nessun provider. \\
+Limite di concorrenza & Nessuna applicazione: senza code non c'\`e chi conti gli
+slot. \\
+Metriche & Complete per le grandezze del nucleo. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\`E ancora una piattaforma FaaS secondo la definizione operativa del
+\cref{cap:02-stato-dell-arte}? Soddisfa l'obbligo di registrazione, quello di
+instradamento, e --- in modalit\`a \code{EXTERNAL} --- opera su unit\`a di calcolo
+che qualcun altro ha attivato. Non soddisfa attivazione e ritiro. \`E quindi una
+piattaforma FaaS \emph{ridotta}, come il \cref{cap:03-requisiti-principi}
+prometteva, non una piattaforma rotta: ogni operazione che accetta la porta a
+termine correttamente, e le operazioni che non pu\`o svolgere le rifiuta
+esplicitamente.
+
+\subsection{\code{501}, non \code{503}}
+
+La scelta del codice di stato per \code{:enqueue} \`e deliberata. \code{503
+Service Unavailable} significa ``riprova pi\`u tardi''; \code{501 Not
+Implemented} significa ``questa capacit\`a non esiste in questo binario''. Un
+client che riceve \code{503} riprova e continuer\`a a fallire; uno che riceve
+\code{501} sa che deve cambiare qualcosa.
+
+\subsection{La copertura di test}
+
+La configurazione senza moduli ha una classe di test dedicata,
+\code{CoreOnlyApiTest}, che verifica ci\`o che vale \emph{solo} in sua assenza:
+che l'accodatore sia il no-op e che l'API asincrona risponda \code{501}. La
+classe si auto-esclude quando i moduli sono presenti.
+
+Il costo \`e reale. Poich\'e la selezione modulare \`e risolta a tempo di
+configurazione di Gradle e non pu\`o variare all'interno di una singola build,
+quella classe richiede una propria invocazione:
+
+\begin{lstlisting}[language=bash]
+./gradlew test                                   # tutti i moduli (default: all)
+./gradlew test -PcontrolPlaneModules=none        # la configurazione minima
+\end{lstlisting}
+
+Due invocazioni della suite per ogni verifica completa. \`E il prezzo diretto
+della scelta di selezionare a build time anzich\'e a runtime
+(\cref{cap:08-sistema-moduli}), ed \`e utile averlo quantificato: la
+modularit\`a a costo zero sul percorso critico non \`e a costo zero sulla catena
+di integrazione continua.
+
+\subsection{Perch\'e il default \`e \code{all}}
+
+Ogni invocazione di Gradle priva di selezione esplicita usa \code{all}, test
+compresi. La ragione \`e che la suite deve esercitare la configurazione che viene
+distribuita. Una suite che girasse per default su una configurazione parziale
+verificherebbe un artefatto che nessuno esegue, e le interazioni fra moduli ---
+che sono la parte pi\`u fragile di un sistema componibile --- resterebbero
+scoperte.
+
+La combinazione delle due scelte, default \code{all} e test dedicato per
+\code{none}, copre i due estremi dello spazio delle configurazioni. Le
+configurazioni intermedie --- per esempio \code{async-queue} senza
+\code{sync-queue} --- non hanno copertura dedicata.
+
+\begin{damisurare}
+Lo spazio delle configurazioni modulari ha $2^9 = 512$ punti, di cui alcuni non
+validi per la dipendenza fra \code{concurrency-control} e \code{async-queue}. La
+suite ne verifica due. Una verifica di costruibilit\`a su tutte le combinazioni
+valide \`e realizzabile e non \`e stata eseguita.
+\todomis{costruibilit\`a e avviabilit\`a di tutte le combinazioni modulari valide}
+\end{damisurare}

@@ -1,0 +1,694 @@
+\chapter{Il modulo \code{concurrency-control}}
+\label{cap:12-concurrency-control}
+
+Questo \`e il modulo su cui il progetto ha investito di pi\`u, ed \`e il capitolo
+con il maggior contenuto originale del documento. Il modulo decide, per ciascuna
+funzione e a intervalli regolari, quante invocazioni possono essere
+contemporaneamente in volo. \`E 1\,314 righe in quindici classi --- pi\`u di un
+quarto del codice di tutti i moduli messi insieme --- e implementa cinque
+politiche, tre delle quali adattive.
+
+Il capitolo procede cos\`i: prima il problema e la sua struttura analitica, poi
+le cinque politiche in ordine di sofisticazione crescente, infine il ciclo che
+le esegue. I risultati sperimentali che hanno motivato le scelte sono riassunti
+qui dove servono a giustificare una decisione di progetto, e riportati per esteso
+nel \cref{cap:25-valutazione-concorrenza}.
+
+\section{Il problema}
+
+\subsection{Che cosa fa un limite di concorrenza}
+
+In \nf{}, il limite di concorrenza di una funzione \`e il valore contro cui
+\code{FunctionQueueState.tryAcquireSlot()} confronta il contatore delle richieste
+in volo (\cref{cap:09-async-queue}). Una richiesta che non ottiene lo slot resta
+in coda.
+
+Ne segue che il limite governa due grandezze contemporaneamente, e questa
+duplicit\`a \`e la fonte di tutte le difficolt\`a che seguono.
+
+\paragraph{Primo: l'utilizzazione.} Un limite troppo basso lascia le repliche
+inattive mentre le richieste attendono. Un limite troppo alto le sovraccarica,
+allungando il tempo di servizio di ciascuna richiesta.
+
+\paragraph{Secondo: l'ammissione.} Una funzione pu\`o trattenere al pi\`u
+$C + Q$ richieste, dove $C$ \`e il limite e $Q$ la dimensione della coda; oltre
+quella soglia rifiuta. Il limite \`e quindi anche, insieme alla coda, la
+finestra di ammissione.
+
+La seconda propriet\`a \`e stata scoperta sperimentalmente, non progettata, ed \`e
+costata un fallimento --- descritto nella \cref{sec:sojourn} --- in cui un
+controllore ottimizzava correttamente la prima dimenticando la seconda, e
+rifiutava il 4\% del traffico offerto.
+
+\subsection{La struttura analitica}
+
+Sia $\lambda$ il tasso di arrivo, $S(C)$ il tempo di servizio medio con limite
+$C$, $W(C)$ il tempo di attesa in coda e $T(C) = W(C) + S(C)$ il tempo di
+sojourn --- ci\`o che il chiamante osserva.
+
+Dalla legge di Little~\cite{little1961proof} applicata al solo servizio, con il
+sistema saturo, il throughput \`e $\mu(C) = C / S(C)$. Poich\'e le repliche
+condividono CPU e memoria, $S$ cresce con $C$: pi\`u richieste contemporanee
+significa pi\`u contesa, quindi
+
+\[
+  \frac{\mathrm{d}S}{\mathrm{d}C} > 0 \qquad \text{per ogni } C > 0 .
+\]
+
+Questa disuguaglianza ha una conseguenza immediata e distruttiva per una classe
+intera di controllori:
+
+\begin{quote}
+\textbf{Un controllore che minimizza $S(C)$ non ha ottimo interno.} Poich\'e $S$
+\`e monotona crescente, il gradiente punta in discesa ovunque, e una regola che
+riduce il limite quando la latenza cresce cammina fino al proprio limite
+inferiore.
+\end{quote}
+
+Il tempo di attesa ha il comportamento opposto: la coda drena pi\`u in fretta
+quando pi\`u richieste sono servite in parallelo, quindi $W$ decresce con $C$. La
+somma ha un minimo interno. La \cref{fig:sojourn} illustra la relazione.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.85\textwidth}{!}{\input{figures/fig-sojourn-curve}}
+  \caption{Schema qualitativo (\emph{non} dati misurati). Il tempo di servizio
+  cresce monotonamente con il limite di concorrenza e non ammette minimo interno;
+  il tempo di attesa decresce; la loro somma --- il tempo di sojourn --- ha un
+  ginocchio. Un controllore che decide da $S$ non ha nulla da trovare; uno che
+  decide da $T$ s\`i.}
+  \label{fig:sojourn}
+\end{figure}
+
+\subsection{Che cosa il control plane misura davvero}
+
+La metrica \code{function\_latency\_ms} \`e misurata dal control plane fra
+l'istante di dispatch e quello di completamento. \`E quindi il \emph{tempo di
+servizio}, comprensivo del round trip HTTP, e non include l'attesa in coda.
+
+La misura riportata nel \cref{cap:25-valutazione-concorrenza} quantifica lo
+scarto: sotto il profilo a raffica il tempo di attesa medio \`e stato di
+37--43\,ms contro un tempo di servizio di circa 5\,ms. La grandezza da cui i
+primi controllori decidevano \`e circa \textbf{un settimo} di ci\`o che il
+chiamante sperimenta.
+
+La conseguenza \`e stata misurata e non solo temuta: in un confronto iniziale il
+modo \code{BUDGETED} ha ridotto il tempo di servizio del 31\% su una funzione e
+del 44\% sull'altra --- entrambe ampiamente dentro un SLO di 10\,ms --- e ha
+\emph{peggiorato} il p95 end-to-end, perch\'e l'attesa creata dal suo stesso
+limite ha pi\`u che assorbito il guadagno. Un limite di concorrenza non elimina
+lavoro: lo sposta nel buffer.
+
+\section{Le cinque politiche}
+
+\begin{table}[htbp]
+\centering
+\caption{Le cinque politiche di controllo della concorrenza.}
+\label{tab:modi}
+\small
+\begin{tabularx}{\textwidth}{@{}lXll@{}}
+\toprule
+\textbf{Modo} & \textbf{Regola} & \textbf{Segnale} & \textbf{Ambito} \\
+\midrule
+\code{FIXED} & Il limite configurato, invariato. & nessuno & per funzione \\
+\code{STATIC\_PER\_POD} & repliche pronte $\times$ obiettivo per replica. &
+repliche & per funzione \\
+\code{ADAPTIVE\_PER\_POD} & Gradiente di latenza contro il minimo storico della
+funzione. & servizio & per funzione \\
+\code{BUDGETED} & Fabbisogno per l'SLO, servito da un budget di piattaforma con
+equit\`a max-min pesata. & servizio, throughput & \textbf{globale} \\
+\code{SOJOURN} & Modello: guardia di ammissione, legge di Little su tasso
+predetto, orizzonte di drenaggio. & sojourn, servizio, coda & per funzione \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Tutte le politiche sono soggette a due vincoli invalicabili, applicati a valle:
+il limite effettivo non pu\`o superare quello configurato nella specifica
+(\cref{cap:09-async-queue}), e non pu\`o scendere sotto il pavimento
+configurato. La specifica della funzione resta il tetto e il pavimento; le
+politiche si muovono all'interno.
+
+\section{\code{FIXED} e \code{STATIC\_PER\_POD}}
+
+\code{FIXED} \`e il default e non fa nulla: il limite \`e quello configurato. \`E
+la configurazione di riferimento contro cui ogni altra viene confrontata.
+
+\code{STATIC\_PER\_POD} \`e ventotto righe:
+
+\begin{lstlisting}[language=Java]
+int replicas = Math.max(1, readyReplicas);
+int targetPerPod = control.targetInFlightPerPod() == null
+        ? 1 : Math.max(1, control.targetInFlightPerPod());
+long desired = (long) replicas * targetPerPod;
+if (desired > configured) { return configured; }
+return Math.max(1, (int) desired);
+\end{lstlisting}
+
+L'idea \`e che il limite sensato non \`e una propriet\`a della funzione ma della
+capacit\`a disponibile: se ogni replica pu\`o servire bene due richieste
+contemporanee e le repliche pronte sono cinque, il limite \`e dieci. \`E la
+stessa nozione di \code{containerConcurrency} di Knative, con la differenza che
+qui \`e il control plane a moltiplicare, avendo visibilit\`a sul numero di
+repliche.
+
+Il modo \`e utile e ha un limite noto: assume che l'obiettivo per replica sia
+noto all'operatore. Determinarlo richiede un esperimento --- che \`e esattamente
+ci\`o che le politiche adattive cercano di evitare.
+
+\section{\code{ADAPTIVE\_PER\_POD}: il gradiente di latenza}
+
+\subsection{Il segnale}
+
+Il commento di classe enuncia la scelta del segnale con precisione:
+
+\begin{quote}\itshape
+Il segnale non \`e deliberatamente n\'e la profondit\`a di coda n\'e
+l'utilizzazione. Una funzione che gira alla massima utilizzazione con una coda
+vuota \`e sana, non satura, quindi nessuna delle due pu\`o localizzare il punto in
+cui la concorrenza aggiuntiva inizia a costare throughput. Un tempo di servizio
+crescente a lavoro costante \`e esattamente quel punto.
+\end{quote}
+
+L'osservazione \`e corretta e vale la pena isolarla, perch\'e distingue questa
+famiglia di controllori da quelli basati su soglie di utilizzazione. Il segnale
+\`e la \emph{degradazione} rispetto al miglior tempo di servizio osservato:
+
+\[
+  d = \frac{\bar{S}_{\text{int}} - S_{\text{base}}}{\bar{S}_{\text{int}}}
+  \;\in\; [0, 1),
+\]
+
+dove $\bar{S}_{\text{int}}$ \`e la media dell'intervallo appena concluso e
+$S_{\text{base}}$ il minimo storico. \`E la costruzione di TCP
+Vegas~\cite{brakmo1995vegas} trasposta alle chiamate RPC, come nella libreria di
+Netflix~\cite{netflixlimits}.
+
+\subsection{La regola}
+
+\begin{lstlisting}[language=Java]
+if (degradation >= 0) {
+    if (degradation >= highThreshold) {
+        if (nowEpochMs - state.lastDecreaseEpochMs() >= downCooldown) {
+            target = Math.max(minTarget, target - 1);
+            state.lastDecreaseEpochMs(nowEpochMs);
+        }
+    } else if (degradation <= lowThreshold
+            && nowEpochMs - state.lastIncreaseEpochMs() >= upCooldown) {
+        target = Math.min(maxTarget, target + 1);
+        state.lastIncreaseEpochMs(nowEpochMs);
+    }
+}
+\end{lstlisting}
+
+Passi unitari, con banda morta fra le due soglie (default 0{,}15 e 0{,}5) e
+cooldown asimmetrici (30\,s in su, 60\,s in gi\`u). Il valore $-1$ della
+degradazione codifica ``nessuna invocazione completata in questo intervallo'', e
+in quel caso il limite non si muove: \emph{un intervallo vuoto non \`e evidenza di
+niente}.
+
+\subsection{La deriva della baseline}
+
+\begin{lstlisting}[language=Java]
+/**
+ * ponytail: the baseline creeps up 0.2%/tick so a single lucky-fast interval cannot pin it
+ * forever, while a real 2x degradation still stands out for minutes. Replace with a windowed
+ * minimum if functions turn out to have long-period service-time seasonality.
+ */
+private static final double BASELINE_DRIFT_PER_TICK = 1.002;
+\end{lstlisting}
+
+Il minimo storico puro ha un difetto noto: un singolo intervallo fortunato ---
+una finestra in cui il sistema era scarico --- fissa un riferimento che il
+sistema non raggiunger\`a pi\`u, e da quel momento la degradazione appare
+permanentemente alta. La deriva dello 0{,}2\% per tick fa dimenticare lentamente
+i valori estremi. \`E, come il commento riconosce, la versione economica di un
+minimo su finestra scorrevole.
+
+\subsection{Perch\'e non basta}
+
+Due difetti, entrambi misurati.
+
+\paragraph{Non ha ottimo interno.} Il riferimento \`e il minimo osservato della
+funzione stessa, e per la monotonia di $S(C)$ il gradiente punta in discesa
+ovunque. Il commento di \code{SloDemandEstimator} lo registra: \emph{``a
+controller that chases its own minimum has no interior optimum to find [\ldots]
+the limit walks to its floor, which is what two runtimes were measured doing''}.
+
+\paragraph{Decide su una risorsa condivisa senza vedere i vicini.} Con pi\`u
+funzioni sullo stesso control plane, il limite di una si muove perch\'e un'altra
+\`e arrivata, mentre il proprio carico non \`e cambiato. \`E il fenomeno misurato
+nella campagna di co-tenancy (\cref{cap:25-valutazione-concorrenza}): la funzione
+stabile perde il 28\% di throughput e guadagna il 36\% di latenza quando la
+vicina compare. Il controllore interpreta il degrado come proprio e reagisce, ma
+la causa \`e altrove.
+
+I due difetti motivano rispettivamente i due modi successivi.
+
+\section{\code{BUDGETED}: la concorrenza come risorsa di piattaforma}
+
+\subsection{L'idea}
+
+Il commento di classe la enuncia:
+
+\begin{quote}\itshape
+Ogni funzione dichiara ci\`o di cui ha bisogno, e una sola allocazione risponde a
+tutte. [\ldots] Una decisione per funzione non pu\`o rispettare un budget
+condiviso, perch\'e nessuna funzione sa che cosa stanno chiedendo le altre.
+\end{quote}
+
+La domanda viene quindi spezzata in due, e le due parti sono risolte da due
+componenti distinti:
+
+\begin{enumerate}
+  \item \emph{Quanto serve a questa funzione} per rispettare il proprio SLO al
+  carico che sta vedendo? Risponde \code{SloDemandEstimator}, per funzione.
+  \item \emph{Quanto pu\`o dare la piattaforma}, dato che il budget \`e finito e
+  altre funzioni chiedono? Risponde \code{ConcurrencyBudgetAllocator}, una volta
+  per tick su tutte le richieste.
+\end{enumerate}
+
+Per costruzione la somma delle concessioni non pu\`o eccedere il budget, e le
+funzioni non devono scoprirsi a vicenda attraverso l'interferenza.
+
+\subsection{La stima del fabbisogno}
+
+La regola base \`e il gradiente della libreria Netflix, con l'SLO come obiettivo
+anzich\'e il minimo auto-misurato:
+
+\[
+  g = \operatorname{clamp}\!\left(\frac{L_{\text{target}}}{L_{\text{oss}}},\,
+      0{,}5,\, 1\right),
+  \qquad
+  C_{\text{des}} = C \cdot g + \sqrt{C}.
+\]
+
+Tre elementi meritano commento.
+
+\paragraph{L'obiettivo \`e un SLO, non un minimo osservato.} \`E la correzione
+diretta del primo difetto di \code{ADAPTIVE\_PER\_POD}. Contro un obiettivo
+fisso il gradiente \`e maggiore di 1 finch\'e la funzione \`e dentro il proprio
+SLO, e minore di 1 solo quando la promessa \`e effettivamente violata. Esiste
+quindi un punto di equilibrio interno.
+
+\paragraph{Il pavimento a 0{,}5 sul gradiente.}
+\begin{lstlisting}[language=Java]
+/**
+ * Floor on the gradient. Without it a single slow interval — a cold start, a GC pause — would
+ * halve the limit repeatedly; with it the worst case is halving per tick, which recovers.
+ */
+private static final double MIN_GRADIENT = 0.5;
+\end{lstlisting}
+Limita il danno di un intervallo anomalo. Il caso peggiore diventa un
+dimezzamento per tick, da cui il sistema si riprende, anzich\'e un crollo.
+
+\paragraph{Il termine $\sqrt{C}$.} \`E margine deliberato. Un limite
+dimensionato esattamente sul tasso di arrivo corrente non lascia nulla per una
+raffica: il primo arrivo sopra la media si accoda e, se la coda \`e piena, viene
+rifiutato. Per la legge di Little la concorrenza necessaria ad assorbire
+$\lambda$ a tempo di servizio $S$ \`e $\lambda S$; il margine \`e ci\`o che sta
+sopra, e cresce in modo sublineare cos\`i che un limite grande non porti uno
+spreco proporzionalmente grande.
+
+\subsection{Il tetto al ginocchio}
+
+Il gradiente da solo non basta, e la ragione \`e misurata:
+
+\begin{quote}\itshape
+Un controllore guidato dall'SLO spende ogni millisecondo di latenza che gli viene
+concesso: detto che pu\`o impiegare 10\,ms, \`e cresciuto fino a quattro volte la
+concorrenza del modo a gradiente sullo stesso carico e ha consegnato il 6\% di
+richieste in meno, perch\'e nulla nella regola chiedeva se la concorrenza
+aggiuntiva comprasse dei completamenti.
+\end{quote}
+
+La correzione \`e un tetto alla crescita calcolato anzich\'e cercato:
+
+\[
+  C_{\text{ginocchio}} = \lambda_{\max} \cdot S_{\min}
+  \;+\; \sqrt{\lambda_{\max} \cdot S_{\min}},
+\]
+
+ossia la legge di Little applicata ai due estremi che la funzione ha dimostrato
+di saper raggiungere. Una volta che il throughput satura, $\lambda_{\max}$ smette
+di crescere e il tetto smette di crescere con esso, qualunque cosa l'SLO
+consentirebbe ancora.
+
+Il commento identifica correttamente la parentela: \emph{``This is BBR's shape
+rather than Vegas': track the two extremes separately and target their product,
+instead of reading one degraded signal.''} Vegas legge un segnale degradato --- il
+ritardo --- e ne deduce lo stato; qui si tracciano separatamente il miglior tempo
+di servizio e il miglior throughput e se ne prende il prodotto.
+
+Gli estremi decadono verso il presente all'1\% per tick, per la stessa ragione
+per cui la baseline del modo precedente deriva: un minimo assoluto non si riprende
+mai da un intervallo fortunato, e un massimo assoluto non ammette mai che la
+macchina sia diventata pi\`u lenta.
+
+Un'asimmetria importante \`e codificata esplicitamente:
+
+\begin{lstlisting}[language=Java]
+// Growth stops at the knee even when the SLO would allow more. Shrinking is never
+// capped: an SLO breach is a broken promise, and no throughput argument outranks it.
+if (desired > current) {
+    desired = Math.min(desired, knee(spec.name(), observedLatencyMs, throughputRps));
+}
+\end{lstlisting}
+
+Il tetto vincola solo la crescita. La contrazione non \`e mai limitata, perch\'e
+una violazione dell'SLO \`e una promessa infranta e nessun argomento di
+throughput la sopravanza. \`E una gerarchia di obiettivi dichiarata nel codice,
+non implicita.
+
+\subsection{L'allocazione: equit\`a max-min pesata}
+
+L'allocatore implementa l'equit\`a max-min pesata~\cite{bertsekas1992datanetworks}:
+
+\begin{enumerate}[leftmargin=*]
+  \item Assegna a ciascuna funzione il proprio pavimento.
+  \item Distribuisce il residuo proporzionalmente ai pesi, ma nessuna funzione
+  riceve pi\`u di quanto ha chiesto.
+  \item Ripete finch\'e resta budget e qualcuno \`e ancora insoddisfatto.
+  \item Se le quote arrotondano a zero, distribuisce il residuo a unit\`a singole
+  anzich\'e ciclare a vuoto.
+\end{enumerate}
+
+Il commento giustifica la scelta rispetto all'alternativa ovvia --- scalare ogni
+richiesta dello stesso fattore --- con due propriet\`a:
+
+\begin{quote}\itshape
+Una funzione che chiede meno della propria quota non viene mai tagliata, quindi
+una funzione piccola non \`e punita per aver condiviso la piattaforma con una
+grande. E nulla resta sul tavolo mentre qualcuno \`e ancora a corto: lo
+scalamento proporzionale lascerebbe inattiva capacit\`a che una funzione affamata
+potrebbe usare.
+\end{quote}
+
+\subsection{I pavimenti prima di tutto}
+
+Il trattamento del caso in cui i soli pavimenti eccedono il budget \`e la
+decisione pi\`u interessante dell'allocatore:
+
+\begin{quote}\itshape
+Una funzione a cui viene concesso zero non pu\`o servire, e una piattaforma che
+affama una funzione fino al silenzio totale per soddisfarne una vicina ha preso
+una decisione di ammissione fingendo di prenderne una di scheduling. Se i soli
+pavimenti eccedono il budget, il budget \`e per definizione troppo piccolo per le
+funzioni registrate, e ogni pavimento viene concesso: l'alternativa \`e rompere
+una promessa che la piattaforma fa a ogni tenant per tenere in ordine
+l'aritmetica.
+\end{quote}
+
+Il budget viene quindi sforato. \`E la scelta corretta: un budget \`e uno
+strumento di ripartizione, non un vincolo fisico, e quando diventa
+insoddisfacibile il fatto da segnalare \`e che \`e mal dimensionato, non che una
+funzione debba smettere di esistere.
+
+\subsection{Il budget di piattaforma}
+
+\begin{lstlisting}[language=Java]
+/**
+ * A platform capacity statement, not something to infer from load: derived from observed
+ * throughput it would grow under load and shrink when idle, which is the opposite of what a
+ * budget is for. Unset, it scales with the cores the control plane can see, which is a guess —
+ * but a guess that at least tracks the machine rather than a constant.
+ */
+public int totalBudgetOrDefault() {
+    if (totalBudget != null && totalBudget > 0) { return totalBudget; }
+    return Math.max(8, Runtime.getRuntime().availableProcessors() * 4);
+}
+\end{lstlisting}
+
+\`E lo stesso principio dell'SLO di default (\cref{cap:06-nucleo}): una grandezza
+che esprime un vincolo non deve essere derivata dall'osservazione, o cesser\`a di
+vincolare esattamente quando serve.
+
+\section{\code{SOJOURN}: decidere dalla latenza del chiamante}
+\label{sec:sojourn}
+
+Il modo \code{SOJOURN} \`e il pi\`u recente e il pi\`u istruttivo, perch\'e la
+sua documentazione conserva due progetti falliti insieme a quello adottato.
+
+\subsection{Primo fallimento: il gradiente sulla latenza end-to-end}
+
+L'idea immediata --- alimentare la regola a gradiente esistente con la latenza
+end-to-end anzich\'e con il tempo di servizio --- \`e instabile, e \`e stata
+respinta prima dell'implementazione. La regola riduce il limite quando la latenza
+eccede l'obiettivo; un limite pi\`u piccolo drena la coda pi\`u lentamente, quindi
+l'attesa cresce, quindi il limite si riduce ancora, fino al pavimento. \`E un
+anello di retroazione positiva.
+
+\subsection{Secondo fallimento: la ricerca del minimo}
+
+Poich\'e $T(C)$ ha un minimo interno (\cref{fig:sojourn}), cercarlo per passi
+successivi --- muovi, confronta con l'ultima volta, prosegui se \`e migliorato,
+inverti se \`e peggiorato --- \`e ben posto in linea di principio. \`E stato
+implementato e falsificato dalla misura:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{SOJOURN}, a ricerca} \\
+\midrule
+richieste rifiutate & 32 (0{,}004\%) & \textbf{36\,181 (4{,}275\%)} \\
+limite medio [min--max] & 7{,}8 [4--8] & 4{,}0 [1--8] \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La causa \`e un problema di attribuzione:
+
+\begin{quote}\itshape
+Non pu\`o distinguere ``la mia mossa ha aiutato'' da ``il carico \`e calato''. In
+un avvallamento ha attribuito il sollievo naturale alla propria decisione di
+restringere, ed era ancora piccolo quando il carico \`e tornato. Confrontare due
+istanti presuppone che il mondo sia rimasto fermo fra di essi.
+\end{quote}
+
+Il dettaglio pi\`u interessante \`e che il punto di lavoro scelto non era
+sbagliato: a limite 4 la ricerca consegnava il 96{,}5\% del throughput con met\`a
+del tempo di servizio. Ci\`o che ha mancato \`e la seconda funzione del limite ---
+essere la finestra di ammissione --- e dimensionarlo dalla sola latenza ha fatto
+perdere il 4\% del traffico.
+
+\subsection{Il progetto adottato: calcolare anzich\'e confrontare}
+
+Il controllore adottato non confronta due intervalli. Calcola, in tre parti con
+un ordine di autorit\`a stretto.
+
+\paragraph{1. La guardia di ammissione.} Ha la precedenza assoluta:
+
+\begin{lstlisting}[language=Java]
+private static final double HIGH_WATER = 0.7;
+
+if (underQueuePressure(queueDepth, bounds)) {
+    // Never below what is already in flight while the buffer is filling: lowering the limit
+    // here shrinks the admission window and refuses the very traffic that is queueing.
+    needed = Math.max(needed, Math.max(inFlight + 1, bounds.floor()));
+}
+\end{lstlisting}
+
+Quando la coda supera il 70\% della propria capacit\`a, il limite non pu\`o
+scendere, qualunque cosa l'aritmetica della latenza preferisca. Il commento \`e
+esplicito sul fatto che questa non \`e una preferenza tarabile: \emph{``refusing
+traffic is worse than being slow, and that ordering is not a tuning
+parameter''}.
+
+\paragraph{2. La legge di Little su un tasso predetto.}
+
+\[
+  C_{\text{servizio}} = \hat{\lambda} \cdot S,
+  \qquad
+  C_{\text{drenaggio}} = \frac{Q \cdot S}{H},
+  \qquad
+  C = \left\lceil C_{\text{servizio}} + C_{\text{drenaggio}} \right\rceil
+\]
+
+dove $\hat{\lambda}$ \`e il tasso di arrivo \emph{predetto}, $Q$ la profondit\`a
+di coda corrente e $H$ l'orizzonte di drenaggio concesso.
+
+\paragraph{3. La promessa come orizzonte.} Quando il sojourn osservato eccede
+l'obiettivo, l'orizzonte di drenaggio si accorcia in proporzione:
+
+\[
+  H = \max\left(1\,\mathrm{s},\; 5\,\mathrm{s} \cdot
+      \frac{T_{\text{target}}}{T_{\text{oss}}}\right).
+\]
+
+Un orizzonte pi\`u corto richiede pi\`u concorrenza per smaltire lo stesso
+arretrato. La logica \`e che l'attesa \`e l'unica parte della latenza del
+chiamante che un limite di concorrenza possa effettivamente accorciare.
+
+\subsection{La predizione del carico}
+
+La predizione $\hat{\lambda}$ \`e ci\`o che elimina il problema di attribuzione:
+il controllore smette di confrontare istanti e inizia a calcolare da un modello.
+\code{LoadForecast} implementa il metodo lineare di Holt con trend smorzato:
+
+\[
+  \ell_t = \alpha \lambda_t + (1-\alpha)(\ell_{t-1} + \phi b_{t-1}),
+  \quad
+  b_t = \beta(\ell_t - \ell_{t-1}) + (1-\beta)\phi b_{t-1},
+  \quad
+  \hat{\lambda}_{t+1} = \ell_t + \phi b_t,
+\]
+
+con $\alpha = 0{,}5$, $\beta = 0{,}3$, $\phi = 0{,}8$.
+
+La scelta \`e giustificata cos\`i:
+
+\begin{quote}\itshape
+Una media mobile \`e in ritardo su una rampa, e una rampa \`e dove la coda si
+costruisce: quando una stima in ritardo se ne accorge, il buffer \`e gi\`a pieno.
+Il termine di trend vede la pendenza; lo smorzamento impedisce di portare quella
+pendenza oltre la cima della rampa, dove un'estrapolazione non smorzata
+sovrastima di pi\`u.
+\end{quote}
+
+Il primo campione produce livello senza trend: \emph{``una lettura \`e un livello
+e nessun trend; una pendenza richiede due punti, e inventarne uno farebbe
+predire una rampa al primo intervallo di ogni funzione''}.
+
+\subsection{Il risultato}
+
+Sotto arrivi aperti --- richieste programmate dall'orologio anzich\'e da un
+generatore a ciclo chiuso --- il confronto con \code{ADAPTIVE\_PER\_POD} sullo
+stesso carico:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{SOJOURN}} & \\
+\midrule
+servite & 549\,856 & \textbf{567\,210} & $+3{,}2\%$ \\
+rifiutate & 110\,117 (16{,}7\%) & \textbf{92\,785 (14{,}1\%)} & $-15{,}7\%$ \\
+p95 end-to-end & 120{,}48\,ms & \textbf{107{,}68\,ms} & $-10{,}6\%$ \\
+p99 end-to-end & 157{,}67\,ms & \textbf{133{,}82\,ms} & $-15{,}1\%$ \\
+attesa in coda & 35{,}61\,ms & 31{,}03\,ms & $-12{,}9\%$ \\
+tempo di servizio & 1{,}69\,ms & 2{,}00\,ms & $+18\%$ \\
+limite medio & 3{,}9 & 2{,}8 & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Lo scambio \`e andato nella direzione prevista: il tempo di servizio peggiora del
+18\%, l'attesa migliora del 13\%, e poich\'e l'attesa \`e venti volte il tempo di
+servizio il chiamante ci guadagna. Il dettaglio istruttivo \`e che \code{SOJOURN}
+ottiene questo con \emph{meno} concorrenza media: non vince aggiungendo
+capacit\`a ma collocandola nel tempo, che \`e ci\`o per cui la predizione era
+stata introdotta.
+
+Il \cref{cap:25-valutazione-concorrenza} riporta i caveat --- una sola esecuzione
+per modo, entrambi i sistemi in sovraccarico --- e il
+\cref{cap:27-discussione} li tratta come limiti alla validit\`a.
+
+\section{Il governor: il ciclo che esegue le politiche}
+
+\code{ConcurrencyGovernor} \`e il componente che a ogni tick (default 5\,s)
+raccoglie le osservazioni, invoca la politica pertinente per ciascuna funzione, e
+pubblica i limiti attraverso \code{ScalingMetricsSource}.
+
+Ha una struttura obbligata dalla differenza di ambito fra le politiche. I modi
+\code{STATIC\_PER\_POD} e \code{ADAPTIVE\_PER\_POD} decidono per funzione e sono
+gestiti da \code{ConcurrencyControlCoordinator} in un ciclo. Il modo
+\code{BUDGETED} decide su tutte le funzioni insieme e riceve quindi la lista
+completa delle osservazioni in una sola chiamata. Il modo \code{SOJOURN} torna a
+decidere per funzione, ma legge tre segnali anzich\'e uno.
+
+\`E il motivo per cui l'interfaccia dei controllori non \`e uniforme: un modo che
+alloca una risorsa condivisa non pu\`o essere ricondotto alla stessa firma di uno
+che decide in isolamento senza inventare uno stato globale nascosto.
+
+\subsection{L'intervallo come unit\`a di osservazione}
+
+Tutti i controllori adattivi leggono i timer cumulativi di Micrometer e li
+convertono in medie dell'intervallo appena concluso, attraverso
+\code{LatencyIntervals}:
+
+\begin{lstlisting}[language=Java]
+/**
+ * Turns a cumulative service-time timer into the mean of the interval just ended.
+ *
+ * <p>The cumulative value answers "since startup", which flattens exactly the change a controller
+ * reacts to: a function that has served a million fast requests and is now slow still reads fast.
+ * Only the difference between two readings describes the present.</p>
+ */
+\end{lstlisting}
+
+\`E lo stesso errore, e la stessa correzione, gi\`a incontrati per la metrica
+\code{rps} dell'autoscaler (\cref{cap:11-autoscaler}). Che il progetto abbia
+dovuto risolverlo due volte in due moduli \`e un piccolo indizio a favore di una
+astrazione condivisa che non esiste.
+
+\section{Configurazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Chiave} & \textbf{Default} & \textbf{Significato} \\
+\midrule
+\code{nanofaas.concurrency-control.poll-interval-ms} & 5\,000 & Periodo del tick. \\
+\code{...default-target-in-flight-per-pod} & 2 & Obiettivo iniziale. \\
+\code{...total-budget} & $\max(8, 4 \times \text{core})$ & Budget globale per
+\code{BUDGETED}. \\
+\midrule
+\multicolumn{3}{@{}l@{}}{\emph{Per funzione, in \code{scalingConfig.concurrencyControl}:}} \\
+\code{mode} & \code{FIXED} & \\
+\code{targetInFlightPerPod} & 2 & \code{STATIC}/\code{ADAPTIVE}. \\
+\code{minTargetInFlightPerPod} & 1 & Pavimento. \\
+\code{maxTargetInFlightPerPod} & 8 & Tetto. \\
+\code{upscaleCooldownMs} & 30\,000 & \code{ADAPTIVE}. \\
+\code{downscaleCooldownMs} & 60\,000 & \code{ADAPTIVE}. \\
+\code{highLoadThreshold} & 0{,}5 & \code{ADAPTIVE}. \\
+\code{lowLoadThreshold} & 0{,}15 & \code{ADAPTIVE}. \\
+\code{targetLatencyMs} & 250 & SLO: di servizio per \code{BUDGETED},
+end-to-end per \code{SOJOURN}. \\
+\code{weight} & 1{,}0 & Peso nell'allocazione \code{BUDGETED}. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Va notato che \code{targetLatencyMs} cambia significato fra i due modi che lo
+usano: in \code{BUDGETED} \`e un SLO sul tempo di servizio, in \code{SOJOURN}
+sull'end-to-end. \`E un'ambiguit\`a reale nel modello di configurazione, mitigata
+dal fatto che ciascun modo interpreta il campo coerentemente con la propria
+semantica dichiarata, e non risolta.
+
+\section{Sintesi}
+
+\begin{table}[htbp]
+\centering
+\caption{Le cinque politiche: che problema risolve ciascuna, e quale lascia
+aperto.}
+\label{tab:modi-sintesi}
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Modo} & \textbf{Risolve} & \textbf{Lascia aperto} \\
+\midrule
+\code{FIXED} & Nulla; \`e il riferimento. & Tutto. \\
+\code{STATIC\_PER\_POD} & Il limite segue la capacit\`a disponibile. &
+L'obiettivo per replica va determinato sperimentalmente. \\
+\code{ADAPTIVE\_PER\_POD} & Trova il proprio punto senza taratura. & Non ha
+ottimo interno; ignora i vicini. \\
+\code{BUDGETED} & La risorsa condivisa \`e allocata una volta sola, con
+equit\`a. & Decide ancora dal tempo di servizio. \\
+\code{SOJOURN} & Decide da ci\`o che il chiamante osserva; non confronta
+istanti. & Mai osservato fuori dal sovraccarico; guardia al 70\% non tarata. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le due colonne di destra sono la struttura del capitolo: ogni modo esiste perch\'e
+il precedente ha lasciato aperto qualcosa, e ciascuno lascia aperto qualcosa a
+sua volta. La progressione non \`e terminata --- l'ultima riga della tabella
+elenca due questioni che il \cref{cap:28-lavori-futuri} riprende.

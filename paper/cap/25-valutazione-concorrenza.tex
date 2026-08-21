@@ -1,0 +1,379 @@
+\chapter{Valutazione dei controllori di concorrenza}
+\label{cap:25-valutazione-concorrenza}
+
+Questo capitolo riporta per esteso le campagne che hanno prodotto i risultati
+citati nel \cref{cap:12-concurrency-control}. \`E il capitolo pi\`u ricco di
+risultati negativi del documento, ed \`e organizzato in modo che ciascuno preceda
+la correzione che ha motivato.
+
+Tutte le misure sono di agosto 2026 e provengono dall'impianto descritto nel
+\cref{cap:22-metodo-sperimentale}. Dove un'affermazione \`e stata fatta e poi
+confutata dalla misura, il documento conserva la confutazione anzich\'e
+l'affermazione.
+
+\section{Il confronto fra i due controllori per funzione}
+
+\subsection{Impianto}
+
+Due funzioni su un solo control plane, vincolate agli stessi quattro core, coda
+di 100 ciascuna, tetto per funzione 8, budget totale \code{BUDGETED} pari a 12.
+Carico a ciclo chiuso con picco di 103 richieste offerte per funzione su tre
+finestre: una funzione da sola, poi le due in antifase, poi le due in fase.
+Entrambi i modi hanno ricevuto esattamente lo stesso carico.
+
+\subsection{Risultati aggregati}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{BUDGETED}} \\
+\midrule
+richieste & 899\,684 & 893\,841 \\
+rifiutate & 7 (0{,}001\%) & 33 (0{,}004\%) \\
+p95 end-to-end & 80{,}2\,ms & 79{,}7\,ms \\
+p99 end-to-end & 90{,}2\,ms & 87{,}2\,ms \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+I due modi sono entro l'1\% l'uno dall'altro end-to-end. Preso da solo, questo
+risultato direbbe che il modo a budget non porta alcun beneficio. \`E la
+conclusione sbagliata, per due ragioni distinte che le sezioni seguenti
+sviluppano.
+
+\subsection{La concorrenza concessa, per finestra}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+\textbf{Finestra} & \textbf{AD. java} & \textbf{AD. lite} & \textbf{somma} &
+\textbf{BU. java} & \textbf{BU. lite} & \textbf{somma} \\
+\midrule
+una sola & 7{,}8 & 4{,}1 (idle) & --- & 8{,}0 & 1{,}2 (idle) & --- \\
+antifase & 8{,}0 & 5{,}0 & 13{,}0 & 8{,}0 & 2{,}9 & \textbf{10{,}9} \\
+in fase & 7{,}9 & 5{,}5 & 13{,}4 & 8{,}0 & 3{,}7 & \textbf{11{,}7} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\code{BUDGETED} mantiene il totale sotto il proprio budget di 12 e sposta
+capacit\`a fra le funzioni al muoversi del carico. \code{ADAPTIVE\_PER\_POD} non
+ha alcun meccanismo per fare n\'e l'una n\'e l'altra cosa, perch\'e i suoi due
+controllori indipendenti non sanno l'uno dell'esistenza dell'altro. \`E la
+propriet\`a per cui il modo esiste, ed \`e visibile qui e non negli aggregati.
+
+\subsection{L'asimmetria non \`e iniquit\`a}
+
+Le due funzioni ricevono concorrenza molto diversa, e questo \emph{non} \`e un
+difetto dell'allocatore. Sono runtime diversi: \code{lite} serve in 2{,}15\,ms
+contro 5{,}57\,ms, quindi la legge di Little le assegna un limite pi\`u piccolo.
+A 1\,493 richieste al secondo le servono circa 3{,}2 in volo, e oltre non compra
+completamenti.
+
+\code{BUDGETED} le ha concesso 2{,}6 in media contro i 4{,}9 di
+\code{ADAPTIVE} \emph{a parit\`a di throughput}, e il suo tempo di servizio \`e
+sceso del 37\%. Met\`a della concorrenza, lo stesso lavoro svolto.
+
+\subsection{Un errore di calibrazione}
+
+Il \cref{cap:22-metodo-sperimentale} riporta l'errore che ha invalidato la prima
+esecuzione di questo confronto e la regola che ne \`e stata derivata. Va
+richiamato qui perch\'e riguarda direttamente l'interpretabilit\`a della tabella
+precedente: con budget 8 anzich\'e 12, la coda traboccava per aritmetica in un
+modo e non nell'altro, producendo 86\,302 rifiuti che non dicevano nulla sui
+controllori.
+
+\section{La coda \`e dove sta la latenza}
+
+\code{function\_latency\_ms} \`e misurata dal control plane fra dispatch e
+completamento: \`e il round trip, non il tempo di esecuzione interno alla
+funzione. Il governor decide da essa.
+
+Sotto il profilo a raffica l'attesa media in coda \`e stata di \textbf{37--43\,ms}
+contro un tempo di servizio di circa \textbf{5\,ms}. La grandezza da cui il
+controllore si orienta \`e circa \textbf{un settimo} di ci\`o che il chiamante
+sperimenta.
+
+La conseguenza \`e misurabile, non teorica. In un confronto iniziale
+\code{BUDGETED} ha ridotto il tempo di servizio del 31\% su una funzione e del
+44\% sull'altra --- entrambe molto dentro un SLO di 10\,ms --- e ha
+\textbf{peggiorato} il p95 end-to-end, perch\'e l'attesa creata dal suo stesso
+limite ha pi\`u che assorbito il guadagno.
+
+\begin{quote}
+Un limite di concorrenza non rimuove lavoro: lo sposta nel buffer.
+\end{quote}
+
+\section{Il ciclo chiuso non poteva porre la domanda}
+
+Prima di poter valutare un controllore che decide dal sojourn, \`e stato
+necessario correggere l'impianto.
+
+Sotto il profilo \code{burst} ogni utente virtuale tiene una richiesta, quindi
+il numero nel sistema \`e fissato dal generatore e la profondit\`a di coda \`e
+\code{VU} $-$ \code{limite}. Due conseguenze, entrambe misurate:
+
+\begin{itemize}[leftmargin=*]
+  \item Portare il limite da 4 a 8 ha accorciato di quattro una coda profonda 99.
+  Nessun controllore pu\`o muovere l'attesa in modo apprezzabile.
+  \item La coda si assesta a 95 su 100 per costruzione, permanentemente sopra
+  qualunque soglia di guardia. La guardia di ammissione del modo \code{SOJOURN}
+  scatta a ogni tick e il modello non parla mai: la riesecuzione legge
+  \code{8 [8--8]} per tutta la sua durata.
+\end{itemize}
+
+\begin{quote}
+\`E per questo che due controllori che leggevano segnali completamente diversi
+sono finiti entro il 2\% l'uno dall'altro su questo profilo. La somiglianza era
+una propriet\`a dell'impianto.
+\end{quote}
+
+\`E il risultato metodologico centrale del capitolo, e la ragione per cui il
+confronto aggregato della prima sezione va letto con cautela: quel confronto
+girava su un impianto incapace di distinguere.
+
+\section{Decidere dalla latenza del chiamante: due fallimenti e un risultato}
+
+\subsection{Fallimento 1: il gradiente sul sojourn}
+
+Alimentare la regola a gradiente esistente con la latenza end-to-end \`e
+instabile, e \`e stato scartato prima dell'implementazione. La regola riduce il
+limite quando la latenza eccede l'obiettivo; un limite pi\`u piccolo drena la
+coda pi\`u lentamente, quindi l'attesa cresce, quindi si riduce ancora, fino al
+pavimento.
+
+\subsection{Fallimento 2: la ricerca del minimo}
+
+Il sojourn ha un minimo interno dove il tempo di servizio non ce l'ha, quindi la
+ricerca \`e ben posta in linea di principio. \`E stata implementata e falsificata:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{SOJOURN}, a ricerca} \\
+\midrule
+rifiutate & 32 (0{,}004\%) & \textbf{36\,181 (4{,}275\%)} \\
+limite [min--max] & 7{,}8 [4--8] & 4{,}0 [1--8] \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il punto di lavoro scelto non era il problema: a limite 4 consegnava il 96{,}5\%
+del throughput con met\`a del tempo di servizio. Il problema \`e che \emph{il
+limite fa due lavori}: insieme alla coda \`e anche la finestra di ammissione,
+perch\'e una funzione trattiene \code{limite + queueSize} e rifiuta il resto.
+Dimensionarlo dalla sola latenza ha fatto perdere il 4\% del traffico.
+
+La causa profonda \`e un problema di attribuzione: la ricerca non pu\`o
+distinguere ``la mia mossa ha aiutato'' da ``il carico \`e calato''. In un
+avvallamento ha attribuito il sollievo naturale alla propria decisione di
+restringere, ed era ancora piccola quando il carico \`e tornato.
+
+\subsection{Il risultato: calcolare da un modello}
+
+Sotto arrivi aperti, con picco sopra la capacit\`a misurata, stesso carico,
+stessi core, stesse code, entrambi i modi per funzione:
+
+\begin{table}[htbp]
+\centering
+\caption{\code{ADAPTIVE\_PER\_POD} contro \code{SOJOURN} sotto arrivi aperti.}
+\label{tab:sojourn}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+ & \textbf{\code{ADAPTIVE\_PER\_POD}} & \textbf{\code{SOJOURN}} & \\
+\midrule
+offerte & 659\,973 & 659\,995 & identiche per costruzione \\
+\textbf{servite} & 549\,856 & \textbf{567\,210} & \textbf{$+3{,}2\%$} \\
+rifiutate & 110\,117 (16{,}7\%) & \textbf{92\,785 (14{,}1\%)} &
+\textbf{$-15{,}7\%$} \\
+\textbf{p95 end-to-end} & 120{,}48\,ms & \textbf{107{,}68\,ms} &
+\textbf{$-10{,}6\%$} \\
+\textbf{p99 end-to-end} & 157{,}67\,ms & \textbf{133{,}82\,ms} &
+\textbf{$-15{,}1\%$} \\
+attesa in coda & 35{,}61\,ms & 31{,}03\,ms & $-12{,}9\%$ \\
+tempo di servizio & 1{,}69\,ms & 2{,}00\,ms & $+18\%$ \\
+limite medio & 3{,}9 & 2{,}8 & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+Lo scambio \`e andato nella direzione prevista: il tempo di servizio peggiora del
+18\%, l'attesa migliora del 13\%, e poich\'e l'attesa \`e venti volte il tempo di
+servizio il chiamante ci guadagna. L'obiettivo --- stesso throughput, stessi
+rifiuti, p95 end-to-end inferiore --- era stato scritto nello scenario
+\emph{prima} dell'esecuzione, e tutti e tre sono stati superati.
+
+Il dettaglio istruttivo \`e che \code{SOJOURN} ha ottenuto questo con
+\emph{meno} concorrenza media. Non vince aggiungendo capacit\`a ma collocandola
+nel tempo, che \`e ci\`o per cui la predizione era stata introdotta.
+
+\subsection{Caveat}
+
+Riportati dal progetto e da prendere sul serio:
+
+\begin{itemize}[leftmargin=*]
+  \item Una sola esecuzione per modo, non ripetuta. Differenze del 10--15\% sono
+  grandi ma non stabilite.
+  \item Entrambi i sistemi stanno scartando il 14--16\% del carico, perch\'e il
+  picco a ciclo aperto eccede genuinamente la capacit\`a. Il confronto \`e fra
+  due sistemi sovraccarichi, non fra due sistemi comodi.
+  \item \code{dropped\_iterations} \`e stato 21 e 0, quindi il generatore non
+  stava rinunciando e i rifiuti sono della piattaforma.
+\end{itemize}
+
+Il secondo caveat \`e il pi\`u limitante: \code{SOJOURN} non \`e mai stato
+osservato scegliere un limite in condizioni comode.
+
+\section{Co-tenancy: cross-talk senza contesa}
+
+\subsection{Il fenomeno}
+
+Due funzioni su un control plane, una a carico costante mentre l'altra va e
+viene. Quando la vicina arriva, la funzione stabile perde il 28\% del proprio
+throughput e guadagna il 36\% di latenza.
+
+\subsection{L'ipotesi ovvia \`e sbagliata}
+
+La spiegazione immediata era la contesa di CPU. \`E stato aggiunto
+\code{nanofaas.container-local.cpuset} per vincolare entrambe le funzioni agli
+stessi quattro core, e l'esecuzione \`e stata ripetuta:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{4 core propri ciascuna} & \textbf{core 0--3 condivisi} \\
+\midrule
+java da sola & 1\,762 rps / 4{,}57\,ms & 1\,762 rps / 4{,}57\,ms \\
+java con la vicina & 1\,274 rps / 6{,}23\,ms & 1\,274 rps / 6{,}23\,ms \\
+combinato durante la sovrapposizione & 2\,769 rps & 2\,751 rps \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Identiche a tre cifre significative. Vincolare entrambe le funzioni a quattro
+core condivisi costa lo 0{,}6\% del throughput combinato, che \`e rumore.
+
+I quattro core non erano mai il vincolo attivo: a circa 2\,760 richieste al
+secondo ciascuna richiesta pu\`o costare al massimo 1{,}45\,ms di CPU, e
+l'obiettivo \`e raggiunto. Il cross-talk viene da ci\`o che le due funzioni
+condividono in \emph{entrambe} le configurazioni --- l'unico control plane ---
+non dai core.
+
+\subsection{Perch\'e il \code{cpuset} resta}
+
+Pur non essendo la spiegazione cercata, la funzionalit\`a \`e stata mantenuta:
+rende il budget di concorrenza una divisione di una capacit\`a che
+\emph{esiste}. Senza di essa, su una macchina con core in eccesso, la premessa
+del modo \code{BUDGETED} \`e falsa e il modo non pu\`o essere valutato
+(\cref{cap:15-deployment-provider}).
+
+\begin{damisurare}
+Il meccanismo esatto del cross-talk attraverso il control plane condiviso non \`e
+stato isolato. I candidati --- contesa sul thread dello scheduler, sull'event
+loop, sulle strutture concorrenti delle code --- sono distinguibili con la
+profilazione, e non sono stati distinti.
+\todomis{origine del cross-talk fra funzioni co-residenti nel control plane}
+\end{damisurare}
+
+\section{Un confondente scoperto: i due \code{word-stats}}
+
+Registrato dal progetto perch\'e i commenti degli scenari hanno affermato il
+contrario per un certo periodo:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{word-stats-java}} & \textbf{\code{word-stats-java-lite}} \\
+\midrule
+build & Spring Boot su JVM & binario nativo GraalVM \\
+SDK & \code{sdks/java} & \code{sdks/java-lite} \\
+residente, a riposo & 133\,MiB & 2{,}7\,MiB \\
+residente, a caldo & 160\,MiB & 51{,}6\,MiB \\
+tempo di servizio & 5{,}57\,ms & 2{,}15\,ms \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\begin{quote}
+Qualunque esperimento che le tratti come intercambiabili \`e confuso.
+\end{quote}
+
+\`E riportato in questo capitolo, e non solo nel \cref{cap:18-sdk}, perch\'e
+riguarda direttamente l'interpretazione della prima sezione: l'asimmetria fra le
+due funzioni nella tabella delle concessioni \`e in larga parte questa
+differenza di runtime, non una scelta dell'allocatore.
+
+\section{Che cosa non \`e stabilito}
+
+Il progetto enumera esplicitamente i limiti dei propri risultati. Sono riportati
+qui integralmente perch\'e sono parte del contributo:
+
+\begin{enumerate}[leftmargin=*]
+  \item Perch\'e una raccolta completa costi 883\,ms quando l'insieme vivo \`e
+  piccolo. La pausa traccia la dimensione dello heap anzich\'e i dati vivi, ma il
+  meccanismo non \`e stato confermato.
+  \item Se i pesi di \code{BUDGETED} facciano qualcosa di utile. Entrambe le
+  funzioni hanno ricevuto SLO e pesi identici di proposito, quindi i livelli di
+  servizio differenziati restano non verificati.
+  \item Se il risultato di \code{SOJOURN} sotto arrivi aperti regga. \`E una sola
+  esecuzione non ripetuta per modo, su un banco in cui entrambi i sistemi
+  scartavano il 14--16\% del carico offerto.
+  \item Che cosa faccia \code{SOJOURN} quando il sistema \emph{non} \`e
+  sovraccarico. Ogni sua esecuzione finora \`e stata a capacit\`a o oltre, quindi
+  il modo non \`e mai stato osservato scegliere un limite in condizioni comode.
+  \item Se la soglia di guardia al 70\% sia corretta. \`E stata scelta, non
+  misurata, e sul profilo a ciclo chiuso ha scavalcato completamente il modello.
+\end{enumerate}
+
+Il punto 2 merita enfasi: l'equit\`a max-min \emph{pesata} \`e presentata nel
+\cref{cap:12-concurrency-control} come uno dei contributi del lavoro, e i pesi
+non sono mai stati esercitati con valori diversi. Ci\`o che \`e stato validato \`e
+l'allocazione a pesi uguali.
+
+\section{Sintesi}
+
+\begin{table}[htbp]
+\centering
+\caption{Le tre campagne e i loro esiti.}
+\label{tab:campagne}
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Campagna} & \textbf{Risultato} & \textbf{Forza dell'evidenza} \\
+\midrule
+\code{BUDGETED} contro \code{ADAPTIVE\_PER\_POD} & Pari end-to-end; il primo con
+met\`a della concorrenza sulla funzione che non ne ha bisogno, e totale sotto
+budget. & Buona sugli aggregati; l'impianto a ciclo chiuso non poteva
+distinguere i segnali. \\
+\code{SOJOURN} contro \code{ADAPTIVE\_PER\_POD} & $+3{,}2\%$ servite,
+$-15{,}7\%$ rifiuti, $-10{,}6\%$ p95, con \emph{meno} concorrenza. & Una sola
+esecuzione per modo, entrambi in sovraccarico. \\
+Co-tenancy & Cross-talk reale ($-28\%$ throughput), \emph{non} contesa di CPU
+(differenza 0{,}6\%). & Solida: la manipolazione del \code{cpuset} \`e un
+controllo diretto. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Il terzo risultato \`e il pi\`u solido dei tre, ed \`e negativo: esclude
+un'ipotesi anzich\'e stabilirne una. \`E anche il pi\`u utile per il seguito del
+lavoro, perch\'e restringe lo spazio di ricerca sul meccanismo del cross-talk al
+control plane condiviso.
