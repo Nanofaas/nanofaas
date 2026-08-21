@@ -130,6 +130,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
         int dispatched = 0;
         while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION && state.tryAcquireSlot()) {
+            queueManager.recordSlotReacquisitionDelay(functionName);
             long pollStarted = System.nanoTime();
             InvocationTask task = state.poll();
             queueManager.recordQueuePollDuration(

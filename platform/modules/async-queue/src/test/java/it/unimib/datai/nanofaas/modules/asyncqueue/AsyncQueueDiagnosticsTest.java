@@ -21,6 +21,41 @@ import static org.mockito.Mockito.verify;
 class AsyncQueueDiagnosticsTest {
 
     @Test
+    void schedulerPublishesReleaseToReacquisitionDelay() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        InvocationService invocationService = mock(InvocationService.class);
+        FunctionSpec spec = new FunctionSpec(
+                "echo", "image", null, Map.of(), null,
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
+        );
+        queueManager.getOrCreate(spec);
+        assertThat(queueManager.enqueue(task("first", spec))).isTrue();
+        assertThat(queueManager.enqueue(task("second", spec))).isTrue();
+
+        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        scheduler.init();
+        scheduler.start();
+        try {
+            scheduler.signalWork("echo");
+            Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
+                    verify(invocationService, times(1)).dispatch(org.mockito.ArgumentMatchers.any())
+            );
+
+            queueManager.releaseSlot("echo");
+
+            Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
+                    verify(invocationService, times(2)).dispatch(org.mockito.ArgumentMatchers.any())
+            );
+        } finally {
+            scheduler.stop();
+        }
+
+        assertThat(registry.get("function_dispatch_slot_reacquisition_delay").tag("function", "echo")
+                .timer().count()).isEqualTo(1);
+    }
+
+    @Test
     void releasePublishesDispatchSlotHoldDuration() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager queueManager = new QueueManager(registry);

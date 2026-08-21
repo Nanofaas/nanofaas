@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 public class QueueManager {
@@ -72,6 +73,9 @@ public class QueueManager {
                 Timer slotHoldDuration = Timer.builder("function_dispatch_slot_hold_duration")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Timer slotReacquisitionDelay = Timer.builder("function_dispatch_slot_reacquisition_delay")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
@@ -79,10 +83,13 @@ public class QueueManager {
                 ids.add(pollDuration.getId());
                 ids.add(wakeupDelay.getId());
                 ids.add(slotHoldDuration.getId());
+                ids.add(slotReacquisitionDelay.getId());
                 ids.add(batchLimit.getId());
                 diagnosticMeters.put(
                         name,
-                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, slotHoldDuration, batchLimit)
+                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay,
+                                slotHoldDuration, slotReacquisitionDelay, batchLimit,
+                                new ConcurrentLinkedQueue<>())
                 );
                 concurrencyMetrics.ensureRegistered(
                         name,
@@ -170,7 +177,25 @@ public class QueueManager {
 
     public boolean tryAcquireSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
-        return state != null && state.tryAcquireSlot();
+        boolean acquired = state != null && state.tryAcquireSlot();
+        if (acquired) {
+            recordSlotReacquisitionDelay(functionName);
+        }
+        return acquired;
+    }
+
+    void recordSlotReacquisitionDelay(String functionName) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters == null) {
+            return;
+        }
+        Long releasedAt = meters.releasedWithBacklogAtNanos().poll();
+        if (releasedAt != null) {
+            meters.slotReacquisitionDelay().record(
+                    System.nanoTime() - releasedAt,
+                    TimeUnit.NANOSECONDS
+            );
+        }
     }
 
     public boolean hasAvailableSlot(String functionName) {
@@ -196,9 +221,14 @@ public class QueueManager {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {
             long holdNanos = state.releaseSlotAndGetHoldNanos();
+            long releasedAt = System.nanoTime();
             DiagnosticMeters meters = diagnosticMeters.get(functionName);
             if (holdNanos >= 0 && meters != null) {
                 meters.slotHoldDuration().record(holdNanos, TimeUnit.NANOSECONDS);
+                if (state.queued() > 0) {
+                    // ponytail: FIFO preserves the aggregate mean; correlate by invocation only for percentiles.
+                    meters.releasedWithBacklogAtNanos().add(releasedAt);
+                }
             }
             if (state.queued() > 0) {
                 notifyWork(functionName);
@@ -228,6 +258,8 @@ public class QueueManager {
             Timer pollDuration,
             Timer wakeupDelay,
             Timer slotHoldDuration,
-            Counter batchLimit
+            Timer slotReacquisitionDelay,
+            Counter batchLimit,
+            ConcurrentLinkedQueue<Long> releasedWithBacklogAtNanos
     ) { }
 }

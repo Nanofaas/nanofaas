@@ -19,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QueueManagerTest {
 
-    // Existing capacity/controller meters plus the five dispatch diagnostics.
-    private static final int METERS_PER_FUNCTION = 10 + ConcurrencyControlMode.values().length;
+    // Existing capacity/controller meters plus the dispatch diagnostics.
+    private static final int METERS_PER_FUNCTION = 11 + ConcurrencyControlMode.values().length;
 
     @Test
     void issue008_queueIsBounded() {
