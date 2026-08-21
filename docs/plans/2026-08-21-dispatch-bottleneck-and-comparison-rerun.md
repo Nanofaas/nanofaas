@@ -217,6 +217,11 @@ JSON da centinaia di MB. Restringi sempre a `*/src/main` o usa `--include='*.jav
 
 ## 3. Il collo di bottiglia: evidenza e ipotesi viva
 
+> **Aggiornamento 2026-08-21:** la sonda instrumentata descritta in §10 ha
+> falsificato sia l'ipotesi park/unpark sia la contesa di `offer`/`poll` come
+> cause dominanti. Questa sezione resta come traccia dell'ipotesi precedente,
+> non come conclusione corrente.
+
 ### 3.1 Cosa dicono i numeri
 
 - Slot occupati **0,45 su 2** — la concorrenza non è vincolante.
@@ -573,3 +578,33 @@ stesso modo. **Non rialzare quel flag.**
 - **CI di nanolab esegue `basedpyright`**, non solo pytest:
   `uv run --locked --all-packages --all-groups basedpyright --project packages/<pkg>`.
   Suite verdi non bastano — un `str` al posto di un `Literal` ha rotto main.
+
+---
+
+## 10. Sonda instrumentata a concurrency 2
+
+Run: `../nanolab/packages/nanolab/runs/azure-dispatch-instrumentation-c2/`,
+`native-o3-g1`, una ripetizione, concurrency 2 e coda 20. Commit mcFaas
+`8af8c314`; commit NanoLab `553b7a5`. Le 12 risorse Azure sono state distrutte
+dopo la raccolta e il resource group non contiene residui del confronto.
+
+L'instrumentazione misura durata totale di `offer`/`poll` (inclusa l'attesa del
+monitor), segnale→scheduler, hit del batch e backlog contemporaneamente non vuoto
+e dispatchabile. Risultato complessivo: `offer` 365 ns, `poll` 238 ns,
+segnale→scheduler 222 µs. La peggiore media su una finestra di scrape da 5 s è
+rispettivamente 634 ns, 434 ns e 638 µs. I monitor `synchronized` non spiegano
+attese nell'ordine dei millisecondi.
+
+Il dato decisivo è temporale. Durante `peak900` la coda è 19–20 in tutti i sei
+scrape e `inFlight` è 2/2 in tutti e sei; durante il drain la coda è piena in
+8/9 scrape e gli slot sono pieni negli stessi 8/9. Il backlog dispatchabile è
+quasi sempre zero. Servizio e attesa al picco sono 4,319 ms e 35,792 ms, contro
+0,719 ms e 0,048 ms a `hold200`.
+
+La precedente applicazione di Little a medie sull'intera run non stazionaria
+mescolava lunghi periodi leggeri con due burst saturi: `N=0,38` non significa che
+gli slot fossero vuoti mentre la coda era piena. Nei periodi in cui la coda è
+effettivamente piena, gli slot sono saturi. Il prossimo esperimento deve misurare
+il tempo di possesso dello slot, dal suo acquisto al rilascio, per separare il
+tempo remoto già osservato dal ritardo di completamento/callback che mantiene lo
+slot occupato.
