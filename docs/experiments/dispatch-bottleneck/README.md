@@ -25,8 +25,9 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 | `azure-conc8-probe` | G1, una ripetizione, 8 slot | NanoLab `ea01127` | 119.892 dispatch contro 115.630 medi a 2 slot (+3,69%, non 4×); p95 121,6 ms e scarti 14,64%. L'ipotesi che un park ogni due dispatch imponesse il tetto è falsa. |
 | `azure-dispatch-instrumentation-c2` | G1, una ripetizione, 2/20 | mcFaas `8af8c314`; NanoLab `553b7a5` | `offer` 365 ns, `poll` 238 ns, wake-up 222 µs medi; p95 93,7 ms, 114.797 dispatch, 18,02% scarti. Lock e park/unpark non spiegano da soli attese di decine di ms. |
 | `azure-dispatch-slot-hold-c2` | G1, una ripetizione, 2/20 | mcFaas `df5efda1`; NanoLab `07bbbf7` | slot 1,416 ms e `function_latency` 1,491 ms sull'intera run; p95 92,5 ms, 115.859 dispatch, 17,43% scarti. Nessun callback lag millisecond-level nascosto. |
+| `azure-dispatch-reacquisition-c2` | G1, una ripetizione, 2/20 | mcFaas `50e7d87a`; NanoLab `2b7f01c` | Al `peak900`, rilascio→successiva acquisizione 3,161 ms sul 97% dei dispatch, slot 4,204 ms, 316,7 dispatch/s. Il gap dopo il rilascio è reale e millisecond-level. |
 
-La compilazione G1 dell'ultima sonda ha richiesto 870,3 s; il push 5,0 s. IP
+La compilazione G1 dell'ultima sonda ha richiesto 891,5 s; il push 5,1 s. IP
 dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
 `operator_source_cidr: auto`.
 
@@ -55,6 +56,35 @@ ne arrivano 347,6. Mentre la coda resta quasi piena, ogni slot passa in media
 1,707 ms fuori dal timer. La prossima misura utile è direttamente
 rilascio→successiva acquisizione; non serve altra strumentazione del callback.
 
+## Sonda rilascio→reacquisizione per fase
+
+Il timer `function_dispatch_slot_reacquisition_delay` registra il tempo fra un
+rilascio che vede ancora backlog e la successiva acquisizione riuscita. Un FIFO
+per funzione conserva somma e media aggregate; non attribuisce la misura a uno
+slot o a una richiesta specifici e non va usato per percentili per-request.
+
+| fase | dispatch/s | slot ms | idle stimato ms | reacquisizione ms | copertura | queue wait ms | coda media | wake µs |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| hold200 | 199,7 | 0,711 | 9,305 | 0,081 | 1% | 0,055 | 0,00 | 30,9 |
+| spike600 | 519,4 | 1,212 | 2,639 | 1,279 | 29% | 5,427 | 7,00 | 229,4 |
+| recover200 | 204,7 | 0,674 | 9,098 | 0,199 | 2% | 0,069 | 0,00 | 35,6 |
+| hold350 | 349,3 | 1,032 | 4,693 | 0,534 | 20% | 2,008 | 1,33 | 153,1 |
+| **peak900** | **316,7** | **4,204** | **2,111** | **3,161** | **97%** | **41,621** | **17,33** | **615,5** |
+| drain40 | 311,8 | 3,121 | 3,294 | 2,425 | 71% | 20,830 | 12,22 | 506,2 |
+
+Il timer diretto conferma l'ipotesi: quando il backlog è stabile, il percorso
+fra rilascio e nuovo CAS costa millisecondi. Al `peak900` copre il 97% dei
+dispatch ed è 5,1 volte il timer segnale→scheduler medio. I due timer osservano
+popolazioni diverse (`wake/dispatch=2,37` al picco), quindi non si possono
+sottrarre; il dato localizza il problema nel percorso di scheduling successivo
+al rilascio, ma non ancora in una singola istruzione. `idle stimato` deriva da
+`2/rate - slot` su finestre non perfettamente stazionarie e non deve coincidere
+numericamente col timer diretto.
+
+Sull'intera run: 114.527 dispatch Java, 31.332 intervalli misurati, media
+reacquisizione 2,038 ms; 435,06 richieste/s complessive, p95 93,21 ms, p99
+158,03 ms, 18,36% scarti e 30.522 rifiuti della coda Java.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,
@@ -66,7 +96,7 @@ Ricalcolo della tabella completa per fase, solo con la standard library Python:
 
 ```bash
 python3 docs/experiments/dispatch-bottleneck/analyze_snapshot.py \
-  docs/experiments/dispatch-bottleneck/raw/azure-dispatch-slot-hold-c2/\
+  docs/experiments/dispatch-bottleneck/raw/azure-dispatch-reacquisition-c2/\
 native-o3-g1/run-1/metrics/prometheus-snapshot.json
 ```
 
@@ -75,7 +105,7 @@ cd docs/experiments/dispatch-bottleneck
 shasum -a 256 -c SHA256SUMS
 ```
 
-Riesecuzione della sonda con i due commit indicati sopra:
+Riesecuzione dell'ultima sonda con i due commit indicati sopra:
 
 ```bash
 export NANOFAAS_ROOT=/path/to/mcFaas
@@ -83,6 +113,6 @@ cd /path/to/nanolab
 caffeinate -dimsu ./nanolab.sh compare \
   packages/nanolab/scenarios-v2/runtime-comparison-jvm.yaml \
   --environment packages/nanolab/environments/azure-comparison.yaml \
-  --run-dir packages/nanolab/runs/azure-dispatch-slot-hold-c2 \
+  --run-dir packages/nanolab/runs/azure-dispatch-reacquisition-c2 \
   --variants native-o3-g1 --repetitions 1
 ```

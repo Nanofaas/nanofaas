@@ -628,3 +628,29 @@ Verdetto: nessun ritardo millisecond-level della callback trattiene lo slot oltr
 la latenza già osservata. L'ipotesi è falsificata. La prossima sonda deve misurare
 direttamente rilascio→successiva acquisizione per localizzare gli 1,707 ms di
 capacità inattiva; non serve altra strumentazione nel callback.
+
+## 12. Tempo diretto da rilascio a successiva acquisizione
+
+Run: `azure-dispatch-reacquisition-c2`, `native-o3-g1`, una ripetizione,
+concurrency 2 e coda 20. Commit mcFaas `50e7d87a`; commit NanoLab `2b7f01c`.
+Raw, tabella per fase e script riproducibile sono in
+[`../experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+Build nativa 891,5 s, push 5,1 s, k6 451,5 s. Le 12 risorse Azure sono state
+distrutte e `caffeinate` è terminato dopo la run.
+
+Il nuovo timer parte in `QueueManager.releaseSlot` solo quando resta backlog e
+termina alla successiva acquisizione CAS riuscita. Al `peak900` misura
+**3,161 ms** su circa il **97%** dei 9.502 dispatch della fase. Nella stessa
+finestra: **316,7 dispatch/s**, slot **4,204 ms**, `function_latency`
+**4,257 ms**, queue wait **41,621 ms**, coda media **17,33/20** e wake-up medio
+**615,5 µs**. Sull'intera run sono stati misurati 31.332 intervalli, media
+**2,038 ms**, su 114.527 dispatch Java.
+
+Verdetto: l'ipotesi è confermata. Il gap millisecond-level esiste davvero fra il
+rilascio e il successivo acquisto dello slot; non è tempo nascosto nella callback.
+Il wake-up medio è più corto, ma conta 2,37 segnali per dispatch al picco e non è
+la stessa popolazione del timer di reacquisizione: non sottrarre direttamente i
+due valori. La localizzazione rimasta è interna al percorso dello scheduler fra
+segnale, arbitraggio della funzione attiva e nuovo CAS. Prima di cambiare la
+politica di scheduling, una sonda successiva dovrebbe separare questi tratti;
+non serve ripetere build, GC, concorrenza o callback.

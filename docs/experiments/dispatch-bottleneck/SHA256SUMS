@@ -6,6 +6,10 @@ b8f5b0b6fe214fe93c65cc62049483fa19f2c93c5a2c3e0194dd77da01a73223  raw/azure-conc
 560497c00ee0630695d4ff77a69434d8d342f7b3db23bf8bce3e5c940ccc66a6  raw/azure-dispatch-instrumentation-c2/native-o3-g1/run-1/k6-summary.json
 0dd3aec568d783e07065f68bdf20359f265d4803720673a19e5e4d06b2c5a1f4  raw/azure-dispatch-instrumentation-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
 335190e4bf22b8f45785c37e0406428170b60ad2b36aa86fc2e7c90e9bd45e35  raw/azure-dispatch-instrumentation-c2/native-o3-g1/run-1/summary.json
+84bd69bb388832a5de08b08112c2c01465c502a698e3fe486acc501777150acd  raw/azure-dispatch-reacquisition-c2/comparison-manifest.json
+134282d2b64c5108cd87b92cab0d9cb4a7a9883b718cbc9556283443d4b9d324  raw/azure-dispatch-reacquisition-c2/native-o3-g1/run-1/k6-summary.json
+f53ba5f76cea79ff9d33e9ca0b1d0ffe24e4bbf43435d73c9d6ca4d97f711bf7  raw/azure-dispatch-reacquisition-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+d3419397a3cea2795524f35fc4ce65a8331b76b91de04210d83ea303f905be33  raw/azure-dispatch-reacquisition-c2/native-o3-g1/run-1/summary.json
 f16b1f5960c373cefde2e6b3c526a217f3761fca350e7a6dd7584feaf5420841  raw/azure-dispatch-slot-hold-c2/comparison-manifest.json
 ce34e9c410c3bd585c9430cfa41d83af6277cd1dc4165baecf776c46052e824d  raw/azure-dispatch-slot-hold-c2/native-o3-g1/run-1/k6-summary.json
 d459bca0e3ad22a68b393adc746edfc5cf939bc89b8b54a69d8620eae44da0ea  raw/azure-dispatch-slot-hold-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
