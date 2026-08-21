@@ -26,8 +26,9 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 | `azure-dispatch-instrumentation-c2` | G1, una ripetizione, 2/20 | mcFaas `8af8c314`; NanoLab `553b7a5` | `offer` 365 ns, `poll` 238 ns, wake-up 222 µs medi; p95 93,7 ms, 114.797 dispatch, 18,02% scarti. Lock e park/unpark non spiegano da soli attese di decine di ms. |
 | `azure-dispatch-slot-hold-c2` | G1, una ripetizione, 2/20 | mcFaas `df5efda1`; NanoLab `07bbbf7` | slot 1,416 ms e `function_latency` 1,491 ms sull'intera run; p95 92,5 ms, 115.859 dispatch, 17,43% scarti. Nessun callback lag millisecond-level nascosto. |
 | `azure-dispatch-reacquisition-c2` | G1, una ripetizione, 2/20 | mcFaas `50e7d87a`; NanoLab `2b7f01c` | Al `peak900`, rilascio→successiva acquisizione 3,161 ms sul 97% dei dispatch, slot 4,204 ms, 316,7 dispatch/s. Il gap dopo il rilascio è reale e millisecond-level. |
+| `azure-dispatch-reacquisition-segments-c2` | G1, una ripetizione, 2/20 | mcFaas `3365c590`; NanoLab `8e9674e` | Al `peak900`, 4,743 dei 4,788 ms di reacquisizione (99,1%) precedono la visita utile dello scheduler; visita→CAS costa 45 µs. |
 
-La compilazione G1 dell'ultima sonda ha richiesto 891,5 s; il push 5,1 s. IP
+La compilazione G1 dell'ultima sonda ha richiesto 872,8 s; il push 5,0 s. IP
 dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
 `operator_source_cidr: auto`.
 
@@ -85,6 +86,34 @@ Sull'intera run: 114.527 dispatch Java, 31.332 intervalli misurati, media
 reacquisizione 2,038 ms; 435,06 richieste/s complessive, p95 93,21 ms, p99
 158,03 ms, 18,36% scarti e 30.522 rifiuti della coda Java.
 
+## Segmentazione della reacquisizione
+
+Il timer `function_dispatch_slot_reacquisition_active_delay` usa lo stesso
+timestamp di rilascio e lo stesso evento di acquisizione del timer totale. Il
+punto di separazione è l'inizio della visita `processFunction`; se il rilascio
+avviene a visita già iniziata, viene usato il rilascio. I conteggi dei due timer
+sono quindi identici e `pre-active = totale - active` preserva la somma esatta.
+
+| fase | dispatch/s | reacquisizione ms | pre-active ms | active→CAS ms | copertura | queue wait ms | coda media |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| hold200 | 199,8 | 0,046 | 0,027 | 0,019 | 1% | 0,045 | 0,08 |
+| spike600 | 527,2 | 1,670 | 1,656 | 0,013 | 30% | 6,866 | 6,17 |
+| recover200 | 202,2 | 0,054 | 0,037 | 0,018 | 2% | 0,074 | 0,00 |
+| hold350 | 349,8 | 0,410 | 0,392 | 0,018 | 18% | 1,126 | 0,00 |
+| **peak900** | **316,7** | **4,788** | **4,743** | **0,045** | **100%** | **47,557** | **15,00** |
+| drain40 | 312,1 | 3,355 | 3,321 | 0,034 | 73% | 23,679 | 7,00 |
+
+Verdetto: il CAS e il lavoro della visita utile non sono il collo di bottiglia.
+Al picco, il 99,1% del ritardo misurato trascorre prima che il singolo thread
+scheduler torni sulla funzione; una volta entrato in `processFunction`, lo slot
+viene acquisito in 45 µs medi. Questo localizza il problema nella coda/arbitraggio
+delle visite fra funzioni, non nella callback, nei monitor di coda o nel CAS.
+
+Sull'intera run i due timer contano entrambi 32.025 eventi: reacquisizione
+3,024 ms, pre-active 2,994 ms e active→CAS 0,030 ms. Risultato complessivo:
+114.933 dispatch Java, 435,06 richieste/s, p95 93,63 ms, p99 142,23 ms,
+18,00% scarti e 30.116 rifiuti della coda Java.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,
@@ -96,7 +125,7 @@ Ricalcolo della tabella completa per fase, solo con la standard library Python:
 
 ```bash
 python3 docs/experiments/dispatch-bottleneck/analyze_snapshot.py \
-  docs/experiments/dispatch-bottleneck/raw/azure-dispatch-reacquisition-c2/\
+  docs/experiments/dispatch-bottleneck/raw/azure-dispatch-reacquisition-segments-c2/\
 native-o3-g1/run-1/metrics/prometheus-snapshot.json
 ```
 
@@ -113,6 +142,6 @@ cd /path/to/nanolab
 caffeinate -dimsu ./nanolab.sh compare \
   packages/nanolab/scenarios-v2/runtime-comparison-jvm.yaml \
   --environment packages/nanolab/environments/azure-comparison.yaml \
-  --run-dir packages/nanolab/runs/azure-dispatch-reacquisition-c2 \
+  --run-dir packages/nanolab/runs/azure-dispatch-reacquisition-segments-c2 \
   --variants native-o3-g1 --repetitions 1
 ```

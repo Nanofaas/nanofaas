@@ -57,7 +57,8 @@ def main() -> None:
     start = datetime.fromisoformat(snapshot["start"])
     header = (
         "phase", "dispatch", "dispatch/s", "slot ms", "latency ms",
-        "slot-latency us", "slot util %", "idle ms", "reacq ms", "reacq/dispatch", "queue ms",
+        "slot-latency us", "slot util %", "idle ms", "reacq ms",
+        "pre-active ms", "active ms", "reacq/dispatch", "queue ms",
         "inFlight", "queue depth", "wake us", "wake/dispatch",
     )
     print(" | ".join(header))
@@ -68,6 +69,7 @@ def main() -> None:
         latency = timer_ms(queries, "function_latency", a, b, start)
         queue_wait = timer_ms(queries, "function_queue_wait", a, b, start)
         reacquisition = timer_ms(queries, "function_dispatch_slot_reacquisition_delay", a, b, start)
+        active = timer_ms(queries, "function_dispatch_slot_reacquisition_active_delay", a, b, start)
         reacquisitions = delta(queries, "function_dispatch_slot_reacquisition_delay_count", a, b, start)
         wake = timer_ms(queries, "function_scheduler_wakeup_delay", a, b, start) * 1_000
         wakes = delta(queries, "function_scheduler_wakeup_delay_count", a, b, start)
@@ -84,6 +86,8 @@ def main() -> None:
             f"{rate * slot / concurrency / 10:.1f}" if concurrency else "0.0",
             f"{cycle - slot:.3f}",
             f"{reacquisition:.3f}",
+            f"{reacquisition - active:.3f}",
+            f"{active:.3f}",
             f"{reacquisitions / dispatches:.2f}" if dispatches else "0.00",
             f"{queue_wait:.3f}",
             f"{gauge_mean(queries, 'function_inFlight', a, b, start):.2f}",

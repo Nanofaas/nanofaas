@@ -654,3 +654,28 @@ due valori. La localizzazione rimasta è interna al percorso dello scheduler fra
 segnale, arbitraggio della funzione attiva e nuovo CAS. Prima di cambiare la
 politica di scheduling, una sonda successiva dovrebbe separare questi tratti;
 non serve ripetere build, GC, concorrenza o callback.
+
+## 13. Segmentazione prima/dopo la visita dello scheduler
+
+Run del 2026-08-22: `azure-dispatch-reacquisition-segments-c2`,
+`native-o3-g1`, una ripetizione, concurrency 2 e coda 20. Commit mcFaas
+`3365c590`; commit NanoLab `8e9674e`. Piano di implementazione:
+[`2026-08-21-dispatch-reacquisition-segmentation.md`](2026-08-21-dispatch-reacquisition-segmentation.md).
+Build nativa 872,8 s, push 5,0 s e k6 451,5 s. Le 12 risorse Azure sono state
+distrutte; inventario finale vuoto e `caffeinate` assente.
+
+Il segmento `active` inizia all'ingresso della visita `processFunction` o, se
+successivo, al rilascio, e termina al CAS riuscito. È registrato insieme al timer
+totale e ne condivide esattamente il conteggio; il tratto precedente si ottiene
+per sottrazione delle somme. Al `peak900`: **4,788 ms** totali,
+**4,743 ms pre-active**, **0,045 ms active→CAS**, copertura **100%** dei 9.501 dispatch,
+queue wait **47,557 ms** e coda media **15,00/20**. Il pre-active rappresenta
+il **99,1%** della reacquisizione. Sull'intera run: 32.025 conteggi per ciascun
+timer, 3,024 ms totali, 2,994 ms pre-active e 0,030 ms active→CAS.
+
+Verdetto: il ritardo non è nel CAS né nel lavoro eseguito dopo che lo scheduler
+ha scelto la funzione. Quasi tutto il gap trascorre aspettando che il singolo
+thread scheduler inizi una visita utile della funzione. La prossima modifica o
+sonda deve concentrarsi su `activeFunctions`, coalescing di `enqueuedFunctions`
+e arbitraggio fra le due funzioni; callback, code interne e acquisizione slot non
+richiedono altre misure.
