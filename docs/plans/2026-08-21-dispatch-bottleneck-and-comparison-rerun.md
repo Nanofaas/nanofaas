@@ -608,3 +608,23 @@ effettivamente piena, gli slot sono saturi. Il prossimo esperimento deve misurar
 il tempo di possesso dello slot, dal suo acquisto al rilascio, per separare il
 tempo remoto già osservato dal ritardo di completamento/callback che mantiene lo
 slot occupato.
+
+## 11. Durata esatta di possesso dello slot
+
+Run: `azure-dispatch-slot-hold-c2`, `native-o3-g1`, una ripetizione, concurrency
+2 e coda 20. Commit mcFaas `df5efda1`; commit NanoLab `07bbbf7`. Raw, protocollo,
+tabella completa per fase e script di analisi sono versionati in
+[`../experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+
+Il timer parte all'acquisizione CAS e termina in `QueueManager.releaseSlot`.
+Sull'intera run misura 164,044 s / 115.859 dispatch = **1,416 ms**, contro
+**1,491 ms** di `function_latency`. Al `peak900`: **347,6 dispatch/s**, slot
+**4,047 ms**, latency **4,083 ms**, queue wait **32,125 ms**, coda media
+**17,17/20**, utilizzo dei due slot **70,3%**. Restano **1,707 ms** medi per
+ciclo-slot fuori dal timer mentre la coda è quasi piena; il wake-up medio nella
+stessa fase è 484,6 µs.
+
+Verdetto: nessun ritardo millisecond-level della callback trattiene lo slot oltre
+la latenza già osservata. L'ipotesi è falsificata. La prossima sonda deve misurare
+direttamente rilascio→successiva acquisizione per localizzare gli 1,707 ms di
+capacità inattiva; non serve altra strumentazione nel callback.

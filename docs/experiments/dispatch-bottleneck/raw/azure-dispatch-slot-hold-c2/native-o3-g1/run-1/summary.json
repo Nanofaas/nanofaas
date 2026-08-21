@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "k6": {
+    "http_reqs": {
+      "rate": 435.0556175332787,
+      "count": 195776
+    },
+    "http_req_failed": {
+      "passes": 34126,
+      "fails": 161650,
+      "value": 0.17431145799280812
+    },
+    "http_req_duration": {
+      "p(90)": 72.64621,
+      "p(95)": 92.450414,
+      "p(99)": 157.6877695,
+      "avg": 22.333938146346238,
+      "min": 1.380056,
+      "med": 2.6970955,
+      "max": 741.203352,
+      "p(50)": 2.6970955
+    },
+    "checks": {
+      "passes": 195776,
+      "fails": 0,
+      "value": 1
+    }
+  },
+  "prometheus": {
+    "function_dispatch_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115859.0,
+      "delta": 115859.0,
+      "min": 0.0,
+      "max": 115859.0
+    },
+    "function_success_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115859.0,
+      "delta": 115859.0,
+      "min": 0.0,
+      "max": 115859.0
+    },
+    "function_error_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_retry_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_timeout_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_queue_rejected_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 29190.0,
+      "delta": 29190.0,
+      "min": 0.0,
+      "max": 29190.0
+    },
+    "function_cold_start_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1.0,
+      "delta": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "function_warm_start_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115858.0,
+      "delta": 115858.0,
+      "min": 0.0,
+      "max": 115858.0
+    },
+    "function_latency_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115859.0,
+      "delta": 115859.0,
+      "min": 0.0,
+      "max": 115859.0
+    },
+    "function_latency_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 172.809,
+      "delta": 172.809,
+      "min": 0.0,
+      "max": 172.809
+    },
+    "function_init_duration_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1.0,
+      "delta": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "function_init_duration_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 16.527,
+      "delta": 16.527,
+      "min": 0.0,
+      "max": 16.527
+    },
+    "function_queue_wait_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115859.0,
+      "delta": 115859.0,
+      "min": 0.0,
+      "max": 115859.0
+    },
+    "function_queue_wait_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 716.067,
+      "delta": 716.067,
+      "min": 0.0,
+      "max": 716.067
+    },
+    "function_queue_wait_p95_ms": {
+      "points": 97,
+      "first": NaN,
+      "last": 0.95,
+      "delta": NaN,
+      "min": NaN,
+      "max": NaN
+    },
+    "function_e2e_latency_p95_ms": {
+      "points": 97,
+      "first": NaN,
+      "last": 0.9839285714285714,
+      "delta": NaN,
+      "min": NaN,
+      "max": NaN
+    },
+    "function_e2e_latency_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115859.0,
+      "delta": 115859.0,
+      "min": 0.0,
+      "max": 115859.0
+    },
+    "function_e2e_latency_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 888.876,
+      "delta": 888.876,
+      "min": 0.0,
+      "max": 888.876
+    },
+    "process_cpu_usage": {
+      "points": 97,
+      "first": 0.0125,
+      "last": 0.02,
+      "delta": 0.0075,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "jvm_heap_used_bytes": {
+      "points": 0
+    },
+    "jvm_gc_collection_count": {
+      "points": 0
+    },
+    "jvm_gc_collection_time": {
+      "points": 0
+    },
+    "jvm_gc_pause_count": {
+      "points": 0
+    },
+    "jvm_gc_pause_sum": {
+      "points": 0
+    },
+    "jvm_gc_time_fraction": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_queue_depth": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 20.0
+    },
+    "function_inFlight": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 2.0
+    },
+    "function_effective_concurrency": {
+      "points": 97,
+      "first": 2.0,
+      "last": 2.0,
+      "delta": 0.0,
+      "min": 2.0,
+      "max": 2.0
+    },
+    "function_dispatchable_backlog": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 18.0
+    },
+    "function_queue_offer_duration_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 145049.0,
+      "delta": 145049.0,
+      "min": 0.0,
+      "max": 145049.0
+    },
+    "function_queue_offer_duration_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.051970712,
+      "delta": 0.051970712,
+      "min": 0.0,
+      "max": 0.051970712
+    },
+    "function_queue_poll_duration_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 201076.0,
+      "delta": 201076.0,
+      "min": 0.0,
+      "max": 201076.0
+    },
+    "function_queue_poll_duration_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.048776085,
+      "delta": 0.048776085,
+      "min": 0.0,
+      "max": 0.048776085
+    },
+    "function_scheduler_wakeup_delay_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 156850.0,
+      "delta": 156850.0,
+      "min": 0.0,
+      "max": 156850.0
+    },
+    "function_scheduler_wakeup_delay_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 34.070888266,
+      "delta": 34.070888266,
+      "min": 0.0,
+      "max": 34.070888266
+    },
+    "function_dispatch_slot_hold_duration_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 115859.0,
+      "delta": 115859.0,
+      "min": 0.0,
+      "max": 115859.0
+    },
+    "function_dispatch_slot_hold_duration_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 164.043803206,
+      "delta": 164.043803206,
+      "min": 0.0,
+      "max": 164.043803206
+    },
+    "function_scheduler_batch_limit_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 3120.0,
+      "delta": 3120.0,
+      "min": 0.0,
+      "max": 3120.0
+    },
+    "container_memory_bytes@control-plane": {
+      "points": 97,
+      "first": 56799232.0,
+      "last": 575819776.0,
+      "delta": 519020544.0,
+      "min": 56799232.0,
+      "max": 581693440.0
+    },
+    "container_cpu_cores@control-plane": {
+      "points": 97,
+      "first": 0.004757850000000001,
+      "last": 0.13430040000000076,
+      "delta": 0.12954255000000076,
+      "min": 0.0014698499999999991,
+      "max": 1.4270762500000005
+    },
+    "container_memory_bytes@word-stats-java": {
+      "points": 97,
+      "first": 17625088.0,
+      "last": 388915200.0,
+      "delta": 371290112.0,
+      "min": 17625088.0,
+      "max": 389238784.0
+    },
+    "container_cpu_cores@word-stats-java": {
+      "points": 96,
+      "first": 0.3553936913133333,
+      "last": 0.03735940000000113,
+      "delta": -0.31803429131333216,
+      "min": 0.03735940000000113,
+      "max": 0.9010286500000003
+    },
+    "container_memory_bytes@word-stats-javascript": {
+      "points": 96,
+      "first": 12251136.0,
+      "last": 20168704.0,
+      "delta": 7917568.0,
+      "min": 12251136.0,
+      "max": 81104896.0
+    },
+    "container_cpu_cores@word-stats-javascript": {
+      "points": 94,
+      "first": 0.034167602193333334,
+      "last": 0.06159204999999979,
+      "delta": 0.027424447806666453,
+      "min": 0.02932005,
+      "max": 0.38213095
+    }
+  },
+  "autoscaling": null
+}
