@@ -289,6 +289,12 @@ public class QueueManager {
         }
     }
 
+    public boolean isQueueFull(String functionName) {
+        FunctionQueueState state = queues.get(functionName);
+        // Unknown function: let `enqueue` return false and the caller decide.
+        return state != null && !state.hasQueueCapacity();
+    }
+
     public boolean hasAvailableSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
         return state != null && state.inFlight() < state.effectiveConcurrency();

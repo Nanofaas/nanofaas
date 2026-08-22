@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
@@ -95,6 +96,7 @@ public class InvocationService {
         return Mono.fromCallable(() -> {
                     enforceRateLimit();
                     FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
+                    refuseEarlyIfQueueFull(functionName, spec, idempotencyKey);
                     // createOrReuseExecution may spin briefly on contended idempotency
                     // claims; it must never run on the Netty event loop.
                     return new Prepared(spec,
@@ -114,6 +116,7 @@ public class InvocationService {
         if (!enqueuer.enabled()) {
             throw new AsyncQueueUnavailableException();
         }
+        refuseEarlyIfQueueFull(functionName, spec, idempotencyKey);
 
 
         InvocationExecutionFactory.ExecutionLookup lookup =
@@ -161,6 +164,28 @@ public class InvocationService {
 
     public void completeExecution(String executionId, InvocationResult result, Integer completedAttempt) {
         completionHandler.completeExecution(executionId, result, completedAttempt);
+    }
+
+    /**
+     * Under overload most arrivals are refused, and today each one first builds an
+     * execution record, files it in the store and claims an idempotency key, only for
+     * `abandonAdmission` to undo all three. At the peak of the comparison profile that
+     * was 590 refusals a second against 299 dispatches, on a control plane the chart
+     * caps at one CPU.
+     *
+     * <p>Skipped whenever an idempotency key is present: that request may be a replay
+     * whose result is already stored, and a replay must be served however full the
+     * queue is. The check is a hint and `enqueue` remains the authority, so a slot
+     * freed in between costs one refusal the caller was about to receive anyway.
+     */
+    private void refuseEarlyIfQueueFull(String functionName, FunctionSpec spec, String idempotencyKey) {
+        if (idempotencyKey != null
+                || !reactiveCoordinator.queueFullMeansRefusal(spec)
+                || !enqueuer.isQueueFull(functionName)) {
+            return;
+        }
+        metrics.queueRejected(functionName);
+        throw new QueueFullException();
     }
 
     private void enforceRateLimit() {

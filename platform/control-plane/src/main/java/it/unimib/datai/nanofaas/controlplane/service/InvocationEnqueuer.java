@@ -12,6 +12,19 @@ public interface InvocationEnqueuer {
         return true;
     }
 
+    /**
+     * Whether {@link #enqueue} would certainly refuse a task right now. A hint:
+     * `enqueue` stays the authority.
+     *
+     * <p>Phrased negatively on purpose. Mockito does not run a default method, it
+     * returns false for an unstubbed boolean - so a test that never heard of this
+     * method gets "not full", which is the answer that leaves behaviour unchanged.
+     * The positive spelling made every such mock report an empty queue as full.
+     */
+    default boolean isQueueFull(String functionName) {
+        return false;
+    }
+
     default boolean tryAcquireSlot(String functionName) {
         return true;
     }

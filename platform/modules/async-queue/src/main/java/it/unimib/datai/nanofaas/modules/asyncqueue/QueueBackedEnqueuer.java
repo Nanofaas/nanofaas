@@ -21,6 +21,11 @@ public class QueueBackedEnqueuer implements InvocationEnqueuer {
     }
 
     @Override
+    public boolean isQueueFull(String functionName) {
+        return queueManager.isQueueFull(functionName);
+    }
+
+    @Override
     public boolean hasAvailableSlot(String functionName) {
         return queueManager.hasAvailableSlot(functionName);
     }

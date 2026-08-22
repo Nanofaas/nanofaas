@@ -34,6 +34,15 @@ public class FunctionQueueState {
         return queue.remainingCapacity() + queue.size();
     }
 
+    /**
+     * A hint, deliberately unsynchronized: `offer` remains the authority. Callers use
+     * it to skip work that a full queue would throw away, and a slot freed between the
+     * two only costs one refusal that the caller was about to receive anyway.
+     */
+    public boolean hasQueueCapacity() {
+        return queue.remainingCapacity() > 0;
+    }
+
     public int queued() {
         return queue.size();
     }
