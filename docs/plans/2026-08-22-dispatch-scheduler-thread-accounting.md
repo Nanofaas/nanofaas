@@ -73,3 +73,15 @@ significa niente.
 
 Le due letture chiedono interventi opposti, quindi l'esperimento decide invece
 di aggiungere un altro frammento non vincolato.
+
+## Risultato
+
+Eseguito con mcFaas `8b90889e` e NanoLab `e6fa60b` nella run
+`azure-scheduler-thread-accounting-c2`. Al `peak900` il bilancio chiude al 99,7%:
+thread occupato **6,8%**, fermo dentro `poll()` **92,9%**, visite 143,9 µs e 1,58
+per dispatch, con coda a 16,67/20 e attesa 52,5 ms.
+
+Riga `thread idle %` alta della tabella di decisione: il thread dorme davvero
+mentre il lavoro aspetta. Sharding escluso. Il prossimo esperimento deve separare
+il ritardo di emissione del `notifyWork` in `QueueManager.releaseSlot` dalla
+latenza di unpark del SO.

@@ -780,41 +780,59 @@ durante il run e rimosso al termine; teardown NanoLab completato e inventario
 Azure vuoto. Raw, checksum e script sono in
 [`docs/experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
 
-## 19. Bilancio del thread scheduler (sonda pronta, run da eseguire)
+## 19. Bilancio del thread scheduler
 
-Strumentazione mcFaas `8b90889e`, raccolta NanoLab `e6fa60b`. Piano:
+Run del 2026-08-22: `azure-scheduler-thread-accounting-c2`, `native-o3-g1`, una
+ripetizione, 2/20. Commit mcFaas `8b90889e`; commit NanoLab `e6fa60b`. Piano:
 [`2026-08-22-dispatch-scheduler-thread-accounting.md`](2026-08-22-dispatch-scheduler-thread-accounting.md).
 
-Il timer di §18 parte dal **segnale**, non dalla chiamata a `poll()`. Se il
-thread è dentro `processFunction` per un'altra funzione quando il segnale
-arriva, `poll()` non viene nemmeno chiamata: quel tempo è coda per il thread
-singolo, non latenza di risveglio. Le due letture chiedono rimedi opposti —
-shardare contro togliere il park — e §4.3 avverte giustamente di non shardare un
-thread che dorme. I dati fino a §18 non le distinguono.
+Il timer di §18 parte dal **segnale**, non dalla chiamata a `poll()`: se il
+thread fosse dentro `processFunction` per un'altra funzione quando il segnale
+arriva, quel tempo sarebbe coda per il thread singolo, non latenza di risveglio.
+Le due letture chiedevano rimedi opposti — shardare contro togliere il park — e i
+dati fino a §18 non le distinguevano.
 
 `scheduler_visit_duration` e `scheduler_idle_duration` partizionano il wall clock
-del ciclo, senza tag `function`: un solo thread serve tutte le funzioni, e la
-`poll()` precede la conoscenza di quale funzione l'ha svegliato. Su ogni finestra
-`Σvisit + Σidle ≤ finestra`, e `analyze_snapshot.py` stampa il verdetto nella
-colonna `accounted<=100`.
+del ciclo, senza tag `function`. Al `peak900` il bilancio chiude al **99,7%**:
 
-Questa è la prima sonda della serie che può falsificare sé stessa. Tutte le
-precedenti misuravano un frammento e lasciavano un residuo non vincolato; §14 ha
-scoperto la race della reacquisizione solo facendo a mano un conto di capacità,
-due run dopo averla introdotta. Lo stesso limite è ora asserito da un test JUnit
-locale (`schedulerThreadTimeNeverExceedsTheElapsedWallClock`).
+| | |
+|---|---:|
+| thread occupato nelle visite | **6,8%** |
+| thread fermo dentro `poll()` | **92,9%** |
+| durata di una visita | 143,9 µs |
+| visite per dispatch | 1,58 |
+| timer segnale→`poll()` | 1.324,1 µs |
+| coda media / attesa in coda | 16,67 su 20 / 52,5 ms |
+
+**L'ipotesi «coda dietro le proprie visite» è falsificata.** Il thread non è
+occupato: dorme per il 93% del tempo mentre la coda è quasi piena. I 1.324 µs
+sono attesa reale. Lo **sharding è escluso** — moltiplicherebbe i dormienti,
+come §4.3 avvertiva — e §4.2 (sganciare il lotto dalla concorrenza) non tocca il
+punto, perché il lotto non è il vincolo con 1,58 visite per dispatch.
+
+Meccanismo residuo da attribuire: con concurrency 2 e slot pieni `canDispatch()`
+è falso, quindi `processFunction` non si ri-segnala e il thread si parcheggia; lo
+risveglia solo il `notifyWork` di `QueueManager.releaseSlot`. Il prossimo
+esperimento deve separare il ritardo di **emissione** di quel segnale dalla
+latenza di **unpark** del SO — sono due cause con due rimedi diversi
+(anticipare il segnale al rilascio contro cambiare la primitiva di attesa).
+
+Questa è la prima sonda della serie che poteva falsificare sé stessa, e il
+controllo ha lavorato: due finestre transitorie (`warm40` 100,6%, `ramp900`
+100,1%) leggono `NO`, con uno sforamento ≤0,6% compatibile con scrape a 5 s su
+finestre da 30 s. Tutte le finestre stazionarie, inclusa quella decisiva, stanno
+sotto 100. La race di §14 sforava del 130%: la differenza di ordine di grandezza
+è essa stessa il segnale.
 
 ### Stato corrente
 
-Sonda pronta, run da eseguire: una cella `native-o3-g1`, 2/20, una ripetizione,
-sotto `caffeinate`, con teardown esplicito e archiviazione dei raw con checksum.
-Criteri di decisione nel piano; leggere `accounted<=100` prima di ogni altra
-colonna. Se il verdetto sarà `thread busy %` alto, l'intervento è §4.3 (dispatch
-dal thread che rilascia lo slot, o sharding); se sarà `thread idle %` alto,
-l'intervento è la primitiva di attesa, e nessuno dei due va scelto prima di
-questa lettura.
+Complessivo della run: 435,06 richieste/s, p95 94,57 ms, p99 143,52 ms, 18,32%
+scarti. Cella a una ripetizione — i 299,3 dispatch/s al picco stanno sotto i
+346,8 della sonda diretta, e col thread al 6,8% non è l'overhead dei due timer a
+spiegarlo; va letto come rumore di una singola ripetizione. Le 12 risorse Azure
+sono state distrutte, inventario vuoto, `caffeinate` terminato.
 
 **Trappola per chi riproduce:** il `pytest_configure` di NanoLab ripunta
 `NANOFAAS_ROOT` su un `git archive` di HEAD. La guardia di copertura del catalogo
 non vede modifiche non committate, quindi un controllo negativo eseguito prima
-del commit mcFaas passa a vuoto.
+del commit mcFaas passa a vuoto. È successo due volte in questa sessione.

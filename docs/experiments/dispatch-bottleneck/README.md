@@ -235,28 +235,55 @@ terminato; il teardown NanoLab è completato e l'inventario Azure è vuoto.
 
 ## Bilancio del thread scheduler
 
-Sonda preparata (mcFaas `8b90889e`, NanoLab `e6fa60b`), **run non ancora
-eseguita**. Piano:
+Run del 2026-08-22: `azure-scheduler-thread-accounting-c2`, `native-o3-g1`, una
+ripetizione, concurrency 2 e coda 20. Commit mcFaas `8b90889e`; commit NanoLab
+`e6fa60b`. Piano:
 [`2026-08-22-dispatch-scheduler-thread-accounting.md`](../../plans/2026-08-22-dispatch-scheduler-thread-accounting.md).
 
 `scheduler_visit_duration` e `scheduler_idle_duration` non hanno tag `function`:
 il thread scheduler è uno solo e la `poll()` bloccante avviene prima che si
 sappia per quale funzione si è svegliato. Insieme partizionano il wall clock del
-ciclo, quindi su ogni finestra vale `Σvisit + Σidle ≤ finestra`.
+ciclo, quindi su ogni finestra vale `Σvisit + Σidle ≤ finestra` — il primo
+limite della serie che una sonda possa violare da sola.
 
-È la prima sonda della serie con un limite che può violare da sola. Le
-precedenti misuravano un frammento del percorso e lasciavano un residuo non
-vincolato: la reacquisizione ha riportato 4,788 ms contro un massimo fisico di
-2,081 ms, e nessuno se n'è accorto finché non è stato fatto il conto a mano, due
-run dopo. `analyze_snapshot.py` ora stampa la colonna `accounted<=100`; se dice
-`NO`, il resto della riga non va letto.
+| fase | dispatch/s | poll µs | visita µs | visite/dispatch | busy % | idle % | bilancio % | ≤100 |
+|---|---:|---:|---:|---:|---:|---:|---:|:--:|
+| hold200 | 199,8 | 29,7 | 83,3 | 1,35 | 2,2 | 97,6 | 99,9 | sì |
+| spike600 | 517,5 | 321,6 | 89,9 | 1,38 | 6,4 | 93,4 | 99,8 | sì |
+| hold350 | 349,7 | 152,5 | 85,2 | 1,33 | 4,0 | 95,9 | 99,8 | sì |
+| **peak900** | **299,3** | **1.324,1** | **143,9** | **1,58** | **6,8** | **92,9** | **99,7** | **sì** |
+| drain40 | 313,5 | 777,9 | 171,5 | 1,44 | 7,8 | 92,0 | 99,7 | sì |
 
-Discrimina le due letture rimaste dei 1.078 µs dentro `poll()`: `thread busy %`
-alto significa un thread in coda dietro le proprie visite (rimedio: shardare o
-dispacciare dal thread che rilascia lo slot), `thread idle %` alto significa un
-thread che dorme davvero mentre il lavoro aspetta (rimedio: cambiare la
-primitiva di attesa). I due rimedi sono opposti, ed è questo che rende
-l'esperimento decisivo invece che descrittivo.
+Al `peak900` il bilancio chiude al 99,7% e il thread scheduler è occupato nelle
+proprie visite per il **6,8%** del tempo. Non fa coda dietro sé stesso: dorme per
+il **92,9%** mentre la coda sta a 16,67/20 e l'attesa in coda è 52,5 ms. Le
+visite costano 143,9 µs e sono 1,58 per dispatch, quindi nemmeno il churn
+riempie il thread.
+
+**Verdetto: l'ipotesi «coda dietro le proprie visite» è falsificata.** I 1.324 µs
+del timer segnale→`poll()` sono attesa reale, non tempo speso altrove. Il rimedio
+indicato dalla tabella di decisione è la primitiva di attesa/scheduling del
+thread, **non** lo sharding: shardare un thread occupato al 6,8% moltiplica i
+dormienti, esattamente come §4.3 avvertiva.
+
+Il meccanismo che resta da attribuire: con concurrency 2 e slot pieni,
+`canDispatch()` è falso, quindi `processFunction` non si ri-segnala e il thread
+si parcheggia; lo risveglia solo il `notifyWork` di `QueueManager.releaseSlot`.
+La misura successiva deve separare il ritardo di *emissione* di quel segnale
+dalla latenza di unpark del SO.
+
+**Due finestre leggono `NO`** — `warm40` a 100,6% e `ramp900` a 100,1%. Sono
+entrambe transitorie e lo sforamento è al massimo lo 0,6%: con scrape ogni 5 s su
+finestre da 30 s, `nearest()` può prendere estremi fuori finestra e attribuirle
+fino a qualche secondo di accumulo in più. Tutte le finestre stazionarie, inclusa
+quella decisiva, stanno sotto 100. Non è la firma di una race come quella di §14,
+che sforava del 130%.
+
+Risultato complessivo: 435,06 richieste/s, p95 94,57 ms, p99 143,52 ms, 18,32%
+scarti. La cella è a una ripetizione: i 299,3 dispatch/s al picco sono più bassi
+dei 346,8 della sonda diretta, e con il thread al 6,8% non è l'overhead dei due
+timer a spiegarlo. Le 12 risorse Azure sono state distrutte; inventario finale
+vuoto.
 
 ## Raw e riproduzione
 
