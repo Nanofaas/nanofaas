@@ -61,12 +61,13 @@ def main() -> None:
         "slot-latency us", "slot util %", "idle ms", "reacq ms",
         "reacq sum/dispatch ms", "reacq<=idle", "pre-active ms", "active ms",
         "reacq/dispatch", "queue ms",
-        "inFlight", "queue depth", "wake us", "wake/dispatch",
+        "inFlight", "queue depth", "wake us", "wake/dispatch", "cpu cores",
     )
     if direct_probes:
         header += (
             "submit us", "submit all util %", "blocked/dispatch",
-            "coalesced/dispatch",
+            "coalesced/dispatch", "blocked all/dispatch all",
+            "coalesced all/dispatch all",
         )
     print(" | ".join(header))
     print(" | ".join("---" for _ in header))
@@ -106,6 +107,7 @@ def main() -> None:
             f"{gauge_mean(queries, 'function_queue_depth', a, b, start):.2f}",
             f"{wake:.1f}",
             f"{wakes / dispatches:.2f}" if dispatches else "0.00",
+            f"{gauge_mean(queries, 'container_cpu_cores@control-plane', a, b, start):.2f}",
         )
         if direct_probes:
             submit = timer_ms(
@@ -114,15 +116,26 @@ def main() -> None:
             submit_all_sum = delta(
                 queries, "function_scheduler_dispatch_submit_duration_all_sum", a, b, start
             )
+            submit_all_count = delta(
+                queries, "function_scheduler_dispatch_submit_duration_all_count", a, b, start
+            )
             blocked = delta(queries, "function_scheduler_slot_blocked_total", a, b, start)
+            blocked_all = delta(
+                queries, "function_scheduler_slot_blocked_all_total", a, b, start
+            )
             coalesced = delta(
                 queries, "function_scheduler_signal_coalesced_total", a, b, start
+            )
+            coalesced_all = delta(
+                queries, "function_scheduler_signal_coalesced_all_total", a, b, start
             )
             row += (
                 f"{submit:.1f}",
                 f"{submit_all_sum / (b - a) * 100:.1f}",
                 f"{blocked / dispatches:.2f}" if dispatches else "0.00",
                 f"{coalesced / dispatches:.2f}" if dispatches else "0.00",
+                f"{blocked_all / submit_all_count:.2f}" if submit_all_count else "0.00",
+                f"{coalesced_all / submit_all_count:.2f}" if submit_all_count else "0.00",
             )
         print(" | ".join(row))
 

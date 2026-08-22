@@ -27,6 +27,7 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 | `azure-dispatch-slot-hold-c2` | G1, una ripetizione, 2/20 | mcFaas `df5efda1`; NanoLab `07bbbf7` | slot 1,416 ms e `function_latency` 1,491 ms sull'intera run; p95 92,5 ms, 115.859 dispatch, 17,43% scarti. Nessun callback lag millisecond-level nascosto. |
 | `azure-dispatch-reacquisition-c2` | G1, una ripetizione, 2/20 | mcFaas `50e7d87a`; NanoLab `2b7f01c` | Risultato numerico archiviato, ma sonda invalidata dal capacity-idle bound e da una race nel pairing dei timestamp. |
 | `azure-dispatch-reacquisition-segments-c2` | G1, una ripetizione, 2/20 | mcFaas `3365c590`; NanoLab `8e9674e` | 4,743/4,788 ms pre-active osservati, ma attribuzione invalidata: il timer supera il massimo fisico di 2,081 ms al `peak900`. |
+| `azure-dispatch-scheduler-direct-probes-c2` | G1, una ripetizione, 2/20 | mcFaas `7ed1e010`; NanoLab `ce45fae` | Al `peak900`, submit sincrono 7,0% del thread, 2,14 visite senza slot e 0,44 segnali coalesced per dispatch Java. Il submit non è il collo; il churn di visite non dispatchable è il candidato causale. |
 
 La compilazione G1 dell'ultima sonda ha richiesto 872,8 s; il push 5,0 s. IP
 dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
@@ -118,6 +119,33 @@ rilascio; un'acquisizione concorrente può quindi precedere la pubblicazione e
 lasciare un timestamp stale, poi associato a un'acquisizione successiva. Raw e
 valori restano archiviati, ma non costituiscono evidenza sulla localizzazione
 del collo di bottiglia.
+
+## Sonde dirette dello scheduler
+
+Run `azure-dispatch-scheduler-direct-probes-c2`, concurrency 2 e coda 20. Le
+sonde non correlano eventi fra thread: misurano direttamente la durata della
+chiamata sincrona a `InvocationService.dispatch`, i fallimenti di acquisizione
+slot e i segnali coalesced.
+
+| fase | dispatch Java/s | submit Java µs | submit tutte le funzioni | blocked/dispatch Java | coalesced/dispatch Java | CPU control plane core | queue wait ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| spike600 | 519,8 | 88,5 | 6,4% | 0,63 | 0,15 | 0,60 | 2,953 |
+| hold350 | 349,3 | 77,0 | 3,6% | 0,38 | 0,09 | 0,69 | 1,452 |
+| **peak900** | **346,8** | **117,3** | **7,0%** | **2,14** | **0,44** | **0,91** | **31,040** |
+| drain40 | 327,5 | 91,3 | 5,2% | 1,55 | 0,33 | 0,80 | 15,185 |
+
+Al `peak900`, sulle due funzioni, 16.409 dispatch consumano 2,108 s di submit
+sincrono in 30 s; nello stesso intervallo si osservano 37.590 visite senza slot
+e 6.307 segnali coalesced. Il submit occupa quindi solo il 7,0% del thread e
+non può spiegare il limite. Il segnale dominante è invece il churn: 2,29 visite
+senza slot per dispatch complessivo. Questo identifica il prossimo intervento
+falsificabile — evitare di accodare funzioni non dispatchable — ma non ne prova
+ancora l'effetto causale; serve un'A/B con la stessa matrice.
+
+Risultato complessivo: 115.986 dispatch Java, 435,06 richieste/s, p95 90,22 ms,
+p99 151,21 ms, 17,33% scarti e 29.063 rifiuti della coda Java. Build nativa
+878,9 s, push 5,0 s e k6 451,5 s. Le 12 risorse Azure sono state distrutte e
+`caffeinate` è terminato.
 
 Sull'intera run i due timer contano entrambi 32.025 eventi: reacquisizione
 3,024 ms, pre-active 2,994 ms e active→CAS 0,030 ms. Risultato complessivo:

@@ -55,3 +55,7 @@ e00fd24f18982fe26945701bcdeaf3cefab8f704674b26a0cf3e043f4e8e3b2d  raw/azure-nosy
 08298bfbcf2c0f02651fc8452716774de62e00387f2318cd64e87ba65761983a  raw/azure-nosync/native-os/run-3/k6-summary.json
 01ba9f88d503ab190ad1db26966d8c2564e44bcd5aa3b732e8c1dc29dad7200b  raw/azure-nosync/native-os/run-3/metrics/prometheus-snapshot.json
 b2100d24ebfea0e91d964c3474c2d94316742da793721191f063dcb8a9b0f175  raw/azure-nosync/native-os/run-3/summary.json
+3a4ca0d2f8cf101ce8c77cad8b2fb8a829ec3ec6df762141cd16ddde93382539  raw/azure-dispatch-scheduler-direct-probes-c2/comparison-manifest.json
+e01cb95b22c737faad31d047379a3c16b07e58c8bda24d199adf625dcf4bcf23  raw/azure-dispatch-scheduler-direct-probes-c2/native-o3-g1/run-1/k6-summary.json
+4d045563704924b46a6b12ec6fd44c7bda5dab732b1af350c9e73da6c4b00110  raw/azure-dispatch-scheduler-direct-probes-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+716dd382418af8b91e8ddbb64695473dd31576a3a6a76aedee4ba1409b36112e  raw/azure-dispatch-scheduler-direct-probes-c2/native-o3-g1/run-1/summary.json

@@ -696,3 +696,32 @@ Il prossimo esperimento usa solo misure dirette sul thread scheduler: durata
 sincrona di `InvocationService.dispatch`, visite bloccate per assenza di slot e
 segnali coalesced. Piano:
 [`2026-08-22-dispatch-scheduler-direct-probes.md`](2026-08-22-dispatch-scheduler-direct-probes.md).
+
+## 15. Risultato delle sonde dirette
+
+Run del 2026-08-22: `azure-dispatch-scheduler-direct-probes-c2`, commit mcFaas
+`7ed1e010`, commit NanoLab `ce45fae`, una ripetizione, concurrency 2 e coda 20.
+Build nativa 878,9 s, push 5,0 s, k6 451,5 s. Raw e script di analisi sono in
+[`../experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+
+Al `peak900`, 10.405 dispatch Java in 30 s (**346,8/s**) spendono **117,3 µs**
+medi nel submit sincrono. Sulle due funzioni, 16.409 submit totalizzano **2,108 s**,
+ossia solo il **7,0%** del tempo del thread scheduler. L'ipotesi che la
+preparazione WebClient monopolizzi lo scheduler è falsificata.
+
+Nella stessa finestra si contano **22.282** visite Java senza slot
+(**2,14/dispatch**) e **4.611** segnali Java coalesced (**0,44/dispatch**).
+Sulle due funzioni: **37.590** visite bloccate, **6.307** segnali coalesced e
+16.409 dispatch; il rapporto blocked/dispatch complessivo è **2,29**. La CPU del
+control plane è **0,91 core** medi. Il churn di funzioni già sature è quindi il
+candidato rimasto, mentre il submit sincrono non lo è.
+
+Verdetto: l'esperimento discrimina le ipotesi ma non dimostra ancora causalità.
+Il prossimo test deve essere un'A/B minimale che evita enqueue e self-requeue
+quando `FunctionQueueState.canDispatch()` è falso. Se blocked/dispatch crolla e
+throughput/queue wait migliorano con lo stesso profilo, la causa è validata; in
+caso contrario occorre misurare la durata completa delle visite.
+
+Risultato complessivo: 115.986 dispatch Java, 435,06 richieste/s, p95 90,22 ms,
+p99 151,21 ms, 17,33% scarti e 29.063 rifiuti Java. Le 12 risorse Azure sono
+state distrutte; inventario finale vuoto e `caffeinate` assente.

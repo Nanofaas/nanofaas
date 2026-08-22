@@ -39,3 +39,12 @@ wake, poll, batch, dispatch, hold and queue metrics complete the accounting.
 
 The stale reacquisition timers remain exported only to preserve the already
 archived experiment; they must not be used as evidence in this run.
+
+## Result
+
+Run `azure-dispatch-scheduler-direct-probes-c2` used mcFaas `7ed1e010` and
+NanoLab `ce45fae`. At `peak900`, all-function synchronous submit used 7.0% of
+the scheduler thread, while the scheduler recorded 37,590 slot-blocked visits
+for 16,409 dispatches (2.29 per dispatch) and 6,307 coalesced signals. The
+submit hypothesis is falsified; non-dispatchable visit churn is the remaining
+candidate and requires a guarded A/B intervention to establish causality.
