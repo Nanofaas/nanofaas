@@ -953,6 +953,31 @@ percentili, con quattro le stesse richieste vengono servite invece che respinte.
 Rifiuti 31.157 → 14.503, fallimenti 18,79% → 9,33%. Confrontare percentili fra
 le due configurazioni significa confrontare popolazioni diverse.
 
+## 21. Le ottimizzazioni in ingresso non sono misurabili a 1 CPU
+
+Run `azure-cpu1-inbound-opt-c2` (mcFaas `bb5c563a`), limite invariato a 1 CPU.
+Lotto: stack trace soppressi sui rifiuti, rifiuto prima di costruire
+l'esecuzione, sonda di reacquisizione rimossa, header di risposta letti una volta.
+
+Al `peak900`: 287,9 dispatch/s contro 303,7 del baseline, attesa 48,39 contro
+50,27 ms, p95 96,11 contro 96,78. **Nessun guadagno; il dispatch è più basso del
+5%.**
+
+Il difetto è nel disegno della misura. Con l'80% dei periodi strozzati la varianza
+fra ripetizioni è dell'ordine del 5%, e questi cambiamenti valgono al più qualche
+punto: una ripetizione sola non può distinguerli da zero. Un assetto strozzato è
+il peggiore per misurare un risparmio di CPU, perché il quantum CFS domina.
+
+**Regola che ne segue:** un cambiamento da pochi punti percentuali non si misura
+con una cella da 25 minuti su Azure. Si misura in locale, come in
+[`payload-passthrough.md`](../experiments/payload-passthrough.md) — gratis,
+ripetibile, e in microsecondi per operazione invece che dentro il rumore. Su Azure
+si portano solo le domande che cambiano il sistema di un fattore, non di un
+margine.
+
+I quattro cambiamenti restano corretti per conto proprio e vanno tenuti come
+pulizia, non rivendicati come guadagno.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU

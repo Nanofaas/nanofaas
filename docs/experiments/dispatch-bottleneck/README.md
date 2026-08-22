@@ -331,6 +331,51 @@ dispatch.** Le sonde da §10 a §19 restano valide come misure — il thread
 un cgroup senza budget. Coerente anche con la sonda `azure-conc8-probe`, che
 alzando la concorrenza a 8 rese +3,69% invece del ×4 atteso.
 
+## Le ottimizzazioni in ingresso non si vedono a 1 CPU
+
+Run del 2026-08-22: `azure-cpu1-inbound-opt-c2`, `native-o3-g1`, una ripetizione,
+2/20, limite di CPU invariato a 1. Commit mcFaas `bb5c563a`. Il lotto misurato:
+stack trace soppressi sulle tre eccezioni di rifiuto (`566ad711`), rifiuto della
+coda piena prima di costruire l'esecuzione (`d79f0ccf`), sonde di reacquisizione
+rimosse e header di risposta letti una volta invece di sei (`bb5c563a`).
+
+| al `peak900` | baseline | + ottimizzazioni |
+|---|---:|---:|
+| dispatch/s | 303,7 | **287,9** |
+| periodi CFS strozzati | 85,2% | 79,3% |
+| attesa in coda | 50,27 ms | 48,39 ms |
+| core control plane | 0,82 | 0,60 |
+| p95 / p99 complessivi | 96,78 / 150,32 ms | 96,11 / 166,79 ms |
+| rifiuti | 31.157 | 31.888 |
+
+**Nessun miglioramento misurabile, e il dispatch è addirittura più basso del 5%.**
+
+### Il difetto è nel disegno della misura, non nel risultato
+
+Sotto throttling la CPU è il vincolo, quindi un risparmio di CPU per richiesta
+*dovrebbe* tradursi in throughput. Non si vede, e la ragione è che l'assetto a
+1 CPU è il peggiore possibile per misurarlo: con l'80% dei periodi strozzati la
+varianza fra ripetizioni è dell'ordine del 5%, e queste ottimizzazioni valgono al
+più qualche punto percentuale. Una ripetizione sola non può distinguerle da zero.
+
+Le due misure che avrebbero senso, in ordine di costo:
+
+1. **Un benchmark locale del percorso di rifiuto**, come quello di
+   [`payload-passthrough.md`](../payload-passthrough.md): gratis, ripetibile,
+   e misura direttamente i microsecondi risparmiati per rifiuto invece di
+   cercarli dentro il rumore di una run da 25 minuti.
+2. **Tre ripetizioni a 4 CPU**, dove il sistema non è strozzato e un risparmio di
+   CPU si converte in throughput senza passare per la lotteria del quantum CFS.
+
+### Cosa resta comunque vero
+
+I quattro cambiamenti sono corretti per conto proprio e nessuno dipende da questa
+misura: una sonda dimostrata sbagliata (§14) non deve restare a pubblicare numeri,
+un'eccezione di controllo di flusso non ha bisogno di uno stack trace, un rifiuto
+non deve costruire ciò che sta per abbandonare, e leggere sei volte gli stessi
+header è lavoro ripetuto. Vanno tenuti come pulizia, **non** rivendicati come
+guadagno di prestazioni finché qualcuno non li misura come si deve.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,

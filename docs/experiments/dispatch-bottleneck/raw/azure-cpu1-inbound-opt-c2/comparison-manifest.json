@@ -1,0 +1,23 @@
+{
+  "started_at": "2026-08-22T19:05:24.952380+00:00",
+  "functions": [
+    "word-stats-java",
+    "word-stats-javascript"
+  ],
+  "repetitions": 1,
+  "order": [
+    "native-o3-g1 run 1"
+  ],
+  "variants": [
+    {
+      "key": "native-o3-g1",
+      "label": "Native, -O3, G1 (Oracle GraalVM)",
+      "rationale": "The variant that tests whether the collector was the limit: under sustained load the serial collector spent 32% of wall-clock time collecting, with pauses reaching 1.9s.",
+      "build_env": {
+        "NATIVE_OPTIMIZATION": "3",
+        "NATIVE_GC": "G1"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:native-o3-g1"
+    }
+  ]
+}

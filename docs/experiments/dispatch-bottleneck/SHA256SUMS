@@ -83,3 +83,7 @@ a92882ac51a6805399c29c1e29821b6dd5e8f206c06637f10281875d4158b485  raw/azure-cpu1
 e38c6e65c1e7474f74f8a54c13b196c7fda0581236b8eb801c545a5dcad73c70  raw/azure-cpu4-c2/native-o3-g1/run-1/k6-summary.json
 bd0581b2385a7362e57ced6128db805ec8a47272b82170a67b47010f94dc66bb  raw/azure-cpu4-c2/native-o3-g1/run-1/summary.json
 7f0d8013bdabd603360dd58597fcd7d21b05cdf00b23d57c4649f0f88d9df736  raw/azure-cpu4-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+864fabf7e81ba61d7dc5197dfa4792c1b5228ac7054860459a953b3d23815546  raw/azure-cpu1-inbound-opt-c2/comparison-manifest.json
+517a6c9d0fcaad8fe3706a0ebe62262fa9c2a0fc34a9c977cd6dd19368717d43  raw/azure-cpu1-inbound-opt-c2/native-o3-g1/run-1/k6-summary.json
+194bbd3fd9bc05891a5bbd11813a12b850ac9d7ba77d913375b84d510784262f  raw/azure-cpu1-inbound-opt-c2/native-o3-g1/run-1/summary.json
+175344151bdb7909d67a873428b3127f398fe25cd089c0c65436931669a059ee  raw/azure-cpu1-inbound-opt-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
