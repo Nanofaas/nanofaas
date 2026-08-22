@@ -165,7 +165,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         if (queued > 0 && dispatched == MAX_BATCH_PER_FUNCTION) {
             queueManager.recordSchedulerBatchLimit(functionName);
         }
-        if (queued > 0 && dispatched > 0) {
+        if (queued > 0 && dispatched > 0 && state.canDispatch()) {
             signalWork(functionName);
         }
     }

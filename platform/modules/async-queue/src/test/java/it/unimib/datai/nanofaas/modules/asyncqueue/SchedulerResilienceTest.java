@@ -93,6 +93,7 @@ class SchedulerResilienceTest {
         when(state.tryAcquireSlot()).thenReturn(true, true, true, false);
         when(state.poll()).thenReturn(task1, task2, task3, null);
         when(state.queued()).thenReturn(1, 0);
+        when(state.canDispatch()).thenReturn(true);
 
         List<InvocationTask> dispatched = new CopyOnWriteArrayList<>();
         doAnswer(invocation -> {
@@ -148,8 +149,8 @@ class SchedulerResilienceTest {
                         assertThat(state.queued()).isEqualTo(1);
                         assertThat(state.inFlight()).isEqualTo(1);
                         assertThat(queueManager.getCalls())
-                                .as("scheduler should not spin on a queued function with no free dispatch slot")
-                                .isLessThanOrEqualTo(3);
+                                .as("scheduler should not revisit a queued function with no free dispatch slot")
+                                .isEqualTo(1);
                     });
 
             queueManager.releaseSlot("blocked");

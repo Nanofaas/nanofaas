@@ -48,3 +48,11 @@ the scheduler thread, while the scheduler recorded 37,590 slot-blocked visits
 for 16,409 dispatches (2.29 per dispatch) and 6,307 coalesced signals. The
 submit hypothesis is falsified; non-dispatchable visit churn is the remaining
 candidate and requires a guarded A/B intervention to establish causality.
+
+## Prepared intervention
+
+The follow-up branch suppresses enqueue and bounded-batch self-requeue signals
+while `FunctionQueueState.canDispatch()` is false. Slot release remains the
+authoritative wakeup for saturated queues. Unit tests cover both suppressed
+signals and release-driven progress. This intervention has not yet been run or
+assigned a performance result.

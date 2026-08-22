@@ -152,7 +152,7 @@ public class QueueManager {
         if (meters != null) {
             meters.offerDuration().record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
         }
-        if (success) {
+        if (success && state.canDispatch()) {
             notifyWork(task.functionName());
         }
         return success;

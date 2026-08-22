@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,6 +22,44 @@ class QueueManagerTest {
 
     // Existing capacity/controller meters plus the dispatch diagnostics.
     private static final int METERS_PER_FUNCTION = 15 + ConcurrencyControlMode.values().length;
+
+    @Test
+    void enqueue_doesNotSignalWhenAllDispatchSlotsAreBusy() {
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        FunctionSpec spec = new FunctionSpec(
+                "busy",
+                "image",
+                null,
+                Map.of(),
+                null,
+                1000,
+                1,
+                10,
+                3,
+                null,
+                ExecutionMode.LOCAL,
+                null,
+                null,
+                null
+        );
+        FunctionQueueState state = manager.getOrCreate(spec);
+        AtomicInteger signals = new AtomicInteger();
+        manager.setWorkSignaler(_ -> signals.incrementAndGet());
+        assertThat(state.tryAcquireSlot()).isTrue();
+
+        assertThat(manager.enqueue(new InvocationTask(
+                "exec-busy",
+                "busy",
+                spec,
+                new InvocationRequest("payload", Map.of()),
+                null,
+                null,
+                Instant.now(),
+                1
+        ))).isTrue();
+
+        assertThat(signals).hasValue(0);
+    }
 
     @Test
     void issue008_queueIsBounded() {
