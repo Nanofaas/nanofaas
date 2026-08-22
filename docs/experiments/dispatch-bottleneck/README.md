@@ -28,6 +28,7 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 | `azure-dispatch-reacquisition-c2` | G1, una ripetizione, 2/20 | mcFaas `50e7d87a`; NanoLab `2b7f01c` | Risultato numerico archiviato, ma sonda invalidata dal capacity-idle bound e da una race nel pairing dei timestamp. |
 | `azure-dispatch-reacquisition-segments-c2` | G1, una ripetizione, 2/20 | mcFaas `3365c590`; NanoLab `8e9674e` | 4,743/4,788 ms pre-active osservati, ma attribuzione invalidata: il timer supera il massimo fisico di 2,081 ms al `peak900`. |
 | `azure-dispatch-scheduler-direct-probes-c2` | G1, una ripetizione, 2/20 | mcFaas `7ed1e010`; NanoLab `ce45fae` | Al `peak900`, submit sincrono 7,0% del thread, 2,14 visite senza slot e 0,44 segnali coalesced per dispatch Java. Il submit non è il collo; il churn di visite non dispatchable è il candidato causale. |
+| `azure-dispatch-saturation-guard-c2` | G1, una ripetizione, 2/20, guardie `canDispatch()` | mcFaas `7e532fc9`; NanoLab `ce45fae` | Al `peak900`, 342,6 dispatch Java/s, 32,105 ms di queue wait e p95 90,72 ms: nessun miglioramento misurabile. Il churn non è causa dominante del limite. |
 
 La compilazione G1 dell'ultima sonda ha richiesto 872,8 s; il push 5,0 s. IP
 dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
@@ -152,6 +153,31 @@ Sull'intera run i due timer contano entrambi 32.025 eventi: reacquisizione
 114.933 dispatch Java, 435,06 richieste/s, p95 93,63 ms, p99 142,23 ms,
 18,00% scarti e 30.116 rifiuti della coda Java.
 
+## A/B guardie di saturazione
+
+Run `azure-dispatch-saturation-guard-c2`, una ripetizione con lo stesso profilo
+e la stessa configurazione 2/20. Il commit `7e532fc9` sopprime i segnali di
+enqueue e il self-requeue quando `canDispatch()` è falso; il rilascio slot
+resta il wakeup che riattiva la funzione satura.
+
+| fase | dispatch Java/s | queue wait ms | blocked/dispatch Java | coalesced/dispatch Java |
+|---|---:|---:|---:|---:|
+| spike600 | 531,9 | 2,063 | 0,18 | 0,04 |
+| hold350 | 349,5 | 1,479 | 0,15 | 0,04 |
+| **peak900** | **342,6** | **32,105** | **0,82** | **0,13** |
+| drain40 | 330,6 | 15,919 | 0,61 | 0,12 |
+
+Sull'intera run: 116.537 dispatch, 435,06 richieste/s, p95 90,72 ms,
+p99 155,73 ms, 17,02% scarti e 28.512 rifiuti. Rispetto al controllo diretto
+(346,8 dispatch Java/s e 31,040 ms al `peak900`; p95 90,22 ms), la differenza
+è compatibile con il rumore di una sola ripetizione. Le guardie riducono i
+contatori, ma non migliorano il limite: l'ipotesi che il churn delle visite non
+dispatchable sia la causa dominante è invalidata. Non segue una nuova modifica
+da questo A/B.
+
+`caffeinate` è terminato. Le VM Azure trattenute da NanoLab sono state
+rilasciate con il teardown del provider NanoLab; l'inventario Azure è vuoto.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,
@@ -180,6 +206,6 @@ cd /path/to/nanolab
 caffeinate -dimsu ./nanolab.sh compare \
   packages/nanolab/scenarios-v2/runtime-comparison-jvm.yaml \
   --environment packages/nanolab/environments/azure-comparison.yaml \
-  --run-dir packages/nanolab/runs/azure-dispatch-reacquisition-segments-c2 \
+  --run-dir packages/nanolab/runs/azure-dispatch-saturation-guard-c2 \
   --variants native-o3-g1 --repetitions 1
 ```

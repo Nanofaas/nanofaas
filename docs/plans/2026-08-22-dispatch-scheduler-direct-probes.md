@@ -54,5 +54,12 @@ candidate and requires a guarded A/B intervention to establish causality.
 The follow-up branch suppresses enqueue and bounded-batch self-requeue signals
 while `FunctionQueueState.canDispatch()` is false. Slot release remains the
 authoritative wakeup for saturated queues. Unit tests cover both suppressed
-signals and release-driven progress. This intervention has not yet been run or
-assigned a performance result.
+signals and release-driven progress.
+
+Run `azure-dispatch-saturation-guard-c2` used mcFaas `7e532fc9` and NanoLab
+`ce45fae`. At `peak900` it reached 342.6 Java dispatches/s with 32.105 ms
+queue wait, against 346.8 dispatches/s and 31.040 ms in the direct-probe
+control; whole-run throughput was identical at 435.06 requests/s and p95
+changed from 90.22 to 90.72 ms. The guards reduce blocked visits but do not
+improve the bottleneck. The hypothesis that non-dispatchable visit churn is
+the dominant cause is therefore invalidated by this A/B.

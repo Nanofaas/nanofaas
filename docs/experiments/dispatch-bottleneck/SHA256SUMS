@@ -59,3 +59,7 @@ b2100d24ebfea0e91d964c3474c2d94316742da793721191f063dcb8a9b0f175  raw/azure-nosy
 e01cb95b22c737faad31d047379a3c16b07e58c8bda24d199adf625dcf4bcf23  raw/azure-dispatch-scheduler-direct-probes-c2/native-o3-g1/run-1/k6-summary.json
 4d045563704924b46a6b12ec6fd44c7bda5dab732b1af350c9e73da6c4b00110  raw/azure-dispatch-scheduler-direct-probes-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
 716dd382418af8b91e8ddbb64695473dd31576a3a6a76aedee4ba1409b36112e  raw/azure-dispatch-scheduler-direct-probes-c2/native-o3-g1/run-1/summary.json
+16043df2aab6a4dad479f79812d20f721acbddbc328a798518484bf5b6bf362c  raw/azure-dispatch-saturation-guard-c2/comparison-manifest.json
+f77ab4a9228e593437dfbc9ec0676ef9ee0085333527f908006088c21b278526  raw/azure-dispatch-saturation-guard-c2/native-o3-g1/run-1/k6-summary.json
+4f19ee037d0bcc298ee928847bfa6df56d8f278392398226e272381c7fe88969  raw/azure-dispatch-saturation-guard-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+02ca1555b9c5d363fe70ac2a05678b791346e22dfeb3c727d6e19155844539e5  raw/azure-dispatch-saturation-guard-c2/native-o3-g1/run-1/summary.json
