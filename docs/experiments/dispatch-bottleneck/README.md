@@ -285,6 +285,52 @@ dei 346,8 della sonda diretta, e con il thread al 6,8% non è l'overhead dei due
 timer a spiegarlo. Le 12 risorse Azure sono state distrutte; inventario finale
 vuoto.
 
+## Il tetto era la quota di CPU del control plane
+
+Run del 2026-08-22: `azure-cpu1-throttling-c2` e `azure-cpu4-c2`, `native-o3-g1`,
+una ripetizione ciascuna, stesso profilo, 2/20. Commit mcFaas `3323982a`;
+commit NanoLab `9f5ab50`. Unica variabile: `controlPlane.resources.limits.cpu`.
+
+Il chart imposta 1 CPU per default (`values.yaml:24`) e nessuna delle quattordici
+celle precedenti lo dichiarava. `process_cpu_usage` stava a 1,00 in tutte —
+inclusa la build JVM, dove la metrica è affidabile — ma nessuno aveva letto il
+denominatore: 0,91 core su otto sembrano margine, su uno sono il muro.
+
+Le serie di throttling non erano raccoglibili: entrambi i job cAdvisor del chart
+terminano con un `keep` che nomina tre metriche e scarta il resto, quindi la
+domanda «quanta CPU è stata negata» tornava vuota allo scrape, non al catalogo.
+
+| fase | — | disp/s | periodi strozzati | s strozzate | core | attesa coda | coda |
+|---|---|---:|---:|---:|---:|---:|---:|
+| hold200 | 1 CPU | 199,8 | 1,4% | 0,30 | 0,33 | 0,06 ms | 0,00 |
+| | **4 CPU** | 199,9 | **0,0%** | 0,00 | 0,32 | 0,04 ms | 0,00 |
+| spike600 | 1 CPU | 523,5 | 26,3% | 4,58 | 0,50 | 7,69 ms | 10,00 |
+| | **4 CPU** | **598,4** | **0,0%** | 0,00 | 0,70 | **0,05 ms** | **0,00** |
+| **peak900** | 1 CPU | **303,7** | **85,2%** | **44,74** | 0,82 | **50,27 ms** | **20,00** |
+| | **4 CPU** | **843,4** | **0,0%** | 0,00 | 1,00 | **0,34 ms** | **3,33** |
+
+Al `peak900` con 1 CPU l'**85,2% dei periodi CFS è strozzato** e il cgroup accumula
+44,74 s di attesa forzata in 30 s di orologio (somma su tutti i thread). Alzando
+il limite a 4 il throttling sparisce e il dispatch passa da 303,7 a **843,4/s**:
+**2,8×**. L'attesa in coda crolla da 50,27 ms a 0,34 ms e la coda da 20/20 a
+3,33.
+
+Sull'intera run: dispatch 113.892 → 130.546 (+14,6%), rifiuti 31.157 → 14.503
+(dimezzati), fallimenti k6 18,79% → 9,33%. Il guadagno complessivo è molto
+inferiore al 2,8× perché solo le fasi di picco erano CPU-bound.
+
+**La latenza peggiora, ed è coerente:** p95 96,78 → 157,65 ms, p99 150,32 →
+254,87 ms. Con un core i rifiuti sono istantanei e abbassano i percentili; con
+quattro, richieste che prima venivano respinte in 0 ms vengono servite in
+decine. Il sistema converte fallimenti veloci in successi più lenti — un
+confronto di percentili fra le due configurazioni misura popolazioni diverse.
+
+**Verdetto: il tetto dei ~300 dispatch/s era la quota cgroup, non il percorso di
+dispatch.** Le sonde da §10 a §19 restano valide come misure — il thread
+*era* fermo il 93% del tempo — ma la causa non era la primitiva di attesa: era
+un cgroup senza budget. Coerente anche con la sonda `azure-conc8-probe`, che
+alzando la concorrenza a 8 rese +3,69% invece del ×4 atteso.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,

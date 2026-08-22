@@ -824,15 +824,87 @@ finestre da 30 s. Tutte le finestre stazionarie, inclusa quella decisiva, stanno
 sotto 100. La race di §14 sforava del 130%: la differenza di ordine di grandezza
 è essa stessa il segnale.
 
+## 20. Il tetto era la quota di CPU
+
+Run del 2026-08-22: `azure-cpu1-throttling-c2` e `azure-cpu4-c2`, `native-o3-g1`,
+una ripetizione, stesso profilo e stessa build. Unica variabile:
+`controlPlane.resources.limits.cpu`. Commit mcFaas `3323982a`, NanoLab `9f5ab50`.
+
+| al `peak900` | 1 CPU | 4 CPU |
+|---|---:|---:|
+| dispatch/s | 303,7 | **843,4** |
+| periodi CFS strozzati | **85,2%** | **0,0%** |
+| secondi strozzati (30 s) | 44,74 | 0,00 |
+| attesa in coda | 50,27 ms | 0,34 ms |
+| profondità coda | 20,00 / 20 | 3,33 |
+
+**Il collo di bottiglia era la quota cgroup del control plane**, non il percorso
+di dispatch. `deploy/helm/nanofaas/values.yaml:24` impone 1 CPU, nessuna delle
+quattordici celle precedenti lo dichiarava, e le sonde da §10 a §19 hanno
+misurato un thread fermo il 93% del tempo senza poter vedere *perché* fosse
+fermo.
+
+### Cosa questo invalida e cosa no
+
+Le misure restano valide; le **inferenze causali** no. In particolare cade la
+§2, che è il cuore metodologico di questo documento:
+
+> «Un singolo thread saturo consuma 1,0 core da solo. Al picco l'intero processo
+> sta a 0,91 di media. Il thread di dispatch non è CPU-bound: aspetta.»
+
+Il ragionamento divide per otto core della VM. Il divisore era **uno**. E il
+dato che lo diceva era già in ogni snapshot dal primo giorno: `process_cpu_usage`
+misura 1,00 in tutte e quattordici le celle, build JVM inclusa, dove la metrica
+è affidabile. Non è stato raccolto un dato nuovo — è stato letto un denominatore.
+
+Resta valido il confronto fra build (§1): la quota era identica in tutte le
+celle, quindi G1 batte il collettore seriale a parità di vincolo. Ma i ~435 rps
+non sono un tetto di nanoFaaS: sono il tetto di un core.
+
+Coerente a posteriori anche `azure-conc8-probe`, che alzando la concorrenza a 8
+rese +3,69% invece del ×4 atteso, e che era rimasta senza spiegazione.
+
+### La trappola sotto la trappola
+
+Le tre query di throttling, aggiunte al catalogo, sono tornate **vuote**:
+entrambi i job cAdvisor del chart terminano con un `keep` che nomina tre
+metriche e scarta tutto il resto (`prometheus-configmap.yaml:128` e `:171`).
+La domanda non era mai arrivata a Prometheus. Costo: una cella intera.
+
+È lo stesso guasto un livello più in basso — una serie che non chiedi torna
+vuota, e vuota è indistinguibile da «non è successo» — ma stavolta non era il
+catalogo a non chiederla, era il chart a non lasciarla passare. Ora un test lo
+presidia (`scripts/tests/test_e2e_k3s_helm_control_plane_native.py`), e pretende
+la metrica in **entrambi** i job.
+
+### Il compromesso da conoscere
+
+Con 4 CPU la latenza *peggiora*: p95 96,78 → 157,65 ms, p99 150,32 → 254,87 ms.
+Non è un regresso: con un core i rifiuti sono istantanei e tirano giù i
+percentili, con quattro le stesse richieste vengono servite invece che respinte.
+Rifiuti 31.157 → 14.503, fallimenti 18,79% → 9,33%. Confrontare percentili fra
+le due configurazioni significa confrontare popolazioni diverse.
+
 ### Stato corrente
 
-Complessivo della run: 435,06 richieste/s, p95 94,57 ms, p99 143,52 ms, 18,32%
-scarti. Cella a una ripetizione — i 299,3 dispatch/s al picco stanno sotto i
-346,8 della sonda diretta, e col thread al 6,8% non è l'overhead dei due timer a
-spiegarlo; va letto come rumore di una singola ripetizione. Le 12 risorse Azure
-sono state distrutte, inventario vuoto, `caffeinate` terminato.
+Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU
+che il confronto vuole misurare — `controlPlaneCpu` ora lo rende dichiarabile
+nello scenario — e rifare la matrice 4 build × 3 ripetizioni con quel budget
+esplicito. Solo dopo, se un tetto resta, ha senso tornare al percorso di
+dispatch: oggi il thread è fermo perché non ha CPU, non perché aspetti male.
+
+Da fare prima di ottimizzare altro:
+
+1. **Profilare.** Il 93% della CPU del control plane non è mai stato attribuito.
+   JFR sulla build JVM sotto carico, in locale, senza Azure.
+2. **Rimandare la riscrittura degli header** dopo l'ammissione
+   (`InvocationController:84`): oggi ogni richiesta, incluse quelle rifiutate,
+   alloca una mappa e una String per header prima di sapere se verrà servita.
+3. Il minibatch verso le funzioni resta un'idea valida ma prematura: costa un
+   protocollo su tre SDK e una revisione dell'accounting di concorrenza, per un
+   beneficio misurato del 3,5% di un core.
 
 **Trappola per chi riproduce:** il `pytest_configure` di NanoLab ripunta
 `NANOFAAS_ROOT` su un `git archive` di HEAD. La guardia di copertura del catalogo
 non vede modifiche non committate, quindi un controllo negativo eseguito prima
-del commit mcFaas passa a vuoto. È successo due volte in questa sessione.
+del commit mcFaas passa a vuoto.

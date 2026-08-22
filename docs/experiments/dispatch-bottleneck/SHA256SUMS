@@ -75,3 +75,11 @@ adb017a8ea2a3b87b58dcfa83140564af47448c8ba539929ac191b9d573e2335  raw/azure-disp
 a17718f7ad0e7a51508fa5a82d2159170e3dfa89c0572c965135e9a594dba719  raw/azure-scheduler-thread-accounting-c2/native-o3-g1/run-1/k6-summary.json
 27dbaca25b7cacad1e5735afc37a4e48f966be4a018cd8a187a473244bf8a6af  raw/azure-scheduler-thread-accounting-c2/native-o3-g1/run-1/summary.json
 509283e3f561de8f5ea74c21e3c379398774f677153e8238501710f828ba4122  raw/azure-scheduler-thread-accounting-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+f18ad995e6f839cc42a6dd3f1c16965d398786b520a8c7be28822f8191ca3694  raw/azure-cpu1-throttling-c2/comparison-manifest.json
+0a6d613048ed4440d2e166d6c397a3513d540ccfa350c564ada0b8d261789de0  raw/azure-cpu1-throttling-c2/native-o3-g1/run-1/k6-summary.json
+a92882ac51a6805399c29c1e29821b6dd5e8f206c06637f10281875d4158b485  raw/azure-cpu1-throttling-c2/native-o3-g1/run-1/summary.json
+9fd0de90c4a2980cf083d2b5be69914846e1d5227858c2ef600e4f43d05fea49  raw/azure-cpu1-throttling-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+0023e2edbc54c4effcd29bcffef25df107e7836eb972b16a56e87d6842350368  raw/azure-cpu4-c2/comparison-manifest.json
+e38c6e65c1e7474f74f8a54c13b196c7fda0581236b8eb801c545a5dcad73c70  raw/azure-cpu4-c2/native-o3-g1/run-1/k6-summary.json
+bd0581b2385a7362e57ced6128db805ec8a47272b82170a67b47010f94dc66bb  raw/azure-cpu4-c2/native-o3-g1/run-1/summary.json
+7f0d8013bdabd603360dd58597fcd7d21b05cdf00b23d57c4649f0f88d9df736  raw/azure-cpu4-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
