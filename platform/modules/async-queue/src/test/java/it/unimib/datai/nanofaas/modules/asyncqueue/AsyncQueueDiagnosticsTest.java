@@ -139,6 +139,8 @@ class AsyncQueueDiagnosticsTest {
         scheduler.signalWork("echo");
         scheduler.signalWork("echo");
 
+        assertThat(registry.get("function_scheduler_signal_enqueue_duration").tag("function", "echo")
+                .timer().count()).isEqualTo(1);
         assertThat(registry.get("function_scheduler_signal_coalesced").tag("function", "echo")
                 .counter().count()).isEqualTo(1);
     }

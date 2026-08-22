@@ -70,6 +70,9 @@ public class QueueManager {
                 Timer wakeupDelay = Timer.builder("function_scheduler_wakeup_delay")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Timer signalEnqueueDuration = Timer.builder("function_scheduler_signal_enqueue_duration")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 Timer dispatchSubmitDuration = Timer.builder("function_scheduler_dispatch_submit_duration")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
@@ -95,6 +98,7 @@ public class QueueManager {
                 ids.add(offerDuration.getId());
                 ids.add(pollDuration.getId());
                 ids.add(wakeupDelay.getId());
+                ids.add(signalEnqueueDuration.getId());
                 ids.add(dispatchSubmitDuration.getId());
                 ids.add(slotHoldDuration.getId());
                 ids.add(slotReacquisitionDelay.getId());
@@ -104,7 +108,7 @@ public class QueueManager {
                 ids.add(signalCoalesced.getId());
                 diagnosticMeters.put(
                         name,
-                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, dispatchSubmitDuration,
+                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, signalEnqueueDuration, dispatchSubmitDuration,
                                 slotHoldDuration, slotReacquisitionDelay,
                                 slotReacquisitionActiveDelay, batchLimit, slotBlocked, signalCoalesced,
                                 new ConcurrentLinkedQueue<>())
@@ -169,6 +173,13 @@ public class QueueManager {
         DiagnosticMeters meters = diagnosticMeters.get(functionName);
         if (meters != null) {
             meters.wakeupDelay().record(delayNanos, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    void recordSchedulerSignalEnqueueDuration(String functionName, long durationNanos) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.signalEnqueueDuration().record(durationNanos, TimeUnit.NANOSECONDS);
         }
     }
 
@@ -297,6 +308,7 @@ public class QueueManager {
             Timer offerDuration,
             Timer pollDuration,
             Timer wakeupDelay,
+            Timer signalEnqueueDuration,
             Timer dispatchSubmitDuration,
             Timer slotHoldDuration,
             Timer slotReacquisitionDelay,

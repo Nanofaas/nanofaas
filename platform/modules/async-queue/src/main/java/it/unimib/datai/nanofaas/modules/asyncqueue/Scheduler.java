@@ -45,7 +45,9 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     public void signalWork(String functionName) {
         if (enqueuedFunctions.add(functionName)) {
             signalTimes.put(functionName, System.nanoTime());
+            long enqueueStarted = System.nanoTime();
             activeFunctions.add(functionName);
+            queueManager.recordSchedulerSignalEnqueueDuration(functionName, System.nanoTime() - enqueueStarted);
         } else {
             queueManager.recordSchedulerSignalCoalesced(functionName);
         }
