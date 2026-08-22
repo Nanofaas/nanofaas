@@ -30,6 +30,7 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 | `azure-dispatch-scheduler-direct-probes-c2` | G1, una ripetizione, 2/20 | mcFaas `7ed1e010`; NanoLab `ce45fae` | Al `peak900`, submit sincrono 7,0% del thread, 2,14 visite senza slot e 0,44 segnali coalesced per dispatch Java. Il submit non è il collo; il churn di visite non dispatchable è il candidato causale. |
 | `azure-dispatch-saturation-guard-c2` | G1, una ripetizione, 2/20, guardie `canDispatch()` | mcFaas `7e532fc9`; NanoLab `ce45fae` | Al `peak900`, 342,6 dispatch Java/s, 32,105 ms di queue wait e p95 90,72 ms: nessun miglioramento misurabile. Il churn non è causa dominante del limite. |
 | `azure-dispatch-wakeup-localization-c2` | G1, una ripetizione, 2/20, timer dell'`activeFunctions.add` | mcFaas `0d924d08`; NanoLab `c77cfba` | Al `peak900`, enqueue 61,5 µs contro 995,2 µs segnale→scheduler: l'`add` non è il collo; 933,7 µs restano nel percorso esterno all'`add` fino all'attivazione scheduler. |
+| `azure-dispatch-wakeup-split-c2` | G1, una ripetizione, 2/20, split `poll`/bookkeeping | mcFaas `5247e2ff`; NanoLab `635908e` | Al `peak900`, `poll` 1.078,2 µs, bookkeeping 5,6 µs, enqueue 39,7 µs: il costo è nel risveglio/scheduling fino al ritorno di `poll()`. |
 
 La compilazione G1 dell'ultima sonda ha richiesto 872,8 s; il push 5,0 s. IP
 dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
@@ -209,6 +210,29 @@ p99 161,49 ms, 18,32% scarti e 30.807 rifiuti della coda Java. `caffeinate` è
 terminato; il teardown dei provider NanoLab `loadgen` e `stack` è completato e
 l'inventario Azure `nanofaas-comparison*` è vuoto.
 
+## Split del percorso di wakeup
+
+Run `azure-dispatch-wakeup-split-c2`, una ripetizione con configurazione 2/20.
+`function_scheduler_poll_delay` termina subito al ritorno di
+`activeFunctions.poll()`, mentre `function_scheduler_activation_bookkeeping_duration`
+copre le rimozioni da map/set e l'attivazione fino a `processFunction`.
+
+| fase | dispatch Java/s | enqueue µs | poll µs | bookkeeping µs | wake/dispatch |
+|---|---:|---:|---:|---:|---:|
+| spike600 | 521,7 | 15,9 | 264,3 | 2,2 | 0,99 |
+| hold350 | 349,3 | 5,7 | 132,4 | 2,4 | 0,99 |
+| **peak900** | **331,5** | **39,7** | **1.078,2** | **5,6** | **0,96** |
+| drain40 | 319,9 | 30,7 | 790,4 | 2,4 | 0,96 |
+
+Al `peak900`, il ritorno di `poll()` concentra il 99,5% del timer
+segnale→scheduler; bookkeeping ed enqueue sono ordini di grandezza inferiori.
+L'ipotesi del collo nel bookkeeping è invalidata: il percorso è localizzato nel
+wakeup/scheduling del thread prima del ritorno di `poll()`.
+
+Risultato complessivo: 115.209 dispatch Java, 435,06 richieste/s, p95 94,24 ms,
+p99 141,11 ms, 17,67% scarti e 29.840 rifiuti della coda Java. `caffeinate` è
+terminato; il teardown NanoLab è completato e l'inventario Azure è vuoto.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,
@@ -237,6 +261,6 @@ cd /path/to/nanolab
 caffeinate -dimsu ./nanolab.sh compare \
   packages/nanolab/scenarios-v2/runtime-comparison-jvm.yaml \
   --environment packages/nanolab/environments/azure-comparison.yaml \
-  --run-dir packages/nanolab/runs/azure-dispatch-wakeup-localization-c2 \
+  --run-dir packages/nanolab/runs/azure-dispatch-wakeup-split-c2 \
   --variants native-o3-g1 --repetitions 1
 ```

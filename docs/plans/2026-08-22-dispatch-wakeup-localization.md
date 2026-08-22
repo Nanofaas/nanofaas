@@ -37,3 +37,11 @@ dello scheduler. L'ipotesi che l'`add` sia il collo dominante è invalidata; il
 residuo di 933,7 µs localizza il costo nel percorso esterno all'`add` fino al
 poll/bookkeeping dello scheduler, senza ancora attribuirlo a una singola
 istruzione. Raw e protocollo sono conservati nel registro esperimenti.
+
+## Split del wakeup
+
+Il run `azure-dispatch-wakeup-split-c2` (mcFaas `5247e2ff`, NanoLab `635908e`)
+ha separato il ritorno di `activeFunctions.poll()` dal bookkeeping. Al
+`peak900`: poll 1.078,2 µs, bookkeeping 5,6 µs, enqueue 39,7 µs. Il bookkeeping
+è escluso come collo; il costo è nel wakeup/scheduling del thread prima del
+ritorno di `poll()`.
