@@ -70,6 +70,9 @@ public class QueueManager {
                 Timer wakeupDelay = Timer.builder("function_scheduler_wakeup_delay")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Timer dispatchSubmitDuration = Timer.builder("function_scheduler_dispatch_submit_duration")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 Timer slotHoldDuration = Timer.builder("function_dispatch_slot_hold_duration")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
@@ -83,18 +86,27 @@ public class QueueManager {
                 Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Counter slotBlocked = Counter.builder("function_scheduler_slot_blocked")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                Counter signalCoalesced = Counter.builder("function_scheduler_signal_coalesced")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 ids.add(offerDuration.getId());
                 ids.add(pollDuration.getId());
                 ids.add(wakeupDelay.getId());
+                ids.add(dispatchSubmitDuration.getId());
                 ids.add(slotHoldDuration.getId());
                 ids.add(slotReacquisitionDelay.getId());
                 ids.add(slotReacquisitionActiveDelay.getId());
                 ids.add(batchLimit.getId());
+                ids.add(slotBlocked.getId());
+                ids.add(signalCoalesced.getId());
                 diagnosticMeters.put(
                         name,
-                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay,
+                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, dispatchSubmitDuration,
                                 slotHoldDuration, slotReacquisitionDelay,
-                                slotReacquisitionActiveDelay, batchLimit,
+                                slotReacquisitionActiveDelay, batchLimit, slotBlocked, signalCoalesced,
                                 new ConcurrentLinkedQueue<>())
                 );
                 concurrencyMetrics.ensureRegistered(
@@ -164,6 +176,27 @@ public class QueueManager {
         DiagnosticMeters meters = diagnosticMeters.get(functionName);
         if (meters != null) {
             meters.batchLimit().increment();
+        }
+    }
+
+    void recordSchedulerDispatchSubmitDuration(String functionName, long durationNanos) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.dispatchSubmitDuration().record(durationNanos, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    void recordSchedulerSlotBlocked(String functionName) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.slotBlocked().increment();
+        }
+    }
+
+    void recordSchedulerSignalCoalesced(String functionName) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.signalCoalesced().increment();
         }
     }
 
@@ -264,10 +297,13 @@ public class QueueManager {
             Timer offerDuration,
             Timer pollDuration,
             Timer wakeupDelay,
+            Timer dispatchSubmitDuration,
             Timer slotHoldDuration,
             Timer slotReacquisitionDelay,
             Timer slotReacquisitionActiveDelay,
             Counter batchLimit,
+            Counter slotBlocked,
+            Counter signalCoalesced,
             ConcurrentLinkedQueue<Long> releasedWithBacklogAtNanos
     ) { }
 }

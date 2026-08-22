@@ -55,6 +55,8 @@ class AsyncQueueDiagnosticsTest {
                 .timer().count()).isEqualTo(1);
         assertThat(registry.get("function_dispatch_slot_reacquisition_active_delay").tag("function", "echo")
                 .timer().count()).isEqualTo(1);
+        assertThat(registry.get("function_scheduler_slot_blocked").tag("function", "echo")
+                .counter().count()).isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -118,6 +120,27 @@ class AsyncQueueDiagnosticsTest {
                 .timer().count()).isGreaterThanOrEqualTo(1);
         assertThat(registry.get("function_scheduler_batch_limit").tag("function", "echo")
                 .counter().count()).isGreaterThanOrEqualTo(1);
+        assertThat(registry.get("function_scheduler_dispatch_submit_duration").tag("function", "echo")
+                .timer().count()).isEqualTo(3);
+    }
+
+    @Test
+    void schedulerCountsCoalescedSignals() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        FunctionSpec spec = new FunctionSpec(
+                "echo", "image", null, Map.of(), null,
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
+        );
+        queueManager.getOrCreate(spec);
+
+        Scheduler scheduler = new Scheduler(queueManager, mock(InvocationService.class));
+        scheduler.init();
+        scheduler.signalWork("echo");
+        scheduler.signalWork("echo");
+
+        assertThat(registry.get("function_scheduler_signal_coalesced").tag("function", "echo")
+                .counter().count()).isEqualTo(1);
     }
 
     private static InvocationTask task(String executionId, FunctionSpec spec) {

@@ -55,12 +55,19 @@ def main() -> None:
     snapshot = json.loads(Path(sys.argv[1]).read_text())
     queries = snapshot["queries"]
     start = datetime.fromisoformat(snapshot["start"])
+    direct_probes = "function_scheduler_dispatch_submit_duration_count" in queries
     header = (
         "phase", "dispatch", "dispatch/s", "slot ms", "latency ms",
         "slot-latency us", "slot util %", "idle ms", "reacq ms",
-        "pre-active ms", "active ms", "reacq/dispatch", "queue ms",
+        "reacq sum/dispatch ms", "reacq<=idle", "pre-active ms", "active ms",
+        "reacq/dispatch", "queue ms",
         "inFlight", "queue depth", "wake us", "wake/dispatch",
     )
+    if direct_probes:
+        header += (
+            "submit us", "submit all util %", "blocked/dispatch",
+            "coalesced/dispatch",
+        )
     print(" | ".join(header))
     print(" | ".join("---" for _ in header))
     for name, a, b in PHASES:
@@ -71,11 +78,14 @@ def main() -> None:
         reacquisition = timer_ms(queries, "function_dispatch_slot_reacquisition_delay", a, b, start)
         active = timer_ms(queries, "function_dispatch_slot_reacquisition_active_delay", a, b, start)
         reacquisitions = delta(queries, "function_dispatch_slot_reacquisition_delay_count", a, b, start)
+        reacquisition_sum = delta(queries, "function_dispatch_slot_reacquisition_delay_sum", a, b, start)
         wake = timer_ms(queries, "function_scheduler_wakeup_delay", a, b, start) * 1_000
         wakes = delta(queries, "function_scheduler_wakeup_delay_count", a, b, start)
         rate = dispatches / (b - a)
         concurrency = gauge_mean(queries, "function_effective_concurrency", a, b, start)
         cycle = concurrency / rate * 1_000 if rate else 0.0
+        idle = cycle - slot
+        reacquisition_per_dispatch = reacquisition_sum / dispatches * 1_000 if dispatches else 0.0
         row = (
             name,
             f"{dispatches:.0f}",
@@ -84,8 +94,10 @@ def main() -> None:
             f"{latency:.3f}",
             f"{(slot - latency) * 1_000:.1f}",
             f"{rate * slot / concurrency / 10:.1f}" if concurrency else "0.0",
-            f"{cycle - slot:.3f}",
+            f"{idle:.3f}",
             f"{reacquisition:.3f}",
+            f"{reacquisition_per_dispatch:.3f}",
+            "yes" if reacquisition_per_dispatch <= idle else "NO",
             f"{reacquisition - active:.3f}",
             f"{active:.3f}",
             f"{reacquisitions / dispatches:.2f}" if dispatches else "0.00",
@@ -95,6 +107,23 @@ def main() -> None:
             f"{wake:.1f}",
             f"{wakes / dispatches:.2f}" if dispatches else "0.00",
         )
+        if direct_probes:
+            submit = timer_ms(
+                queries, "function_scheduler_dispatch_submit_duration", a, b, start
+            ) * 1_000
+            submit_all_sum = delta(
+                queries, "function_scheduler_dispatch_submit_duration_all_sum", a, b, start
+            )
+            blocked = delta(queries, "function_scheduler_slot_blocked_total", a, b, start)
+            coalesced = delta(
+                queries, "function_scheduler_signal_coalesced_total", a, b, start
+            )
+            row += (
+                f"{submit:.1f}",
+                f"{submit_all_sum / (b - a) * 100:.1f}",
+                f"{blocked / dispatches:.2f}" if dispatches else "0.00",
+                f"{coalesced / dispatches:.2f}" if dispatches else "0.00",
+            )
         print(" | ".join(row))
 
 

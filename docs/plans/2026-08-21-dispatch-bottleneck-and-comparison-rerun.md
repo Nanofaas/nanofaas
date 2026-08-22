@@ -673,9 +673,26 @@ queue wait **47,557 ms** e coda media **15,00/20**. Il pre-active rappresenta
 il **99,1%** della reacquisizione. Sull'intera run: 32.025 conteggi per ciascun
 timer, 3,024 ms totali, 2,994 ms pre-active e 0,030 ms active→CAS.
 
-Verdetto: il ritardo non è nel CAS né nel lavoro eseguito dopo che lo scheduler
-ha scelto la funzione. Quasi tutto il gap trascorre aspettando che il singolo
-thread scheduler inizi una visita utile della funzione. La prossima modifica o
-sonda deve concentrarsi su `activeFunctions`, coalescing di `enqueuedFunctions`
-e arbitraggio fra le due funzioni; callback, code interne e acquisizione slot non
-richiedono altre misure.
+Verdetto originario: il ritardo sembrava precedere la visita utile dello
+scheduler. Questo verdetto è invalidato dalla verifica descritta nella sezione
+seguente.
+
+## 14. Falsificazione della sonda e prossimo esperimento
+
+Al `peak900`, concurrency 2 e 9.501 dispatch in 30 secondi danno un limite di
+inattività pari a `2 * 30 / 9501 - 4,234 = 2,081 ms` per dispatch. Il timer di
+reacquisizione riporta 4,788 ms: supera quindi il limite fisico e non può
+rappresentare la popolazione dichiarata.
+
+La causa è una race nella sonda. `releaseSlotAndGetHoldNanos()` rende disponibile
+lo slot prima che `releasedWithBacklogAtNanos` riceva il timestamp. Lo scheduler
+può acquisire lo slot in quella finestra; il timestamp pubblicato in ritardo
+rimane poi in FIFO e viene associato a un'acquisizione successiva. Anche la
+segmentazione active/pre-active eredita lo stesso pairing stale. I raw restano
+validi come registrazione della run, ma i valori di reacquisizione non sono
+evidenza causale.
+
+Il prossimo esperimento usa solo misure dirette sul thread scheduler: durata
+sincrona di `InvocationService.dispatch`, visite bloccate per assenza di slot e
+segnali coalesced. Piano:
+[`2026-08-22-dispatch-scheduler-direct-probes.md`](2026-08-22-dispatch-scheduler-direct-probes.md).

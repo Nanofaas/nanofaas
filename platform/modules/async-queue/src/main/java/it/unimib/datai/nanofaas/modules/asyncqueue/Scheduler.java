@@ -46,6 +46,8 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         if (enqueuedFunctions.add(functionName)) {
             signalTimes.put(functionName, System.nanoTime());
             activeFunctions.add(functionName);
+        } else {
+            queueManager.recordSchedulerSignalCoalesced(functionName);
         }
     }
 
@@ -129,7 +131,11 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         }
 
         int dispatched = 0;
-        while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION && state.tryAcquireSlot()) {
+        while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION) {
+            if (!state.tryAcquireSlot()) {
+                queueManager.recordSchedulerSlotBlocked(functionName);
+                break;
+            }
             queueManager.recordSlotReacquisitionDelay(functionName, schedulerActivatedAt);
             long pollStarted = System.nanoTime();
             InvocationTask task = state.poll();
@@ -142,11 +148,16 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                 break;
             }
             dispatched++;
+            long dispatchStarted = System.nanoTime();
             SchedulerDispatchSupport.dispatchWithFailureCleanup(
                     task,
                     () -> invocationService.dispatch(task),
                     state::releaseSlot,
                     log
+            );
+            queueManager.recordSchedulerDispatchSubmitDuration(
+                    functionName,
+                    System.nanoTime() - dispatchStarted
             );
         }
 
