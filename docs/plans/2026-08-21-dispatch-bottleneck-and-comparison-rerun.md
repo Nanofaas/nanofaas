@@ -23,10 +23,21 @@ sulle snapshot che hai già.
 Le sezioni §4–§9 sono operative: cosa fare, come rieseguire, come sorvegliare,
 come riparare.
 
-**Regola di condotta.** In questa indagine ho formulato tre ipotesi meccanicistiche
-e ne ho uccise due leggendo il codice. Fai lo stesso: prima di proporre una
-correzione, vai a leggere il metodo che credi lento e verifica che faccia davvero
-quello che pensi. Due volte su tre non lo faceva.
+**Regola di condotta.** Prima di proporre una correzione, vai a leggere il metodo
+che credi lento e verifica che faccia davvero quello che pensi. Due volte su tre
+non lo faceva.
+
+**Seconda regola, pagata cara.** Ogni rapporto ha un denominatore, e va detto ad
+alta voce. Questa indagine ha speso dieci run su Azure a strumentare il percorso
+di dispatch perché «0,91 core» era stato letto contro gli otto della VM invece che
+contro l'unico concesso dal chart (§20). Il dato che lo smentiva era in ogni
+snapshot dal primo giorno. Quando un numero ti dice che qualcosa *non* è il collo
+di bottiglia, chiediti rispetto a cosa, e verificalo.
+
+**Terza.** Una serie che nessuno raccoglie torna vuota, e vuota è
+indistinguibile da «non è successo». Vale al livello del catalogo NanoLab **e** al
+livello del `keep` di Prometheus nel chart: la seconda è costata una cella intera
+prima che me ne accorgessi.
 
 ---
 
@@ -53,6 +64,13 @@ scarti e memoria, a parità di throughput.
 Questa conclusione **non dipende** da nulla di ciò che segue: vale perché la
 capacità era tenuta fissa in tutte le celle (§3.4).
 
+**Ma i numeri assoluti sì.** Tutte e dodici le celle hanno girato contro un
+control plane limitato a 1 CPU dal chart, strozzato per l'85% dei periodi al
+picco (§20). Il confronto *fra* build resta valido — il vincolo era identico
+ovunque — ma i ~435 rps non sono un tetto di nanoFaaS: sono il tetto di un core.
+Una matrice che voglia numeri assoluti va rifatta con `controlPlaneCpu`
+dichiarato.
+
 ### Cosa è già stato smentito — non rifarlo
 
 | Ipotesi | Verdetto | Come è stata uccisa |
@@ -61,7 +79,8 @@ capacità era tenuta fissa in tutte le celle (§3.4).
 | «`releaseSlot` non risveglia lo scheduler» | **Falsa** | `QueueManager.releaseSlot(String)` (`QueueManager.java:137`) fa già `notifyWork` se `queued() > 0`. Percorso: `ExecutionCompletionHandler.releaseDispatchSlot` → `QueueBackedEnqueuer` → `QueueManager`. Il fronte di risveglio c'è. |
 | «Ogni dispatch fa un round trip alle API di Kubernetes nel wake-up gate» | **Falsa** | `DeploymentWakeUpGate.isEligible` (`:196`) richiede `scalingConfig != null && strategy == INTERNAL && minReplicas == 0`. Le funzioni del confronto **non hanno `scalingConfig`**, quindi `ensureReady` ritorna `completedFuture(null)` immediatamente. Nessuna chiamata, nessun timer. |
 | «Il limite è la concorrenza perché gli slot sono saturi» | **Falsa** | N = λ·S = **0,45 su 2**. Gli slot sono vuoti per il 78 % del tempo. |
-| «Il limite è la CPU delle funzioni» | **Falsa** | I container funzione usano 0,27 e 0,12 core di media. Nessun limite CPU era impostato. |
+| «Il limite è la CPU delle *funzioni*» | **Falsa** | I container funzione usano 0,27 e 0,12 core contro un limite di 500m. Hanno margine. |
+| «Il limite è la CPU del *control plane*» | **VERA — §20** | Era l'ipotesi che nessuno aveva formulato. `values.yaml:24` impone `limits.cpu: "1"`; al picco l'85,2% dei periodi CFS è strozzato, e a 4 CPU il dispatch passa da 303,7 a 843,4/s. |
 | «Il limite è la dimensione della coda» | **Falsa** | Una coda più grande scambia rifiuti con attese: non aggiunge capacità di drenaggio. |
 | «La serializzazione del payload pesa sul thread» | **Falsa** | I payload k6 sono ~120 byte (`runtime-comparison.js:87-92`). |
 
@@ -153,11 +172,42 @@ hold 350     media=0.65  max=1.07 core
 peak 900     media=0.91  max=1.42 core
 ```
 
-**Come si legge.** Un singolo thread saturo consuma 1,0 core **da solo**. Al picco
-di 900 rps offerti l'intero processo — event loop Netty, scheduler, scrape
-Prometheus, tutto — sta a 0,91 di media. Il thread di dispatch **non è
-CPU-bound: aspetta.** Questo è ciò che separa «shardare» (giusto se calcola) da
-«togliere l'attesa» (giusto se dorme). Qui dorme.
+**Come si legge — e come io l'ho letta male.** Avevo scritto: «un thread saturo
+consuma 1,0 core da solo; al picco il processo sta a 0,91, quindi il thread di
+dispatch non è CPU-bound, aspetta». **Il ragionamento divide per otto core della
+VM. Il divisore era uno**, perché il chart impone `limits.cpu: "1"` al control
+plane (§20). Su un core solo, 0,91 non è margine: è il muro.
+
+`container_cpu_cores` da solo non può dirlo, perché misura la CPU **ottenuta**,
+non quella **negata**. Le due si distinguono solo insieme:
+
+```bash
+# il denominatore: quante CPU crede di avere il runtime
+python3 -c "
+import json,statistics
+from datetime import datetime
+d=json.load(open('$S/jvm/run-1/metrics/prometheus-snapshot.json')); q=d['queries']
+st=datetime.fromisoformat(d['start'])
+w=lambda n:[float(p['value']) for p in q[n]['points']
+            if 375<=(datetime.fromisoformat(p['timestamp'])-st).total_seconds()<405]
+cores=statistics.mean(w('container_cpu_cores@control-plane'))
+frac=statistics.mean(w('process_cpu_usage'))
+print(f'core={cores:.2f} frazione={frac:.3f} -> CPU viste={cores/frac:.1f}')
+"
+# -> core=0.93 frazione=1.000 -> CPU viste=0.9
+```
+
+`process_cpu_usage` è una **frazione**: 1,00 significa «sto usando il 100% delle
+CPU che ho». Stava a 1,00 in tutte e quattordici le celle archiviate, build JVM
+inclusa dove la metrica è affidabile, e nessuno ha letto il denominatore.
+
+La prova diretta è il throttling — `container_cpu_cfs_throttled_periods_total`
+diviso `container_cpu_cfs_periods_total` — che fino al 2026-08-22 **non era
+raccoglibile**: entrambi i job cAdvisor del chart finiscono con un `keep` che
+nomina tre metriche e scarta il resto (`prometheus-configmap.yaml:128` e `:171`).
+
+Questo separa davvero «shardare» (giusto se calcola) da «dare più CPU» (giusto se
+è strozzato). Qui era strozzato.
 
 **Verificare un limite di configurazione invece di assumerlo:**
 
@@ -227,7 +277,10 @@ JSON da centinaia di MB. Restringi sempre a `*/src/main` o usa `--include='*.jav
 - Slot occupati **0,45 su 2** — la concorrenza non è vincolante.
 - Coda al massimo (20) con **42 563 rifiuti** su ~145 000 arrivi.
 - Attesa in coda **6,4×** il tempo di servizio.
-- CPU del processo **0,91 core** al picco: nessun thread saturo.
+- CPU del processo **0,91 core** al picco — che sembrava «nessun thread saturo» e
+  invece era **il 91% dell'unico core concesso**, con l'85,2% dei periodi CFS
+  strozzati (§20). Questa riga è la ragione per cui le sonde §10–§19 hanno cercato
+  nel posto sbagliato.
 - Capacità teorica a 2 slot e 1,94 ms di servizio: **~1030 rps**. Dispacciati: **228**.
 
 Il tetto sta fra «task in coda» e «slot acquisito». Non nella funzione, non nella
@@ -378,9 +431,13 @@ thread-safe (CAS su `inFlight`, `offer`/`poll` sincronizzati), quindi non servon
 modifiche ai lock.
 
 Lo **sharding** per funzione (`hash(functionName) % N`) è l'alternativa, e va
-considerato **solo** se la misura mostra il thread davvero saturo di CPU. Oggi
-non lo è (0,91 core per l'intero processo al picco): shardare un thread che dorme
-raddoppia i dormienti.
+considerato **solo** se la misura mostra il thread davvero saturo di CPU.
+
+§19 ha misurato quel thread occupato al **6,8%**: non è saturo, e shardarlo
+moltiplicherebbe i dormienti. Ma la ragione per cui dorme non è il park (§20): è
+che il cgroup aveva finito il budget. Con 4 CPU il tetto si sposta di 2,8× senza
+toccare una riga di questo percorso, quindi **nulla di §4.2–§4.4 va fatto prima**
+di aver deciso il budget di CPU e rimisurato.
 
 ### 4.4 Il buco stretto
 
@@ -390,10 +447,20 @@ risveglia il ciclo. Una riga, da fare insieme al resto.
 
 ### 4.5 Risorse — per ultimo
 
-Il control plane è l'unico componente vicino alla saturazione (picco 1,42 core).
-Le funzioni usano 0,27 e 0,12 core: non hanno bisogno di niente. Nessun limite
-CPU era impostato sui pod (lo scenario non ha blocco `resources`), quindi non
-c'è nemmeno un limite da alzare.
+**Correzione del 2026-08-22: questa sezione diceva il falso, ed era la prima da
+guardare, non l'ultima.**
+
+«Nessun limite CPU era impostato sui pod» vale per le **funzioni**, che lo
+scenario registra senza blocco `resources`. Il **control plane** non arriva dallo
+scenario ma dal chart, e `deploy/helm/nanofaas/values.yaml:24` gli impone
+`limits.cpu: "1"`. Un limite da alzare c'era, ed era il vincolo (§20).
+
+Le funzioni restano con margine: 0,27 e 0,12 core contro 500m di limite.
+
+Lo scenario NanoLab ora dichiara `controlPlaneCpu`. Un confronto che non dichiara
+la risorsa più scarsa dell'oggetto che misura lascia decidere il risultato a un
+default di packaging — lo stesso difetto del `queueSize: 100` che i documenti
+descrivono mentre ogni run registra 20.
 
 ---
 
@@ -568,9 +635,10 @@ stesso modo. **Non rialzare quel flag.**
   con le quattro build: una nuova matrice ripaga l'ora di prepare da capo.
   Se rialzi un ambiente, ricorda che `az network nsg delete` fallisce finché la
   subnet lo referenzia: cancella prima le vnet, poi gli NSG.
-- **Commit non pushati.** `mcFaas`: `9387c60d` (fix `gcc-c++`), `51794204`
-  (monografia). `nanolab`: 12, dall'ambiente Azure fino a
-  `6012bf3 feat: compare builds without the sync queue in front of them`.
+- **Commit non pushati.** Il ramo `dispatch-instrumentation` (mcFaas e NanoLab) è
+  cresciuto oltre questa lista; usa `git log` invece di fidarti di qui. Resta vero
+  che `9387c60d` (fix `gcc-c++`, senza cui una build G1 non linka) vive solo sul
+  ramo `docs/monografia-latex` e **non è su main**.
 - **Issue #197**: corretta il 2026-08-21 — nuovo titolo *"The sync queue costs 6× p95
   and 44 points of failures at an unchanged dispatch rate"*, corpo con la smentita in
   testa e una sezione finale sul secondo tetto (quello di `async-queue`) che rimanda
