@@ -124,7 +124,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                         );
                     }
                     long visitStarted = System.nanoTime();
-                    processFunction(functionName, visitStarted);
+                    processFunction(functionName);
                     queueManager.recordSchedulerVisitDuration(System.nanoTime() - visitStarted);
                 }
             } catch (InterruptedException _) {
@@ -137,7 +137,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         log.info("Scheduler loop exited");
     }
 
-    private void processFunction(String functionName, long schedulerActivatedAt) {
+    private void processFunction(String functionName) {
         FunctionQueueState state = queueManager.get(functionName);
         if (state == null) {
             return;
@@ -149,7 +149,6 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                 queueManager.recordSchedulerSlotBlocked(functionName);
                 break;
             }
-            queueManager.recordSlotReacquisitionDelay(functionName, schedulerActivatedAt);
             long pollStarted = System.nanoTime();
             InvocationTask task = state.poll();
             queueManager.recordQueuePollDuration(

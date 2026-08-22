@@ -61,18 +61,19 @@ public class ExternalDispatcher implements Dispatcher {
 
         return request.bodyValue(task.request())
                 .exchangeToMono(response -> {
-                    boolean isCold = "true".equalsIgnoreCase(
-                            response.headers().asHttpHeaders().getFirst("X-Cold-Start"));
-                    Long initMs = parseInitDuration(
-                            response.headers().asHttpHeaders().getFirst("X-Init-Duration-Ms"));
+                    // One adapter for the whole response: asHttpHeaders() was called six
+                    // times over the same headers, on every dispatch.
+                    org.springframework.http.HttpHeaders responseHeaders = response.headers().asHttpHeaders();
+                    boolean isCold = "true".equalsIgnoreCase(responseHeaders.getFirst("X-Cold-Start"));
+                    Long initMs = parseInitDuration(responseHeaders.getFirst("X-Init-Duration-Ms"));
                     boolean isFunctionDecided = "true".equalsIgnoreCase(
-                            response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Function-Status"));
+                            responseHeaders.getFirst("X-NanoFaaS-Function-Status"));
 
                     if (isFunctionDecided) {
                         int statusCode = response.statusCode().value();
                         if (ResponseHeaderPolicy.isStatusCodeValid(statusCode)) {
-                            Map<String, String> headers = extractAllowedHeaders(response.headers().asHttpHeaders());
-                            String encoding = response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Encoding");
+                            Map<String, String> headers = extractAllowedHeaders(responseHeaders);
+                            String encoding = responseHeaders.getFirst("X-NanoFaaS-Encoding");
                             return decodeBody(response, true)
                                     .map(body -> new DispatchResult(
                                             InvocationResult.successWithEnvelope(body, statusCode, headers, encoding),
