@@ -104,7 +104,9 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         log.info("Scheduler loop started");
         while (running.get()) {
             try {
+                long idleStarted = System.nanoTime();
                 String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
+                queueManager.recordSchedulerIdleDuration(System.nanoTime() - idleStarted);
                 if (functionName != null) {
                     long bookkeepingStarted = System.nanoTime();
                     Long signalTime = signalTimes.remove(functionName);
@@ -121,7 +123,9 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                                 System.nanoTime() - bookkeepingStarted
                         );
                     }
-                    processFunction(functionName, System.nanoTime());
+                    long visitStarted = System.nanoTime();
+                    processFunction(functionName, visitStarted);
+                    queueManager.recordSchedulerVisitDuration(System.nanoTime() - visitStarted);
                 }
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();

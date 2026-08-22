@@ -23,11 +23,19 @@ public class QueueManager {
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
     private final QueueConcurrencyControlMetrics concurrencyMetrics;
+    // The scheduler is a single thread shared by every function, so its own time
+    // carries no function tag: these two must sum to the loop's wall clock.
+    private final Timer schedulerVisitDuration;
+    private final Timer schedulerIdleDuration;
     private WorkSignaler workSignaler;
 
     public QueueManager(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
         this.concurrencyMetrics = new QueueConcurrencyControlMetrics(meterRegistry);
+        this.schedulerVisitDuration = Timer.builder("scheduler_visit_duration")
+                .register(meterRegistry);
+        this.schedulerIdleDuration = Timer.builder("scheduler_idle_duration")
+                .register(meterRegistry);
     }
 
     public void setWorkSignaler(WorkSignaler workSignaler) {
@@ -219,6 +227,14 @@ public class QueueManager {
         if (meters != null) {
             meters.dispatchSubmitDuration().record(durationNanos, TimeUnit.NANOSECONDS);
         }
+    }
+
+    void recordSchedulerVisitDuration(long durationNanos) {
+        schedulerVisitDuration.record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    void recordSchedulerIdleDuration(long durationNanos) {
+        schedulerIdleDuration.record(durationNanos, TimeUnit.NANOSECONDS);
     }
 
     void recordSchedulerSlotBlocked(String functionName) {
