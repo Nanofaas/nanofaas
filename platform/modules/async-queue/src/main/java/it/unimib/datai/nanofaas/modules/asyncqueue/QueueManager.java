@@ -70,6 +70,13 @@ public class QueueManager {
                 Timer wakeupDelay = Timer.builder("function_scheduler_wakeup_delay")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
+                Timer pollDelay = Timer.builder("function_scheduler_poll_delay")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                Timer activationBookkeepingDuration = Timer.builder(
+                                "function_scheduler_activation_bookkeeping_duration")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
                 Timer signalEnqueueDuration = Timer.builder("function_scheduler_signal_enqueue_duration")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
@@ -98,6 +105,8 @@ public class QueueManager {
                 ids.add(offerDuration.getId());
                 ids.add(pollDuration.getId());
                 ids.add(wakeupDelay.getId());
+                ids.add(pollDelay.getId());
+                ids.add(activationBookkeepingDuration.getId());
                 ids.add(signalEnqueueDuration.getId());
                 ids.add(dispatchSubmitDuration.getId());
                 ids.add(slotHoldDuration.getId());
@@ -108,7 +117,8 @@ public class QueueManager {
                 ids.add(signalCoalesced.getId());
                 diagnosticMeters.put(
                         name,
-                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, signalEnqueueDuration, dispatchSubmitDuration,
+                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, pollDelay,
+                                activationBookkeepingDuration, signalEnqueueDuration, dispatchSubmitDuration,
                                 slotHoldDuration, slotReacquisitionDelay,
                                 slotReacquisitionActiveDelay, batchLimit, slotBlocked, signalCoalesced,
                                 new ConcurrentLinkedQueue<>())
@@ -173,6 +183,20 @@ public class QueueManager {
         DiagnosticMeters meters = diagnosticMeters.get(functionName);
         if (meters != null) {
             meters.wakeupDelay().record(delayNanos, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    void recordSchedulerPollDelay(String functionName, long delayNanos) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.pollDelay().record(delayNanos, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    void recordSchedulerActivationBookkeepingDuration(String functionName, long durationNanos) {
+        DiagnosticMeters meters = diagnosticMeters.get(functionName);
+        if (meters != null) {
+            meters.activationBookkeepingDuration().record(durationNanos, TimeUnit.NANOSECONDS);
         }
     }
 
@@ -308,6 +332,8 @@ public class QueueManager {
             Timer offerDuration,
             Timer pollDuration,
             Timer wakeupDelay,
+            Timer pollDelay,
+            Timer activationBookkeepingDuration,
             Timer signalEnqueueDuration,
             Timer dispatchSubmitDuration,
             Timer slotHoldDuration,

@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class QueueManagerTest {
 
     // Existing capacity/controller meters plus the dispatch diagnostics.
-    private static final int METERS_PER_FUNCTION = 16 + ConcurrencyControlMode.values().length;
+    private static final int METERS_PER_FUNCTION = 18 + ConcurrencyControlMode.values().length;
 
     @Test
     void enqueue_doesNotSignalWhenAllDispatchSlotsAreBusy() {

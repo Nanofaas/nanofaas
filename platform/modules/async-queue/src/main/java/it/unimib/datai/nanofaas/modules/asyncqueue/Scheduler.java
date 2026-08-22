@@ -106,12 +106,19 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             try {
                 String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
                 if (functionName != null) {
+                    long bookkeepingStarted = System.nanoTime();
                     Long signalTime = signalTimes.remove(functionName);
                     enqueuedFunctions.remove(functionName);
                     if (signalTime != null) {
+                        long polledAt = bookkeepingStarted;
+                        queueManager.recordSchedulerPollDelay(functionName, polledAt - signalTime);
                         queueManager.recordSchedulerWakeupDelay(
                                 functionName,
                                 System.nanoTime() - signalTime
+                        );
+                        queueManager.recordSchedulerActivationBookkeepingDuration(
+                                functionName,
+                                System.nanoTime() - bookkeepingStarted
                         );
                     }
                     processFunction(functionName, System.nanoTime());

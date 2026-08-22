@@ -57,6 +57,7 @@ def main() -> None:
     start = datetime.fromisoformat(snapshot["start"])
     direct_probes = "function_scheduler_dispatch_submit_duration_count" in queries
     signal_enqueue_probe = "function_scheduler_signal_enqueue_duration_count" in queries
+    wakeup_split_probe = "function_scheduler_poll_delay_count" in queries
     header = (
         "phase", "dispatch", "dispatch/s", "slot ms", "latency ms",
         "slot-latency us", "slot util %", "idle ms", "reacq ms",
@@ -66,6 +67,8 @@ def main() -> None:
     )
     if signal_enqueue_probe:
         header += ("enqueue us",)
+    if wakeup_split_probe:
+        header += ("poll us", "activation bookkeeping us")
     if direct_probes:
         header += (
             "submit us", "submit all util %", "blocked/dispatch",
@@ -117,6 +120,12 @@ def main() -> None:
                 queries, "function_scheduler_signal_enqueue_duration", a, b, start
             ) * 1_000
             row += (f"{enqueue:.1f}",)
+        if wakeup_split_probe:
+            poll = timer_ms(queries, "function_scheduler_poll_delay", a, b, start) * 1_000
+            bookkeeping = timer_ms(
+                queries, "function_scheduler_activation_bookkeeping_duration", a, b, start
+            ) * 1_000
+            row += (f"{poll:.1f}", f"{bookkeeping:.1f}")
         if direct_probes:
             submit = timer_ms(
                 queries, "function_scheduler_dispatch_submit_duration", a, b, start

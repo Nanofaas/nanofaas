@@ -118,6 +118,10 @@ class AsyncQueueDiagnosticsTest {
                 .timer().count()).isEqualTo(4);
         assertThat(registry.get("function_scheduler_wakeup_delay").tag("function", "echo")
                 .timer().count()).isGreaterThanOrEqualTo(1);
+        assertThat(registry.get("function_scheduler_poll_delay").tag("function", "echo")
+                .timer().count()).isGreaterThanOrEqualTo(1);
+        assertThat(registry.get("function_scheduler_activation_bookkeeping_duration")
+                .tag("function", "echo").timer().count()).isGreaterThanOrEqualTo(1);
         assertThat(registry.get("function_scheduler_batch_limit").tag("function", "echo")
                 .counter().count()).isGreaterThanOrEqualTo(1);
         assertThat(registry.get("function_scheduler_dispatch_submit_duration").tag("function", "echo")
