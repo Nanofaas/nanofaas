@@ -233,6 +233,31 @@ Risultato complessivo: 115.209 dispatch Java, 435,06 richieste/s, p95 94,24 ms,
 p99 141,11 ms, 17,67% scarti e 29.840 rifiuti della coda Java. `caffeinate` è
 terminato; il teardown NanoLab è completato e l'inventario Azure è vuoto.
 
+## Bilancio del thread scheduler
+
+Sonda preparata (mcFaas `8b90889e`, NanoLab `e6fa60b`), **run non ancora
+eseguita**. Piano:
+[`2026-08-22-dispatch-scheduler-thread-accounting.md`](../../plans/2026-08-22-dispatch-scheduler-thread-accounting.md).
+
+`scheduler_visit_duration` e `scheduler_idle_duration` non hanno tag `function`:
+il thread scheduler è uno solo e la `poll()` bloccante avviene prima che si
+sappia per quale funzione si è svegliato. Insieme partizionano il wall clock del
+ciclo, quindi su ogni finestra vale `Σvisit + Σidle ≤ finestra`.
+
+È la prima sonda della serie con un limite che può violare da sola. Le
+precedenti misuravano un frammento del percorso e lasciavano un residuo non
+vincolato: la reacquisizione ha riportato 4,788 ms contro un massimo fisico di
+2,081 ms, e nessuno se n'è accorto finché non è stato fatto il conto a mano, due
+run dopo. `analyze_snapshot.py` ora stampa la colonna `accounted<=100`; se dice
+`NO`, il resto della riga non va letto.
+
+Discrimina le due letture rimaste dei 1.078 µs dentro `poll()`: `thread busy %`
+alto significa un thread in coda dietro le proprie visite (rimedio: shardare o
+dispacciare dal thread che rilascia lo slot), `thread idle %` alto significa un
+thread che dorme davvero mentre il lavoro aspetta (rimedio: cambiare la
+primitiva di attesa). I due rimedi sono opposti, ed è questo che rende
+l'esperimento decisivo invece che descrittivo.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,

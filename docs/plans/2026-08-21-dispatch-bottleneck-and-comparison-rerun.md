@@ -780,10 +780,41 @@ durante il run e rimosso al termine; teardown NanoLab completato e inventario
 Azure vuoto. Raw, checksum e script sono in
 [`docs/experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
 
+## 19. Bilancio del thread scheduler (sonda pronta, run da eseguire)
+
+Strumentazione mcFaas `8b90889e`, raccolta NanoLab `e6fa60b`. Piano:
+[`2026-08-22-dispatch-scheduler-thread-accounting.md`](2026-08-22-dispatch-scheduler-thread-accounting.md).
+
+Il timer di §18 parte dal **segnale**, non dalla chiamata a `poll()`. Se il
+thread è dentro `processFunction` per un'altra funzione quando il segnale
+arriva, `poll()` non viene nemmeno chiamata: quel tempo è coda per il thread
+singolo, non latenza di risveglio. Le due letture chiedono rimedi opposti —
+shardare contro togliere il park — e §4.3 avverte giustamente di non shardare un
+thread che dorme. I dati fino a §18 non le distinguono.
+
+`scheduler_visit_duration` e `scheduler_idle_duration` partizionano il wall clock
+del ciclo, senza tag `function`: un solo thread serve tutte le funzioni, e la
+`poll()` precede la conoscenza di quale funzione l'ha svegliato. Su ogni finestra
+`Σvisit + Σidle ≤ finestra`, e `analyze_snapshot.py` stampa il verdetto nella
+colonna `accounted<=100`.
+
+Questa è la prima sonda della serie che può falsificare sé stessa. Tutte le
+precedenti misuravano un frammento e lasciavano un residuo non vincolato; §14 ha
+scoperto la race della reacquisizione solo facendo a mano un conto di capacità,
+due run dopo averla introdotta. Lo stesso limite è ora asserito da un test JUnit
+locale (`schedulerThreadTimeNeverExceedsTheElapsedWallClock`).
+
 ### Stato corrente
 
-Il prossimo esperimento utile non è un nuovo confronto fra build: deve isolare
-la primitiva di attesa/scheduling del thread (`LinkedBlockingQueue`/park,
-priorità, affinità o contesa sul monitor) mantenendo invariati profilo, build e
-concurrency. Ogni run deve usare `caffeinate`, teardown esplicito e archiviazione
-dei quattro raw JSON con checksum.
+Sonda pronta, run da eseguire: una cella `native-o3-g1`, 2/20, una ripetizione,
+sotto `caffeinate`, con teardown esplicito e archiviazione dei raw con checksum.
+Criteri di decisione nel piano; leggere `accounted<=100` prima di ogni altra
+colonna. Se il verdetto sarà `thread busy %` alto, l'intervento è §4.3 (dispatch
+dal thread che rilascia lo slot, o sharding); se sarà `thread idle %` alto,
+l'intervento è la primitiva di attesa, e nessuno dei due va scelto prima di
+questa lettura.
+
+**Trappola per chi riproduce:** il `pytest_configure` di NanoLab ripunta
+`NANOFAAS_ROOT` su un `git archive` di HEAD. La guardia di copertura del catalogo
+non vede modifiche non committate, quindi un controllo negativo eseguito prima
+del commit mcFaas passa a vuoto.

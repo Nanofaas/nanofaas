@@ -58,6 +58,7 @@ def main() -> None:
     direct_probes = "function_scheduler_dispatch_submit_duration_count" in queries
     signal_enqueue_probe = "function_scheduler_signal_enqueue_duration_count" in queries
     wakeup_split_probe = "function_scheduler_poll_delay_count" in queries
+    thread_accounting = "scheduler_visit_duration_count" in queries
     header = (
         "phase", "dispatch", "dispatch/s", "slot ms", "latency ms",
         "slot-latency us", "slot util %", "idle ms", "reacq ms",
@@ -74,6 +75,11 @@ def main() -> None:
             "submit us", "submit all util %", "blocked/dispatch",
             "coalesced/dispatch", "blocked all/dispatch all",
             "coalesced all/dispatch all",
+        )
+    if thread_accounting:
+        header += (
+            "visit us", "visits/dispatch", "thread busy %", "thread idle %",
+            "accounted %", "accounted<=100",
         )
     print(" | ".join(header))
     print(" | ".join("---" for _ in header))
@@ -153,6 +159,23 @@ def main() -> None:
                 f"{coalesced / dispatches:.2f}" if dispatches else "0.00",
                 f"{blocked_all / submit_all_count:.2f}" if submit_all_count else "0.00",
                 f"{coalesced_all / submit_all_count:.2f}" if submit_all_count else "0.00",
+            )
+        if thread_accounting:
+            # One thread, so its visits and its waits partition the window.
+            # Over 100% means the probe is measuring something other than what
+            # it names -- the check the reacquisition timer never had to pass.
+            visit_sum = delta(queries, "scheduler_visit_duration_sum", a, b, start)
+            visit_count = delta(queries, "scheduler_visit_duration_count", a, b, start)
+            idle_sum = delta(queries, "scheduler_idle_duration_sum", a, b, start)
+            window = b - a
+            accounted = (visit_sum + idle_sum) / window * 100
+            row += (
+                f"{visit_sum / visit_count * 1_000_000:.1f}" if visit_count else "0.0",
+                f"{visit_count / dispatches:.2f}" if dispatches else "0.00",
+                f"{visit_sum / window * 100:.1f}",
+                f"{idle_sum / window * 100:.1f}",
+                f"{accounted:.1f}",
+                "yes" if accounted <= 100.0 else "NO",
             )
         print(" | ".join(row))
 
