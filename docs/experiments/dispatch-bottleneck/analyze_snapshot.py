@@ -56,6 +56,7 @@ def main() -> None:
     queries = snapshot["queries"]
     start = datetime.fromisoformat(snapshot["start"])
     direct_probes = "function_scheduler_dispatch_submit_duration_count" in queries
+    signal_enqueue_probe = "function_scheduler_signal_enqueue_duration_count" in queries
     header = (
         "phase", "dispatch", "dispatch/s", "slot ms", "latency ms",
         "slot-latency us", "slot util %", "idle ms", "reacq ms",
@@ -63,6 +64,8 @@ def main() -> None:
         "reacq/dispatch", "queue ms",
         "inFlight", "queue depth", "wake us", "wake/dispatch", "cpu cores",
     )
+    if signal_enqueue_probe:
+        header += ("enqueue us",)
     if direct_probes:
         header += (
             "submit us", "submit all util %", "blocked/dispatch",
@@ -109,6 +112,11 @@ def main() -> None:
             f"{wakes / dispatches:.2f}" if dispatches else "0.00",
             f"{gauge_mean(queries, 'container_cpu_cores@control-plane', a, b, start):.2f}",
         )
+        if signal_enqueue_probe:
+            enqueue = timer_ms(
+                queries, "function_scheduler_signal_enqueue_duration", a, b, start
+            ) * 1_000
+            row += (f"{enqueue:.1f}",)
         if direct_probes:
             submit = timer_ms(
                 queries, "function_scheduler_dispatch_submit_duration", a, b, start

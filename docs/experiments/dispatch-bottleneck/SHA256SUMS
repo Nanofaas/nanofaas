@@ -63,3 +63,7 @@ e01cb95b22c737faad31d047379a3c16b07e58c8bda24d199adf625dcf4bcf23  raw/azure-disp
 f77ab4a9228e593437dfbc9ec0676ef9ee0085333527f908006088c21b278526  raw/azure-dispatch-saturation-guard-c2/native-o3-g1/run-1/k6-summary.json
 4f19ee037d0bcc298ee928847bfa6df56d8f278392398226e272381c7fe88969  raw/azure-dispatch-saturation-guard-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
 02ca1555b9c5d363fe70ac2a05678b791346e22dfeb3c727d6e19155844539e5  raw/azure-dispatch-saturation-guard-c2/native-o3-g1/run-1/summary.json
+6d21cd183592224dde60fe98f7cf76d8f9ec0a1175aa27bdc7b2c228e6e9840b  raw/azure-dispatch-wakeup-localization-c2/comparison-manifest.json
+fd7692488b755184b331936f3d4e80a321928b15f5be28efeb88dbd37f9c024e  raw/azure-dispatch-wakeup-localization-c2/native-o3-g1/run-1/k6-summary.json
+5131c37de5cf60b0d7ed16c55938c4555a210629f64a90fdbaca816afe1cd537  raw/azure-dispatch-wakeup-localization-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
+adb017a8ea2a3b87b58dcfa83140564af47448c8ba539929ac191b9d573e2335  raw/azure-dispatch-wakeup-localization-c2/native-o3-g1/run-1/summary.json

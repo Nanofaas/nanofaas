@@ -27,3 +27,13 @@
 1. Eseguire una cella Azure `native-o3-g1`, 2/20, una ripetizione, sotto `caffeinate -dimsu`.
 2. Eseguire sempre il teardown NanoLab e verificare l'inventario Azure vuoto.
 3. Copiare manifest e tre raw JSON nel registro, aggiornare checksum e documentare il verdetto.
+
+## Risultato
+
+Completato con mcFaas `0d924d08` e NanoLab `c77cfba`. Nel run
+`azure-dispatch-wakeup-localization-c2`, al `peak900`, l'inserimento in
+`activeFunctions` costa 61,5 µs contro 995,2 µs dal segnale all'attivazione
+dello scheduler. L'ipotesi che l'`add` sia il collo dominante è invalidata; il
+residuo di 933,7 µs localizza il costo nel percorso esterno all'`add` fino al
+poll/bookkeeping dello scheduler, senza ancora attribuirlo a una singola
+istruzione. Raw e protocollo sono conservati nel registro esperimenti.

@@ -29,6 +29,7 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 | `azure-dispatch-reacquisition-segments-c2` | G1, una ripetizione, 2/20 | mcFaas `3365c590`; NanoLab `8e9674e` | 4,743/4,788 ms pre-active osservati, ma attribuzione invalidata: il timer supera il massimo fisico di 2,081 ms al `peak900`. |
 | `azure-dispatch-scheduler-direct-probes-c2` | G1, una ripetizione, 2/20 | mcFaas `7ed1e010`; NanoLab `ce45fae` | Al `peak900`, submit sincrono 7,0% del thread, 2,14 visite senza slot e 0,44 segnali coalesced per dispatch Java. Il submit non è il collo; il churn di visite non dispatchable è il candidato causale. |
 | `azure-dispatch-saturation-guard-c2` | G1, una ripetizione, 2/20, guardie `canDispatch()` | mcFaas `7e532fc9`; NanoLab `ce45fae` | Al `peak900`, 342,6 dispatch Java/s, 32,105 ms di queue wait e p95 90,72 ms: nessun miglioramento misurabile. Il churn non è causa dominante del limite. |
+| `azure-dispatch-wakeup-localization-c2` | G1, una ripetizione, 2/20, timer dell'`activeFunctions.add` | mcFaas `0d924d08`; NanoLab `c77cfba` | Al `peak900`, enqueue 61,5 µs contro 995,2 µs segnale→scheduler: l'`add` non è il collo; 933,7 µs restano nel percorso esterno all'`add` fino all'attivazione scheduler. |
 
 La compilazione G1 dell'ultima sonda ha richiesto 872,8 s; il push 5,0 s. IP
 dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
@@ -178,6 +179,36 @@ da questo A/B.
 `caffeinate` è terminato. Le VM Azure trattenute da NanoLab sono state
 rilasciate con il teardown del provider NanoLab; l'inventario Azure è vuoto.
 
+## Localizzazione del wakeup
+
+Run `azure-dispatch-wakeup-localization-c2`, una ripetizione con configurazione
+2/20 e le guardie `canDispatch()`. Il nuovo timer sincrono misura soltanto
+`activeFunctions.add` per i segnali accettati; il timer già esistente parte dal
+timestamp pubblicato immediatamente prima dell'`add` e termina quando lo
+scheduler ha estratto la funzione e rimosso il relativo bookkeeping.
+
+| fase | dispatch Java/s | enqueue µs | segnale→scheduler µs | residuo fuori dall'`add` µs | wake/dispatch |
+|---|---:|---:|---:|---:|---:|
+| spike600 | 524,8 | 6,0 | 198,8 | 192,7 | 0,985 |
+| hold350 | 349,6 | 6,3 | 177,4 | 171,1 | 0,988 |
+| **peak900** | **308,6** | **61,5** | **995,2** | **933,7** | **0,956** |
+| drain40 | 302,4 | 23,4 | 650,2 | 626,8 | 0,965 |
+
+Al `peak900`, l'`add` vale solo il 6,2% del timer segnale→scheduler: è quindi
+invalidata l'ipotesi che la contesa nell'inserimento della coda attiva sia il
+collo dominante. Moltiplicando per 0,956 wake/dispatch, il percorso completo
+contribuisce 0,952 ms per dispatch e il residuo esterno all'`add` 0,893 ms,
+rispettivamente il 54,1% e il 50,8% dei 1,759 ms di idle fisico stimato. Il
+wakeup è dunque localizzato fra il bookkeeping del segnale e l'attivazione del
+thread scheduler (poll, rimozioni da map/set e scheduling del thread), non nel
+`BlockingQueue.add`; resta circa metà dell'idle non spiegata e questa singola
+ripetizione non dimostra ancora quale istruzione del residuo sia causale.
+
+Risultato complessivo: 114.242 dispatch Java, 435,05 richieste/s, p95 94,46 ms,
+p99 161,49 ms, 18,32% scarti e 30.807 rifiuti della coda Java. `caffeinate` è
+terminato; il teardown dei provider NanoLab `loadgen` e `stack` è completato e
+l'inventario Azure `nanofaas-comparison*` è vuoto.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,
@@ -206,6 +237,6 @@ cd /path/to/nanolab
 caffeinate -dimsu ./nanolab.sh compare \
   packages/nanolab/scenarios-v2/runtime-comparison-jvm.yaml \
   --environment packages/nanolab/environments/azure-comparison.yaml \
-  --run-dir packages/nanolab/runs/azure-dispatch-saturation-guard-c2 \
+  --run-dir packages/nanolab/runs/azure-dispatch-wakeup-localization-c2 \
   --variants native-o3-g1 --repetitions 1
 ```
