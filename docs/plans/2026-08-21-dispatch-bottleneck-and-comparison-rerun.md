@@ -725,3 +725,65 @@ caso contrario occorre misurare la durata completa delle visite.
 Risultato complessivo: 115.986 dispatch Java, 435,06 richieste/s, p95 90,22 ms,
 p99 151,21 ms, 17,33% scarti e 29.063 rifiuti Java. Le 12 risorse Azure sono
 state distrutte; inventario finale vuoto e `caffeinate` assente.
+
+## 16. A/B delle guardie di saturazione
+
+Run del 2026-08-22: `azure-dispatch-saturation-guard-c2`, commit mcFaaS
+`5b703f7b`, commit NanoLab `ce45fae`, una ripetizione, concurrency 2 e coda 20.
+Le guardie evitano il segnale e il self-requeue quando `canDispatch()` è falso.
+
+Al `peak900`: **342,6 dispatch Java/s**, queue wait **32,105 ms**,
+**0,82** visite bloccate e **0,13** segnali coalesced per dispatch Java. Rispetto
+al controllo diretto (346,8/s e 31,040 ms), non c'è miglioramento misurabile.
+
+Verdetto: l'ipotesi che il churn di visite non dispatchable sia la causa dominante
+è invalidata. I contatori calano, ma il limite resta. Raw e risultati sono nel
+registro [`dispatch-bottleneck`](../experiments/dispatch-bottleneck/).
+
+## 17. Localizzazione enqueue → scheduler
+
+Run del 2026-08-22: `azure-dispatch-wakeup-localization-c2`, commit mcFaaS
+`0d924d08`, commit NanoLab `c77cfba`. È stato aggiunto il timer sincrono
+`function_scheduler_signal_enqueue_duration` attorno a `activeFunctions.add`.
+
+Al `peak900`: enqueue **61,5 µs**, segnale→scheduler **995,2 µs**, residuo
+**933,7 µs**. L'`add` è solo il 6,2% del timer complessivo: l'ipotesi che la
+contesa nell'inserimento della coda attiva sia il collo dominante è invalidata.
+
+## 18. Split del wakeup
+
+Run del 2026-08-22: `azure-dispatch-wakeup-split-c2`, commit mcFaaS `994af3f3`
+(strumentazione `5247e2ff`), commit NanoLab `635908e`, una ripetizione,
+concurrency 2 e coda 20. Le sonde separano:
+
+```text
+signal → ritorno activeFunctions.poll() → fine bookkeeping → processFunction
+```
+
+Al `peak900`:
+
+| tratto | media |
+|---|---:|
+| enqueue | 39,7 µs |
+| signal → ritorno di `poll()` | 1.078,2 µs |
+| bookkeeping dopo `poll()` | 5,6 µs |
+| wakeup complessivo | 1.083,5 µs |
+
+Il ritorno di `poll()` vale il **99,5%** del wakeup; il bookkeeping è escluso
+come collo. Il costo è localizzato nel wakeup/scheduling del thread scheduler
+prima del ritorno di `poll()`, ma non è ancora attribuito a una specifica politica
+del sistema operativo o primitiva di attesa.
+
+Risultato complessivo: 115.209 dispatch Java, 435,06 richieste/s, p95 94,24 ms,
+p99 141,11 ms, 17,67% scarti e 29.840 rifiuti Java. `caffeinate` è stato usato
+durante il run e rimosso al termine; teardown NanoLab completato e inventario
+Azure vuoto. Raw, checksum e script sono in
+[`docs/experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+
+### Stato corrente
+
+Il prossimo esperimento utile non è un nuovo confronto fra build: deve isolare
+la primitiva di attesa/scheduling del thread (`LinkedBlockingQueue`/park,
+priorità, affinità o contesa sul monitor) mantenendo invariati profilo, build e
+concurrency. Ogni run deve usare `caffeinate`, teardown esplicito e archiviazione
+dei quattro raw JSON con checksum.
