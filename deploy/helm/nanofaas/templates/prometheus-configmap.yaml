@@ -125,7 +125,7 @@ data:
         metric_relabel_configs:
           # Keep only container CPU/memory signals used by runtime A/B reporting.
           - source_labels: [__name__]
-            regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_memory_usage_bytes
+            regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_memory_usage_bytes|container_cpu_cfs_periods_total|container_cpu_cfs_throttled_periods_total|container_cpu_cfs_throttled_seconds_total
             action: keep
           - source_labels: [namespace]
             regex: (.+)
@@ -168,7 +168,7 @@ data:
             action: replace
         metric_relabel_configs:
           - source_labels: [__name__]
-            regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_memory_usage_bytes
+            regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_memory_usage_bytes|container_cpu_cfs_periods_total|container_cpu_cfs_throttled_periods_total|container_cpu_cfs_throttled_seconds_total
             action: keep
           - source_labels: [namespace]
             regex: (.+)
