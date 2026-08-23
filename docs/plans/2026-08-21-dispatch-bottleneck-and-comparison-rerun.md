@@ -34,6 +34,12 @@ contro l'unico concesso dal chart (§20). Il dato che lo smentiva era in ogni
 snapshot dal primo giorno. Quando un numero ti dice che qualcosa *non* è il collo
 di bottiglia, chiediti rispetto a cosa, e verificalo.
 
+**Quarta.** Un risultato di un confronto è vero *nella configurazione in cui è
+stato misurato*, e la configurazione va scritta accanto al risultato. «G1 batte la
+JVM» è rimasto in questo documento come proprietà delle build; era una proprietà
+del core singolo, e si inverte al secondo (§22). Se non sai dichiarare in quale
+regime vale una classifica, non hai ancora un risultato.
+
 **Terza.** Una serie che nessuno raccoglie torna vuota, e vuota è
 indistinguibile da «non è successo». Vale al livello del catalogo NanoLab **e** al
 livello del `keep` di Prometheus nel chart: la seconda è costata una cella intera
@@ -55,11 +61,19 @@ di 450 s su due funzioni (`word-stats-java`, `word-stats-javascript`):
 | Native `-O3`, serial GC | 425,7 ± 1,5 | 695,6 ± 32,5 | 1067,6 ± 22,8 | 24,17 % | 500,0 MiB |
 | **Native `-O3`, G1** | **435,1 ± 0,0** | **92,2 ± 1,5** | **147,7 ± 7,4** | **17,52 %** | 553,6 MiB |
 
-**Non è la compilazione nativa a costare latenza, è il collettore seriale.**
-Stesso `-O3`: p95 695,6 ms con seriale, 92,2 ms con G1. Il meccanismo è misurato —
-le build seriali fanno *meno* raccolte ma ognuna costa 45 ms invece di 4,8 (49,8 s
-di GC su 450 s di run contro 6,5 s della JVM). G1 batte anche la JVM su latenza,
-scarti e memoria, a parità di throughput.
+**Vale a un core, e solo lì.** Fra le build native la lettura regge: stesso `-O3`,
+p95 695,6 ms con seriale contro 92,2 con G1, e il meccanismo è misurato — le build
+seriali fanno *meno* raccolte ma ognuna costa 45 ms invece di 4,8.
+
+Ma «G1 batte anche la JVM» è **falso da due core in su** (§22): a 2 CPU la JVM fa
+p95 3,7 ms contro i 275,2 di G1, con zero scarti contro il 10,4%. L'ordinamento si
+inverte esattamente fra 1 e 2 core, e questa matrice ha girato tutta a uno.
+
+E il confronto non era nemmeno paritario: il baseline chiamato «JVM» girava con
+`-XX:+UseSerialGC` e `-XX:TieredStopAtLevel=1` — collettore seriale e nessun
+compilatore ottimizzante — mentre `native-o3-g1` aveva G1. La frase «non è il
+nativo, è il collettore seriale» confrontava due build native mentre la terza era
+anch'essa seriale.
 
 Questa conclusione **non dipende** da nulla di ciò che segue: vale perché la
 capacità era tenuta fissa in tutte le celle (§3.4).
@@ -977,6 +991,122 @@ margine.
 
 I quattro cambiamenti restano corretti per conto proprio e vanno tenuti come
 pulizia, non rivendicati come guadagno.
+
+## 22. Lo sweep sul budget di CPU: 4 · 3 · 2 · 1 core
+
+Notte del 2026-08-23. Quattro matrici complete — 4 build × 3 ripetizioni ciascuna,
+**48 celle** — identiche in tutto tranne `controlPlane.resources.limits.cpu`.
+Commit mcFaas `bb5c563a`, NanoLab `9f5ab50`. Provisioning tenuto fra le matrici:
+`.dockerignore` esclude `**/build` e `.gradle`, quindi il contesto docker resta
+identico e il layer `RUN ./gradlew nativeCompile` è un cache hit — i prepare dopo
+il primo sono durati ~13 minuti invece di ~50, e lo sweep si è chiuso in 7h30
+invece delle 12 stimate.
+
+### Latenza e throughput
+
+| cpu | build | rps | p95 (ms) | p99 (ms) | scarti | dispatch |
+|---:|---|---:|---:|---:|---:|---:|
+| **4** | JVM (seriale, C1) | 435.1 | 3.2 ± 0.1 | 6.0 | 0.0 % | 145.049 |
+|  | Native −Os, seriale | 415.5 | 871.4 ± 34.9 | 1631.1 | 15.8 % | 115.847 |
+|  | Native −O3, seriale | 418.4 | 870.7 ± 25.6 | 1156.5 | 19.1 % | 112.084 |
+|  | **Native −O3, G1** | 435.0 | 171.6 ± 4.3 | 293.9 | 9.7 % | 130.045 |
+| | |  |  |  |  |  |
+| **3** | JVM (seriale, C1) | 435.1 | 3.3 ± 0.0 | 6.2 | 0.0 % | 145.049 |
+|  | Native −Os, seriale | 415.9 | 913.8 ± 71.8 | 1497.4 | 17.0 % | 114.188 |
+|  | Native −O3, seriale | 419.4 | 822.5 ± 27.5 | 1215.8 | 16.7 % | 115.638 |
+|  | **Native −O3, G1** | 435.0 | 215.8 ± 8.1 | 328.5 | 9.6 % | 130.237 |
+| | |  |  |  |  |  |
+| **2** | JVM (seriale, C1) | 435.1 | 3.7 ± 0.1 | 7.8 | 0.0 % | 144.981 |
+|  | Native −Os, seriale | 415.2 | 913.5 ± 42.1 | 1489.4 | 17.7 % | 113.121 |
+|  | Native −O3, seriale | 420.6 | 805.9 ± 11.5 | 1160.2 | 15.9 % | 117.166 |
+|  | **Native −O3, G1** | 434.9 | 275.2 ± 4.2 | 434.9 | 10.4 % | 128.806 |
+| | |  |  |  |  |  |
+| **1** | JVM (seriale, C1) | 435.1 | 113.7 ± 0.4 | 174.5 | 26.0 % | 100.786 |
+|  | Native −Os, seriale | 422.8 | 812.9 ± 19.5 | 1271.6 | 28.4 % | 96.743 |
+|  | Native −O3, seriale | 421.9 | 834.0 ± 32.3 | 1256.8 | 25.6 % | 101.390 |
+|  | **Native −O3, G1** | 435.1 | 93.8 ± 1.5 | 156.8 | 18.3 % | 114.746 |
+
+### Risorse
+
+`core medi` è la media sul `peak900`; `core picco` il massimo sull'intera run.
+`strozz` è la frazione di periodi CFS strozzati, la metrica che fino al
+2026-08-22 il chart scartava allo scrape.
+
+| cpu | build | core medi | core picco | strozz | RSS MiB | coda media | attesa (ms) |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| **4** | JVM (seriale, C1) | 1.11 | 2.31 | 0.0 % | 889 | 0.3 | 0.1 |
+|  | Native −Os, seriale | 1.10 | 2.02 | 0.0 % | 550 | 4.8 | 1.6 |
+|  | Native −O3, seriale | 0.98 | 2.21 | 0.0 % | 530 | 9.6 | 1.5 |
+|  | **Native −O3, G1** | 1.26 | 5.26 | 1.1 % | 565 | 0.0 | 2.6 |
+| | |  |  |  |  |  |  |
+| **3** | JVM (seriale, C1) | 1.18 | 2.76 | 0.0 % | 880 | 0.3 | 0.1 |
+|  | Native −Os, seriale | 0.84 | 2.13 | 0.1 % | 545 | 10.2 | 1.9 |
+|  | Native −O3, seriale | 0.86 | 2.00 | 0.0 % | 546 | 10.4 | 1.3 |
+|  | **Native −O3, G1** | 1.32 | 4.04 | 2.8 % | 560 | 1.2 | 1.7 |
+| | |  |  |  |  |  |  |
+| **2** | JVM (seriale, C1) | 1.24 | 2.52 | 0.9 % | 881 | 0.7 | 0.2 |
+|  | Native −Os, seriale | 1.05 | 1.94 | 1.5 % | 538 | 9.4 | 2.0 |
+|  | Native −O3, seriale | 0.91 | 1.87 | 1.1 % | 543 | 10.1 | 1.3 |
+|  | **Native −O3, G1** | 1.05 | 2.98 | 9.8 % | 559 | 5.2 | 2.8 |
+| | |  |  |  |  |  |  |
+| **1** | JVM (seriale, C1) | 0.81 | 1.61 | 23.0 % | 713 | 20.0 | 14.5 |
+|  | Native −Os, seriale | 0.84 | 1.55 | 19.5 % | 469 | 18.9 | 13.4 |
+|  | Native −O3, seriale | 0.91 | 1.63 | 18.3 % | 479 | 17.3 | 9.7 |
+|  | **Native −O3, G1** | 0.92 | 1.50 | 24.6 % | 553 | 18.9 | 7.3 |
+
+### Cosa dicono
+
+**L'ordinamento si inverte fra 1 e 2 core.** A un core `native-o3-g1` batte la
+JVM su tutto (p95 93,8 contro 113,7; scarti 18,3% contro 26,0%; 114.746 dispatch
+contro 100.786). A due o più la JVM stravince, e non di poco: **p95 3,7 ms contro
+275,2**, zero scarti contro il 10,4%, e nessuna coda — profondità media 0,7 su 20.
+
+La conclusione della §1 vale quindi **soltanto a un core**. Non era sbagliata:
+era una proprietà della configurazione, letta come proprietà delle build.
+
+**Il ginocchio è a 2 core.** Da 2 a 3 a 4 non cambia praticamente nulla: la JVM
+al picco chiede 2,3–2,8 core e non ne usa di più. Un deploy a 2 CPU compra tutto
+il guadagno disponibile; il terzo e il quarto non comprano niente.
+
+**Le build native seriali non tengono il passo nemmeno con quattro core liberi.**
+415–420 rps, 16–19% di scarti, coda a ~10 su 20 — ma **0% di throttling e ~1,0
+core usati su 4**. Coda piena, CPU disponibile, niente strozzatura: è la stessa
+firma da cui è partita l'indagine sul dispatch, e stavolta la CPU non c'entra.
+Per queste build un collo esiste davvero, ed è altrove. È l'unica domanda aperta
+che questo sweep lascia.
+
+**La memoria è il vantaggio che sopravvive al nativo.** 530–565 MiB contro gli
+880 della JVM a ogni budget: un terzo in meno, costante. È il solo asse su cui la
+compilazione nativa vince in modo non condizionato.
+
+**G1 nativo consuma più CPU della JVM.** A 2 core mostra 9,8% di periodi
+strozzati contro lo 0,9% della JVM, e picchi fino a 5,26 core a budget 4. Serve
+più macchina per fare meno lavoro.
+
+### Un'avvertenza sulla lettura
+
+Due numeri della stessa riga vengono da finestre diverse: `coda media` e `core
+medi` sono il `peak900`, gli scarti e i percentili sono l'intera run. `native-o3-g1`
+a 4 core ha coda **0,00** al picco e 9,7% di scarti complessivi — i rifiuti stanno
+in altre fasi, non al picco. Prima di raccontare quel dato va guardato per fase.
+
+### Il difetto che questo sweep ha fatto emergere
+
+La build chiamata «JVM» non è la JVM: `platform/control-plane/Dockerfile` la
+avviava con `-XX:+UseSerialGC` **e** `-XX:TieredStopAtLevel=1`, cioè collettore
+seriale e JIT fermo a C1, senza compilatore ottimizzante. Il commento sopra le
+flag ne dava la ragione — *«lower memory overhead in single-core environments»* —
+cioè esattamente l'assunzione che questo sweep ha demolito.
+
+Quindi il confronto non è mai stato paritario: `native-o3-g1` aveva G1, il
+baseline JVM no. E la §1 concludeva che «il collettore seriale costa latenza»
+mettendo a confronto due build native, mentre la terza era anch'essa seriale.
+
+E nonostante l'handicap la JVM vince a ≥2 core con p95 3,2 ms.
+
+Le flag sono ora un build-arg `JVM_TUNING` (default identico a prima, mcFaas
+`e8bd580f`), e un fattoriale 2×2 — collettore × tiering, NanoLab `ebd11ba` —
+misura i due fattori separatamente a 1 e 2 core.
 
 ### Stato corrente
 

@@ -376,6 +376,32 @@ non deve costruire ciò che sta per abbandonare, e leggere sei volte gli stessi
 header è lavoro ripetuto. Vanno tenuti come pulizia, **non** rivendicati come
 guadagno di prestazioni finché qualcuno non li misura come si deve.
 
+## Sweep sul budget di CPU (48 celle)
+
+`azure-matrix-cpu4` · `cpu3` · `cpu2` · `cpu1`, notte del 2026-08-23. Quattro
+matrici da 4 build × 3 ripetizioni, identiche tranne `limits.cpu`. Commit mcFaas
+`bb5c563a`, NanoLab `9f5ab50`. Tabelle complete di latenza, throughput, CPU e RAM
+nella §22 di
+[`../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md`](../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md).
+
+In sintesi, al variare del budget:
+
+| cpu | migliore per latenza | p95 | JVM p95 | ginocchio |
+|---:|---|---:|---:|---|
+| 4 | JVM | 3,2 ms | 3,2 ms | — |
+| 3 | JVM | 3,3 ms | 3,3 ms | — |
+| **2** | **JVM** | **3,7 ms** | 3,7 ms | **qui** |
+| 1 | native-o3-g1 | 93,8 ms | 113,7 ms | — |
+
+L'ordinamento si inverte fra 1 e 2 core: la classifica pubblicata finora era una
+proprietà del core singolo, non delle build. Il ginocchio è a 2: da lì in poi la
+JVM chiede al più 2,8 core e il terzo non compra niente.
+
+Il nativo mantiene un vantaggio non condizionato solo sulla memoria: 530–565 MiB
+contro 880. Le build native seriali non tengono il passo nemmeno con quattro core
+liberi — 16–19% di scarti, coda a ~10 su 20, **0% di throttling e 1,0 core usati
+su 4** — che è una firma di collo di bottiglia ancora da spiegare.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,
