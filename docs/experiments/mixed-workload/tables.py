@@ -69,6 +69,15 @@ def cell(path):
     arrivals = out["arrivi_sync"] + out["arrivi_async"]
     out["quota_async_%"] = 100 * out["arrivi_async"] / arrivals if arrivals else float("nan")
     out["chiavi_max"] = max(_series(queries, "idempotency_keys_held") or [float("nan")])
+    store = _series(queries, "execution_store_size")
+    out["record_max"] = max(store) if store else float("nan")
+    heap = _series(queries, "jvm_heap_used_bytes")
+    if heap and window:
+        out["heap_crescita_MBs"] = (heap[-1] - heap[0]) / window / 1e6
+        out["heap_finale_MB"] = heap[-1] / 1e6
+        # Se i record sono la zavorra, questo si avvicina alla taglia di un record.
+        if store and max(store) > 0:
+            out["byte_per_record"] = (heap[-1] - heap[0]) / max(store)
 
     periods, throttled = delta(queries, "container_cpu_periods@control-plane"), delta(queries, "container_cpu_throttled_periods@control-plane")
     out["strozzati_%"] = 100 * throttled / periods if periods else float("nan")
@@ -136,6 +145,10 @@ ROWS = [
     ("coda media", "coda"),
     ("  quota sync", "coda_sync"),
     ("  quota async", "coda_async"),
+    ("record in ExecutionStore (max)", "record_max"),
+    ("crescita heap (MB/s)", "heap_crescita_MBs"),
+    ("heap a fine run (MB)", "heap_finale_MB"),
+    ("  byte per record archiviato", "byte_per_record"),
     ("chiavi di idempotenza tenute", "chiavi_max"),
     ("coppie idempotenti", "coppie_idem"),
     ("  stessa esecuzione (%)", "idem_ok_%"),

@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -29,7 +31,27 @@ public class ExecutionStore {
     // @Autowired is required: with two constructors Spring would otherwise pick the
     // no-arg one and silently ignore the configured properties.
     @Autowired
-    public ExecutionStore(ExecutionStoreProperties properties) {
+    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry) {
+        this(properties);
+        // Quanto la piattaforma sta ricordando.
+        //
+        // La ritenzione qui e' dichiarata nel tempo e illimitata nello spazio: i
+        // record scadono dopo `ttl`, ma niente limita quanti se ne accumulano dentro
+        // quella finestra, quindi la memoria necessaria e' proporzionale al tasso di
+        // arrivo. Il 2026-08-23 l'heap saliva di 2,79 MB/s per tutti gli 8 minuti di
+        // un run a 2x senza mai scendere, e a 3x il collector seriale finiva per
+        // impiegare il 50,6% del tempo con pause da 2,851 s - abbastanza da far
+        // fallire un probe di liveness con un secondo di budget, e da far uccidere il
+        // container con tutto lo stato dentro.
+        //
+        // Quale struttura tenesse quei byte era pero' un'inferenza, non una misura:
+        // questa e' la misura. Un gauge a supplier, letto allo scrape, niente sul
+        // percorso caldo.
+        Gauge.builder("execution_store_size", executions::size).register(registry);
+    }
+
+    /** Pacchetto-privato: le prove di sfratto costruiscono il negozio senza registro. */
+    ExecutionStore(ExecutionStoreProperties properties) {
         this.ttl = properties.ttl();
         this.cleanupTtl = properties.cleanupTtl();
         this.maxLifetime = properties.maxLifetime();
@@ -39,6 +61,11 @@ public class ExecutionStore {
             return t;
         });
         janitor.scheduleAtFixedRate(this::evictExpired, 1, 1, TimeUnit.MINUTES);
+    }
+
+    /** Quanti record sono archiviati adesso. */
+    public int size() {
+        return executions.size();
     }
 
     public void put(ExecutionRecord executionRecord) {
