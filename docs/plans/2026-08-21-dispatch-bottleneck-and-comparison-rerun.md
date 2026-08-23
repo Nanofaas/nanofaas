@@ -1564,6 +1564,87 @@ quanto sarebbe costato riusarlo: un fattore **5,7** sul p95. Vale anche per la
 §22 stessa — l'ordinamento fra build regge, i valori assoluti di p95 sono
 proprietà di quella nottata.
 
+## 24. Il prossimo esperimento: alzare il carico su `seriale + C2`
+
+Preparato il 2026-08-23, **non ancora eseguito**. Scenari
+`runtime-comparison-load{2,3,4}x.yaml`: `jvm-c2` (seriale + C2, la
+configurazione che la §23 indica), **2 core**, e la sola variabile è la scala del
+profilo — picco a 1.800, 2.700 e 3.600 rps contro i 900 attuali.
+
+### Perché 2×–4× e non +20/30/50 %
+
+A 1× `seriale + C2` usa **0,53 core su 2** e serve l'intero carico offerto con
+p95 2,5 ms e zero scarti. Aumenti di qualche decina di percento non lo farebbero
+nemmeno sudare. Estrapolando dai dati del fattoriale:
+
+| | dove | quanto sopra il picco attuale |
+|---|---:|---:|
+| CPU del control plane (`core = 0,225 + 0,344 CPU-ms/req`, R² 0,81) | ~5.157 rps | 5,7× |
+| **limite di concorrenza** (2 slot ÷ 0,526 ms di servizio) | **~3.799 rps** | **4,2×** |
+
+Il muro che si incontra **per primo non è la CPU**: è il limite di concorrenza,
+intorno a 3.800 rps. Da cui 4× come estremo — la previsione è quantitativa e
+falsificabile, e se il tetto non cade lì il modello di Little sul percorso di
+dispatch è sbagliato, che sarebbe la scoperta più interessante possibile.
+
+### La metrica di sicurezza, e cosa ha già rivelato
+
+A questi tassi il **generatore** diventa sospetto: k6 gira su una
+`Standard_D2s_v5`, due vCPU, e finora ha emesso al massimo 435 rps. Senza
+misurarlo, un tetto a 2.500 rps sarebbe indistinguibile fra «la piattaforma non
+ce la fa» e «k6 non ce la fa».
+
+`dropped_iterations` e l'uso delle VU vivono in `k6-summary.json` e non in
+`summary.json`, quindi non erano mai stati guardati. Ora sono una tabella:
+
+<!-- tabella:generatore -->
+| cpu | build | arrivi emessi | non emessi | VU max / disponibili | esaurito? |
+|---:|---|---:|---:|---:|---|
+| **4** | JVM (seriale, C1) | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 7 / 1200 | no |
+|  | Native −Os, seriale | 187.0 ± 1.5k | 8802 ± 1497 (4.5 %) | 1191 / 1200 | **sì** |
+|  | Native −O3, seriale | 188.3 ± 0.2k | 7427 ± 191 (3.8 %) | 1150 / 1200 | **sì** |
+|  | Native −O3, G1 | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 235 / 1200 | no |
+| | | | | | |
+| **3** | JVM (seriale, C1) | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 8 / 1200 | no |
+|  | Native −Os, seriale | 187.1 ± 0.8k | 8626 ± 813 (4.4 %) | 1200 / 1200 | **sì** |
+|  | Native −O3, seriale | 188.7 ± 0.9k | 7029 ± 939 (3.6 %) | 1102 / 1200 | **sì** |
+|  | Native −O3, G1 | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 373 / 1200 | no |
+| | | | | | |
+| **2** | JVM (seriale, C1) | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 17 / 1200 | no |
+|  | Native −Os, seriale | 187.0 ± 0.6k | 8810 ± 611 (4.5 %) | 1192 / 1200 | **sì** |
+|  | Native −O3, seriale | 189.3 ± 0.7k | 6505 ± 677 (3.3 %) | 1022 / 1200 | **sì** |
+|  | Native −O3, G1 | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 434 / 1200 | no |
+| | | | | | |
+| **1** | JVM (seriale, C1) | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 111 / 1200 | no |
+|  | Native −Os, seriale | 190.3 ± 0.3k | 5498 ± 300 (2.8 %) | 1066 / 1200 | **sì** |
+|  | Native −O3, seriale | 189.9 ± 0.9k | 5902 ± 858 (3.0 %) | 1047 / 1200 | **sì** |
+|  | Native −O3, G1 | 195.8 ± 0.0k | 0 ± 0 (0.0 %) | 70 / 1200 | no |
+<!-- /tabella:generatore -->
+
+**Le build native seriali avevano già esaurito il generatore**, in ogni matrice:
+1191, 1200 e 1192 VU su 1200, con il 3–4,5 % degli arrivi mai emessi. I loro
+415–420 rps della §22 sono quindi un risultato **congiunto** di piattaforma e
+generatore, non una misura di capacità. La JVM, per contrasto, ne usa 7.
+
+Da cui due precauzioni negli scenari nuovi: il pool di VU cresce con la scala
+(600 × scala, con tetto a 2.400 perché ogni VU costa memoria su due vCPU), e
+questa tabella va letta **prima** di qualunque affermazione su un tetto.
+
+### Comando
+
+```bash
+export NANOFAAS_ROOT=/percorso/di/mcFaas
+cd /percorso/di/nanolab
+for s in 2 3 4; do
+  caffeinate -dimsu ./nanolab.sh compare \
+    packages/nanolab/scenarios-v2/runtime-comparison-load${s}x.yaml \
+    --environment packages/nanolab/environments/azure-comparison.yaml \
+    --run-dir packages/nanolab/runs/azure-load${s}x --variants jvm-c2 --repetitions 3
+done
+```
+
+Nove celle, nessuna compilazione nativa: circa 2h30 in tutto.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU

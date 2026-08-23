@@ -115,6 +115,49 @@ def collect(root, cpu, build):
     return acc
 
 
+def _k6_raw(run: Path):
+    """The full k6 summary, which carries what summary.json does not.
+
+    summary.json keeps http_reqs, http_req_failed, http_req_duration and checks.
+    Generator exhaustion lives only here: dropped_iterations is what k6 could not
+    issue, and vus against vus_max is how close it came to running out of them.
+    Without both, a ceiling cannot be told apart from a generator that gave up.
+    """
+    f = run / "k6-summary.json"
+    if not f.exists():
+        return {}
+    doc = json.loads(f.read_text())
+    return doc.get("metrics", doc)
+
+
+def table_generator(root):
+    """Was the load generator the limit? Read this before any ceiling claim."""
+    out = ["| cpu | build | arrivi emessi | non emessi | VU max / disponibili | esaurito? |",
+           "|---:|---|---:|---:|---:|---|"]
+    for cpu in (4, 3, 2, 1):
+        for i, b in enumerate(BUILDS):
+            base = Path(root) / f"azure-matrix-cpu{cpu}" / b
+            issued, dropped, vus, vmax = [], [], [], []
+            for run in sorted(base.glob("run-*")):
+                m = _k6_raw(run)
+                if not m:
+                    continue
+                issued.append(m["iterations"]["count"])
+                dropped.append(m.get("dropped_iterations", {}).get("count", 0))
+                vus.append(m.get("vus", {}).get("max", 0))
+                vmax.append(m.get("vus_max", {}).get("value", 0))
+            if not issued:
+                continue
+            share = mean(dropped) / (mean(issued) + mean(dropped)) * 100 if mean(issued) else 0
+            verdict = "**sì**" if share > 1 else ("marginale" if share > 0 else "no")
+            out.append("| %s | %s | %s | %s (%.1f %%) | %.0f / %.0f | %s |" % (
+                f"**{cpu}**" if i == 0 else "", LABEL[b],
+                pm([x / 1000 for x in issued], "%.1f") + "k",
+                pm(dropped, "%.0f"), share, mean(vus), mean(vmax), verdict))
+        out.append("| | | | | | |")
+    return "\n".join(out[:-1])
+
+
 def table_latency(root):
     """Every column carries its dispersion over the three repetitions.
 
@@ -315,6 +358,7 @@ def table_jvm_effects(root):
 
 BLOCKS = {
     "latenza": table_latency,
+    "generatore": table_generator,
     "risorse": table_resources,
     "fasi": table_phases,
     "modello-cpu-funzione": function_cpu_model,
