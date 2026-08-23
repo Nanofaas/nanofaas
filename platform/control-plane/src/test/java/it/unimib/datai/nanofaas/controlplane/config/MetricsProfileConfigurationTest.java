@@ -29,6 +29,39 @@ class MetricsProfileConfigurationTest {
     }
 
     @Test
+    void basicDropsTheDispatchPathInstrumentationAndAdvancedKeepsIt() {
+        // These fire 15.74 times per dispatch, so leaving them outside this class -
+        // where they were until 2026-08-23 - meant every production deployment on
+        // the default profile paid for probes nobody was reading.
+        String[] diagnostic = {
+                "function_scheduler_wakeup_delay",
+                "function_scheduler_dispatch_submit_duration",
+                "function_queue_offer_duration",
+                "function_queue_poll_duration",
+                "function_dispatch_slot_hold_duration",
+                "scheduler_visit_duration",
+                "scheduler_idle_duration",
+        };
+
+        SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        SimpleMeterRegistry advanced = registryFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        for (String name : diagnostic) {
+            io.micrometer.core.instrument.Timer.builder(name).tag("function", "echo").register(basic);
+            io.micrometer.core.instrument.Timer.builder(name).tag("function", "echo").register(advanced);
+        }
+
+        for (String name : diagnostic) {
+            assertThat(basic.find(name).timer()).describedAs(name + " must not survive basic").isNull();
+            assertThat(advanced.find(name).timer()).describedAs(name + " must survive advanced").isNotNull();
+        }
+
+        // And the operational counters keep surviving basic, which is what makes
+        // this a narrowing of the profile rather than a second switch beside it.
+        Counter.builder("function_dispatch_total").tag("function", "echo").register(basic);
+        assertThat(basic.find("function_dispatch_total").counter()).isNotNull();
+    }
+
+    @Test
     void basicKeepsGlobalSyncQueueDepthAndDropsPerFunctionSeries() {
         SimpleMeterRegistry registry = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
 
