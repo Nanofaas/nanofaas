@@ -1777,6 +1777,64 @@ accese. E i dischi di questa run si chiamavano `..._OsDisk_1_...` invece di
 `..._disk1_...`, quindi i due passaggi abituali non sono bastati e ne è servito
 un terzo. Il filtro giusto è sul prefisso del nome, non sul suffisso.
 
+## 27. Due scomposizioni che erano già lì
+
+Aggiunte il 2026-08-23 senza scrivere codice di misura: entrambe esistevano e
+nessuno le aveva chieste.
+
+### Dove va l'attesa, secondo k6
+
+`http_req_blocked`, `connecting`, `sending`, `waiting` e `receiving` stanno in
+**ogni summary archiviato dalla prima run**. Separano i costi del client — attesa
+di una connessione libera, handshake, spinta dei byte — dall'attesa del server.
+
+<!-- tabella:fasi-k6 -->
+| carico | totale | blocked | connecting | sending | **waiting** | receiving |
+|---|---:|---:|---:|---:|---:|---:|
+| 1x | 3.6 ms | 0.01 | 0.01 | 0.01 | **3.6 (99 %)** | 0.03 |
+| 2x | 54.9 ms | 0.01 | 0.01 | 0.01 | **54.9 (100 %)** | 0.03 |
+| 3x | 222.6 ms | 0.01 | 0.01 | 0.02 | **222.5 (100 %)** | 0.03 |
+<!-- /tabella:fasi-k6 -->
+
+**Il 99–100% è `http_req_waiting`**: richiesta completamente inviata, primo byte
+di risposta non ancora tornato. Gli altri quattro sono centesimi di millisecondo.
+
+Quindi l'attesa **non** è l'apertura della connessione, **non** è il pool del
+client, **non** è il trasferimento. È il server che non risponde. Cade con essa
+l'ipotesi che il generatore fosse strozzato sulle connessioni: lo era sulle VU,
+che è un'altra cosa.
+
+### Quanto di quell'attesa è dentro l'applicazione
+
+Spring Boot pubblica già `http_server_requests_seconds` con il tag `status`,
+quindi il tempo **dentro** l'handler, separato per ciò che il chiamante ha
+ottenuto, non costa nulla — solo quattro query (`6cb5ed9` in NanoLab).
+
+Chiude l'aritmetica rimasta aperta dalla §25:
+
+```
+k6 http_req_waiting          = attesa totale del server
+http_server_requests{429}    = quanto di essa e' dentro l'handler
+differenza                   = quanto e' davanti, in accept queue e read pending
+```
+
+Al 1× della §26 un rifiuto costava 675 ms mentre coda più servizio ne
+spiegavano 6,55. La prossima run dirà se i 668 mancanti sono dentro l'handler o
+davanti, senza aggiungere una sola riga di strumentazione.
+
+### Cosa è stato deliberatamente lasciato fuori
+
+Della lista proposta restano fuori, per costo sproporzionato al ritorno:
+campionamento a 1 s (lo scrape resta a 5 s), `Recv-Q`/`Send-Q` del listen socket
+e i contatori `ListenOverflows`/`ListenDrops` (servirebbero node_exporter più un
+campionatore `ss`), lag e utilization degli event loop (non esposti, andrebbero
+sondati), e il tracciamento T0–T6 per richiesta.
+
+Quest'ultimo in particolare: a 900 rps un timestamp per fase per richiesta è
+misurabile, ma questa indagine ha già prodotto due sonde i cui numeri superavano
+il wall-clock. Gli aggregati per fase dicono quasi tutto con un rischio molto
+minore, e le due scomposizioni qui sopra ne sono la prova.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU

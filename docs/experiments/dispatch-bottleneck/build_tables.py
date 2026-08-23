@@ -158,6 +158,34 @@ def table_generator(root):
     return "\n".join(out[:-1])
 
 
+def table_k6_phases(root, arms=("azure-load1x", "azure-load2x", "azure-load3x"), variant="jvm-c2"):
+    """Where the caller's wait goes, from k6's own decomposition.
+
+    These five have been in every summary since the first run and were never
+    read. They separate the client's own costs - waiting for a free connection,
+    the handshake, pushing bytes - from waiting on the server, which is what
+    http_req_waiting is: request fully sent, first response byte not yet back.
+    """
+    out = ["| carico | totale | blocked | connecting | sending | **waiting** | receiving |",
+           "|---|---:|---:|---:|---:|---:|---:|"]
+    for arm in arms:
+        rows = []
+        for run in sorted((Path(root) / arm / variant).glob("run-*")):
+            m = _k6_raw(run)
+            if not m:
+                continue
+            rows.append([m[k]["avg"] for k in (
+                "http_req_duration", "http_req_blocked", "http_req_connecting",
+                "http_req_sending", "http_req_waiting", "http_req_receiving")])
+        if not rows:
+            continue
+        avg = [mean(c) for c in zip(*rows)]
+        out.append("| %s | %.1f ms | %.2f | %.2f | %.2f | **%.1f (%.0f %%)** | %.2f |" % (
+            arm.replace("azure-load", ""), avg[0], avg[1], avg[2], avg[3],
+            avg[4], avg[4] / avg[0] * 100, avg[5]))
+    return "\n".join(out)
+
+
 def table_latency(root):
     """Every column carries its dispersion over the three repetitions.
 
@@ -359,6 +387,7 @@ def table_jvm_effects(root):
 BLOCKS = {
     "latenza": table_latency,
     "generatore": table_generator,
+    "fasi-k6": table_k6_phases,
     "risorse": table_resources,
     "fasi": table_phases,
     "modello-cpu-funzione": function_cpu_model,
