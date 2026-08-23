@@ -1903,3 +1903,92 @@ Da fare prima di ottimizzare altro:
 `NANOFAAS_ROOT` su un `git archive` di HEAD. La guardia di copertura del catalogo
 non vede modifiche non committate, quindi un controllo negativo eseguito prima
 del commit mcFaas passa a vuoto.
+
+## 28. Il tempo davanti all'applicazione, misurato
+
+Run `azure-load2x-verify`, 2026-08-23: **un braccio, `jvm-c2`, 2 core, 2× del
+profilo, una ripetizione**, 10.000 VU dichiarate. Serviva a verificare che le
+metriche aggiunte oggi rispondessero. Rispondono, e con esse si chiude
+l'aritmetica lasciata aperta dalla §25.
+
+Va letto per quello che è: **una cella sola.** La §23.1 ha misurato uno scarto di
+5,7× fra due matrici sullo stesso build allo stesso budget, quindi nessun numero
+qui va confrontato con quelli delle sezioni precedenti. Ciò che si può leggere è
+il rapporto **interno** alla cella fra due misure prese sulla stessa finestra.
+
+### Le metriche rispondono
+
+`check_metrics.py` sull'archivio: **69 vive, 3 a zero, 4 vuote su 76**. Le tre a
+zero sono errori, retry e timeout, che non sono accaduti. Le quattro vuote sono
+le sonde di riacquisizione cancellate, che il catalogo NanoLab chiede ancora.
+
+Le sei serie nuove sono tutte vive, e nessuna lo era prima: l'archivio 3× ne
+aveva quattro vuote perché quell'immagine precede `NettyServerMetricsConfig` di
+mezz'ora.
+
+### Dove sta il tempo
+
+<!-- tabella:davanti -->
+| esito | n | k6 (ms) | dentro l'handler | **davanti** | quota davanti |
+|---|---:|---:|---:|---:|---:|
+| servite | 334.404 | 8.11 | 2.180 | **5.93** | 73.1 % |
+| rifiutate | 57.225 | 942.88 | 0.848 | **942.03** | 99.9 % |
+<!-- /tabella:davanti -->
+
+**Un rifiuto costa 943 ms al chiamante, e l'handler ne spende 0,85.** Il 99,9%
+del suo orologio passa prima che l'applicazione lo veda. Anche una richiesta
+servita passa il 73% del suo tempo lì, ma su una scala mille volte più piccola.
+
+Il control plane non è lento a rifiutare. È **lento ad arrivare a rifiutare**, ed
+è una distinzione che nessuna metrica applicativa poteva fare, perché tutte
+partono a valle del punto in cui il tempo si accumula.
+
+### E si vede quanto arretrato c'è
+
+<!-- tabella:backlog -->
+| t | conn. attive | task in coda sui loop | X (req/s) | **W = N/X** | dentro l'handler |
+|---:|---:|---:|---:|---:|---:|
+| +390s | 1318 | 1111 | 2507 | **526 ms** | 3.03 ms |
+| +400s | 119 | 384 | 2427 | **49 ms** | 2.17 ms |
+| +415s | 1887 | 1660 | 2036 | **927 ms** | 1.88 ms |
+| +420s | 846 | 886 | 2013 | **420 ms** | 5.72 ms |
+| +425s | 856 | 1207 | 2022 | **423 ms** | 4.70 ms |
+| +435s | 191 | 335 | 931 | **205 ms** | 3.36 ms |
+| *controllo: 32 campioni a riposo, nessun rifiuto* | | | | *1.69 ms* | *0.92 ms* |
+<!-- /tabella:backlog -->
+
+`reactor_netty_http_server_connections_active` conta le connessioni con una
+richiesta in corso; `reactor_netty_eventloop_pending_tasks` il lavoro accodato
+sugli event loop. Al picco sono **1.887 richieste contemporaneamente dentro il
+server, contro una coda applicativa da 20.**
+
+**Il controllo è la riga che rende leggibili le altre.** A riposo, dove non c'è
+arretrato, Little deve restituire il tempo dell'handler — non c'è nessun altro
+posto dove una richiesta possa essere. Restituisce 1,69 ms contro 0,92: stesso
+ordine di grandezza. Al picco restituisce 927 contro 1,88, **cioè 490 volte
+tanto.** Quel fattore è l'arretrato, e non è un'inferenza: sono due misure
+indipendenti sulla stessa finestra che devono coincidere e non coincidono.
+
+Un dettaglio che conferma il keep-alive della §27:
+`reactor_netty_http_server_connections` sta a **10.006 per quasi tutta la run** —
+una connessione per VU, aperta all'inizio e mai chiusa. Le connessioni non si
+aprono sotto carico; si riempiono.
+
+### Cosa cambia
+
+La §25 elencava tre cure e ne restano due (il `SO_BACKLOG` è caduto). Questa
+sezione dice quale delle due conta: **rifiutare presto**. Con l'handler a 0,85 ms
+non c'è nulla da ottimizzare dentro l'applicazione — il 93% di CPU non attribuito
+resta un problema aperto, ma non è *questo* problema. Il tempo si accumula a
+monte, e l'unico modo di non accumularlo è non accettare lavoro che non si può
+servire, cioè `SyncQueueAdmissionController` su `EST_WAIT`, mai caricato in
+nessuna di queste run e bocciato una volta sola sotto strozzatura da 1 CPU.
+
+### Cosa questa cella non dice
+
+Non dice **dove**, fra i due candidati, sta il tempo davanti: i byte letti ma non
+ancora gestiti e i task in coda sull'event loop sono entrambi misurati, ma le due
+serie si muovono insieme e una cella sola non le separa. Non dice se il ginocchio
+della §26 si sposta con 10.000 VU invece di 1.800: le VU usate al picco sono
+4.617 su 10.000, quindi **il generatore non era più il limite**, ma senza le tre
+ripetizioni non è un confronto.

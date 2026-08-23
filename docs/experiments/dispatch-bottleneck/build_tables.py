@@ -384,6 +384,88 @@ def table_jvm_effects(root):
     return "\n".join(out[:-1])
 
 
+def _front_split(run: Path):
+    """How a request's wall clock splits between the application and what is in
+    front of it.
+
+    k6 measures the whole thing from outside. `http_server_requests_seconds`
+    measures only what happened inside the handler, tagged by the status the
+    caller got. The difference is everything else, and it is the quantity the
+    668ms of section 25 were never able to name.
+
+    Rejections and successes are separated because their averages are three
+    orders of magnitude apart, and one mean over both describes neither.
+    """
+    m = _k6_raw(run)
+    snap = load(run / "metrics" / "prometheus-snapshot.json.gz")["queries"]
+    last = lambda n: snap[n]["points"][-1]["value"]
+
+    n_all = m["http_reqs"]["count"]
+    n_bad = m["http_req_failed"]["passes"]
+    n_ok = m["http_req_failed"]["fails"]
+    d_all = m["http_req_duration"]["avg"]
+    d_ok = m["http_req_duration{expected_response:true}"]["avg"]
+    # k6 publishes the successes apart and everything together; the rejections
+    # are the remainder of the weighted mean, never measured directly.
+    d_bad = (d_all * n_all - d_ok * n_ok) / n_bad
+
+    inside_ok = last("http_server_ok_sum") / last("http_server_ok_count") * 1000
+    inside_bad = last("http_server_rejected_sum") / last("http_server_rejected_count") * 1000
+    return (("servite", n_ok, d_ok, inside_ok), ("rifiutate", n_bad, d_bad, inside_bad))
+
+
+def table_davanti(root):
+    run = Path(root) / "azure-load2x-verify" / "jvm-c2" / "run-1"
+    out = ["| esito | n | k6 (ms) | dentro l'handler | **davanti** | quota davanti |",
+           "|---|---:|---:|---:|---:|---:|"]
+    for label, n, outside, inside in _front_split(run):
+        out.append(f"| {label} | {n:,} | {outside:.2f} | {inside:.3f} | "
+                   f"**{outside - inside:.2f}** | {100 * (outside - inside) / outside:.1f} % |"
+                   .replace(",", "."))
+    return "\n".join(out)
+
+
+def table_backlog(root):
+    """Little's law against the backlog that is now visible.
+
+    The control is the calm regime, and it is the part that makes the peak
+    readable: where nothing is queued, N/X must come out equal to the handler's
+    own time, because there is nowhere else for a request to be. It does. Where
+    they diverge by two orders of magnitude, the requests are somewhere else.
+    """
+    from datetime import datetime
+    run = Path(root) / "azure-load2x-verify" / "jvm-c2" / "run-1"
+    snap = load(run / "metrics" / "prometheus-snapshot.json.gz")["queries"]
+    ser = lambda n: [(datetime.fromisoformat(p["timestamp"]), p["value"]) for p in snap[n]["points"]]
+
+    def rate(n):
+        s = ser(n)
+        return {b[0]: (b[1] - a[1]) / (b[0] - a[0]).total_seconds()
+                for a, b in zip(s, s[1:]) if b[1] >= a[1]}
+
+    active, loops = dict(ser("netty_connections_active")), dict(ser("netty_eventloop_pending"))
+    ok_r, ko_r = rate("http_server_ok_count"), rate("http_server_rejected_count")
+    ok_s, ko_s = rate("http_server_ok_sum"), rate("http_server_rejected_sum")
+    t0 = min(active)
+
+    out = ["| t | conn. attive | task in coda sui loop | X (req/s) | **W = N/X** | dentro l'handler |",
+           "|---:|---:|---:|---:|---:|---:|"]
+    for t in sorted(active):
+        x = ok_r.get(t, 0) + ko_r.get(t, 0)
+        if active[t] <= 100 or x <= 0:
+            continue
+        inside = (ok_s.get(t, 0) + ko_s.get(t, 0)) / x * 1000
+        out.append(f"| +{(t - t0).total_seconds():.0f}s | {active[t]:.0f} | {loops[t]:.0f} | "
+                   f"{x:.0f} | **{active[t] / x * 1000:.0f} ms** | {inside:.2f} ms |")
+
+    calm = [t for t in sorted(active) if 400 < ok_r.get(t, 0) < 700 and not ko_r.get(t)]
+    w = sum(active[t] / ok_r[t] for t in calm) / len(calm) * 1000
+    d = sum(ok_s[t] / ok_r[t] for t in calm) / len(calm) * 1000
+    out.append(f"| *controllo: {len(calm)} campioni a riposo, nessun rifiuto* | | | | "
+               f"*{w:.2f} ms* | *{d:.2f} ms* |")
+    return "\n".join(out)
+
+
 BLOCKS = {
     "latenza": table_latency,
     "generatore": table_generator,
@@ -393,6 +475,8 @@ BLOCKS = {
     "modello-cpu-funzione": function_cpu_model,
     "jvm-2x2": table_jvm_2x2,
     "jvm-effetti": table_jvm_effects,
+    "davanti": table_davanti,
+    "backlog": table_backlog,
 }
 
 
