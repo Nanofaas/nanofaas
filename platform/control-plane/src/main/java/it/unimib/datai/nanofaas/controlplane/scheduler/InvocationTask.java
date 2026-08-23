@@ -13,6 +13,7 @@ public record InvocationTask(
         String idempotencyKey,
         String traceId,
         Instant enqueuedAt,
-        int attempt
+        int attempt,
+        InvocationKind kind
 ) {
 }

@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -211,7 +212,9 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
     }
 
     private static final class CountingEnqueuer implements InvocationEnqueuer {
@@ -262,7 +265,9 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                         current.traceId(),
                         Instant.now(),
                         current.attempt() + 1
-                ));
+                ,
+        InvocationKind.SYNC
+    ));
                 markRunning();
             }
             return current;

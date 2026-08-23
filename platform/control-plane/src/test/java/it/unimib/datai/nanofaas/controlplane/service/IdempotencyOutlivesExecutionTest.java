@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -39,10 +42,10 @@ class IdempotencyOutlivesExecutionTest {
         ExecutionStore executions = new ExecutionStore(new ExecutionStoreProperties(
                 Duration.ofMinutes(30), Duration.ofMinutes(20), Duration.ofHours(1)));
         IdempotencyStore keys = new IdempotencyStore(Duration.ofMillis(100));
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(executions, keys);
+        InvocationExecutionFactory factory = new InvocationExecutionFactory(executions, keys, new Metrics(new SimpleMeterRegistry()));
         InvocationRequest request = new InvocationRequest("payload", Map.of());
 
-        var first = factory.createOrReuseExecution("charge-card", spec(), request, "order-42", null);
+        var first = factory.createOrReuseExecution("charge-card", spec(), request, "order-42", null, InvocationKind.SYNC);
         String firstId = first.executionRecord().executionId();
         first.publishAdmission();
         first.executionRecord().markSuccess("charged once");
@@ -52,7 +55,7 @@ class IdempotencyOutlivesExecutionTest {
                 .describedAs("the answer is still held, which is the premise")
                 .isNotNull();
 
-        var second = factory.createOrReuseExecution("charge-card", spec(), request, "order-42", null);
+        var second = factory.createOrReuseExecution("charge-card", spec(), request, "order-42", null, InvocationKind.SYNC);
         assertThat(second.executionRecord().executionId())
                 .describedAs("a key shorter than the record produces a second charge")
                 .isNotEqualTo(firstId);

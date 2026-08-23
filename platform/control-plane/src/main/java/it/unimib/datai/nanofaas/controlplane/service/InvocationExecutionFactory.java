@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireResult;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +20,11 @@ public final class InvocationExecutionFactory {
     private final ExecutionStore executionStore;
     private final IdempotencyStore idempotencyStore;
 
-    public InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore) {
+    private final Metrics metrics;
+
+    public InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
+                                      Metrics metrics) {
+        this.metrics = metrics;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
     }
@@ -28,9 +33,10 @@ public final class InvocationExecutionFactory {
                                                   FunctionSpec spec,
                                                   InvocationRequest request,
                                                   String idempotencyKey,
-                                                  String traceId) {
+                                                  String traceId,
+                                                  InvocationKind kind) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, null, traceId);
+            ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, null, traceId, kind);
             executionStore.put(executionRecord);
             return ExecutionLookup.newUnclaimed(executionRecord, executionStore);
         }
@@ -44,6 +50,7 @@ public final class InvocationExecutionFactory {
                         request,
                         idempotencyKey,
                         traceId,
+                        kind,
                         acquire.executionIdOrToken()
                 );
             }
@@ -55,6 +62,9 @@ public final class InvocationExecutionFactory {
             String existingExecutionId = acquire.executionIdOrToken();
             ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
             if (existing != null) {
+                // The key did its job: a second arrival found the first execution and will
+                // wait on its result instead of running the function again.
+                metrics.replayed(functionName, kind);
                 return ExecutionLookup.existing(existing);
             }
 
@@ -66,6 +76,7 @@ public final class InvocationExecutionFactory {
                         request,
                         idempotencyKey,
                         traceId,
+                        kind,
                         staleClaim.executionIdOrToken()
                 );
             }
@@ -80,8 +91,9 @@ public final class InvocationExecutionFactory {
                                                 InvocationRequest request,
                                                 String idempotencyKey,
                                                 String traceId,
+                                                InvocationKind kind,
                                                 String claimToken) {
-        ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId);
+        ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId, kind);
         try {
             executionStore.put(executionRecord);
             return ExecutionLookup.newClaimed(
@@ -103,7 +115,8 @@ public final class InvocationExecutionFactory {
                                                       FunctionSpec spec,
                                                       InvocationRequest request,
                                                       String idempotencyKey,
-                                                      String traceId) {
+                                                      String traceId,
+                                                      InvocationKind kind) {
         String executionId = newExecutionId();
         InvocationTask task = new InvocationTask(
                 executionId,
@@ -113,7 +126,8 @@ public final class InvocationExecutionFactory {
                 idempotencyKey,
                 traceId,
                 Instant.now(),
-                1
+                1,
+                kind
         );
         return new ExecutionRecord(executionId, task);
     }

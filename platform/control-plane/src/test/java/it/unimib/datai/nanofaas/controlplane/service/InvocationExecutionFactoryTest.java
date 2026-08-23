@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -30,19 +33,19 @@ class InvocationExecutionFactoryTest {
     void createOrReuseExecution_sameKeyWaitsForPendingClaimThenReturnsPublishedExecution() throws Exception {
         BlockingExecutionStore executionStore = new BlockingExecutionStore();
         IdempotencyStore idempotencyStore = new IdempotencyStore();
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore);
+        InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore, new Metrics(new SimpleMeterRegistry()));
         FunctionSpec spec = functionSpec("pending-idem-fn");
         InvocationRequest request = new InvocationRequest("payload", Map.of());
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             Future<InvocationExecutionFactory.ExecutionLookup> first = executor.submit(() ->
-                    factory.createOrReuseExecution("pending-idem-fn", spec, request, "same-key", "trace-1"));
+                    factory.createOrReuseExecution("pending-idem-fn", spec, request, "same-key", "trace-1", InvocationKind.SYNC));
 
             executionStore.awaitFirstPutStarted();
 
             Future<InvocationExecutionFactory.ExecutionLookup> second = executor.submit(() ->
-                    factory.createOrReuseExecution("pending-idem-fn", spec, request, "same-key", "trace-2"));
+                    factory.createOrReuseExecution("pending-idem-fn", spec, request, "same-key", "trace-2", InvocationKind.SYNC));
 
             // the second invocation must still be waiting on the pending claim
             await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
@@ -81,7 +84,7 @@ class InvocationExecutionFactoryTest {
     void createOrReuseExecution_whenInterruptedWhileWaitingForPendingClaim_abortsAndPreservesInterrupt() {
         ExecutionStore executionStore = new ExecutionStore();
         IdempotencyStore idempotencyStore = new IdempotencyStore(Duration.ofSeconds(5));
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore);
+        InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore, new Metrics(new SimpleMeterRegistry()));
         FunctionSpec spec = functionSpec("interrupted-pending-fn");
         idempotencyStore.acquireOrGet("interrupted-pending-fn", "same-key");
 
@@ -94,7 +97,9 @@ class InvocationExecutionFactoryTest {
                     request,
                     "same-key",
                     null
-            )).isInstanceOf(CancellationException.class);
+            ,
+InvocationKind.SYNC
+)).isInstanceOf(CancellationException.class);
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
         } finally {
             Thread.interrupted();

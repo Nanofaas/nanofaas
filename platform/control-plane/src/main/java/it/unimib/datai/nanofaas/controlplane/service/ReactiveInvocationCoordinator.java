@@ -147,6 +147,7 @@ public final class ReactiveInvocationCoordinator {
         } else if (enqueuer.enabled()) {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
         } else {
+            metrics.admitted(executionRecord.task().functionName(), executionRecord.task().kind());
             completionHandler.dispatch(executionRecord.task());
         }
     }

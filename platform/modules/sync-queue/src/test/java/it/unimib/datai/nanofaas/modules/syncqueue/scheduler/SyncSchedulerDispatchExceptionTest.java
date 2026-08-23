@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -45,7 +46,9 @@ class SyncSchedulerDispatchExceptionTest {
                 "e1", "fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         store.put(new ExecutionRecord("e1", task));
         queue.enqueueOrThrow(task);
 
@@ -82,7 +85,9 @@ class SyncSchedulerDispatchExceptionTest {
                 "e1", "fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         store.put(new ExecutionRecord("e1", task));
         queue.enqueueOrThrow(task);
 

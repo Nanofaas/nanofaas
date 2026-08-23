@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -56,7 +57,9 @@ class QueueManagerTest {
                 null,
                 Instant.now(),
                 1
-        ))).isTrue();
+        ,
+        InvocationKind.SYNC
+    ))).isTrue();
 
         assertThat(signals).hasValue(0);
     }
@@ -91,7 +94,9 @@ class QueueManagerTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         InvocationTask second = new InvocationTask(
                 "exec-2",
                 "bounded",
@@ -101,7 +106,9 @@ class QueueManagerTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         assertTrue(manager.enqueue(first));
         assertFalse(manager.enqueue(second));
@@ -212,7 +219,9 @@ class QueueManagerTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         InvocationTask second = new InvocationTask(
                 "exec-2",
                 "echo",
@@ -222,7 +231,9 @@ class QueueManagerTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         assertThat(manager.enqueue(first)).isTrue();
         assertThat(manager.enqueue(second)).isTrue();
@@ -262,7 +273,9 @@ class QueueManagerTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         manager.remove("echo");
 

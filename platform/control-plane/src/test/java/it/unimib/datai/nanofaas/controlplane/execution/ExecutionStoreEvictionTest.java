@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,9 @@ class ExecutionStoreEvictionTest {
         FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         InvocationTask task = new InvocationTask(id, "fn", spec,
-                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1);
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
+                InvocationKind.SYNC
+            );
         return new ExecutionRecord(id, task);
     }
 

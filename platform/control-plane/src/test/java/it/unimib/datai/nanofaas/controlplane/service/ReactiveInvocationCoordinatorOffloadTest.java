@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -41,9 +43,9 @@ class ReactiveInvocationCoordinatorOffloadTest {
 
     private final ExecutionStore executionStore = new ExecutionStore();
     private final IdempotencyStore idempotencyStore = new IdempotencyStore();
-    private final InvocationExecutionFactory factory =
-            new InvocationExecutionFactory(executionStore, idempotencyStore);
     private final Metrics metrics = new Metrics(new SimpleMeterRegistry());
+    private final InvocationExecutionFactory factory =
+            new InvocationExecutionFactory(executionStore, idempotencyStore, metrics);
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final OffloadGateway offloadGateway = mock(OffloadGateway.class);
     private final SyncQueueGateway syncQueueGateway = mock(SyncQueueGateway.class);
@@ -240,7 +242,9 @@ class ReactiveInvocationCoordinatorOffloadTest {
 
     private InvocationExecutionFactory.ExecutionLookup lookup(FunctionSpec spec) {
         return factory.createOrReuseExecution(spec.name(), spec,
-                new InvocationRequest("payload", Map.of()), null, null);
+                new InvocationRequest("payload", Map.of()), null, null,
+                InvocationKind.SYNC
+            );
     }
 
     private static FunctionSpec spec(String name, OffloadPolicy offload) {

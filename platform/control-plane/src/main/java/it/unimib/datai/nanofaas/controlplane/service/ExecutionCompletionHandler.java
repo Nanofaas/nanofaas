@@ -305,7 +305,8 @@ public class ExecutionCompletionHandler {
                 null,  // No idempotency key for retry - retry is internal
                 currentTask.traceId(),
                 Instant.now(),
-                currentTask.attempt() + 1
+                currentTask.attempt() + 1,
+                currentTask.kind()
         );
         executionRecord.resetForRetry(retryTask);
         try {

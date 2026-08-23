@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -39,7 +40,9 @@ class ExternalDispatcherTimeoutTest {
                 "exec-timeout", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -62,7 +65,9 @@ class ExternalDispatcherTimeoutTest {
                 "exec-no-ep", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -88,7 +93,9 @@ class ExternalDispatcherTimeoutTest {
                 "exec-err", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();

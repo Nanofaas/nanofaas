@@ -1,8 +1,10 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -14,6 +16,9 @@ public class FunctionQueueState {
     // ponytail: FIFO preserves the aggregate mean; correlate by invocation only for per-request percentiles.
     private final ConcurrentLinkedQueue<Long> slotAcquiredAtNanos = new ConcurrentLinkedQueue<>();
     private final AtomicInteger inFlight;
+    // Two counters, not a second queue: the order stays one FIFO, but the backlog can
+    // now say how much of itself is work nobody is waiting for.
+    private final EnumMap<InvocationKind, AtomicInteger> queuedByKind = new EnumMap<>(InvocationKind.class);
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
     private boolean closed;
@@ -22,6 +27,9 @@ public class FunctionQueueState {
         this.functionName = functionName;
         this.queue = new ArrayBlockingQueue<>(queueSize);
         this.inFlight = new AtomicInteger();
+        for (InvocationKind kind : InvocationKind.values()) {
+            queuedByKind.put(kind, new AtomicInteger());
+        }
         this.configuredConcurrency = Math.max(1, concurrency);
         this.effectiveConcurrency = Math.max(1, concurrency);
     }
@@ -55,17 +63,30 @@ public class FunctionQueueState {
         if (closed) {
             return false;
         }
-        return queue.offer(task);
+        boolean accepted = queue.offer(task);
+        if (accepted) {
+            queuedByKind.get(task.kind()).incrementAndGet();
+        }
+        return accepted;
     }
 
     public synchronized InvocationTask poll() {
-        return queue.poll();
+        InvocationTask task = queue.poll();
+        if (task != null) {
+            queuedByKind.get(task.kind()).decrementAndGet();
+        }
+        return task;
+    }
+
+    public int queued(InvocationKind kind) {
+        return queuedByKind.get(kind).get();
     }
 
     public synchronized List<InvocationTask> closeAndDrainQueued() {
         closed = true;
         List<InvocationTask> drained = new ArrayList<>();
         queue.drainTo(drained);
+        drained.forEach(task -> queuedByKind.get(task.kind()).decrementAndGet());
         return drained;
     }
 

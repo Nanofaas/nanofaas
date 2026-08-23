@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
@@ -51,7 +52,7 @@ public class InvocationService {
                 rateLimiter,
                 metrics,
                 completionHandler,
-                new InvocationExecutionFactory(executionStore, idempotencyStore),
+                new InvocationExecutionFactory(executionStore, idempotencyStore, metrics),
                 new InvocationResponseMapper(),
                 new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper())
         );
@@ -96,9 +97,10 @@ public class InvocationService {
         Mono<Prepared> prepared = Mono.fromCallable(() -> {
             enforceRateLimit();
             FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-            refuseEarlyIfQueueFull(functionName, spec, idempotencyKey);
+            refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.SYNC);
             return new Prepared(spec,
-                    executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId));
+                    executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
+                            InvocationKind.SYNC));
         });
         // Hop only when there is something to hop for. createOrReuseExecution parks
         // only inside its idempotency loop, and returns on its first branch without
@@ -126,11 +128,12 @@ public class InvocationService {
         if (!enqueuer.enabled()) {
             throw new AsyncQueueUnavailableException();
         }
-        refuseEarlyIfQueueFull(functionName, spec, idempotencyKey);
+        refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.ASYNC);
 
 
         InvocationExecutionFactory.ExecutionLookup lookup =
-                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
+                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
+                        InvocationKind.ASYNC);
         ExecutionRecord executionRecord = lookup.executionRecord();
 
         // replay is a component that checks if the execution has already completed and returns the appropriate response if so. 
@@ -188,13 +191,15 @@ public class InvocationService {
      * queue is. The check is a hint and `enqueue` remains the authority, so a slot
      * freed in between costs one refusal the caller was about to receive anyway.
      */
-    private void refuseEarlyIfQueueFull(String functionName, FunctionSpec spec, String idempotencyKey) {
+    private void refuseEarlyIfQueueFull(String functionName, FunctionSpec spec, String idempotencyKey,
+                                        InvocationKind kind) {
         if (idempotencyKey != null
                 || !reactiveCoordinator.queueFullMeansRefusal(spec)
                 || !enqueuer.isQueueFull(functionName)) {
             return;
         }
         metrics.queueRejected(functionName);
+        metrics.refused(functionName, kind);
         throw new QueueFullException();
     }
 

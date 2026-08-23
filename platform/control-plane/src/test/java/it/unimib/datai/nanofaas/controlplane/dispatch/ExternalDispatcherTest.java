@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -56,7 +57,9 @@ class ExternalDispatcherTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -102,7 +105,9 @@ class ExternalDispatcherTest {
                 null,
                 Instant.now(),
                 4
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         dispatcher.dispatch(task).get();
@@ -148,7 +153,9 @@ class ExternalDispatcherTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -190,7 +197,9 @@ class ExternalDispatcherTest {
                     null,
                     Instant.now(),
                     1
-            );
+            ,
+        InvocationKind.SYNC
+    );
 
             DispatchResult result = new ExternalDispatcher(WebClient.builder().build()).dispatch(task).get();
 
@@ -221,7 +230,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -249,7 +260,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -281,7 +294,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -310,7 +325,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -341,7 +358,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -368,7 +387,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -397,7 +418,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -427,7 +450,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -457,7 +482,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -489,7 +516,9 @@ class ExternalDispatcherTest {
                 "exec-pool", "pool-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();
@@ -518,7 +547,9 @@ class ExternalDispatcherTest {
                 "exec-oor", "oor-fn", spec,
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         ExternalDispatcher dispatcher = new ExternalDispatcher(WebClient.builder().build());
         DispatchResult dr = dispatcher.dispatch(task).get();

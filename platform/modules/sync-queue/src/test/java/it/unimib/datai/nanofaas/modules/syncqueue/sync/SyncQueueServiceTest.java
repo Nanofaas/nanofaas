@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
@@ -47,8 +48,8 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task1 = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        InvocationTask task2 = new InvocationTask("e2", "fn", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task1 = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        InvocationTask task2 = new InvocationTask("e2", "fn", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task1));
         store.put(new ExecutionRecord("e2", task2));
 
@@ -71,7 +72,7 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, fixed);
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, t0, 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, t0, 1, InvocationKind.SYNC);
         ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
         store.put(executionRecord);
 
@@ -101,7 +102,7 @@ class SyncQueueServiceTest {
         waiter.start();
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
 
         // Wait until the waiter is blocked inside awaitWork's workSignal.wait(500)
@@ -138,13 +139,13 @@ class SyncQueueServiceTest {
 
         FunctionSpec blockedSpec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         for (int i = 0; i < SyncQueueService.POLL_READY_MATCHING_SCAN_LIMIT; i++) {
-            InvocationTask task = new InvocationTask("blocked-" + i, "blocked", blockedSpec, new InvocationRequest("blocked", Map.of()), null, null, Instant.now(), 1);
+            InvocationTask task = new InvocationTask("blocked-" + i, "blocked", blockedSpec, new InvocationRequest("blocked", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
             store.put(new ExecutionRecord(task.executionId(), task));
             service.enqueueOrThrow(task);
         }
 
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask ready = new InvocationTask("ready", "ready", readySpec, new InvocationRequest("ready", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask ready = new InvocationTask("ready", "ready", readySpec, new InvocationRequest("ready", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord(ready.executionId(), ready));
         service.enqueueOrThrow(ready);
 
@@ -166,7 +167,7 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
         service.enqueueOrThrow(task);
 
@@ -191,13 +192,13 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, clock);
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask stale = new InvocationTask("stale", "fn", spec, new InvocationRequest("stale", Map.of()), null, null, t0, 1);
+        InvocationTask stale = new InvocationTask("stale", "fn", spec, new InvocationRequest("stale", Map.of()), null, null, t0, 1, InvocationKind.SYNC);
         ExecutionRecord staleRecord = new ExecutionRecord("stale", stale);
         store.put(staleRecord);
         service.enqueueOrThrow(stale);
 
         clock.advance(Duration.ofMillis(50));
-        InvocationTask ready = new InvocationTask("ready", "ready", spec, new InvocationRequest("ready", Map.of()), null, null, clock.instant(), 1);
+        InvocationTask ready = new InvocationTask("ready", "ready", spec, new InvocationRequest("ready", Map.of()), null, null, clock.instant(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("ready", ready));
         service.enqueueOrThrow(ready);
 
@@ -222,7 +223,7 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
         store.put(executionRecord);
         service.enqueueOrThrow(task);
@@ -250,7 +251,7 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
         store.put(executionRecord);
 
@@ -276,7 +277,7 @@ class SyncQueueServiceTest {
         SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
 
         service.removeFunctionState("fn");

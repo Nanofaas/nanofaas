@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -66,7 +67,9 @@ class DefaultOffloadGatewayTest {
 
     private static InvocationTask task(FunctionSpec spec) {
         return new InvocationTask("exec-1", spec.name(), spec,
-                new InvocationRequest("payload", Map.of()), null, "trace-1", Instant.now(), 1);
+                new InvocationRequest("payload", Map.of()), null, "trace-1", Instant.now(), 1,
+                InvocationKind.SYNC
+            );
     }
 
     private static OffloadFailedException offloadFailure(Throwable ex) {

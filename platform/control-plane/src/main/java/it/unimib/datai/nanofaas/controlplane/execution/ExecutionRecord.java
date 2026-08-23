@@ -191,7 +191,8 @@ public class ExecutionRecord {
                     task.idempotencyKey(),
                     task.traceId(),
                     task.enqueuedAt(),
-                    task.attempt()
+                    task.attempt(),
+                    task.kind()
             );
         }
     }

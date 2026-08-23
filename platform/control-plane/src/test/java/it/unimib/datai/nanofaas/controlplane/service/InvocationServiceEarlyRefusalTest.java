@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,7 +90,9 @@ class InvocationServiceEarlyRefusalTest {
         when(enqueuer.isQueueFull(anyString())).thenReturn(true);
         InvocationTask task = new InvocationTask(
                 "exec-1", "replay-fn", spec, new InvocationRequest("payload", Map.of()),
-                null, null, Instant.now(), 1);
+                null, null, Instant.now(), 1,
+                InvocationKind.SYNC
+            );
         ExecutionRecord record = new ExecutionRecord("exec-1", task);
         record.markSuccess("stored-ok");
         executionStore.put(record);
@@ -150,7 +153,9 @@ class InvocationServiceEarlyRefusalTest {
         });
         InvocationTask task = new InvocationTask(
                 "exec-1", "replay-fn", spec, new InvocationRequest("payload", Map.of()),
-                null, null, Instant.now(), 1);
+                null, null, Instant.now(), 1,
+                InvocationKind.SYNC
+            );
         ExecutionRecord record = new ExecutionRecord("exec-1", task);
         record.markSuccess("stored-ok");
         executionStore.put(record);

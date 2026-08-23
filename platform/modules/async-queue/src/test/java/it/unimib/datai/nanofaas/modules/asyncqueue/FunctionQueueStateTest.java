@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
@@ -157,6 +158,10 @@ class FunctionQueueStateTest {
     }
 
     private InvocationTask createTask(String executionId) {
+        return createTask(executionId, InvocationKind.SYNC);
+    }
+
+    private InvocationTask createTask(String executionId, InvocationKind kind) {
         return new InvocationTask(
                 executionId,
                 "testFunc",
@@ -165,7 +170,32 @@ class FunctionQueueStateTest {
                 null,
                 null,
                 null,
-                1
+                1,
+                kind
         );
     }
+
+    @Test
+    void theBacklogSaysHowMuchOfItselfNobodyIsWaitingFor() {
+        FunctionQueueState state = new FunctionQueueState("mixed", 10, 1);
+
+        state.offer(createTask("s1", InvocationKind.SYNC));
+        state.offer(createTask("a1", InvocationKind.ASYNC));
+        state.offer(createTask("a2", InvocationKind.ASYNC));
+
+        assertThat(state.queued()).isEqualTo(3);
+        assertThat(state.queued(InvocationKind.SYNC)).isEqualTo(1);
+        assertThat(state.queued(InvocationKind.ASYNC)).isEqualTo(2);
+
+        state.poll();  // FIFO: the sync one leaves first
+        assertThat(state.queued(InvocationKind.SYNC)).isZero();
+        assertThat(state.queued(InvocationKind.ASYNC)).isEqualTo(2);
+
+        // A deregistration drains the rest; the split has to come back to zero with it,
+        // or a removed function leaves a gauge stuck above zero forever.
+        state.closeAndDrainQueued();
+        assertThat(state.queued(InvocationKind.SYNC)).isZero();
+        assertThat(state.queued(InvocationKind.ASYNC)).isZero();
+    }
+
 }

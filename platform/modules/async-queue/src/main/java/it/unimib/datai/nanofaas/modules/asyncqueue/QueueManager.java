@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
@@ -62,6 +63,12 @@ public class QueueManager {
                 ids.add(Gauge.builder("function_inFlight", state::inFlight)
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry).getId());
+                for (InvocationKind kind : InvocationKind.values()) {
+                    ids.add(Gauge.builder("function_queue_depth_by_path", () -> state.queued(kind))
+                            .tag(FUNCTION_TAG, name)
+                            .tag("path", kind.tag())
+                            .register(meterRegistry).getId());
+                }
                 ids.add(Gauge.builder("function_effective_concurrency", state::effectiveConcurrency)
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry).getId());
