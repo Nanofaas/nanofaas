@@ -1212,6 +1212,96 @@ curva grezza della sola riga `jvm` suggerisca.
 Guardare una serie senza il suo controllo produce la spiegazione che ci si
 aspettava. È lo stesso schema del `process_cpu_usage` letto senza denominatore.
 
+## A. Configurazione di ogni esperimento
+
+Questa sezione esiste perché il `comparison-manifest.json` **non registra il
+budget di CPU, la concorrenza, la dimensione della coda né i commit**: registra
+varianti, ripetizioni, ordine e immagini. Da una directory di run, quindi, non si
+risale al regime in cui è stata misurata. Finché non lo fa il codice, lo fa questa
+tabella.
+
+### Invarianti — valgono per tutti gli esperimenti sotto
+
+| | |
+|---|---|
+| infrastruttura | Azure `westeurope`, stack `Standard_D8s_v5` (8 vCPU, 32 GiB), generatore `Standard_D2s_v5`, k3s `v1.36.3+k3s1` |
+| ambiente | `packages/nanolab/environments/azure-comparison.yaml` (gitignorato), `operator_source_cidr: auto` |
+| profilo di carico | `runtime-comparison.js`, ad anello aperto, **195.776 arrivi programmati in 450 s**, picco 900 rps |
+| funzioni | `word-stats-java` (100% del profilo) e `word-stats-javascript` (35%), un pod ciascuna, **nessun limite di CPU o memoria** (§22.1) |
+| moduli control plane | `k8s-deployment-provider,async-queue` — niente sync-queue, niente autoscaler, niente governor |
+| per funzione | `concurrency=2`, `queueSize=20`, `timeoutMs=5000`, `maxRetries=3` |
+| ordine celle | repetition-major: ogni build una volta, poi tutte di nuovo |
+| CPU control plane | **1 core** salvo dove indicato — il default del chart, non una scelta (§20) |
+
+Il `queueSize` è 20 e non 100: `ResolvedFunction` di NanoLab lo scavalca a ogni
+registrazione, e il 100 che i documenti della piattaforma descrivono non è mai
+stato quello usato.
+
+### Le sonde sul dispatch — una ripetizione, `native-o3-g1`, 1 CPU, 2/20
+
+Tutte con la stessa configurazione; **cambia solo la strumentazione**, e ognuna è
+una sonda meccanicistica, non un confronto statistico.
+
+| directory raw | commit mcFaas | commit NanoLab | cosa aggiunge | §
+|---|---|---|---|---|
+| `azure-conc8-probe` | — | `ea01127` | concorrenza 8 invece di 2 | §3.2 |
+| `azure-dispatch-instrumentation-c2` | `8af8c314` | `553b7a5` | durate di `offer`/`poll`, segnale→scheduler | §10 |
+| `azure-dispatch-slot-hold-c2` | `df5efda1` | `07bbbf7` | possesso dello slot, CAS→rilascio | §11 |
+| `azure-dispatch-reacquisition-c2` | `50e7d87a` | `2b7f01c` | rilascio→riacquisto — **sonda invalidata**, §14 | §12 |
+| `azure-dispatch-reacquisition-segments-c2` | `3365c590` | `8e9674e` | segmentazione pre/post visita — **invalidata** | §13 |
+| `azure-dispatch-scheduler-direct-probes-c2` | `7ed1e010` | `ce45fae` | submit sincrono, visite bloccate, segnali coalesced | §15 |
+| `azure-dispatch-saturation-guard-c2` | `7e532fc9` | `ce45fae` | A/B: guardie `canDispatch()` | §16 |
+| `azure-dispatch-wakeup-localization-c2` | `0d924d08` | `c77cfba` | timer sull'`activeFunctions.add` | §17 |
+| `azure-dispatch-wakeup-split-c2` | `5247e2ff` | `635908e` | split `poll` / bookkeeping | §18 |
+| `azure-scheduler-thread-accounting-c2` | `8b90889e` | `e6fa60b` | bilancio del thread: visita + attesa ≤ finestra | §19 |
+
+I commit citati sono quelli della **strumentazione**, non quelli che archiviano i
+raw: chi riproduce ha bisogno del codice, non del JSON.
+
+### Gli esperimenti sul budget di CPU
+
+| directory raw | CPU | build | rip. | commit mcFaas / NanoLab | cosa risponde | § |
+|---|---:|---|---:|---|---|---|
+| `azure-cpu1-throttling-c2` | 1 | `native-o3-g1` | 1 | `3323982a` / `9f5ab50` | il control plane è strozzato? | §20 |
+| `azure-cpu4-c2` | **4** | `native-o3-g1` | 1 | `3323982a` / `9f5ab50` | togliere il muro sposta il tetto? | §20 |
+| `azure-cpu1-inbound-opt-c2` | 1 | `native-o3-g1` | 1 | `bb5c563a` / `9f5ab50` | le pulizie in ingresso si vedono? (no, §21) | §21 |
+| `azure-matrix-cpu4` | **4** | tutte e 4 | 3 | `bb5c563a` / `9f5ab50` | sweep sul budget | §22 |
+| `azure-matrix-cpu3` | **3** | tutte e 4 | 3 | idem | idem | §22 |
+| `azure-matrix-cpu2` | **2** | tutte e 4 | 3 | idem | idem | §22 |
+| `azure-matrix-cpu1` | 1 | tutte e 4 | 3 | idem | idem | §22 |
+| `azure-jvm-2x2-cpu2` | **2** | `jvm`,`jvm-g1`,`jvm-c2`,`jvm-g1-c2` | 3 | `e8bd580f` / `ebd11ba` | collettore × JIT | §23 |
+| `azure-jvm-2x2-cpu1` | 1 | idem | 3 | idem | idem | §23 |
+
+Lo sweep sul budget ha tenuto il **provisioning fra una matrice e l'altra**:
+`.dockerignore` esclude `**/build` e `.gradle`, quindi il contesto docker resta
+identico e il layer `RUN ./gradlew nativeCompile` è un cache hit. I prepare dopo
+il primo sono durati ~13 minuti invece di ~50. Chi ripete lo sweep deve quindi
+**non toccare i sorgenti mcFaas mentre gira**: una modifica invalida la cache e,
+molto peggio, fa misurare alle matrici codice diverso.
+
+### `azure-nosync` — la matrice originale
+
+4 build × 3 ripetizioni, `9387c60d` / `6012bf3`, **1 CPU** (non dichiarata, il
+default del chart), 2/20. È la matrice della §1. Non raccoglieva né il throttling
+né i gauge del thread scheduler, e il suo baseline `jvm` girava con
+`-XX:+UseSerialGC -XX:TieredStopAtLevel=1` cablati nel Dockerfile (§22).
+
+### Cosa serve per riprodurre una qualsiasi di queste
+
+```bash
+export NANOFAAS_ROOT=/percorso/di/mcFaas          # il worktree, non il checkout
+cd /percorso/di/nanolab
+caffeinate -dimsu ./nanolab.sh compare \
+  packages/nanolab/scenarios-v2/runtime-comparison-cpu<N>.yaml \
+  --environment packages/nanolab/environments/azure-comparison.yaml \
+  --run-dir packages/nanolab/runs/<nome> \
+  --variants <elenco> --repetitions <n>
+```
+
+Più il commit giusto su **entrambi** i repository: gli esperimenti che cambiano
+la strumentazione cambiano mcFaas *e* il catalogo di NanoLab, e una metrica
+pubblicata dalla piattaforma ma non richiesta dal catalogo torna vuota senza dirlo.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU
