@@ -1715,11 +1715,17 @@ Non è mai stato caricato in nessuna di queste run — `COMPARISON_MODULES` è
 (issue #197) la conclusione fu che costava 6× di p95: misurata a **1 CPU**, cioè
 nel regime che la §20 ha dimostrato strozzato. Quel verdetto va rifatto.
 
-**3. Limitare il backlog del kernel.** Un `SO_BACKLOG` corto fa rifiutare le
-connessioni in eccesso al kernel invece di accodarle: converte un 429 lento in un
-errore di connessione veloce. Il più economico e il contratto peggiore — il
-chiamante non riceve uno stato HTTP né un `Retry-After` — quindi l'ultima
-risorsa, non la prima.
+**3. ~~Limitare il backlog del kernel.~~ Ritirata il 2026-08-23.** Questa
+sezione proponeva un `SO_BACKLOG` corto per convertire un 429 lento in un errore
+di connessione veloce. `SO_BACKLOG` limita la coda di accept, e la coda di accept
+la attraversa lo 0,4–0,5% delle richieste (§27): sulle altre non ha alcun
+effetto, perché la connessione su cui arrivano è aperta da molto prima.
+
+Non esiste un equivalente per-connessione: il kernel non sa rifiutare una
+richiesta già in un buffer di ricezione, può solo smettere di leggerne di nuove —
+che è esattamente ciò che fa già, senza dirlo a nessuno. **L'unico modo di
+rispondere presto su una connessione aperta è che l'applicazione risponda
+presto**, cioè il punto 2. Restano due cure, non tre.
 
 ## 26. Il carico crescente: fermato a metà, e perché
 
@@ -1819,9 +1825,14 @@ mai la coda di accept. Misurare `ListenOverflows`, `somaxconn` o il `Recv-Q` del
 ricezione **per-connessione** e i read pending degli event loop.
 
 Quindi l'attesa **non** è l'apertura della connessione, **non** è il pool del
-client, **non** è il trasferimento. È il server che non risponde. Cade con essa
-l'ipotesi che il generatore fosse strozzato sulle connessioni: lo era sulle VU,
-che è un'altra cosa.
+client, **non** è il trasferimento: sta tutta dal lato server, fra il momento in
+cui i byte sono arrivati e quello in cui la risposta parte. Quale dei tre pezzi
+di quel lato la contenga è il punto che la scomposizione qui sotto separa — e
+finché non è separato, «il server non risponde» resta una frase che nasconde la
+domanda invece di rispondervi.
+
+Cade invece l'ipotesi che il generatore fosse strozzato sulle connessioni: lo era
+sulle VU, che è un'altra cosa.
 
 ### Quanto di quell'attesa è dentro l'applicazione
 
@@ -1834,7 +1845,9 @@ Chiude l'aritmetica rimasta aperta dalla §25:
 ```
 k6 http_req_waiting          = attesa totale del server
 http_server_requests{429}    = quanto di essa e' dentro l'handler
-differenza                   = quanto e' davanti, in accept queue e read pending
+differenza                   = quanto e' davanti: byte letti ma non ancora
+                               gestiti, ed eventi di lettura in coda sull'event
+                               loop. NON la coda di accept (vedi sopra).
 ```
 
 Al 1× della §26 un rifiuto costava 675 ms mentre coda più servizio ne
@@ -1856,11 +1869,24 @@ minore, e le due scomposizioni qui sopra ne sono la prova.
 
 ### Stato corrente
 
-Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU
-che il confronto vuole misurare — `controlPlaneCpu` ora lo rende dichiarabile
-nello scenario — e rifare la matrice 4 build × 3 ripetizioni con quel budget
-esplicito. Solo dopo, se un tetto resta, ha senso tornare al percorso di
-dispatch: oggi il thread è fermo perché non ha CPU, non perché aspetti male.
+Il budget di CPU è ora dichiarabile nello scenario (`controlPlaneCpu`) invece di
+essere ereditato dal default del chart, ed è la ragione per cui tutte le §22–§26
+sono confrontabili fra loro e non con le run precedenti.
+
+In corso al momento della scrittura: un braccio singolo a **2× su `jvm-c2`, 2
+core, una ripetizione**, il cui unico scopo è verificare che le metriche aggiunte
+oggi rispondano. Non è un risultato ed è bene non leggerlo come tale — serve a
+sapere se le serie Netty e `http_server_requests` esistono su Azure, perché
+finora non sono mai state raccolte: `NettyServerMetricsConfig` è entrato alle
+12:18 e lo snapshot più recente che le contiene è delle 11:47. Le sei serie vuote
+dell'archivio 3× sono quattro di queste più due sonde cancellate, e
+`check_metrics.py` è ciò che lo dice in forma leggibile invece di lasciarle
+sembrare eventi mai accaduti.
+
+Dopo, nell'ordine: rifare lo sweep di carico con 5.000 VU dichiarate e i bracci
+concentrati fra 1× e 2×, dove sta il ginocchio (§26); poi, se un tetto resta,
+tornare al percorso di dispatch. Non prima: oggi il thread è fermo perché non ha
+CPU, non perché aspetti male.
 
 Da fare prima di ottimizzare altro:
 
