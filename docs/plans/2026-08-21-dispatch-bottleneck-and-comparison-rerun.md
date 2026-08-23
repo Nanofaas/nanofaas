@@ -2070,13 +2070,42 @@ I 942 ms non sono attribuiti. Quello che è stabilito:
 - non è l'apertura di connessioni (§27), non è la coda applicativa (2 in volo,
   20 in coda, tutto spiegato dal tempo dell'handler).
 
-Quello che **non** è stabilito è se il tempo mancante sia nel server o **nel
-generatore**. k6 misura fino a quando *lui* legge la risposta, non a quando la
-risposta arriva: con 10.000 VU su 8 core, il ritardo di scheduling delle sue
-goroutine finisce dentro `http_req_waiting` esattamente come ci finirebbe un
-ritardo del server.
+Restava il sospetto che il tempo fosse **nel generatore** e non nel server: k6
+misura fino a quando *lui* legge la risposta, quindi il ritardo di scheduling
+delle sue goroutine finirebbe dentro `http_req_waiting` esattamente dove ci
+finirebbe un ritardo del server. **Il sospetto è escluso dai dati che abbiamo.**
 
-**La misura che manca è la CPU del generatore**, e non è raccolta da nessuna
-query — l'unica macchina dell'esperimento che nessuno guarda è quella che produce
-il numero su cui si sta ragionando. Finché non c'è, «il tempo è davanti
-all'applicazione» resta vero e ambiguo: davanti a quale?
+Due strumenti, su due macchine diverse, misurano la stessa cosa senza sapere
+l'uno dell'altro:
+
+| strumento | dove gira | residenza |
+|---|---|---:|
+| Little su `netty_connections_active` / throughput | **sul server** | 927 ms |
+| `http_req_duration` dei rifiuti | **sul generatore** | 943 ms |
+| | | scarto **1,7 %** |
+
+Se il ritardo fosse lo scheduling di k6, il misuratore del server **non lo
+vedrebbe**: il server avrebbe già chiuso gli scambi e il contatore starebbe
+basso. Sta a 1.887.
+
+E non è nemmeno il buffer TCP a trattenere le risposte al posto del server: la
+risposta media è di **410 byte**, e 1.887 di esse su 1.887 socket sono 410 byte
+per socket, contro un buffer di invio che parte da ~16 KiB.
+
+**Quindi il tempo è nel server**, fra il momento in cui Netty riceve la richiesta
+e quello in cui parte la catena di `WebFilter` — a monte di ogni meter che
+l'applicazione possiede, `http_server_requests` incluso.
+
+Quello che resta ignoto è il **meccanismo** dentro quella finestra. Non è fame di
+CPU (19,8% di periodi strozzati al picco valgono ~10 ms attesi, non 900), e i
+1.660 task in coda sugli event loop non bastano a spiegarla se ogni task costa
+microsecondi. Manca un numero: **quanti sono gli event loop e quanto dura un
+task**. La query attuale li somma (`sum(reactor_netty_eventloop_pending_tasks)`),
+quindi il conteggio dei thread è stato buttato via nello scrape — toglierlo dalla
+somma è gratis e va fatto al prossimo giro.
+
+**Nota sul fix della sezione precedente.** Togliendo il salto, la preparazione
+ora gira sull'event loop, cioè proprio sulla risorsa sotto accusa. Il verso
+dovrebbe restare favorevole — l'event loop smette di *sottomettere* un task e in
+cambio esegue 0,085 µs di lavoro — ma è un ragionamento, non una misura, e va
+verificato nella prossima run invece che assunto.
