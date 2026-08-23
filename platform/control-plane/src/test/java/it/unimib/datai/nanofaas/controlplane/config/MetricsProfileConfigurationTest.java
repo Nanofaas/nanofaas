@@ -24,8 +24,45 @@ class MetricsProfileConfigurationTest {
         Gauge.builder("function_concurrency_controller_mode", () -> 1).register(registry);
 
         assertThat(registry.find("function_dispatch_total").counter()).isNotNull();
-        assertThat(registry.find("function_cold_start_total").counter()).isNull();
+        // Cold starts moved into basic on 2026-08-23. On a FaaS they are the first
+        // thing anyone asks when latency moves, they fire once per 250,000
+        // dispatches at the rate measured here, and the counter costs 4.86ns. This
+        // line used to assert the opposite.
+        assertThat(registry.find("function_cold_start_total").counter()).isNotNull();
         assertThat(registry.find("function_concurrency_controller_mode").gauge()).isNull();
+    }
+
+    @Test
+    void everyMeterAControlLoopReadsSurvivesBasic() {
+        // Some meters are not observability, they are inputs. Denying one of these
+        // does not make the platform quieter - it makes a control loop steer on
+        // zero, and a NoopTimer answers count() and totalTime() without complaint.
+        //
+        // Until 2026-08-23 basic denied the first two, and basic is the profile a
+        // deployment gets when nobody says otherwise.
+        record ControlInput(String meter, String reader) {}
+        var inputs = new ControlInput[]{
+                new ControlInput("function_latency_ms", "ConcurrencyGovernor, Vegas signal"),
+                new ControlInput("function_e2e_latency_ms", "ConcurrencyGovernor, Vegas signal"),
+                new ControlInput("function_dispatch_total", "autoscaler, ScalingMetricsReader"),
+        };
+
+        SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        for (ControlInput input : inputs) {
+            if (input.meter().endsWith("_total")) {
+                Counter.builder(input.meter()).tag("function", "echo").register(basic);
+            } else {
+                io.micrometer.core.instrument.Timer.builder(input.meter())
+                        .tag("function", "echo").register(basic);
+            }
+        }
+
+        for (ControlInput input : inputs) {
+            assertThat(basic.find(input.meter()).meter())
+                    .describedAs("%s is read by %s and must survive basic",
+                            input.meter(), input.reader())
+                    .isNotNull();
+        }
     }
 
     @Test

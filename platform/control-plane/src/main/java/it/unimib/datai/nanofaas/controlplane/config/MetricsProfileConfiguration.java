@@ -15,15 +15,49 @@ import java.util.Set;
 
 @Configuration(proxyBeanMethods = false)
 class MetricsProfileConfiguration {
+    /**
+     * Timers that get percentile histograms when a run asks for advanced.
+     *
+     * Separate from what basic denies, because the two costs are different. The
+     * meter itself is 43ns per record; the histogram is buckets, one series per
+     * bucket per function, and that is what a production registry cannot afford.
+     * Keeping a timer in basic without its histogram still gives count and sum,
+     * which is a mean - enough for an SLI, and nearly free.
+     */
     private static final Set<String> FUNCTION_TIMERS = Set.of(
             "function_latency_ms",
             "function_init_duration_ms",
             "function_queue_wait_ms",
             "function_e2e_latency_ms"
     );
+
+    /**
+     * Of those, the ones a production deployment does not need.
+     *
+     * queue_wait is a decomposition of e2e_latency and only interesting when
+     * something is wrong; init_duration fires once per cold start, which
+     * function_cold_start_total already counts.
+     *
+     * The other two are not an observability choice at all. ConcurrencyGovernor
+     * reads function_latency_ms and function_e2e_latency_ms out of the registry
+     * and drives its Vegas signal from count() and totalTime() - so denying them
+     * does not make the platform quieter, it makes the governor steer on zero,
+     * silently. Until 2026-08-23 basic denied both, which is the profile every
+     * production deployment gets by default.
+     *
+     * MetricsProfileConfigurationTest holds the list of meters a control loop
+     * reads, so this coupling fails a test instead of failing in production.
+     *
+     * They also happen to be the D of RED, and their measured cost is 2.00
+     * records per dispatch, 0.0105% of a two-core budget at 2,430 requests a
+     * second.
+     */
+    private static final Set<String> ADVANCED_ONLY_TIMERS = Set.of(
+            "function_init_duration_ms",
+            "function_queue_wait_ms"
+    );
+
     private static final Set<String> ADVANCED_METRICS = Set.of(
-            "function_cold_start_total",
-            "function_warm_start_total",
             "function_effective_concurrency",
             "function_target_inflight_per_pod",
             "function_concurrency_controller_mode",
@@ -102,7 +136,7 @@ class MetricsProfileConfiguration {
 
     private static boolean isAdvanced(Meter.Id id) {
         String name = id.getName();
-        if (FUNCTION_TIMERS.contains(name) || ADVANCED_METRICS.contains(name)) {
+        if (ADVANCED_ONLY_TIMERS.contains(name) || ADVANCED_METRICS.contains(name)) {
             return true;
         }
         for (String prefix : DIAGNOSTIC_PREFIXES) {
