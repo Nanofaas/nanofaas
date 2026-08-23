@@ -2253,3 +2253,79 @@ loop possono valere 900 ms — è stato chiesto nell'issue
 [#1433](https://github.com/reactor/reactor-netty/issues/1433) nel 2020 e non
 risulta implementato. Resta non osservabile direttamente, e va dedotto dal
 confronto fra le due run.
+
+## 32. Il fix funziona, e non era la causa
+
+Run `azure-load2x-threads`, 2026-08-23: identico ad `azure-load2x-verify` tranne
+il fix della §29. Le tre previsioni della §30, verificate.
+
+### Previsione 1: confermata, oltre ogni attesa
+
+| | A: con salto | B: senza salto | |
+|---|---:|---:|---:|
+| `netty_eventloop_pending` (picco) | 1.660 | **5** | −99,7 % |
+| `netty_connections_active` (picco) | 1.887 | **49** | −97,4 % |
+| handler per un 429 | 0,848 ms | **0,136 ms** | −83,9 % |
+| CPU al picco | 2,269 core | 1,932 core | −14,9 % |
+
+I 1.660 task in coda **erano** sottomissioni cross-thread da `boundedElastic`.
+Toglierle li ha fatti sparire. Anche l'arretrato di connessioni è sparito con
+loro, il che conferma che era lo stesso fenomeno visto da due lati.
+
+### Previsione 2: non verificabile, ed è colpa mia
+
+Avevo previsto `jvm_threads_live` più basso al picco. **Non c'è un valore di
+confronto**: la metrica è stata aggiunta insieme al fix, quindi la run A non la
+contiene. Ho registrato una previsione contro un dato che non esisteva. Il valore
+misurato in B è 25–27 thread vivi, 13–14 runnable, coerente con venti thread di
+`boundedElastic` mai nati — ma è un indizio, non un confronto.
+
+### Previsione 3: NON confermata, ed è il risultato
+
+<!-- tabella:salto -->
+| | A: con salto | B: senza salto | variazione |
+|---|---:|---:|---:|
+| k6, tutte le richieste | 144.70 ms | 128.28 ms | -11.3 % |
+| residenza nel server | 69.04 ms | 7.53 ms | -89.1 % |
+| di cui nell'handler | 1.99 ms | 1.69 ms | -15.0 % |
+| **fuori dal server** | 75.66 ms | 120.75 ms | +59.6 % |
+| *quota spiegata dal server* | *48 %* | *6 %* | |
+<!-- /tabella:salto -->
+
+**Il server ha restituito l'89% del tempo che tratteneva. Il chiamante ne ha
+guadagnato l'11%.**
+
+L'ultima riga è il punto: il tempo **fuori** dal server non è sceso, è
+*aumentato*. Se fosse una costante, togliere 61 ms dentro ne avrebbe dati 61 al
+chiamante. Gliene ha dati 16.
+
+### Cosa questo corregge nella §29
+
+La §29 concludeva «il tempo è nel server, sulla testimonianza del server stesso»,
+appoggiandosi all'accordo fra Little (927 ms) e k6 (943 ms). **Quel confronto era
+sbagliato**: 927 ms è Little a un **istante di picco**, 943 ms è la media di k6
+sull'**intera run** per i soli rifiuti. Due finestre diverse, e l'accordo era una
+coincidenza di scala.
+
+Rifatto come si deve — pesato sulle richieste, sull'intera run, stessa finestra
+per entrambi — il server spiegava il **48%**, non la totalità. E dopo il fix ne
+spiega il **6%**.
+
+È la seconda volta oggi che confrontare due finestre diverse produce una
+conclusione sbagliata; la prima erano i periodi CFS della §29. La regola vale per
+tutte e due: **una quota non significa niente senza la finestra su cui è presa, e
+due quantità confrontate devono condividerla.**
+
+### Dove siamo
+
+Il fix resta, e vale: −89% di residenza, −84% sul costo di un rifiuto, −15% di
+CPU al picco, zero regressioni. Ma **non era la causa dei 942 ms**, e ora il 94%
+del tempo del chiamante è fuori dalla vista di ogni strumento che abbiamo.
+
+Il candidato è quello che avevo nominato e poi archiviato troppo in fretta: **il
+generatore**. 4.469 VU su 8 core, e k6 misura fino a quando *lui* legge la
+risposta. Questa volta la misura serve davvero, e non è raccolta da nessuno.
+
+**Il fattoriale 2×2 della §30 va rimandato.** Il suo secondo fattore — più event
+loop — cerca di curare una coda che ora è profonda 5. Prima va misurato il
+generatore; poi si saprà se resta qualcosa da fattorializzare.

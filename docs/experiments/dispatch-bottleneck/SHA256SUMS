@@ -130,6 +130,10 @@ edf7f35b6dc0c697772bf82ce979249c7281a7c5be51f3e703e2575f3908e353  raw/azure-load
 8129ad11d41bbe8b0131c189a02b3e46a319cef231f0d01226799012261b84f3  raw/azure-load1x/jvm-c2/run-3/k6-summary.json
 d46b66c1cb4e916abf09bf451afd2b1ac5cb41535885b3c4a0d6d75b22df9cfc  raw/azure-load1x/jvm-c2/run-3/metrics/prometheus-snapshot.json.gz
 03301c0c3500d00996e4108aa6415f5016f9d0c6560646ca351de3edfbd5221d  raw/azure-load1x/jvm-c2/run-3/summary.json
+3d6404ebe2dfccbe7d2b4012a2be9982545cf4ed3a27467a97ceb19c7b695eb5  raw/azure-load2x-threads/comparison-manifest.json
+50f71ce7d7fe39cb891efc38bdfe8efb0ef7a74efd3fcb0e441f164dbbb1ceae  raw/azure-load2x-threads/jvm-c2/run-1/k6-summary.json
+3553c79f3e5b6038934f00dfe897572b313424469a245ccfba54517d18355e48  raw/azure-load2x-threads/jvm-c2/run-1/metrics/prometheus-snapshot.json.gz
+0da764eca44ff9727558e9197d21b64c3adb11eebc4de866a59f0394732b8aac  raw/azure-load2x-threads/jvm-c2/run-1/summary.json
 57c59a94088f46a5615e4e855febf1a04a75290fa57f6bc60fcaa30a0a8c247b  raw/azure-load2x-verify/comparison-manifest.json
 b02731b0d6aabfa78295368f4c2f16ed3e71ec17f0cc5c2e4b8345ebd569413a  raw/azure-load2x-verify/jvm-c2/run-1/k6-summary.json
 2a86f377669303c60162d5e03350de5a9d8fc258e4f389f9bd9dcaccc98853ff  raw/azure-load2x-verify/jvm-c2/run-1/metrics/prometheus-snapshot.json.gz

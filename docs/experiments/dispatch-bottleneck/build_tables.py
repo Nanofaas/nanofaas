@@ -466,6 +466,51 @@ def table_backlog(root):
     return "\n".join(out)
 
 
+def _residence(run: Path):
+    """Where a request's wall clock goes, weighted by requests, over the whole run.
+
+    Weighted and whole-run because the first version of this comparison put
+    Little at a single peak instant (927ms) beside k6's run average for
+    rejections (943ms) and read the match as proof. Two windows, one conclusion,
+    and the conclusion was wrong: like for like the server explained 48%, not
+    all of it.
+    """
+    from datetime import datetime
+    snap = load(run / "metrics" / "prometheus-snapshot.json.gz")["queries"]
+    m = _k6_raw(run)
+    ser = lambda n: [(datetime.fromisoformat(x["timestamp"]), x["value"]) for x in snap[n]["points"]]
+
+    def rate(n):
+        e = ser(n)
+        return {b[0]: (b[1] - a[1]) / (b[0] - a[0]).total_seconds()
+                for a, b in zip(e, e[1:]) if b[1] >= a[1]}
+
+    active = dict(ser("netty_connections_active"))
+    ok, ko = rate("http_server_ok_count"), rate("http_server_rejected_count")
+    ts = [t for t in sorted(active) if t in ok or t in ko]
+    resident = sum(active[t] for t in ts) / sum(ok.get(t, 0) + ko.get(t, 0) for t in ts) * 1000
+
+    last = lambda n: snap[n]["points"][-1]["value"]
+    handler = ((last("http_server_ok_sum") + last("http_server_rejected_sum"))
+               / (last("http_server_ok_count") + last("http_server_rejected_count")) * 1000)
+    return m["http_req_duration"]["avg"], resident, handler
+
+
+def table_salto(root):
+    a = _residence(Path(root) / "azure-load2x-verify" / "jvm-c2" / "run-1")
+    b = _residence(Path(root) / "azure-load2x-threads" / "jvm-c2" / "run-1")
+    out = ["| | A: con salto | B: senza salto | variazione |", "|---|---:|---:|---:|"]
+    rows = (("k6, tutte le richieste", a[0], b[0]),
+            ("residenza nel server", a[1], b[1]),
+            ("di cui nell'handler", a[2], b[2]),
+            ("**fuori dal server**", a[0] - a[1], b[0] - b[1]))
+    for label, va, vb in rows:
+        out.append(f"| {label} | {va:.2f} ms | {vb:.2f} ms | {(vb / va - 1) * 100:+.1f} % |")
+    out.append(f"| *quota spiegata dal server* | *{100 * a[1] / a[0]:.0f} %* "
+               f"| *{100 * b[1] / b[0]:.0f} %* | |")
+    return "\n".join(out)
+
+
 BLOCKS = {
     "latenza": table_latency,
     "generatore": table_generator,
@@ -477,6 +522,7 @@ BLOCKS = {
     "jvm-effetti": table_jvm_effects,
     "davanti": table_davanti,
     "backlog": table_backlog,
+    "salto": table_salto,
 }
 
 
