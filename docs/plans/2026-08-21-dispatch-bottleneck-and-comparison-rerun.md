@@ -1031,27 +1031,29 @@ Da due core in su, quindi, questo esperimento non misura più capacità: misura
 latenza sotto un carico che per la JVM è banale. Per trovarne il tetto serve un
 profilo con picco molto più alto.
 
+<!-- tabella:latenza -->
 | cpu | build | rps | p95 (ms) | p99 (ms) | scarti | dispatch |
 |---:|---|---:|---:|---:|---:|---:|
 | **4** | JVM (seriale, C1) | 435.1 | 3.2 ± 0.1 | 6.0 | 0.0 % | 145.049 |
 |  | Native −Os, seriale | 415.5 | 871.4 ± 34.9 | 1631.1 | 15.8 % | 115.847 |
 |  | Native −O3, seriale | 418.4 | 870.7 ± 25.6 | 1156.5 | 19.1 % | 112.084 |
-|  | **Native −O3, G1** | 435.0 | 171.6 ± 4.3 | 293.9 | 9.7 % | 130.045 |
-| | |  |  |  |  |  |
+|  | Native −O3, G1 | 435.0 | 171.6 ± 4.3 | 293.9 | 9.7 % | 130.045 |
+| | | | | | | |
 | **3** | JVM (seriale, C1) | 435.1 | 3.3 ± 0.0 | 6.2 | 0.0 % | 145.049 |
 |  | Native −Os, seriale | 415.9 | 913.8 ± 71.8 | 1497.4 | 17.0 % | 114.188 |
 |  | Native −O3, seriale | 419.4 | 822.5 ± 27.5 | 1215.8 | 16.7 % | 115.638 |
-|  | **Native −O3, G1** | 435.0 | 215.8 ± 8.1 | 328.5 | 9.6 % | 130.237 |
-| | |  |  |  |  |  |
+|  | Native −O3, G1 | 435.0 | 215.8 ± 8.1 | 328.5 | 9.6 % | 130.237 |
+| | | | | | | |
 | **2** | JVM (seriale, C1) | 435.1 | 3.7 ± 0.1 | 7.8 | 0.0 % | 144.981 |
 |  | Native −Os, seriale | 415.2 | 913.5 ± 42.1 | 1489.4 | 17.7 % | 113.121 |
 |  | Native −O3, seriale | 420.6 | 805.9 ± 11.5 | 1160.2 | 15.9 % | 117.166 |
-|  | **Native −O3, G1** | 434.9 | 275.2 ± 4.2 | 434.9 | 10.4 % | 128.806 |
-| | |  |  |  |  |  |
+|  | Native −O3, G1 | 434.9 | 275.2 ± 4.2 | 434.9 | 10.4 % | 128.806 |
+| | | | | | | |
 | **1** | JVM (seriale, C1) | 435.1 | 113.7 ± 0.4 | 174.5 | 26.0 % | 100.786 |
 |  | Native −Os, seriale | 422.8 | 812.9 ± 19.5 | 1271.6 | 28.4 % | 96.743 |
 |  | Native −O3, seriale | 421.9 | 834.0 ± 32.3 | 1256.8 | 25.6 % | 101.390 |
-|  | **Native −O3, G1** | 435.1 | 93.8 ± 1.5 | 156.8 | 18.3 % | 114.746 |
+|  | Native −O3, G1 | 435.1 | 93.8 ± 1.5 | 156.8 | 18.3 % | 114.746 |
+<!-- /tabella:latenza -->
 
 ### Risorse
 
@@ -1059,27 +1061,29 @@ profilo con picco molto più alto.
 `strozz` è la frazione di periodi CFS strozzati, la metrica che fino al
 2026-08-22 il chart scartava allo scrape.
 
+<!-- tabella:risorse -->
 | cpu | build | core medi | core picco | strozz | RSS MiB | coda media | attesa (ms) |
 |---:|---|---:|---:|---:|---:|---:|---:|
 | **4** | JVM (seriale, C1) | 1.11 | 2.31 | 0.0 % | 889 | 0.3 | 0.1 |
 |  | Native −Os, seriale | 1.10 | 2.02 | 0.0 % | 550 | 4.8 | 1.6 |
 |  | Native −O3, seriale | 0.98 | 2.21 | 0.0 % | 530 | 9.6 | 1.5 |
-|  | **Native −O3, G1** | 1.26 | 5.26 | 1.1 % | 565 | 0.0 | 2.6 |
-| | |  |  |  |  |  |  |
+|  | Native −O3, G1 | 1.26 | 5.26 | 1.1 % | 565 | 0.0 | 2.6 |
+| | | | | | | | |
 | **3** | JVM (seriale, C1) | 1.18 | 2.76 | 0.0 % | 880 | 0.3 | 0.1 |
 |  | Native −Os, seriale | 0.84 | 2.13 | 0.1 % | 545 | 10.2 | 1.9 |
 |  | Native −O3, seriale | 0.86 | 2.00 | 0.0 % | 546 | 10.4 | 1.3 |
-|  | **Native −O3, G1** | 1.32 | 4.04 | 2.8 % | 560 | 1.2 | 1.7 |
-| | |  |  |  |  |  |  |
+|  | Native −O3, G1 | 1.32 | 4.04 | 2.8 % | 560 | 1.2 | 1.7 |
+| | | | | | | | |
 | **2** | JVM (seriale, C1) | 1.24 | 2.52 | 0.9 % | 881 | 0.7 | 0.2 |
 |  | Native −Os, seriale | 1.05 | 1.94 | 1.5 % | 538 | 9.4 | 2.0 |
 |  | Native −O3, seriale | 0.91 | 1.87 | 1.1 % | 543 | 10.1 | 1.3 |
-|  | **Native −O3, G1** | 1.05 | 2.98 | 9.8 % | 559 | 5.2 | 2.8 |
-| | |  |  |  |  |  |  |
+|  | Native −O3, G1 | 1.05 | 2.98 | 9.8 % | 559 | 5.2 | 2.8 |
+| | | | | | | | |
 | **1** | JVM (seriale, C1) | 0.81 | 1.61 | 23.0 % | 713 | 20.0 | 14.5 |
 |  | Native −Os, seriale | 0.84 | 1.55 | 19.5 % | 469 | 18.9 | 13.4 |
 |  | Native −O3, seriale | 0.91 | 1.63 | 18.3 % | 479 | 17.3 | 9.7 |
-|  | **Native −O3, G1** | 0.92 | 1.50 | 24.6 % | 553 | 18.9 | 7.3 |
+|  | Native −O3, G1 | 0.92 | 1.50 | 24.6 % | 553 | 18.9 | 7.3 |
+<!-- /tabella:risorse -->
 
 ### Cosa dicono
 
@@ -1193,11 +1197,13 @@ esperimento.
 
 Latenza media di servizio per fase, 4 core, media di 3 ripetizioni (ms):
 
+<!-- tabella:fasi -->
 | build | warm40 | climb200 | hold200 | spike600 | hold350 | peak900 |
-|---|---:|---:|---:|---:|---:|---:|
-| jvm | 3,748 | 1,198 | 0,839 | 0,753 | 0,720 | 0,852 |
-| native-o3-g1 | 2,936 | 1,031 | 0,702 | 0,609 | 0,611 | 0,719 |
-| native-o3 | 2,965 | 1,093 | 0,770 | 0,802 | 0,902 | 1,348 |
+|---|---|---|---|---|---|---|
+| JVM (seriale, C1) | 3.748 | 1.198 | 0.839 | 0.753 | 0.720 | 0.852 |
+| Native −O3, G1 | 2.936 | 1.031 | 0.702 | 0.609 | 0.611 | 0.719 |
+| Native −O3, seriale | 2.965 | 1.093 | 0.770 | 0.802 | 0.902 | 1.348 |
+<!-- /tabella:fasi -->
 
 La JVM scende di **cinque volte** fra `warm40` e `hold350` e poi è piatta: sembra
 il JIT. Ma **le build native fanno la stessa curva**, con lo stesso fattore, e il
@@ -1302,6 +1308,30 @@ Più il commit giusto su **entrambi** i repository: gli esperimenti che cambiano
 la strumentazione cambiano mcFaas *e* il catalogo di NanoLab, e una metrica
 pubblicata dalla piattaforma ma non richiesta dal catalogo torna vuota senza dirlo.
 
+## A-bis. Le tabelle sono generate, non scritte
+
+Ogni tabella numerica di §22, §22.2, §22.3 e appendice B sta fra marcatori
+`<!-- tabella:NOME -->` e viene prodotta da
+[`../experiments/dispatch-bottleneck/build_tables.py`](../experiments/dispatch-bottleneck/build_tables.py)
+leggendo i raw archiviati. Il documento possiede la prosa; fra i marcatori non
+possiede nulla.
+
+```bash
+cd docs/experiments/dispatch-bottleneck
+python3 build_tables.py raw                              # stampa
+python3 build_tables.py raw --update=../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md
+```
+
+Se rieseguirlo cambia qualcosa, il documento era andato alla deriva. Gli snapshot
+delle quattro matrici sono archiviati **compressi** — 48 MB diventano 2,8 — e lo
+script legge `.json` e `.json.gz` indifferentemente; verificato che le tabelle
+generate dai due siano identiche.
+
+Nello script vivono anche le tre scelte metodologiche che i numeri non mostrano,
+accanto al codice che le applica: quali fasi contano come stazionarie, perché i
+punti a 200 rps sono esclusi dal modello di CPU, e perché l'asse dei tassi deve
+essere quello ottenuto e non quello offerto.
+
 ## B. Osservare le funzioni senza strumentarle
 
 Il control plane vede le funzioni dall'esterno per costruzione, e cAdvisor vede i
@@ -1319,19 +1349,21 @@ storto prima di funzionare**, perché sono ripetibili.
 core = 0,168 + 0,351 CPU-ms per richiesta
 ```
 
+<!-- tabella:modello-cpu-funzione -->
 | | |
 |---|---|
-| costo fisso | **0,168 core** |
-| costo marginale | **0,351 CPU-ms per richiesta** (errore standard 0,052) |
-| significatività | marginale a **6,7 errori standard** sopra zero |
-| R² | 0,738 |
+| osservazioni | 18 |
+| costo fisso | **0.168 core** |
+| costo marginale | **0.351 CPU-ms per richiesta** (errore standard 0.052) |
+| significatività | marginale a **6.7 errori standard** sopra zero |
+| R² | 0.738 |
 
 | tasso | core totali | quota fissa |
 |---:|---:|---:|
-| 350 rps | 0,291 | 58 % |
-| 600 rps | 0,379 | 44 % |
-| 900 rps | 0,484 | 35 % |
-
+| 350 rps | 0.291 | 58 % |
+| 600 rps | 0.379 | 44 % |
+| 900 rps | 0.484 | 35 % |
+<!-- /tabella:modello-cpu-funzione -->
 A carico moderato **più di metà della CPU della funzione non serve le richieste**:
 è GC, JIT, thread di background, scrape. È il numero che decide se conviene
 consolidare una funzione su poche repliche cariche o spargerla.
